@@ -4,12 +4,7 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import Image from "next/image";
 import { useRef } from "react";
 import { VoiceDemo } from "@/components/VoiceDemo";
-
-const features = [
-  { title: "notes", desc: "capture instantly", image: "/assets/notes.png" },
-  { title: "chat", desc: "think together", image: "/assets/chat.jpg" },
-  { title: "browse", desc: "search in place", image: "/assets/browser.png" },
-];
+import { OverlayDemo } from "@/components/OverlayDemo";
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -89,75 +84,126 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Voice Section - Interactive Demo */}
-      <section className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20 md:py-0">
-        <div className="max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-20 items-center">
-          {/* Text Side */}
+      {/* Voice Section - Vertical Layout */}
+      <section className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20">
+        <div className="max-w-xl mx-auto w-full flex flex-col items-center gap-12">
+          {/* Text */}
           <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            whileInView={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-20%" }}
             transition={{ duration: 0.8 }}
-            className="text-center md:text-left md:order-1"
+            className="text-center"
           >
             <h3 className="font-serif text-5xl md:text-6xl lg:text-7xl mb-4">voice</h3>
             <p className="text-lg md:text-xl text-[#71717a]">speak anywhere</p>
           </motion.div>
 
-          {/* Interactive Demo Side */}
+          {/* Interactive Demo */}
           <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            whileInView={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-20%" }}
             transition={{ duration: 0.8, delay: 0.1 }}
-            className="md:order-2"
+            className="w-full"
           >
             <VoiceDemo />
           </motion.div>
         </div>
       </section>
 
-      {/* Other Feature Sections - Alternating Layout */}
-      {features.map((feature, index) => (
-        <section 
-          key={feature.title}
-          className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20 md:py-0"
-        >
-          <div className={`max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-20 items-center ${(index + 1) % 2 === 1 ? 'md:direction-rtl' : ''}`}>
-            {/* Text Side */}
-            <motion.div
-              initial={{ opacity: 0, x: (index + 1) % 2 === 0 ? -30 : 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-20%" }}
-              transition={{ duration: 0.8 }}
-              className={`text-center md:text-left ${(index + 1) % 2 === 1 ? 'md:order-2 md:text-right' : 'md:order-1'}`}
-            >
-              <h3 className="font-serif text-5xl md:text-6xl lg:text-7xl mb-4">{feature.title}</h3>
-              <p className="text-lg md:text-xl text-[#71717a]">{feature.desc}</p>
-            </motion.div>
+      {/* Notes Section */}
+      <section className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20">
+        <div className="max-w-5xl mx-auto w-full flex flex-col items-center gap-12">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-20%" }}
+            transition={{ duration: 0.8 }}
+            className="text-center"
+          >
+            <h3 className="font-serif text-5xl md:text-6xl lg:text-7xl mb-4">notes</h3>
+            <p className="text-lg md:text-xl text-[#71717a]">capture instantly</p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-20%" }}
+            transition={{ duration: 0.8, delay: 0.1 }}
+            className="w-full"
+          >
+            <OverlayDemo
+              type="notes"
+              title="notes"
+              shortcutDisplay="/"
+              screenImage="/assets/window-screens/note-screen.png"
+              overlayImage="/assets/overlays/note-overlay.png"
+            />
+          </motion.div>
+        </div>
+      </section>
 
-            {/* Image Side */}
-            <motion.div
-              initial={{ opacity: 0, x: (index + 1) % 2 === 0 ? 30 : -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-20%" }}
-              transition={{ duration: 0.8, delay: 0.1 }}
-              className={`${(index + 1) % 2 === 1 ? 'md:order-1' : 'md:order-2'}`}
-            >
-              <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-black/10 border border-black/5">
-                <Image
-                  src={feature.image}
-                  alt={feature.title}
-                  width={800}
-                  height={600}
-                  className="w-full h-auto object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/5 to-transparent pointer-events-none" />
-              </div>
-            </motion.div>
-          </div>
-        </section>
-      ))}
+      {/* Chat Section */}
+      <section className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20">
+        <div className="max-w-5xl mx-auto w-full flex flex-col items-center gap-12">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-20%" }}
+            transition={{ duration: 0.8 }}
+            className="text-center"
+          >
+            <h3 className="font-serif text-5xl md:text-6xl lg:text-7xl mb-4">chat</h3>
+            <p className="text-lg md:text-xl text-[#71717a]">think together</p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-20%" }}
+            transition={{ duration: 0.8, delay: 0.1 }}
+            className="w-full"
+          >
+            <OverlayDemo
+              type="chat"
+              title="chat"
+              shortcutDisplay="."
+              screenImage="/assets/window-screens/chat-screen.png"
+              overlayImage="/assets/overlays/chat-overlay.png"
+            />
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Browser Section */}
+      <section className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20">
+        <div className="max-w-5xl mx-auto w-full flex flex-col items-center gap-12">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-20%" }}
+            transition={{ duration: 0.8 }}
+            className="text-center"
+          >
+            <h3 className="font-serif text-5xl md:text-6xl lg:text-7xl mb-4">browse</h3>
+            <p className="text-lg md:text-xl text-[#71717a]">search in place</p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-20%" }}
+            transition={{ duration: 0.8, delay: 0.1 }}
+            className="w-full"
+          >
+            <OverlayDemo
+              type="browser"
+              title="browser"
+              shortcutDisplay="\"
+              screenImage="/assets/window-screens/browser-screen.png"
+              overlayImage="/assets/overlays/browser-overlay.png"
+            />
+          </motion.div>
+        </div>
+      </section>
 
       {/* Welcome Section */}
       <section className="relative z-20 min-h-screen flex items-center justify-center px-6">
@@ -169,7 +215,7 @@ export default function Home() {
           className="max-w-3xl text-center"
         >
           <p className="font-serif text-3xl md:text-4xl lg:text-5xl leading-relaxed text-[#0a0a0a]">
-            overlay-first computing
+            welcome to <br /><span className="text-[#71717a]">overlay-first computing</span>
           </p>
         </motion.div>
       </section>
