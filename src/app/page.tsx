@@ -13,18 +13,55 @@ export default function Home() {
     offset: ["start start", "end end"],
   });
 
-  const logoScale = useTransform(scrollYProgress, [0, 0.15], [1, 0.6]);
-  const logoOpacity = useTransform(scrollYProgress, [0.1, 0.2], [1, 0]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.1], [1, 0]);
+  // Total sections: hero, philosophy, voice, notes, chat, browser, flow, welcome, download, footer = 10
+  // Each section gets 0.1 of scroll progress with NO overlap between sections
+  
+  // Hero section (0 - 0.1) - starts visible, fades out
+  const logoScale = useTransform(scrollYProgress, [0, 0.05], [1, 0.6]);
+  const logoOpacity = useTransform(scrollYProgress, [0.05, 0.10], [1, 0]);
+  const heroOpacity = useTransform(scrollYProgress, [0.05, 0.10], [1, 0]);
+  const heroPointer = useTransform(scrollYProgress, (v) => v < 0.10 ? "auto" : "none");
+  
+  // Philosophy section (0.1 - 0.2)
+  const philosophyOpacity = useTransform(scrollYProgress, [0.10, 0.12, 0.18, 0.20], [0, 1, 1, 0]);
+  const philosophyPointer = useTransform(scrollYProgress, (v) => v >= 0.10 && v < 0.20 ? "auto" : "none");
+  
+  // Voice section (0.2 - 0.3)
+  const voiceOpacity = useTransform(scrollYProgress, [0.20, 0.22, 0.28, 0.30], [0, 1, 1, 0]);
+  const voicePointer = useTransform(scrollYProgress, (v) => v >= 0.20 && v < 0.30 ? "auto" : "none");
+  
+  // Notes section (0.3 - 0.4)
+  const notesOpacity = useTransform(scrollYProgress, [0.30, 0.32, 0.38, 0.40], [0, 1, 1, 0]);
+  const notesPointer = useTransform(scrollYProgress, (v) => v >= 0.30 && v < 0.40 ? "auto" : "none");
+  
+  // Chat section (0.4 - 0.5)
+  const chatOpacity = useTransform(scrollYProgress, [0.40, 0.42, 0.48, 0.50], [0, 1, 1, 0]);
+  const chatPointer = useTransform(scrollYProgress, (v) => v >= 0.40 && v < 0.50 ? "auto" : "none");
+  
+  // Browser section (0.5 - 0.6)
+  const browserOpacity = useTransform(scrollYProgress, [0.50, 0.52, 0.58, 0.60], [0, 1, 1, 0]);
+  const browserPointer = useTransform(scrollYProgress, (v) => v >= 0.50 && v < 0.60 ? "auto" : "none");
+  
+  // Flow section (0.6 - 0.7)
+  const flowOpacity = useTransform(scrollYProgress, [0.60, 0.62, 0.68, 0.70], [0, 1, 1, 0]);
+  const flowPointer = useTransform(scrollYProgress, (v) => v >= 0.60 && v < 0.70 ? "auto" : "none");
+  
+  // Welcome section (0.7 - 0.8)
+  const welcomeOpacity = useTransform(scrollYProgress, [0.70, 0.72, 0.78, 0.80], [0, 1, 1, 0]);
+  const welcomePointer = useTransform(scrollYProgress, (v) => v >= 0.70 && v < 0.80 ? "auto" : "none");
+  
+  // Download section (0.8 - 1.0) - stays visible at end
+  const downloadOpacity = useTransform(scrollYProgress, [0.80, 0.85, 1.0], [0, 1, 1]);
+  const downloadPointer = useTransform(scrollYProgress, (v) => v >= 0.80 ? "auto" : "none");
 
   return (
-    <div ref={containerRef} className="min-h-[600vh] bg-[#fafafa] text-[#0a0a0a]">
+    <div ref={containerRef} className="bg-[#fafafa] text-[#0a0a0a]">
       {/* Liquid Glass Background */}
       <div className="liquid-glass" />
 
       {/* Fixed Hero Section */}
       <motion.section 
-        style={{ opacity: heroOpacity }}
+        style={{ opacity: heroOpacity, pointerEvents: heroPointer }}
         className="fixed inset-0 flex flex-col items-center justify-center z-10"
       >
         {/* Logo */}
@@ -68,70 +105,46 @@ export default function Home() {
       <div className="h-screen" />
 
       {/* Philosophy Section */}
-      <section className="relative z-20 min-h-screen flex items-center justify-center px-6">
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true, margin: "-20%" }}
-          transition={{ duration: 1 }}
-          className="max-w-3xl text-center"
-        >
+      <motion.section 
+        style={{ opacity: philosophyOpacity, pointerEvents: philosophyPointer }}
+        className="fixed inset-0 flex items-center justify-center px-6 z-10"
+      >
+        <div className="max-w-3xl text-center">
           <p className="font-serif text-4xl md:text-5xl lg:text-6xl leading-tight text-[#0a0a0a]">
             move execution to where{" "}<br />
             <span className="text-[#71717a]">intent</span>{" "}
             first appears
           </p>
-        </motion.div>
-      </section>
+        </div>
+      </motion.section>
 
       {/* Voice Section - Vertical Layout */}
-      <section className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20">
+      <motion.section 
+        style={{ opacity: voiceOpacity, pointerEvents: voicePointer }}
+        className="fixed inset-0 flex items-center justify-center px-6 py-20 z-10"
+      >
         <div className="max-w-xl mx-auto w-full flex flex-col items-center gap-12">
-          {/* Text */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-20%" }}
-            transition={{ duration: 0.8 }}
-            className="text-center"
-          >
+          <div className="text-center">
             <h3 className="font-serif text-5xl md:text-6xl lg:text-7xl mb-4">voice</h3>
-            <p className="text-lg md:text-xl text-[#71717a]">speak anywhere</p>
-          </motion.div>
-
-          {/* Interactive Demo */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-20%" }}
-            transition={{ duration: 0.8, delay: 0.1 }}
-            className="w-full"
-          >
+            <p className="text-lg md:text-xl text-[#71717a]">speak your mind</p>
+          </div>
+          <div className="w-full">
             <VoiceDemo />
-          </motion.div>
+          </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Notes Section */}
-      <section className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20">
+      <motion.section 
+        style={{ opacity: notesOpacity, pointerEvents: notesPointer }}
+        className="fixed inset-0 flex items-center justify-center px-6 py-20 z-10"
+      >
         <div className="max-w-5xl mx-auto w-full flex flex-col items-center gap-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-20%" }}
-            transition={{ duration: 0.8 }}
-            className="text-center"
-          >
+          <div className="text-center">
             <h3 className="font-serif text-5xl md:text-6xl lg:text-7xl mb-4">notes</h3>
-            <p className="text-lg md:text-xl text-[#71717a]">capture instantly</p>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-20%" }}
-            transition={{ duration: 0.8, delay: 0.1 }}
-            className="w-full"
-          >
+            <p className="text-lg md:text-xl text-[#71717a]">capture that thought</p>
+          </div>
+          <div className="w-full">
             <OverlayDemo
               type="notes"
               title="notes"
@@ -139,30 +152,21 @@ export default function Home() {
               screenImage="/assets/window-screens/note-screen.png"
               overlayImage="/assets/overlays/note-overlay.png"
             />
-          </motion.div>
+          </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Chat Section */}
-      <section className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20">
+      <motion.section 
+        style={{ opacity: chatOpacity, pointerEvents: chatPointer }}
+        className="fixed inset-0 flex items-center justify-center px-6 py-20 z-10"
+      >
         <div className="max-w-5xl mx-auto w-full flex flex-col items-center gap-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-20%" }}
-            transition={{ duration: 0.8 }}
-            className="text-center"
-          >
+          <div className="text-center">
             <h3 className="font-serif text-5xl md:text-6xl lg:text-7xl mb-4">chat</h3>
-            <p className="text-lg md:text-xl text-[#71717a]">think together</p>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-20%" }}
-            transition={{ duration: 0.8, delay: 0.1 }}
-            className="w-full"
-          >
+            <p className="text-lg md:text-xl text-[#71717a]">ask that question</p>
+          </div>
+          <div className="w-full">
             <OverlayDemo
               type="chat"
               title="chat"
@@ -170,30 +174,21 @@ export default function Home() {
               screenImage="/assets/window-screens/chat-screen.png"
               overlayImage="/assets/overlays/chat-overlay.png"
             />
-          </motion.div>
+          </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Browser Section */}
-      <section className="relative z-20 min-h-screen flex items-center justify-center px-6 py-20">
+      <motion.section 
+        style={{ opacity: browserOpacity, pointerEvents: browserPointer }}
+        className="fixed inset-0 flex items-center justify-center px-6 py-20 z-10"
+      >
         <div className="max-w-5xl mx-auto w-full flex flex-col items-center gap-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-20%" }}
-            transition={{ duration: 0.8 }}
-            className="text-center"
-          >
+          <div className="text-center">
             <h3 className="font-serif text-5xl md:text-6xl lg:text-7xl mb-4">browse</h3>
-            <p className="text-lg md:text-xl text-[#71717a]">search in place</p>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-20%" }}
-            transition={{ duration: 0.8, delay: 0.1 }}
-            className="w-full"
-          >
+            <p className="text-lg md:text-xl text-[#71717a]">make that search</p>
+          </div>
+          <div className="w-full">
             <OverlayDemo
               type="browser"
               title="browser"
@@ -201,34 +196,40 @@ export default function Home() {
               screenImage="/assets/window-screens/browser-screen.png"
               overlayImage="/assets/overlays/browser-overlay.png"
             />
-          </motion.div>
+          </div>
         </div>
-      </section>
+      </motion.section>
+
+      {/* Without Breaking Flow Section */}
+      <motion.section 
+        style={{ opacity: flowOpacity, pointerEvents: flowPointer }}
+        className="fixed inset-0 flex items-center justify-center px-6 z-10"
+      >
+        <div className="max-w-3xl text-center">
+          <p className="font-serif text-4xl md:text-5xl lg:text-6xl leading-tight text-[#0a0a0a]">
+            without breaking flow
+          </p>
+        </div>
+      </motion.section>
 
       {/* Welcome Section */}
-      <section className="relative z-20 min-h-screen flex items-center justify-center px-6">
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true, margin: "-20%" }}
-          transition={{ duration: 1 }}
-          className="max-w-3xl text-center"
-        >
-          <p className="font-serif text-3xl md:text-4xl lg:text-5xl leading-relaxed text-[#0a0a0a]">
+      <motion.section 
+        style={{ opacity: welcomeOpacity, pointerEvents: welcomePointer }}
+        className="fixed inset-0 flex items-center justify-center px-6 z-10"
+      >
+        <div className="max-w-3xl text-center">
+          <p className="font-serif text-4xl md:text-5xl lg:text-6xl leading-relaxed text-[#0a0a0a]">
             welcome to <br /><span className="text-[#71717a]">overlay-first computing</span>
           </p>
-        </motion.div>
-      </section>
+        </div>
+      </motion.section>
 
-      {/* Download Section */}
-      <section className="relative z-20 min-h-screen flex items-center justify-center px-6">
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="text-center"
-        >
+      {/* Download Section with Footer */}
+      <motion.section 
+        style={{ opacity: downloadOpacity, pointerEvents: downloadPointer }}
+        className="fixed inset-0 flex flex-col items-center justify-center px-6 z-10"
+      >
+        <div className="text-center">
           <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl mb-8">
             begin
           </h2>
@@ -244,46 +245,60 @@ export default function Home() {
           <p className="text-sm text-[#a1a1aa] mt-4">
             windows coming soon
           </p>
-        </motion.div>
-      </section>
-
-      {/* Footer */}
-      <footer className="relative z-20 py-12 px-6 border-t border-[#e4e4e7]">
-        <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/assets/dawn-logo.png"
-              alt="Dawn"
-              width={24}
-              height={24}
-              className="opacity-60"
-            />
-            <p className="text-sm text-[#71717a]">
-              © 2026 dawn
-            </p>
-          </div>
-          <div className="flex gap-8">
-            <a
-              href="/terms"
-              className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors"
-            >
-              terms
-            </a>
-            <a
-              href="/privacy"
-              className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors"
-            >
-              privacy
-            </a>
-            <a
-              href="mailto:hello@getdawn.io"
-              className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors"
-            >
-              contact
-            </a>
-          </div>
         </div>
-      </footer>
+        
+        {/* Footer */}
+        <footer className="absolute bottom-8 left-0 right-0 px-6">
+          <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-3">
+              <Image
+                src="/assets/dawn-logo.png"
+                alt="Dawn"
+                width={24}
+                height={24}
+                className="opacity-60"
+              />
+              <p className="text-sm text-[#71717a]">
+                © 2026 dawn
+              </p>
+            </div>
+            <p className="text-sm text-[#71717a]">
+              made with care by{" "}
+              <a
+                href="https://divyan.sh"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-[#0a0a0a] transition-colors"
+              >
+                divyan.sh
+              </a>
+            </p>
+            <div className="flex gap-8">
+              <a
+                href="/terms"
+                className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors"
+              >
+                terms
+              </a>
+              <a
+                href="/privacy"
+                className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors"
+              >
+                privacy
+              </a>
+              <a
+                href="mailto:work.dslalwani@gmail.com"
+                className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors"
+              >
+                contact
+              </a>
+            </div>
+          </div>
+        </footer>
+      </motion.section>
+
+      {/* Spacer for scroll - 9 sections * 100vh = 900vh */}
+      <div className="h-[900vh]" />
     </div>
   );
 }

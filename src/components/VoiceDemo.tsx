@@ -184,17 +184,17 @@ export function VoiceDemo() {
             {/* Text Input */}
             <div className="flex-1 relative bg-transparent border-2 border-[#3a3a3c] rounded-full px-5 py-3.5 flex items-center min-h-[52px]">
               {!inputText && !isRecording && !isProcessing && (
-                <span className="text-[17px] text-[#8e8e93] absolute left-5">iMessage</span>
+                <span className="text-[17px] text-[#8e8e93] absolute left-[28px]">iMessage</span>
               )}
-              <span className="text-[17px] text-white">
-                {inputText}
+              <span className="text-[17px] text-white flex items-center">
                 {!isRecording && !isProcessing && inputText === "" && (
                   <span
-                    className={`inline-block w-[2px] h-[22px] bg-[#007aff] ml-0.5 align-middle transition-opacity ${
+                    className={`inline-block w-[2px] h-[22px] bg-[#007aff] transition-opacity ${
                       showCursor ? "opacity-100" : "opacity-0"
                     }`}
                   />
                 )}
+                {inputText}
               </span>
               
               {/* Waveform Overlay */}
@@ -309,7 +309,34 @@ export function VoiceDemo() {
                   <kbd className="px-1.5 py-0.5 bg-[#e4e4e7] rounded text-[11px] font-mono mx-0.5">
                     space
                   </kbd>{" "}
-                  to respond
+                  to{" "}
+                  <button
+                    onClick={() => {
+                      setIsRecording(true);
+                      recordingStartTime.current = Date.now();
+                      // Auto-release after 1.5s for demo
+                      setTimeout(() => {
+                        setIsRecording(false);
+                        setIsProcessing(true);
+                        setTimeout(() => {
+                          setIsProcessing(false);
+                          const text = "omw be there in 5";
+                          let index = 0;
+                          const typeInterval = setInterval(() => {
+                            if (index <= text.length) {
+                              setInputText(text.slice(0, index));
+                              index++;
+                            } else {
+                              clearInterval(typeInterval);
+                            }
+                          }, 30);
+                        }, 800);
+                      }, 1500);
+                    }}
+                    className="underline hover:text-[#0a0a0a] transition-colors"
+                  >
+                    respond
+                  </button>
                 </>
               )}
             </motion.p>

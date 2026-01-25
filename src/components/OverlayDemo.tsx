@@ -50,12 +50,16 @@ export function OverlayDemo({
       case "notes":
         return "absolute bottom-8 -right-16 w-[55%]";
       case "chat":
-        return "absolute bottom-8 -left-16 w-[55%]";
+        return "absolute -bottom-4 -left-16 w-[50%]";
       case "browser":
         return "absolute bottom-8 -right-24 w-[75%]";
       default:
         return "absolute bottom-8 right-4 w-[50%]";
     }
+  };
+
+  const toggleOverlay = () => {
+    setShowOverlay((prev) => !prev);
   };
 
   return (
@@ -108,7 +112,13 @@ export function OverlayDemo({
           <kbd className="px-1.5 py-0.5 bg-[#e4e4e7] rounded text-[11px] font-mono mx-0.5">
             {shortcutDisplay}
           </kbd>{" "}
-          to {showOverlay ? "hide" : "show"} {title} overlay
+          to{" "}
+          <button
+            onClick={toggleOverlay}
+            className="underline hover:text-[#0a0a0a] transition-colors"
+          >
+            {showOverlay ? "hide" : "show"} {title} overlay
+          </button>
         </p>
       </div>
     </div>

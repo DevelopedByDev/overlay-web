@@ -9,9 +9,14 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "dawn — personal computing, reimagined",
+  title: "dawn",
   description: "An OS-level, hotkey-activated overlay that moves execution into overlays where intent first appears. Voice-to-text, notes, AI chat, and browsing — all without leaving your flow.",
   keywords: ["productivity", "voice-to-text", "AI assistant", "overlay", "desktop app", "macOS"],
+  icons: {
+    icon: [
+      { url: "/icon.png", sizes: "64x64", type: "image/png" },
+    ],
+  },
   openGraph: {
     title: "dawn — personal computing, reimagined",
     description: "The computer, at the speed of human thought.",
