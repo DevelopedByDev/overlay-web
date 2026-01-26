@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRef } from "react";
 import { VoiceDemo } from "@/components/VoiceDemo";
 import { OverlayDemo } from "@/components/OverlayDemo";
+import { AllInOnePlace } from "@/components/AllInOnePlace";
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -13,46 +14,50 @@ export default function Home() {
     offset: ["start start", "end end"],
   });
 
-  // Total sections: hero, philosophy, voice, notes, chat, browser, flow, welcome, download, footer = 10
-  // Each section gets 0.1 of scroll progress with NO overlap between sections
+  // Total sections: hero, philosophy, voice, notes, chat, browser, allInOnePlace, flow, welcome, download = 10 content sections
+  // Each section gets ~0.09 of scroll progress with NO overlap between sections
   
-  // Hero section (0 - 0.1) - starts visible, fades out
-  const logoScale = useTransform(scrollYProgress, [0, 0.05], [1, 0.6]);
-  const logoOpacity = useTransform(scrollYProgress, [0.05, 0.10], [1, 0]);
-  const heroOpacity = useTransform(scrollYProgress, [0.05, 0.10], [1, 0]);
-  const heroPointer = useTransform(scrollYProgress, (v) => v < 0.10 ? "auto" : "none");
+  // Hero section (0 - 0.09) - starts visible, fades out
+  const logoScale = useTransform(scrollYProgress, [0, 0.045], [1, 0.6]);
+  const logoOpacity = useTransform(scrollYProgress, [0.045, 0.09], [1, 0]);
+  const heroOpacity = useTransform(scrollYProgress, [0.045, 0.09], [1, 0]);
+  const heroPointer = useTransform(scrollYProgress, (v) => v < 0.09 ? "auto" : "none");
   
-  // Philosophy section (0.1 - 0.2)
-  const philosophyOpacity = useTransform(scrollYProgress, [0.10, 0.12, 0.18, 0.20], [0, 1, 1, 0]);
-  const philosophyPointer = useTransform(scrollYProgress, (v) => v >= 0.10 && v < 0.20 ? "auto" : "none");
+  // Philosophy section (0.09 - 0.18)
+  const philosophyOpacity = useTransform(scrollYProgress, [0.09, 0.11, 0.16, 0.18], [0, 1, 1, 0]);
+  const philosophyPointer = useTransform(scrollYProgress, (v) => v >= 0.09 && v < 0.18 ? "auto" : "none");
   
-  // Voice section (0.2 - 0.3)
-  const voiceOpacity = useTransform(scrollYProgress, [0.20, 0.22, 0.28, 0.30], [0, 1, 1, 0]);
-  const voicePointer = useTransform(scrollYProgress, (v) => v >= 0.20 && v < 0.30 ? "auto" : "none");
+  // Voice section (0.18 - 0.27)
+  const voiceOpacity = useTransform(scrollYProgress, [0.18, 0.20, 0.25, 0.27], [0, 1, 1, 0]);
+  const voicePointer = useTransform(scrollYProgress, (v) => v >= 0.18 && v < 0.27 ? "auto" : "none");
   
-  // Notes section (0.3 - 0.4)
-  const notesOpacity = useTransform(scrollYProgress, [0.30, 0.32, 0.38, 0.40], [0, 1, 1, 0]);
-  const notesPointer = useTransform(scrollYProgress, (v) => v >= 0.30 && v < 0.40 ? "auto" : "none");
+  // Notes section (0.27 - 0.36)
+  const notesOpacity = useTransform(scrollYProgress, [0.27, 0.29, 0.34, 0.36], [0, 1, 1, 0]);
+  const notesPointer = useTransform(scrollYProgress, (v) => v >= 0.27 && v < 0.36 ? "auto" : "none");
   
-  // Chat section (0.4 - 0.5)
-  const chatOpacity = useTransform(scrollYProgress, [0.40, 0.42, 0.48, 0.50], [0, 1, 1, 0]);
-  const chatPointer = useTransform(scrollYProgress, (v) => v >= 0.40 && v < 0.50 ? "auto" : "none");
+  // Chat section (0.36 - 0.45)
+  const chatOpacity = useTransform(scrollYProgress, [0.36, 0.38, 0.43, 0.45], [0, 1, 1, 0]);
+  const chatPointer = useTransform(scrollYProgress, (v) => v >= 0.36 && v < 0.45 ? "auto" : "none");
   
-  // Browser section (0.5 - 0.6)
-  const browserOpacity = useTransform(scrollYProgress, [0.50, 0.52, 0.58, 0.60], [0, 1, 1, 0]);
-  const browserPointer = useTransform(scrollYProgress, (v) => v >= 0.50 && v < 0.60 ? "auto" : "none");
+  // Browser section (0.45 - 0.54)
+  const browserOpacity = useTransform(scrollYProgress, [0.45, 0.47, 0.52, 0.54], [0, 1, 1, 0]);
+  const browserPointer = useTransform(scrollYProgress, (v) => v >= 0.45 && v < 0.54 ? "auto" : "none");
   
-  // Flow section (0.6 - 0.7)
-  const flowOpacity = useTransform(scrollYProgress, [0.60, 0.62, 0.68, 0.70], [0, 1, 1, 0]);
-  const flowPointer = useTransform(scrollYProgress, (v) => v >= 0.60 && v < 0.70 ? "auto" : "none");
+  // All In One Place section (0.54 - 0.63)
+  const allInOnePlaceOpacity = useTransform(scrollYProgress, [0.54, 0.56, 0.61, 0.63], [0, 1, 1, 0]);
+  const allInOnePlacePointer = useTransform(scrollYProgress, (v) => v >= 0.54 && v < 0.63 ? "auto" : "none");
   
-  // Welcome section (0.7 - 0.8)
-  const welcomeOpacity = useTransform(scrollYProgress, [0.70, 0.72, 0.78, 0.80], [0, 1, 1, 0]);
-  const welcomePointer = useTransform(scrollYProgress, (v) => v >= 0.70 && v < 0.80 ? "auto" : "none");
+  // Flow section (0.63 - 0.72)
+  const flowOpacity = useTransform(scrollYProgress, [0.63, 0.65, 0.70, 0.72], [0, 1, 1, 0]);
+  const flowPointer = useTransform(scrollYProgress, (v) => v >= 0.63 && v < 0.72 ? "auto" : "none");
   
-  // Download section (0.8 - 1.0) - stays visible at end
-  const downloadOpacity = useTransform(scrollYProgress, [0.80, 0.85, 1.0], [0, 1, 1]);
-  const downloadPointer = useTransform(scrollYProgress, (v) => v >= 0.80 ? "auto" : "none");
+  // Welcome section (0.72 - 0.81)
+  const welcomeOpacity = useTransform(scrollYProgress, [0.72, 0.74, 0.79, 0.81], [0, 1, 1, 0]);
+  const welcomePointer = useTransform(scrollYProgress, (v) => v >= 0.72 && v < 0.81 ? "auto" : "none");
+  
+  // Download section (0.81 - 1.0) - stays visible at end
+  const downloadOpacity = useTransform(scrollYProgress, [0.81, 0.88, 1.0], [0, 1, 1]);
+  const downloadPointer = useTransform(scrollYProgress, (v) => v >= 0.81 ? "auto" : "none");
 
   return (
     <div ref={containerRef} className="bg-[#fafafa] text-[#0a0a0a]">
@@ -200,6 +205,14 @@ export default function Home() {
         </div>
       </motion.section>
 
+      {/* All In One Place Section */}
+      <motion.section 
+        style={{ opacity: allInOnePlaceOpacity, pointerEvents: allInOnePlacePointer }}
+        className="fixed inset-0 flex items-center justify-center px-6 py-20 z-10"
+      >
+        <AllInOnePlace />
+      </motion.section>
+
       {/* Without Breaking Flow Section */}
       <motion.section 
         style={{ opacity: flowOpacity, pointerEvents: flowPointer }}
@@ -297,8 +310,8 @@ export default function Home() {
         </footer>
       </motion.section>
 
-      {/* Spacer for scroll - 9 sections * 100vh = 900vh */}
-      <div className="h-[900vh]" />
+      {/* Spacer for scroll - 10 sections * 100vh = 1000vh */}
+      <div className="h-[1000vh]" />
     </div>
   );
 }
