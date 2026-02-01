@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "dawn — personal computing, reimagined",
-    description: "The computer, at the speed of human thought.",
+    description: "the computer, at the speed of human thought.",
     type: "website",
     url: "https://getdawn.io",
     images: [
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary",
     title: "dawn — personal computing, reimagined",
-    description: "The computer, at the speed of human thought.",
+    description: "the computer, at the speed of human thought.",
     images: ["https://getdawn.io/assets/dawn-logo.png"],
   },
 };
