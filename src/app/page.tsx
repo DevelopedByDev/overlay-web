@@ -129,7 +129,7 @@ export default function Home() {
         {/* Logo */}
         <motion.div
           style={{ scale: logoScale, opacity: logoOpacity }}
-          className="mb-8"
+          className="mb-4"
         >
           <Image
             src="/assets/dawn-logo.png"
