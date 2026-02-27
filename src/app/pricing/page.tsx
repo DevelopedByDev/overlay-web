@@ -196,7 +196,7 @@ export default function PricingPage() {
                         <span className={`text-sm ${feature.included ? '' : 'text-[var(--muted-light)]'}`}>
                           {feature.name}
                           {feature.detail && (
-                            <span className="text-[var(--muted)] ml-1">({feature.detail})</span>
+                            <span className="text-(--muted) ml-1">({feature.detail})</span>
                           )}
                         </span>
                       </li>
@@ -220,8 +220,8 @@ export default function PricingPage() {
                       disabled={loading === tier.ctaAction}
                       className={`block w-full py-3 px-4 rounded-lg text-center text-sm font-medium transition-all disabled:opacity-50 ${
                         tier.highlighted
-                          ? 'bg-[var(--foreground)] text-[var(--background)] hover:opacity-90'
-                          : 'bg-[var(--border)] hover:bg-[var(--muted-light)] hover:text-white'
+                          ? 'bg-[var(--foreground)] text-background hover:opacity-90'
+                          : 'bg-[var(--border)] hover:bg-(--muted-light) hover:text-white'
                       }`}
                     >
                       {loading === tier.ctaAction ? 'Loading...' : tier.cta}
@@ -236,17 +236,17 @@ export default function PricingPage() {
           <div className="mt-16 max-w-3xl mx-auto">
             <div className="glass-dark rounded-2xl p-8">
               <h3 className="text-xl font-serif mb-4">How token budgets work</h3>
-              <div className="space-y-4 text-sm text-[var(--muted)]">
+              <div className="space-y-4 text-sm text-(--muted)">
                 <p>
                   Premium AI models (Claude, GPT-5, Gemini Pro, etc.) are billed by tokens used.
                   Your monthly token budget lets you use these models flexibly.
                 </p>
                 <p>
-                  <strong className="text-[var(--foreground)]">Prompt caching</strong> can reduce costs by up to 90% for repeated context.
+                  <strong className="text-foreground">Prompt caching</strong> can reduce costs by up to 90% for repeated context.
                   We automatically enable caching for all supported models.
                 </p>
                 <p>
-                  <strong className="text-[var(--foreground)]">Example:</strong> $10 budget ≈ 3.3M input tokens on Claude Sonnet,
+                  <strong className="text-foreground">Example:</strong> $10 budget ≈ 3.3M input tokens on Claude Sonnet,
                   or 66M tokens on GPT-OSS-20b with caching.
                 </p>
                 <p>
@@ -271,7 +271,7 @@ export default function PricingPage() {
                 },
                 {
                   q: 'Which models are included in Free?',
-                  a: 'Free users get unlimited access to Trinity Large and Auto (OpenRouter free tier). These are capable models for most tasks.'
+                  a: 'Free users get unlimited access to Trinity Large and Auto. These are capable models for many tasks.'
                 },
                 {
                   q: 'Do I need to enter payment info for Free?',
