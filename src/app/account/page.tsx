@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { CreditCard, RefreshCw, Settings, ArrowRight, Check, AlertCircle } from 'lucide-react'
+import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
@@ -42,23 +42,36 @@ function formatDate(timestamp: number): string {
   })
 }
 
-function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
-  const percentage = max > 0 ? Math.min(100, (value / max) * 100) : 0
-  const isLow = percentage >= 80
-  const isEmpty = percentage >= 100
+function ProgressBar({
+  used,
+  total,
+  label,
+  showAsPercentage = false
+}: {
+  used: number
+  total: number
+  label: string
+  showAsPercentage?: boolean
+}) {
+  const remaining = Math.max(0, total - used)
+  const percentage = total > 0 ? (remaining / total) * 100 : 0
+  const isLow = percentage <= 20
+  const isEmpty = percentage <= 0
 
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-sm">
-        <span className="text-[var(--muted)]">{label}</span>
+        <span className="text-zinc-500">{label}</span>
         <span className={isEmpty ? 'text-red-500' : isLow ? 'text-amber-500' : ''}>
-          {max === Infinity ? '∞' : `${value.toFixed(2)} / $${max}`}
+          {showAsPercentage
+            ? `${Math.round(percentage)}% remaining`
+            : `$${remaining.toFixed(2)} / $${total}`}
         </span>
       </div>
-      <div className="h-2 bg-[var(--border)] rounded-full overflow-hidden">
+      <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
         <div
           className={`h-full transition-all duration-300 rounded-full ${
-            isEmpty ? 'bg-red-500' : isLow ? 'bg-amber-500' : 'bg-emerald-500'
+            isEmpty ? 'bg-red-500' : isLow ? 'bg-amber-500' : 'bg-zinc-800'
           }`}
           style={{ width: `${percentage}%` }}
         />
@@ -67,19 +80,31 @@ function ProgressBar({ value, max, label }: { value: number; max: number; label:
   )
 }
 
+const MIN_ADDON_AMOUNT = 10
+const MAX_ADDON_AMOUNT = 100
+
 function AccountPageContent() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [addonAmount, setAddonAmount] = useState<string>('20')
+  const [autoRenew, setAutoRenew] = useState<boolean>(false)
 
   // Extract userId from URL params and store in localStorage
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  
   useEffect(() => {
-    const userId = searchParams.get('userId')
-    if (userId) {
-      localStorage.setItem('userId', userId)
-      console.log('[Account] Stored userId from URL:', userId)
+    const urlUserId = searchParams.get('userId')
+    if (urlUserId) {
+      localStorage.setItem('userId', urlUserId)
+      setCurrentUserId(urlUserId)
+      console.log('[Account] Stored userId from URL:', urlUserId)
+    } else {
+      // Try to get from localStorage
+      const storedUserId = localStorage.getItem('userId')
+      setCurrentUserId(storedUserId)
     }
   }, [searchParams])
 
@@ -106,16 +131,19 @@ function AccountPageContent() {
     window.location.href = 'overlay://subscription-updated'
   }
 
-  // Fetch entitlements
+  // Fetch entitlements when userId is available
   useEffect(() => {
+    if (currentUserId === null) return // Wait for userId to be determined
+
     async function fetchEntitlements() {
       try {
-        // Get userId from localStorage (set from URL param or previous session)
-        const userId = localStorage.getItem('userId') || 'demo-user'
+        const userId = currentUserId || 'demo-user'
+        console.log('[Account] Fetching entitlements for userId:', userId)
 
         const response = await fetch(`/api/entitlements?userId=${userId}`)
         if (response.ok) {
           const data = await response.json()
+          console.log('[Account] Received entitlements:', data)
           setEntitlements(data)
         }
       } catch (error) {
@@ -126,7 +154,7 @@ function AccountPageContent() {
     }
 
     fetchEntitlements()
-  }, [])
+  }, [currentUserId])
 
   const handleManageBilling = async () => {
     setActionLoading('billing')
@@ -155,58 +183,37 @@ function AccountPageContent() {
   }
 
   const handlePurchaseRefill = async () => {
+    const amount = parseFloat(addonAmount)
+    if (amount < MIN_ADDON_AMOUNT || amount > MAX_ADDON_AMOUNT) {
+      setMessage({ type: 'error', text: `Amount must be between $${MIN_ADDON_AMOUNT} and $${MAX_ADDON_AMOUNT}` })
+      return
+    }
+
     setActionLoading('refill')
     try {
       const userId = localStorage.getItem('userId') || 'demo-user'
+      const email = '' // User's email if available
 
-      const response = await fetch('/api/checkout/refill', {
+      const response = await fetch('/api/checkout/addon', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
+        body: JSON.stringify({ userId, email, amount, autoRenew })
       })
 
       const data = await response.json()
       if (data.url) {
         window.location.href = data.url
       } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to start refill checkout' })
+        setMessage({ type: 'error', text: data.error || 'Failed to start checkout' })
       }
     } catch (error) {
-      console.error('Refill error:', error)
-      setMessage({ type: 'error', text: 'Failed to start refill checkout' })
+      console.error('Addon checkout error:', error)
+      setMessage({ type: 'error', text: 'Failed to start checkout' })
     } finally {
       setActionLoading(null)
     }
   }
 
-  const handleToggleAutoRefill = async () => {
-    if (!entitlements) return
-
-    setActionLoading('autorefill')
-    try {
-      const userId = localStorage.getItem('userId') || 'demo-user'
-      const enabled = !entitlements.autoRefillEnabled
-
-      const response = await fetch('/api/auto-refill', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, enabled })
-      })
-
-      if (response.ok) {
-        setEntitlements({ ...entitlements, autoRefillEnabled: enabled })
-        setMessage({
-          type: 'success',
-          text: enabled ? 'Auto-refill enabled' : 'Auto-refill disabled'
-        })
-      }
-    } catch (error) {
-      console.error('Auto-refill toggle error:', error)
-      setMessage({ type: 'error', text: 'Failed to update auto-refill setting' })
-    } finally {
-      setActionLoading(null)
-    }
-  }
 
   // Demo data for when not connected
   const demoEntitlements: Entitlements = {
@@ -340,17 +347,6 @@ function AccountPageContent() {
                   </div>
                 </div>
 
-                {data.tier !== 'free' && (
-                  <button
-                    onClick={handleManageBilling}
-                    disabled={actionLoading === 'billing'}
-                    className="flex items-center gap-2 text-sm text-[var(--foreground)] hover:opacity-70 transition-opacity disabled:opacity-50"
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    {actionLoading === 'billing' ? 'Opening...' : 'Manage billing'}
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                )}
 
                 {data.tier === 'free' && (
                   <Link
@@ -363,55 +359,95 @@ function AccountPageContent() {
                 )}
               </div>
 
-              {/* Token Usage Card (Pro/Max only) */}
+              {/* Usage Card (Pro/Max only) */}
               {data.tier !== 'free' && (
                 <div className="glass-dark rounded-2xl p-6">
-                  <h2 className="text-lg font-medium mb-4">Token Usage</h2>
+                  <h2 className="text-lg font-medium mb-4">Usage This Period</h2>
 
                   <ProgressBar
-                    value={data.usage.tokenCostAccrued}
-                    max={data.limits.tokenBudget}
-                    label="Premium model usage"
+                    used={data.usage.tokenCostAccrued}
+                    total={data.limits.tokenBudget}
+                    label="Subscription"
+                    showAsPercentage={true}
                   />
 
+                  {/* Add-on Credits Usage Bar */}
                   {data.refillCredits > 0 && (
-                    <p className="mt-3 text-sm text-emerald-600">
-                      + ${data.refillCredits.toFixed(2)} refill credits available
-                    </p>
+                    <div className="mt-4">
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-zinc-500">Add-on</span>
+                        <span>${data.refillCredits.toFixed(2)}</span>
+                      </div>
+                      <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                        <div className="h-full w-full bg-emerald-500 rounded-full" />
+                      </div>
+                    </div>
                   )}
 
-                  <div className="mt-6 flex flex-wrap gap-3">
-                    <button
-                      onClick={handlePurchaseRefill}
-                      disabled={actionLoading === 'refill'}
-                      className="flex items-center gap-2 px-4 py-2 bg-[var(--border)] hover:bg-[var(--muted-light)] hover:text-white rounded-lg text-sm font-medium transition-all disabled:opacity-50"
-                    >
-                      <RefreshCw
-                        className={`w-4 h-4 ${actionLoading === 'refill' ? 'animate-spin' : ''}`}
-                      />
-                      {actionLoading === 'refill'
-                        ? 'Loading...'
-                        : `Purchase refill (+$${data.tier === 'pro' ? 5 : 50} for $${data.tier === 'pro' ? 11 : 55})`}
-                    </button>
+                  {/* Purchase Add-on Credits */}
+                  <div className="mt-6 pt-4 border-t border-zinc-200">
+                    <p className="text-xs text-zinc-500 mb-3">Purchase add-on credits</p>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {/* Amount Input */}
+                      <div className="flex items-center bg-white border border-zinc-200 rounded-lg px-3 w-24">
+                        <span className="text-zinc-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          min={MIN_ADDON_AMOUNT}
+                          max={MAX_ADDON_AMOUNT}
+                          step="5"
+                          value={addonAmount}
+                          onChange={(e) => setAddonAmount(e.target.value)}
+                          className="flex-1 py-2 px-1 bg-transparent border-none outline-none text-sm w-full"
+                        />
+                      </div>
 
-                    <button
-                      onClick={handleToggleAutoRefill}
-                      disabled={actionLoading === 'autorefill'}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${
-                        data.autoRefillEnabled
-                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                          : 'bg-[var(--border)] hover:bg-[var(--muted-light)] hover:text-white'
-                      }`}
-                    >
-                      <Settings className="w-4 h-4" />
-                      {data.autoRefillEnabled ? 'Auto-refill ON' : 'Enable auto-refill'}
-                    </button>
+                      {/* Auto-Renew Toggle */}
+                      <label className="flex items-center gap-2 cursor-pointer text-sm text-zinc-500">
+                        <div
+                          onClick={() => setAutoRenew(!autoRenew)}
+                          className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer ${
+                            autoRenew ? 'bg-zinc-800' : 'bg-zinc-200'
+                          }`}
+                        >
+                          <div
+                            className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${
+                              autoRenew ? 'left-4' : 'left-0.5'
+                            }`}
+                          />
+                        </div>
+                        Auto-refill
+                      </label>
+
+                      {/* Purchase Button */}
+                      <button
+                        onClick={handlePurchaseRefill}
+                        disabled={
+                          actionLoading === 'refill' ||
+                          parseFloat(addonAmount) < MIN_ADDON_AMOUNT ||
+                          parseFloat(addonAmount) > MAX_ADDON_AMOUNT
+                        }
+                        className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {actionLoading === 'refill' ? 'Processing...' : 'Purchase'}
+                      </button>
+
+                      {/* Manage Billing Button */}
+                      <button
+                        onClick={handleManageBilling}
+                        disabled={actionLoading === 'billing'}
+                        className="px-4 py-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+                      >
+                        {actionLoading === 'billing' ? 'Opening...' : 'Manage Subscription'}
+                      </button>
+                    </div>
+
+                    {addonAmount &&
+                      (parseFloat(addonAmount) < MIN_ADDON_AMOUNT ||
+                        parseFloat(addonAmount) > MAX_ADDON_AMOUNT) && (
+                        <p className="text-xs text-red-500 mt-2">$10 - $100</p>
+                      )}
                   </div>
-
-                  <p className="mt-4 text-xs text-[var(--muted)]">
-                    Auto-refill automatically purchases more credits when your balance drops below
-                    10%.
-                  </p>
                 </div>
               )}
 

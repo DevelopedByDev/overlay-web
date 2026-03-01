@@ -12,7 +12,7 @@ const PRICE_IDS = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { tier, userId } = body
+    const { tier, userId, email } = body
 
     if (!tier || !['pro', 'max'].includes(tier)) {
       return NextResponse.json({ error: 'Invalid tier' }, { status: 400 })
@@ -44,14 +44,17 @@ export async function POST(request: NextRequest) {
       cancel_url: `${baseUrl}/pricing?canceled=true`,
       metadata: {
         userId: userId || '',
-        tier
+        tier,
+        email: email || ''
       },
       subscription_data: {
         metadata: {
           userId: userId || '',
-          tier
+          tier,
+          email: email || ''
         }
       },
+      customer_email: email || undefined,
       allow_promotion_codes: true
     })
 

@@ -8,12 +8,33 @@ const http = httpRouter()
 
 // Map Stripe price ID to subscription tier
 function mapPriceToTier(priceId?: string): 'free' | 'pro' | 'max' {
-  const proPriceId = process.env.STRIPE_PRO_PRICE_ID
-  const maxPriceId = process.env.STRIPE_MAX_PRICE_ID
+  // Check both DEV_ prefixed (for dev environment) and non-prefixed (for production) env vars
+  const proPriceId = process.env.STRIPE_PRO_PRICE_ID || process.env.DEV_STRIPE_PRO_PRICE_ID
+  const maxPriceId = process.env.STRIPE_MAX_PRICE_ID || process.env.DEV_STRIPE_MAX_PRICE_ID
+
+  console.log(`[Stripe Webhook] mapPriceToTier: priceId=${priceId}, proPriceId=${proPriceId}, maxPriceId=${maxPriceId}`)
 
   if (priceId === proPriceId) return 'pro'
   if (priceId === maxPriceId) return 'max'
+  
+  console.warn(`[Stripe Webhook] Unknown price ID: ${priceId}, defaulting to free`)
   return 'free'
+}
+
+// Extract customer email and name from Stripe customer object
+function extractCustomerInfo(customer: string | Stripe.Customer | Stripe.DeletedCustomer | null): { email?: string; name?: string } {
+  if (!customer || typeof customer === 'string') {
+    return {}
+  }
+  
+  if ('deleted' in customer && customer.deleted) {
+    return {}
+  }
+  
+  return {
+    email: customer.email || undefined,
+    name: customer.name || undefined
+  }
 }
 
 // Map Stripe subscription status to our status
@@ -49,19 +70,45 @@ registerRoutes(http, components.stripe, {
         return
       }
 
-      const tier = mapPriceToTier(subscription.items.data[0]?.price?.id)
+      // Debug: log the entire subscription object structure
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const subAny = subscription as any
+      console.log(`[Stripe Webhook] Subscription object keys: ${Object.keys(subAny).join(', ')}`)
+      console.log(`[Stripe Webhook] Raw period values: current_period_start=${subAny.current_period_start}, currentPeriodStart=${subAny.currentPeriodStart}`)
+
+      const priceId = subscription.items.data[0]?.price?.id
+      const tier = mapPriceToTier(priceId)
+      
+      // Extract email from metadata (passed during checkout) or from expanded customer
+      const customerInfo = extractCustomerInfo(subscription.customer as Stripe.Customer | string)
+      const email = subscription.metadata?.email || customerInfo.email
+      const name = customerInfo.name
+
+      // Get timestamps - try multiple possible property names
+      const periodStart = subAny.current_period_start || subAny.currentPeriodStart || subAny['current_period_start']
+      const periodEnd = subAny.current_period_end || subAny.currentPeriodEnd || subAny['current_period_end']
+      
+      // Calculate with fallbacks - ensure we get valid numbers
+      const now = Date.now()
+      const thirtyDays = 30 * 24 * 60 * 60 * 1000
+      const currentPeriodStart = (typeof periodStart === 'number' && periodStart > 0) ? periodStart * 1000 : now
+      const currentPeriodEnd = (typeof periodEnd === 'number' && periodEnd > 0) ? periodEnd * 1000 : now + thirtyDays
+
+      console.log(`[Stripe Webhook] Computed periods: start=${currentPeriodStart}, end=${currentPeriodEnd}`)
 
       await ctx.runMutation(internal.subscriptions.upsertFromStripeInternal, {
         userId,
+        email,
+        name,
         stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
         stripeSubscriptionId: subscription.id,
         tier,
         status: mapSubscriptionStatus(subscription.status),
-        currentPeriodStart: subscription.current_period_start * 1000,
-        currentPeriodEnd: subscription.current_period_end * 1000
+        currentPeriodStart,
+        currentPeriodEnd
       })
 
-      console.log(`[Stripe Webhook] Created subscription for user ${userId}: ${tier}`)
+      console.log(`[Stripe Webhook] Created subscription for user ${userId}: tier=${tier}, priceId=${priceId}, email=${email}`)
     },
 
     'customer.subscription.updated': async (ctx, event: Stripe.CustomerSubscriptionUpdatedEvent) => {
@@ -73,19 +120,42 @@ registerRoutes(http, components.stripe, {
         return
       }
 
-      const tier = mapPriceToTier(subscription.items.data[0]?.price?.id)
+      // Debug: log the entire subscription object structure
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const subAny = subscription as any
+      console.log(`[Stripe Webhook] Updated - Subscription keys: ${Object.keys(subAny).join(', ')}`)
+
+      const priceId = subscription.items.data[0]?.price?.id
+      const tier = mapPriceToTier(priceId)
+      
+      // Extract email from metadata (passed during checkout) or from expanded customer
+      const customerInfo = extractCustomerInfo(subscription.customer as Stripe.Customer | string)
+      const email = subscription.metadata?.email || customerInfo.email
+      const name = customerInfo.name
+
+      // Get timestamps - try multiple possible property names
+      const periodStart = subAny.current_period_start || subAny.currentPeriodStart || subAny['current_period_start']
+      const periodEnd = subAny.current_period_end || subAny.currentPeriodEnd || subAny['current_period_end']
+      
+      // Calculate with fallbacks - ensure we get valid numbers
+      const now = Date.now()
+      const thirtyDays = 30 * 24 * 60 * 60 * 1000
+      const currentPeriodStart = (typeof periodStart === 'number' && periodStart > 0) ? periodStart * 1000 : now
+      const currentPeriodEnd = (typeof periodEnd === 'number' && periodEnd > 0) ? periodEnd * 1000 : now + thirtyDays
 
       await ctx.runMutation(internal.subscriptions.upsertFromStripeInternal, {
         userId,
+        email,
+        name,
         stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
         stripeSubscriptionId: subscription.id,
         tier,
         status: mapSubscriptionStatus(subscription.status),
-        currentPeriodStart: subscription.current_period_start * 1000,
-        currentPeriodEnd: subscription.current_period_end * 1000
+        currentPeriodStart,
+        currentPeriodEnd
       })
 
-      console.log(`[Stripe Webhook] Updated subscription for user ${userId}: ${tier}`)
+      console.log(`[Stripe Webhook] Updated subscription for user ${userId}: tier=${tier}, priceId=${priceId}, email=${email}`)
     },
 
     'customer.subscription.deleted': async (ctx, event: Stripe.CustomerSubscriptionDeletedEvent) => {
@@ -102,7 +172,8 @@ registerRoutes(http, components.stripe, {
     },
 
     'invoice.paid': async (ctx, event: Stripe.InvoicePaidEvent) => {
-      const invoice = event.data.object
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const invoice = event.data.object as any
 
       // Check if this is a refill purchase
       if (invoice.metadata?.type === 'refill') {
@@ -123,8 +194,9 @@ registerRoutes(http, components.stripe, {
     },
 
     'invoice.payment_failed': async (ctx, event: Stripe.InvoicePaymentFailedEvent) => {
-      const invoice = event.data.object
-      const userId = invoice.subscription_details?.metadata?.userId
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const invoice = event.data.object as any
+      const userId = invoice.subscription_details?.metadata?.userId ?? invoice.metadata?.userId
 
       if (userId) {
         await ctx.runMutation(internal.subscriptions.updateStatusInternal, {
@@ -137,22 +209,38 @@ registerRoutes(http, components.stripe, {
 
     'checkout.session.completed': async (ctx, event: Stripe.CheckoutSessionCompletedEvent) => {
       const session = event.data.object
-      console.log(`[Stripe Webhook] Checkout completed: ${session.id}, mode: ${session.mode}`)
+      console.log(`[Stripe Webhook] Checkout completed: ${session.id}, mode: ${session.mode}, type: ${session.metadata?.type}`)
       
-      // For refill payments, handle the credits
-      if (session.mode === 'payment' && session.metadata?.type === 'refill') {
+      // Handle one-time payments (refill or addon credits)
+      if (session.mode === 'payment') {
+        const paymentType = session.metadata?.type
         const userId = session.metadata?.userId
         const credits = parseFloat(session.metadata?.credits || '0')
 
-        if (userId && credits > 0) {
+        if (userId && credits > 0 && (paymentType === 'refill' || paymentType === 'addon')) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const sessionAny = session as any
+          const paymentIntentId = typeof sessionAny.payment_intent === 'string'
+            ? sessionAny.payment_intent
+            : sessionAny.payment_intent?.id
+
           await ctx.runMutation(internal.subscriptions.addRefillCreditsInternal, {
             userId,
             credits,
-            stripePaymentIntentId: typeof session.payment_intent === 'string'
-              ? session.payment_intent
-              : session.payment_intent?.id
+            stripePaymentIntentId: paymentIntentId
           })
-          console.log(`[Stripe Webhook] Added ${credits} refill credits for user ${userId}`)
+
+          // If autoRenew is enabled for addon, update the subscription settings
+          if (paymentType === 'addon' && session.metadata?.autoRenew === 'true') {
+            await ctx.runMutation(internal.subscriptions.updateAutoRefillInternal, {
+              userId,
+              autoRefillEnabled: true,
+              autoRefillAmount: parseFloat(session.metadata?.amount || '0')
+            })
+            console.log(`[Stripe Webhook] Enabled auto-refill for user ${userId}`)
+          }
+
+          console.log(`[Stripe Webhook] Added ${credits} ${paymentType} credits for user ${userId}`)
         }
       }
     }

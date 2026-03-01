@@ -5,6 +5,8 @@ export default defineSchema({
   // Subscription information synced from Stripe
   subscriptions: defineTable({
     userId: v.string(),
+    email: v.optional(v.string()),
+    name: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
     tier: v.union(v.literal('free'), v.literal('pro'), v.literal('max')),
@@ -16,7 +18,8 @@ export default defineSchema({
     ),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
-    autoRefillEnabled: v.boolean()
+    autoRefillEnabled: v.boolean(),
+    autoRefillAmount: v.optional(v.number())
   }).index('by_userId', ['userId']),
 
   // Token usage per billing period (aggregated)

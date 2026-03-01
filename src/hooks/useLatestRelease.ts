@@ -19,15 +19,20 @@ export function useLatestRelease() {
     try {
       const response = await fetch("/api/latest-release");
       if (!response.ok) {
-        throw new Error("Failed to fetch release");
+        // Silently fail - will use fallback URL
+        setError("Failed to fetch release");
+        return;
       }
       const data = await response.json();
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
       setReleaseInfo(data);
       setError(null);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      console.error("Error fetching latest release:", errorMessage);
-      setError(errorMessage);
+    } catch {
+      // Silently fail - will use fallback URL
+      setError("Failed to fetch release");
     } finally {
       setIsLoading(false);
     }
