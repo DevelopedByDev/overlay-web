@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe, PRICE_LOOKUP_KEYS, getBaseUrl } from '@/lib/stripe'
+import { stripe, getBaseUrl } from '@/lib/stripe'
+
+// Price IDs - use DEV_ prefix for development, fallback to production
+const PRICE_IDS = {
+  pro: process.env.DEV_STRIPE_PRO_PRICE_ID || process.env.STRIPE_PRO_PRICE_ID,
+  max: process.env.DEV_STRIPE_MAX_PRICE_ID || process.env.STRIPE_MAX_PRICE_ID,
+  proRefill: process.env.DEV_STRIPE_PRO_REFILL_PRICE_ID || process.env.STRIPE_PRO_REFILL_PRICE_ID,
+  maxRefill: process.env.DEV_STRIPE_MAX_REFILL_PRICE_ID || process.env.STRIPE_MAX_REFILL_PRICE_ID
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,18 +18,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid tier' }, { status: 400 })
     }
 
-    const lookupKey = tier === 'pro' ? PRICE_LOOKUP_KEYS.pro : PRICE_LOOKUP_KEYS.max
+    const priceId = tier === 'pro' ? PRICE_IDS.pro : PRICE_IDS.max
 
-    // Get price by lookup key
-    const prices = await stripe.prices.list({
-      lookup_keys: [lookupKey],
-      expand: ['data.product']
-    })
-
-    if (prices.data.length === 0) {
+    if (!priceId) {
+      console.error(`Missing price ID for tier: ${tier}`)
       return NextResponse.json(
-        { error: `Price not found for lookup key: ${lookupKey}` },
-        { status: 404 }
+        { error: `Price ID not configured for tier: ${tier}. Please set STRIPE_${tier.toUpperCase()}_PRICE_ID in environment variables.` },
+        { status: 500 }
       )
     }
 
@@ -32,12 +35,12 @@ export async function POST(request: NextRequest) {
       billing_address_collection: 'auto',
       line_items: [
         {
-          price: prices.data[0].id,
+          price: priceId,
           quantity: 1
         }
       ],
       mode: 'subscription',
-      success_url: `${baseUrl}/account?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${baseUrl}/account?success=true&session_id={CHECKOUT_SESSION_ID}&open_app=true`,
       cancel_url: `${baseUrl}/pricing?canceled=true`,
       metadata: {
         userId: userId || '',
@@ -49,15 +52,15 @@ export async function POST(request: NextRequest) {
           tier
         }
       },
-      // Allow promotion codes
       allow_promotion_codes: true
     })
 
     return NextResponse.json({ url: session.url })
   } catch (error) {
     console.error('Checkout error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { error: 'Failed to create checkout session' },
+      { error: `Failed to create checkout session: ${errorMessage}` },
       { status: 500 }
     )
   }

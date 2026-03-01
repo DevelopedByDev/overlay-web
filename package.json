@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@convex-dev/stripe": "^0.1.3",
     "@vercel/speed-insights": "^1.3.1",
     "@workos-inc/authkit-nextjs": "^2.14.0",
     "convex": "^1.32.0",

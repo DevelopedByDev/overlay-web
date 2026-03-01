@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Check, X, Zap, Crown, Sparkles } from 'lucide-react'
 
@@ -92,14 +93,27 @@ const tiers: Tier[] = [
 
 export default function PricingPage() {
   const [loading, setLoading] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+
+  // Extract userId from URL params and store in localStorage
+  useEffect(() => {
+    const userId = searchParams.get('userId')
+    if (userId) {
+      localStorage.setItem('userId', userId)
+      console.log('[Pricing] Stored userId from URL:', userId)
+    }
+  }, [searchParams])
 
   const handleSubscribe = async (tier: string) => {
     setLoading(tier)
     try {
+      // Get userId from localStorage (set from URL param or previous session)
+      const userId = localStorage.getItem('userId')
+      
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier })
+        body: JSON.stringify({ tier, userId })
       })
 
       const data = await response.json()

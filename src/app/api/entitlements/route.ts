@@ -39,38 +39,61 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'User ID required' }, { status: 400 })
     }
 
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlements', { userId })
+    // Convex returns a different structure, so we need to transform it
+    interface ConvexEntitlements {
+      tier: 'free' | 'pro' | 'max'
+      creditsUsed: number
+      creditsTotal: number
+      refillCredits: number
+      dailyUsage: { ask: number; write: number; agent: number }
+      dailyLimits: { ask: number; write: number; agent: number }
+      transcriptionSecondsUsed: number
+      transcriptionSecondsLimit: number
+      localTranscriptionEnabled: boolean
+      resetAt: number
+      billingPeriodEnd: string
+      lastSyncedAt: number
+    }
 
-    if (!entitlements) {
-      // Return default free tier entitlements
-      return NextResponse.json({
-        tier: 'free',
-        status: 'active',
-        autoRefillEnabled: false,
-        limits: {
-          askPerDay: 5,
-          agentPerDay: 5,
-          writePerDay: 5,
-          tokenBudget: 0,
-          transcriptionSecondsPerWeek: 600
-        },
-        usage: {
-          ask: 0,
-          agent: 0,
-          write: 0,
-          tokenCostAccrued: 0,
-          transcriptionSeconds: 0
-        },
-        remaining: {
-          ask: 5,
-          agent: 5,
-          write: 5,
-          tokenBudget: 0,
-          transcriptionSeconds: 600
-        },
-        refillCredits: 0,
-        resetAt: Date.now() + 24 * 60 * 60 * 1000
-      })
+    const convexData = await convex.query<ConvexEntitlements>('usage:getEntitlements', { userId })
+
+    // Transform to the expected format or use defaults
+    const tier = convexData?.tier || 'free'
+    const dailyUsage = convexData?.dailyUsage || { ask: 0, write: 0, agent: 0 }
+    const dailyLimits = convexData?.dailyLimits || { ask: 15, write: 15, agent: 15 }
+    const creditsUsed = convexData?.creditsUsed || 0
+    const creditsTotal = convexData?.creditsTotal || 0
+    const transcriptionSecondsUsed = convexData?.transcriptionSecondsUsed || 0
+    const transcriptionSecondsLimit = convexData?.transcriptionSecondsLimit || 600
+
+    const entitlements: Entitlements = {
+      tier,
+      status: 'active',
+      autoRefillEnabled: false,
+      limits: {
+        askPerDay: dailyLimits.ask === Infinity ? 999999 : dailyLimits.ask,
+        agentPerDay: dailyLimits.agent === Infinity ? 999999 : dailyLimits.agent,
+        writePerDay: dailyLimits.write === Infinity ? 999999 : dailyLimits.write,
+        tokenBudget: creditsTotal,
+        transcriptionSecondsPerWeek: transcriptionSecondsLimit === Infinity ? 999999 : transcriptionSecondsLimit
+      },
+      usage: {
+        ask: dailyUsage.ask,
+        agent: dailyUsage.agent,
+        write: dailyUsage.write,
+        tokenCostAccrued: creditsUsed,
+        transcriptionSeconds: transcriptionSecondsUsed
+      },
+      remaining: {
+        ask: Math.max(0, (dailyLimits.ask === Infinity ? 999999 : dailyLimits.ask) - dailyUsage.ask),
+        agent: Math.max(0, (dailyLimits.agent === Infinity ? 999999 : dailyLimits.agent) - dailyUsage.agent),
+        write: Math.max(0, (dailyLimits.write === Infinity ? 999999 : dailyLimits.write) - dailyUsage.write),
+        tokenBudget: Math.max(0, creditsTotal - creditsUsed),
+        transcriptionSeconds: Math.max(0, (transcriptionSecondsLimit === Infinity ? 999999 : transcriptionSecondsLimit) - transcriptionSecondsUsed)
+      },
+      refillCredits: convexData?.refillCredits || 0,
+      resetAt: convexData?.resetAt || Date.now() + 24 * 60 * 60 * 1000,
+      billingPeriodEnd: convexData?.billingPeriodEnd ? new Date(convexData.billingPeriodEnd).getTime() / 1000 : undefined
     }
 
     return NextResponse.json(entitlements)

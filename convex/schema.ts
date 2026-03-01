@@ -48,22 +48,4 @@ export default defineSchema({
     stripePaymentIntentId: v.optional(v.string())
   }).index('by_userId', ['userId']),
 
-  // Individual usage events for detailed tracking and auditing
-  usageEvents: defineTable({
-    userId: v.string(),
-    timestamp: v.number(), // Unix timestamp
-    eventType: v.union(
-      v.literal('ask'),
-      v.literal('write'),
-      v.literal('agent'),
-      v.literal('transcription'),
-      v.literal('tokens') // Legacy event type for backward compatibility
-    ),
-    modelId: v.optional(v.string()),
-    inputTokens: v.optional(v.number()),
-    outputTokens: v.optional(v.number()),
-    cachedTokens: v.optional(v.number()),
-    cachedInputTokens: v.optional(v.number()), // Legacy field name
-    cost: v.optional(v.number()) // Cost in dollars (optional for backward compatibility)
-  }).index('by_userId_timestamp', ['userId', 'timestamp'])
 })

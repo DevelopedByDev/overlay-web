@@ -74,10 +74,26 @@ function AccountPageContent() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  // Check for success/error params
+  // Extract userId from URL params and store in localStorage
+  useEffect(() => {
+    const userId = searchParams.get('userId')
+    if (userId) {
+      localStorage.setItem('userId', userId)
+      console.log('[Account] Stored userId from URL:', userId)
+    }
+  }, [searchParams])
+
+  // Check for success/error params and auto-trigger deep link
   useEffect(() => {
     if (searchParams.get('success')) {
       setMessage({ type: 'success', text: 'Subscription activated successfully!' })
+      // If open_app param is set, attempt to open the desktop app
+      if (searchParams.get('open_app') === 'true') {
+        // Small delay to ensure the page is loaded before redirecting
+        setTimeout(() => {
+          window.location.href = 'overlay://subscription-updated'
+        }, 1500)
+      }
     } else if (searchParams.get('refill') === 'success') {
       setMessage({ type: 'success', text: 'Refill credits added to your account!' })
     } else if (searchParams.get('canceled')) {
@@ -85,11 +101,16 @@ function AccountPageContent() {
     }
   }, [searchParams])
 
+  // Handler for manual "Open in App" button
+  const handleOpenInApp = () => {
+    window.location.href = 'overlay://subscription-updated'
+  }
+
   // Fetch entitlements
   useEffect(() => {
     async function fetchEntitlements() {
       try {
-        // In a real app, get userId from auth session
+        // Get userId from localStorage (set from URL param or previous session)
         const userId = localStorage.getItem('userId') || 'demo-user'
 
         const response = await fetch(`/api/entitlements?userId=${userId}`)
@@ -258,12 +279,22 @@ function AccountPageContent() {
                 <AlertCircle className="w-5 h-5" />
               )}
               <p className="text-sm">{message.text}</p>
-              <button
-                onClick={() => setMessage(null)}
-                className="ml-auto text-sm opacity-60 hover:opacity-100"
-              >
-                Dismiss
-              </button>
+              <div className="ml-auto flex items-center gap-3">
+                {message.type === 'success' && (
+                  <button
+                    onClick={handleOpenInApp}
+                    className="text-sm font-medium bg-emerald-600 text-white px-3 py-1 rounded-lg hover:bg-emerald-700 transition-colors"
+                  >
+                    Open in App
+                  </button>
+                )}
+                <button
+                  onClick={() => setMessage(null)}
+                  className="text-sm opacity-60 hover:opacity-100"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           )}
 

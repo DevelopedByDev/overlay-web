@@ -170,18 +170,6 @@ export const recordBatch = mutation({
 
     // Process each event
     for (const event of events) {
-      // Insert event for audit trail
-      await ctx.db.insert('usageEvents', {
-        userId,
-        timestamp: event.timestamp,
-        eventType: event.type,
-        modelId: event.modelId,
-        inputTokens: event.inputTokens,
-        outputTokens: event.outputTokens,
-        cachedTokens: event.cachedTokens,
-        cost: event.cost ?? 0
-      })
-
       // Update daily usage
       if (dailyUsage) {
         if (event.type === 'ask') {
@@ -237,30 +225,7 @@ export const recordUsage = mutation({
     cost: v.number()
   },
   handler: async (ctx, args) => {
-    const event = {
-      type: args.type,
-      modelId: args.modelId,
-      inputTokens: args.inputTokens,
-      outputTokens: args.outputTokens,
-      cachedTokens: args.cachedTokens,
-      cost: args.cost,
-      timestamp: Date.now()
-    }
-
-    // Reuse batch handler with single event
     const today = new Date().toISOString().split('T')[0]
-
-    // Insert event
-    await ctx.db.insert('usageEvents', {
-      userId: args.userId,
-      timestamp: event.timestamp,
-      eventType: event.type,
-      modelId: event.modelId,
-      inputTokens: event.inputTokens,
-      outputTokens: event.outputTokens,
-      cachedTokens: event.cachedTokens,
-      cost: event.cost ?? 0
-    })
 
     // Update daily usage
     let dailyUsage = await ctx.db
@@ -300,6 +265,66 @@ export const recordUsage = mutation({
     }
 
     return { success: true }
+  }
+})
+
+// Add refill credits to user account
+export const addRefillCredits = mutation({
+  args: {
+    userId: v.string(),
+    amount: v.number()
+  },
+  handler: async (ctx, { userId, amount }) => {
+    const existing = await ctx.db
+      .query('refillCredits')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        creditsRemaining: existing.creditsRemaining + amount,
+        purchasedAt: Date.now()
+      })
+      return { success: true, newBalance: existing.creditsRemaining + amount }
+    } else {
+      await ctx.db.insert('refillCredits', {
+        userId,
+        creditsRemaining: amount,
+        purchasedAt: Date.now()
+      })
+      return { success: true, newBalance: amount }
+    }
+  }
+})
+
+// Reset token usage for new billing period
+export const resetTokenUsage = mutation({
+  args: {
+    userId: v.string(),
+    newPeriodStart: v.string()
+  },
+  handler: async (ctx, { userId, newPeriodStart }) => {
+    // Create new token usage record for the new billing period
+    // Old records are kept for historical purposes
+    const existing = await ctx.db
+      .query('tokenUsage')
+      .withIndex('by_userId_period', (q) =>
+        q.eq('userId', userId).eq('billingPeriodStart', newPeriodStart)
+      )
+      .first()
+
+    if (!existing) {
+      await ctx.db.insert('tokenUsage', {
+        userId,
+        billingPeriodStart: newPeriodStart,
+        creditsUsed: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0
+      })
+    }
+
+    return { success: true, periodStart: newPeriodStart }
   }
 })
 
