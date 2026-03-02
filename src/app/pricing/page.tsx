@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Check, X, Zap, Crown, Sparkles } from 'lucide-react'
@@ -91,11 +91,9 @@ const tiers: Tier[] = [
   }
 ]
 
-export default function PricingPage() {
-  const [loading, setLoading] = useState<string | null>(null)
+function UserIdExtractor() {
   const searchParams = useSearchParams()
 
-  // Extract userId from URL params and store in localStorage
   useEffect(() => {
     const userId = searchParams.get('userId')
     if (userId) {
@@ -103,6 +101,12 @@ export default function PricingPage() {
       console.log('[Pricing] Stored userId from URL:', userId)
     }
   }, [searchParams])
+
+  return null
+}
+
+export default function PricingPage() {
+  const [loading, setLoading] = useState<string | null>(null)
 
   const handleSubscribe = async (tier: string) => {
     setLoading(tier)
@@ -134,6 +138,9 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen gradient-bg">
+      <Suspense fallback={null}>
+        <UserIdExtractor />
+      </Suspense>
       <div className="liquid-glass" />
 
       {/* Header */}
