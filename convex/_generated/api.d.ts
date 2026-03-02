@@ -13,6 +13,7 @@ import type * as keys from "../keys.js";
 import type * as stripe from "../stripe.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as usage from "../usage.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   stripe: typeof stripe;
   subscriptions: typeof subscriptions;
   usage: typeof usage;
+  users: typeof users;
 }>;
 
 /**

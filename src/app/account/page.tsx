@@ -4,6 +4,11 @@ import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import { PageNavbar } from '@/components/PageNavbar'
+
+// Always use overlay:// for deep links (registered in WorkOS for both environments)
+const APP_PROTOCOL = 'overlay'
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
@@ -92,31 +97,81 @@ function AccountPageContent() {
   const [addonAmount, setAddonAmount] = useState<string>('20')
   const [autoRenew, setAutoRenew] = useState<boolean>(false)
 
-  // Extract userId from URL params and store in localStorage
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  
-  useEffect(() => {
-    const urlUserId = searchParams.get('userId')
-    if (urlUserId) {
-      localStorage.setItem('userId', urlUserId)
-      setCurrentUserId(urlUserId)
-      console.log('[Account] Stored userId from URL:', urlUserId)
-    } else {
-      // Try to get from localStorage
-      const storedUserId = localStorage.getItem('userId')
-      setCurrentUserId(storedUserId)
-    }
-  }, [searchParams])
+  // Get userId from AuthContext (session-based)
+  const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
+  const currentUserId = user?.id || null
+  const [signingOut, setSigningOut] = useState(false)
+  const [sessionCheckComplete, setSessionCheckComplete] = useState(false)
 
-  // Check for success/error params and auto-trigger deep link
+  // Refresh session on mount to ensure we have the latest session state
+  // This fixes the race condition when redirecting from auth callback
   useEffect(() => {
-    if (searchParams.get('success')) {
-      setMessage({ type: 'success', text: 'Subscription activated successfully!' })
+    let mounted = true
+    const checkSession = async () => {
+      // If already authenticated or auth is still loading, skip refresh
+      if (isAuthenticated || authLoading) {
+        if (mounted) setSessionCheckComplete(true)
+        return
+      }
+      // Give a small delay for cookies to be fully set after redirect
+      await new Promise(resolve => setTimeout(resolve, 100))
+      await refreshSession()
+      if (mounted) setSessionCheckComplete(true)
+    }
+    checkSession()
+    return () => { mounted = false }
+  }, [isAuthenticated, authLoading, refreshSession])
+
+  const handleSignOut = async () => {
+    setSigningOut(true)
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Sign out error:', error)
+      setSigningOut(false)
+    }
+  }
+
+  // Check for success/error params, verify checkout, and auto-trigger deep link
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id')
+    
+    if (searchParams.get('success') && sessionId) {
+      // Verify the checkout session and update subscription in Convex
+      async function verifyCheckout() {
+        try {
+          const response = await fetch('/api/checkout/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId })
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            setMessage({ type: 'success', text: `Subscription to ${data.tier} plan activated successfully!` })
+            // Refresh entitlements after verification
+            if (currentUserId) {
+              const entResponse = await fetch(`/api/entitlements?userId=${currentUserId}`)
+              if (entResponse.ok) {
+                const entData = await entResponse.json()
+                setEntitlements(entData)
+              }
+            }
+          } else {
+            setMessage({ type: 'success', text: 'Subscription activated successfully!' })
+          }
+        } catch (error) {
+          console.error('[Account] Checkout verification error:', error)
+          setMessage({ type: 'success', text: 'Subscription activated successfully!' })
+        }
+      }
+      
+      verifyCheckout()
+      
       // If open_app param is set, attempt to open the desktop app
       if (searchParams.get('open_app') === 'true') {
-        // Small delay to ensure the page is loaded before redirecting
         setTimeout(() => {
-          window.location.href = 'overlay://subscription-updated'
+          window.location.href = `${APP_PROTOCOL}://subscription-updated`
         }, 1500)
       }
     } else if (searchParams.get('refill') === 'success') {
@@ -124,23 +179,58 @@ function AccountPageContent() {
     } else if (searchParams.get('canceled')) {
       setMessage({ type: 'error', text: 'Checkout was canceled.' })
     }
-  }, [searchParams])
+  }, [searchParams, currentUserId])
 
   // Handler for manual "Open in App" button
-  const handleOpenInApp = () => {
-    window.location.href = 'overlay://subscription-updated'
+  // This generates a deep link with auth tokens so the desktop app signs in with the current account
+  const handleOpenInApp = async () => {
+    setActionLoading('openApp')
+    try {
+      // Get a deep link with auth tokens from the server
+      const response = await fetch('/api/auth/desktop-link', { method: 'POST' })
+      
+      if (!response.ok) {
+        console.error('[Account] Failed to generate desktop link')
+        // Fallback to simple deep link
+        triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
+        return
+      }
+
+      const { deepLink } = await response.json()
+      console.log('[Account] Opening desktop app with auth session:', deepLink)
+      triggerDeepLink(deepLink)
+    } catch (error) {
+      console.error('[Account] Error generating desktop link:', error)
+      // Fallback to simple deep link
+      triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // Trigger deep link - now uses short URLs that work reliably
+  const triggerDeepLink = (url: string) => {
+    console.log('[Account] Triggering deep link:', url)
+    // Direct navigation works for short URLs
+    window.location.href = url
   }
 
   // Fetch entitlements when userId is available
   useEffect(() => {
-    if (currentUserId === null) return // Wait for userId to be determined
+    // Wait for auth to finish loading
+    if (authLoading) return
+    
+    // If not authenticated, stop loading
+    if (!isAuthenticated || !currentUserId) {
+      setLoading(false)
+      return
+    }
 
     async function fetchEntitlements() {
       try {
-        const userId = currentUserId || 'demo-user'
-        console.log('[Account] Fetching entitlements for userId:', userId)
+        console.log('[Account] Fetching entitlements for userId:', currentUserId)
 
-        const response = await fetch(`/api/entitlements?userId=${userId}`)
+        const response = await fetch(`/api/entitlements?userId=${currentUserId}`)
         if (response.ok) {
           const data = await response.json()
           console.log('[Account] Received entitlements:', data)
@@ -154,7 +244,7 @@ function AccountPageContent() {
     }
 
     fetchEntitlements()
-  }, [currentUserId])
+  }, [currentUserId, authLoading, isAuthenticated])
 
   const handleManageBilling = async () => {
     setActionLoading('billing')
@@ -248,28 +338,14 @@ function AccountPageContent() {
   const data = entitlements || demoEntitlements
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen gradient-bg flex flex-col">
       <div className="liquid-glass" />
 
       {/* Header */}
-      <header className="relative z-10 py-6 px-8">
-        <nav className="max-w-4xl mx-auto flex items-center justify-between">
-          <Link href="/" className="text-xl font-serif">
-            overlay
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link
-              href="/pricing"
-              className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-            >
-              Pricing
-            </Link>
-          </div>
-        </nav>
-      </header>
+      <PageNavbar />
 
       {/* Main Content */}
-      <main className="relative z-10 px-8 py-8">
+      <main className="relative z-10 px-8 py-8 flex-1">
         <div className="max-w-4xl mx-auto">
           {/* Message Banner */}
           {message && (
@@ -307,13 +383,55 @@ function AccountPageContent() {
 
           <h1 className="text-3xl font-serif mb-8">Account</h1>
 
-          {loading ? (
+          {loading || authLoading || !sessionCheckComplete ? (
             <div className="text-center py-16">
-              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[var(--muted)]" />
-              <p className="mt-4 text-[var(--muted)]">Loading your account...</p>
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-zinc-400" />
+              <p className="mt-4 text-zinc-500">Loading your account...</p>
+            </div>
+          ) : !isAuthenticated ? (
+            <div className="text-center py-16">
+              <div className="glass-dark rounded-2xl p-8 max-w-md mx-auto">
+                <h2 className="text-xl font-serif mb-2">Sign in to view your account</h2>
+                <p className="text-zinc-500 mb-6">
+                  Access your subscription details, usage statistics, and billing information.
+                </p>
+                <Link
+                  href="/auth/sign-in"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition-colors"
+                >
+                  Sign in
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
             </div>
           ) : (
             <div className="space-y-6">
+              {/* User Profile Card */}
+              <div className="glass-dark rounded-2xl p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-zinc-200 flex items-center justify-center text-lg font-medium">
+                      {user?.firstName?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-medium">
+                        {user?.firstName && user?.lastName 
+                          ? `${user.firstName} ${user.lastName}`
+                          : user?.email}
+                      </h2>
+                      <p className="text-sm text-zinc-500">{user?.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    disabled={signingOut}
+                    className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {signingOut ? 'Signing out...' : 'Sign out'}
+                  </button>
+                </div>
+              </div>
+
               {/* Subscription Card */}
               <div className="glass-dark rounded-2xl p-6">
                 <div className="flex items-start justify-between mb-6">
@@ -348,15 +466,36 @@ function AccountPageContent() {
                 </div>
 
 
-                {data.tier === 'free' && (
-                  <Link
-                    href="/pricing"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--foreground)] text-[var(--background)] rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                <div className="flex items-center gap-3 flex-wrap">
+                  {data.tier === 'free' && (
+                    <Link
+                      href="/pricing"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--foreground)] text-[var(--background)] rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                    >
+                      Upgrade to Pro
+                      <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  )}
+                  
+                  {/* Open in Overlay button - always visible */}
+                  <button
+                    onClick={handleOpenInApp}
+                    disabled={actionLoading === 'openApp'}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-zinc-300 text-zinc-700 rounded-lg text-sm font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
                   >
-                    Upgrade to Pro
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
-                )}
+                    {actionLoading === 'openApp' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Opening...
+                      </>
+                    ) : (
+                      <>
+                        Open in Overlay
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Usage Card (Pro/Max only) */}
@@ -489,53 +628,21 @@ function AccountPageContent() {
                   </p>
                 </div>
               )}
-
-              {/* Quick Links */}
-              <div className="glass-dark rounded-2xl p-6">
-                <h2 className="text-lg font-medium mb-4">Quick Links</h2>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <Link
-                    href="/#download"
-                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-[var(--border)] transition-colors"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-[var(--border)] flex items-center justify-center">
-                      📥
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">Download App</p>
-                      <p className="text-xs text-[var(--muted)]">Get the latest version</p>
-                    </div>
-                  </Link>
-
-                  <Link
-                    href="/pricing"
-                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-[var(--border)] transition-colors"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-[var(--border)] flex items-center justify-center">
-                      💎
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">View Plans</p>
-                      <p className="text-xs text-[var(--muted)]">Compare all tiers</p>
-                    </div>
-                  </Link>
-                </div>
-              </div>
             </div>
           )}
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 py-8 px-8 border-t border-[var(--border)] mt-16">
+      <footer className="relative z-10 py-8 px-8 border-t border-zinc-200 mt-auto">
         <div className="max-w-4xl mx-auto flex items-center justify-between text-sm text-[var(--muted)]">
           <p>© 2026 overlay</p>
           <div className="flex gap-6">
             <Link href="/terms" className="hover:text-[var(--foreground)] transition-colors">
-              Terms
+              terms
             </Link>
             <Link href="/privacy" className="hover:text-[var(--foreground)] transition-colors">
-              Privacy
+              privacy
             </Link>
           </div>
         </div>

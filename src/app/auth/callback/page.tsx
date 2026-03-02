@@ -5,6 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 
+// Always use overlay:// for deep links (registered in WorkOS for both environments)
+const APP_PROTOCOL = 'overlay';
+
 function AuthCallbackContent() {
   const searchParams = useSearchParams();
   const [hasRedirected, setHasRedirected] = useState(false);
@@ -28,8 +31,8 @@ function AuthCallbackContent() {
 
   useEffect(() => {
     if (code && !error) {
-      // Redirect to the Electron app via deep link
-      const deepLink = `overlay://auth/callback?code=${encodeURIComponent(code)}`;
+      // Redirect to the Electron app via deep link (electron:// in dev, overlay:// in prod)
+      const deepLink = `${APP_PROTOCOL}://auth/callback?code=${encodeURIComponent(code)}`;
       window.location.href = deepLink;
       
       // Show success message after a short delay
@@ -69,7 +72,7 @@ function AuthCallbackContent() {
             </div>
             <h1 className="text-2xl font-medium mb-4">Signing you in...</h1>
             <p className="text-[#71717a]">
-              Redirecting to Overlay app...
+              Opening Overlay...
             </p>
           </>
         )}
@@ -98,7 +101,7 @@ function AuthCallbackContent() {
             <p className="text-sm text-[#52525b]">
               If the app didn&apos;t open automatically,{" "}
               <a
-                href={`overlay://auth/callback?code=${searchParams.get("code")}`}
+                href={`${APP_PROTOCOL}://auth/callback?code=${searchParams.get("code")}`}
                 className="text-[#3b82f6] hover:underline"
               >
                 click here

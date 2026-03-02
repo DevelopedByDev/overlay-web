@@ -1,15 +1,22 @@
 import Stripe from 'stripe'
 
+// Use dev credentials in development, production in production
+const IS_DEV = process.env.NODE_ENV === 'development'
+
 // Lazy initialization to avoid build-time errors
 let _stripe: Stripe | null = null
 
 export const stripe = new Proxy({} as Stripe, {
   get(_target, prop) {
     if (!_stripe) {
-      const stripeSecretKey = process.env.DEV_STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY
+      // In dev mode, use DEV_ keys; in production, use production keys
+      const stripeSecretKey = IS_DEV 
+        ? (process.env.DEV_STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY)
+        : process.env.STRIPE_SECRET_KEY
       if (!stripeSecretKey) {
-        throw new Error('STRIPE_SECRET_KEY is not set (checked DEV_STRIPE_SECRET_KEY and STRIPE_SECRET_KEY)')
+        throw new Error('STRIPE_SECRET_KEY is not set')
       }
+      console.log(`[Stripe] Using ${IS_DEV ? 'DEV/sandbox' : 'PROD/live'} environment`)
       _stripe = new Stripe(stripeSecretKey)
     }
     return _stripe[prop as keyof Stripe]

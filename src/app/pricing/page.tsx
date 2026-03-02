@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Check, X, Zap, Crown, Sparkles } from 'lucide-react'
+import { PageNavbar } from '@/components/PageNavbar'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Feature {
   name: string
@@ -106,71 +108,93 @@ function UserIdExtractor() {
 }
 
 export default function PricingPage() {
+  const router = useRouter()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [loading, setLoading] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubscribe = async (tier: string) => {
+    // Require authentication before checkout
+    if (!isAuthenticated || !user) {
+      // Redirect to sign-in with return URL
+      router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
+      return
+    }
+
     setLoading(tier)
+    setError(null)
+    
     try {
-      // Get userId from localStorage (set from URL param or previous session)
-      const userId = localStorage.getItem('userId')
-      
+      // Use session-based checkout (API will validate session)
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier, userId })
+        body: JSON.stringify({ tier })
       })
 
       const data = await response.json()
 
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Session expired, redirect to sign-in
+          router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
+          return
+        }
+        setError(data.error || 'Failed to start checkout')
+        return
+      }
+
       if (data.url) {
         window.location.href = data.url
       } else {
-        console.error('No checkout URL returned')
-        alert('Failed to start checkout. Please try again.')
+        setError('No checkout URL returned. Please try again.')
       }
-    } catch (error) {
-      console.error('Checkout error:', error)
-      alert('Failed to start checkout. Please try again.')
+    } catch (err) {
+      console.error('Checkout error:', err)
+      setError('Failed to start checkout. Please try again.')
     } finally {
       setLoading(null)
     }
   }
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen gradient-bg flex flex-col">
       <Suspense fallback={null}>
         <UserIdExtractor />
       </Suspense>
       <div className="liquid-glass" />
 
       {/* Header */}
-      <header className="relative z-10 py-6 px-8">
-        <nav className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/" className="text-xl font-serif">
-            overlay
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">
-              Home
-            </Link>
-            <Link href="/account" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">
-              Account
-            </Link>
-          </div>
-        </nav>
-      </header>
+      <PageNavbar />
 
       {/* Main Content */}
-      <main className="relative z-10 px-8 py-16">
+      <main className="relative z-10 px-8 py-16 flex-1">
         <div className="max-w-7xl mx-auto">
           {/* Hero */}
           <div className="text-center mb-16">
             <h1 className="text-4xl md:text-5xl font-serif mb-4">
               Simple, transparent pricing
             </h1>
-            <p className="text-lg text-[var(--muted)] max-w-2xl mx-auto">
+            <p className="text-lg text-zinc-500 max-w-2xl mx-auto">
               Start free, upgrade when you need more. All plans include the core overlay experience.
             </p>
+            
+            {/* Auth status banner */}
+            {!authLoading && !isAuthenticated && (
+              <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-800 rounded-lg text-sm">
+                <span>Sign in to subscribe to a paid plan</span>
+                <Link href="/auth/sign-in?redirect=/pricing" className="font-medium underline">
+                  Sign in →
+                </Link>
+              </div>
+            )}
+            
+            {/* Error message */}
+            {error && (
+              <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-800 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
           </div>
 
           {/* Pricing Cards */}
@@ -310,7 +334,7 @@ export default function PricingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 py-8 px-8 border-t border-[var(--border)]">
+      <footer className="relative z-10 py-8 px-8 border-t border-zinc-200 mt-auto">
         <div className="max-w-7xl mx-auto flex items-center justify-between text-sm text-[var(--muted)]">
           <p>© 2026 overlay</p>
           <div className="flex gap-6">

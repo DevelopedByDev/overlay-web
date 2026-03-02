@@ -15,6 +15,68 @@ export const getByUserId = query({
 // Alias for landing page API compatibility
 export const getSubscription = getByUserId
 
+// Get subscription by email (for cross-installation sync)
+export const getByEmail = query({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    return await ctx.db
+      .query('subscriptions')
+      .withIndex('by_email', (q) => q.eq('email', email))
+      .first()
+  }
+})
+
+// Link existing subscription to new userId (for reinstallation scenarios)
+// This updates the userId on an existing subscription found by email
+export const linkSubscriptionToUser = mutation({
+  args: {
+    email: v.string(),
+    newUserId: v.string()
+  },
+  handler: async (ctx, { email, newUserId }) => {
+    // First check if newUserId already has a subscription
+    const existingByUserId = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', newUserId))
+      .first()
+
+    if (existingByUserId) {
+      // User already has a subscription, no need to link
+      return { success: true, action: 'already_linked', subscription: existingByUserId }
+    }
+
+    // Find subscription by email
+    const subscriptionByEmail = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_email', (q) => q.eq('email', email))
+      .first()
+
+    if (!subscriptionByEmail) {
+      // No subscription found for this email
+      return { success: false, action: 'not_found' }
+    }
+
+    // Update the subscription to use the new userId
+    await ctx.db.patch(subscriptionByEmail._id, {
+      userId: newUserId
+    })
+
+    // Also update refill credits if they exist
+    const refillCredits = await ctx.db
+      .query('refillCredits')
+      .filter((q) => q.eq(q.field('userId'), subscriptionByEmail.userId))
+      .first()
+
+    if (refillCredits) {
+      await ctx.db.patch(refillCredits._id, {
+        userId: newUserId
+      })
+    }
+
+    return { success: true, action: 'linked', subscription: { ...subscriptionByEmail, userId: newUserId } }
+  }
+})
+
 // Get subscription by Stripe customer ID (for webhook lookups)
 export const getByStripeCustomerId = query({
   args: { stripeCustomerId: v.string() },

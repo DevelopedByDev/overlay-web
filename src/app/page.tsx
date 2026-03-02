@@ -7,6 +7,7 @@ import { VoiceDemo } from "@/components/VoiceDemo";
 import { OverlayDemo } from "@/components/OverlayDemo";
 import { AllInOnePlace } from "@/components/AllInOnePlace";
 import { useLatestRelease } from "@/hooks/useLatestRelease";
+import { Navbar, HeroLinks } from "@/components/Navbar";
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -120,6 +121,9 @@ export default function Home() {
       {/* Liquid Glass Background */}
       <div className="liquid-glass" />
 
+      {/* Sticky Navbar - appears after scrolling past hero */}
+      <Navbar scrollYProgress={scrollYProgress} />
+
       {/* Fixed Hero Section */}
       <motion.section 
         style={{ opacity: heroOpacity, pointerEvents: heroPointer }}
@@ -161,15 +165,10 @@ export default function Home() {
           download for mac
         </a>
 
-        {/* Demo Link */}
-        <a
-          href="https://x.com/dsllwn/status/2015923879668044002"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-4 py-6 text-sm text-[#71717a] hover:text-[#0a0a0a] underline transition-colors duration-300"
-        >
-          demo
-        </a>
+        {/* Navigation Links */}
+        <div className="mt-4">
+          <HeroLinks />
+        </div>
       </motion.section>
 
       {/* Spacer for scroll */}

@@ -19,8 +19,14 @@ export default defineSchema({
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
     autoRefillEnabled: v.boolean(),
-    autoRefillAmount: v.optional(v.number())
-  }).index('by_userId', ['userId']),
+    autoRefillAmount: v.optional(v.number()),
+    // User profile fields (synced from WorkOS)
+    firstName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
+    profilePictureUrl: v.optional(v.string()),
+    lastLoginAt: v.optional(v.number()),
+  }).index('by_userId', ['userId'])
+    .index('by_email', ['email']),
 
   // Token usage per billing period (aggregated)
   tokenUsage: defineTable({
@@ -40,8 +46,23 @@ export default defineSchema({
     askCount: v.number(),
     agentCount: v.number(),
     writeCount: v.number(),
-    transcriptionSeconds: v.optional(v.number()) // Optional for backward compatibility
+    transcriptionSeconds: v.optional(v.number()), // Optional for backward compatibility
+    // Feature-specific usage (for account page stats)
+    voiceChatCount: v.optional(v.number()),
+    noteBrowserCount: v.optional(v.number()),
+    browserSearchCount: v.optional(v.number()),
   }).index('by_userId_date', ['userId', 'date']),
+
+  // Feature usage history (aggregated per billing period)
+  featureUsage: defineTable({
+    userId: v.string(),
+    billingPeriodStart: v.string(), // ISO date string
+    voiceChatMinutes: v.number(),
+    notesCreated: v.number(),
+    agentTasksRun: v.number(),
+    browserSearches: v.number(),
+    totalSessions: v.number(),
+  }).index('by_userId_period', ['userId', 'billingPeriodStart']),
 
   // Refill credits (purchased separately from subscription)
   refillCredits: defineTable({

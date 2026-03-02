@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Serif } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 
 const instrumentSerif = Instrument_Serif({
@@ -48,7 +49,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${instrumentSerif.variable} antialiased`}>
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
         <SpeedInsights />
       </body>
     </html>

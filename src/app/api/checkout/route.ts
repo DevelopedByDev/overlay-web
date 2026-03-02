@@ -1,18 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe, getBaseUrl } from '@/lib/stripe'
+import { getSession } from '@/lib/workos-auth'
 
-// Price IDs - use DEV_ prefix for development, fallback to production
-const PRICE_IDS = {
-  pro: process.env.DEV_STRIPE_PRO_PRICE_ID || process.env.STRIPE_PRO_PRICE_ID,
-  max: process.env.DEV_STRIPE_MAX_PRICE_ID || process.env.STRIPE_MAX_PRICE_ID,
-  proRefill: process.env.DEV_STRIPE_PRO_REFILL_PRICE_ID || process.env.STRIPE_PRO_REFILL_PRICE_ID,
-  maxRefill: process.env.DEV_STRIPE_MAX_REFILL_PRICE_ID || process.env.STRIPE_MAX_REFILL_PRICE_ID
+// Use dev price IDs in development, production in production
+const IS_DEV = process.env.NODE_ENV === 'development'
+
+const PRICE_IDS = IS_DEV ? {
+  pro: process.env.DEV_STRIPE_PRO_PRICE_ID,
+  max: process.env.DEV_STRIPE_MAX_PRICE_ID,
+  proRefill: process.env.DEV_STRIPE_PRO_REFILL_PRICE_ID,
+  maxRefill: process.env.DEV_STRIPE_MAX_REFILL_PRICE_ID
+} : {
+  pro: process.env.STRIPE_PRO_PRICE_ID,
+  max: process.env.STRIPE_MAX_PRICE_ID,
+  proRefill: process.env.STRIPE_PRO_REFILL_PRICE_ID,
+  maxRefill: process.env.STRIPE_MAX_REFILL_PRICE_ID
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // Validate user session - REQUIRED for checkout
+    const session = await getSession()
+    
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: 'Authentication required. Please sign in to subscribe.' },
+        { status: 401 }
+      )
+    }
+
+    const { user } = session
     const body = await request.json()
-    const { tier, userId, email } = body
+    const { tier } = body
 
     if (!tier || !['pro', 'max'].includes(tier)) {
       return NextResponse.json({ error: 'Invalid tier' }, { status: 400 })
@@ -30,8 +49,8 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = getBaseUrl()
 
-    // Create checkout session
-    const session = await stripe.checkout.sessions.create({
+    // Create checkout session with validated user info from session
+    const checkoutSession = await stripe.checkout.sessions.create({
       billing_address_collection: 'auto',
       line_items: [
         {
@@ -43,22 +62,23 @@ export async function POST(request: NextRequest) {
       success_url: `${baseUrl}/account?success=true&session_id={CHECKOUT_SESSION_ID}&open_app=true`,
       cancel_url: `${baseUrl}/pricing?canceled=true`,
       metadata: {
-        userId: userId || '',
+        userId: user.id,
         tier,
-        email: email || ''
+        email: user.email
       },
       subscription_data: {
         metadata: {
-          userId: userId || '',
+          userId: user.id,
           tier,
-          email: email || ''
+          email: user.email
         }
       },
-      customer_email: email || undefined,
+      customer_email: user.email,
       allow_promotion_codes: true
     })
 
-    return NextResponse.json({ url: session.url })
+    console.log(`[Checkout] Created session for user ${user.id} (${user.email}) - tier: ${tier}`)
+    return NextResponse.json({ url: checkoutSession.url })
   } catch (error) {
     console.error('Checkout error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'

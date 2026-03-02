@@ -1,10 +1,16 @@
 // Simple Convex HTTP client for the landing page
 // Uses direct HTTP calls since this is a separate project from the Electron app
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL
+// Use dev Convex URL in development, production URL in production
+const IS_DEV = process.env.NODE_ENV === 'development'
+const CONVEX_URL = IS_DEV 
+  ? (process.env.DEV_NEXT_PUBLIC_CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL)
+  : process.env.NEXT_PUBLIC_CONVEX_URL
 
 if (!CONVEX_URL) {
-  console.warn('NEXT_PUBLIC_CONVEX_URL is not set')
+  console.warn('CONVEX_URL is not set')
+} else {
+  console.log(`[Convex] Using ${IS_DEV ? 'DEV' : 'PROD'} environment: ${CONVEX_URL}`)
 }
 
 interface ConvexResponse<T> {
