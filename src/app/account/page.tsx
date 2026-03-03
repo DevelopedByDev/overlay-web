@@ -530,41 +530,38 @@ function AccountPageContent() {
                 </div>
               )}
 
-              {/* Daily Usage (Free tier) */}
+              {/* Weekly Usage (Free tier) */}
               {data.tier === 'free' && (
                 <div className="glass-dark rounded-2xl p-6">
-                  <h2 className="text-lg font-medium mb-4">Daily Usage</h2>
+                  <h2 className="text-lg font-medium mb-4">Weekly Usage</h2>
 
-                  <div className="grid gap-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm">Ask messages</span>
-                      <span className="text-sm font-medium">
-                        {data.usage.ask} / {data.limits.askPerDay} used
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm">Agent messages</span>
-                      <span className="text-sm font-medium">
-                        {data.usage.agent} / {data.limits.agentPerDay} used
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm">Write messages</span>
-                      <span className="text-sm font-medium">
-                        {data.usage.write} / {data.limits.writePerDay} used
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm">Transcription</span>
-                      <span className="text-sm font-medium">
-                        {Math.floor(data.usage.transcriptionSeconds / 60)}m /{' '}
-                        {Math.floor(data.limits.transcriptionSecondsPerWeek / 60)}m this week
-                      </span>
-                    </div>
+                  <div className="space-y-4">
+                    {/* Weekly Requests */}
+                    {(() => {
+                      const totalUsed = data.usage.ask + data.usage.agent + data.usage.write
+                      const totalLimit = data.limits.askPerDay + data.limits.agentPerDay + data.limits.writePerDay
+                      const percentageRemaining = totalLimit > 0 ? Math.round(((totalLimit - totalUsed) / totalLimit) * 100) : 0
+                      return (
+                        <ProgressBar
+                          used={totalUsed}
+                          total={totalLimit}
+                          label="Weekly Requests"
+                          showAsPercentage={true}
+                        />
+                      )
+                    })()}
+
+                    {/* Transcription */}
+                    <ProgressBar
+                      used={data.usage.transcriptionSeconds}
+                      total={data.limits.transcriptionSecondsPerWeek}
+                      label="Transcription"
+                      showAsPercentage={true}
+                    />
                   </div>
 
                   <p className="mt-4 text-xs text-[var(--muted)]">
-                    Usage resets daily at midnight UTC. Upgrade for unlimited usage.
+                    Usage resets weekly. Upgrade for unlimited usage.
                   </p>
                 </div>
               )}
