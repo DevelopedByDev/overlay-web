@@ -95,6 +95,7 @@ function AccountPageContent() {
   const currentUserId = user?.id || null
   const [signingOut, setSigningOut] = useState(false)
   const [sessionCheckComplete, setSessionCheckComplete] = useState(false)
+  const [showOpenInOverlayPrompt, setShowOpenInOverlayPrompt] = useState(false)
 
   // Refresh session on mount to ensure we have the latest session state
   // This fixes the race condition when redirecting from auth callback
@@ -103,13 +104,30 @@ function AccountPageContent() {
     const checkSession = async () => {
       // If already authenticated or auth is still loading, skip refresh
       if (isAuthenticated || authLoading) {
-        if (mounted) setSessionCheckComplete(true)
+        if (mounted) {
+          setSessionCheckComplete(true)
+          // Show "Open in Overlay" prompt after successful sign-in
+          // Check if this is a fresh sign-in using sessionStorage flag
+          const hasSeenPrompt = sessionStorage.getItem('overlay_open_prompt_shown')
+          if (isAuthenticated && !hasSeenPrompt) {
+            setShowOpenInOverlayPrompt(true)
+            sessionStorage.setItem('overlay_open_prompt_shown', 'true')
+          }
+        }
         return
       }
       // Give a small delay for cookies to be fully set after redirect
       await new Promise(resolve => setTimeout(resolve, 100))
       await refreshSession()
-      if (mounted) setSessionCheckComplete(true)
+      if (mounted) {
+        setSessionCheckComplete(true)
+        // Show prompt if user just authenticated
+        const hasSeenPrompt = sessionStorage.getItem('overlay_open_prompt_shown')
+        if (isAuthenticated && !hasSeenPrompt) {
+          setShowOpenInOverlayPrompt(true)
+          sessionStorage.setItem('overlay_open_prompt_shown', 'true')
+        }
+      }
     }
     checkSession()
     return () => { mounted = false }
@@ -296,6 +314,39 @@ function AccountPageContent() {
   return (
     <div className="min-h-screen gradient-bg flex flex-col">
       <div className="liquid-glass" />
+
+      {/* Open in Overlay Prompt Modal */}
+      {showOpenInOverlayPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center shadow-xl">
+            <div className="w-16 h-16 mx-auto mb-4 bg-emerald-100 rounded-full flex items-center justify-center">
+              <Check className="w-8 h-8 text-emerald-600" />
+            </div>
+            <h2 className="text-xl font-serif mb-2">Welcome to Overlay!</h2>
+            <p className="text-zinc-500 mb-6">
+              You&apos;re signed in. Open the desktop app to continue.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  handleOpenInApp()
+                  setShowOpenInOverlayPrompt(false)
+                }}
+                className="w-full py-3 px-4 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2"
+              >
+                Open in Overlay
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowOpenInOverlayPrompt(false)}
+                className="w-full py-2 text-sm text-zinc-500 hover:text-zinc-700"
+              >
+                Stay on this page
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <PageNavbar />
