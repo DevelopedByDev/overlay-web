@@ -46,26 +46,10 @@ export async function POST(request: NextRequest) {
               tier: tier || 'pro',
               status: 'active',
               currentPeriodStart: (subscription as unknown as { current_period_start: number }).current_period_start,
-              currentPeriodEnd: (subscription as unknown as { current_period_end: number }).current_period_end,
-              autoRefillEnabled: false
+              currentPeriodEnd: (subscription as unknown as { current_period_end: number }).current_period_end
             })
 
             console.log(`[Webhook] Subscription created for user ${userId}: ${tier}`)
-          }
-        }
-
-        // Handle refill purchase
-        if (session.mode === 'payment' && session.metadata?.type === 'refill') {
-          const userId = session.metadata.userId
-          const creditAmount = parseFloat(session.metadata.creditAmount || '0')
-
-          if (userId && creditAmount > 0) {
-            await convex.mutation('usage:addRefillCredits', {
-              userId,
-              amount: creditAmount
-            })
-
-            console.log(`[Webhook] Refill credits added for user ${userId}: $${creditAmount}`)
           }
         }
         break

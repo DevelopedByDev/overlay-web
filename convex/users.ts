@@ -38,7 +38,6 @@ export const syncUserProfile = mutation({
         profilePictureUrl,
         tier: 'free',
         status: 'active',
-        autoRefillEnabled: false,
         lastLoginAt: Date.now(),
       })
       return { success: true, isNewUser: true }
@@ -89,12 +88,6 @@ export const getUserProfile = query({
       )
       .first()
 
-    // Get refill credits
-    const refillCredits = await ctx.db
-      .query('refillCredits')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-
     return {
       profile: {
         userId: subscription.userId,
@@ -112,13 +105,10 @@ export const getUserProfile = query({
         stripeSubscriptionId: subscription.stripeSubscriptionId,
         currentPeriodStart: subscription.currentPeriodStart,
         currentPeriodEnd: subscription.currentPeriodEnd,
-        autoRefillEnabled: subscription.autoRefillEnabled,
-        autoRefillAmount: subscription.autoRefillAmount,
       },
       usage: {
         creditsUsed: tokenUsage?.creditsUsed ?? tokenUsage?.costAccrued ?? 0,
         creditsTotal: subscription.tier === 'free' ? 0 : subscription.tier === 'pro' ? 15 : 90,
-        refillCredits: refillCredits?.creditsRemaining ?? 0,
         inputTokens: tokenUsage?.inputTokens ?? 0,
         outputTokens: tokenUsage?.outputTokens ?? 0,
         cachedInputTokens: tokenUsage?.cachedInputTokens ?? 0,

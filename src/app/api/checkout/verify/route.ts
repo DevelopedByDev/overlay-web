@@ -47,8 +47,7 @@ export async function POST(request: NextRequest) {
       tier,
       status: 'active',
       currentPeriodStart: (subscription as unknown as { current_period_start: number }).current_period_start,
-      currentPeriodEnd: (subscription as unknown as { current_period_end: number }).current_period_end,
-      autoRefillEnabled: false
+      currentPeriodEnd: (subscription as unknown as { current_period_end: number }).current_period_end
     })
 
     console.log(`[Checkout Verify] Subscription verified and updated for user ${authSession.user.id}: ${tier}`)

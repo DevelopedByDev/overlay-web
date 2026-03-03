@@ -13,7 +13,6 @@ const APP_PROTOCOL = 'overlay'
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   status: 'active' | 'canceled' | 'past_due' | 'trialing'
-  autoRefillEnabled: boolean
   limits: {
     askPerDay: number
     agentPerDay: number
@@ -35,7 +34,6 @@ interface Entitlements {
     tokenBudget: number
     transcriptionSeconds: number
   }
-  refillCredits: number
   billingPeriodEnd?: number
 }
 
@@ -85,17 +83,12 @@ function ProgressBar({
   )
 }
 
-const MIN_ADDON_AMOUNT = 10
-const MAX_ADDON_AMOUNT = 100
-
 function AccountPageContent() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [addonAmount, setAddonAmount] = useState<string>('20')
-  const [autoRenew, setAutoRenew] = useState<boolean>(false)
 
   // Get userId from AuthContext (session-based)
   const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
@@ -174,8 +167,6 @@ function AccountPageContent() {
           window.location.href = `${APP_PROTOCOL}://subscription-updated`
         }, 1500)
       }
-    } else if (searchParams.get('refill') === 'success') {
-      setMessage({ type: 'success', text: 'Refill credits added to your account!' })
     } else if (searchParams.get('canceled')) {
       setMessage({ type: 'error', text: 'Checkout was canceled.' })
     }
@@ -272,44 +263,10 @@ function AccountPageContent() {
     }
   }
 
-  const handlePurchaseRefill = async () => {
-    const amount = parseFloat(addonAmount)
-    if (amount < MIN_ADDON_AMOUNT || amount > MAX_ADDON_AMOUNT) {
-      setMessage({ type: 'error', text: `Amount must be between $${MIN_ADDON_AMOUNT} and $${MAX_ADDON_AMOUNT}` })
-      return
-    }
-
-    setActionLoading('refill')
-    try {
-      const userId = localStorage.getItem('userId') || 'demo-user'
-      const email = '' // User's email if available
-
-      const response = await fetch('/api/checkout/addon', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, email, amount, autoRenew })
-      })
-
-      const data = await response.json()
-      if (data.url) {
-        window.location.href = data.url
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to start checkout' })
-      }
-    } catch (error) {
-      console.error('Addon checkout error:', error)
-      setMessage({ type: 'error', text: 'Failed to start checkout' })
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-
   // Demo data for when not connected
   const demoEntitlements: Entitlements = {
     tier: 'pro',
     status: 'active',
-    autoRefillEnabled: false,
     limits: {
       askPerDay: Infinity,
       agentPerDay: Infinity,
@@ -331,7 +288,6 @@ function AccountPageContent() {
       tokenBudget: 6.55,
       transcriptionSeconds: Infinity
     },
-    refillCredits: 0,
     billingPeriodEnd: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
   }
 
@@ -510,82 +466,15 @@ function AccountPageContent() {
                     showAsPercentage={true}
                   />
 
-                  {/* Add-on Credits Usage Bar */}
-                  {data.refillCredits > 0 && (
-                    <div className="mt-4">
-                      <div className="flex justify-between text-sm mb-2">
-                        <span className="text-zinc-500">Add-on</span>
-                        <span>${data.refillCredits.toFixed(2)}</span>
-                      </div>
-                      <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
-                        <div className="h-full w-full bg-emerald-500 rounded-full" />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Purchase Add-on Credits */}
+                  {/* Manage Subscription */}
                   <div className="mt-6 pt-4 border-t border-zinc-200">
-                    <p className="text-xs text-zinc-500 mb-3">Purchase add-on credits</p>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {/* Amount Input */}
-                      <div className="flex items-center bg-white border border-zinc-200 rounded-lg px-3 w-24">
-                        <span className="text-zinc-400 text-sm">$</span>
-                        <input
-                          type="number"
-                          min={MIN_ADDON_AMOUNT}
-                          max={MAX_ADDON_AMOUNT}
-                          step="5"
-                          value={addonAmount}
-                          onChange={(e) => setAddonAmount(e.target.value)}
-                          className="flex-1 py-2 px-1 bg-transparent border-none outline-none text-sm w-full"
-                        />
-                      </div>
-
-                      {/* Auto-Renew Toggle */}
-                      <label className="flex items-center gap-2 cursor-pointer text-sm text-zinc-500">
-                        <div
-                          onClick={() => setAutoRenew(!autoRenew)}
-                          className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer ${
-                            autoRenew ? 'bg-zinc-800' : 'bg-zinc-200'
-                          }`}
-                        >
-                          <div
-                            className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${
-                              autoRenew ? 'left-4' : 'left-0.5'
-                            }`}
-                          />
-                        </div>
-                        Auto-refill
-                      </label>
-
-                      {/* Purchase Button */}
-                      <button
-                        onClick={handlePurchaseRefill}
-                        disabled={
-                          actionLoading === 'refill' ||
-                          parseFloat(addonAmount) < MIN_ADDON_AMOUNT ||
-                          parseFloat(addonAmount) > MAX_ADDON_AMOUNT
-                        }
-                        className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {actionLoading === 'refill' ? 'Processing...' : 'Purchase'}
-                      </button>
-
-                      {/* Manage Billing Button */}
-                      <button
-                        onClick={handleManageBilling}
-                        disabled={actionLoading === 'billing'}
-                        className="px-4 py-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
-                      >
-                        {actionLoading === 'billing' ? 'Opening...' : 'Manage Subscription'}
-                      </button>
-                    </div>
-
-                    {addonAmount &&
-                      (parseFloat(addonAmount) < MIN_ADDON_AMOUNT ||
-                        parseFloat(addonAmount) > MAX_ADDON_AMOUNT) && (
-                        <p className="text-xs text-red-500 mt-2">$10 - $100</p>
-                      )}
+                    <button
+                      onClick={handleManageBilling}
+                      disabled={actionLoading === 'billing'}
+                      className="px-4 py-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+                    >
+                      {actionLoading === 'billing' ? 'Opening...' : 'Manage Subscription'}
+                    </button>
                   </div>
                 </div>
               )}

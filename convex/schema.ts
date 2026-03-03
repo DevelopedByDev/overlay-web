@@ -18,8 +18,6 @@ export default defineSchema({
     ),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
-    autoRefillEnabled: v.boolean(),
-    autoRefillAmount: v.optional(v.number()),
     // User profile fields (synced from WorkOS)
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -63,13 +61,5 @@ export default defineSchema({
     browserSearches: v.number(),
     totalSessions: v.number(),
   }).index('by_userId_period', ['userId', 'billingPeriodStart']),
-
-  // Refill credits (purchased separately from subscription)
-  refillCredits: defineTable({
-    userId: v.string(),
-    creditsRemaining: v.number(),
-    purchasedAt: v.number(), // Unix timestamp
-    stripePaymentIntentId: v.optional(v.string())
-  }).index('by_userId', ['userId']),
 
 })

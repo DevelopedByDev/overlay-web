@@ -4,7 +4,6 @@ import { convex } from '@/lib/convex'
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   status: 'active' | 'canceled' | 'past_due' | 'trialing'
-  autoRefillEnabled: boolean
   limits: {
     askPerDay: number
     agentPerDay: number
@@ -26,7 +25,6 @@ interface Entitlements {
     tokenBudget: number
     transcriptionSeconds: number
   }
-  refillCredits: number
   resetAt: number
   billingPeriodEnd?: number
 }
@@ -44,7 +42,6 @@ export async function GET(request: NextRequest) {
       tier: 'free' | 'pro' | 'max'
       creditsUsed: number
       creditsTotal: number
-      refillCredits: number
       dailyUsage: { ask: number; write: number; agent: number }
       dailyLimits: { ask: number; write: number; agent: number }
       transcriptionSecondsUsed: number
@@ -69,7 +66,6 @@ export async function GET(request: NextRequest) {
     const entitlements: Entitlements = {
       tier,
       status: 'active',
-      autoRefillEnabled: false,
       limits: {
         askPerDay: dailyLimits.ask === Infinity ? 999999 : dailyLimits.ask,
         agentPerDay: dailyLimits.agent === Infinity ? 999999 : dailyLimits.agent,
@@ -91,7 +87,6 @@ export async function GET(request: NextRequest) {
         tokenBudget: Math.max(0, creditsTotal - creditsUsed),
         transcriptionSeconds: Math.max(0, (transcriptionSecondsLimit === Infinity ? 999999 : transcriptionSecondsLimit) - transcriptionSecondsUsed)
       },
-      refillCredits: convexData?.refillCredits || 0,
       resetAt: convexData?.resetAt || Date.now() + 24 * 60 * 60 * 1000,
       billingPeriodEnd: convexData?.billingPeriodEnd ? new Date(convexData.billingPeriodEnd).getTime() / 1000 : undefined
     }

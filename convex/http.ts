@@ -171,28 +171,6 @@ registerRoutes(http, components.stripe, {
       }
     },
 
-    'invoice.paid': async (ctx, event: Stripe.InvoicePaidEvent) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const invoice = event.data.object as any
-
-      // Check if this is a refill purchase
-      if (invoice.metadata?.type === 'refill') {
-        const userId = invoice.metadata?.userId
-        const credits = parseFloat(invoice.metadata?.credits || '0')
-
-        if (userId && credits > 0) {
-          await ctx.runMutation(internal.subscriptions.addRefillCreditsInternal, {
-            userId,
-            credits,
-            stripePaymentIntentId: typeof invoice.payment_intent === 'string' 
-              ? invoice.payment_intent 
-              : invoice.payment_intent?.id
-          })
-          console.log(`[Stripe Webhook] Added ${credits} refill credits for user ${userId}`)
-        }
-      }
-    },
-
     'invoice.payment_failed': async (ctx, event: Stripe.InvoicePaymentFailedEvent) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const invoice = event.data.object as any
@@ -207,42 +185,9 @@ registerRoutes(http, components.stripe, {
       }
     },
 
-    'checkout.session.completed': async (ctx, event: Stripe.CheckoutSessionCompletedEvent) => {
+    'checkout.session.completed': async (_ctx, event: Stripe.CheckoutSessionCompletedEvent) => {
       const session = event.data.object
-      console.log(`[Stripe Webhook] Checkout completed: ${session.id}, mode: ${session.mode}, type: ${session.metadata?.type}`)
-      
-      // Handle one-time payments (refill or addon credits)
-      if (session.mode === 'payment') {
-        const paymentType = session.metadata?.type
-        const userId = session.metadata?.userId
-        const credits = parseFloat(session.metadata?.credits || '0')
-
-        if (userId && credits > 0 && (paymentType === 'refill' || paymentType === 'addon')) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const sessionAny = session as any
-          const paymentIntentId = typeof sessionAny.payment_intent === 'string'
-            ? sessionAny.payment_intent
-            : sessionAny.payment_intent?.id
-
-          await ctx.runMutation(internal.subscriptions.addRefillCreditsInternal, {
-            userId,
-            credits,
-            stripePaymentIntentId: paymentIntentId
-          })
-
-          // If autoRenew is enabled for addon, update the subscription settings
-          if (paymentType === 'addon' && session.metadata?.autoRenew === 'true') {
-            await ctx.runMutation(internal.subscriptions.updateAutoRefillInternal, {
-              userId,
-              autoRefillEnabled: true,
-              autoRefillAmount: parseFloat(session.metadata?.amount || '0')
-            })
-            console.log(`[Stripe Webhook] Enabled auto-refill for user ${userId}`)
-          }
-
-          console.log(`[Stripe Webhook] Added ${credits} ${paymentType} credits for user ${userId}`)
-        }
-      }
+      console.log(`[Stripe Webhook] Checkout completed: ${session.id}, mode: ${session.mode}`)
     }
   },
   onEvent: async (_ctx, event: Stripe.Event) => {

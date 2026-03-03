@@ -31,12 +31,6 @@ export const getEntitlements = query({
       )
       .first()
 
-    // Get refill credits
-    const refillCredits = await ctx.db
-      .query('refillCredits')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-
     const tier = subscription?.tier || 'free'
 
     // Build entitlements response
@@ -70,7 +64,6 @@ export const getEntitlements = query({
       tier,
       creditsUsed: credits,
       creditsTotal: defaults.creditsTotal,
-      refillCredits: refillCredits?.creditsRemaining || 0,
       dailyUsage: {
         ask: dailyUsage?.askCount || 0,
         write: dailyUsage?.writeCount || 0,
@@ -269,35 +262,6 @@ export const recordUsage = mutation({
     }
 
     return { success: true }
-  }
-})
-
-// Add refill credits to user account
-export const addRefillCredits = mutation({
-  args: {
-    userId: v.string(),
-    amount: v.number()
-  },
-  handler: async (ctx, { userId, amount }) => {
-    const existing = await ctx.db
-      .query('refillCredits')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        creditsRemaining: existing.creditsRemaining + amount,
-        purchasedAt: Date.now()
-      })
-      return { success: true, newBalance: existing.creditsRemaining + amount }
-    } else {
-      await ctx.db.insert('refillCredits', {
-        userId,
-        creditsRemaining: amount,
-        purchasedAt: Date.now()
-      })
-      return { success: true, newBalance: amount }
-    }
   }
 })
 
