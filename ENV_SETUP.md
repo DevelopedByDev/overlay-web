@@ -24,8 +24,6 @@ Your Stripe products should have the following **lookup keys** configured:
 |---------|------------|-------|------|
 | Pro | `pro_monthly` | $20/month | Subscription |
 | Max | `max_monthly` | $100/month | Subscription |
-| Pro Credit Refill | `pro_refill` | $11 | One-time |
-| Max Credit Refill | `max_refill` | $55 | One-time |
 
 To add lookup keys:
 1. Go to Stripe Dashboard > Products

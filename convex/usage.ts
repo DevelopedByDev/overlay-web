@@ -1,6 +1,5 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
-import { internal } from './_generated/api'
 
 // Get user entitlements (subscription + usage data)
 export const getEntitlements = query({
@@ -197,9 +196,6 @@ export const recordBatch = mutation({
         })
       }
     }
-
-    // Schedule auto-refill check (non-blocking)
-    ctx.scheduler.runAfter(0, internal.stripe.processAutoRefill, { userId })
 
     return { success: true, eventsProcessed: events.length }
   }

@@ -7,14 +7,10 @@ const IS_DEV = process.env.NODE_ENV === 'development'
 
 const PRICE_IDS = IS_DEV ? {
   pro: process.env.DEV_STRIPE_PRO_PRICE_ID,
-  max: process.env.DEV_STRIPE_MAX_PRICE_ID,
-  proRefill: process.env.DEV_STRIPE_PRO_REFILL_PRICE_ID,
-  maxRefill: process.env.DEV_STRIPE_MAX_REFILL_PRICE_ID
+  max: process.env.DEV_STRIPE_MAX_PRICE_ID
 } : {
   pro: process.env.STRIPE_PRO_PRICE_ID,
-  max: process.env.STRIPE_MAX_PRICE_ID,
-  proRefill: process.env.STRIPE_PRO_REFILL_PRICE_ID,
-  maxRefill: process.env.STRIPE_MAX_REFILL_PRICE_ID
+  max: process.env.STRIPE_MAX_PRICE_ID
 }
 
 export async function POST(request: NextRequest) {

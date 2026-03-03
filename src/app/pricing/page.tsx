@@ -61,8 +61,6 @@ const tiers: Tier[] = [
       { name: 'Unlimited Trinity/Auto usage', included: true },
       { name: 'Premium AI models', included: true, detail: '$10 token budget/mo' },
       { name: 'Prompt caching (save up to 90%)', included: true },
-      { name: 'Refill option (+$5 for $11)', included: true },
-      { name: 'Auto-refill available', included: true },
       { name: 'Cloud jobs (coming soon)', included: true },
       { name: 'Cloud sync', included: false },
       { name: 'Priority support', included: false }
@@ -79,8 +77,7 @@ const tiers: Tier[] = [
     icon: Sparkles,
     features: [
       { name: 'Everything in Pro', included: true },
-      { name: 'Premium AI models', included: true, detail: '$100 token budget/mo' },
-      { name: 'Refill option (+$50 for $55)', included: true },
+      { name: 'Premium AI models', included: true, detail: '$90 token budget/mo' },
       { name: '10x cloud jobs', included: true },
       { name: 'Cloud sync (coming soon)', included: true },
       { name: 'Priority support', included: true },
@@ -295,7 +292,7 @@ export default function PricingPage() {
                   or 66M tokens on GPT-OSS-20b with caching.
                 </p>
                 <p>
-                  Running low? Purchase a refill anytime, or enable auto-refill to never run out.
+                  Token budgets reset at the start of each billing period.
                 </p>
               </div>
             </div>
@@ -312,7 +309,7 @@ export default function PricingPage() {
                 },
                 {
                   q: 'What happens to unused tokens?',
-                  a: 'Token budgets reset at the start of each billing period. Refill credits do not expire during your subscription.'
+                  a: 'Token budgets reset at the start of each billing period.'
                 },
                 {
                   q: 'Which models are included in Free?',

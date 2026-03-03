@@ -395,7 +395,7 @@ function AccountPageContent() {
                     <h2 className="text-lg font-medium mb-1">
                       {data.tier.charAt(0).toUpperCase() + data.tier.slice(1)} Plan
                     </h2>
-                    <p className="text-sm text-[var(--muted)]">
+                    <p className="text-sm text-(--muted)">
                       {data.status === 'active' && data.billingPeriodEnd
                         ? `Renews ${formatDate(data.billingPeriodEnd)}`
                         : data.status === 'canceled'
@@ -426,7 +426,7 @@ function AccountPageContent() {
                   {data.tier === 'free' && (
                     <Link
                       href="/pricing"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--foreground)] text-[var(--background)] rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-[var(--background)] rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
                     >
                       Upgrade to Pro
                       <ArrowRight className="w-4 h-4" />
@@ -547,8 +547,8 @@ export default function AccountPage() {
         <div className="min-h-screen gradient-bg flex items-center justify-center">
           <div className="liquid-glass" />
           <div className="relative z-10 text-center">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[var(--muted)]" />
-            <p className="mt-4 text-[var(--muted)]">Loading...</p>
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-(--muted)" />
+            <p className="mt-4 text-(--muted)">Loading...</p>
           </div>
         </div>
       }

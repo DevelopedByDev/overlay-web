@@ -217,7 +217,6 @@ Check tables:
 - `subscriptions` - subscription records
 - `tokenUsage` - billing period usage
 - `dailyUsage` - daily action counts
-- `refillCredits` - purchased refill credits
 
 ### Desktop App Logs
 

@@ -23,11 +23,6 @@ export const stripe = new Proxy({} as Stripe, {
   }
 })
 
-// Price lookup keys for Stripe products
-export const PRICE_LOOKUP_KEYS = {
-  proRefill: 'pro_refill',
-  maxRefill: 'max_refill',
-} as const
 
 // Get the base URL for redirects
 export function getBaseUrl(): string {
