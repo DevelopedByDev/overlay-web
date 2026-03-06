@@ -284,7 +284,7 @@ export function AllInOnePlace({ scrollProgress = 0, isActive = false }: AllInOne
             exit={{ opacity: 0, y: -40 }}
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
             className="fixed left-1/2 -translate-x-1/2 top-0 z-60"
-            style={{ marginTop: "-180px" }}
+            style={{ marginTop: "-260px" }}
           >
             <Image
               src="/assets/overlays/chat-overlay.png"

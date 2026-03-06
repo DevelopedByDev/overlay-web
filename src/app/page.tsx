@@ -104,7 +104,7 @@ export default function Home() {
   // "the friction in" dissolves and width collapses smoothly
   const frictionMiddleOpacity = useTransform(scrollYProgress, [0.76, 0.78], [1, 0]);
   const frictionMiddleMaxWidth = useTransform(scrollYProgress, [0.76, 0.79], ["300px", "0px"]);
-  const frictionMiddlePadding = useTransform(scrollYProgress, [0.76, 0.79], ["0 0.3em", "0 0"]);
+  const frictionMiddleMargin = useTransform(scrollYProgress, [0.76, 0.79], ["0 0.35em", "0 0.16em"]);
   
   // Welcome section (0.82 - 0.92) - merged with subtitle
   const welcomeOpacity = useTransform(scrollYProgress, [0.82, 0.84, 0.90, 0.92], [0, 1, 1, 0]);
@@ -132,7 +132,7 @@ export default function Home() {
         {/* Logo */}
         <motion.div
           style={{ scale: logoScale, opacity: logoOpacity }}
-          className="-mb-2"
+          className="-mb-5"
         >
           <Image
             src="/assets/overlay-logo.png"
@@ -145,7 +145,7 @@ export default function Home() {
         </motion.div>
 
         {/* Title */}
-        <h1 className="font-serif text-6xl md:text-8xl tracking-tight mb-4">
+        <h1 className="font-serif text-6xl md:text-8xl tracking-tight mb-3">
           overlay
         </h1>
 
@@ -377,11 +377,11 @@ export default function Home() {
               style={{ 
                 opacity: frictionMiddleOpacity,
                 maxWidth: frictionMiddleMaxWidth,
-                padding: frictionMiddlePadding,
+                margin: frictionMiddleMargin,
                 overflow: "hidden",
                 whiteSpace: "nowrap",
                 display: "inline-block",
-                transition: "max-width 0.3s ease-out, padding 0.3s ease-out"
+                transition: "max-width 0.3s ease-out, margin 0.3s ease-out"
               }}
               className="text-[#71717a]"
             >
