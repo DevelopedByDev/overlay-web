@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation, query, internalMutation } from './_generated/server'
+import { mutation, query, internalMutation, internalQuery } from './_generated/server'
 
 function validateAccessToken(accessToken: string): boolean {
   if (!accessToken || typeof accessToken !== 'string') return false
@@ -35,6 +35,17 @@ export const getByUserId = query({
 
 // Alias for landing page API compatibility
 export const getSubscription = getByUserId
+
+// Internal query for server-side ownership checks (used by stripe.ts actions)
+export const getByUserIdInternal = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+  }
+})
 
 // Get subscription by email (for cross-installation sync)
 export const getByEmail = query({

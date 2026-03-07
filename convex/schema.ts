@@ -53,6 +53,13 @@ export default defineSchema({
     browserSearchCount: v.optional(v.number()),
   }).index('by_userId_date', ['userId', 'date']),
 
+  // Short-lived session transfer tokens for desktop app auth linking
+  sessionTransferTokens: defineTable({
+    token: v.string(),
+    data: v.string(), // JSON-encoded auth data
+    expiresAt: v.number(),
+  }).index('by_token', ['token']),
+
   // Feature usage history (aggregated per billing period)
   featureUsage: defineTable({
     userId: v.string(),

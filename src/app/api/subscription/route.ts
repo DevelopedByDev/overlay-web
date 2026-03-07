@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../../convex/_generated/api'
+import { getSession } from '@/lib/workos-auth'
 
-// Use production Convex URL
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || 'https://colorful-chickadee-419.convex.cloud'
+const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL
+if (!CONVEX_URL) {
+  throw new Error('NEXT_PUBLIC_CONVEX_URL environment variable is required')
+}
 const convex = new ConvexHttpClient(CONVEX_URL)
 
 export async function GET(request: NextRequest) {
+  const session = await getSession()
+  if (!session || !session.user) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('userId')
 
@@ -14,8 +22,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'userId is required' }, { status: 400 })
   }
 
+  if (userId !== session.user.id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   try {
-    // Fetch user's subscription from Convex
     const entitlements = await convex.query(api.usage.getEntitlements, { userId })
 
     if (!entitlements) {

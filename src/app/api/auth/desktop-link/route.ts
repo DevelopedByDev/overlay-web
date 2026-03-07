@@ -1,22 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
 import { randomBytes } from 'crypto'
+import { convex } from '@/lib/convex'
 
-// In-memory store for short-lived session transfer tokens
-// In production, use Redis or similar
-const sessionTransferTokens = new Map<string, { data: object; expires: number }>()
-
-// Clean up expired tokens periodically
-setInterval(() => {
-  const now = Date.now()
-  for (const [token, entry] of sessionTransferTokens.entries()) {
-    if (entry.expires < now) {
-      sessionTransferTokens.delete(token)
-    }
-  }
-}, 60000) // Clean up every minute
-
-// Generate a deep link with a short-lived token for the desktop app
 export async function POST() {
   try {
     const session = await getSession()
@@ -28,7 +14,6 @@ export async function POST() {
       )
     }
 
-    // Create auth data
     const authData = {
       userId: session.user.id,
       email: session.user.email,
@@ -38,20 +23,17 @@ export async function POST() {
       refreshToken: session.refreshToken,
     }
 
-    // Generate a short, random token
     const token = randomBytes(16).toString('hex')
-    
-    // Store the auth data with a 5-minute expiry
-    sessionTransferTokens.set(token, {
-      data: authData,
-      expires: Date.now() + 5 * 60 * 1000
+    const expiresAt = Date.now() + 5 * 60 * 1000
+
+    await convex.mutation('sessionTransfer:storeToken', {
+      token,
+      data: JSON.stringify(authData),
+      expiresAt,
     })
-    
-    // Build a short deep link with just the token
+
     const deepLink = `overlay://auth/transfer?token=${token}`
 
-    console.log(`[Desktop Link] Generated transfer token for user ${session.user.id}`)
-    
     return NextResponse.json({ deepLink })
   } catch (error) {
     console.error('[Desktop Link] Error:', error)
@@ -62,7 +44,6 @@ export async function POST() {
   }
 }
 
-// GET endpoint for the desktop app to fetch session data using the token
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -75,29 +56,17 @@ export async function GET(request: Request) {
       )
     }
 
-    const entry = sessionTransferTokens.get(token)
-    
-    if (!entry) {
+    const dataJson = await convex.mutation<string>('sessionTransfer:consumeToken', { token })
+
+    if (!dataJson) {
       return NextResponse.json(
         { error: 'Invalid or expired token' },
         { status: 404 }
       )
     }
 
-    if (entry.expires < Date.now()) {
-      sessionTransferTokens.delete(token)
-      return NextResponse.json(
-        { error: 'Token expired' },
-        { status: 410 }
-      )
-    }
-
-    // Delete the token after use (one-time use)
-    sessionTransferTokens.delete(token)
-    
-    console.log('[Desktop Link] Session data retrieved for transfer')
-    
-    return NextResponse.json(entry.data)
+    const data = JSON.parse(dataJson)
+    return NextResponse.json(data)
   } catch (error) {
     console.error('[Desktop Link] Error retrieving session:', error)
     return NextResponse.json(
