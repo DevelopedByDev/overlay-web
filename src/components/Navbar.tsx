@@ -30,6 +30,11 @@ export function Navbar({ scrollYProgress }: NavbarProps) {
     async function checkAuth() {
       try {
         const response = await fetch('/api/auth/session')
+        const contentType = response.headers.get('content-type') || ''
+        if (!response.ok || !contentType.includes('application/json')) {
+          setAuthState({ authenticated: false })
+          return
+        }
         const data = await response.json()
         setAuthState(data)
       } catch {
@@ -139,6 +144,11 @@ export function HeroLinks() {
     async function checkAuth() {
       try {
         const response = await fetch('/api/auth/session')
+        const contentType = response.headers.get('content-type') || ''
+        if (!response.ok || !contentType.includes('application/json')) {
+          setAuthState({ authenticated: false })
+          return
+        }
         const data = await response.json()
         setAuthState(data)
       } catch {

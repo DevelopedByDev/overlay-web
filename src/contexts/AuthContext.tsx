@@ -28,6 +28,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkSession = useCallback(async () => {
     try {
       const response = await fetch('/api/auth/session')
+      const contentType = response.headers.get('content-type') || ''
+      if (!response.ok || !contentType.includes('application/json')) {
+        setUser(null)
+        return
+      }
       const data = await response.json()
       
       if (data.authenticated && data.user) {

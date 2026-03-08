@@ -1,6 +1,5 @@
 import { WorkOS } from '@workos-inc/node'
 import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
 import { createHmac, timingSafeEqual } from 'crypto'
 
 const isDev = process.env.NODE_ENV === 'development'
@@ -11,10 +10,32 @@ const clientId = isDev
   ? (process.env.DEV_WORKOS_CLIENT_ID || process.env.WORKOS_CLIENT_ID || '')
   : (process.env.WORKOS_CLIENT_ID || '')
 
-const workos = new WorkOS(workosApiKey)
-
 const SESSION_COOKIE_NAME = 'overlay_session'
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30
+
+function getWorkOS(requireApiKey = false): WorkOS {
+  if (requireApiKey && !workosApiKey) {
+    throw new Error(
+      isDev
+        ? 'WorkOS API key is not configured. Set DEV_WORKOS_API_KEY or WORKOS_API_KEY for server-side auth.'
+        : 'WorkOS API key is not configured. Set WORKOS_API_KEY for server-side auth.'
+    )
+  }
+
+  if (workosApiKey) {
+    return new WorkOS({ apiKey: workosApiKey })
+  }
+
+  if (clientId) {
+    return new WorkOS({ clientId })
+  }
+
+  throw new Error(
+    isDev
+      ? 'WorkOS is not configured. Set DEV_WORKOS_CLIENT_ID/WORKOS_CLIENT_ID and DEV_WORKOS_API_KEY/WORKOS_API_KEY.'
+      : 'WorkOS is not configured. Set WORKOS_CLIENT_ID and WORKOS_API_KEY.'
+  )
+}
 
 function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET || process.env.WORKOS_API_KEY || 'overlay-dev-session-secret-change-me'
@@ -62,16 +83,8 @@ export interface AuthSession {
   expiresAt: number
 }
 
-// Get the base URL for redirects
-export function getBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL
-  }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`
-  }
-  return 'http://localhost:3000'
-}
+import { getBaseUrl } from './url'
+export { getBaseUrl }
 
 // Generate authorization URL for SSO providers
 export function getAuthorizationUrl(
@@ -82,10 +95,9 @@ export function getAuthorizationUrl(
   if (!clientId) {
     throw new Error('WorkOS client ID is not configured')
   }
-  
+
+  const workos = getWorkOS()
   const baseRedirectUri = `${getBaseUrl()}/api/auth/callback`
-  console.log('[WorkOS] Building auth URL:', { provider, baseRedirectUri, redirectUri, forceSignIn, clientId: clientId.substring(0, 15) + '...' })
-  
   // Build authorization URL options
   const options: Parameters<typeof workos.userManagement.getAuthorizationUrl>[0] = {
     provider,
@@ -103,35 +115,17 @@ export function getAuthorizationUrl(
   let authorizationUrl: string
   try {
     authorizationUrl = workos.userManagement.getAuthorizationUrl(options)
-    console.log('[WorkOS] Generated URL successfully')
-  } catch (error) {
+  } catch {
     // Fallback: try without screenHint if it causes issues
-    console.error('[WorkOS] Error with screenHint, trying without:', error)
     delete options.screenHint
     authorizationUrl = workos.userManagement.getAuthorizationUrl(options)
-    
-    // Add prompt=login manually to the URL to force re-authentication
+
     if (forceSignIn) {
       const url = new URL(authorizationUrl)
       url.searchParams.set('prompt', 'login')
       authorizationUrl = url.toString()
     }
-    console.log('[WorkOS] Generated fallback URL successfully')
   }
-
-  return authorizationUrl
-}
-
-// Generate authorization URL for email/password auth flow
-export function getEmailAuthUrl(redirectUri?: string): string {
-  const baseRedirectUri = `${getBaseUrl()}/api/auth/callback`
-  
-  const authorizationUrl = workos.userManagement.getAuthorizationUrl({
-    provider: 'authkit',
-    clientId,
-    redirectUri: baseRedirectUri,
-    state: redirectUri ? Buffer.from(redirectUri).toString('base64') : undefined,
-  })
 
   return authorizationUrl
 }
@@ -142,6 +136,7 @@ export async function authenticateWithPassword(
   password: string
 ): Promise<{ success: boolean; user?: AuthUser; error?: string; pendingEmailVerification?: boolean }> {
   try {
+    const workos = getWorkOS(true)
     const response = await workos.userManagement.authenticateWithPassword({
       clientId,
       email,
@@ -183,6 +178,7 @@ export async function createUser(
   lastName?: string
 ): Promise<{ success: boolean; user?: AuthUser; error?: string; pendingEmailVerification?: boolean }> {
   try {
+    const workos = getWorkOS(true)
     const user = await workos.userManagement.createUser({
       email,
       password,
@@ -222,6 +218,7 @@ export async function handleCallback(
   code: string
 ): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
   try {
+    const workos = getWorkOS(true)
     const response = await workos.userManagement.authenticateWithCode({
       clientId,
       code,
@@ -256,6 +253,7 @@ export async function sendPasswordResetEmail(
   email: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const workos = getWorkOS(true)
     // WorkOS User Management API - create password reset challenge
     await workos.userManagement.createPasswordReset({
       email,
@@ -273,6 +271,7 @@ export async function resetPassword(
   newPassword: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const workos = getWorkOS(true)
     await workos.userManagement.resetPassword({
       token,
       newPassword,
@@ -293,6 +292,7 @@ export async function verifyEmail(
   code: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const workos = getWorkOS(true)
     await workos.userManagement.verifyEmail({
       userId,
       code,
@@ -309,6 +309,7 @@ export async function resendVerificationEmail(
   userId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const workos = getWorkOS(true)
     await workos.userManagement.sendVerificationEmail({
       userId,
     })
@@ -377,20 +378,6 @@ export async function clearSession(): Promise<void> {
   cookieStore.delete(SESSION_COOKIE_NAME)
 }
 
-export async function requireAuth(): Promise<AuthSession> {
-  const session = await getSession()
-  if (!session) {
-    redirect('/auth/sign-in')
-  }
-  return session
-}
-
-// Get current user from session
-export async function getCurrentUser(): Promise<AuthUser | null> {
-  const session = await getSession()
-  return session?.user || null
-}
-
 // Refresh session token if needed
 export async function refreshSessionIfNeeded(): Promise<AuthSession | null> {
   const session = await getSession()
@@ -404,7 +391,12 @@ export async function refreshSessionIfNeeded(): Promise<AuthSession | null> {
     return session
   }
 
+  if (!workosApiKey) {
+    return session
+  }
+
   try {
+    const workos = getWorkOS(true)
     const response = await workos.userManagement.authenticateWithRefreshToken({
       clientId,
       refreshToken: session.refreshToken,

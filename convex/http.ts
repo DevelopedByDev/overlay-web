@@ -70,31 +70,19 @@ registerRoutes(http, components.stripe, {
         return
       }
 
-      // Debug: log the entire subscription object structure
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const subAny = subscription as any
-      console.log(`[Stripe Webhook] Subscription object keys: ${Object.keys(subAny).join(', ')}`)
-      console.log(`[Stripe Webhook] Raw period values: current_period_start=${subAny.current_period_start}, currentPeriodStart=${subAny.currentPeriodStart}`)
-
       const priceId = subscription.items.data[0]?.price?.id
       const tier = mapPriceToTier(priceId)
-      
-      // Extract email from metadata (passed during checkout) or from expanded customer
+
       const customerInfo = extractCustomerInfo(subscription.customer as Stripe.Customer | string)
       const email = subscription.metadata?.email || customerInfo.email
       const name = customerInfo.name
 
-      // Get timestamps - try multiple possible property names
-      const periodStart = subAny.current_period_start || subAny.currentPeriodStart || subAny['current_period_start']
-      const periodEnd = subAny.current_period_end || subAny.currentPeriodEnd || subAny['current_period_end']
-      
-      // Calculate with fallbacks - ensure we get valid numbers
       const now = Date.now()
       const thirtyDays = 30 * 24 * 60 * 60 * 1000
+      const periodStart = subscription.current_period_start
+      const periodEnd = subscription.current_period_end
       const currentPeriodStart = (typeof periodStart === 'number' && periodStart > 0) ? periodStart * 1000 : now
       const currentPeriodEnd = (typeof periodEnd === 'number' && periodEnd > 0) ? periodEnd * 1000 : now + thirtyDays
-
-      console.log(`[Stripe Webhook] Computed periods: start=${currentPeriodStart}, end=${currentPeriodEnd}`)
 
       await ctx.runMutation(internal.subscriptions.upsertFromStripeInternal, {
         userId,
@@ -120,26 +108,17 @@ registerRoutes(http, components.stripe, {
         return
       }
 
-      // Debug: log the entire subscription object structure
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const subAny = subscription as any
-      console.log(`[Stripe Webhook] Updated - Subscription keys: ${Object.keys(subAny).join(', ')}`)
-
       const priceId = subscription.items.data[0]?.price?.id
       const tier = mapPriceToTier(priceId)
-      
-      // Extract email from metadata (passed during checkout) or from expanded customer
+
       const customerInfo = extractCustomerInfo(subscription.customer as Stripe.Customer | string)
       const email = subscription.metadata?.email || customerInfo.email
       const name = customerInfo.name
 
-      // Get timestamps - try multiple possible property names
-      const periodStart = subAny.current_period_start || subAny.currentPeriodStart || subAny['current_period_start']
-      const periodEnd = subAny.current_period_end || subAny.currentPeriodEnd || subAny['current_period_end']
-      
-      // Calculate with fallbacks - ensure we get valid numbers
       const now = Date.now()
       const thirtyDays = 30 * 24 * 60 * 60 * 1000
+      const periodStart = subscription.current_period_start
+      const periodEnd = subscription.current_period_end
       const currentPeriodStart = (typeof periodStart === 'number' && periodStart > 0) ? periodStart * 1000 : now
       const currentPeriodEnd = (typeof periodEnd === 'number' && periodEnd > 0) ? periodEnd * 1000 : now + thirtyDays
 
@@ -163,7 +142,7 @@ registerRoutes(http, components.stripe, {
       const userId = subscription.metadata?.userId
 
       if (userId) {
-        await ctx.runMutation(internal.subscriptions.updateStatusInternal, {
+        await ctx.runMutation(internal.subscriptions.updateStatus, {
           userId,
           status: 'canceled'
         })
@@ -172,12 +151,11 @@ registerRoutes(http, components.stripe, {
     },
 
     'invoice.payment_failed': async (ctx, event: Stripe.InvoicePaymentFailedEvent) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const invoice = event.data.object as any
+      const invoice = event.data.object
       const userId = invoice.subscription_details?.metadata?.userId ?? invoice.metadata?.userId
 
       if (userId) {
-        await ctx.runMutation(internal.subscriptions.updateStatusInternal, {
+        await ctx.runMutation(internal.subscriptions.updateStatus, {
           userId,
           status: 'past_due'
         })

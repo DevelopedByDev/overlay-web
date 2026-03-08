@@ -33,9 +33,6 @@ export const getByUserId = query({
   }
 })
 
-// Alias for landing page API compatibility
-export const getSubscription = getByUserId
-
 // Internal query for server-side ownership checks (used by stripe.ts actions)
 export const getByUserIdInternal = internalQuery({
   args: { userId: v.string() },
@@ -247,7 +244,7 @@ export const resetDailyUsage = internalMutation({
   }
 })
 
-// Internal mutations for webhook handlers (called from http.ts)
+// Upsert from Stripe webhook data — internal only (called from http.ts webhook handler)
 export const upsertFromStripeInternal = internalMutation({
   args: {
     userId: v.string(),
@@ -296,34 +293,6 @@ export const upsertFromStripeInternal = internalMutation({
         currentPeriodEnd: args.currentPeriodEnd
       })
     }
-  }
-})
-
-export const updateStatusInternal = internalMutation({
-  args: {
-    userId: v.string(),
-    status: v.union(
-      v.literal('active'),
-      v.literal('canceled'),
-      v.literal('past_due'),
-      v.literal('trialing')
-    )
-  },
-  handler: async (ctx, { userId, status }) => {
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-
-    if (subscription) {
-      await ctx.db.patch(subscription._id, { status })
-      if (status === 'canceled') {
-        await ctx.db.patch(subscription._id, { tier: 'free' })
-      }
-      return { success: true }
-    }
-
-    return { success: false, error: 'Subscription not found' }
   }
 })
 

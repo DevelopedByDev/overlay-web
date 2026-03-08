@@ -193,22 +193,38 @@ function AccountPageContent() {
   const handleOpenInApp = async () => {
     setActionLoading('openApp')
     try {
-      // Get a deep link with auth tokens from the server
       const response = await fetch('/api/auth/desktop-link', { method: 'POST' })
-      
       if (!response.ok) {
         console.error('[Account] Failed to generate desktop link')
-        // Fallback to simple deep link
         triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
         return
       }
 
       const { deepLink } = await response.json()
-      console.log('[Account] Opening desktop app with auth session:', deepLink)
+      const tokenMatch = deepLink.match(/[?&]token=([^&]+)/)
+      const token = tokenMatch?.[1]
+
+      // In dev mode, the Electron app runs a local HTTP server because macOS deep links
+      // are unreliable for child processes (electron-vite spawns Electron as a subprocess,
+      // so Launch Services never fires open-url on the running instance).
+      if (token) {
+        try {
+          const localRes = await fetch(`http://localhost:45738/auth?token=${token}`, {
+            signal: AbortSignal.timeout(1500),
+          })
+          if (localRes.ok) {
+            console.log('[Account] Auth handled via local dev server')
+            return
+          }
+        } catch {
+          // Dev server not available — fall through to deep link (production path)
+        }
+      }
+
+      console.log('[Account] Opening desktop app via deep link')
       triggerDeepLink(deepLink)
     } catch (error) {
       console.error('[Account] Error generating desktop link:', error)
-      // Fallback to simple deep link
       triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
     } finally {
       setActionLoading(null)
@@ -235,8 +251,6 @@ function AccountPageContent() {
 
     async function fetchEntitlements() {
       try {
-        console.log('[Account] Fetching entitlements for userId:', currentUserId)
-
         const response = await fetch(`/api/entitlements?userId=${currentUserId}`)
         if (response.ok) {
           const data = await response.json()

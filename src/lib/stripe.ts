@@ -24,16 +24,4 @@ export const stripe = new Proxy({} as Stripe, {
 })
 
 
-// Get the base URL for redirects
-export function getBaseUrl(): string {
-  if (process.env.DEV_NEXT_PUBLIC_APP_URL) {
-    return process.env.DEV_NEXT_PUBLIC_APP_URL
-  }
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL
-  }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`
-  }
-  return 'http://localhost:3000'
-}
+export { getBaseUrl } from './url'

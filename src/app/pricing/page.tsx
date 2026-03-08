@@ -97,7 +97,6 @@ function UserIdExtractor() {
     const userId = searchParams.get('userId')
     if (userId) {
       localStorage.setItem('userId', userId)
-      console.log('[Pricing] Stored userId from URL:', userId)
     }
   }, [searchParams])
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { handleCallback, getBaseUrl } from '@/lib/workos-auth'
+import { handleCallback, getBaseUrl, getSession } from '@/lib/workos-auth'
 import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../../../convex/_generated/api'
 
@@ -38,14 +38,18 @@ export async function GET(request: NextRequest) {
 
     // Sync user profile to Convex (creates subscription record if it doesn't exist)
     try {
-      await convex.mutation(api.users.syncUserProfile, {
-        userId: result.user.id,
-        email: result.user.email,
-        firstName: result.user.firstName,
-        lastName: result.user.lastName,
-        profilePictureUrl: result.user.profilePictureUrl,
-      })
-      console.log('[Auth] User profile synced to Convex:', result.user.id)
+      const session = await getSession()
+      if (session?.accessToken) {
+        await convex.mutation(api.users.syncUserProfile, {
+          accessToken: session.accessToken,
+          userId: result.user.id,
+          email: result.user.email,
+          firstName: result.user.firstName,
+          lastName: result.user.lastName,
+          profilePictureUrl: result.user.profilePictureUrl,
+        })
+        console.log('[Auth] User profile synced to Convex:', result.user.id)
+      }
     } catch (syncError) {
       console.error('[Auth] Failed to sync user profile:', syncError)
       // Continue anyway - user can still use the app

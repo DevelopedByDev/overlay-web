@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       currentPeriodEnd: (subscription as unknown as { current_period_end: number }).current_period_end
     })
 
-    console.log(`[Checkout Verify] Subscription verified and updated for user ${authSession.user.id}: ${tier}`)
+    console.log(`[Checkout Verify] Subscription verified and updated`)
 
     return NextResponse.json({ 
       success: true, 
