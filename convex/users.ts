@@ -21,7 +21,9 @@ function validateAccessToken(accessToken: string): boolean {
   return true
 }
 
-// Sync user profile from auth system (called after login)
+// Sync user profile from auth system (called after login).
+// For new users, always sets currentPeriodStart/End so the billingPeriodStart
+// key in tokenUsage never falls back to "today" and drifts between sessions.
 export const syncUserProfile = mutation({
   args: {
     accessToken: v.string(),
@@ -35,24 +37,35 @@ export const syncUserProfile = mutation({
     if (!validateAccessToken(accessToken)) {
       throw new Error('Unauthorized: invalid or expired access token')
     }
-    // Check if subscription record exists
+
     const existing = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
 
     if (existing) {
-      // Update existing record with profile info
-      await ctx.db.patch(existing._id, {
+      const patch: Record<string, unknown> = {
         email,
         firstName,
         lastName,
         profilePictureUrl,
         lastLoginAt: Date.now(),
-      })
+      }
+
+      // Backfill period timestamps for legacy rows that were created without them
+      if (!existing.currentPeriodStart || existing.currentPeriodStart === 0) {
+        const now = Date.now()
+        patch.currentPeriodStart = now
+        patch.currentPeriodEnd = now + 30 * 24 * 60 * 60 * 1000
+      }
+      if (existing.creditsUsed === undefined || existing.creditsUsed === null) {
+        patch.creditsUsed = 0
+      }
+
+      await ctx.db.patch(existing._id, patch)
       return { success: true, isNewUser: false }
     } else {
-      // Create new subscription record with free tier
+      const now = Date.now()
       await ctx.db.insert('subscriptions', {
         userId,
         email,
@@ -62,21 +75,25 @@ export const syncUserProfile = mutation({
         profilePictureUrl,
         tier: 'free',
         status: 'active',
-        lastLoginAt: Date.now(),
+        currentPeriodStart: now,
+        currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
+        creditsUsed: 0,
+        lastLoginAt: now,
       })
       return { success: true, isNewUser: true }
     }
   },
 })
 
-// Get user profile with subscription and usage data (for account page)
+// Get user profile with subscription and usage data (for account page).
+// creditsUsed is read from the subscription row directly — no tokenUsage join needed.
 export const getUserProfile = query({
   args: { accessToken: v.string(), userId: v.string() },
   handler: async (ctx, { accessToken, userId }) => {
     if (!validateAccessToken(accessToken)) {
       return null
     }
-    // Get subscription
+
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -86,30 +103,20 @@ export const getUserProfile = query({
       return null
     }
 
-    // Get today's date
     const today = new Date().toISOString().split('T')[0]
 
-    // Get daily usage
     const dailyUsage = await ctx.db
       .query('dailyUsage')
       .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
       .first()
 
-    // Get billing period usage
-    const billingPeriodStart = subscription?.currentPeriodStart
+    // Fetch the audit-log tokenUsage row for raw token counts (display only)
+    const billingPeriodStart = subscription.currentPeriodStart
       ? new Date(subscription.currentPeriodStart).toISOString().split('T')[0]
       : today
 
     const tokenUsage = await ctx.db
       .query('tokenUsage')
-      .withIndex('by_userId_period', (q) =>
-        q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart)
-      )
-      .first()
-
-    // Get feature usage
-    const featureUsage = await ctx.db
-      .query('featureUsage')
       .withIndex('by_userId_period', (q) =>
         q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart)
       )
@@ -134,8 +141,10 @@ export const getUserProfile = query({
         currentPeriodEnd: subscription.currentPeriodEnd,
       },
       usage: {
-        creditsUsed: tokenUsage?.creditsUsed ?? tokenUsage?.costAccrued ?? 0,
+        // creditsUsed comes from subscription — single source of truth
+        creditsUsed: subscription.creditsUsed ?? 0,
         creditsTotal: subscription.tier === 'free' ? 0 : subscription.tier === 'pro' ? 15 : 90,
+        // Raw token counts from audit log (may lag slightly behind creditsUsed)
         inputTokens: tokenUsage?.inputTokens ?? 0,
         outputTokens: tokenUsage?.outputTokens ?? 0,
         cachedInputTokens: tokenUsage?.cachedInputTokens ?? 0,
@@ -149,98 +158,6 @@ export const getUserProfile = query({
         noteBrowserCount: dailyUsage?.noteBrowserCount ?? 0,
         browserSearchCount: dailyUsage?.browserSearchCount ?? 0,
       },
-      featureUsage: {
-        voiceChatMinutes: featureUsage?.voiceChatMinutes ?? 0,
-        notesCreated: featureUsage?.notesCreated ?? 0,
-        agentTasksRun: featureUsage?.agentTasksRun ?? 0,
-        browserSearches: featureUsage?.browserSearches ?? 0,
-        totalSessions: featureUsage?.totalSessions ?? 0,
-      },
     }
-  },
-})
-
-// Record feature usage (called from desktop app)
-export const recordFeatureUsage = mutation({
-  args: {
-    accessToken: v.string(),
-    userId: v.string(),
-    feature: v.union(
-      v.literal('voice_chat'),
-      v.literal('note'),
-      v.literal('agent'),
-      v.literal('browser_search'),
-      v.literal('session')
-    ),
-    value: v.number(), // minutes for voice_chat, count for others
-  },
-  handler: async (ctx, { accessToken, userId, feature, value }) => {
-    if (!validateAccessToken(accessToken)) {
-      throw new Error('Unauthorized: invalid or expired access token')
-    }
-    // Get subscription for billing period
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-
-    const today = new Date().toISOString().split('T')[0]
-    const billingPeriodStart = subscription?.currentPeriodStart
-      ? new Date(subscription.currentPeriodStart).toISOString().split('T')[0]
-      : today
-
-    // Get or create feature usage record
-    let featureUsage = await ctx.db
-      .query('featureUsage')
-      .withIndex('by_userId_period', (q) =>
-        q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart)
-      )
-      .first()
-
-    if (!featureUsage) {
-      const id = await ctx.db.insert('featureUsage', {
-        userId,
-        billingPeriodStart,
-        voiceChatMinutes: 0,
-        notesCreated: 0,
-        agentTasksRun: 0,
-        browserSearches: 0,
-        totalSessions: 0,
-      })
-      featureUsage = await ctx.db.get(id)
-    }
-
-    if (!featureUsage) return { success: false }
-
-    // Update the appropriate field
-    switch (feature) {
-      case 'voice_chat':
-        await ctx.db.patch(featureUsage._id, {
-          voiceChatMinutes: featureUsage.voiceChatMinutes + value,
-        })
-        break
-      case 'note':
-        await ctx.db.patch(featureUsage._id, {
-          notesCreated: featureUsage.notesCreated + value,
-        })
-        break
-      case 'agent':
-        await ctx.db.patch(featureUsage._id, {
-          agentTasksRun: featureUsage.agentTasksRun + value,
-        })
-        break
-      case 'browser_search':
-        await ctx.db.patch(featureUsage._id, {
-          browserSearches: featureUsage.browserSearches + value,
-        })
-        break
-      case 'session':
-        await ctx.db.patch(featureUsage._id, {
-          totalSessions: featureUsage.totalSessions + value,
-        })
-        break
-    }
-
-    return { success: true }
   },
 })

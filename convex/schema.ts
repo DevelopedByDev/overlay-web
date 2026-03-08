@@ -2,7 +2,10 @@ import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
 export default defineSchema({
-  // Subscription information synced from Stripe
+  // Single source of truth for a user's subscription, tier, and current-period credit spend.
+  // creditsUsed is the live accumulator (in cents) mutated on every usage event.
+  // currentPeriodStart/End are always set — on Stripe-backed subscriptions they come from
+  // the webhook; on free tier they are set to now/+30d at account creation.
   subscriptions: defineTable({
     userId: v.string(),
     email: v.optional(v.string()),
@@ -18,6 +21,9 @@ export default defineSchema({
     ),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
+    // Live credit accumulator for the current billing period (in cents).
+    // Reset to 0 whenever currentPeriodStart rolls over.
+    creditsUsed: v.optional(v.number()),
     // User profile fields (synced from WorkOS)
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -28,26 +34,28 @@ export default defineSchema({
   }).index('by_userId', ['userId'])
     .index('by_email', ['email']),
 
-  // Token usage per billing period (aggregated)
+  // Append-only audit log: one row per billing period per user.
+  // Written to on every usage batch for raw token counts and a credit snapshot.
+  // Never read for enforcement — use subscriptions.creditsUsed for that.
   tokenUsage: defineTable({
     userId: v.string(),
+    email: v.string(), // denormalized from subscriptions for easy dashboard filtering
     billingPeriodStart: v.string(), // ISO date string
-    creditsUsed: v.optional(v.number()), // Total $ spent (new field)
-    costAccrued: v.optional(v.number()), // Legacy field - same as creditsUsed
+    creditsUsed: v.optional(v.number()), // cents accumulated this period (audit copy)
+    costAccrued: v.optional(v.number()), // legacy alias for creditsUsed
     inputTokens: v.number(),
     cachedInputTokens: v.number(),
     outputTokens: v.number()
   }).index('by_userId_period', ['userId', 'billingPeriodStart']),
 
-  // Daily usage tracking for free tier limits
+  // Daily counters used exclusively for free-tier weekly limit enforcement.
   dailyUsage: defineTable({
     userId: v.string(),
     date: v.string(), // YYYY-MM-DD format
     askCount: v.number(),
     agentCount: v.number(),
     writeCount: v.number(),
-    transcriptionSeconds: v.optional(v.number()), // Optional for backward compatibility
-    // Feature-specific usage (for account page stats)
+    transcriptionSeconds: v.optional(v.number()),
     voiceChatCount: v.optional(v.number()),
     noteBrowserCount: v.optional(v.number()),
     browserSearchCount: v.optional(v.number()),
@@ -59,16 +67,4 @@ export default defineSchema({
     data: v.string(), // JSON-encoded auth data
     expiresAt: v.number(),
   }).index('by_token', ['token']),
-
-  // Feature usage history (aggregated per billing period)
-  featureUsage: defineTable({
-    userId: v.string(),
-    billingPeriodStart: v.string(), // ISO date string
-    voiceChatMinutes: v.number(),
-    notesCreated: v.number(),
-    agentTasksRun: v.number(),
-    browserSearches: v.number(),
-    totalSessions: v.number(),
-  }).index('by_userId_period', ['userId', 'billingPeriodStart']),
-
 })

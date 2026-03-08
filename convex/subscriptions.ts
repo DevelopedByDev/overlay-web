@@ -21,6 +21,24 @@ function validateAccessToken(accessToken: string): boolean {
   return true
 }
 
+// Server-side only: validate the internal secret before allowing mutation
+function validateServerSecret(secret: string | undefined): boolean {
+  const expected = process.env.INTERNAL_API_SECRET
+  if (!expected || !secret) return false
+  return secret === expected
+}
+
+// Returns true if the new period start represents a different billing cycle
+// than what is currently stored, indicating credits should be reset.
+function isPeriodRollover(existingPeriodStart: number | undefined, newPeriodStart: number): boolean {
+  if (!existingPeriodStart || existingPeriodStart === 0) return false
+  // Compare calendar dates (YYYY-MM-DD) so that small ms-level differences
+  // from repeated webhook deliveries don't incorrectly trigger a reset.
+  const existingDate = new Date(existingPeriodStart).toISOString().split('T')[0]
+  const newDate = new Date(newPeriodStart).toISOString().split('T')[0]
+  return existingDate !== newDate
+}
+
 // Get subscription by userId
 export const getByUserId = query({
   args: { accessToken: v.string(), userId: v.string() },
@@ -101,14 +119,8 @@ export const getByStripeCustomerId = query({
   }
 })
 
-// Server-side only: validate the internal secret before allowing mutation
-function validateServerSecret(secret: string | undefined): boolean {
-  const expected = process.env.INTERNAL_API_SECRET
-  if (!expected || !secret) return false
-  return secret === expected
-}
-
-// Upsert subscription — requires server secret (called from authenticated Next.js routes)
+// Upsert subscription — requires server secret (called from authenticated Next.js routes).
+// On period rollover (new currentPeriodStart differs from stored), creditsUsed is reset to 0.
 export const upsertSubscription = mutation({
   args: {
     serverSecret: v.string(),
@@ -134,22 +146,33 @@ export const upsertSubscription = mutation({
       throw new Error('Unauthorized: invalid server secret')
     }
 
+    const now = Date.now()
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000
+
     const existing = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .first()
 
-    const updateData: Record<string, unknown> = {}
-    if (args.email !== undefined) updateData.email = args.email
-    if (args.name !== undefined) updateData.name = args.name
-    if (args.stripeCustomerId !== undefined) updateData.stripeCustomerId = args.stripeCustomerId
-    if (args.stripeSubscriptionId !== undefined) updateData.stripeSubscriptionId = args.stripeSubscriptionId
-    if (args.tier !== undefined) updateData.tier = args.tier
-    if (args.status !== undefined) updateData.status = args.status
-    if (args.currentPeriodStart !== undefined) updateData.currentPeriodStart = args.currentPeriodStart
-    if (args.currentPeriodEnd !== undefined) updateData.currentPeriodEnd = args.currentPeriodEnd
-
     if (existing) {
+      const updateData: Record<string, unknown> = {}
+      if (args.email !== undefined) updateData.email = args.email
+      if (args.name !== undefined) updateData.name = args.name
+      if (args.stripeCustomerId !== undefined) updateData.stripeCustomerId = args.stripeCustomerId
+      if (args.stripeSubscriptionId !== undefined) updateData.stripeSubscriptionId = args.stripeSubscriptionId
+      if (args.tier !== undefined) updateData.tier = args.tier
+      if (args.status !== undefined) updateData.status = args.status
+      if (args.currentPeriodStart !== undefined) updateData.currentPeriodStart = args.currentPeriodStart
+      if (args.currentPeriodEnd !== undefined) updateData.currentPeriodEnd = args.currentPeriodEnd
+
+      // Reset credits when the billing period rolls over
+      if (
+        args.currentPeriodStart !== undefined &&
+        isPeriodRollover(existing.currentPeriodStart, args.currentPeriodStart)
+      ) {
+        updateData.creditsUsed = 0
+      }
+
       await ctx.db.patch(existing._id, updateData)
       return existing._id
     } else {
@@ -161,8 +184,9 @@ export const upsertSubscription = mutation({
         stripeSubscriptionId: args.stripeSubscriptionId || '',
         tier: args.tier || 'free',
         status: args.status || 'active',
-        currentPeriodStart: args.currentPeriodStart || 0,
-        currentPeriodEnd: args.currentPeriodEnd || 0
+        currentPeriodStart: args.currentPeriodStart || now,
+        currentPeriodEnd: args.currentPeriodEnd || now + thirtyDays,
+        creditsUsed: 0
       })
     }
   }
@@ -186,10 +210,11 @@ export const updateStatus = internalMutation({
       .first()
 
     if (subscription) {
-      await ctx.db.patch(subscription._id, { status })
+      const patch: Record<string, unknown> = { status }
       if (status === 'canceled') {
-        await ctx.db.patch(subscription._id, { tier: 'free' })
+        patch.tier = 'free'
       }
+      await ctx.db.patch(subscription._id, patch)
       return { success: true }
     }
 
@@ -214,9 +239,13 @@ export const downgradeToFree = mutation({
       .first()
 
     if (subscription) {
+      const now = Date.now()
       await ctx.db.patch(subscription._id, {
         tier: 'free',
-        status: 'canceled'
+        status: 'canceled',
+        creditsUsed: 0,
+        currentPeriodStart: now,
+        currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000
       })
       return { success: true }
     }
@@ -244,7 +273,9 @@ export const resetDailyUsage = internalMutation({
   }
 })
 
-// Upsert from Stripe webhook data — internal only (called from http.ts webhook handler)
+// Upsert from Stripe webhook data — internal only (called from http.ts webhook handler).
+// Detects period rollover by comparing currentPeriodStart dates and resets creditsUsed to 0
+// when the billing cycle changes (monthly renewal or plan upgrade/downgrade).
 export const upsertFromStripeInternal = internalMutation({
   args: {
     userId: v.string(),
@@ -269,6 +300,8 @@ export const upsertFromStripeInternal = internalMutation({
       .first()
 
     if (existing) {
+      const periodRolled = isPeriodRollover(existing.currentPeriodStart, args.currentPeriodStart)
+
       await ctx.db.patch(existing._id, {
         email: args.email,
         name: args.name,
@@ -277,7 +310,9 @@ export const upsertFromStripeInternal = internalMutation({
         tier: args.tier,
         status: args.status,
         currentPeriodStart: args.currentPeriodStart,
-        currentPeriodEnd: args.currentPeriodEnd
+        currentPeriodEnd: args.currentPeriodEnd,
+        // Reset credit counter on period rollover (monthly renewal or plan change)
+        creditsUsed: periodRolled ? 0 : (existing.creditsUsed ?? 0)
       })
       return existing._id
     } else {
@@ -290,39 +325,85 @@ export const upsertFromStripeInternal = internalMutation({
         tier: args.tier,
         status: args.status,
         currentPeriodStart: args.currentPeriodStart,
-        currentPeriodEnd: args.currentPeriodEnd
+        currentPeriodEnd: args.currentPeriodEnd,
+        creditsUsed: 0
       })
     }
   }
 })
 
-// Fix subscription periods — internal only (admin use)
-export const fixSubscriptionPeriods = internalMutation({
-  args: {
-    userId: v.string(),
-    email: v.optional(v.string()),
-    currentPeriodStart: v.optional(v.number()),
-    currentPeriodEnd: v.optional(v.number())
-  },
-  handler: async (ctx, args) => {
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-      .first()
-
-    if (!subscription) {
-      return { success: false, error: 'Subscription not found' }
-    }
-
+// One-time migration: backfills creditsUsed and period timestamps for all existing
+// subscription rows that pre-date this schema change.
+// Run via Convex CLI (handles auth automatically):
+//   npx convex run subscriptions:migrateToCreditsOnSubscription --prod
+export const migrateToCreditsOnSubscription = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const allSubscriptions = await ctx.db.query('subscriptions').collect()
     const now = Date.now()
     const thirtyDays = 30 * 24 * 60 * 60 * 1000
 
-    await ctx.db.patch(subscription._id, {
-      email: args.email || subscription.email,
-      currentPeriodStart: args.currentPeriodStart || now,
-      currentPeriodEnd: args.currentPeriodEnd || now + thirtyDays
-    })
+    let migrated = 0
 
-    return { success: true }
+    for (const sub of allSubscriptions) {
+      const updates: Record<string, unknown> = {}
+
+      // Ensure period timestamps are always populated
+      const periodStart = sub.currentPeriodStart && sub.currentPeriodStart > 0
+        ? sub.currentPeriodStart
+        : now
+
+      if (!sub.currentPeriodStart || sub.currentPeriodStart === 0) {
+        updates.currentPeriodStart = periodStart
+      }
+      if (!sub.currentPeriodEnd || sub.currentPeriodEnd === 0) {
+        updates.currentPeriodEnd = periodStart + thirtyDays
+      }
+
+      // Backfill creditsUsed from the corresponding tokenUsage row if available
+      if (sub.creditsUsed === undefined || sub.creditsUsed === null) {
+        const billingPeriodStart = new Date(periodStart).toISOString().split('T')[0]
+        const tokenUsage = await ctx.db
+          .query('tokenUsage')
+          .withIndex('by_userId_period', (q) =>
+            q.eq('userId', sub.userId).eq('billingPeriodStart', billingPeriodStart)
+          )
+          .first()
+
+        updates.creditsUsed = tokenUsage?.creditsUsed ?? tokenUsage?.costAccrued ?? 0
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await ctx.db.patch(sub._id, updates)
+        migrated++
+      }
+    }
+
+    return { migrated, total: allSubscriptions.length }
+  }
+})
+
+// Backfill email onto all existing tokenUsage rows that pre-date the email field.
+// Run via Convex CLI: npx convex run subscriptions:backfillTokenUsageEmail [--prod]
+export const backfillTokenUsageEmail = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const allTokenUsage = await ctx.db.query('tokenUsage').collect()
+
+    let migrated = 0
+
+    for (const row of allTokenUsage) {
+      if (row.email) continue // already has email
+
+      const subscription = await ctx.db
+        .query('subscriptions')
+        .withIndex('by_userId', (q) => q.eq('userId', row.userId))
+        .first()
+
+      await ctx.db.patch(row._id, { email: subscription?.email ?? '' })
+      migrated++
+    }
+
+    return { migrated, total: allTokenUsage.length }
   }
 })

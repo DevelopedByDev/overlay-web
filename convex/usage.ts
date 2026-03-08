@@ -35,6 +35,8 @@ function validateAccessToken(accessToken: string): boolean {
   return true
 }
 
+// creditsUsed is now read directly from subscriptions (single source of truth).
+// tokenUsage is queried only for the audit-log token counts shown on the account page.
 export const getEntitlements = query({
   args: { accessToken: v.optional(v.string()), userId: v.string() },
   handler: async (ctx, { accessToken, userId }) => {
@@ -50,17 +52,6 @@ export const getEntitlements = query({
     const dailyUsage = await ctx.db
       .query('dailyUsage')
       .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
-      .first()
-
-    const billingPeriodStart = subscription?.currentPeriodStart
-      ? new Date(subscription.currentPeriodStart).toISOString().split('T')[0]
-      : today
-
-    const tokenUsage = await ctx.db
-      .query('tokenUsage')
-      .withIndex('by_userId_period', (q) =>
-        q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart)
-      )
       .first()
 
     const tier = subscription?.tier || 'free'
@@ -87,9 +78,14 @@ export const getEntitlements = query({
     }
 
     const defaults = tierDefaults[tier]
-    const credits = tokenUsage?.creditsUsed ?? tokenUsage?.costAccrued ?? 0
+
+    // Read creditsUsed from the subscription row directly — no billingPeriodStart
+    // key lookup, so period drift can never cause a phantom reset to 0.
+    const credits = subscription?.creditsUsed ?? 0
 
     let weeklyTranscriptionSeconds = 0
+    let weeklyUsage = { ask: 0, write: 0, agent: 0 }
+
     if (tier === 'free') {
       const pastWeekDates = getPastWeekDates()
       const weeklyUsageRecords = await Promise.all(
@@ -103,19 +99,6 @@ export const getEntitlements = query({
       weeklyTranscriptionSeconds = weeklyUsageRecords.reduce(
         (sum, record) => sum + (record?.transcriptionSeconds ?? 0),
         0
-      )
-    }
-
-    let weeklyUsage = { ask: 0, write: 0, agent: 0 }
-    if (tier === 'free') {
-      const pastWeekDates = getPastWeekDates()
-      const weeklyUsageRecords = await Promise.all(
-        pastWeekDates.map(date =>
-          ctx.db
-            .query('dailyUsage')
-            .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
-            .first()
-        )
       )
       weeklyUsage = weeklyUsageRecords.reduce(
         (acc, record) => ({
@@ -149,7 +132,9 @@ export const getEntitlements = query({
   }
 })
 
-// Record a batch of usage events — requires valid access token
+// Record a batch of usage events — requires valid access token.
+// Accumulates totals from all events and does a single patch to both
+// subscriptions.creditsUsed (enforcement) and tokenUsage (audit log).
 export const recordBatch = mutation({
   args: {
     accessToken: v.string(),
@@ -179,13 +164,14 @@ export const recordBatch = mutation({
 
     const today = new Date().toISOString().split('T')[0]
 
+    // ── daily usage (free-tier enforcement) ──────────────────────────────────
     let dailyUsage = await ctx.db
       .query('dailyUsage')
       .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
       .first()
 
     if (!dailyUsage) {
-      await ctx.db.insert('dailyUsage', {
+      const id = await ctx.db.insert('dailyUsage', {
         userId,
         date: today,
         askCount: 0,
@@ -193,73 +179,96 @@ export const recordBatch = mutation({
         writeCount: 0,
         transcriptionSeconds: 0
       })
-      dailyUsage = await ctx.db
-        .query('dailyUsage')
-        .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
-        .first()
+      dailyUsage = await ctx.db.get(id)
     }
 
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
+    // Accumulate daily counters from events (single patch at end)
+    let askDelta = 0
+    let writeDelta = 0
+    let agentDelta = 0
+    let transcriptionSecondsDelta = 0
 
-    const billingPeriodStart = subscription?.currentPeriodStart
-      ? new Date(subscription.currentPeriodStart).toISOString().split('T')[0]
-      : today
+    for (const event of events) {
+      if (event.type === 'ask') askDelta++
+      else if (event.type === 'write') writeDelta++
+      else if (event.type === 'agent') agentDelta++
+      else if (event.type === 'transcription') {
+        transcriptionSecondsDelta += Math.max(0, Math.round(event.cost))
+      }
+    }
 
-    let tokenUsage = await ctx.db
-      .query('tokenUsage')
-      .withIndex('by_userId_period', (q) =>
-        q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart)
-      )
-      .first()
-
-    if (!tokenUsage) {
-      await ctx.db.insert('tokenUsage', {
-        userId,
-        billingPeriodStart,
-        creditsUsed: 0,
-        inputTokens: 0,
-        cachedInputTokens: 0,
-        outputTokens: 0
+    if (dailyUsage && (askDelta || writeDelta || agentDelta || transcriptionSecondsDelta)) {
+      await ctx.db.patch(dailyUsage._id, {
+        askCount: dailyUsage.askCount + askDelta,
+        writeCount: dailyUsage.writeCount + writeDelta,
+        agentCount: dailyUsage.agentCount + agentDelta,
+        transcriptionSeconds: (dailyUsage.transcriptionSeconds ?? 0) + transcriptionSecondsDelta
       })
-      tokenUsage = await ctx.db
+    }
+
+    // ── credit accumulation ───────────────────────────────────────────────────
+    // Sum costs across all non-transcription events
+    let totalCost = 0
+    let totalInputTokens = 0
+    let totalCachedInputTokens = 0
+    let totalOutputTokens = 0
+
+    for (const event of events) {
+      if (event.type !== 'transcription' && event.cost > 0) {
+        totalCost += event.cost
+        totalInputTokens += event.inputTokens || 0
+        totalCachedInputTokens += event.cachedTokens || 0
+        totalOutputTokens += event.outputTokens || 0
+      }
+    }
+
+    if (totalCost > 0) {
+      // Update subscriptions.creditsUsed — the authoritative enforcement counter
+      const subscription = await ctx.db
+        .query('subscriptions')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .first()
+
+      if (subscription) {
+        await ctx.db.patch(subscription._id, {
+          creditsUsed: (subscription.creditsUsed ?? 0) + totalCost
+        })
+      }
+
+      // Update tokenUsage audit log (keyed by billing period for historical records)
+      const billingPeriodStart = subscription?.currentPeriodStart
+        ? new Date(subscription.currentPeriodStart).toISOString().split('T')[0]
+        : today
+
+      let tokenUsage = await ctx.db
         .query('tokenUsage')
         .withIndex('by_userId_period', (q) =>
           q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart)
         )
         .first()
-    }
 
-    for (const event of events) {
-      if (dailyUsage) {
-        if (event.type === 'ask') {
-          await ctx.db.patch(dailyUsage._id, { askCount: dailyUsage.askCount + 1 })
-          dailyUsage.askCount++
-        } else if (event.type === 'write') {
-          await ctx.db.patch(dailyUsage._id, { writeCount: dailyUsage.writeCount + 1 })
-          dailyUsage.writeCount++
-        } else if (event.type === 'agent') {
-          await ctx.db.patch(dailyUsage._id, { agentCount: dailyUsage.agentCount + 1 })
-          dailyUsage.agentCount++
-        } else if (event.type === 'transcription') {
-          const additionalSeconds = Math.max(0, Math.round(event.cost))
-          const currentSeconds = dailyUsage.transcriptionSeconds ?? 0
-          await ctx.db.patch(dailyUsage._id, {
-            transcriptionSeconds: currentSeconds + additionalSeconds
-          })
-          dailyUsage.transcriptionSeconds = currentSeconds + additionalSeconds
-        }
+      if (!tokenUsage) {
+        const id = await ctx.db.insert('tokenUsage', {
+          userId,
+          email: subscription?.email ?? '',
+          billingPeriodStart,
+          creditsUsed: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0
+        })
+        tokenUsage = await ctx.db.get(id)
+      } else if (!tokenUsage.email && subscription?.email) {
+        // Backfill email on existing rows that were created before this field was added
+        await ctx.db.patch(tokenUsage._id, { email: subscription.email })
       }
 
-      if (tokenUsage && event.cost > 0) {
-        const currentCredits = tokenUsage.creditsUsed ?? tokenUsage.costAccrued ?? 0
+      if (tokenUsage) {
         await ctx.db.patch(tokenUsage._id, {
-          creditsUsed: currentCredits + event.cost,
-          inputTokens: tokenUsage.inputTokens + (event.inputTokens || 0),
-          cachedInputTokens: tokenUsage.cachedInputTokens + (event.cachedTokens || 0),
-          outputTokens: tokenUsage.outputTokens + (event.outputTokens || 0)
+          creditsUsed: (tokenUsage.creditsUsed ?? tokenUsage.costAccrued ?? 0) + totalCost,
+          inputTokens: tokenUsage.inputTokens + totalInputTokens,
+          cachedInputTokens: tokenUsage.cachedInputTokens + totalCachedInputTokens,
+          outputTokens: tokenUsage.outputTokens + totalOutputTokens
         })
       }
     }
@@ -293,13 +302,14 @@ export const recordUsage = mutation({
 
     const today = new Date().toISOString().split('T')[0]
 
+    // ── daily usage ───────────────────────────────────────────────────────────
     let dailyUsage = await ctx.db
       .query('dailyUsage')
       .withIndex('by_userId_date', (q) => q.eq('userId', args.userId).eq('date', today))
       .first()
 
     if (!dailyUsage) {
-      await ctx.db.insert('dailyUsage', {
+      const id = await ctx.db.insert('dailyUsage', {
         userId: args.userId,
         date: today,
         askCount: 0,
@@ -307,10 +317,7 @@ export const recordUsage = mutation({
         writeCount: 0,
         transcriptionSeconds: 0
       })
-      dailyUsage = await ctx.db
-        .query('dailyUsage')
-        .withIndex('by_userId_date', (q) => q.eq('userId', args.userId).eq('date', today))
-        .first()
+      dailyUsage = await ctx.db.get(id)
     }
 
     if (dailyUsage) {
@@ -322,9 +329,22 @@ export const recordUsage = mutation({
         await ctx.db.patch(dailyUsage._id, { agentCount: dailyUsage.agentCount + 1 })
       } else if (args.type === 'transcription') {
         const additionalSeconds = Math.max(0, Math.round(args.cost))
-        const currentSeconds = dailyUsage.transcriptionSeconds ?? 0
         await ctx.db.patch(dailyUsage._id, {
-          transcriptionSeconds: currentSeconds + additionalSeconds
+          transcriptionSeconds: (dailyUsage.transcriptionSeconds ?? 0) + additionalSeconds
+        })
+      }
+    }
+
+    // ── credit accumulation ───────────────────────────────────────────────────
+    if (args.type !== 'transcription' && args.cost > 0) {
+      const subscription = await ctx.db
+        .query('subscriptions')
+        .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+        .first()
+
+      if (subscription) {
+        await ctx.db.patch(subscription._id, {
+          creditsUsed: (subscription.creditsUsed ?? 0) + args.cost
         })
       }
     }
@@ -333,7 +353,7 @@ export const recordUsage = mutation({
   }
 })
 
-// Reset token usage for new billing period — internal only
+// Reset token usage for new billing period — internal only (audit log housekeeping)
 export const resetTokenUsage = internalMutation({
   args: {
     userId: v.string(),
