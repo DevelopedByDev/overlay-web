@@ -360,6 +360,11 @@ export const resetTokenUsage = internalMutation({
     newPeriodStart: v.string()
   },
   handler: async (ctx, { userId, newPeriodStart }) => {
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+
     const existing = await ctx.db
       .query('tokenUsage')
       .withIndex('by_userId_period', (q) =>
@@ -370,6 +375,7 @@ export const resetTokenUsage = internalMutation({
     if (!existing) {
       await ctx.db.insert('tokenUsage', {
         userId,
+        email: subscription?.email ?? '',
         billingPeriodStart: newPeriodStart,
         creditsUsed: 0,
         inputTokens: 0,

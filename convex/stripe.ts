@@ -61,7 +61,7 @@ export const createSubscriptionCheckout = action({
 })
 
 // Create a customer portal session for subscription management
-export const createCustomerPortalSession = action({
+export const createBillingPortalSession: ReturnType<typeof action> = action({
   args: {
     accessToken: v.string(),
     userId: v.string(),
@@ -71,7 +71,7 @@ export const createCustomerPortalSession = action({
   returns: v.object({
     url: v.string()
   }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ url: string }> => {
     if (!validateAccessToken(args.accessToken)) {
       throw new Error('Invalid or expired access token')
     }

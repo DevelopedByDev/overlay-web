@@ -585,7 +585,6 @@ function AccountPageContent() {
                     {(() => {
                       const totalUsed = data.usage.ask + data.usage.agent + data.usage.write
                       const totalLimit = data.limits.askPerDay + data.limits.agentPerDay + data.limits.writePerDay
-                      const percentageRemaining = totalLimit > 0 ? Math.round(((totalLimit - totalUsed) / totalLimit) * 100) : 0
                       return (
                         <ProgressBar
                           used={totalUsed}

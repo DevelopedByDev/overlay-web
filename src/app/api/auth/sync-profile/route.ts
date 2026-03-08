@@ -16,8 +16,16 @@ export async function POST() {
       )
     }
 
+    if (!session.accessToken) {
+      return NextResponse.json(
+        { error: 'Missing access token' },
+        { status: 401 }
+      )
+    }
+
     // Sync user profile to Convex
     const result = await convex.mutation(api.users.syncUserProfile, {
+      accessToken: session.accessToken,
       userId: session.user.id,
       email: session.user.email,
       firstName: session.user.firstName,

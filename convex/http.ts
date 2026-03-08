@@ -6,6 +6,29 @@ import { internal } from './_generated/api'
 
 const http = httpRouter()
 
+function getSubscriptionPeriodMs(subscription: Stripe.Subscription): {
+  currentPeriodStart: number
+  currentPeriodEnd: number
+} {
+  const now = Date.now()
+  const thirtyDays = 30 * 24 * 60 * 60 * 1000
+  const firstItem = subscription.items.data[0]
+
+  const itemPeriodStart = firstItem?.current_period_start
+  const itemPeriodEnd = firstItem?.current_period_end
+
+  return {
+    currentPeriodStart:
+      typeof itemPeriodStart === 'number' && itemPeriodStart > 0
+        ? itemPeriodStart * 1000
+        : subscription.billing_cycle_anchor * 1000 || now,
+    currentPeriodEnd:
+      typeof itemPeriodEnd === 'number' && itemPeriodEnd > 0
+        ? itemPeriodEnd * 1000
+        : now + thirtyDays,
+  }
+}
+
 // Map Stripe price ID to subscription tier
 function mapPriceToTier(priceId?: string): 'free' | 'pro' | 'max' {
   // Check both DEV_ prefixed (for dev environment) and non-prefixed (for production) env vars
@@ -77,12 +100,7 @@ registerRoutes(http, components.stripe, {
       const email = subscription.metadata?.email || customerInfo.email
       const name = customerInfo.name
 
-      const now = Date.now()
-      const thirtyDays = 30 * 24 * 60 * 60 * 1000
-      const periodStart = subscription.current_period_start
-      const periodEnd = subscription.current_period_end
-      const currentPeriodStart = (typeof periodStart === 'number' && periodStart > 0) ? periodStart * 1000 : now
-      const currentPeriodEnd = (typeof periodEnd === 'number' && periodEnd > 0) ? periodEnd * 1000 : now + thirtyDays
+      const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
 
       await ctx.runMutation(internal.subscriptions.upsertFromStripeInternal, {
         userId,
@@ -115,12 +133,7 @@ registerRoutes(http, components.stripe, {
       const email = subscription.metadata?.email || customerInfo.email
       const name = customerInfo.name
 
-      const now = Date.now()
-      const thirtyDays = 30 * 24 * 60 * 60 * 1000
-      const periodStart = subscription.current_period_start
-      const periodEnd = subscription.current_period_end
-      const currentPeriodStart = (typeof periodStart === 'number' && periodStart > 0) ? periodStart * 1000 : now
-      const currentPeriodEnd = (typeof periodEnd === 'number' && periodEnd > 0) ? periodEnd * 1000 : now + thirtyDays
+      const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
 
       await ctx.runMutation(internal.subscriptions.upsertFromStripeInternal, {
         userId,
@@ -152,7 +165,9 @@ registerRoutes(http, components.stripe, {
 
     'invoice.payment_failed': async (ctx, event: Stripe.InvoicePaymentFailedEvent) => {
       const invoice = event.data.object
-      const userId = invoice.subscription_details?.metadata?.userId ?? invoice.metadata?.userId
+      const userId =
+        invoice.parent?.subscription_details?.metadata?.userId ??
+        invoice.metadata?.userId
 
       if (userId) {
         await ctx.runMutation(internal.subscriptions.updateStatus, {

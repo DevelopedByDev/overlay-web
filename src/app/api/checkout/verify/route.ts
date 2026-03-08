@@ -3,6 +3,23 @@ import { stripe } from '@/lib/stripe'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 
+function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscription) {
+  const now = Date.now()
+  const thirtyDays = 30 * 24 * 60 * 60 * 1000
+  const firstItem = subscription.items.data[0]
+
+  return {
+    currentPeriodStart:
+      typeof firstItem?.current_period_start === 'number' && firstItem.current_period_start > 0
+        ? firstItem.current_period_start * 1000
+        : subscription.billing_cycle_anchor * 1000 || now,
+    currentPeriodEnd:
+      typeof firstItem?.current_period_end === 'number' && firstItem.current_period_end > 0
+        ? firstItem.current_period_end * 1000
+        : now + thirtyDays,
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Validate user session
@@ -38,6 +55,7 @@ export async function POST(request: NextRequest) {
 
     const subscription = checkoutSession.subscription as import('stripe').Stripe.Subscription
     const tier = checkoutSession.metadata?.tier as 'pro' | 'max' || 'pro'
+    const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
 
     await convex.mutation('subscriptions:upsertSubscription', {
       serverSecret: process.env.INTERNAL_API_SECRET || '',
@@ -46,8 +64,8 @@ export async function POST(request: NextRequest) {
       stripeSubscriptionId: subscription.id,
       tier,
       status: 'active',
-      currentPeriodStart: (subscription as unknown as { current_period_start: number }).current_period_start,
-      currentPeriodEnd: (subscription as unknown as { current_period_end: number }).current_period_end
+      currentPeriodStart,
+      currentPeriodEnd
     })
 
     console.log(`[Checkout Verify] Subscription verified and updated`)

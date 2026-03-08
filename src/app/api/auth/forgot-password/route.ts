@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await sendPasswordResetEmail(email)
+    await sendPasswordResetEmail(email)
 
     // Always return success to prevent email enumeration
     return NextResponse.json({
