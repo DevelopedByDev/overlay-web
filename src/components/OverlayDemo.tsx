@@ -34,6 +34,8 @@ export function OverlayDemo({
   const [showOverlay, setShowOverlay] = useState(false);
   const [showAnnotation, setShowAnnotation] = useState(false);
   const [hasManuallyToggled, setHasManuallyToggled] = useState(false);
+  const [screenImageError, setScreenImageError] = useState(false);
+  const [overlayImageError, setOverlayImageError] = useState(false);
   const prevProgressRef = useRef(sectionProgress);
   const hasOpenedRef = useRef(false);
 
@@ -145,6 +147,8 @@ export function OverlayDemo({
     }
   };
 
+  if (screenImageError) return null;
+
   return (
     <div className="w-full max-w-5xl mx-auto">
       {/* Screen Container */}
@@ -157,6 +161,7 @@ export function OverlayDemo({
             width={1400}
             height={900}
             className="w-full h-auto object-cover"
+            onError={() => setScreenImageError(true)}
           />
         </div>
 
@@ -173,13 +178,16 @@ export function OverlayDemo({
               }}
               className={`${getOverlayClasses()} rounded-xl overflow-hidden`}
             >
-              <Image
-                src={overlayImage}
-                alt={`${title} overlay`}
-                width={800}
-                height={600}
-                className="w-full h-auto object-cover"
-              />
+              {!overlayImageError && (
+                <Image
+                  src={overlayImage}
+                  alt={`${title} overlay`}
+                  width={800}
+                  height={600}
+                  className="w-full h-auto object-cover"
+                  onError={() => setOverlayImageError(true)}
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>

@@ -86,6 +86,11 @@ export function AllInOnePlace({ scrollProgress = 0, isActive = false }: AllInOne
   const [audioLevels, setAudioLevels] = useState<number[]>(
     Array(WAVEFORM_BAR_COUNT).fill(0)
   );
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+  const handleImageError = (key: string) => {
+    setImageErrors(prev => new Set(prev).add(key));
+  };
   const animationRef = useRef<number | null>(null);
   const prevProgressRef = useRef(scrollProgress);
 
@@ -265,13 +270,16 @@ export function AllInOnePlace({ scrollProgress = 0, isActive = false }: AllInOne
             className="fixed left-0 top-1/2 -translate-y-1/2 z-10"
             style={{ marginLeft: "-180px" }}
           >
-            <Image
-              src="/assets/overlays/note-overlay.png"
-              alt="Note Overlay"
-              width={600}
-              height={480}
-              className="rounded-2xl"
-            />
+            {!imageErrors.has('note') && (
+              <Image
+                src="/assets/overlays/note-overlay.png"
+                alt="Note Overlay"
+                width={600}
+                height={480}
+                className="rounded-2xl"
+                onError={() => handleImageError('note')}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -289,13 +297,16 @@ export function AllInOnePlace({ scrollProgress = 0, isActive = false }: AllInOne
             className="fixed left-1/2 -translate-x-1/2 top-0 z-60"
             style={{ marginTop: "-260px" }}
           >
-            <Image
-              src="/assets/overlays/chat-overlay.png"
-              alt="Chat Overlay"
-              width={550}
-              height={400}
-              className="rounded-2xl"
-            />
+            {!imageErrors.has('chat') && (
+              <Image
+                src="/assets/overlays/chat-overlay.png"
+                alt="Chat Overlay"
+                width={550}
+                height={400}
+                className="rounded-2xl"
+                onError={() => handleImageError('chat')}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -313,13 +324,16 @@ export function AllInOnePlace({ scrollProgress = 0, isActive = false }: AllInOne
             className="fixed right-0 top-1/2 -translate-y-1/2 z-10"
             style={{ marginRight: "-200px" }}
           >
-            <Image
-              src="/assets/overlays/browser-overlay.png"
-              alt="Browser Overlay"
-              width={680}
-              height={540}
-              className="rounded-2xl"
-            />
+            {!imageErrors.has('browser') && (
+              <Image
+                src="/assets/overlays/browser-overlay.png"
+                alt="Browser Overlay"
+                width={680}
+                height={540}
+                className="rounded-2xl"
+                onError={() => handleImageError('browser')}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -338,13 +352,16 @@ export function AllInOnePlace({ scrollProgress = 0, isActive = false }: AllInOne
             style={{ marginBottom: "-120px" }}
             onClick={resetTranscription}
           >
-            <Image
-              src="/assets/overlays/transcription-overlay.png"
-              alt="Transcription Result"
-              width={600}
-              height={380}
-              className="rounded-2xl"
-            />
+            {!imageErrors.has('transcription') && (
+              <Image
+                src="/assets/overlays/transcription-overlay.png"
+                alt="Transcription Result"
+                width={600}
+                height={380}
+                className="rounded-2xl"
+                onError={() => handleImageError('transcription')}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
