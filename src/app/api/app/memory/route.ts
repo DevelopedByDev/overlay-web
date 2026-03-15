@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
-import { addMemory, listMemories } from '@/lib/app-store'
+import { addMemory, listMemories, removeMemory } from '@/lib/app-store'
 
 export async function GET() {
   try {
@@ -35,5 +35,22 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[Memory API] POST error:', error)
     return NextResponse.json({ error: 'Failed to add memory' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const memoryId = request.nextUrl.searchParams.get('memoryId')
+    if (!memoryId) return NextResponse.json({ error: 'memoryId required' }, { status: 400 })
+
+    await convex.mutation('memories:remove', { memoryId })
+    removeMemory(memoryId)
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('[Memory API] DELETE error:', error)
+    return NextResponse.json({ error: 'Failed to delete memory' }, { status: 500 })
   }
 }

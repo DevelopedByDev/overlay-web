@@ -28,6 +28,11 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'grok-4-1-fast-reasoning', name: 'Grok 4.1 Fast', provider: 'xai', description: 'Fast reasoning', supportsVision: true, supportsReasoning: true, supportsSearch: false },
   // Groq Models
   { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', provider: 'groq', description: 'Versatile', supportsVision: false, supportsReasoning: false, supportsSearch: false },
+  // OpenRouter Models
+  { id: 'openrouter/free', name: 'Auto (Free)', provider: 'openrouter', description: 'Free router', supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'arcee-ai/trinity-large-preview:free', name: 'Trinity Large', provider: 'openrouter', description: 'Free reasoning', supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'openrouter/hunter-alpha', name: 'Hunter Alpha', provider: 'openrouter', description: 'Free', supportsVision: false, supportsReasoning: false, supportsSearch: false },
+  { id: 'openrouter/healer-alpha', name: 'Healer Alpha', provider: 'openrouter', description: 'Free', supportsVision: false, supportsReasoning: false, supportsSearch: false },
 ]
 
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'

@@ -105,6 +105,15 @@ export function createChat(userId: string, title: string, model: string): string
   return chatId
 }
 
+export function updateChat(chatId: string, updates: { title?: string; model?: string }): boolean {
+  const chat = getStore().chats.find((entry) => entry._id === chatId)
+  if (!chat) return false
+  if (updates.title !== undefined) chat.title = updates.title
+  if (updates.model !== undefined) chat.model = updates.model
+  chat.lastModified = Date.now()
+  return true
+}
+
 export function deleteChat(chatId: string): void {
   const store = getStore()
   store.chats = store.chats.filter((chat) => chat._id !== chatId)
@@ -230,6 +239,14 @@ export function createAgent(userId: string, title: string): string {
     lastModified: Date.now(),
   })
   return agentId
+}
+
+export function updateAgent(agentId: string, updates: { title?: string }): boolean {
+  const agent = getStore().agents.find((a) => a._id === agentId)
+  if (!agent) return false
+  if (updates.title !== undefined) agent.title = updates.title
+  agent.lastModified = Date.now()
+  return true
 }
 
 export function deleteAgent(agentId: string): void {

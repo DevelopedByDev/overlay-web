@@ -477,7 +477,7 @@ export default function NotebookEditor({ userId: _userId }: { userId: string }) 
     <div className="flex h-full">
       {/* Notes sidebar */}
       <div className="w-52 h-full flex flex-col border-r border-[#e5e5e5] bg-[#f5f5f5]">
-        <div className="px-3 py-3 border-b border-[#e5e5e5]">
+        <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3">
           <button
             onClick={createNote}
             className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
@@ -513,7 +513,7 @@ export default function NotebookEditor({ userId: _userId }: { userId: string }) 
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {activeNote ? (
           <>
-            <div className="px-6 pt-6 pb-3 border-b border-[#e5e5e5] flex items-center justify-between">
+            <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-6">
               <input
                 type="text"
                 value={title}

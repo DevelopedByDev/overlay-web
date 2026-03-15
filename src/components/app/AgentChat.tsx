@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Loader2, Plus, Trash2 } from 'lucide-react'
+import { Send, Loader2, Plus, Trash2, ChevronDown } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import ReactMarkdown from 'react-markdown'
+import { AVAILABLE_MODELS } from '@/lib/models'
 
 interface Agent {
   _id: string
@@ -27,10 +28,36 @@ const SUGGESTIONS = [
   'Connect a tool I need and then use it to finish my task',
 ]
 
+// Agent-capable models only (support tool use)
+const AGENT_MODELS = AVAILABLE_MODELS.filter(
+  (m) => m.provider === 'anthropic' || m.provider === 'openrouter'
+)
+const DEFAULT_AGENT_MODEL = 'claude-sonnet-4-6'
+
+async function generateTitle(text: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/app/generate-title', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return data.title || null
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
 export default function AgentChat() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_AGENT_MODEL)
+  const [showModelPicker, setShowModelPicker] = useState(false)
   const [input, setInput] = useState('')
+  const [isFirstMessage, setIsFirstMessage] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const { messages, sendMessage, status, setMessages } = useChat({
@@ -70,6 +97,7 @@ export default function AgentChat() {
     if (res.ok) {
       const data = await res.json()
       setActiveAgentId(data.id)
+      setIsFirstMessage(true)
       setMessages([])
       await loadAgents()
       return data.id
@@ -79,6 +107,7 @@ export default function AgentChat() {
 
   async function loadAgent(agentId: string) {
     setActiveAgentId(agentId)
+    setIsFirstMessage(false)
     try {
       const res = await fetch(`/api/app/agents?agentId=${agentId}&messages=true`)
       if (res.ok) {
@@ -105,13 +134,31 @@ export default function AgentChat() {
     if (!text || isLoading) return
     const agentId = activeAgentId || await createNewAgent()
     if (!agentId) return
+    const wasFirst = isFirstMessage
     setInput('')
+    setIsFirstMessage(false)
     await sendMessage(
       { role: 'user', parts: [{ type: 'text', text }] },
       { body: { agentId } }
     )
     loadAgents()
+
+    // Asynchronously generate a title from the first message
+    if (wasFirst) {
+      generateTitle(text).then((title) => {
+        if (title) {
+          fetch('/api/app/agents', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agentId, title }),
+          }).then(() => loadAgents())
+        }
+      })
+    }
   }
+
+  const activeAgent = agents.find((a) => a._id === activeAgentId)
+  const currentModel = AGENT_MODELS.find((m) => m.id === selectedModel)
 
   return (
     <div className="flex h-full">
@@ -151,6 +198,38 @@ export default function AgentChat() {
 
       {/* Main agent area */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
+        {/* Header */}
+        <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-4">
+          <h2 className="text-sm font-medium text-[#0a0a0a] truncate max-w-[50%]">
+            {activeAgent?.title || 'New conversation'}
+          </h2>
+          <div className="relative">
+            <button
+              onClick={() => setShowModelPicker(!showModelPicker)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-[#f0f0f0] text-[#525252] hover:bg-[#e8e8e8] transition-colors"
+            >
+              {currentModel?.name || 'Select model'}
+              <ChevronDown size={11} />
+            </button>
+            {showModelPicker && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1 max-h-64 overflow-y-auto">
+                {AGENT_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => { setSelectedModel(m.id); setShowModelPicker(false) }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#f5f5f5] flex items-center justify-between ${
+                      m.id === selectedModel ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'
+                    }`}
+                  >
+                    <span>{m.name}</span>
+                    <span className="text-[#aaa] ml-2">{m.provider}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col gap-4">
             {messages.length === 0 && (

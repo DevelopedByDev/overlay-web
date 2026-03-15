@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
-import { createAgent, deleteAgent, listAgents, listAgentMessages } from '@/lib/app-store'
+import { createAgent, deleteAgent, listAgents, listAgentMessages, updateAgent } from '@/lib/app-store'
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,6 +61,22 @@ export async function POST(request: NextRequest) {
     })
   } catch {
     return NextResponse.json({ error: 'Failed to create agent' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { agentId, title } = await request.json()
+    if (!agentId) return NextResponse.json({ error: 'agentId required' }, { status: 400 })
+
+    await convex.mutation('agents:update', { agentId, title })
+    updateAgent(agentId, { title })
+    return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: 'Failed to update agent' }, { status: 500 })
   }
 }
 

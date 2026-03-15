@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
-import { createChat, deleteChat, listChats, listMessages } from '@/lib/app-store'
+import { createChat, deleteChat, listChats, listMessages, updateChat } from '@/lib/app-store'
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,6 +63,22 @@ export async function POST(request: NextRequest) {
     })
   } catch {
     return NextResponse.json({ error: 'Failed to create chat' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { chatId, title } = await request.json()
+    if (!chatId) return NextResponse.json({ error: 'chatId required' }, { status: 400 })
+
+    await convex.mutation('chats:update', { chatId, title })
+    updateChat(chatId, { title })
+    return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: 'Failed to update chat' }, { status: 500 })
   }
 }
 

@@ -22,6 +22,23 @@ function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> })
     .join('')
 }
 
+async function generateTitle(text: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/app/generate-title', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return data.title || null
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
 export default function ChatInterface({ userId: _userId }: { userId: string }) {
   void _userId
   const [chats, setChats] = useState<Chat[]>([])
@@ -29,6 +46,7 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID)
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [input, setInput] = useState('')
+  const [isFirstMessage, setIsFirstMessage] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const transport = new DefaultChatTransport({
@@ -64,6 +82,7 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
     if (res.ok) {
       const data = await res.json()
       setActiveChatId(data.id)
+      setIsFirstMessage(true)
       setMessages([])
       await loadChats()
       return data.id
@@ -74,6 +93,7 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
 
   async function loadChat(chatId: string) {
     setActiveChatId(chatId)
+    setIsFirstMessage(false)
     try {
       const res = await fetch(`/api/app/chats?chatId=${chatId}&messages=true`)
       if (res.ok) {
@@ -100,14 +120,30 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
     if (!text || isLoading) return
     const chatId = activeChatId || await createNewChat()
     if (!chatId) return
+    const wasFirst = isFirstMessage
     setInput('')
+    setIsFirstMessage(false)
     await sendMessage(
       { role: 'user', parts: [{ type: 'text', text }] },
       { body: { modelId: selectedModel, chatId } }
     )
     loadChats()
+
+    // Asynchronously generate a title from the first message
+    if (wasFirst) {
+      generateTitle(text).then((title) => {
+        if (title) {
+          fetch('/api/app/chats', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chatId, title }),
+          }).then(() => loadChats())
+        }
+      })
+    }
   }
 
+  const activeChat = chats.find((c) => c._id === activeChatId)
   const currentModel = AVAILABLE_MODELS.find((m) => m.id === selectedModel)
   const lastMessage = messages[messages.length - 1]
   const showLoadingIndicator =
@@ -157,8 +193,8 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Header */}
         <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-4">
-          <h2 className="text-sm font-medium text-[#0a0a0a]">
-            {activeChatId ? 'Chat' : 'New conversation'}
+          <h2 className="text-sm font-medium text-[#0a0a0a] truncate max-w-[50%]">
+            {activeChat?.title || 'New conversation'}
           </h2>
           <div className="relative">
             <button
@@ -169,7 +205,7 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
               <ChevronDown size={11} />
             </button>
             {showModelPicker && (
-              <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1">
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1 max-h-72 overflow-y-auto">
                 {AVAILABLE_MODELS.map((m) => (
                   <button
                     key={m.id}
