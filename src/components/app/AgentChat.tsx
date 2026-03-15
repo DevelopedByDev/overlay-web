@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, Loader2, Plus, Trash2, ChevronDown } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import ReactMarkdown from 'react-markdown'
 import { AVAILABLE_MODELS } from '@/lib/models'
+import { MarkdownMessage } from './MarkdownMessage'
 
 interface Agent {
   _id: string
@@ -28,8 +28,8 @@ const SUGGESTIONS = [
   'Connect a tool I need and then use it to finish my task',
 ]
 
-// Agent-capable models only (support tool use)
-const AGENT_MODELS = AVAILABLE_MODELS.filter((m) => m.provider === 'anthropic')
+// All models — tool use support varies by provider
+const AGENT_MODELS = AVAILABLE_MODELS
 const DEFAULT_AGENT_MODEL = 'claude-sonnet-4-6'
 
 async function generateTitle(text: string): Promise<string | null> {
@@ -58,9 +58,8 @@ export default function AgentChat() {
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const { messages, sendMessage, status, setMessages } = useChat({
-    transport: new DefaultChatTransport({ api: '/api/app/agent' }),
-  })
+  const transport = useMemo(() => new DefaultChatTransport({ api: '/api/app/agent' }), [])
+  const { messages, sendMessage, status, setMessages, stop } = useChat({ transport })
   const isLoading = status === 'streaming' || status === 'submitted'
   const lastMessage = messages[messages.length - 1]
   const showLoadingIndicator =
@@ -137,7 +136,7 @@ export default function AgentChat() {
     setIsFirstMessage(false)
     await sendMessage(
       { role: 'user', parts: [{ type: 'text', text }] },
-      { body: { agentId } }
+      { body: { agentId, modelId: selectedModel } }
     )
     loadAgents()
 
@@ -210,7 +209,7 @@ export default function AgentChat() {
               <ChevronDown size={11} />
             </button>
             {showModelPicker && (
-              <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1 max-h-64 overflow-y-auto">
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1 max-h-72 overflow-y-auto">
                 {AGENT_MODELS.map((m) => (
                   <button
                     key={m.id}
@@ -259,34 +258,26 @@ export default function AgentChat() {
               const toolParts = msg.parts?.filter((p) => p.type === 'tool-invocation') || []
 
               return (
-                <div key={msg.id}>
+                <div key={msg.id} className={`flex message-appear ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.role === 'user' ? (
-                    <div className="flex justify-end">
-                      <div className="max-w-[75%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm bg-[#0a0a0a] text-[#fafafa]">
-                        <span className="whitespace-pre-wrap">{text}</span>
-                      </div>
+                    <div className="max-w-[75%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm bg-[#0a0a0a] text-[#fafafa]">
+                      <span className="whitespace-pre-wrap">{text}</span>
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="w-full space-y-2">
                       {toolParts.map((part, i) => {
                         const tp = part as { type: string; toolInvocation?: { toolName: string; state: string } }
                         return (
-                          <div key={i} className="flex justify-center">
-                            <div className="flex items-center gap-2 text-xs text-[#888] bg-[#f5f5f5] rounded-lg px-3 py-2">
-                              <span className="text-[#aaa]">⚙</span>
-                              <span className="font-medium">{tp.toolInvocation?.toolName}</span>
-                              {tp.toolInvocation?.state === 'result' && <span className="text-[#aaa]">- done</span>}
-                            </div>
+                          <div key={i} className="flex items-center gap-2 text-xs text-[#888] bg-[#f5f5f5] rounded-lg px-3 py-2 w-fit">
+                            <span className="text-[#aaa]">⚙</span>
+                            <span className="font-medium">{tp.toolInvocation?.toolName}</span>
+                            {tp.toolInvocation?.state === 'result' && <span className="text-[#aaa]">- done</span>}
                           </div>
                         )
                       })}
                       {text && (
-                        <div className="flex justify-center">
-                          <div className="max-w-[85%] px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
-                            <div className="markdown-content">
-                              <ReactMarkdown>{text}</ReactMarkdown>
-                            </div>
-                          </div>
+                        <div className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
+                          <MarkdownMessage text={text} isStreaming={isLoading && msg.id === lastMessage?.id} />
                         </div>
                       )}
                     </div>
@@ -296,8 +287,8 @@ export default function AgentChat() {
             })}
 
             {showLoadingIndicator && (
-              <div className="flex justify-center">
-                <div className="flex items-center gap-2 text-xs text-[#888]">
+              <div className="flex justify-start">
+                <div className="flex items-center gap-2 px-1 py-1 text-xs italic text-[#888]">
                   <Loader2 size={12} className="animate-spin" />
                   Agent is working...
                 </div>
@@ -323,13 +314,23 @@ export default function AgentChat() {
                 }}
                 className="flex-1 bg-transparent text-sm text-[#0a0a0a] placeholder-[#aaa] resize-none outline-none max-h-32"
               />
-              <button
-                onClick={handleSend}
-                disabled={isLoading || !input.trim()}
-                className="flex-shrink-0 p-1.5 rounded-lg bg-[#0a0a0a] text-[#fafafa] disabled:opacity-40 hover:bg-[#333] transition-colors"
-              >
-                <Send size={14} />
-              </button>
+              {isLoading ? (
+                <button
+                  onClick={() => stop()}
+                  className="shrink-0 p-1.5 rounded-lg bg-[#0a0a0a] text-[#fafafa] hover:bg-[#333] transition-colors"
+                  title="Stop generating"
+                >
+                  <div className="w-3.5 h-3.5 bg-[#fafafa] rounded-sm" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className="shrink-0 p-1.5 rounded-lg bg-[#0a0a0a] text-[#fafafa] disabled:opacity-40 hover:bg-[#333] transition-colors"
+                >
+                  <Send size={14} />
+                </button>
+              )}
             </div>
           </div>
         </div>

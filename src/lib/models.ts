@@ -28,6 +28,13 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'grok-4-1-fast-reasoning', name: 'Grok 4.1 Fast', provider: 'xai', description: 'Fast reasoning', supportsVision: true, supportsReasoning: true, supportsSearch: false },
   // Groq Models
   { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', provider: 'groq', description: 'Versatile', supportsVision: false, supportsReasoning: false, supportsSearch: false },
+  { id: 'moonshotai/kimi-k2-instruct-0905', name: 'Kimi K2', provider: 'groq', description: 'MoonShot AI', supportsVision: false, supportsReasoning: false, supportsSearch: false },
+  { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'OpenAI OSS', supportsVision: false, supportsReasoning: false, supportsSearch: false },
+  // OpenRouter Models (free)
+  { id: 'openrouter/free', name: 'Free Router', provider: 'openrouter', description: 'Auto free model', supportsVision: false, supportsReasoning: false, supportsSearch: false },
+  { id: 'openrouter/hunter-alpha', name: 'Hunter Alpha', provider: 'openrouter', description: 'Free alpha model', supportsVision: false, supportsReasoning: false, supportsSearch: false },
+  { id: 'openrouter/healer-alpha', name: 'Healer Alpha', provider: 'openrouter', description: 'Free alpha model', supportsVision: false, supportsReasoning: false, supportsSearch: false },
+  { id: 'arcee-ai/trinity-large-preview:free', name: 'Trinity Large (Free)', provider: 'openrouter', description: 'Free via OpenRouter', supportsVision: false, supportsReasoning: false, supportsSearch: false },
 ]
 
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'

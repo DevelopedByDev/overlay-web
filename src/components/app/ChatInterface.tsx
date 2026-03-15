@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, Plus, Trash2, ChevronDown, Loader2 } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID } from '@/lib/models'
-import ReactMarkdown from 'react-markdown'
+import { MarkdownMessage } from './MarkdownMessage'
 
 interface Chat {
   _id: string
@@ -49,11 +49,9 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const transport = new DefaultChatTransport({
-    api: '/api/app/chat',
-  })
+  const transport = useMemo(() => new DefaultChatTransport({ api: '/api/app/chat' }), [])
 
-  const { messages, sendMessage, status, setMessages } = useChat({ transport })
+  const { messages, sendMessage, status, setMessages, stop } = useChat({ transport })
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
@@ -241,13 +239,11 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
               return (
                 <div
                   key={msg.id}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-center'}`}
+                  className={`flex message-appear ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   {msg.role === 'assistant' ? (
-                    <div className="max-w-[85%] px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
-                      <div className="markdown-content">
-                        <ReactMarkdown>{text}</ReactMarkdown>
-                      </div>
+                    <div className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
+                      <MarkdownMessage text={text} isStreaming={isLoading && msg.id === lastMessage?.id} />
                     </div>
                   ) : (
                     <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm leading-relaxed text-[#fafafa]">
@@ -258,7 +254,7 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
               )
             })}
             {showLoadingIndicator && (
-              <div className="flex justify-center">
+              <div className="flex justify-start">
                 <div className="flex items-center gap-2 px-1 py-1 text-xs italic text-[#888]">
                   <Loader2 size={12} className="animate-spin" />
                   Thinking...
@@ -286,13 +282,23 @@ export default function ChatInterface({ userId: _userId }: { userId: string }) {
                 }}
                 className="flex-1 bg-transparent text-sm text-[#0a0a0a] placeholder-[#aaa] resize-none outline-none max-h-32"
               />
-              <button
-                onClick={handleSend}
-                disabled={isLoading || !input.trim()}
-                className="flex-shrink-0 p-1.5 rounded-lg bg-[#0a0a0a] text-[#fafafa] disabled:opacity-40 hover:bg-[#333] transition-colors"
-              >
-                <Send size={14} />
-              </button>
+              {isLoading ? (
+                <button
+                  onClick={() => stop()}
+                  className="shrink-0 p-1.5 rounded-lg bg-[#0a0a0a] text-[#fafafa] hover:bg-[#333] transition-colors"
+                  title="Stop generating"
+                >
+                  <div className="w-3.5 h-3.5 bg-[#fafafa] rounded-sm" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className="shrink-0 p-1.5 rounded-lg bg-[#0a0a0a] text-[#fafafa] disabled:opacity-40 hover:bg-[#333] transition-colors"
+                >
+                  <Send size={14} />
+                </button>
+              )}
             </div>
           </div>
         </div>

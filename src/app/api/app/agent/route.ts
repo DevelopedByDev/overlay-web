@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type UIMessage } from 'ai'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
@@ -13,10 +13,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { messages, systemPrompt, agentId }: {
+    const { messages, systemPrompt, agentId, modelId }: {
       messages: UIMessage[]
       systemPrompt?: string
       agentId?: string
+      modelId?: string
     } = await request.json()
     const userId = session.user.id
 
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
           role: 'user',
           content: latestUserText,
         })
+        console.log(`[Agent] User message saved: ${saved ? 'ok' : 'null (convex error)'}`)
         if (!saved) {
           addAgentMessage({ agentId, userId, role: 'user', content: latestUserText })
         }
@@ -46,8 +48,8 @@ export async function POST(request: NextRequest) {
             title: latestUserText.slice(0, 48),
           })
         }
-      } catch {
-        // optional
+      } catch (err) {
+        console.error('[Agent] Failed to save user message:', err)
       }
     }
 
@@ -68,7 +70,8 @@ export async function POST(request: NextRequest) {
     }
 
     const modelMessages = await convertToModelMessages(messages)
-    const languageModel = await getGatewayLanguageModel('claude-sonnet-4-6', session.accessToken)
+    const effectiveModelId = modelId || 'claude-sonnet-4-6'
+    const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
     const tools = await createBrowserUnifiedTools({
       userId,
       accessToken: session.accessToken,
@@ -86,32 +89,26 @@ export async function POST(request: NextRequest) {
 
     const result = await agent.stream({
       messages: modelMessages,
-    })
-
-    // Save assistant message after stream completes
-    if (agentId) {
-      after(async () => {
-        try {
-          const resultWithText = result as unknown as { text?: Promise<string> }
-          if (resultWithText.text) {
-            const assistantText = await resultWithText.text
-            if (assistantText) {
-              const saved = await convex.mutation('agents:addMessage', {
-                agentId,
-                userId,
-                role: 'assistant',
-                content: assistantText,
-              })
-              if (!saved) {
-                addAgentMessage({ agentId, userId, role: 'assistant', content: assistantText })
+      onFinish: agentId
+        ? async ({ text }) => {
+            if (text) {
+              try {
+                const saved = await convex.mutation('agents:addMessage', {
+                  agentId,
+                  userId,
+                  role: 'assistant',
+                  content: text,
+                })
+                if (!saved) {
+                  addAgentMessage({ agentId, userId, role: 'assistant', content: text })
+                }
+              } catch (err) {
+                console.error('[Agent] Failed to save assistant message:', err)
               }
             }
           }
-        } catch {
-          // optional
-        }
-      })
-    }
+        : undefined,
+    })
 
     return result.toUIMessageStreamResponse({
       originalMessages: messages,

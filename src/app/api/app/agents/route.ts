@@ -19,18 +19,20 @@ export async function GET(request: NextRequest) {
         content: string
       }>>('agents:getMessages', { agentId })
 
-      const fallbackMessages = listAgentMessages(agentId).map((message) => ({
-        id: message._id,
-        role: message.role,
-        parts: [{ type: 'text' as const, text: message.content }],
-      }))
+      console.log(`[Agents GET] agentId=${agentId} messages=${messages ? messages.length : 'null (convex error)'}`)
+
+      if (messages === null) {
+        // Convex query failed — log and return empty rather than crash
+        console.error('[Agents GET] Convex query failed for agents:getMessages')
+        return NextResponse.json({ messages: [] })
+      }
 
       return NextResponse.json({
-        messages: (messages || []).map((message) => ({
+        messages: messages.map((message) => ({
           id: message._id,
           role: message.role,
           parts: [{ type: 'text' as const, text: message.content }],
-        })) || fallbackMessages,
+        })),
       })
     }
 
