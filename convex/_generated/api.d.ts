@@ -8,9 +8,13 @@
  * @module
  */
 
+import type * as chats from "../chats.js";
 import type * as http from "../http.js";
 import type * as keys from "../keys.js";
+import type * as memories from "../memories.js";
+import type * as notes from "../notes.js";
 import type * as sessionTransfer from "../sessionTransfer.js";
+import type * as slack from "../slack.js";
 import type * as stripe from "../stripe.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as usage from "../usage.js";
@@ -23,9 +27,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  chats: typeof chats;
   http: typeof http;
   keys: typeof keys;
+  memories: typeof memories;
+  notes: typeof notes;
   sessionTransfer: typeof sessionTransfer;
+  slack: typeof slack;
   stripe: typeof stripe;
   subscriptions: typeof subscriptions;
   usage: typeof usage;

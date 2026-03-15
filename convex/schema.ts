@@ -67,4 +67,79 @@ export default defineSchema({
     data: v.string(), // JSON-encoded auth data
     expiresAt: v.number(),
   }).index('by_token', ['token']),
+
+  chats: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    folderId: v.optional(v.string()),
+    lastModified: v.number(),
+    model: v.string(),
+  }).index('by_userId', ['userId']).index('by_userId_lastModified', ['userId', 'lastModified']),
+
+  messages: defineTable({
+    chatId: v.id('chats'),
+    userId: v.string(),
+    role: v.union(v.literal('user'), v.literal('assistant')),
+    content: v.string(),
+    model: v.optional(v.string()),
+    tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
+    createdAt: v.number(),
+  }).index('by_chatId', ['chatId']).index('by_userId', ['userId']),
+
+  notes: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    content: v.string(),
+    tags: v.array(v.string()),
+    updatedAt: v.number(),
+  }).index('by_userId', ['userId']).index('by_userId_updatedAt', ['userId', 'updatedAt']),
+
+  memories: defineTable({
+    userId: v.string(),
+    content: v.string(),
+    source: v.union(v.literal('chat'), v.literal('note'), v.literal('manual')),
+    createdAt: v.number(),
+  }).index('by_userId', ['userId']),
+
+  agents: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    lastModified: v.number(),
+  }).index('by_userId', ['userId']).index('by_userId_lastModified', ['userId', 'lastModified']),
+
+  agentMessages: defineTable({
+    agentId: v.id('agents'),
+    userId: v.string(),
+    role: v.union(v.literal('user'), v.literal('assistant')),
+    content: v.string(),
+    createdAt: v.number(),
+  }).index('by_agentId', ['agentId']).index('by_userId', ['userId']),
+
+  slackInstallations: defineTable({
+    teamId: v.string(),
+    teamName: v.string(),
+    botToken: v.string(),
+    botUserId: v.string(),
+    installedBy: v.string(),
+    installedAt: v.number(),
+  }).index('by_teamId', ['teamId']),
+
+  slackUserLinks: defineTable({
+    slackUserId: v.string(),
+    teamId: v.string(),
+    overlayUserId: v.string(),
+    linkedAt: v.number(),
+  }).index('by_slack', ['slackUserId', 'teamId']).index('by_overlayUserId', ['overlayUserId']),
+
+  slackConversations: defineTable({
+    slackChannelId: v.string(),
+    slackThreadTs: v.optional(v.string()),
+    overlayUserId: v.string(),
+    messages: v.array(v.object({
+      role: v.union(v.literal('user'), v.literal('assistant')),
+      content: v.string(),
+      ts: v.string(),
+    })),
+    updatedAt: v.number(),
+  }).index('by_channel_thread', ['slackChannelId', 'slackThreadTs']).index('by_overlayUserId', ['overlayUserId']),
 })

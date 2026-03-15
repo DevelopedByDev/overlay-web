@@ -12,8 +12,16 @@ STRIPE_WEBHOOK_SECRET=whsec_...        # From Stripe Dashboard > Webhooks
 # Convex Configuration
 NEXT_PUBLIC_CONVEX_URL=https://different-caiman-77.convex.cloud  # Your Convex deployment URL
 
-# App URL (for redirects after checkout)
-NEXT_PUBLIC_APP_URL=https://getoverlay.io   # Or http://localhost:3000 for local dev
+# App URLs
+NEXT_PUBLIC_APP_URL=https://getoverlay.io
+DEV_NEXT_PUBLIC_APP_URL=https://your-overlay-dev.vercel.app   # Use your Vercel development deployment for auth in local dev
+```
+
+## Mobile App (`overlay-mobile/.env`)
+
+```bash
+EXPO_PUBLIC_AUTH_BASE_URL=https://your-overlay-dev.vercel.app
+EXPO_PUBLIC_CONVEX_URL=https://different-caiman-77.convex.cloud
 ```
 
 ### Setting Up Stripe Products

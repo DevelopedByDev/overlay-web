@@ -1,8 +1,10 @@
 "use client";
 
 import { motion, useScroll, useTransform, useMotionValueEvent } from "framer-motion";
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { Globe } from "lucide-react";
 import { VoiceDemo } from "@/components/VoiceDemo";
 import { OverlayDemo } from "@/components/OverlayDemo";
 import { AllInOnePlace } from "@/components/AllInOnePlace";
@@ -10,11 +12,40 @@ import { Navbar } from "@/components/Navbar";
 
 export default function Home() {
   const latestDownloadUrl = "/api/latest-release/download";
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ["start start", "end end"],
   });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkAuth() {
+      try {
+        const response = await fetch("/api/auth/session");
+        const contentType = response.headers.get("content-type") || "";
+
+        if (!response.ok || !contentType.includes("application/json")) {
+          return;
+        }
+
+        const data = await response.json();
+        if (!cancelled) {
+          setIsAuthenticated(Boolean(data?.authenticated));
+        }
+      } catch {
+        // Leave the web CTA pointing at sign-in when session lookup fails.
+      }
+    }
+
+    checkAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Track section progress for scroll-triggered animations
   const [allInOnePlaceProgress, setAllInOnePlaceProgress] = useState(0);
@@ -128,6 +159,9 @@ export default function Home() {
   // Begin/Download section (0.92 - 1.0) - stays visible at end
   const downloadOpacity = useTransform(scrollYProgress, [0.93, 0.965, 1.0], [0, 1, 1]);
   const downloadPointer = useTransform(scrollYProgress, (v) => v >= 0.93 ? "auto" : "none");
+  const webAppHref = isAuthenticated
+    ? "/app/chat"
+    : "/auth/sign-in?redirect=%2Fapp%2Fchat";
 
   return (
     <div ref={containerRef} className="bg-[#fafafa] text-[#0a0a0a]">
@@ -167,16 +201,25 @@ export default function Home() {
           your personal, unified ai interaction layer
         </p>
 
-        {/* Download Button */}
-        <a
-          href={latestDownloadUrl}
-          className="inline-flex items-center gap-3 px-6 py-3 bg-[#0a0a0a] text-white rounded-full text-sm font-medium hover:bg-[#27272a] transition-all duration-300"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
-          </svg>
-          download for mac
-        </a>
+        <div className="flex flex-col items-center gap-3">
+          <Link
+            href={webAppHref}
+            className="inline-flex min-w-[184px] items-center justify-center gap-3 px-6 py-3 bg-white text-[#0a0a0a] border border-[#d4d4d8] rounded-full text-sm font-medium hover:bg-[#f4f4f5] transition-all duration-300"
+          >
+            <Globe className="w-4 h-4" />
+            open app
+          </Link>
+
+          <a
+            href={latestDownloadUrl}
+            className="inline-flex min-w-[184px] items-center justify-center gap-3 px-6 py-3 bg-[#0a0a0a] text-white rounded-full text-sm font-medium hover:bg-[#27272a] transition-all duration-300"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+            </svg>
+            download for mac
+          </a>
+        </div>
 
       </motion.section>
 

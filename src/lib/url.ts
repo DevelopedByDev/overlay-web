@@ -4,7 +4,7 @@ export function getBaseUrl(): string {
   }
 
   if (process.env.NODE_ENV === 'development') {
-    return process.env.DEV_NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    return process.env.DEV_NEXT_PUBLIC_APP_URL || 'https://getoverlay.io'
   }
 
   if (process.env.VERCEL_URL) {

@@ -416,3 +416,29 @@ export async function refreshSessionIfNeeded(): Promise<AuthSession | null> {
     return null
   }
 }
+
+export async function refreshSessionFromRefreshToken(
+  refreshToken: string,
+  user: AuthUser
+): Promise<AuthSession | null> {
+  if (!refreshToken) {
+    return null
+  }
+
+  try {
+    const workos = getWorkOS(true)
+    const response = await workos.userManagement.authenticateWithRefreshToken({
+      clientId,
+      refreshToken,
+    })
+
+    return {
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+      user,
+      expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+    }
+  } catch {
+    return null
+  }
+}

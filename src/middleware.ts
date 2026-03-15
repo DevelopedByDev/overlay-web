@@ -3,14 +3,15 @@ import type { NextRequest } from 'next/server'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 
-const PROTECTED_ROUTES = ['/account', '/api/entitlements', '/api/portal']
+const PROTECTED_ROUTES = ['/account', '/api/entitlements', '/api/portal', '/app', '/api/app']
 
 const PUBLIC_ROUTES = [
   '/',
   '/auth',
   '/api/auth',
   '/api/webhooks',
-  '/api/checkout/verify'
+  '/api/checkout/verify',
+  '/api/slack', // Slack uses its own HMAC signature verification
 ]
 
 function isPublicRoute(pathname: string): boolean {

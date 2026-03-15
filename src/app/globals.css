@@ -71,6 +71,109 @@ html {
   font-family: var(--font-instrument-serif), Georgia, 'Times New Roman', serif;
 }
 
+.markdown-content,
+.app-note-editor {
+  color: #0a0a0a;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.app-note-editor {
+  min-height: 300px;
+  outline: none;
+}
+
+.markdown-content p,
+.app-note-editor p {
+  margin: 0 0 0.8em;
+}
+
+.markdown-content h1,
+.app-note-editor h1 {
+  margin: 0 0 0.45em;
+  font-size: 2rem;
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+.markdown-content h2,
+.app-note-editor h2 {
+  margin: 0.4em 0 0.45em;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.markdown-content ul,
+.markdown-content ol,
+.app-note-editor ul,
+.app-note-editor ol {
+  margin: 0 0 0.9em 1.4em;
+  padding: 0;
+}
+
+.markdown-content li,
+.app-note-editor li {
+  margin: 0.2em 0;
+}
+
+.markdown-content blockquote,
+.app-note-editor blockquote {
+  margin: 0 0 1em;
+  border-left: 3px solid #d4d4d8;
+  padding-left: 0.9rem;
+  color: #52525b;
+}
+
+.markdown-content pre,
+.app-note-editor pre {
+  margin: 0 0 1em;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: #f5f5f5;
+  padding: 0.9rem 1rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.markdown-content code,
+.app-note-editor code {
+  border-radius: 6px;
+  background: #f5f5f5;
+  padding: 0.1rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.markdown-content pre code,
+.app-note-editor pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-content hr,
+.app-note-editor hr {
+  margin: 1.25rem 0;
+  border: 0;
+  border-top: 1px solid #e4e4e7;
+}
+
+.markdown-content a,
+.app-note-editor a {
+  color: #0a0a0a;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.app-note-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #a1a1aa;
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
 /* Gradient orb animation */
 @keyframes float {
   0%, 100% {
