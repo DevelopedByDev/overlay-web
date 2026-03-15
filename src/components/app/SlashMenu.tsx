@@ -20,6 +20,98 @@ interface SlashMenuProps {
   onClose: () => void
 }
 
+// Render each item as a preview of what it produces — no icons, no descriptions
+function getStyledLabel(title: string): React.ReactNode {
+  switch (title) {
+    case 'Heading 1':
+      return (
+        <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.2, color: '#0a0a0a' }}>
+          Heading 1
+        </span>
+      )
+    case 'Heading 2':
+      return (
+        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, color: '#0a0a0a' }}>
+          Heading 2
+        </span>
+      )
+    case 'Bullet List':
+      return (
+        <span style={{ fontSize: 13, color: '#0a0a0a' }}>
+          &bull;&ensp;Bullet list
+        </span>
+      )
+    case 'Numbered List':
+      return (
+        <span style={{ fontSize: 13, color: '#0a0a0a' }}>
+          1.&ensp;Numbered list
+        </span>
+      )
+    case 'Blockquote':
+      return (
+        <span
+          style={{
+            fontSize: 13,
+            borderLeft: '2.5px solid #d4d4d8',
+            paddingLeft: 7,
+            color: '#71717a',
+            fontStyle: 'italic',
+          }}
+        >
+          Blockquote
+        </span>
+      )
+    case 'Code Block':
+      return (
+        <span
+          style={{
+            fontSize: 12,
+            fontFamily: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace",
+            background: '#f4f4f5',
+            padding: '1px 6px',
+            borderRadius: 4,
+            color: '#0a0a0a',
+          }}
+        >
+          Code block
+        </span>
+      )
+    case 'Divider':
+      return (
+        <span
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            width: '100%',
+            fontSize: 12,
+            color: '#a1a1aa',
+          }}
+        >
+          <span style={{ flex: 1, borderTop: '1px solid #d4d4d8', display: 'block' }} />
+          Divider
+          <span style={{ flex: 1, borderTop: '1px solid #d4d4d8', display: 'block' }} />
+        </span>
+      )
+    case 'Bold':
+      return (
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#0a0a0a' }}>Bold</span>
+      )
+    case 'Italic':
+      return (
+        <span style={{ fontSize: 13, fontStyle: 'italic', color: '#0a0a0a' }}>Italic</span>
+      )
+    case 'Strikethrough':
+      return (
+        <span style={{ fontSize: 13, textDecoration: 'line-through', color: '#0a0a0a' }}>
+          Strikethrough
+        </span>
+      )
+    default:
+      return <span style={{ fontSize: 13, color: '#0a0a0a' }}>{title}</span>
+  }
+}
+
 export default function SlashMenu({
   showSlashMenu,
   slashMenuPosition,
@@ -34,13 +126,11 @@ export default function SlashMenu({
 
   useEffect(() => {
     if (!showSlashMenu) return
-
     const handleClickOutside = (event: MouseEvent): void => {
       if (slashMenuRef.current && !slashMenuRef.current.contains(event.target as Node)) {
         onClose()
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showSlashMenu, onClose])
@@ -52,193 +142,58 @@ export default function SlashMenu({
       ref={slashMenuRef}
       style={{
         position: 'fixed',
-        top: Math.max(8, Math.min(slashMenuPosition.top, window.innerHeight - 340)),
-        left: Math.max(8, Math.min(slashMenuPosition.left, window.innerWidth - 296)),
-        width: 280,
-        maxHeight: 320,
-        background: 'rgba(255, 255, 255, 0.96)',
+        top: Math.max(8, Math.min(slashMenuPosition.top, window.innerHeight - 280)),
+        left: Math.max(8, Math.min(slashMenuPosition.left, window.innerWidth - 200)),
+        width: 188,
+        maxHeight: 280,
+        background: 'rgba(255,255,255,0.97)',
         border: '1px solid #e5e5e5',
-        borderRadius: 12,
-        boxShadow: '0 18px 40px rgba(0, 0, 0, 0.12)',
+        borderRadius: 10,
+        boxShadow: '0 12px 32px rgba(0,0,0,0.1)',
         overflow: 'hidden',
         zIndex: 100000,
       }}
     >
-      <div
-        style={{
-          padding: '8px 12px',
-          borderBottom: '1px solid #ececec',
-          fontSize: 11,
-          color: '#71717a',
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-        }}
-      >
-        {slashMenuFilter ? `Searching "${slashMenuFilter}"` : 'Commands'}
-      </div>
-      <div style={{ maxHeight: 280, overflowY: 'auto', padding: 4 }}>
+      <div style={{ maxHeight: 280, overflowY: 'auto', padding: '4px 4px' }}>
         {filteredSlashItems.length === 0 ? (
           <div
             style={{
-              padding: 16,
+              padding: '12px 10px',
               textAlign: 'center',
               color: '#71717a',
-              fontSize: 13,
+              fontSize: 12,
+              fontFamily: 'system-ui, -apple-system, sans-serif',
             }}
           >
-            No matching commands
+            No results
           </div>
         ) : (
-          <>
-            {filteredSlashItems.filter((item) => item.category === 'nodes').length > 0 && (
-              <>
-                <div
-                  style={{
-                    padding: '6px 8px',
-                    fontSize: 10,
-                    color: '#71717a',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    fontFamily: 'system-ui, -apple-system, sans-serif',
-                  }}
-                >
-                  Blocks
-                </div>
-                {filteredSlashItems
-                  .filter((item) => item.category === 'nodes')
-                  .map((item) => {
-                    const globalIndex = filteredSlashItems.indexOf(item)
-                    return (
-                      <SlashMenuButton
-                        key={item.title}
-                        item={item}
-                        isSelected={selectedSlashIndex === globalIndex}
-                        onSelect={() => setSelectedSlashIndex(globalIndex)}
-                        onExecute={() => executeSlashCommand(item)}
-                      />
-                    )
-                  })}
-              </>
-            )}
-
-            {filteredSlashItems.filter((item) => item.category === 'marks').length > 0 && (
-              <>
-                <div
-                  style={{
-                    padding: '6px 8px',
-                    fontSize: 10,
-                    color: '#71717a',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    marginTop: 4,
-                    fontFamily: 'system-ui, -apple-system, sans-serif',
-                  }}
-                >
-                  Formatting
-                </div>
-                {filteredSlashItems
-                  .filter((item) => item.category === 'marks')
-                  .map((item) => {
-                    const globalIndex = filteredSlashItems.indexOf(item)
-                    return (
-                      <SlashMenuButton
-                        key={item.title}
-                        item={item}
-                        isSelected={selectedSlashIndex === globalIndex}
-                        onSelect={() => setSelectedSlashIndex(globalIndex)}
-                        onExecute={() => executeSlashCommand(item)}
-                      />
-                    )
-                  })}
-              </>
-            )}
-          </>
+          filteredSlashItems.map((item, index) => (
+            <button
+              key={item.title}
+              onClick={() => executeSlashCommand(item)}
+              onMouseEnter={() => setSelectedSlashIndex(index)}
+              style={{
+                width: '100%',
+                padding: '7px 10px',
+                background: selectedSlashIndex === index ? '#f5f5f5' : 'transparent',
+                border: 'none',
+                borderRadius: 7,
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'background 0.08s ease',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+              }}
+            >
+              {getStyledLabel(item.title)}
+            </button>
+          ))
         )}
       </div>
     </div>
   )
 
   return createPortal(menu, document.body)
-}
-
-interface SlashMenuButtonProps {
-  item: SlashMenuItem
-  isSelected: boolean
-  onSelect: () => void
-  onExecute: () => void
-}
-
-function SlashMenuButton({
-  item,
-  isSelected,
-  onSelect,
-  onExecute,
-}: SlashMenuButtonProps): React.ReactElement {
-  return (
-    <button
-      onClick={onExecute}
-      style={{
-        width: '100%',
-        padding: '8px 10px',
-        background: isSelected ? '#f5f5f5' : 'transparent',
-        border: 'none',
-        borderRadius: 8,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        cursor: 'pointer',
-        textAlign: 'left',
-        transition: 'background 0.1s ease',
-      }}
-      onMouseEnter={(event) => {
-        event.currentTarget.style.background = '#f5f5f5'
-        onSelect()
-      }}
-      onMouseLeave={(event) => {
-        if (!isSelected) {
-          event.currentTarget.style.background = 'transparent'
-        }
-      }}
-    >
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 8,
-          background: '#f5f5f5',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#0a0a0a',
-          flexShrink: 0,
-        }}
-      >
-        {item.icon}
-      </div>
-      <div>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 500,
-            color: '#0a0a0a',
-            lineHeight: 1.3,
-          }}
-        >
-          {item.title}
-        </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: '#71717a',
-            marginTop: 1,
-            lineHeight: 1.35,
-          }}
-        >
-          {item.description}
-        </div>
-      </div>
-    </button>
-  )
 }

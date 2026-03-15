@@ -33,14 +33,15 @@ export async function POST(request: NextRequest) {
     }
 
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
-    const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
-
     const systemMessage = (systemPrompt || 'You are a helpful AI assistant.') + memoryContext
 
+    // Save user message
     const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')
     const latestUserText = latestUserMessage?.parts
-      ?.filter((part) => part.type === 'text')
-      .map((part) => part.text || '')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ?.filter((part: any) => part.type === 'text')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((part: any) => part.text || '')
       .join('')
       .trim()
 
@@ -52,18 +53,12 @@ export async function POST(request: NextRequest) {
         content: latestUserText,
         model: effectiveModelId,
       })
-
       if (!savedUserMessage) {
-        addMessage({
-          chatId,
-          userId,
-          role: 'user',
-          content: latestUserText,
-          model: effectiveModelId,
-        })
+        addMessage({ chatId, userId, role: 'user', content: latestUserText, model: effectiveModelId })
       }
     }
 
+    const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
     const modelMessages = await convertToModelMessages(messages)
 
     const result = streamText({
@@ -71,7 +66,6 @@ export async function POST(request: NextRequest) {
       system: systemMessage,
       messages: modelMessages,
       onFinish: async ({ text, usage }) => {
-        // Save assistant message to Convex if chatId provided
         if (chatId) {
           try {
             const savedAssistantMessage = await convex.mutation('chats:addMessage', {
@@ -82,7 +76,6 @@ export async function POST(request: NextRequest) {
               model: effectiveModelId,
               tokens: usage ? { input: usage.inputTokens ?? 0, output: usage.outputTokens ?? 0 } : undefined,
             })
-
             if (!savedAssistantMessage) {
               addMessage({
                 chatId,

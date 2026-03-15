@@ -65,12 +65,19 @@ export async function getOpenRouterLanguageModel(modelId: string, accessToken?: 
     )
   }
 
+  // Use .chat() explicitly to force the Chat Completions API (/v1/chat/completions).
+  // Calling openrouter(modelId) directly targets the Responses API (/v1/responses)
+  // which OpenRouter does not support.
   const openrouter = createOpenAI({
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey,
+    headers: {
+      'HTTP-Referer': 'https://getoverlay.io',
+      'X-Title': 'Overlay',
+    },
   })
 
-  return openrouter(modelId)
+  return openrouter.chat(modelId)
 }
 
 export async function getGatewayLanguageModel(modelId: string, accessToken?: string) {
