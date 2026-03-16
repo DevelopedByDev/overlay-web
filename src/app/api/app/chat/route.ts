@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const maxDuration = 120
 import { getSession } from '@/lib/workos-auth'
 import { convertToModelMessages, streamText, type UIMessage } from 'ai'
 import { convex } from '@/lib/convex'

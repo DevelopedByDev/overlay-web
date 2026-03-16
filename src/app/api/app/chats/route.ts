@@ -17,12 +17,14 @@ export async function GET(request: NextRequest) {
         _id: string
         role: 'user' | 'assistant'
         content: string
+        model?: string
       }>>('chats:getMessages', { chatId })
 
       const fallbackMessages = listMessages(chatId).map((message) => ({
         id: message._id,
         role: message.role,
         parts: [{ type: 'text' as const, text: message.content }],
+        model: message.model,
       }))
 
       return NextResponse.json({
@@ -30,6 +32,7 @@ export async function GET(request: NextRequest) {
           id: message._id,
           role: message.role,
           parts: [{ type: 'text' as const, text: message.content }],
+          model: message.model,
         })) || fallbackMessages,
       })
     }

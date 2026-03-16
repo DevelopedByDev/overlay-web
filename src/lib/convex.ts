@@ -46,6 +46,8 @@ async function callConvex<T>(
   const endpoint = `${url}/api/${type}`
 
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -55,8 +57,10 @@ async function callConvex<T>(
         path,
         args,
         format: 'json'
-      })
+      }),
+      signal: controller.signal,
     })
+    clearTimeout(timeoutId)
 
     const data: ConvexResponse<T> = await response.json()
 
