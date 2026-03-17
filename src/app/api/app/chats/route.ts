@@ -81,11 +81,21 @@ export async function PATCH(request: NextRequest) {
 
     const { chatId, title } = await request.json()
     if (!chatId) return NextResponse.json({ error: 'chatId required' }, { status: 400 })
+    console.log('[ChatTitle][server] PATCH /api/app/chats received', {
+      userId: session.user.id,
+      chatId,
+      title,
+    })
 
     await convex.mutation('chats:update', { chatId, title })
     updateChat(chatId, { title })
+    console.log('[ChatTitle][server] PATCH /api/app/chats applied', {
+      chatId,
+      title,
+    })
     return NextResponse.json({ success: true })
-  } catch {
+  } catch (error) {
+    console.error('[ChatTitle][server] Failed to patch chat title', error)
     return NextResponse.json({ error: 'Failed to update chat' }, { status: 500 })
   }
 }

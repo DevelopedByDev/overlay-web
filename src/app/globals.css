@@ -254,6 +254,17 @@ html {
   color: #52525b;
 }
 
+.markdown-content .katex {
+  font-size: 1.02em;
+}
+
+.markdown-content .katex-display {
+  margin: 0.45em 0 1em;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.1rem;
+}
+
 .markdown-content pre,
 .app-note-editor pre {
   margin: 0 0 1em;

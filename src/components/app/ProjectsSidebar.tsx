@@ -6,6 +6,7 @@ import {
   Plus, FolderOpen, Folder, ChevronRight, MessageSquare,
   BookOpen, FileText, Upload, FolderPlus, Loader2, Trash2, ArrowLeft, Bot,
 } from 'lucide-react'
+import { CHAT_TITLE_UPDATED_EVENT, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
 import { readFileAsContent } from './FileViewer'
 
 interface Project {
@@ -157,6 +158,27 @@ export default function ProjectsSidebar() {
   useEffect(() => {
     if (selectedProject) loadProjectItems(selectedProject._id)
   }, [selectedProject, loadProjectItems])
+
+  useEffect(() => {
+    function handleChatTitleUpdated(event: Event) {
+      const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
+      if (!detail?.chatId || !detail.title) return
+      console.log('[ChatTitle][projects-sidebar] Received chat title update event', detail)
+
+      setProjectChats((prev) => {
+        let changed = false
+        const next = prev.map((chat) => {
+          if (chat._id !== detail.chatId) return chat
+          changed = true
+          return { ...chat, title: detail.title }
+        })
+        return changed ? next : prev
+      })
+    }
+
+    window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+    return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+  }, [])
 
   function openNewProjectForm(parentId: string | null) {
     setNewProjectParentId(parentId)

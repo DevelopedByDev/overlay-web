@@ -6,6 +6,7 @@ import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { useSearchParams } from 'next/navigation'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID } from '@/lib/models'
+import { dispatchChatTitleUpdated, sanitizeChatTitle } from '@/lib/chat-title'
 import { MarkdownMessage } from './MarkdownMessage'
 
 interface Chat {
@@ -104,9 +105,8 @@ const ExchangeBlock = React.memo(
             <MarkdownMessage key={slotIdx} text={responseText} isStreaming={isStreaming} />
           </div>
         ) : showThinking ? (
-          <div className="flex items-center gap-2 px-1 py-1 text-xs italic text-[#888]">
-            <Loader2 size={12} className="animate-spin" />
-            Thinking...
+          <div className="px-1 py-2">
+            <div className="w-5 h-5 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
           </div>
         ) : null}
 
@@ -151,6 +151,7 @@ const CHAT_SUGGESTIONS = [
   'Help me draft a professional email declining a meeting',
 ]
 
+const DEFAULT_CHAT_TITLE = 'New Chat'
 const CHAT_MODEL_KEY = 'overlay_chat_model'
 
 // ─── main component ───────────────────────────────────────────────────────────
@@ -246,21 +247,60 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     } catch { /* ignore */ }
   }, [])
 
-  // Apply any pending title override when refreshing the chat list
+  // Snapshot pendingTitleRef before the async fetch so a concurrent PATCH completing mid-flight
+  // can't clear the ref before we've applied the override to the incoming server chats.
   const loadChats = useCallback(async () => {
     try {
+      const pending = pendingTitleRef.current
       const res = await fetch('/api/app/chats')
       if (res.ok) {
         const serverChats: Chat[] = await res.json()
-        const pending = pendingTitleRef.current
         setChats(
           pending
             ? serverChats.map((c) => (c._id === pending.chatId ? { ...c, title: pending.title } : c))
             : serverChats
         )
+        // Clear the ref once the server has confirmed the title
+        if (pending && serverChats.some((c) => c._id === pending.chatId && c.title === pending.title)) {
+          if (pendingTitleRef.current?.chatId === pending.chatId) pendingTitleRef.current = null
+        }
       }
     } catch { /* ignore */ }
   }, [])
+
+  // Update title in local state + pendingTitleRef immediately, then broadcast.
+  const applyChatTitleUpdate = useCallback((chatId: string, title: string) => {
+    const nextTitle = sanitizeChatTitle(title, DEFAULT_CHAT_TITLE)
+    pendingTitleRef.current = { chatId, title: nextTitle }
+    setChats((prev) => {
+      const exists = prev.some((c) => c._id === chatId)
+      if (!exists) {
+        // Chat not yet in local state (edge case: generateTitle resolved before createNewChat state settled)
+        return [{ _id: chatId, title: nextTitle, model: DEFAULT_MODEL_ID, lastModified: Date.now() }, ...prev]
+      }
+      return prev.map((c) => (c._id === chatId ? { ...c, title: nextTitle } : c))
+    })
+    dispatchChatTitleUpdated({ chatId, title: nextTitle })
+    return nextTitle
+  }, [])
+
+  // Called on the first message of a new chat. Immediately shows a fallback title,
+  // then replaces it with the GPT OSS 20B-generated title once it arrives.
+  const startFirstMessageRename = useCallback((chatId: string, text: string) => {
+    const fallbackTitle = applyChatTitleUpdate(chatId, text)
+
+    void generateTitle(text).then(async (aiTitle) => {
+      const finalTitle = applyChatTitleUpdate(chatId, aiTitle || fallbackTitle)
+      try {
+        const res = await fetch('/api/app/chats', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId, title: finalTitle }),
+        })
+        if (res.ok) void loadChats()
+      } catch { /* keep local title */ }
+    })
+  }, [applyChatTitleUpdate, loadChats])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadChats(); loadSubscription() }, [loadChats, loadSubscription])
@@ -362,7 +402,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     if (res.ok) {
       const data = await res.json()
       // Add directly to state — no loadChats() here so there's no race with pendingTitleRef
-      const newChat: Chat = { _id: data.id, title: 'New Chat', model: selectedModels[0], lastModified: Date.now() }
+      const newChat: Chat = { _id: data.id, title: DEFAULT_CHAT_TITLE, model: selectedModels[0], lastModified: Date.now() }
       setChats((prev) => [newChat, ...prev])
       setActiveChatId(data.id)
       setIsFirstMessage(true)
@@ -374,7 +414,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   async function loadChat(chatId: string) {
     setActiveChatId(chatId)
-    setIsFirstMessage(false)
+    const existingChat = chats.find((chat) => chat._id === chatId)
+    setIsFirstMessage(existingChat?.title === DEFAULT_CHAT_TITLE)
     pendingTitleRef.current = null
     resetChatState()
     try {
@@ -383,6 +424,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       const data = await res.json()
       type RawMsg = { id: string; role: 'user' | 'assistant'; parts: Array<{ type: string; text?: string }>; model?: string }
       const rawMessages: RawMsg[] = data.messages || []
+      setIsFirstMessage(!rawMessages.some((msg) => msg.role === 'user'))
 
       const exchanges: Array<{ userMsg: RawMsg; responses: Array<{ model: string; msg: RawMsg }> }> = []
       let cur: (typeof exchanges)[0] | null = null
@@ -485,30 +527,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       parts.push({ type: 'image', image: img.dataUrl, mediaType: img.mimeType })
     }
 
-    // Title generation: show optimistic title immediately, then replace with AI title.
-    // pendingTitleRef prevents loadChats() from overwriting the title before the PATCH lands.
+    // Title generation: show truncated text immediately, replace with GPT OSS 20B title async.
+    // pendingTitleRef guards against loadChats() overwriting the title mid-flight.
     if (wasFirst && text) {
-      const optimisticTitle = text.slice(0, 50)
-      pendingTitleRef.current = { chatId, title: optimisticTitle }
-      setChats((prev) =>
-        prev.map((c) => (c._id === chatId ? { ...c, title: optimisticTitle } : c))
-      )
-      generateTitle(text).then((aiTitle) => {
-        const title = aiTitle || optimisticTitle
-        pendingTitleRef.current = { chatId, title }
-        // Update local state immediately — no waiting on the server round-trip
-        setChats((prev) =>
-          prev.map((c) => (c._id === chatId ? { ...c, title } : c))
-        )
-        fetch('/api/app/chats', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId, title }),
-        }).then(() => {
-          // Server confirmed — safe to clear the override
-          if (pendingTitleRef.current?.chatId === chatId) pendingTitleRef.current = null
-        }).catch(() => { /* keep local title */ })
-      })
+      startFirstMessageRename(chatId, text)
     }
 
     void Promise.all(

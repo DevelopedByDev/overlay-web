@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Loader2, Plus, Trash2, ChevronDown, ImageIcon, X, AlertCircle, FolderOpen } from 'lucide-react'
+import { Send, Plus, Trash2, ChevronDown, ImageIcon, X, AlertCircle, FolderOpen } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { useSearchParams } from 'next/navigation'
 import { AVAILABLE_MODELS } from '@/lib/models'
+import { sanitizeChatTitle, dispatchChatTitleUpdated } from '@/lib/chat-title'
 import { MarkdownMessage } from './MarkdownMessage'
 
 interface Agent {
@@ -62,25 +63,25 @@ async function generateTitle(text: string): Promise<string | null> {
     })
     if (res.ok) {
       const data = await res.json()
-      return data.title || null
+      return (data.title as string)?.trim() || null
     }
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
   return null
 }
 
+const DEFAULT_AGENT_TITLE = 'New Agent'
 
 export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: boolean; projectName?: string } = {}) {
   const searchParams = useSearchParams()
   const [agents, setAgents] = useState<Agent[]>([])
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(AGENT_MODEL_KEY) || DEFAULT_AGENT_MODEL
-    }
-    return DEFAULT_AGENT_MODEL
-  })
+  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_AGENT_MODEL)
+
+  useEffect(() => {
+    const saved = localStorage.getItem(AGENT_MODEL_KEY)
+    if (saved) setSelectedModel(saved)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [input, setInput] = useState('')
   const [isFirstMessage, setIsFirstMessage] = useState(true)
@@ -88,6 +89,7 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pendingTitleRef = useRef<{ agentId: string; title: string } | null>(null)
 
   const transport = useMemo(() => new DefaultChatTransport({ api: '/api/app/agent' }), [])
   const { messages, sendMessage, status, setMessages, stop, error } = useChat({ transport })
@@ -128,12 +130,51 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
 
   const loadAgents = useCallback(async () => {
     try {
+      const pending = pendingTitleRef.current  // snapshot before await
       const res = await fetch('/api/app/agents')
-      if (res.ok) setAgents(await res.json())
-    } catch {
-      // ignore
-    }
+      if (res.ok) {
+        const serverAgents: Agent[] = await res.json()
+        setAgents(
+          pending
+            ? serverAgents.map((a) => (a._id === pending.agentId ? { ...a, title: pending.title } : a))
+            : serverAgents
+        )
+        if (pending && serverAgents.some((a) => a._id === pending.agentId && a.title === pending.title)) {
+          if (pendingTitleRef.current?.agentId === pending.agentId) pendingTitleRef.current = null
+        }
+      }
+    } catch { /* ignore */ }
   }, [])
+
+  const applyAgentTitleUpdate = useCallback((agentId: string, title: string) => {
+    const nextTitle = sanitizeChatTitle(title, DEFAULT_AGENT_TITLE)
+    pendingTitleRef.current = { agentId, title: nextTitle }
+    setAgents((prev) => {
+      const exists = prev.some((a) => a._id === agentId)
+      if (!exists) {
+        return [{ _id: agentId, title: nextTitle, lastModified: Date.now() }, ...prev]
+      }
+      return prev.map((a) => (a._id === agentId ? { ...a, title: nextTitle } : a))
+    })
+    dispatchChatTitleUpdated({ chatId: agentId, title: nextTitle })
+    return nextTitle
+  }, [])
+
+  const startFirstMessageRename = useCallback((agentId: string, text: string) => {
+    const fallbackTitle = applyAgentTitleUpdate(agentId, text)
+
+    void generateTitle(text).then(async (aiTitle) => {
+      const finalTitle = applyAgentTitleUpdate(agentId, aiTitle || fallbackTitle)
+      try {
+        const res = await fetch('/api/app/agents', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId, title: finalTitle }),
+        })
+        if (res.ok) void loadAgents()
+      } catch { /* keep local title */ }
+    })
+  }, [applyAgentTitleUpdate, loadAgents])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadAgents(); loadSubscription() }, [loadAgents, loadSubscription])
@@ -157,14 +198,15 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
     const res = await fetch('/api/app/agents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'New Agent' }),
+      body: JSON.stringify({ title: DEFAULT_AGENT_TITLE }),
     })
     if (res.ok) {
       const data = await res.json()
+      // Add directly to state — no loadAgents() here to avoid racing with pendingTitleRef
+      setAgents((prev) => [{ _id: data.id, title: DEFAULT_AGENT_TITLE, lastModified: Date.now() }, ...prev])
       setActiveAgentId(data.id)
       setIsFirstMessage(true)
       setMessages([])
-      await loadAgents()
       return data.id
     }
     return null
@@ -189,6 +231,7 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
     await fetch(`/api/app/agents?agentId=${agentId}`, { method: 'DELETE' })
     if (activeAgentId === agentId) {
       setActiveAgentId(null)
+      pendingTitleRef.current = null
       setMessages([])
     }
     await loadAgents()
@@ -220,9 +263,12 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
   async function handleSend() {
     const text = input.trim()
     if ((!text && attachedImages.length === 0) || isLoading || isSendBlocked) return
+
+    // Capture before any await — isFirstMessage is true for the first message of a new/fresh agent
+    const wasFirst = isFirstMessage
     const agentId = activeAgentId || await createNewAgent()
     if (!agentId) return
-    const wasFirst = isFirstMessage
+
     setInput('')
     setAttachedImages([])
     setIsFirstMessage(false)
@@ -233,21 +279,14 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
       parts.push({ type: 'image', image: img.dataUrl, mediaType: img.mimeType })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await sendMessage({ role: 'user', parts: parts as any }, { body: { agentId, modelId: selectedModel } })
-    loadAgents()
-
+    // Title generation: show truncated text immediately, replace with GPT OSS 20B title async.
     if (wasFirst && text) {
-      generateTitle(text).then((title) => {
-        if (title) {
-          fetch('/api/app/agents', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agentId, title }),
-          }).then(() => loadAgents())
-        }
-      })
+      startFirstMessageRename(agentId, text)
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    void sendMessage({ role: 'user', parts: parts as any }, { body: { agentId, modelId: selectedModel } })
+      .then(() => loadAgents())
   }
 
   const activeAgent = agents.find((a) => a._id === activeAgentId)
@@ -422,11 +461,8 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
             })}
 
             {showLoadingIndicator && (
-              <div className="flex justify-start">
-                <div className="flex items-center gap-2 px-1 py-1 text-xs italic text-[#888]">
-                  <Loader2 size={12} className="animate-spin" />
-                  Agent is working...
-                </div>
+              <div className="px-1 py-2">
+                <div className="w-5 h-5 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
               </div>
             )}
             {errorMessage && (

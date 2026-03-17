@@ -2,7 +2,9 @@
 
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
@@ -136,22 +138,31 @@ const mdComponents = {
   },
 }
 
+const markdownRemarkPlugins = [remarkGfm, remarkMath]
+const markdownRehypePlugins = [rehypeKatex]
+
 // Find the char position of a safe paragraph boundary in `text`.
-// We only split at \n\n that is NOT inside a code fence or a table.
+// We only split at \n\n that is NOT inside a code fence, a table, or a math block.
 function findParagraphBoundary(text: string): number | null {
   const lines = text.split('\n')
   let inCodeBlock = false
   let inTable = false
+  let inMathBlock = false
   let pos = 0
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+    const trimmed = line.trim()
 
     if (line.startsWith('```')) {
       inCodeBlock = !inCodeBlock
     }
 
     if (!inCodeBlock) {
+      if (trimmed === '$$') {
+        inMathBlock = !inMathBlock
+      }
+
       if (line.trimStart().startsWith('|')) {
         inTable = true
       } else if (inTable && line.trim() === '') {
@@ -159,8 +170,8 @@ function findParagraphBoundary(text: string): number | null {
       }
     }
 
-    // A blank line outside a code block / table = paragraph boundary
-    if (line.trim() === '' && !inCodeBlock && !inTable && i > 0) {
+    // A blank line outside a code block / table / math block = paragraph boundary
+    if (trimmed === '' && !inCodeBlock && !inTable && !inMathBlock && i > 0) {
       return pos // return start of the blank line (content before it is a complete block)
     }
 
@@ -189,6 +200,7 @@ export function MarkdownMessage({ text, isStreaming }: Props) {
   // Reset state when text is cleared (new conversation / new message starts)
   useEffect(() => {
     if (!text) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBlocks([])
       releasedRef.current = 0
       nextIdRef.current = 0
@@ -225,7 +237,11 @@ export function MarkdownMessage({ text, isStreaming }: Props) {
     <div className="markdown-content">
       {blocks.map((block) => (
         <div key={block.id} className="md-block-appear">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+          <ReactMarkdown
+            remarkPlugins={markdownRemarkPlugins}
+            rehypePlugins={markdownRehypePlugins}
+            components={mdComponents}
+          >
             {block.text}
           </ReactMarkdown>
         </div>
@@ -243,7 +259,11 @@ export function MarkdownMessage({ text, isStreaming }: Props) {
       {/* Once streaming ends, flush any remaining text that never hit a paragraph boundary */}
       {!isStreaming && blocks.length === 0 && text.trim() && (
         <div className="md-block-appear">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+          <ReactMarkdown
+            remarkPlugins={markdownRemarkPlugins}
+            rehypePlugins={markdownRehypePlugins}
+            components={mdComponents}
+          >
             {text}
           </ReactMarkdown>
         </div>

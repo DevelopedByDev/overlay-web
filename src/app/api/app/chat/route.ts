@@ -8,6 +8,14 @@ import { addMessage, listMemories } from '@/lib/app-store'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 
+const MATH_FORMAT_INSTRUCTION = [
+  'Formatting requirements for math output:',
+  '- If you include any mathematical expression or equation, wrap it in double dollar delimiters: $$...$$.',
+  '- Use $$...$$ for both inline and display math.',
+  '- Do not use single-dollar math, \\(...\\), or \\[...\\].',
+  '- Keep explanatory prose outside the $$ delimiters.',
+].join('\n')
+
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   creditsUsed: number
@@ -80,7 +88,11 @@ export async function POST(request: NextRequest) {
       // Memory context is optional
     }
 
-    const systemMessage = (systemPrompt || 'You are a helpful AI assistant.') + memoryContext
+    const systemMessage = [
+      systemPrompt || 'You are a helpful AI assistant.',
+      MATH_FORMAT_INSTRUCTION,
+      memoryContext,
+    ].filter(Boolean).join('\n\n')
 
     // ── Save user message ─────────────────────────────────────────────────────
     const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')

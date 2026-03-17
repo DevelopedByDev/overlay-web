@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Instrument_Serif } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthProvider } from "@/contexts/AuthContext";
+import "katex/dist/katex.min.css";
 import "./globals.css";
 
 const instrumentSerif = Instrument_Serif({
