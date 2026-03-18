@@ -32,10 +32,16 @@ interface ConvexResponse<T> {
   errorMessage?: string
 }
 
+interface CallConvexOptions {
+  timeoutMs?: number
+  throwOnError?: boolean
+}
+
 async function callConvex<T>(
   type: 'query' | 'mutation' | 'action',
   path: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  options: CallConvexOptions = {}
 ): Promise<T | null> {
   if (!CONVEX_URL) {
     console.error('CONVEX_URL not configured')
@@ -47,7 +53,7 @@ async function callConvex<T>(
 
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000)
+    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000)
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -66,18 +72,27 @@ async function callConvex<T>(
 
     if (data.status === 'error') {
       console.error(`Convex ${type} error:`, data.errorMessage)
+      if (options.throwOnError) {
+        throw new Error(data.errorMessage || `Convex ${type} error`)
+      }
       return null
     }
 
     return data.value ?? null
   } catch (error) {
     console.error(`Convex ${type} failed:`, error)
+    if (options.throwOnError) {
+      throw error
+    }
     return null
   }
 }
 
 export const convex = {
-  query: <T>(path: string, args: Record<string, unknown>) => callConvex<T>('query', path, args),
-  mutation: <T>(path: string, args: Record<string, unknown>) => callConvex<T>('mutation', path, args),
-  action: <T>(path: string, args: Record<string, unknown>) => callConvex<T>('action', path, args)
+  query: <T>(path: string, args: Record<string, unknown>, options?: CallConvexOptions) =>
+    callConvex<T>('query', path, args, options),
+  mutation: <T>(path: string, args: Record<string, unknown>, options?: CallConvexOptions) =>
+    callConvex<T>('mutation', path, args, options),
+  action: <T>(path: string, args: Record<string, unknown>, options?: CallConvexOptions) =>
+    callConvex<T>('action', path, args, options)
 }

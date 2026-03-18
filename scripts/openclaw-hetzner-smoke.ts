@@ -121,6 +121,14 @@ async function main() {
     }
     log(logPrefix, 'gateway is healthy')
 
+    log(logPrefix, 'verifying chat through the OpenClaw HTTP API')
+    const httpReply = await sendChatOverHttp(serverIp, gatewayToken, 'Reply with exactly: OK')
+    log(logPrefix, `http chat reply: ${JSON.stringify(httpReply)}`)
+
+    if (!httpReply || !/\bok\b/i.test(httpReply)) {
+      throw new Error(`HTTP chat did not return the expected reply: ${JSON.stringify(httpReply)}`)
+    }
+
     log(logPrefix, 'verifying chat through the host openclaw wrapper')
     const reply = await sendChatOverSsh(
       serverIp,
@@ -426,6 +434,30 @@ async function sendChatOverSsh(
   throw new Error('chat.history did not return an assistant reply')
 }
 
+async function sendChatOverHttp(ip: string, gatewayToken: string, message: string): Promise<string> {
+  const response = await fetch(`http://${ip}:18789/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${gatewayToken}`,
+      'Content-Type': 'application/json',
+      'x-openclaw-agent-id': 'default',
+    },
+    body: JSON.stringify({
+      model: 'openclaw:default',
+      user: 'overlay-smoke-http',
+      stream: false,
+      messages: [{ role: 'user', content: message }],
+    }),
+    signal: AbortSignal.timeout(180_000),
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP chat failed: ${response.status} ${await response.text()}`)
+  }
+
+  return extractAssistantTextFromCompletion(await response.json())
+}
+
 async function sshGatewayCall(
   ip: string,
   privateKeyPath: string,
@@ -479,6 +511,40 @@ function extractTextFromHistoryMessage(message: unknown): string | undefined {
   }
 
   return undefined
+}
+
+function extractAssistantTextFromCompletion(data: unknown): string {
+  if (!data || typeof data !== 'object') {
+    return ''
+  }
+
+  const choices = (data as { choices?: unknown }).choices
+  if (!Array.isArray(choices) || choices.length === 0) {
+    return ''
+  }
+
+  const message = (choices[0] as { message?: unknown } | undefined)?.message
+  if (!message || typeof message !== 'object') {
+    return ''
+  }
+
+  const content = (message as { content?: unknown }).content
+  if (typeof content === 'string') {
+    return content.trim()
+  }
+
+  if (!Array.isArray(content)) {
+    return ''
+  }
+
+  return content
+    .map((part) => {
+      if (!part || typeof part !== 'object') return ''
+      const text = (part as { text?: unknown }).text
+      return typeof text === 'string' ? text : ''
+    })
+    .join('')
+    .trim()
 }
 
 async function sshExec(
@@ -596,6 +662,13 @@ function buildCloudInit(params: {
         auth: {
           mode: 'token',
           token: params.gatewayToken,
+        },
+        http: {
+          endpoints: {
+            chatCompletions: {
+              enabled: true,
+            },
+          },
         },
         controlUi: {
           enabled: true,

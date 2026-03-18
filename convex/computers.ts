@@ -203,10 +203,7 @@ export const get = query({
     if (!validateAccessToken(args.accessToken)) return null
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) return null
-    if (computer.status !== 'ready') {
-      return { ...computer, gatewayToken: undefined, readySecret: undefined }
-    }
-    return { ...computer, readySecret: undefined }
+    return { ...computer, gatewayToken: undefined, readySecret: undefined }
   },
 })
 
@@ -234,6 +231,149 @@ export const listEvents = query({
       .withIndex('by_computerId_createdAt', (q) => q.eq('computerId', args.computerId))
       .order('asc')
       .collect()
+  },
+})
+
+export const listChatMessages = query({
+  args: { computerId: v.id('computers'), userId: v.string(), accessToken: v.string() },
+  handler: async (ctx, args) => {
+    if (!validateAccessToken(args.accessToken)) return []
+    const computer = await ctx.db.get(args.computerId)
+    if (!computer || computer.userId !== args.userId) return []
+
+    const events = await ctx.db
+      .query('computerEvents')
+      .withIndex('by_computerId_createdAt', (q) => q.eq('computerId', args.computerId))
+      .order('asc')
+      .collect()
+
+    return events
+      .filter((event) =>
+        event.type === 'chat_user' ||
+        event.type === 'chat_assistant' ||
+        event.type === 'chat_error'
+      )
+      .map((event) => ({
+        _id: event._id,
+        role:
+          event.type === 'chat_user'
+            ? 'user'
+            : 'assistant',
+        content: event.message,
+        createdAt: event.createdAt,
+        isError: event.type === 'chat_error',
+      }))
+  },
+})
+
+export const sendChatMessage = action({
+  args: {
+    computerId: v.id('computers'),
+    userId: v.string(),
+    accessToken: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args) => {
+    console.log(`${TAG} sendChatMessage — START computerId=${args.computerId} userId=${args.userId}`)
+
+    if (!validateAccessToken(args.accessToken)) {
+      throw new Error('Unauthorized')
+    }
+
+    const computer = await ctx.runQuery(internal.computers.getInternal, {
+      computerId: args.computerId,
+    })
+
+    if (!computer || computer.userId !== args.userId) {
+      throw new Error('Computer not found')
+    }
+
+    if (
+      computer.status !== 'ready' ||
+      !computer.hetznerServerIp ||
+      !computer.gatewayToken
+    ) {
+      throw new Error('Computer is not ready')
+    }
+
+    const message = args.message.trim()
+    if (!message) {
+      throw new Error('Message cannot be empty')
+    }
+
+    await ctx.runMutation(internal.computers.logEvent, {
+      computerId: args.computerId,
+      type: 'chat_user',
+      message,
+    })
+
+    try {
+      const response = await fetch(
+        `http://${computer.hetznerServerIp}:18789/v1/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${computer.gatewayToken}`,
+            'Content-Type': 'application/json',
+            'x-openclaw-agent-id': 'default',
+          },
+          body: JSON.stringify({
+            model: 'openclaw:default',
+            user: `overlay:${args.userId}:computer:${args.computerId}`,
+            stream: false,
+            messages: [
+              {
+                role: 'user',
+                content: message,
+              },
+            ],
+          }),
+          signal: AbortSignal.timeout(120_000),
+        },
+      )
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error(
+            'This computer was provisioned before Overlay chat support. Delete and recreate it to enable in-page OpenClaw chat.'
+          )
+        }
+
+        if (response.status === 401) {
+          throw new Error('OpenClaw gateway authentication failed.')
+        }
+
+        throw new Error(`Gateway returned ${response.status}: ${await response.text()}`)
+      }
+
+      const data = await response.json()
+      const content = extractAssistantContent(data)
+
+      if (!content) {
+        throw new Error(`Gateway returned an empty response: ${JSON.stringify(data)}`)
+      }
+
+      await ctx.runMutation(internal.computers.logEvent, {
+        computerId: args.computerId,
+        type: 'chat_assistant',
+        message: content,
+      })
+
+      console.log(`${TAG} sendChatMessage — SUCCESS computerId=${args.computerId}`)
+      return { content }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to reach OpenClaw'
+
+      await ctx.runMutation(internal.computers.logEvent, {
+        computerId: args.computerId,
+        type: 'chat_error',
+        message: `Error: ${message}`,
+      })
+
+      console.error(`${TAG} sendChatMessage — ERROR: ${message}`)
+      throw new Error(message)
+    }
   },
 })
 
@@ -736,6 +876,47 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function extractAssistantContent(data: unknown): string {
+  if (!data || typeof data !== 'object') {
+    return ''
+  }
+
+  const choices = (data as { choices?: unknown }).choices
+  if (!Array.isArray(choices) || choices.length === 0) {
+    return ''
+  }
+
+  const firstChoice = choices[0]
+  if (!firstChoice || typeof firstChoice !== 'object') {
+    return ''
+  }
+
+  const message = (firstChoice as { message?: unknown }).message
+  if (!message || typeof message !== 'object') {
+    return ''
+  }
+
+  const content = (message as { content?: unknown }).content
+  if (typeof content === 'string') {
+    return content.trim()
+  }
+
+  if (!Array.isArray(content)) {
+    return ''
+  }
+
+  return content
+    .map((part) => {
+      if (!part || typeof part !== 'object') {
+        return ''
+      }
+      const text = (part as { text?: unknown }).text
+      return typeof text === 'string' ? text : ''
+    })
+    .join('')
+    .trim()
+}
+
 interface CloudInitParams {
   gatewayToken: string
   readySecret: string
@@ -803,6 +984,13 @@ write_files:
           "auth": {
             "mode": "token",
             "token": "{{GATEWAY_TOKEN}}"
+          },
+          "http": {
+            "endpoints": {
+              "chatCompletions": {
+                "enabled": true
+              }
+            }
           },
           "controlUi": {
             "enabled": true,
