@@ -267,6 +267,138 @@ export const listChatMessages = query({
   },
 })
 
+export const getChatConnection = query({
+  args: {
+    computerId: v.id('computers'),
+    userId: v.string(),
+    accessToken: v.string(),
+  },
+  returns: v.object({
+    gatewayToken: v.string(),
+    hetznerServerIp: v.string(),
+  }),
+  handler: async (ctx, args): Promise<{ gatewayToken: string; hetznerServerIp: string }> => {
+    if (!validateAccessToken(args.accessToken)) {
+      throw new Error('Unauthorized')
+    }
+
+    const computer = await ctx.runQuery(internal.computers.getInternal, {
+      computerId: args.computerId,
+    })
+
+    if (!computer || computer.userId !== args.userId) {
+      throw new Error('Computer not found')
+    }
+
+    if (computer.status !== 'ready' || !computer.hetznerServerIp || !computer.gatewayToken) {
+      throw new Error('Computer is not ready')
+    }
+
+    return {
+      gatewayToken: computer.gatewayToken,
+      hetznerServerIp: computer.hetznerServerIp,
+    }
+  },
+})
+
+export const addChatMessage = mutation({
+  args: {
+    computerId: v.id('computers'),
+    userId: v.string(),
+    accessToken: v.string(),
+    role: v.union(v.literal('user'), v.literal('assistant')),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateAccessToken(args.accessToken)) {
+      throw new Error('Unauthorized')
+    }
+
+    const computer = await ctx.db.get(args.computerId)
+    if (!computer || computer.userId !== args.userId) {
+      throw new Error('Computer not found')
+    }
+
+    const content = args.content.trim()
+    if (!content) {
+      throw new Error('Message cannot be empty')
+    }
+
+    await ctx.db.insert('computerEvents', {
+      computerId: args.computerId,
+      type: args.role === 'user' ? 'chat_user' : 'chat_assistant',
+      message: content,
+      createdAt: Date.now(),
+    })
+
+    return { ok: true }
+  },
+})
+
+export const addChatError = mutation({
+  args: {
+    computerId: v.id('computers'),
+    userId: v.string(),
+    accessToken: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateAccessToken(args.accessToken)) {
+      throw new Error('Unauthorized')
+    }
+
+    const computer = await ctx.db.get(args.computerId)
+    if (!computer || computer.userId !== args.userId) {
+      throw new Error('Computer not found')
+    }
+
+    await ctx.db.insert('computerEvents', {
+      computerId: args.computerId,
+      type: 'chat_error',
+      message: args.message,
+      createdAt: Date.now(),
+    })
+
+    return { ok: true }
+  },
+})
+
+export const setChatRuntimeState = mutation({
+  args: {
+    computerId: v.id('computers'),
+    userId: v.string(),
+    accessToken: v.string(),
+    sessionKey: v.string(),
+    requestedModelId: v.string(),
+    requestedModelRef: v.optional(v.string()),
+    effectiveProvider: v.optional(v.string()),
+    effectiveModel: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!validateAccessToken(args.accessToken)) {
+      throw new Error('Unauthorized')
+    }
+
+    const computer = await ctx.db.get(args.computerId)
+    if (!computer || computer.userId !== args.userId) {
+      throw new Error('Computer not found')
+    }
+
+    const now = Date.now()
+    await ctx.db.patch(args.computerId, {
+      chatSessionKey: args.sessionKey,
+      chatRequestedModelId: args.requestedModelId,
+      chatRequestedModelRef: args.requestedModelRef,
+      chatEffectiveProvider: args.effectiveProvider,
+      chatEffectiveModel: args.effectiveModel,
+      chatModelResolvedAt: now,
+      updatedAt: now,
+    })
+
+    return { ok: true }
+  },
+})
+
 export const sendChatMessage = action({
   args: {
     computerId: v.id('computers'),
@@ -957,7 +1089,7 @@ async function ensureFirewallDeleted(firewallId: number, token: string): Promise
 }
 
 function getComputerSessionKey(userId: string, computerId: string): string {
-  return `computer:${userId}:${computerId}`
+  return `computer:v2:${userId}:${computerId}`
 }
 
 function resolveOpenClawModelRef(modelId: string): string | null {
@@ -968,6 +1100,10 @@ function resolveOpenClawModelRef(modelId: string): string | null {
 
   if (model.provider === 'openrouter') {
     return model.id
+  }
+
+  if (model.id.includes('/')) {
+    return `vercel-ai-gateway/${model.id}`
   }
 
   return `vercel-ai-gateway/${model.provider}/${model.id}`

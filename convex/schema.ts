@@ -204,6 +204,14 @@ export default defineSchema({
     stripeSubscriptionId: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
 
+    // Latest known OpenClaw chat session state for the in-page computer chat.
+    chatSessionKey: v.optional(v.string()),
+    chatRequestedModelId: v.optional(v.string()),
+    chatRequestedModelRef: v.optional(v.string()),
+    chatEffectiveModel: v.optional(v.string()),
+    chatEffectiveProvider: v.optional(v.string()),
+    chatModelResolvedAt: v.optional(v.number()),
+
     createdAt: v.number(),
     updatedAt: v.number(),
   })
