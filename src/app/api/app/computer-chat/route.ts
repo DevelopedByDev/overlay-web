@@ -13,28 +13,27 @@ interface ComputerConnectionInfo {
   hetznerServerIp: string
 }
 
-interface ToolInvokeResponse<T> {
-  ok?: boolean
-  result?: T
-  error?: {
-    message?: string
-  }
-}
-
-interface SessionStatusToolResult {
-  content?: Array<{
-    type?: string
-    text?: string
-  }>
-  details?: {
-    statusText?: string
-  }
-}
-
 interface GatewaySessionModelState {
   sessionKey: string
   provider?: string
   model?: string
+}
+
+interface GatewaySessionsPatchPayload {
+  ok?: boolean
+  key?: string
+  resolved?: {
+    modelProvider?: string
+    model?: string
+  }
+}
+
+interface GatewaySessionsListPayload {
+  sessions?: Array<{
+    key?: string
+    modelProvider?: string | null
+    model?: string | null
+  }>
 }
 
 interface GatewayErrorShape {
@@ -49,32 +48,30 @@ interface GatewayResponseFrame {
   error?: GatewayErrorShape
 }
 
-interface GatewayAgentAcceptedPayload {
+interface GatewayChatAcceptedPayload {
   runId?: string
   status?: string
 }
 
-interface GatewayAgentFinalPayload extends GatewayAgentAcceptedPayload {
+interface GatewayChatFinalPayload extends GatewayChatAcceptedPayload {
   summary?: string
   result?: unknown
+  message?: OpenClawTranscriptMessage
 }
 
-interface GatewayAgentEventPayload {
+interface GatewayChatEventPayload {
   runId?: string
   sessionKey?: string
-  stream?: string
-  data?: {
-    text?: string
-    delta?: string
-    phase?: string
-    error?: string
-  }
+  state?: 'delta' | 'final' | 'aborted' | 'error'
+  seq?: number
+  message?: OpenClawTranscriptMessage
+  errorMessage?: string
 }
 
 interface GatewayEventFrame {
   type?: string
   event?: string
-  payload?: GatewayAgentEventPayload
+  payload?: GatewayChatEventPayload
 }
 
 interface OpenClawTranscriptMessage {
@@ -97,13 +94,16 @@ interface SessionHistoryResponse {
   messages?: OpenClawTranscriptMessage[]
 }
 
+interface AuthenticatedComputerContext {
+  accessToken: string
+  computerId: string
+  connection: ComputerConnectionInfo
+  persistedRequestedModelId?: string
+  userId: string
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const { messages, computerId, modelId }: {
       messages: UIMessage[]
       computerId?: string
@@ -119,21 +119,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
     }
 
-    const userId = session.user.id
-    const accessToken = session.accessToken
+    const { accessToken, connection, persistedRequestedModelId, userId } =
+      await getAuthenticatedComputerContext(computerId)
 
-    const connection = await convex.query<ComputerConnectionInfo>(
-      'computers:getChatConnection',
-      {
-        computerId,
-        userId,
-        accessToken,
-      },
-      { throwOnError: true, timeoutMs: 30_000 }
-    )
+    const sessionKey = getComputerSessionKey(userId, computerId)
+    const selectedModelId =
+      persistedRequestedModelId?.trim() || modelId?.trim() || DEFAULT_MODEL_ID
+    const requestedModelRef =
+      resolveOpenClawModelRef(selectedModelId) ?? resolveOpenClawModelRef(DEFAULT_MODEL_ID)
+    let sessionModelBefore = await readGatewaySessionModel({
+      ip: connection.hetznerServerIp,
+      gatewayToken: connection.gatewayToken,
+      sessionKey,
+    }).catch(() => null)
 
-    if (!connection) {
-      return NextResponse.json({ error: 'Computer is not ready' }, { status: 400 })
+    console.log('[Computer Chat API][Debug] POST start', {
+      computerId,
+      sessionKey,
+      latestUserText,
+      requestedModelIdFromBody: modelId?.trim() || null,
+      persistedRequestedModelId: persistedRequestedModelId?.trim() || null,
+      selectedModelId,
+      requestedModelRef,
+      sessionModelBefore,
+    })
+
+    if (!/^\/model\b/i.test(latestUserText)) {
+      const appliedSessionModel = await applyPreferredModel({
+        ip: connection.hetznerServerIp,
+        gatewayToken: connection.gatewayToken,
+        sessionKey,
+        modelId: selectedModelId,
+        modelRef: requestedModelRef,
+      }).catch((error) => {
+        console.warn('[Computer Chat API] Failed to sync OpenClaw session model before POST:', {
+          sessionKey,
+          selectedModelId,
+          requestedModelRef,
+          error: getErrorMessage(error),
+        })
+        return null
+      })
+
+      if (appliedSessionModel) {
+        sessionModelBefore = appliedSessionModel
+      }
     }
 
     await convex.mutation(
@@ -148,20 +178,27 @@ export async function POST(request: NextRequest) {
       { throwOnError: true, timeoutMs: 30_000 }
     )
 
-    const sessionKey = getComputerSessionKey(userId, computerId)
-    const selectedModelId = modelId?.trim() || DEFAULT_MODEL_ID
-    const requestedModelRef =
-      resolveOpenClawModelRef(selectedModelId) ?? resolveOpenClawModelRef(DEFAULT_MODEL_ID)
     const baselineHistory = await fetchSessionHistorySnapshot({
       ip: connection.hetznerServerIp,
       gatewayToken: connection.gatewayToken,
       sessionKey,
     })
     const baselineSeq = getHighestTranscriptSeq(baselineHistory.messages)
+    const baselineHasConversationHistory = hasRealConversationHistory(baselineHistory.messages)
     const hookMessage = buildHookMessage({
       messages,
       latestUserText,
-      sessionHasHistory: baselineHistory.messages.length > 0,
+      sessionHasConversationHistory: baselineHasConversationHistory,
+    })
+
+    console.log('[Computer Chat API][Debug] POST baseline', {
+      computerId,
+      sessionKey,
+      baselineSeq,
+      baselineHistoryCount: baselineHistory.messages.length,
+      baselineHasConversationHistory,
+      baselineTail: summarizeTranscriptTail(baselineHistory.messages),
+      hookMessagePreview: hookMessage.slice(0, 240),
     })
 
     const stream = createUIMessageStream<UIMessage>({
@@ -178,7 +215,6 @@ export async function POST(request: NextRequest) {
             gatewayToken: connection.gatewayToken,
             sessionKey,
             message: hookMessage,
-            model: requestedModelRef,
             onText: (delta) => {
               if (!delta) return
               writer.write({ type: 'text-delta', id: textId, delta })
@@ -217,6 +253,25 @@ export async function POST(request: NextRequest) {
             gatewayToken: connection.gatewayToken,
             sessionKey,
           }).catch(() => null)
+
+          console.log('[Computer Chat API][Debug] POST finish', {
+            computerId,
+            sessionKey,
+            selectedModelId,
+            requestedModelRef,
+            finalTextPreview: finalText.slice(0, 240),
+            latestAssistantMessage: latestAssistantMessage
+              ? {
+                  role: latestAssistantMessage.role,
+                  provider: latestAssistantMessage.provider,
+                  model: latestAssistantMessage.model,
+                  text: extractTranscriptMessageText(latestAssistantMessage).slice(0, 200),
+                  seq: latestAssistantMessage.__openclaw?.seq ?? null,
+                }
+              : null,
+            latestSessionModel,
+            latestHistoryTail: latestHistory ? summarizeTranscriptTail(latestHistory.messages) : [],
+          })
 
           await convex.mutation(
             'computers:setChatRuntimeState',
@@ -257,6 +312,143 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const { computerId, modelId }: { computerId?: string; modelId?: string } = await request.json()
+
+    if (!computerId) {
+      return NextResponse.json({ error: 'Computer ID is required' }, { status: 400 })
+    }
+
+    const selectedModelId = modelId?.trim() || DEFAULT_MODEL_ID
+    const requestedModelRef =
+      resolveOpenClawModelRef(selectedModelId) ?? resolveOpenClawModelRef(DEFAULT_MODEL_ID)
+
+    if (!requestedModelRef) {
+      return NextResponse.json({ error: 'Unknown model selection' }, { status: 400 })
+    }
+
+    const { accessToken, connection, userId } = await getAuthenticatedComputerContext(computerId)
+    const sessionKey = getComputerSessionKey(userId, computerId)
+    const sessionModelBefore = await readGatewaySessionModel({
+      ip: connection.hetznerServerIp,
+      gatewayToken: connection.gatewayToken,
+      sessionKey,
+    }).catch(() => null)
+
+    console.log('[Computer Chat API][Debug] PATCH start', {
+      computerId,
+      sessionKey,
+      selectedModelId,
+      requestedModelRef,
+      sessionModelBefore,
+    })
+
+    const appliedSessionModel = await applyPreferredModel({
+      ip: connection.hetznerServerIp,
+      gatewayToken: connection.gatewayToken,
+      sessionKey,
+      modelId: selectedModelId,
+      modelRef: requestedModelRef,
+    })
+
+    const latestSessionModel =
+      appliedSessionModel ||
+      (await readGatewaySessionModel({
+        ip: connection.hetznerServerIp,
+        gatewayToken: connection.gatewayToken,
+        sessionKey,
+      }).catch(() => null))
+    const latestHistory = await fetchSessionHistorySnapshot({
+      ip: connection.hetznerServerIp,
+      gatewayToken: connection.gatewayToken,
+      sessionKey,
+    }).catch(() => null)
+
+    console.log('[Computer Chat API][Debug] PATCH finish', {
+      computerId,
+      sessionKey,
+      selectedModelId,
+      requestedModelRef,
+      latestSessionModel,
+      latestHistoryTail: latestHistory ? summarizeTranscriptTail(latestHistory.messages) : [],
+    })
+
+    await convex.mutation(
+      'computers:setChatRuntimeState',
+      {
+        computerId,
+        userId,
+        accessToken,
+        sessionKey: latestSessionModel?.sessionKey ?? sessionKey,
+        requestedModelId: selectedModelId,
+        requestedModelRef: requestedModelRef ?? undefined,
+        effectiveProvider: latestSessionModel?.provider,
+        effectiveModel: latestSessionModel?.model,
+      },
+      { throwOnError: true, timeoutMs: 30_000 }
+    )
+
+    return NextResponse.json({
+      ok: true,
+      requestedModelId: selectedModelId,
+      requestedModelRef,
+      sessionKey,
+      effectiveProvider: latestSessionModel?.provider ?? null,
+      effectiveModel: latestSessionModel?.model ?? null,
+    })
+  } catch (error) {
+    console.error('[Computer Chat API] Model update error:', error)
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
+  }
+}
+
+async function getAuthenticatedComputerContext(
+  computerId: string
+): Promise<AuthenticatedComputerContext> {
+  const session = await getSession()
+  if (!session) {
+    throw new Error('Unauthorized')
+  }
+
+  const userId = session.user.id
+  const accessToken = session.accessToken
+
+  const connection = await convex.query<ComputerConnectionInfo>(
+    'computers:getChatConnection',
+    {
+      computerId,
+      userId,
+      accessToken,
+    },
+    { throwOnError: true, timeoutMs: 30_000 }
+  )
+
+  if (!connection) {
+    throw new Error('Computer is not ready')
+  }
+
+  const computer = await convex.query<{
+    chatRequestedModelId?: string
+  } | null>(
+    'computers:get',
+    {
+      computerId,
+      userId,
+      accessToken,
+    },
+    { throwOnError: true, timeoutMs: 30_000 }
+  )
+
+  return {
+    accessToken,
+    computerId,
+    connection,
+    persistedRequestedModelId: computer?.chatRequestedModelId,
+    userId,
+  }
+}
+
 function extractTextFromUiMessage(message: UIMessage | undefined): string {
   if (!message?.parts) return ''
   return message.parts
@@ -278,9 +470,13 @@ function extractLatestUserText(messages: UIMessage[]): string {
 function buildHookMessage(params: {
   messages: UIMessage[]
   latestUserText: string
-  sessionHasHistory: boolean
+  sessionHasConversationHistory: boolean
 }): string {
-  if (params.sessionHasHistory) {
+  if (isStandaloneCommandMessage(params.latestUserText)) {
+    return params.latestUserText
+  }
+
+  if (params.sessionHasConversationHistory) {
     return params.latestUserText
   }
 
@@ -323,30 +519,35 @@ async function fetchSessionHistorySnapshot(params: {
   gatewayToken: string
   sessionKey: string
 }): Promise<{ sessionKey: string; messages: OpenClawTranscriptMessage[] }> {
-  const response = await fetch(
-    `http://${params.ip}:18789/sessions/${encodeURIComponent(params.sessionKey)}/history`,
-    {
-      headers: {
-        Authorization: `Bearer ${params.gatewayToken}`,
+  const ws = await openGatewaySocket(params.ip)
+  try {
+    await connectGatewaySocket(ws, params.gatewayToken)
+    const response = await waitForGatewayResponse(ws, {
+      requestId: crypto.randomUUID(),
+      method: 'chat.history',
+      params: {
+        sessionKey: params.sessionKey,
+        limit: 200,
       },
-      signal: AbortSignal.timeout(30_000),
+    })
+
+    const payload =
+      response.payload && typeof response.payload === 'object'
+        ? (response.payload as SessionHistoryResponse)
+        : null
+
+    return {
+      sessionKey: payload?.sessionKey?.trim() || params.sessionKey,
+      messages: payload ? normalizeTranscriptMessages(payload) : [],
     }
-  )
-
-  if (response.status === 404) {
-    return { sessionKey: params.sessionKey, messages: [] }
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load OpenClaw session history: ${response.status} ${await response.text()}`
-    )
-  }
-
-  const body = (await response.json()) as SessionHistoryResponse
-  return {
-    sessionKey: body.sessionKey?.trim() || params.sessionKey,
-    messages: normalizeTranscriptMessages(body),
+  } catch (error) {
+    const message = getErrorMessage(error)
+    if (message.includes('session not found') || message.includes('404')) {
+      return { sessionKey: params.sessionKey, messages: [] }
+    }
+    throw error
+  } finally {
+    ws.close()
   }
 }
 
@@ -355,7 +556,6 @@ async function streamAssistantReplyFromGateway(params: {
   gatewayToken: string
   sessionKey: string
   message: string
-  model?: string | null
   onText: (delta: string) => void
 }): Promise<string> {
   const ws = await openGatewaySocket(params.ip)
@@ -364,10 +564,9 @@ async function streamAssistantReplyFromGateway(params: {
   try {
     await connectGatewaySocket(ws, params.gatewayToken)
 
-    assistantText = await runGatewayAgentStream(ws, {
+    assistantText = await runGatewayChatStream(ws, {
       message: params.message,
       sessionKey: params.sessionKey,
-      model: params.model,
       onText: (delta) => {
         if (!delta) return
         assistantText += delta
@@ -384,6 +583,38 @@ async function streamAssistantReplyFromGateway(params: {
 function normalizeTranscriptMessages(payload: SessionHistoryResponse): OpenClawTranscriptMessage[] {
   const messages = payload.messages ?? payload.items ?? []
   return Array.isArray(messages) ? messages : []
+}
+
+function extractTranscriptMessageText(message: OpenClawTranscriptMessage): string {
+  return (
+    message.content
+      ?.filter((part) => part.type === 'text' && typeof part.text === 'string')
+      .map((part) => part.text?.trim() || '')
+      .filter(Boolean)
+      .join('\n')
+      .trim() || ''
+  )
+}
+
+function summarizeTranscriptTail(messages: OpenClawTranscriptMessage[], limit = 4) {
+  return messages.slice(-limit).map((message) => ({
+    role: message.role ?? null,
+    provider: message.provider ?? null,
+    model: message.model ?? null,
+    seq: message.__openclaw?.seq ?? null,
+    text: extractTranscriptMessageText(message).slice(0, 160),
+  }))
+}
+
+function hasRealConversationHistory(messages: OpenClawTranscriptMessage[]): boolean {
+  return messages.some((message) => {
+    if (message.role !== 'user') {
+      return false
+    }
+
+    const text = extractTranscriptMessageText(message)
+    return Boolean(text) && !isStandaloneCommandMessage(text)
+  })
 }
 
 function getHighestTranscriptSeq(messages: OpenClawTranscriptMessage[]): number {
@@ -439,9 +670,100 @@ function getComputerSessionKey(userId: string, computerId: string): string {
   return `hook:computer:v1:${userId}:${computerId}`
 }
 
+function isStandaloneCommandMessage(value: string): boolean {
+  const trimmed = value.trim()
+  return /^\/[^\s]+(?:\s.*)?$/.test(trimmed) || /^![\s\S]+$/.test(trimmed)
+}
+
 function resolveOpenClawModelRef(modelId: string): string | null {
   const model = getModel(modelId)
   return model?.openClawRef ?? null
+}
+
+function resolveOpenClawSessionModelCandidates(modelId: string): string[] {
+  const candidates = new Set<string>()
+  const model = getModel(modelId)
+  const trimmedId = modelId.trim()
+  if (trimmedId) {
+    candidates.add(trimmedId)
+  }
+  const ref = model?.openClawRef?.trim()
+  if (ref) {
+    candidates.add(ref)
+    const strippedGatewayPrefix = ref.replace(/^vercel-ai-gateway\//, '').trim()
+    if (strippedGatewayPrefix) {
+      candidates.add(strippedGatewayPrefix)
+    }
+  }
+  return [...candidates]
+}
+
+async function applyPreferredModel(params: {
+  ip: string
+  gatewayToken: string
+  sessionKey: string
+  modelId: string
+  modelRef: string | null
+}): Promise<GatewaySessionModelState | null> {
+  const candidates = resolveOpenClawSessionModelCandidates(params.modelId)
+  let lastError: Error | null = null
+
+  const ws = await openGatewaySocket(params.ip)
+
+  try {
+    await connectGatewaySocket(ws, params.gatewayToken)
+    for (const candidate of candidates) {
+      try {
+        const response = await waitForGatewayResponse(ws, {
+          requestId: crypto.randomUUID(),
+          method: 'sessions.patch',
+          params: {
+            key: params.sessionKey,
+            model: candidate,
+          },
+        })
+
+        const payload =
+          response.payload && typeof response.payload === 'object'
+            ? (response.payload as GatewaySessionsPatchPayload)
+            : null
+
+        const modelState = {
+          sessionKey: payload?.key?.trim() || params.sessionKey,
+          provider: payload?.resolved?.modelProvider?.trim() || undefined,
+          model: payload?.resolved?.model?.trim() || undefined,
+        }
+
+        console.log('[Computer Chat API] OpenClaw model switched via sessions.patch:', {
+          sessionKey: params.sessionKey,
+          canonicalSessionKey: modelState.sessionKey,
+          modelId: params.modelId,
+          attemptedModel: candidate,
+          modelRef: params.modelRef,
+          resolvedProvider: modelState.provider ?? null,
+          resolvedModel: modelState.model ?? null,
+        })
+
+        return modelState
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(getErrorMessage(error))
+        console.warn('[Computer Chat API] OpenClaw sessions.patch model candidate failed:', {
+          sessionKey: params.sessionKey,
+          modelId: params.modelId,
+          attemptedModel: candidate,
+          modelRef: params.modelRef,
+          error: getErrorMessage(lastError),
+        })
+      }
+    }
+  } finally {
+    ws.close()
+  }
+
+  if (lastError) {
+    throw lastError
+  }
+  return null
 }
 
 async function openGatewaySocket(ip: string): Promise<WebSocket> {
@@ -505,12 +827,11 @@ async function connectGatewaySocket(ws: WebSocket, gatewayToken: string): Promis
   }
 }
 
-async function runGatewayAgentStream(
+async function runGatewayChatStream(
   ws: WebSocket,
   params: {
     message: string
     sessionKey: string
-    model?: string | null
     onText: (delta: string) => void
   }
 ): Promise<string> {
@@ -557,19 +878,33 @@ async function runGatewayAgentStream(
         return
       }
 
-      if (isGatewayEventFrame(frame) && frame.event === 'agent') {
+      if (isGatewayEventFrame(frame) && frame.event === 'chat') {
         const payload = frame.payload
         if (!accepted || !runId || payload?.runId !== runId) {
           return
         }
 
-        if (payload.stream === 'assistant') {
+        if (payload.state === 'delta') {
           const delta = extractGatewayAssistantDelta(payload, assistantText)
           if (!delta) {
             return
           }
           assistantText += delta
           params.onText(delta)
+        }
+
+        if (payload.state === 'error') {
+          fail(new Error(payload.errorMessage || 'OpenClaw chat run failed.'))
+          return
+        }
+
+        if (payload.state === 'final' || payload.state === 'aborted') {
+          const finalText = extractTranscriptMessageText(payload.message ?? {})
+          if (finalText && !assistantText) {
+            assistantText = finalText
+            params.onText(finalText)
+          }
+          finish(assistantText.trim() || finalText.trim())
         }
         return
       }
@@ -586,7 +921,7 @@ async function runGatewayAgentStream(
 
         const payload =
           frame.payload && typeof frame.payload === 'object'
-            ? (frame.payload as GatewayAgentAcceptedPayload)
+            ? (frame.payload as GatewayChatAcceptedPayload)
             : null
         const nextRunId = payload?.runId?.trim()
         if (!nextRunId) {
@@ -606,7 +941,7 @@ async function runGatewayAgentStream(
 
       const payload =
         frame.payload && typeof frame.payload === 'object'
-          ? (frame.payload as GatewayAgentFinalPayload)
+          ? (frame.payload as GatewayChatFinalPayload)
           : null
 
       if (payload?.status === 'error') {
@@ -614,15 +949,14 @@ async function runGatewayAgentStream(
         return
       }
 
-      if (!assistantText) {
-        const resultText = extractGatewayResultText(payload?.result)
-        if (resultText) {
-          assistantText = resultText
-          params.onText(resultText)
-        }
+      const finalText =
+        extractTranscriptMessageText(payload?.message ?? {}) || extractGatewayResultText(payload?.result)
+      if (finalText && !assistantText) {
+        assistantText = finalText
+        params.onText(finalText)
       }
 
-      finish(assistantText.trim())
+      finish(assistantText.trim() || finalText.trim())
     }
 
     ws.addEventListener('message', handleMessage)
@@ -633,14 +967,13 @@ async function runGatewayAgentStream(
       JSON.stringify({
         type: 'req',
         id: requestId,
-        method: 'agent',
+        method: 'chat.send',
         params: {
           message: params.message,
           sessionKey: params.sessionKey,
           deliver: false,
-          timeout: 240,
+          timeoutMs: 240_000,
           idempotencyKey,
-          ...(params.model ? { model: params.model } : {}),
         },
       })
     )
@@ -744,15 +1077,10 @@ function isGatewayEventFrame(frame: GatewayResponseFrame | GatewayEventFrame): f
 }
 
 function extractGatewayAssistantDelta(
-  payload: GatewayAgentEventPayload,
+  payload: GatewayChatEventPayload,
   accumulatedText: string
 ): string {
-  const delta = payload.data?.delta
-  if (typeof delta === 'string' && delta.length > 0) {
-    return delta
-  }
-
-  const text = payload.data?.text
+  const text = extractTranscriptMessageText(payload.message ?? {})
   if (typeof text !== 'string' || text.length === 0) {
     return ''
   }
@@ -793,87 +1121,38 @@ async function readGatewaySessionModel(params: {
   gatewayToken: string
   sessionKey: string
 }): Promise<GatewaySessionModelState | null> {
-  return await invokeSessionStatusTool({
-    ip: params.ip,
-    gatewayToken: params.gatewayToken,
-    sessionKey: params.sessionKey,
-  })
-}
-
-async function invokeSessionStatusTool(params: {
-  ip: string
-  gatewayToken: string
-  sessionKey: string
-  model?: string
-}): Promise<GatewaySessionModelState | null> {
-  const response = await fetch(`http://${params.ip}:18789/tools/invoke`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.gatewayToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      tool: 'session_status',
-      sessionKey: params.sessionKey,
-      args: {
-        sessionKey: params.sessionKey,
-        ...(params.model ? { model: params.model } : {}),
-      },
-    }),
-    signal: AbortSignal.timeout(30_000),
-  })
-
-  if (!response.ok) {
-    return null
-  }
-
+  const ws = await openGatewaySocket(params.ip)
   try {
-    const body = (await response.json()) as ToolInvokeResponse<SessionStatusToolResult>
-    if (body.ok !== true) {
+    await connectGatewaySocket(ws, params.gatewayToken)
+    const response = await waitForGatewayResponse(ws, {
+      requestId: crypto.randomUUID(),
+      method: 'sessions.list',
+      params: {},
+    })
+    const payload =
+      response.payload && typeof response.payload === 'object'
+        ? (response.payload as GatewaySessionsListPayload)
+        : null
+    const exact = payload?.sessions?.find((session) => session.key === params.sessionKey) ?? null
+    const sessionRow =
+      exact ??
+      payload?.sessions?.find((session) => {
+        const key = session.key?.trim().toLowerCase()
+        return key?.endsWith(`:${params.sessionKey.toLowerCase()}`) ?? false
+      }) ??
+      null
+
+    if (!sessionRow) {
       return null
     }
 
-    const statusText =
-      body.result?.details?.statusText ||
-      body.result?.content
-        ?.filter((part) => part.type === 'text' && typeof part.text === 'string')
-        .map((part) => part.text || '')
-        .join('\n') ||
-      ''
-
-    const parsed = parseModelFromStatusText(statusText)
     return {
-      sessionKey: params.sessionKey,
-      provider: parsed?.provider,
-      model: parsed?.model,
+      sessionKey: sessionRow.key?.trim() || params.sessionKey,
+      provider: sessionRow.modelProvider?.trim() || undefined,
+      model: sessionRow.model?.trim() || undefined,
     }
-  } catch {
-    return null
-  }
-}
-
-function parseModelFromStatusText(statusText: string): { provider?: string; model?: string } | null {
-  const modelLine = statusText
-    .split('\n')
-    .find((line) => line.trim().startsWith('🧠 Model:'))
-
-  if (!modelLine) {
-    return null
-  }
-
-  const rawLabel = modelLine.replace(/^🧠 Model:\s*/, '').split(' · ')[0]?.trim()
-  if (!rawLabel) {
-    return null
-  }
-
-  const slashIndex = rawLabel.indexOf('/')
-  if (slashIndex === -1) {
-    return { model: rawLabel }
-  }
-
-  return {
-    provider: rawLabel.slice(0, slashIndex).trim() || undefined,
-    model: rawLabel.slice(slashIndex + 1).trim() || undefined,
+  } finally {
+    ws.close()
   }
 }
 

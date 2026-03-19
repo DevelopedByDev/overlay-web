@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { DefaultChatTransport } from 'ai'
 import { useChat } from '@ai-sdk/react'
-import { AlertCircle, ChevronDown, Loader2, Send } from 'lucide-react'
+import { AlertCircle, ChevronDown, Loader2, Send, Terminal } from 'lucide-react'
 import { convex } from '@/lib/convex'
 import { MarkdownMessage } from '@/components/app/MarkdownMessage'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID } from '@/lib/models'
@@ -33,6 +33,15 @@ interface Computer {
   chatModelResolvedAt?: number
 }
 
+interface ModelUpdateResponse {
+  ok: boolean
+  requestedModelId: string
+  requestedModelRef: string
+  sessionKey: string
+  effectiveProvider: string | null
+  effectiveModel: string | null
+}
+
 interface LogEvent {
   _id: string
   type: string
@@ -48,7 +57,72 @@ interface PersistedChatMessage {
   isError?: boolean
 }
 
-const COMPUTER_MODEL_KEY = 'overlay_agent_model'
+const OPENCLAW_SLASH_COMMANDS = [
+  { command: '/help', description: 'Show command help' },
+  { command: '/commands', description: 'List available commands' },
+  { command: '/skill <name> [input]', description: 'Run a skill by name' },
+  { command: '/status', description: 'Show session and model status' },
+  { command: '/allowlist', description: 'List or edit allowlist entries' },
+  { command: '/approve <id> allow-once|allow-always|deny', description: 'Resolve exec approvals' },
+  { command: '/context [list|detail|json]', description: 'Inspect session context' },
+  { command: '/btw <question>', description: 'Ask an ephemeral side question' },
+  { command: '/export-session [path]', description: 'Export the current session' },
+  { command: '/whoami', description: 'Show sender id' },
+  { command: '/session idle <duration|off>', description: 'Set idle auto-unfocus' },
+  { command: '/session max-age <duration|off>', description: 'Set hard max-age auto-unfocus' },
+  { command: '/subagents list|kill|log|info|send|steer|spawn', description: 'Control sub-agents' },
+  { command: '/acp spawn|cancel|steer|close|status|set-mode|set|cwd|permissions|timeout|model|reset-options|doctor|install|sessions', description: 'Control ACP sessions' },
+  { command: '/agents', description: 'List thread-bound agents' },
+  { command: '/focus <target>', description: 'Bind thread to a target session' },
+  { command: '/unfocus', description: 'Remove current thread binding' },
+  { command: '/kill <id|#|all>', description: 'Abort running sub-agents' },
+  { command: '/steer <id|#> <message>', description: 'Steer a running sub-agent' },
+  { command: '/tell <id|#> <message>', description: 'Alias for /steer' },
+  { command: '/config show|get|set|unset', description: 'Read or write config' },
+  { command: '/mcp show|get|set|unset', description: 'Manage MCP server config' },
+  { command: '/plugins list|show|get|enable|disable', description: 'Inspect or toggle plugins' },
+  { command: '/debug show|set|unset|reset', description: 'Manage runtime-only overrides' },
+  { command: '/usage off|tokens|full|cost', description: 'Control usage footer output' },
+  { command: '/tts off|always|inbound|tagged|status|provider|limit|summary|audio', description: 'Control TTS' },
+  { command: '/stop', description: 'Stop the current run' },
+  { command: '/restart', description: 'Restart the gateway/runtime flow' },
+  { command: '/dock-telegram', description: 'Switch replies to Telegram' },
+  { command: '/dock-discord', description: 'Switch replies to Discord' },
+  { command: '/dock-slack', description: 'Switch replies to Slack' },
+  { command: '/activation mention|always', description: 'Change group activation mode' },
+  { command: '/send on|off|inherit', description: 'Control reply delivery' },
+  { command: '/reset', description: 'Reset the current session' },
+  { command: '/new [model]', description: 'Start a fresh session' },
+  { command: '/new', description: 'Start a fresh session' },
+  { command: '/think <off|minimal|low|medium|high|xhigh>', description: 'Set thinking depth' },
+  { command: '/thinking <off|minimal|low|medium|high|xhigh>', description: 'Alias for /think' },
+  { command: '/t <off|minimal|low|medium|high|xhigh>', description: 'Short alias for /think' },
+  { command: '/fast status|on|off', description: 'Toggle fast mode' },
+  { command: '/verbose on|full|off', description: 'Control verbose output' },
+  { command: '/v on|full|off', description: 'Alias for /verbose' },
+  { command: '/reasoning on|off|stream', description: 'Control reasoning output' },
+  { command: '/reason on|off|stream', description: 'Alias for /reasoning' },
+  { command: '/elevated on|off|ask|full', description: 'Control elevated execution' },
+  { command: '/elev on|off|ask|full', description: 'Alias for /elevated' },
+  { command: '/exec host=<sandbox|gateway|node> security=<deny|allowlist|full> ask=<off|on-miss|always> node=<id>', description: 'Set exec defaults' },
+  { command: '/model <name>', description: 'Switch models' },
+  { command: '/model', description: 'Show compact model picker' },
+  { command: '/model list', description: 'List available models' },
+  { command: '/model status', description: 'Show active model details' },
+  { command: '/models <provider>', description: 'Browse models by provider' },
+  { command: '/models', description: 'Browse models' },
+  { command: '/queue <mode>', description: 'Configure queue mode' },
+  { command: '/queue', description: 'Show current queue settings' },
+  { command: '/bash <command>', description: 'Run a host bash command' },
+  { command: '/compact [instructions]', description: 'Compact the session' },
+  { command: '/id', description: 'Alias for /whoami' },
+  { command: '/export [path]', description: 'Alias for /export-session' },
+  { command: '/voice join|leave|status', description: 'Discord alias for /vc' },
+  { command: '/dock_telegram', description: 'Alias for /dock-telegram' },
+  { command: '/dock_discord', description: 'Alias for /dock-discord' },
+  { command: '/dock_slack', description: 'Alias for /dock-slack' },
+  { command: '/vc join|leave|status', description: 'Discord voice control' },
+] as const
 
 function stepIndex(step?: string): number {
   if (!step) return 0
@@ -186,10 +260,8 @@ export default function ComputerDetailClient({
   const [now] = useState(Date.now)
   const [computer, setComputer] = useState<Computer | null | undefined>(undefined)
   const [logs, setLogs] = useState<LogEvent[]>([])
-  const [selectedModel, setSelectedModel] = useState(() => {
-    if (typeof window === 'undefined') return DEFAULT_MODEL_ID
-    return localStorage.getItem(COMPUTER_MODEL_KEY) || DEFAULT_MODEL_ID
-  })
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID)
+  const [hasHydratedSelectedModel, setHasHydratedSelectedModel] = useState(false)
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [hydratedTranscript, setHydratedTranscript] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -253,7 +325,6 @@ export default function ComputerDetailClient({
   }, [accessToken, computerId, setMessages, userId])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchComputer()
   }, [fetchComputer])
 
@@ -273,7 +344,6 @@ export default function ComputerDetailClient({
   useEffect(() => {
     if (computer?.status !== 'provisioning') return
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchLogs()
     const intervalId = window.setInterval(() => {
       void fetchLogs()
@@ -284,9 +354,16 @@ export default function ComputerDetailClient({
 
   useEffect(() => {
     if (computer?.status !== 'ready' || hydratedTranscript) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void hydrateMessages()
   }, [computer?.status, hydrateMessages, hydratedTranscript])
+
+  useEffect(() => {
+    if (hasHydratedSelectedModel || computer === undefined) return
+
+    const persistedModelId = computer?.chatRequestedModelId?.trim() || DEFAULT_MODEL_ID
+    setSelectedModel(persistedModelId)
+    setHasHydratedSelectedModel(true)
+  }, [computer, hasHydratedSelectedModel])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -304,6 +381,81 @@ export default function ComputerDetailClient({
       ? `${computer.chatEffectiveProvider}/${computer.chatEffectiveModel}`
       : computer?.chatRequestedModelRef || null
   const [input, setInput] = useState('')
+  const slashMenuRef = useRef<HTMLDivElement>(null)
+  const slashQuery = input.trimStart()
+  const slashCommands = useMemo(() => {
+    if (!slashQuery.startsWith('/')) return []
+
+    const normalizedQuery = slashQuery.toLowerCase()
+    if (normalizedQuery === '/') {
+      return OPENCLAW_SLASH_COMMANDS
+    }
+
+    return OPENCLAW_SLASH_COMMANDS.filter(({ command, description }) => {
+      const normalizedCommand = command.toLowerCase()
+      const normalizedDescription = description.toLowerCase()
+      return (
+        normalizedCommand.startsWith(normalizedQuery) ||
+        normalizedCommand.includes(normalizedQuery) ||
+        normalizedDescription.includes(normalizedQuery.slice(1))
+      )
+    })
+  }, [slashQuery])
+  const [activeSlashIndex, setActiveSlashIndex] = useState(0)
+  const showSlashCommands = slashCommands.length > 0 && slashQuery.startsWith('/')
+
+  const insertSlashCommand = useCallback((command: string) => {
+    setInput(`${command} `)
+    setActiveSlashIndex(0)
+  }, [])
+
+  const applyModelSelection = useCallback(
+    async (modelId: string) => {
+      setSelectedModel(modelId)
+      setShowModelPicker(false)
+
+      try {
+        const response = await fetch('/api/app/computer-chat', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            computerId,
+            modelId,
+          }),
+        })
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null
+          throw new Error(payload?.error || 'Failed to update OpenClaw model.')
+        }
+
+        const payload = (await response.json()) as ModelUpdateResponse
+        setComputer((current) => {
+          if (!current) return current
+          return {
+            ...current,
+            chatSessionKey: payload.sessionKey,
+            chatRequestedModelId: payload.requestedModelId,
+            chatRequestedModelRef: payload.requestedModelRef,
+            chatEffectiveProvider: payload.effectiveProvider ?? undefined,
+            chatEffectiveModel: payload.effectiveModel ?? undefined,
+            chatModelResolvedAt: Date.now(),
+          }
+        })
+
+        await fetchComputer()
+      } catch (error) {
+        console.error('[Computer Page] Failed to apply model selection:', {
+          computerId,
+          modelId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    },
+    [computerId, fetchComputer]
+  )
 
   const submitMessage = useCallback(async () => {
     const text = input.trim()
@@ -324,6 +476,41 @@ export default function ComputerDetailClient({
     )
     await fetchComputer()
   }, [computerId, fetchComputer, input, isLoading, selectedModel, sendMessage])
+
+  useEffect(() => {
+    if (!showSlashCommands) return
+
+    const activeEntry = slashMenuRef.current?.querySelector<HTMLButtonElement>(
+      `[data-command-index="${activeSlashIndex}"]`
+    )
+    activeEntry?.scrollIntoView({ block: 'nearest' })
+  }, [activeSlashIndex, showSlashCommands])
+
+  useEffect(() => {
+    if (computer?.status !== 'ready') return
+
+    console.log('[Computer Page] OpenClaw runtime:', {
+      computerId: computer._id,
+      name: computer.name,
+      status: computer.status,
+      ip: computer.hetznerServerIp ?? null,
+      selectedModelId: selectedModel,
+      selectedModelName: currentModel?.name ?? null,
+      effectiveModel: effectiveModelLabel,
+      chatSessionKey: computer.chatSessionKey ?? null,
+      resolvedAt: computer.chatModelResolvedAt ?? null,
+    })
+  }, [
+    computer?._id,
+    computer?.chatModelResolvedAt,
+    computer?.chatSessionKey,
+    computer?.hetznerServerIp,
+    computer?.name,
+    computer?.status,
+    currentModel?.name,
+    effectiveModelLabel,
+    selectedModel,
+  ])
 
   if (computer === undefined) {
     return (
@@ -347,47 +534,32 @@ export default function ComputerDetailClient({
         <h2 className="min-w-0 truncate text-sm font-medium text-[#0a0a0a]">{computer.name}</h2>
 
         {computer.status === 'ready' && (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-xs text-[#888]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#27ae60]" />
-              Online{computer.hetznerServerIp ? ` · ${computer.hetznerServerIp}` : ''}
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <div className="relative">
-                <button
-                  onClick={() => setShowModelPicker((current) => !current)}
-                  className="flex items-center gap-1.5 rounded-md bg-[#f0f0f0] px-2.5 py-1 text-xs text-[#525252] transition-colors hover:bg-[#e8e8e8]"
-                >
-                  {currentModel?.name || 'Select model'}
-                  <ChevronDown size={11} />
-                </button>
-                {showModelPicker && (
-                  <div className="absolute right-0 top-full z-10 mt-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg">
-                    {AVAILABLE_MODELS.map((model) => (
-                      <button
-                        key={model.id}
-                        onClick={() => {
-                          setSelectedModel(model.id)
-                          localStorage.setItem(COMPUTER_MODEL_KEY, model.id)
-                          setShowModelPicker(false)
-                        }}
-                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[#f5f5f5] ${
-                          model.id === selectedModel ? 'font-medium text-[#0a0a0a]' : 'text-[#525252]'
-                        }`}
-                      >
-                        <span>{model.name}</span>
-                        <span className="ml-2 text-[#aaa]">{model.provider}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+          <div className="relative">
+            <button
+              onClick={() => setShowModelPicker((current) => !current)}
+              className="flex items-center gap-1.5 rounded-md bg-[#f0f0f0] px-2.5 py-1 text-xs text-[#525252] transition-colors hover:bg-[#e8e8e8]"
+            >
+              {currentModel?.name || 'Select model'}
+              <ChevronDown size={11} />
+            </button>
+            {showModelPicker && (
+              <div className="absolute right-0 top-full z-10 mt-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg">
+                {AVAILABLE_MODELS.map((model) => (
+                  <button
+                    key={model.id}
+                    onClick={() => {
+                      void applyModelSelection(model.id)
+                    }}
+                    className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[#f5f5f5] ${
+                      model.id === selectedModel ? 'font-medium text-[#0a0a0a]' : 'text-[#525252]'
+                    }`}
+                  >
+                    <span>{model.name}</span>
+                    <span className="ml-2 text-[#aaa]">{model.provider}</span>
+                  </button>
+                ))}
               </div>
-              {effectiveModelLabel && (
-                <div className="text-[10px] text-[#9a9a9a]">
-                  Actual: {effectiveModelLabel}
-                </div>
-              )}
-            </div>
+            )}
           </div>
         )}
 
@@ -483,37 +655,89 @@ export default function ComputerDetailClient({
 
           <div className="px-4 pb-4">
             <div className="mx-auto w-full max-w-4xl">
-              <div className="flex items-end gap-2 rounded-2xl bg-[#f0f0f0] px-4 py-3">
-                <textarea
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  placeholder="Ask the computer to do something..."
-                  rows={1}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault()
-                      void submitMessage()
-                    }
-                  }}
-                  className="max-h-32 flex-1 resize-none bg-transparent text-sm text-[#0a0a0a] outline-none placeholder:text-[#aaa]"
-                />
-                {isLoading ? (
-                  <button
-                    onClick={() => stop()}
-                    className="shrink-0 rounded-lg bg-[#0a0a0a] p-1.5 text-[#fafafa] transition-colors hover:bg-[#333]"
-                    title="Stop generating"
+              <div className="relative">
+                {showSlashCommands && (
+                  <div
+                    ref={slashMenuRef}
+                    className="absolute bottom-full left-0 right-0 mb-2 max-h-[22rem] overflow-y-auto overscroll-contain rounded-2xl border border-[#e5e5e5] bg-white p-2 shadow-lg"
                   >
-                    <div className="h-3.5 w-3.5 rounded-sm bg-[#fafafa]" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => void submitMessage()}
-                    disabled={!input.trim()}
-                    className="shrink-0 rounded-lg bg-[#0a0a0a] p-1.5 text-[#fafafa] transition-colors hover:bg-[#333] disabled:opacity-40"
-                  >
-                    <Send size={14} />
-                  </button>
+                    <div className="sticky top-0 z-10 mb-2 flex items-center gap-2 border-b border-[#f0f0f0] bg-white px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-[#8a8a8a]">
+                      <Terminal size={12} />
+                      OpenClaw Slash Commands
+                    </div>
+                    {slashCommands.map((entry, index) => (
+                      <button
+                        key={entry.command}
+                        type="button"
+                        data-command-index={index}
+                        onClick={() => insertSlashCommand(entry.command)}
+                        className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors ${
+                          index === activeSlashIndex ? 'bg-[#f5f5f5]' : 'hover:bg-[#fafafa]'
+                        }`}
+                      >
+                        <span className="min-w-0 text-[11px] text-[#8a8a8a]">{entry.description}</span>
+                        <span className="whitespace-nowrap text-xs font-medium text-[#0a0a0a]">{entry.command}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
+
+                <div className="flex items-end gap-2 rounded-2xl bg-[#f0f0f0] px-4 py-3">
+                  <textarea
+                    value={input}
+                    onChange={(event) => {
+                      setInput(event.target.value)
+                      setActiveSlashIndex(0)
+                    }}
+                    placeholder="Ask the computer to do something or type / for OpenClaw commands..."
+                    rows={1}
+                    onKeyDown={(event) => {
+                      if (showSlashCommands && event.key === 'ArrowDown') {
+                        event.preventDefault()
+                        setActiveSlashIndex((current) => (current + 1) % slashCommands.length)
+                        return
+                      }
+
+                      if (showSlashCommands && event.key === 'ArrowUp') {
+                        event.preventDefault()
+                        setActiveSlashIndex((current) => (current - 1 + slashCommands.length) % slashCommands.length)
+                        return
+                      }
+
+                      if (showSlashCommands && event.key === 'Tab') {
+                        event.preventDefault()
+                        const activeCommand = slashCommands[activeSlashIndex]
+                        if (activeCommand) {
+                          insertSlashCommand(activeCommand.command)
+                        }
+                        return
+                      }
+
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault()
+                        void submitMessage()
+                      }
+                    }}
+                    className="max-h-32 flex-1 resize-none bg-transparent text-sm text-[#0a0a0a] outline-none placeholder:text-[#aaa]"
+                  />
+                  {isLoading ? (
+                    <button
+                      onClick={() => stop()}
+                      className="shrink-0 rounded-lg bg-[#0a0a0a] p-1.5 text-[#fafafa] transition-colors hover:bg-[#333]"
+                      title="Stop generating"
+                    >
+                      <div className="h-3.5 w-3.5 rounded-sm bg-[#fafafa]" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => void submitMessage()}
+                      disabled={!input.trim()}
+                      className="shrink-0 rounded-lg bg-[#0a0a0a] p-1.5 text-[#fafafa] transition-colors hover:bg-[#333] disabled:opacity-40"
+                    >
+                      <Send size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
