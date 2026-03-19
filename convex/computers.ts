@@ -5,7 +5,7 @@ import {
 import { internal, components } from './_generated/api'
 import { StripeSubscriptions } from '@convex-dev/stripe'
 import { validateAccessToken } from './lib/auth'
-import { DEFAULT_MODEL_ID, getModel } from '../src/lib/models'
+import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getModel } from '../src/lib/models'
 
 const TAG = '[Computer]'
 const stripeClient = new StripeSubscriptions(components.stripe, {})
@@ -275,9 +275,13 @@ export const getChatConnection = query({
   },
   returns: v.object({
     gatewayToken: v.string(),
+    hooksToken: v.string(),
     hetznerServerIp: v.string(),
   }),
-  handler: async (ctx, args): Promise<{ gatewayToken: string; hetznerServerIp: string }> => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ gatewayToken: string; hooksToken: string; hetznerServerIp: string }> => {
     if (!validateAccessToken(args.accessToken)) {
       throw new Error('Unauthorized')
     }
@@ -296,6 +300,7 @@ export const getChatConnection = query({
 
     return {
       gatewayToken: computer.gatewayToken,
+      hooksToken: deriveHooksToken(computer.gatewayToken),
       hetznerServerIp: computer.hetznerServerIp,
     }
   },
@@ -664,6 +669,7 @@ export const provisionComputer = internalAction({
 
     const userdata = buildCloudInit({
       gatewayToken: computer.gatewayToken!,
+      hooksToken: deriveHooksToken(computer.gatewayToken!),
       readySecret: computer.readySecret!,
       computerId: computerId,
       convexHttpUrl: CONVEX_HTTP_URL,
@@ -1089,24 +1095,12 @@ async function ensureFirewallDeleted(firewallId: number, token: string): Promise
 }
 
 function getComputerSessionKey(userId: string, computerId: string): string {
-  return `computer:v2:${userId}:${computerId}`
+  return `hook:computer:v1:${userId}:${computerId}`
 }
 
 function resolveOpenClawModelRef(modelId: string): string | null {
   const model = getModel(modelId)
-  if (!model) {
-    return null
-  }
-
-  if (model.provider === 'openrouter') {
-    return model.id
-  }
-
-  if (model.id.includes('/')) {
-    return `vercel-ai-gateway/${model.id}`
-  }
-
-  return `vercel-ai-gateway/${model.provider}/${model.id}`
+  return model?.openClawRef ?? null
 }
 
 function getComputerModelCandidates(selectedModelId: string): Array<{ id: string; ref: string }> {
@@ -1128,7 +1122,21 @@ function getComputerModelCandidates(selectedModelId: string): Array<{ id: string
 
 function buildComputerChatFailureMessage(selectedModelId: string, failures: string[]): string {
   const detail = failures.length > 0 ? failures.join(' | ') : 'no fallback details'
-  return `OpenClaw could not reply with model "${selectedModelId}". Retried Vercel AI Gateway and OpenRouter fallbacks, but all attempts failed. This computer likely has stale or missing provider credentials on the VPS. Delete and recreate it. Details: ${detail}`
+  return `OpenClaw could not reply to this request using the selected model "${selectedModelId}". Retried the configured fallback models, but all attempts failed. Details: ${detail}`
+}
+
+function deriveHooksToken(gatewayToken: string): string {
+  return `hooks_${gatewayToken}`
+}
+
+function buildComputerModelsAllowlistJson(): string {
+  const entries = Object.fromEntries(
+    AVAILABLE_MODELS.map((model) => {
+      return [model.openClawRef, { alias: model.name }]
+    })
+  )
+
+  return JSON.stringify(entries)
 }
 
 async function applySessionModelOverride(params: {
@@ -1208,6 +1216,7 @@ function extractAssistantContent(data: unknown): string {
 
 interface CloudInitParams {
   gatewayToken: string
+  hooksToken: string
   readySecret: string
   computerId: string
   convexHttpUrl: string
@@ -1218,11 +1227,13 @@ interface CloudInitParams {
 function buildCloudInit(p: CloudInitParams): string {
   return CLOUD_INIT_TEMPLATE
     .replaceAll('{{GATEWAY_TOKEN}}',    p.gatewayToken)
+    .replaceAll('{{HOOKS_TOKEN}}',      p.hooksToken)
     .replaceAll('{{READY_SECRET}}',     p.readySecret)
     .replaceAll('{{COMPUTER_ID}}',      p.computerId)
     .replaceAll('{{CONVEX_HTTP_URL}}',  p.convexHttpUrl)
     .replaceAll('{{AI_GATEWAY_API_KEY}}', p.aiGatewayApiKey)
     .replaceAll('{{OPENROUTER_API_KEY}}', p.openrouterApiKey ?? '')
+    .replaceAll('{{MODEL_ALLOWLIST_JSON}}', buildComputerModelsAllowlistJson())
 }
 
 const CLOUD_INIT_TEMPLATE = `#cloud-config
@@ -1238,6 +1249,8 @@ write_files:
     content: |
       AI_GATEWAY_API_KEY={{AI_GATEWAY_API_KEY}}
       OPENROUTER_API_KEY={{OPENROUTER_API_KEY}}
+      OPENCLAW_GATEWAY_TOKEN={{GATEWAY_TOKEN}}
+      OPENCLAW_HOOKS_TOKEN={{HOOKS_TOKEN}}
 
   - path: /root/openclaw-deploy/docker-compose.yml
     permissions: '0644'
@@ -1264,52 +1277,7 @@ write_files:
           ports:
             - "0.0.0.0:18789:18789"
           command:
-            ["node", "openclaw.mjs", "gateway", "--bind", "lan", "--port", "18789"]
-
-  - path: /root/.openclaw/openclaw.json
-    permissions: '0600'
-    content: |
-      {
-        "gateway": {
-          "mode": "local",
-          "bind": "lan",
-          "port": 18789,
-          "auth": {
-            "mode": "token",
-            "token": "{{GATEWAY_TOKEN}}"
-          },
-          "http": {
-            "endpoints": {
-              "chatCompletions": {
-                "enabled": true
-              }
-            }
-          },
-          "controlUi": {
-            "enabled": true,
-            "dangerouslyAllowHostHeaderOriginFallback": true
-          }
-        },
-        "agents": {
-          "defaults": {
-            "workspace": "/home/node/.openclaw/workspace",
-            "model": {
-              "primary": "vercel-ai-gateway/anthropic/claude-sonnet-4-6",
-              "fallbacks": ["openrouter/free"]
-            }
-          },
-          "list": [
-            {
-              "id": "default",
-              "name": "OpenClaw Assistant",
-              "workspace": "/home/node/.openclaw/workspace"
-            }
-          ]
-        },
-        "cron": {
-          "enabled": false
-        }
-      }
+            ["openclaw", "gateway", "run"]
 
   - path: /usr/local/bin/openclaw
     permissions: '0755'
@@ -1360,6 +1328,21 @@ write_files:
           -d "{\\"computerId\\":\\"$COMPUTER_ID\\",\\"message\\":\\"$1\\"}" > /dev/null 2>&1 || true
       }
 
+      docker_openclaw() {
+        docker run --rm \\
+          --env-file /root/openclaw-deploy/.env \\
+          -e HOME=/home/node \\
+          -e NODE_ENV=production \\
+          -e TERM=xterm-256color \\
+          -e OPENCLAW_SKIP_CHANNELS=1 \\
+          -e OPENCLAW_SKIP_CRON=1 \\
+          -e OPENCLAW_SKIP_GMAIL_WATCHER=1 \\
+          -e OPENCLAW_SKIP_CANVAS_HOST=1 \\
+          -v /root/.openclaw:/home/node/.openclaw \\
+          ghcr.io/openclaw/openclaw:main \\
+          "$@"
+      }
+
       clog "VPS setup started"
 
       # Step 1: Install Docker CE
@@ -1372,11 +1355,48 @@ write_files:
       chown -R 1000:1000 /root/.openclaw
       clog "Installed host openclaw wrapper"
 
-      # Step 3: Pull the prebuilt OpenClaw image and start the configured gateway
+      # Step 3: Pull the prebuilt OpenClaw image and configure it through the CLI
       clog "Pulling prebuilt OpenClaw image..."
       cd /root/openclaw-deploy
+      set -a
+      . /root/openclaw-deploy/.env
+      set +a
       docker compose pull
-      clog "OpenClaw image pulled. Starting container..."
+      clog "OpenClaw image pulled. Running CLI onboarding..."
+
+      docker_openclaw openclaw onboard --non-interactive \\
+        --accept-risk \\
+        --mode local \\
+        --auth-choice ai-gateway-api-key \\
+        --secret-input-mode ref \\
+        --gateway-port 18789 \\
+        --gateway-bind lan \\
+        --gateway-auth token \\
+        --gateway-token-ref-env OPENCLAW_GATEWAY_TOKEN \\
+        --skip-channels \\
+        --skip-skills \\
+        --skip-daemon \\
+        --skip-health
+
+      clog "OpenClaw onboarding complete. Applying computer config..."
+
+      docker_openclaw openclaw config set agents.defaults.models '{{MODEL_ALLOWLIST_JSON}}' --strict-json
+      docker_openclaw openclaw models set vercel-ai-gateway/anthropic/claude-sonnet-4.6
+
+      docker_openclaw openclaw config set gateway.http.endpoints.chatCompletions.enabled true --strict-json
+      docker_openclaw openclaw config set gateway.controlUi.enabled true --strict-json
+      docker_openclaw openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true --strict-json
+      docker_openclaw openclaw config set hooks.enabled true --strict-json
+      docker_openclaw openclaw config set hooks.path /hooks
+      docker_openclaw openclaw config set hooks.token "$OPENCLAW_HOOKS_TOKEN"
+      docker_openclaw openclaw config set hooks.defaultSessionKey hook:computer:default
+      docker_openclaw openclaw config set hooks.allowRequestSessionKey true --strict-json
+      docker_openclaw openclaw config set hooks.allowedSessionKeyPrefixes '["hook:computer:"]' --strict-json
+      docker_openclaw openclaw config set hooks.allowedAgentIds '["default"]' --strict-json
+      docker_openclaw openclaw config set cron.enabled false --strict-json
+      docker_openclaw openclaw config validate
+
+      clog "OpenClaw config validated. Starting container..."
 
       docker compose up -d
       clog "Docker container started. Waiting for healthz..."

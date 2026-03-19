@@ -55,20 +55,26 @@ async function callConvex<T>(
 
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000)
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        path,
-        args,
-        format: 'json'
-      }),
-      signal: controller.signal,
-    })
-    clearTimeout(timeoutId)
+    const timeoutMs = options.timeoutMs ?? 30000
+    const timeoutError = new Error(`Convex ${type} request timed out after ${timeoutMs}ms`)
+    const timeoutId = setTimeout(() => controller.abort(timeoutError), timeoutMs)
+    let response: Response
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          path,
+          args,
+          format: 'json'
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
 
     const rawText = await response.text()
     if (!rawText.trim()) {
@@ -108,12 +114,25 @@ async function callConvex<T>(
     console.error(`Convex ${type} failed:`, error)
     if (options.throwOnError) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Convex ${type} request timed out`)
+        throw controllerSignalReasonMessage(error) ?? new Error(`Convex ${type} request timed out`)
       }
       throw error
     }
     return null
   }
+}
+
+function controllerSignalReasonMessage(error: Error): Error | null {
+  const cause = 'cause' in error ? error.cause : undefined
+  if (cause instanceof Error) {
+    return cause
+  }
+
+  if ('message' in error && typeof error.message === 'string' && error.message.includes('aborted')) {
+    return new Error(error.message)
+  }
+
+  return null
 }
 
 export const convex = {

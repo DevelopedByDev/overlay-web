@@ -1,9 +1,9 @@
-const { execFile: execFileCb } = require('node:child_process')
-const crypto = require('node:crypto')
-const fs = require('node:fs/promises')
-const os = require('node:os')
-const path = require('node:path')
-const { promisify } = require('node:util')
+import { execFile as execFileCb } from 'node:child_process'
+import crypto from 'node:crypto'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { promisify } from 'node:util'
 
 const execFile = promisify(execFileCb)
 
@@ -59,9 +59,10 @@ async function main() {
 
   const hetznerToken = await resolveSecret('HETZNER_API_TOKEN', config.deployment)
   const aiGatewayApiKey = await resolveSecret('AI_GATEWAY_API_KEY', config.deployment)
-  const openrouterApiKey = await resolveSecret('OPENROUTER_API_KEY', config.deployment)
+  const openrouterApiKey = await resolveOptionalSecret('OPENROUTER_API_KEY', config.deployment)
 
   const gatewayToken = crypto.randomBytes(24).toString('hex')
+  const hooksToken = `hooks_${gatewayToken}`
   const resourceSuffix = crypto.randomUUID().slice(0, 8)
   const firewallName = `${config.namePrefix}-fw-${resourceSuffix}`.slice(0, 63)
   const serverName = `${config.namePrefix}-server-${resourceSuffix}`.slice(0, 63)
@@ -90,6 +91,7 @@ async function main() {
       image: config.image,
       userData: buildCloudInit({
         gatewayToken,
+        hooksToken,
         aiGatewayApiKey,
         openrouterApiKey,
       }),
@@ -142,6 +144,9 @@ async function main() {
     if (!reply || !/\bok\b/i.test(reply)) {
       throw new Error(`Gateway chat did not return the expected reply: ${JSON.stringify(reply)}`)
     }
+
+    log(logPrefix, 'verifying session model overrides and Vercel AI Gateway routing')
+    await runModelRoutingCheck(serverIp, gatewayToken, ['vercel-ai-gateway/openai/gpt-5.2'])
 
     log(logPrefix, 'verifying host openclaw wrapper')
     const wrapperCheck = await sshExec(
@@ -215,6 +220,12 @@ async function resolveSecret(name: string, deployment: DeploymentTarget): Promis
   const fromConvex = await getConvexEnv(name, deployment)
   if (fromConvex) return fromConvex
   throw new Error(`Missing required secret ${name}`)
+}
+
+async function resolveOptionalSecret(name: string, deployment: DeploymentTarget): Promise<string> {
+  const direct = process.env[name]?.trim()
+  if (direct) return direct
+  return await getConvexEnv(name, deployment)
 }
 
 async function getConvexEnv(name: string, deployment: DeploymentTarget): Promise<string> {
@@ -460,12 +471,83 @@ async function sendChatOverHttp(ip: string, gatewayToken: string, message: strin
   return extractAssistantTextFromCompletion(await response.json())
 }
 
+async function runModelRoutingCheck(
+  ip: string,
+  gatewayToken: string,
+  extraModels: string[]
+) {
+  const models = ['vercel-ai-gateway/anthropic/claude-sonnet-4.6', ...extraModels].join(',')
+  try {
+    const result = await execFile(
+      process.execPath,
+      [
+        '--experimental-strip-types',
+        path.join(process.cwd(), 'scripts/model-routing-test.ts'),
+        '--ip',
+        ip,
+        '--token',
+        gatewayToken,
+        '--models',
+        models,
+      ],
+      {
+        cwd: process.cwd(),
+        env: process.env,
+        maxBuffer: 8 * 1024 * 1024,
+        timeout: 10 * 60 * 1000,
+      },
+    )
+
+    process.stdout.write(result.stdout)
+    if (result.stderr.trim()) {
+      process.stderr.write(result.stderr)
+    }
+  } catch (error) {
+    const result = error as { stdout?: string; stderr?: string }
+    if (result.stdout) {
+      process.stdout.write(result.stdout)
+    }
+    if (result.stderr?.trim()) {
+      process.stderr.write(result.stderr)
+    }
+    throw error
+  }
+}
+
+function buildComputerModelsAllowlistJson(): string {
+  const entries = Object.fromEntries([
+    ['vercel-ai-gateway/google/gemini-3.1-pro-preview', { alias: 'Gemini 3.1 Pro' }],
+    ['vercel-ai-gateway/google/gemini-3-flash', { alias: 'Gemini 3 Flash' }],
+    ['vercel-ai-gateway/google/gemini-2.5-flash', { alias: 'Gemini 2.5 Flash' }],
+    ['vercel-ai-gateway/google/gemini-2.5-flash-lite', { alias: 'Gemini 2.5 Flash Lite' }],
+    ['vercel-ai-gateway/openai/gpt-5.2-pro', { alias: 'GPT-5.2 Pro' }],
+    ['vercel-ai-gateway/openai/gpt-5.2', { alias: 'GPT-5.2' }],
+    ['vercel-ai-gateway/openai/gpt-5-mini', { alias: 'GPT-5 Mini' }],
+    ['vercel-ai-gateway/openai/gpt-5-nano', { alias: 'GPT-5 Nano' }],
+    ['vercel-ai-gateway/openai/gpt-4.1', { alias: 'GPT-4.1' }],
+    ['vercel-ai-gateway/anthropic/claude-opus-4.6', { alias: 'Claude Opus 4.6' }],
+    ['vercel-ai-gateway/anthropic/claude-sonnet-4.6', { alias: 'Claude Sonnet 4.6' }],
+    ['vercel-ai-gateway/anthropic/claude-haiku-4.5', { alias: 'Claude Haiku 4.5' }],
+    ['vercel-ai-gateway/xai/grok-4.1-fast-reasoning', { alias: 'Grok 4.1 Fast' }],
+    ['vercel-ai-gateway/meta/llama-3.3-70b', { alias: 'Llama 3.3 70B' }],
+    ['vercel-ai-gateway/moonshotai/kimi-k2-0905', { alias: 'Kimi K2' }],
+    ['vercel-ai-gateway/openai/gpt-oss-120b', { alias: 'GPT OSS 120B' }],
+    ['vercel-ai-gateway/openai/gpt-oss-20b', { alias: 'GPT OSS 20B' }],
+    ['openrouter/free', { alias: 'Free Router' }],
+    ['openrouter/hunter-alpha', { alias: 'Hunter Alpha' }],
+    ['openrouter/healer-alpha', { alias: 'Healer Alpha' }],
+    ['openrouter/arcee-ai/trinity-large-preview:free', { alias: 'Trinity Large (Free)' }],
+  ])
+
+  return JSON.stringify(entries)
+}
+
 async function sshGatewayCall(
   ip: string,
   privateKeyPath: string,
   method: string,
   params: Record<string, unknown>,
-): Promise<any> {
+): Promise<unknown> {
   const escapedParams = shellSingleQuote(JSON.stringify(params))
   const result = await sshExec(
     ip,
@@ -653,55 +735,10 @@ async function cleanupResources(
 
 function buildCloudInit(params: {
   gatewayToken: string
+  hooksToken: string
   aiGatewayApiKey: string
-  openrouterApiKey: string
+  openrouterApiKey?: string
 }): string {
-  const configJson = JSON.stringify(
-    {
-      gateway: {
-        mode: 'local',
-        bind: 'lan',
-        port: 18789,
-        auth: {
-          mode: 'token',
-          token: params.gatewayToken,
-        },
-        http: {
-          endpoints: {
-            chatCompletions: {
-              enabled: true,
-            },
-          },
-        },
-        controlUi: {
-          enabled: true,
-          dangerouslyAllowHostHeaderOriginFallback: true,
-        },
-      },
-      agents: {
-        defaults: {
-          workspace: '/home/node/.openclaw/workspace',
-          model: {
-            primary: 'vercel-ai-gateway/anthropic/claude-sonnet-4-6',
-            fallbacks: ['openrouter/free'],
-          },
-        },
-        list: [
-          {
-            id: 'default',
-            name: 'OpenClaw Assistant',
-            workspace: '/home/node/.openclaw/workspace',
-          },
-        ],
-      },
-      cron: {
-        enabled: false,
-      },
-    },
-    null,
-    2,
-  )
-
   const compose = [
     'services:',
     '  openclaw-gateway:',
@@ -726,12 +763,14 @@ function buildCloudInit(params: {
     '    ports:',
     '      - "0.0.0.0:18789:18789"',
     '    command:',
-    '      ["node", "openclaw.mjs", "gateway", "--bind", "lan", "--port", "18789"]',
+    '      ["openclaw", "gateway", "run"]',
   ].join('\n')
 
   const envFile = [
     `AI_GATEWAY_API_KEY=${params.aiGatewayApiKey}`,
-    `OPENROUTER_API_KEY=${params.openrouterApiKey}`,
+    `OPENROUTER_API_KEY=${params.openrouterApiKey ?? ''}`,
+    `OPENCLAW_GATEWAY_TOKEN=${params.gatewayToken}`,
+    `OPENCLAW_HOOKS_TOKEN=${params.hooksToken}`,
   ].join('\n')
 
   const hostWrapper = [
@@ -757,8 +796,54 @@ function buildCloudInit(params: {
     'chown -R 1000:1000 /root/.openclaw',
     'chmod +x /usr/local/bin/openclaw',
     'cd /root/openclaw-deploy',
+    'set -a',
+    '. /root/openclaw-deploy/.env',
+    'set +a',
+    'docker_openclaw() {',
+    '  docker run --rm \\',
+    '    --env-file /root/openclaw-deploy/.env \\',
+    '    -e HOME=/home/node \\',
+    '    -e NODE_ENV=production \\',
+    '    -e TERM=xterm-256color \\',
+    '    -e OPENCLAW_SKIP_CHANNELS=1 \\',
+    '    -e OPENCLAW_SKIP_CRON=1 \\',
+    '    -e OPENCLAW_SKIP_GMAIL_WATCHER=1 \\',
+    '    -e OPENCLAW_SKIP_CANVAS_HOST=1 \\',
+    '    -v /root/.openclaw:/home/node/.openclaw \\',
+    '    ghcr.io/openclaw/openclaw:main \\',
+    '    "$@"',
+    '}',
     'echo "[$(date -Is)] pulling prebuilt OpenClaw image"',
     'docker compose pull',
+    'echo "[$(date -Is)] running OpenClaw CLI onboarding"',
+    'docker_openclaw openclaw onboard --non-interactive \\',
+    '  --accept-risk \\',
+    '  --mode local \\',
+    '  --auth-choice ai-gateway-api-key \\',
+    '  --secret-input-mode ref \\',
+    '  --gateway-port 18789 \\',
+    '  --gateway-bind lan \\',
+    '  --gateway-auth token \\',
+    '  --gateway-token-ref-env OPENCLAW_GATEWAY_TOKEN \\',
+    '  --skip-channels \\',
+    '  --skip-skills \\',
+    '  --skip-daemon \\',
+    '  --skip-health',
+    'echo "[$(date -Is)] applying OpenClaw computer config"',
+    `docker_openclaw openclaw config set agents.defaults.models '${buildComputerModelsAllowlistJson()}' --strict-json`,
+    'docker_openclaw openclaw models set vercel-ai-gateway/anthropic/claude-sonnet-4.6',
+    'docker_openclaw openclaw config set gateway.http.endpoints.chatCompletions.enabled true --strict-json',
+    'docker_openclaw openclaw config set gateway.controlUi.enabled true --strict-json',
+    'docker_openclaw openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true --strict-json',
+    'docker_openclaw openclaw config set hooks.enabled true --strict-json',
+    'docker_openclaw openclaw config set hooks.path /hooks',
+    'docker_openclaw openclaw config set hooks.token "$OPENCLAW_HOOKS_TOKEN"',
+    'docker_openclaw openclaw config set hooks.defaultSessionKey hook:computer:default',
+    'docker_openclaw openclaw config set hooks.allowRequestSessionKey true --strict-json',
+    'docker_openclaw openclaw config set hooks.allowedSessionKeyPrefixes \'["hook:computer:"]\' --strict-json',
+    'docker_openclaw openclaw config set hooks.allowedAgentIds \'["default"]\' --strict-json',
+    'docker_openclaw openclaw config set cron.enabled false --strict-json',
+    'docker_openclaw openclaw config validate',
     'echo "[$(date -Is)] starting OpenClaw gateway container"',
     'docker compose up -d',
     'echo "[$(date -Is)] waiting for gateway healthz"',
@@ -790,10 +875,6 @@ function buildCloudInit(params: {
     "    permissions: '0644'",
     '    content: |',
     indentBlock(compose, 6),
-    '  - path: /root/.openclaw/openclaw.json',
-    "    permissions: '0600'",
-    '    content: |',
-    indentBlock(configJson, 6),
     '  - path: /usr/local/bin/openclaw',
     "    permissions: '0755'",
     '    content: |',
@@ -816,14 +897,14 @@ function indentBlock(value: string, spaces: number): string {
     .join('\n')
 }
 
-function parseJsonOutput(value: string, context: string): any {
+function parseJsonOutput<T = unknown>(value: string, context: string): T {
   const trimmed = value.trim()
   if (!trimmed) {
     throw new Error(`${context} returned empty output`)
   }
 
   try {
-    return JSON.parse(trimmed)
+    return JSON.parse(trimmed) as T
   } catch (error) {
     throw new Error(
       `${context} returned non-JSON output: ${trimmed}\n${error instanceof Error ? error.message : String(error)}`,

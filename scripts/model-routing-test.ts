@@ -4,16 +4,16 @@
  * Verifies that the model selected in the Overlay computer chat dropdown is
  * actually the model OpenClaw uses — not a fallback.
  *
- * Mirrors the approach in computer-chat/route.ts:
- *   1. Call session_status tool with the desired model ref to set the override.
- *   2. Send a simple chat message.
- *   3. Call session_status without a model to read back the actual model used.
+ * Mirrors the current computer-chat hook path:
+ *   1. Call /hooks/agent with the desired model ref.
+ *   2. Wait for the assistant reply in session history.
+ *   3. Read provider/model metadata from the assistant transcript entry.
  *   4. Compare expected vs actual.
  *
  * Usage:
  *   GATEWAY_IP=1.2.3.4 GATEWAY_TOKEN=abc node --experimental-strip-types scripts/model-routing-test.ts
  *   node --experimental-strip-types scripts/model-routing-test.ts --ip 1.2.3.4 --token abc
- *   node --experimental-strip-types scripts/model-routing-test.ts --ip 1.2.3.4 --token abc --models vercel-ai-gateway/anthropic/claude-sonnet-4-6,openrouter/free
+ *   node --experimental-strip-types scripts/model-routing-test.ts --ip 1.2.3.4 --token abc --models vercel-ai-gateway/anthropic/claude-sonnet-4.6,openrouter/free
  *
  * (Node 22+: --experimental-strip-types; older: npx ts-node scripts/model-routing-test.ts)
  */
@@ -23,26 +23,26 @@
 const ALL_MODELS: Array<{ name: string; ref: string }> = [
   // Vercel AI Gateway — Google
   { name: 'Gemini 3.1 Pro',       ref: 'vercel-ai-gateway/google/gemini-3.1-pro-preview' },
-  { name: 'Gemini 3 Flash',       ref: 'vercel-ai-gateway/google/gemini-3-flash-preview' },
+  { name: 'Gemini 3 Flash',       ref: 'vercel-ai-gateway/google/gemini-3-flash' },
   { name: 'Gemini 2.5 Flash',     ref: 'vercel-ai-gateway/google/gemini-2.5-flash' },
   { name: 'Gemini 2.5 Flash Lite',ref: 'vercel-ai-gateway/google/gemini-2.5-flash-lite' },
   // Vercel AI Gateway — OpenAI
-  { name: 'GPT-5.2 Pro',          ref: 'vercel-ai-gateway/openai/gpt-5.2-pro-2025-12-11' },
-  { name: 'GPT-5.2',              ref: 'vercel-ai-gateway/openai/gpt-5.2-2025-12-11' },
-  { name: 'GPT-5 Mini',           ref: 'vercel-ai-gateway/openai/gpt-5-mini-2025-08-07' },
-  { name: 'GPT-5 Nano',           ref: 'vercel-ai-gateway/openai/gpt-5-nano-2025-08-07' },
-  { name: 'GPT-4.1',              ref: 'vercel-ai-gateway/openai/gpt-4.1-2025-04-14' },
+  { name: 'GPT-5.2 Pro',          ref: 'vercel-ai-gateway/openai/gpt-5.2-pro' },
+  { name: 'GPT-5.2',              ref: 'vercel-ai-gateway/openai/gpt-5.2' },
+  { name: 'GPT-5 Mini',           ref: 'vercel-ai-gateway/openai/gpt-5-mini' },
+  { name: 'GPT-5 Nano',           ref: 'vercel-ai-gateway/openai/gpt-5-nano' },
+  { name: 'GPT-4.1',              ref: 'vercel-ai-gateway/openai/gpt-4.1' },
   // Vercel AI Gateway — Anthropic
-  { name: 'Claude Opus 4.6',      ref: 'vercel-ai-gateway/anthropic/claude-opus-4-6' },
-  { name: 'Claude Sonnet 4.6',    ref: 'vercel-ai-gateway/anthropic/claude-sonnet-4-6' },
-  { name: 'Claude Haiku 4.5',     ref: 'vercel-ai-gateway/anthropic/claude-haiku-4-5' },
+  { name: 'Claude Opus 4.6',      ref: 'vercel-ai-gateway/anthropic/claude-opus-4.6' },
+  { name: 'Claude Sonnet 4.6',    ref: 'vercel-ai-gateway/anthropic/claude-sonnet-4.6' },
+  { name: 'Claude Haiku 4.5',     ref: 'vercel-ai-gateway/anthropic/claude-haiku-4.5' },
   // Vercel AI Gateway — xAI
-  { name: 'Grok 4.1 Fast',        ref: 'vercel-ai-gateway/xai/grok-4-1-fast-reasoning' },
+  { name: 'Grok 4.1 Fast',        ref: 'vercel-ai-gateway/xai/grok-4.1-fast-reasoning' },
   // Vercel AI Gateway — Groq
-  { name: 'Llama 3.3 70B',        ref: 'vercel-ai-gateway/groq/llama-3.3-70b-versatile' },
-  { name: 'Kimi K2',              ref: 'vercel-ai-gateway/groq/moonshotai/kimi-k2-instruct-0905' },
-  { name: 'GPT OSS 120B',         ref: 'vercel-ai-gateway/groq/openai/gpt-oss-120b' },
-  { name: 'GPT OSS 20B',          ref: 'vercel-ai-gateway/groq/openai/gpt-oss-20b' },
+  { name: 'Llama 3.3 70B',        ref: 'vercel-ai-gateway/meta/llama-3.3-70b' },
+  { name: 'Kimi K2',              ref: 'vercel-ai-gateway/moonshotai/kimi-k2-0905' },
+  { name: 'GPT OSS 120B',         ref: 'vercel-ai-gateway/openai/gpt-oss-120b' },
+  { name: 'GPT OSS 20B',          ref: 'vercel-ai-gateway/openai/gpt-oss-20b' },
   // OpenRouter
   { name: 'Free Router',          ref: 'openrouter/free' },
   { name: 'Hunter Alpha',         ref: 'openrouter/hunter-alpha' },
@@ -52,115 +52,123 @@ const ALL_MODELS: Array<{ name: string; ref: string }> = [
 
 // ---------- types ----------
 
-type ToolInvokeResponse = {
+type HookAgentResponse = {
   ok?: boolean
-  result?: {
-    details?: { statusText?: string }
-    content?: Array<{ type?: string; text?: string }>
-  }
-  error?: { message?: string }
+  runId?: string
+  error?: string
 }
 
-type SessionState = { provider?: string; model?: string }
+type TranscriptMessage = {
+  role?: string
+  provider?: string
+  model?: string
+  content?: Array<{ type?: string; text?: string }>
+}
+
+type SessionHistoryResponse = {
+  sessionKey?: string
+  items?: TranscriptMessage[]
+  messages?: TranscriptMessage[]
+}
 
 // ---------- gateway helpers ----------
 
-async function setSessionModel(
+async function invokeHookAgent(
   ip: string,
-  token: string,
+  hooksToken: string,
   sessionKey: string,
   modelRef: string,
 ): Promise<boolean> {
-  const res = await fetch(`http://${ip}:18789/tools/invoke`, {
+  const res = await fetch(`http://${ip}:18789/hooks/agent`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${hooksToken}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': crypto.randomUUID(),
+    },
     body: JSON.stringify({
-      tool: 'session_status',
       sessionKey,
-      args: { sessionKey, model: modelRef },
+      message: 'Reply with exactly: OK',
+      name: 'Model Routing Test',
+      deliver: false,
+      timeoutSeconds: 180,
+      model: modelRef,
     }),
     signal: AbortSignal.timeout(30_000),
   })
-  if (!res.ok) return false
-  const body = (await res.json()) as ToolInvokeResponse
+
+  if (!res.ok) {
+    return false
+  }
+
+  const body = (await res.json()) as HookAgentResponse
   return body.ok === true
 }
 
-async function readSessionModel(
+async function fetchSessionHistory(
   ip: string,
   token: string,
   sessionKey: string,
-): Promise<SessionState | null> {
-  const res = await fetch(`http://${ip}:18789/tools/invoke`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      tool: 'session_status',
-      sessionKey,
-      args: { sessionKey },
-    }),
-    signal: AbortSignal.timeout(30_000),
-  })
-  if (!res.ok) return null
-  const body = (await res.json()) as ToolInvokeResponse
-  if (body.ok !== true) return null
-
-  const statusText =
-    body.result?.details?.statusText ||
-    (body.result?.content ?? [])
-      .filter((p) => p.type === 'text')
-      .map((p) => p.text ?? '')
-      .join('\n') ||
-    ''
-
-  // Parse the "🧠 Model: <provider>/<model> · ..." line
-  const modelLine = statusText.split('\n').find((l) => l.trim().startsWith('🧠 Model:'))
-  if (!modelLine) return null
-  const rawLabel = modelLine.replace(/^🧠 Model:\s*/, '').split(' · ')[0]?.trim()
-  if (!rawLabel) return null
-  const slash = rawLabel.indexOf('/')
-  if (slash === -1) return { model: rawLabel }
-  return {
-    provider: rawLabel.slice(0, slash).trim() || undefined,
-    model: rawLabel.slice(slash + 1).trim() || undefined,
-  }
-}
-
-async function sendTestChat(
-  ip: string,
-  token: string,
-  sessionKey: string,
-): Promise<string> {
-  const res = await fetch(`http://${ip}:18789/v1/chat/completions`, {
-    method: 'POST',
+): Promise<{ sessionKey: string; messages: TranscriptMessage[] } | null> {
+  const res = await fetch(`http://${ip}:18789/sessions/${encodeURIComponent(sessionKey)}/history`, {
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'x-openclaw-agent-id': 'default',
-      'x-openclaw-session-key': sessionKey,
     },
-    body: JSON.stringify({
-      model: 'openclaw:default',
-      user: sessionKey,
-      stream: false,
-      messages: [
-        { role: 'system', content: 'You are a helpful assistant. Reply only to what the user asks.' },
-        { role: 'user', content: 'Reply with exactly: OK' },
-      ],
-    }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(30_000),
   })
+
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+    return null
   }
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-  return data.choices?.[0]?.message?.content?.trim() ?? ''
+
+  const body = (await res.json()) as SessionHistoryResponse
+  const messages = body.messages ?? body.items ?? []
+  return {
+    sessionKey: body.sessionKey?.trim() || sessionKey,
+    messages: Array.isArray(messages) ? messages : [],
+  }
 }
 
-function normalizeActual(state: SessionState | null): string {
-  if (!state) return '(unknown)'
-  const parts = [state.provider, state.model].filter(Boolean)
-  return parts.join('/')
+async function waitForAssistantResult(params: {
+  ip: string
+  gatewayToken: string
+  sessionKey: string
+}): Promise<{ reply: string; actualRef: string | null }> {
+  const deadline = Date.now() + 120_000
+
+  while (Date.now() < deadline) {
+    const history = await fetchSessionHistory(params.ip, params.gatewayToken, params.sessionKey)
+    const assistant = [...(history?.messages ?? [])].reverse().find((message) => message.role === 'assistant')
+    const reply = extractTranscriptText(assistant)
+
+    if (assistant && reply) {
+      const actualRef =
+        assistant.provider && assistant.model
+          ? `${assistant.provider}/${assistant.model}`
+          : null
+      return { reply, actualRef }
+    }
+
+    await sleep(3_000)
+  }
+
+  throw new Error('assistant reply did not appear in session history')
+}
+
+function extractTranscriptText(message: TranscriptMessage | undefined): string {
+  if (!message?.content || !Array.isArray(message.content)) {
+    return ''
+  }
+
+  return message.content
+    .filter((part) => part.type === 'text' && typeof part.text === 'string')
+    .map((part) => part.text ?? '')
+    .join('')
+    .trim()
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 // ---------- main ----------
@@ -169,10 +177,12 @@ async function main() {
   const argv = process.argv.slice(2)
 
   const ip = getArg(argv, '--ip') ?? process.env.GATEWAY_IP ?? ''
-  const token = getArg(argv, '--token') ?? process.env.GATEWAY_TOKEN ?? ''
+  const gatewayToken = getArg(argv, '--token') ?? process.env.GATEWAY_TOKEN ?? ''
+  const hooksToken =
+    getArg(argv, '--hooks-token') ?? process.env.HOOKS_TOKEN ?? `hooks_${gatewayToken}`
   const modelsArg = getArg(argv, '--models')
 
-  if (!ip || !token) {
+  if (!ip || !gatewayToken) {
     process.stderr.write(
       'Error: GATEWAY_IP and GATEWAY_TOKEN are required.\n' +
         'Usage: GATEWAY_IP=1.2.3.4 GATEWAY_TOKEN=abc node --experimental-strip-types scripts/model-routing-test.ts\n',
@@ -180,7 +190,6 @@ async function main() {
     process.exit(1)
   }
 
-  // Filter to requested models if --models is provided
   const modelsToTest = modelsArg
     ? ALL_MODELS.filter((m) => modelsArg.split(',').includes(m.ref))
     : ALL_MODELS
@@ -193,36 +202,35 @@ async function main() {
   let skipped = 0
 
   for (const m of modelsToTest) {
-    const sessionKey = `model-routing-test-${m.ref.replace(/[^a-z0-9]/gi, '-').slice(0, 40)}`
+    const sessionKey = `hook:computer:test:${m.ref.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`
     log(`── ${m.name}`)
     log(`   ref:     ${m.ref}`)
 
-    // 1. Set model via session_status
-    const overrideOk = await setSessionModel(ip, token, sessionKey, m.ref).catch(() => false)
+    const overrideOk = await invokeHookAgent(ip, hooksToken, sessionKey, m.ref).catch(() => false)
     if (!overrideOk) {
       log(`   SKIP — gateway rejected model ref (not in catalog)`)
       skipped++
       continue
     }
-    log(`   override: accepted`)
+    log(`   hook:     accepted`)
 
-    // 2. Send test message
-    let chatReply = ''
+    let result: { reply: string; actualRef: string | null } | null = null
     try {
-      chatReply = await sendTestChat(ip, token, sessionKey)
-      log(`   chat:     ${JSON.stringify(chatReply)}`)
+      result = await waitForAssistantResult({
+        ip,
+        gatewayToken,
+        sessionKey: `agent:main:${sessionKey}`,
+      })
+      log(`   chat:     ${JSON.stringify(result.reply)}`)
     } catch (err) {
       log(`   FAIL — chat error: ${err instanceof Error ? err.message : String(err)}`)
       failed++
       continue
     }
 
-    // 3. Read back actual session model
-    const actual = await readSessionModel(ip, token, sessionKey).catch(() => null)
-    const actualRef = normalizeActual(actual)
+    const actualRef = result.actualRef ?? '(unknown)'
     log(`   actual:   ${actualRef}`)
 
-    // 4. Compare
     if (actualRef === m.ref) {
       log(`   PASS`)
       passed++

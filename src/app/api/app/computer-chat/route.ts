@@ -8,21 +8,8 @@ export const maxDuration = 300
 
 interface ComputerConnectionInfo {
   gatewayToken: string
+  hooksToken: string
   hetznerServerIp: string
-}
-
-interface OpenClawSSEChunk {
-  choices?: Array<{
-    delta?: {
-      content?: string | Array<{ type?: string; text?: string }>
-    }
-    finish_reason?: string | null
-  }>
-}
-
-interface OpenClawChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
 }
 
 interface ToolInvokeResponse<T> {
@@ -49,6 +36,37 @@ interface GatewaySessionModelState {
   model?: string
 }
 
+interface HookAgentResponse {
+  ok?: boolean
+  runId?: string
+  error?: string
+}
+
+interface OpenClawTranscriptMessage {
+  role?: string
+  provider?: string
+  model?: string
+  content?: Array<{
+    type?: string
+    text?: string
+  }>
+  __openclaw?: {
+    seq?: number
+    id?: string
+  }
+}
+
+interface SessionHistoryResponse {
+  sessionKey?: string
+  items?: OpenClawTranscriptMessage[]
+  messages?: OpenClawTranscriptMessage[]
+}
+
+interface SessionHistoryEvent {
+  event: string
+  data: unknown
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession()
@@ -66,16 +84,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Computer ID is required' }, { status: 400 })
     }
 
-    const openClawMessages: OpenClawChatMessage[] = [
-      {
-        role: 'system',
-        content:
-          'You are a helpful AI assistant. Respond directly and concisely to the user\'s questions and requests.',
-      },
-      ...serializeMessagesForOpenClaw(messages),
-    ]
-    const latestUserText = extractLatestUserText(openClawMessages)
-
+    const latestUserText = extractLatestUserText(messages)
     if (!latestUserText) {
       return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
     }
@@ -111,98 +120,19 @@ export async function POST(request: NextRequest) {
 
     const sessionKey = getComputerSessionKey(userId, computerId)
     const selectedModelId = modelId?.trim() || DEFAULT_MODEL_ID
-    const modelCandidates = getComputerModelCandidates(selectedModelId)
-
-    let upstreamResponse: Response | null = null
-    const failures: string[] = []
-    let succeededModelRef: string | null = null
-    let canRetryWithModelFallbacks = true
-
-    for (const candidate of modelCandidates) {
-      try {
-        const modelOverrideApplied = await applySessionModelOverrideBestEffort({
-          ip: connection.hetznerServerIp,
-          gatewayToken: connection.gatewayToken,
-          sessionKey,
-          model: candidate.ref,
-        })
-        canRetryWithModelFallbacks = modelOverrideApplied
-
-        if (!modelOverrideApplied) {
-          failures.push(`${candidate.ref}: model override rejected by gateway`)
-          if (modelCandidates.indexOf(candidate) < modelCandidates.length - 1) {
-            continue
-          }
-          // Last candidate: proceed with whatever model the session currently has
-        }
-
-        const response = await fetch(
-          `http://${connection.hetznerServerIp}:18789/v1/chat/completions`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${connection.gatewayToken}`,
-              'Content-Type': 'application/json',
-              'x-openclaw-agent-id': 'default',
-              'x-openclaw-session-key': sessionKey,
-            },
-            body: JSON.stringify({
-              model: 'openclaw:default',
-              user: sessionKey,
-              stream: true,
-              messages: openClawMessages,
-            }),
-            signal: AbortSignal.timeout(240_000),
-          }
-        )
-
-        if (!response.ok) {
-          const responseText = await response.text()
-
-          if (response.status === 404) {
-            return NextResponse.json(
-              {
-                error:
-                  'This computer was provisioned before Overlay streaming chat support. Delete and recreate it to enable in-page OpenClaw chat.',
-              },
-              { status: 404 }
-            )
-          }
-
-          if (response.status === 401) {
-            return NextResponse.json(
-              { error: 'OpenClaw gateway authentication failed.' },
-              { status: 401 }
-            )
-          }
-
-          const failure = `${candidate.ref}: HTTP ${response.status} ${responseText}`
-          failures.push(failure)
-          if (response.status >= 500) {
-            continue
-          }
-
-          return NextResponse.json(
-            { error: `Gateway returned ${response.status}: ${responseText}` },
-            { status: response.status }
-          )
-        }
-
-        upstreamResponse = response
-        succeededModelRef = modelOverrideApplied ? candidate.ref : null
-        break
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        failures.push(`${candidate.ref}: ${message}`)
-        if (!canRetryWithModelFallbacks) {
-          break
-        }
-      }
-    }
-
-    if (!upstreamResponse || !upstreamResponse.body) {
-      throw new Error(buildComputerChatFailureMessage(selectedModelId, failures))
-    }
+    const requestedModelRef =
+      resolveOpenClawModelRef(selectedModelId) ?? resolveOpenClawModelRef(DEFAULT_MODEL_ID)
+    const baselineHistory = await fetchSessionHistorySnapshot({
+      ip: connection.hetznerServerIp,
+      gatewayToken: connection.gatewayToken,
+      sessionKey,
+    })
+    const baselineSeq = getHighestTranscriptSeq(baselineHistory.messages)
+    const hookMessage = buildHookMessage({
+      messages,
+      latestUserText,
+      sessionHasHistory: baselineHistory.messages.length > 0,
+    })
 
     const stream = createUIMessageStream<UIMessage>({
       originalMessages: messages,
@@ -213,11 +143,24 @@ export async function POST(request: NextRequest) {
         try {
           writer.write({ type: 'text-start', id: textId })
 
-          for await (const delta of streamOpenClawText(upstreamResponse.body!)) {
-            if (!delta) continue
-            assistantText += delta
-            writer.write({ type: 'text-delta', id: textId, delta })
-          }
+          await invokeOpenClawAgentHook({
+            ip: connection.hetznerServerIp,
+            hooksToken: connection.hooksToken,
+            sessionKey,
+            message: hookMessage,
+            model: requestedModelRef,
+          })
+
+          assistantText = await streamAssistantReplyFromSession({
+            ip: connection.hetznerServerIp,
+            gatewayToken: connection.gatewayToken,
+            sessionKey,
+            baselineSeq,
+            onText: (delta) => {
+              if (!delta) return
+              writer.write({ type: 'text-delta', id: textId, delta })
+            },
+          })
 
           writer.write({ type: 'text-end', id: textId })
 
@@ -238,6 +181,14 @@ export async function POST(request: NextRequest) {
             { throwOnError: true, timeoutMs: 30_000 }
           )
 
+          const latestHistory = await fetchSessionHistorySnapshot({
+            ip: connection.hetznerServerIp,
+            gatewayToken: connection.gatewayToken,
+            sessionKey,
+          }).catch(() => null)
+          const latestAssistantMessage = latestHistory
+            ? findAssistantMessageAfterSeq(latestHistory.messages, baselineSeq)
+            : null
           const latestSessionModel = await readGatewaySessionModel({
             ip: connection.hetznerServerIp,
             gatewayToken: connection.gatewayToken,
@@ -252,25 +203,12 @@ export async function POST(request: NextRequest) {
               accessToken,
               sessionKey: latestSessionModel?.sessionKey ?? sessionKey,
               requestedModelId: selectedModelId,
-              requestedModelRef: modelCandidates[0]?.ref ?? succeededModelRef ?? undefined,
-              effectiveProvider: latestSessionModel?.provider,
-              effectiveModel: latestSessionModel?.model,
+              requestedModelRef: requestedModelRef ?? undefined,
+              effectiveProvider: latestAssistantMessage?.provider ?? latestSessionModel?.provider,
+              effectiveModel: latestAssistantMessage?.model ?? latestSessionModel?.model,
             },
             { throwOnError: true, timeoutMs: 30_000 }
           )
-
-          if (succeededModelRef && succeededModelRef !== modelCandidates[0]?.ref) {
-            await convex.mutation(
-              'computers:addChatError',
-              {
-                computerId,
-                userId,
-                accessToken,
-                message: `Selected model was unavailable. OpenClaw replied using fallback model ${succeededModelRef}.`,
-              },
-              { throwOnError: true, timeoutMs: 30_000 }
-            )
-          }
         } catch (error) {
           const message = getErrorMessage(error)
           await convex.mutation(
@@ -296,26 +234,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function serializeMessagesForOpenClaw(messages: UIMessage[]): OpenClawChatMessage[] {
-  return messages
-    .map((message) => {
-      const text = extractTextFromUiMessage(message)
-      if (!text) {
-        return null
-      }
-
-      if (message.role !== 'user' && message.role !== 'assistant' && message.role !== 'system') {
-        return null
-      }
-
-      return {
-        role: message.role,
-        content: text,
-      } satisfies OpenClawChatMessage
-    })
-    .filter((message): message is OpenClawChatMessage => message !== null)
-}
-
 function extractTextFromUiMessage(message: UIMessage | undefined): string {
   if (!message?.parts) return ''
   return message.parts
@@ -325,44 +243,247 @@ function extractTextFromUiMessage(message: UIMessage | undefined): string {
     .trim()
 }
 
-function extractLatestUserText(messages: OpenClawChatMessage[]): string {
-  return [...messages]
-    .reverse()
-    .find((message) => message.role === 'user')
-    ?.content.trim() ?? ''
+function extractLatestUserText(messages: UIMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      return extractTextFromUiMessage(messages[i])
+    }
+  }
+  return ''
 }
 
-async function* streamOpenClawText(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader()
+function buildHookMessage(params: {
+  messages: UIMessage[]
+  latestUserText: string
+  sessionHasHistory: boolean
+}): string {
+  if (params.sessionHasHistory) {
+    return params.latestUserText
+  }
+
+  const transcript = params.messages
+    .map((message) => {
+      const text = extractTextFromUiMessage(message)
+      if (!text) {
+        return null
+      }
+
+      if (message.role === 'user') {
+        return `User: ${text}`
+      }
+      if (message.role === 'assistant') {
+        return `Assistant: ${text}`
+      }
+      if (message.role === 'system') {
+        return `System: ${text}`
+      }
+      return null
+    })
+    .filter((line): line is string => Boolean(line))
+    .join('\n\n')
+    .trim()
+
+  if (!transcript || transcript === `User: ${params.latestUserText}`) {
+    return params.latestUserText
+  }
+
+  return [
+    'Use the following transcript as prior conversation context and continue naturally.',
+    'Respond only to the latest user message.',
+    '',
+    transcript,
+  ].join('\n')
+}
+
+async function fetchSessionHistorySnapshot(params: {
+  ip: string
+  gatewayToken: string
+  sessionKey: string
+}): Promise<{ sessionKey: string; messages: OpenClawTranscriptMessage[] }> {
+  const response = await fetch(
+    `http://${params.ip}:18789/sessions/${encodeURIComponent(params.sessionKey)}/history`,
+    {
+      headers: {
+        Authorization: `Bearer ${params.gatewayToken}`,
+      },
+      signal: AbortSignal.timeout(30_000),
+    }
+  )
+
+  if (response.status === 404) {
+    return { sessionKey: params.sessionKey, messages: [] }
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load OpenClaw session history: ${response.status} ${await response.text()}`
+    )
+  }
+
+  const body = (await response.json()) as SessionHistoryResponse
+  return {
+    sessionKey: body.sessionKey?.trim() || params.sessionKey,
+    messages: normalizeTranscriptMessages(body),
+  }
+}
+
+async function invokeOpenClawAgentHook(params: {
+  ip: string
+  hooksToken: string
+  sessionKey: string
+  message: string
+  model?: string | null
+}) {
+  const response = await fetch(`http://${params.ip}:18789/hooks/agent`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${params.hooksToken}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': crypto.randomUUID(),
+    },
+    body: JSON.stringify({
+      message: params.message,
+      name: 'Overlay Computer Chat',
+      sessionKey: params.sessionKey,
+      wakeMode: 'now',
+      deliver: false,
+      timeoutSeconds: 240,
+      ...(params.model ? { model: params.model } : {}),
+    }),
+    signal: AbortSignal.timeout(30_000),
+  })
+
+  if (response.status === 404) {
+    throw new Error(
+      'This computer was provisioned before Overlay webhook chat support. Delete and recreate it to enable in-page OpenClaw chat.'
+    )
+  }
+
+  if (response.status === 401) {
+    throw new Error('OpenClaw webhook authentication failed.')
+  }
+
+  const responseText = await response.text()
+  let parsedBody: HookAgentResponse | null = null
+
+  try {
+    parsedBody = JSON.parse(responseText) as HookAgentResponse
+  } catch {
+    parsedBody = null
+  }
+
+  const recreateError =
+    parsedBody?.error?.includes('hooks.allowRequestSessionKey') ||
+    parsedBody?.error?.includes('sessionKey must start with one of')
+
+  if (!response.ok) {
+    if (recreateError) {
+      throw new Error(
+        'This computer was provisioned before Overlay webhook session support. Delete and recreate it to enable model-aware in-page OpenClaw chat.'
+      )
+    }
+    throw new Error(parsedBody?.error || `Webhook returned ${response.status}: ${responseText}`)
+  }
+
+  if (parsedBody?.ok !== true) {
+    throw new Error(parsedBody?.error || 'OpenClaw rejected the webhook request.')
+  }
+}
+
+async function streamAssistantReplyFromSession(params: {
+  ip: string
+  gatewayToken: string
+  sessionKey: string
+  baselineSeq: number
+  onText: (delta: string) => void
+}): Promise<string> {
+  const deadline = Date.now() + 240_000
+
+  while (Date.now() < deadline) {
+    const remainingMs = Math.max(1_000, deadline - Date.now())
+    const response = await fetch(
+      `http://${params.ip}:18789/sessions/${encodeURIComponent(params.sessionKey)}/history`,
+      {
+        headers: {
+          Authorization: `Bearer ${params.gatewayToken}`,
+          Accept: 'text/event-stream',
+        },
+        signal: AbortSignal.timeout(remainingMs),
+      }
+    )
+
+    if (response.status === 404) {
+      await sleep(500)
+      continue
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to stream OpenClaw session history: ${response.status} ${await response.text()}`
+      )
+    }
+
+    if (!response.body) {
+      throw new Error('OpenClaw session history stream was empty.')
+    }
+
+    const text = await waitForAssistantMessageFromHistoryStream({
+      stream: response.body,
+      baselineSeq: params.baselineSeq,
+      onText: params.onText,
+    })
+
+    if (text) {
+      return text
+    }
+  }
+
+  throw new Error('OpenClaw accepted the webhook request but did not append an assistant reply.')
+}
+
+async function waitForAssistantMessageFromHistoryStream(params: {
+  stream: ReadableStream<Uint8Array>
+  baselineSeq: number
+  onText: (delta: string) => void
+}): Promise<string | null> {
+  const reader = params.stream.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let emittedText = ''
 
   try {
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        return emittedText || null
+      }
 
       buffer += decoder.decode(value, { stream: true })
       const events = buffer.split('\n\n')
       buffer = events.pop() ?? ''
 
       for (const event of events) {
-        const parsed = parseOpenClawEvent(event)
-        if (parsed === '[DONE]') {
-          return
-        }
+        const parsed = parseSessionHistoryEvent(event)
         if (!parsed) {
           continue
         }
-        yield extractStreamDelta(parsed)
-      }
-    }
 
-    const tail = buffer.trim()
-    if (tail) {
-      const parsed = parseOpenClawEvent(tail)
-      if (parsed && parsed !== '[DONE]') {
-        yield extractStreamDelta(parsed)
+        const assistantMessage = findAssistantMessageAfterSeq(parsed.data, params.baselineSeq)
+        if (!assistantMessage) {
+          continue
+        }
+
+        const nextText = extractTranscriptMessageText(assistantMessage)
+        if (!nextText) {
+          continue
+        }
+
+        const delta = nextText.startsWith(emittedText) ? nextText.slice(emittedText.length) : nextText
+        if (delta) {
+          params.onText(delta)
+        }
+        emittedText = nextText
+        return emittedText
       }
     }
   } finally {
@@ -370,113 +491,104 @@ async function* streamOpenClawText(stream: ReadableStream<Uint8Array>) {
   }
 }
 
-function parseOpenClawEvent(event: string): OpenClawSSEChunk | '[DONE]' | null {
-  const dataLines = event
-    .split('\n')
+function parseSessionHistoryEvent(rawEvent: string): SessionHistoryEvent | null {
+  const lines = rawEvent.split('\n')
+  const eventName = lines
+    .find((line) => line.startsWith('event:'))
+    ?.slice(6)
+    .trim()
+  const data = lines
     .filter((line) => line.startsWith('data:'))
     .map((line) => line.slice(5).trim())
+    .join('\n')
 
-  if (dataLines.length === 0) {
+  if (!eventName || !data) {
     return null
   }
 
-  const payload = dataLines.join('\n')
-  if (payload === '[DONE]') {
-    return '[DONE]'
-  }
-
   try {
-    return JSON.parse(payload) as OpenClawSSEChunk
+    return {
+      event: eventName,
+      data: JSON.parse(data),
+    }
   } catch {
     return null
   }
 }
 
-function extractStreamDelta(chunk: OpenClawSSEChunk): string {
-  const content = chunk.choices?.[0]?.delta?.content
-  if (typeof content === 'string') {
-    return content
+function normalizeTranscriptMessages(payload: SessionHistoryResponse): OpenClawTranscriptMessage[] {
+  const messages = payload.messages ?? payload.items ?? []
+  return Array.isArray(messages) ? messages : []
+}
+
+function getHighestTranscriptSeq(messages: OpenClawTranscriptMessage[]): number {
+  return messages.reduce((highest, message) => {
+    const seq = typeof message.__openclaw?.seq === 'number' ? message.__openclaw.seq : 0
+    return seq > highest ? seq : highest
+  }, 0)
+}
+
+function findAssistantMessageAfterSeq(
+  payload: unknown,
+  baselineSeq: number
+): OpenClawTranscriptMessage | null {
+  const candidates: OpenClawTranscriptMessage[] = []
+
+  if (payload && typeof payload === 'object') {
+    const maybePayload = payload as {
+      message?: OpenClawTranscriptMessage
+      messages?: OpenClawTranscriptMessage[]
+      items?: OpenClawTranscriptMessage[]
+    }
+
+    if (maybePayload.message) {
+      candidates.push(maybePayload.message)
+    }
+    if (Array.isArray(maybePayload.messages)) {
+      candidates.push(...maybePayload.messages)
+    }
+    if (Array.isArray(maybePayload.items)) {
+      candidates.push(...maybePayload.items)
+    }
   }
-  if (!Array.isArray(content)) {
+
+  let latestAssistant: OpenClawTranscriptMessage | null = null
+  let latestSeq = baselineSeq
+
+  for (const message of candidates) {
+    if (message.role !== 'assistant') {
+      continue
+    }
+    const seq = typeof message.__openclaw?.seq === 'number' ? message.__openclaw.seq : 0
+    if (seq <= baselineSeq || seq < latestSeq) {
+      continue
+    }
+    latestAssistant = message
+    latestSeq = seq
+  }
+
+  return latestAssistant
+}
+
+function extractTranscriptMessageText(message: OpenClawTranscriptMessage | null | undefined): string {
+  if (!message || !Array.isArray(message.content)) {
     return ''
   }
-  return content
-    .map((part) => (part?.type === 'text' && typeof part.text === 'string' ? part.text : ''))
+
+  return message.content
+    .filter((part) => part.type === 'text' && typeof part.text === 'string')
+    .map((part) => part.text || '')
     .join('')
+    .trim()
 }
 
 function getComputerSessionKey(userId: string, computerId: string): string {
-  return `computer:v2:${userId}:${computerId}`
+  return `hook:computer:v1:${userId}:${computerId}`
 }
 
 function resolveOpenClawModelRef(modelId: string): string | null {
   const model = getModel(modelId)
-  if (!model) {
-    return null
-  }
-
-  if (model.provider === 'openrouter') {
-    return model.id
-  }
-
-  return `vercel-ai-gateway/${model.provider}/${model.id}`
-}
-
-function getComputerModelCandidates(selectedModelId: string): Array<{ id: string; ref: string }> {
-  const candidates = [selectedModelId, DEFAULT_MODEL_ID, 'openrouter/free']
-  const seen = new Set<string>()
-  const resolved: Array<{ id: string; ref: string }> = []
-
-  for (const candidateId of candidates) {
-    const ref = resolveOpenClawModelRef(candidateId)
-    if (!ref || seen.has(ref)) {
-      continue
-    }
-    seen.add(ref)
-    resolved.push({ id: candidateId, ref })
-  }
-
-  return resolved
-}
-
-function buildComputerChatFailureMessage(selectedModelId: string, failures: string[]): string {
-  const detail = failures.length > 0 ? failures.join(' | ') : 'no fallback details'
-  return `OpenClaw could not reply to this request using the selected model "${selectedModelId}". Retried the configured fallback models, but all attempts failed. Details: ${detail}`
-}
-
-async function applySessionModelOverrideBestEffort(params: {
-  ip: string
-  gatewayToken: string
-  sessionKey: string
-  model: string
-}): Promise<boolean> {
-  const response = await fetch(`http://${params.ip}:18789/tools/invoke`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.gatewayToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      tool: 'session_status',
-      sessionKey: params.sessionKey,
-      args: {
-        sessionKey: params.sessionKey,
-        model: params.model,
-      },
-    }),
-    signal: AbortSignal.timeout(30_000),
-  })
-
-  if (!response.ok) {
-    return false
-  }
-
-  try {
-    const body = (await response.json()) as ToolInvokeResponse<SessionStatusToolResult>
-    return body.ok === true
-  } catch {
-    return false
-  }
+  return model?.openClawRef ?? null
 }
 
 async function readGatewaySessionModel(params: {
@@ -566,6 +678,10 @@ function parseModelFromStatusText(statusText: string): { provider?: string; mode
     provider: rawLabel.slice(0, slashIndex).trim() || undefined,
     model: rawLabel.slice(slashIndex + 1).trim() || undefined,
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function getErrorMessage(error: unknown): string {
