@@ -225,6 +225,24 @@ export default defineSchema({
     createdAt: v.number(),
   }).index('by_computerId_createdAt', ['computerId', 'createdAt']),
 
+  // Generated images and videos from Chat and Agent sessions.
+  outputs: defineTable({
+    userId: v.string(),
+    type: v.union(v.literal('image'), v.literal('video')),
+    status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
+    prompt: v.string(),
+    modelId: v.string(),
+    url: v.optional(v.string()),
+    chatId: v.optional(v.string()),
+    agentId: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  }).index('by_userId', ['userId'])
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_chatId', ['chatId'])
+    .index('by_agentId', ['agentId']),
+
   // Knowledge base and project files. Text content is stored in `content`;
   // binary files (images, PDFs, audio, video) are stored in Convex File Storage
   // and referenced via `storageId` — the serving URL is resolved at query time.

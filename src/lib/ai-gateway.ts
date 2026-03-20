@@ -102,3 +102,27 @@ export async function getGatewayLanguageModel(modelId: string, accessToken?: str
 
   return cachedGateway(getGatewayModelId(modelId))
 }
+
+async function getOrCreateGateway(accessToken?: string): Promise<ReturnType<typeof createGateway>> {
+  const apiKey = await resolveGatewayApiKey(accessToken)
+  if (!apiKey) {
+    throw new Error(
+      'AI_GATEWAY_API_KEY is not configured. Set it in Convex or the server environment.'
+    )
+  }
+  if (!cachedGateway || cachedApiKey !== apiKey) {
+    cachedGateway = createGateway({ apiKey })
+    cachedApiKey = apiKey
+  }
+  return cachedGateway
+}
+
+export async function getGatewayImageModel(modelId: string, accessToken?: string) {
+  const gateway = await getOrCreateGateway(accessToken)
+  return gateway.image(modelId)
+}
+
+export async function getGatewayVideoModel(modelId: string, accessToken?: string) {
+  const gateway = await getOrCreateGateway(accessToken)
+  return gateway.video(modelId)
+}

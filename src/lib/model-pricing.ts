@@ -10,6 +10,66 @@ export interface ModelPricing {
   isFree: boolean
 }
 
+// ─── Generation Pricing (image / video) ──────────────────────────────────────
+// Prices sourced from Vercel AI Gateway (provider list price, no markup).
+// Image: $/image at default quality/size.
+// Video: billingUnit='per_video' → $/clip | billingUnit='per_second' → $/second.
+
+export interface ImageGenerationPricing {
+  perImage: number // cost in dollars per generated image
+}
+
+export interface VideoGenerationPricing {
+  billingUnit: 'per_video' | 'per_second'
+  rate: number // dollars per video OR dollars per second
+}
+
+export const IMAGE_GENERATION_PRICING: Record<string, ImageGenerationPricing> = {
+  // Google Gemini Flash Image — token-based multimodal, ~$0.075/image at standard quality
+  'google/gemini-3.1-flash-image-preview': { perImage: 0.075 },
+  // OpenAI GPT Image 1.5 — $0.04/image (standard 1024x1024)
+  'openai/gpt-image-1.5': { perImage: 0.04 },
+  // BFL FLUX 2 Max — $0.12/image
+  'bfl/flux-2-max': { perImage: 0.12 },
+  // xAI Grok Imagine Image Pro — $0.07/image
+  'xai/grok-imagine-image-pro': { perImage: 0.07 },
+  // xAI Grok Imagine Image — $0.05/image
+  'xai/grok-imagine-image': { perImage: 0.05 },
+  // Prodia FLUX Schnell — ultra-fast, $0.003/image
+  'prodia/flux-fast-schnell': { perImage: 0.003 },
+}
+
+export const VIDEO_GENERATION_PRICING: Record<string, VideoGenerationPricing> = {
+  // Google Veo 3.1 — $0.1681/video (per-video billing)
+  'google/veo-3.1-generate-001': { billingUnit: 'per_video', rate: 0.1681 },
+  // Google Veo 3.1 Fast — ~$0.084/video (estimated ~50% of 3.1)
+  'google/veo-3.1-fast-generate-001': { billingUnit: 'per_video', rate: 0.084 },
+  // ByteDance Seedance v1.5 Pro — $0.0247/second
+  'bytedance/seedance-v1.5-pro': { billingUnit: 'per_second', rate: 0.0247 },
+  // xAI Grok Imagine Video — $0.0639/video (per-video billing)
+  'xai/grok-imagine-video': { billingUnit: 'per_video', rate: 0.0639 },
+  // Alibaba Wan v2.6 — $0.0708/second
+  'alibaba/wan-v2.6-t2v': { billingUnit: 'per_second', rate: 0.0708 },
+}
+
+/**
+ * Calculate cost of an image generation in dollars.
+ */
+export function calculateImageCost(modelId: string): number {
+  return IMAGE_GENERATION_PRICING[modelId]?.perImage ?? 0.05
+}
+
+/**
+ * Calculate cost of a video generation in dollars.
+ * @param durationSeconds - actual or estimated video duration in seconds
+ */
+export function calculateVideoCost(modelId: string, durationSeconds: number): number {
+  const pricing = VIDEO_GENERATION_PRICING[modelId]
+  if (!pricing) return 0.15
+  if (pricing.billingUnit === 'per_video') return pricing.rate
+  return pricing.rate * durationSeconds
+}
+
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Free models (OpenRouter)
   'openrouter/free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },

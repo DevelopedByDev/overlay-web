@@ -1,3 +1,5 @@
+export type GenerationMode = 'text' | 'image' | 'video'
+
 export interface ChatModel {
   id: string
   name: string
@@ -7,6 +9,24 @@ export interface ChatModel {
   supportsVision: boolean
   supportsReasoning: boolean
   supportsSearch: boolean
+}
+
+export interface ImageModel {
+  id: string
+  name: string
+  provider: string
+  description?: string
+  defaultAspectRatio?: string
+}
+
+export interface VideoModel {
+  id: string
+  name: string
+  provider: string
+  description?: string
+  billingUnit: 'per_video' | 'per_second'
+  defaultDuration?: number
+  defaultAspectRatio?: string
 }
 
 export const AVAILABLE_MODELS: ChatModel[] = [
@@ -48,4 +68,37 @@ export function getModel(id: string): ChatModel | undefined {
 
 export function getProviderModels(provider: ChatModel['provider']): ChatModel[] {
   return AVAILABLE_MODELS.filter((m) => m.provider === provider)
+}
+
+// ─── Image Models (priority order — top = highest priority fallback) ──────────
+
+export const IMAGE_MODELS: ImageModel[] = [
+  { id: 'google/gemini-3.1-flash-image-preview', name: 'Gemini Flash Image', provider: 'google', description: 'Fast multimodal image gen', defaultAspectRatio: '1:1' },
+  { id: 'openai/gpt-image-1.5', name: 'GPT Image 1.5', provider: 'openai', description: 'High quality, detailed', defaultAspectRatio: '1:1' },
+  { id: 'bfl/flux-2-max', name: 'FLUX 2 Max', provider: 'bfl', description: 'Premium quality', defaultAspectRatio: '1:1' },
+  { id: 'xai/grok-imagine-image-pro', name: 'Grok Image Pro', provider: 'xai', description: 'Photorealistic', defaultAspectRatio: '1:1' },
+  { id: 'xai/grok-imagine-image', name: 'Grok Image', provider: 'xai', description: 'Fast & creative', defaultAspectRatio: '1:1' },
+  { id: 'prodia/flux-fast-schnell', name: 'FLUX Schnell', provider: 'prodia', description: 'Ultra-fast, low cost', defaultAspectRatio: '1:1' },
+]
+
+export const DEFAULT_IMAGE_MODEL_ID = 'google/gemini-3.1-flash-image-preview'
+
+export function getImageModel(id: string): ImageModel | undefined {
+  return IMAGE_MODELS.find((m) => m.id === id)
+}
+
+// ─── Video Models (priority order — top = highest priority fallback) ──────────
+
+export const VIDEO_MODELS: VideoModel[] = [
+  { id: 'google/veo-3.1-generate-001', name: 'Veo 3.1', provider: 'google', description: 'Highest quality', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9' },
+  { id: 'google/veo-3.1-fast-generate-001', name: 'Veo 3.1 Fast', provider: 'google', description: 'Fast generation', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9' },
+  { id: 'bytedance/seedance-v1.5-pro', name: 'Seedance v1.5 Pro', provider: 'bytedance', description: 'Cinematic quality', billingUnit: 'per_second', defaultDuration: 10, defaultAspectRatio: '16:9' },
+  { id: 'xai/grok-imagine-video', name: 'Grok Video', provider: 'xai', description: 'Creative & fast', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9' },
+  { id: 'alibaba/wan-v2.6-t2v', name: 'Wan v2.6', provider: 'alibaba', description: 'Versatile', billingUnit: 'per_second', defaultDuration: 8, defaultAspectRatio: '16:9' },
+]
+
+export const DEFAULT_VIDEO_MODEL_ID = 'google/veo-3.1-generate-001'
+
+export function getVideoModel(id: string): VideoModel | undefined {
+  return VIDEO_MODELS.find((m) => m.id === id)
 }

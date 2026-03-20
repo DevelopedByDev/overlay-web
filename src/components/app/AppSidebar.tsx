@@ -7,7 +7,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   MessageSquare, BookOpen, Bot, Brain, Wrench, LogOut, User,
   Smartphone, Puzzle, MessageCircle, Monitor, ChevronUp, AlertCircle,
-  FolderOpen, Cpu,
+  FolderOpen, Cpu, Images,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
   { href: '/app/chat', label: 'Chats', icon: MessageSquare },
   { href: '/app/agent', label: 'Agents', icon: Bot },
+  { href: '/app/outputs', label: 'Outputs', icon: Images },
   { href: '/app/notes', label: 'Notes', icon: BookOpen },
   { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
   { href: '/app/tools', label: 'Tools', icon: Wrench },

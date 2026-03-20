@@ -1,11 +1,12 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Plus, Trash2, ChevronDown, Loader2, ImageIcon, FileText, X, AlertCircle, Check, FolderOpen } from 'lucide-react'
+import { Send, Plus, Trash2, ChevronDown, Loader2, ImageIcon, FileText, X, AlertCircle, Check, FolderOpen, Video, Download } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { useSearchParams } from 'next/navigation'
-import { AVAILABLE_MODELS, DEFAULT_MODEL_ID } from '@/lib/models'
+import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, IMAGE_MODELS, VIDEO_MODELS, DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID, type GenerationMode } from '@/lib/models'
+import { GenerationModeToggle } from './GenerationModeToggle'
 import { dispatchChatTitleUpdated, sanitizeChatTitle } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
@@ -156,6 +157,16 @@ const CHAT_SUGGESTIONS = [
 
 const DEFAULT_CHAT_TITLE = 'New Chat'
 const CHAT_MODEL_KEY = 'overlay_chat_model'
+const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
+
+interface GenerationResult {
+  type: 'image' | 'video'
+  status: 'generating' | 'completed' | 'failed'
+  url?: string
+  modelUsed?: string
+  outputId?: string
+  error?: string
+}
 
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -186,6 +197,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     } catch {
       setSelectedModels([saved])
     }
+    const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
+    if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -197,6 +210,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   // Tracks the title of the active chat independently of the sidebar `chats` list.
   // Needed for project chats which are excluded from the global chats:list query.
   const [activeChatTitle, setActiveChatTitle] = useState<string | null>(null)
+
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
+  const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
+  const [generationResults, setGenerationResults] = useState<Map<number, GenerationResult>>(new Map())
+  const [exchangeGenTypes, setExchangeGenTypes] = useState<('text' | 'image' | 'video')[]>([])
+  const [selectedImageModel, setSelectedImageModel] = useState(DEFAULT_IMAGE_MODEL_ID)
+  const [selectedVideoModel, setSelectedVideoModel] = useState(DEFAULT_VIDEO_MODEL_ID)
 
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
@@ -565,9 +585,107 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     }
   }
 
+  const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
+
   async function handleSend() {
     const text = input.trim()
-    if ((!text && attachedImages.length === 0) || isAnyLoading || isSendBlocked) return
+    if (!text || isAnyLoading) return
+
+    // ── Image / Video generation path ──────────────────────────────────────
+    if (effectiveGenType === 'image' || effectiveGenType === 'video') {
+      if (isSendBlocked) return
+      const chatId = activeChatId || await createNewChat()
+      if (!chatId) return
+
+      setInput('')
+      setGenerationChip(null)
+      const wasFirst = isFirstMessage
+      setIsFirstMessage(false)
+      shouldScrollRef.current = true
+
+      // Inject a placeholder user message into the primary chat slot so the exchange renders
+      const exchIdx = exchangeModels.length
+      setExchangeModels((prev) => [...prev, []])
+      setSelectedTabPerExchange((prev) => [...prev, 0])
+      setExchangeGenTypes((prev) => [...prev, effectiveGenType])
+      setGenerationResults((prev) => {
+        const next = new Map(prev)
+        next.set(exchIdx, { type: effectiveGenType, status: 'generating' })
+        return next
+      })
+
+      chatInstances[0].setMessages((prev) => [
+        ...prev,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { id: `gen-${Date.now()}`, role: 'user', parts: [{ type: 'text', text }] } as any,
+      ])
+
+      if (wasFirst && text) startFirstMessageRename(chatId, text)
+
+      if (effectiveGenType === 'image') {
+        const modelId = selectedImageModel
+        fetch('/api/app/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: text, modelId, chatId }),
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ message: 'Generation failed' }))
+              setGenerationResults((prev) => { const n = new Map(prev); n.set(exchIdx, { type: 'image', status: 'failed', error: (err as { message?: string }).message }); return n })
+              return
+            }
+            const data = await res.json() as { url?: string; modelUsed?: string; outputId?: string }
+            setGenerationResults((prev) => { const n = new Map(prev); n.set(exchIdx, { type: 'image', status: 'completed', url: data.url, modelUsed: data.modelUsed, outputId: data.outputId }); return n })
+          })
+          .catch((err) => {
+            setGenerationResults((prev) => { const n = new Map(prev); n.set(exchIdx, { type: 'image', status: 'failed', error: String(err) }); return n })
+          })
+      } else {
+        const modelId = selectedVideoModel
+        fetch('/api/app/generate-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: text, modelId, chatId }),
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              setGenerationResults((prev) => { const n = new Map(prev); n.set(exchIdx, { type: 'video', status: 'failed', error: 'Request failed' }); return n })
+              return
+            }
+            const reader = res.body?.getReader()
+            if (!reader) return
+            const decoder = new TextDecoder()
+            let buf = ''
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              buf += decoder.decode(value, { stream: true })
+              const lines = buf.split('\n\n')
+              buf = lines.pop() ?? ''
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue
+                try {
+                  const evt = JSON.parse(line.slice(6)) as { type: string; url?: string; modelUsed?: string; outputId?: string; error?: string }
+                  if (evt.type === 'completed') {
+                    setGenerationResults((prev) => { const n = new Map(prev); n.set(exchIdx, { type: 'video', status: 'completed', url: evt.url, modelUsed: evt.modelUsed, outputId: evt.outputId }); return n })
+                  } else if (evt.type === 'failed') {
+                    setGenerationResults((prev) => { const n = new Map(prev); n.set(exchIdx, { type: 'video', status: 'failed', error: evt.error }); return n })
+                  }
+                } catch { /* ignore */ }
+              }
+            }
+          })
+          .catch((err) => {
+            setGenerationResults((prev) => { const n = new Map(prev); n.set(exchIdx, { type: 'video', status: 'failed', error: String(err) }); return n })
+          })
+      }
+      return
+    }
+
+    // ── Normal text chat path ─────────────────────────────────────────────
+    if (attachedImages.length === 0 && !text) return
+    if (isSendBlocked) return
 
     // Capture before any await — isFirstMessage is true for the first message of a new/fresh chat
     const wasFirst = isFirstMessage
@@ -580,6 +698,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     shouldScrollRef.current = true
     setExchangeModels((prev) => [...prev, [...selectedModels]])
     setSelectedTabPerExchange((prev) => [...prev, 0])
+    setExchangeGenTypes((prev) => [...prev, 'text'])
 
     const parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }> = []
     if (text) parts.push({ type: 'text', text })
@@ -587,7 +706,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       parts.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType })
     }
 
-    // Title generation: show truncated text immediately, replace with GPT OSS 20B title async.
+    // Title generation: show truncated text immediately, replace with GPT OSS 20B-generated title once it arrives.
     // pendingTitleRef guards against loadChats() overwriting the title mid-flight.
     if (wasFirst && text) {
       startFirstMessageRename(chatId, text)
@@ -608,6 +727,12 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       completeSession(chatId, activeChatIdRef.current === chatId)
       loadChats()
     })
+  }
+
+  function handleModeChange(mode: GenerationMode) {
+    setGenerationMode(mode)
+    setGenerationChip(null)
+    localStorage.setItem(CHAT_GEN_MODE_KEY, mode)
   }
 
   function toggleModel(modelId: string) {
@@ -635,7 +760,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   // ── derived values for header ─────────────────────────────────────────────
 
   const activeChat = chats.find((c) => c._id === activeChatId)
-  const modelPickerLabel = selectedModels.length === 1
+  const modelPickerLabel = generationMode === 'image'
+    ? (IMAGE_MODELS.find((m) => m.id === selectedImageModel)?.name ?? 'Select model')
+    : generationMode === 'video'
+    ? (VIDEO_MODELS.find((m) => m.id === selectedVideoModel)?.name ?? 'Select model')
+    : selectedModels.length === 1
     ? (AVAILABLE_MODELS.find((m) => m.id === selectedModels[0])?.name ?? 'Select model')
     : `${selectedModels.length} models`
 
@@ -775,42 +904,73 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             </div>
           )}
 
-          {/* Model picker */}
-          <div ref={modelPickerRef} className="relative">
-            <button
-              onClick={() => !isAnyLoading && setShowModelPicker((v) => !v)}
-              disabled={isAnyLoading}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-[#f0f0f0] transition-colors ${
-                isAnyLoading ? 'text-[#aaa] cursor-not-allowed' : 'text-[#525252] hover:bg-[#e8e8e8]'
-              }`}
-            >
-              {modelPickerLabel}
-              <ChevronDown size={11} />
-            </button>
-            {showModelPicker && (
-              <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1 max-h-72 overflow-y-auto">
-                {AVAILABLE_MODELS.map((m) => {
-                  const isSelected = selectedModels.includes(m.id)
-                  const isDisabled = !isSelected && selectedModels.length >= 4
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => toggleModel(m.id)}
-                      disabled={isDisabled}
-                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                        isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#f5f5f5]'
-                      } ${isSelected ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'}`}
-                    >
-                      <span className="flex items-center gap-2">
-                        {isSelected ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                        {m.name}
-                      </span>
-                      <span className="text-[#aaa] ml-2">{m.provider}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+          {/* Generation mode toggle + Model picker */}
+          <div className="flex items-center gap-2">
+            <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isAnyLoading} />
+            <div ref={modelPickerRef} className="relative">
+              <button
+                onClick={() => !isAnyLoading && setShowModelPicker((v) => !v)}
+                disabled={isAnyLoading}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-[#f0f0f0] transition-colors ${
+                  isAnyLoading ? 'text-[#aaa] cursor-not-allowed' : 'text-[#525252] hover:bg-[#e8e8e8]'
+                }`}
+              >
+                {modelPickerLabel}
+                <ChevronDown size={11} />
+              </button>
+              {showModelPicker && (
+                <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1 max-h-72 overflow-y-auto">
+                  {generationMode === 'image' ? (
+                    IMAGE_MODELS.map((m) => (
+                      <button key={m.id} onClick={() => { setSelectedImageModel(m.id); setShowModelPicker(false) }}
+                        className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[#f5f5f5] ${
+                          m.id === selectedImageModel ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'
+                        }`}>
+                        <span className="flex items-center gap-2">
+                          {m.id === selectedImageModel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
+                          {m.name}
+                        </span>
+                        <span className="text-[#aaa] ml-2">{m.provider}</span>
+                      </button>
+                    ))
+                  ) : generationMode === 'video' ? (
+                    VIDEO_MODELS.map((m) => (
+                      <button key={m.id} onClick={() => { setSelectedVideoModel(m.id); setShowModelPicker(false) }}
+                        className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[#f5f5f5] ${
+                          m.id === selectedVideoModel ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'
+                        }`}>
+                        <span className="flex items-center gap-2">
+                          {m.id === selectedVideoModel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
+                          {m.name}
+                        </span>
+                        <span className="text-[#aaa] ml-2">{m.provider}</span>
+                      </button>
+                    ))
+                  ) : (
+                    AVAILABLE_MODELS.map((m) => {
+                      const isSelected = selectedModels.includes(m.id)
+                      const isDisabled = !isSelected && selectedModels.length >= 4
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => toggleModel(m.id)}
+                          disabled={isDisabled}
+                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
+                            isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#f5f5f5]'
+                          } ${isSelected ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            {isSelected ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
+                            {m.name}
+                          </span>
+                          <span className="text-[#aaa] ml-2">{m.provider}</span>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -850,6 +1010,51 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               for (const msg of primaryMessages) {
                 if (msg.role !== 'user') continue
                 const curExchIdx = exchIdx++
+                const genResult = generationResults.get(curExchIdx)
+                const genType = exchangeGenTypes[curExchIdx]
+
+                if (genType === 'image' || genType === 'video') {
+                  blocks.push(
+                    <div key={msg.id} className="flex flex-col gap-2 message-appear" data-exchange-idx={curExchIdx}>
+                      <div className="flex justify-end">
+                        <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm leading-relaxed text-[#fafafa]">
+                          <span className="whitespace-pre-wrap">{getMessageText(msg)}</span>
+                        </div>
+                      </div>
+                      {genResult?.status === 'generating' && (
+                        <div className="px-1 py-3 flex items-center gap-2 text-xs text-[#888]">
+                          <div className="w-4 h-4 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
+                          {genType === 'image' ? 'Generating image…' : 'Generating video (this may take a few minutes)…'}
+                        </div>
+                      )}
+                      {genResult?.status === 'completed' && genResult.url && (
+                        <div className="flex flex-col gap-2 px-1">
+                          {genType === 'image' ? (
+                            <img src={genResult.url} alt="Generated image" className="rounded-xl max-w-md border border-[#e5e5e5]" />
+                          ) : (
+                            // eslint-disable-next-line jsx-a11y/media-has-caption
+                            <video src={genResult.url} controls className="rounded-xl max-w-lg border border-[#e5e5e5]" />
+                          )}
+                          <div className="flex items-center gap-3 text-xs text-[#888]">
+                            <span>Generated with {genResult.modelUsed}</span>
+                            <a href={genResult.url} download={genType === 'image' ? 'generated.png' : 'generated.mp4'}
+                              className="flex items-center gap-1 hover:text-[#525252] transition-colors">
+                              <Download size={11} /> Download
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                      {genResult?.status === 'failed' && (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 text-xs">
+                          <AlertCircle size={12} />
+                          {genResult.error ?? 'Generation failed. Please try again.'}
+                        </div>
+                      )}
+                    </div>
+                  )
+                  continue
+                }
+
                 const exchModelList = exchangeModels[curExchIdx] ?? []
                 const selectedTab = selectedTabPerExchange[curExchIdx] ?? 0
                 const selectedModelId = exchModelList[selectedTab] ?? selectedModels[0]
@@ -936,7 +1141,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     <Plus size={14} />
                   </button>
                   {showAttachMenu && (
-                    <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#e5e5e5] rounded-xl shadow-lg py-1 w-48 z-20">
+                    <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#e5e5e5] rounded-xl shadow-lg py-1 w-52 z-20">
                       <button
                         onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false) }}
                         disabled={!supportsVision}
@@ -947,9 +1152,25 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         }`}
                       >
                         <ImageIcon size={13} />
-                        <span>Images</span>
-                        {!supportsVision && <span className="ml-auto text-[10px] text-[#ccc]">vision model required</span>}
+                        <span>Attach Images</span>
+                        {!supportsVision && <span className="ml-auto text-[10px] text-[#ccc]">vision required</span>}
                       </button>
+                      <div className="border-t border-[#f0f0f0] my-1" />
+                      <button
+                        onClick={() => { setGenerationChip('image'); setShowAttachMenu(false) }}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors"
+                      >
+                        <ImageIcon size={13} className="text-purple-500" />
+                        <span>Generate Image</span>
+                      </button>
+                      <button
+                        onClick={() => { setGenerationChip('video'); setShowAttachMenu(false) }}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors"
+                      >
+                        <Video size={13} className="text-blue-500" />
+                        <span>Generate Video</span>
+                      </button>
+                      <div className="border-t border-[#f0f0f0] my-1" />
                       <button
                         disabled
                         className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[#bbb] cursor-not-allowed"
@@ -961,12 +1182,21 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     </div>
                   )}
                 </div>
+                {generationChip && (
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#0a0a0a] text-[#fafafa] shrink-0">
+                    {generationChip === 'image' ? <ImageIcon size={10} /> : <Video size={10} />}
+                    {generationChip === 'image' ? 'Image' : 'Video'}
+                    <button onClick={() => setGenerationChip(null)} className="ml-0.5 hover:opacity-70">
+                      <X size={9} />
+                    </button>
+                  </div>
+                )}
                 <textarea
                   ref={textareaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onPaste={handlePaste}
-                  placeholder="Message..."
+                  placeholder={effectiveGenType === 'image' ? 'Describe the image to generate…' : effectiveGenType === 'video' ? 'Describe the video to generate…' : 'Message...'}
                   rows={1}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {

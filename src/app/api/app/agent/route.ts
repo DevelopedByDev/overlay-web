@@ -5,6 +5,7 @@ import { convex } from '@/lib/convex'
 import { addAgentMessage, listMemories } from '@/lib/app-store'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
+import { createWebTools } from '@/lib/web-tools'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 
 interface Entitlements {
@@ -113,10 +114,14 @@ export async function POST(request: NextRequest) {
 
     const modelMessages = await convertToModelMessages(messages)
     const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
-    const tools = await createBrowserUnifiedTools({
-      userId,
-      accessToken: session.accessToken,
-    })
+    const [composioTools, webToolSet] = await Promise.all([
+      createBrowserUnifiedTools({ userId, accessToken: session.accessToken }),
+      Promise.resolve(createWebTools({ userId, accessToken: session.accessToken, agentId: agentId ?? undefined })),
+    ])
+    const tools = { ...composioTools, ...webToolSet }
+
+    const generationNote =
+      '\nYou also have generate_image and generate_video tools. Use them whenever the user asks to create visual content. For videos, inform the user that generation is async and may take a few minutes — results will appear in the Outputs tab.'
 
     const agent = new ToolLoopAgent({
       model: languageModel,
@@ -125,6 +130,7 @@ export async function POST(request: NextRequest) {
       instructions:
         (systemPrompt ||
           'You are Overlay\u2019s browser agent. Use the available Composio tools to complete the user\u2019s task. You do not have OS-level control, local desktop automation, terminal access, or filesystem access in this environment. If an integration is required but not connected, use the Composio connection tools to guide or initiate that connection. Keep the user informed about what you are doing, and end with a concise summary of what was completed and what still needs attention.') +
+        generationNote +
         memoryContext,
     })
 
