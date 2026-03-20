@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Plus, Trash2, ChevronDown, Loader2, ImageIcon, X, AlertCircle, Check, FolderOpen } from 'lucide-react'
+import { Send, Plus, Trash2, ChevronDown, Loader2, ImageIcon, FileText, X, AlertCircle, Check, FolderOpen } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { useSearchParams } from 'next/navigation'
@@ -38,9 +38,11 @@ function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> })
   return msg.parts.filter((p) => p.type === 'text').map((p) => p.text || '').join('')
 }
 
-function getMessageImages(msg: { parts?: Array<{ type: string; image?: string }> }): string[] {
+function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; mediaType?: string }> }): string[] {
   if (!msg.parts) return []
-  return msg.parts.filter((p) => p.type === 'image' && p.image).map((p) => p.image!)
+  return msg.parts
+    .filter((p) => p.type === 'file' && p.url && (p.mediaType?.startsWith('image/') ?? true))
+    .map((p) => p.url!)
 }
 
 
@@ -197,6 +199,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const [activeChatTitle, setActiveChatTitle] = useState<string | null>(null)
 
   const [showModelPicker, setShowModelPicker] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragCounterRef = useRef(0)
   const [input, setInput] = useState('')
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
@@ -208,6 +213,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const modelPickerRef = useRef<HTMLDivElement>(null)
+  const attachMenuRef = useRef<HTMLDivElement>(null)
   const wasStreamingRef = useRef(false)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
@@ -352,6 +358,16 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [showModelPicker])
+
+  useEffect(() => {
+    if (!showAttachMenu) return
+    function handleOutside(e: MouseEvent) {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node))
+        setShowAttachMenu(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showAttachMenu])
 
   useEffect(() => {
     const el = textareaRef.current
@@ -565,10 +581,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     setExchangeModels((prev) => [...prev, [...selectedModels]])
     setSelectedTabPerExchange((prev) => [...prev, 0])
 
-    const parts: Array<{ type: string; text?: string; image?: string; mediaType?: string }> = []
+    const parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }> = []
     if (text) parts.push({ type: 'text', text })
     for (const img of attachedImages) {
-      parts.push({ type: 'image', image: img.dataUrl, mediaType: img.mimeType })
+      parts.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType })
     }
 
     // Title generation: show truncated text immediately, replace with GPT OSS 20B title async.
@@ -684,7 +700,34 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       )}
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div
+        className="flex-1 flex flex-col h-full overflow-hidden relative"
+        onDragEnter={(e) => {
+          e.preventDefault()
+          dragCounterRef.current++
+          if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        onDragLeave={() => {
+          dragCounterRef.current--
+          if (dragCounterRef.current === 0) setIsDragging(false)
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          dragCounterRef.current = 0
+          setIsDragging(false)
+          const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'))
+          if (files.length > 0) addImages(files)
+        }}
+      >
+        {isDragging && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#fafafa]/90 border-2 border-dashed border-[#0a0a0a] rounded-lg m-2 pointer-events-none">
+            <div className="text-center">
+              <ImageIcon size={28} className="mx-auto mb-2 text-[#525252]" />
+              <p className="text-sm font-medium text-[#0a0a0a]">Drop images here</p>
+            </div>
+          </div>
+        )}
         {/* Sticky header */}
         <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-4 shrink-0">
           <div className="flex items-center gap-2 min-w-0 max-w-[40%]">
@@ -876,25 +919,48 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               </div>
             ) : (
               <div className="flex items-center gap-2 bg-[#f0f0f0] rounded-2xl px-4 py-2.5">
-                {supportsVision && (
-                  <>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => e.target.files && addImages(e.target.files)}
-                    />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="shrink-0 p-1 text-[#aaa] hover:text-[#525252] transition-colors"
-                      title="Attach image"
-                    >
-                      <ImageIcon size={15} />
-                    </button>
-                  </>
-                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => e.target.files && addImages(e.target.files)}
+                />
+                <div ref={attachMenuRef} className="relative shrink-0">
+                  <button
+                    onClick={() => setShowAttachMenu((v) => !v)}
+                    className="flex items-center justify-center w-6 h-6 rounded-full text-[#aaa] hover:text-[#525252] hover:bg-[#e0e0e0] transition-colors"
+                    title="Attach"
+                  >
+                    <Plus size={14} />
+                  </button>
+                  {showAttachMenu && (
+                    <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#e5e5e5] rounded-xl shadow-lg py-1 w-48 z-20">
+                      <button
+                        onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false) }}
+                        disabled={!supportsVision}
+                        className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs transition-colors ${
+                          supportsVision
+                            ? 'text-[#525252] hover:bg-[#f5f5f5]'
+                            : 'text-[#bbb] cursor-not-allowed'
+                        }`}
+                      >
+                        <ImageIcon size={13} />
+                        <span>Images</span>
+                        {!supportsVision && <span className="ml-auto text-[10px] text-[#ccc]">vision model required</span>}
+                      </button>
+                      <button
+                        disabled
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[#bbb] cursor-not-allowed"
+                      >
+                        <FileText size={13} />
+                        <span>Documents</span>
+                        <span className="ml-auto text-[10px] text-[#ccc]">soon</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <textarea
                   ref={textareaRef}
                   value={input}
