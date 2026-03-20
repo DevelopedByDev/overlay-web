@@ -7,6 +7,7 @@ import { DefaultChatTransport } from 'ai'
 import { useSearchParams } from 'next/navigation'
 import { AVAILABLE_MODELS } from '@/lib/models'
 import { sanitizeChatTitle, dispatchChatTitleUpdated } from '@/lib/chat-title'
+import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
 
 interface Agent {
@@ -73,6 +74,16 @@ const DEFAULT_AGENT_TITLE = 'New Agent'
 
 export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: boolean; projectName?: string } = {}) {
   const searchParams = useSearchParams()
+  const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
+  const activeAgentIdRef = useRef<string | null>(null)
+
+  // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
+  useEffect(() => {
+    return () => {
+      activeAgentIdRef.current = null
+      setActiveViewer('agent', null)
+    }
+  }, [setActiveViewer])
   const [agents, setAgents] = useState<Agent[]>([])
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_AGENT_MODEL)
@@ -214,6 +225,8 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
       const data = await res.json()
       // Add directly to state — no loadAgents() here to avoid racing with pendingTitleRef
       setAgents((prev) => [{ _id: data.id, title: DEFAULT_AGENT_TITLE, lastModified: Date.now() }, ...prev])
+      activeAgentIdRef.current = data.id
+      setActiveViewer('agent', data.id)
       setActiveAgentId(data.id)
       setIsFirstMessage(true)
       setMessages([])
@@ -223,6 +236,9 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
   }
 
   async function loadAgent(agentId: string) {
+    markRead(agentId)
+    activeAgentIdRef.current = agentId
+    setActiveViewer('agent', agentId)
     setActiveAgentId(agentId)
     setIsFirstMessage(false)
     try {
@@ -294,9 +310,16 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
       startFirstMessageRename(agentId, text)
     }
 
+    const msgCountBeforeSend = messages.length
+    startSession(agentId, 'agent', activeAgent?.title ?? '', msgCountBeforeSend)
+    activeAgentIdRef.current = agentId
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     void sendMessage({ role: 'user', parts: parts as any }, { body: { agentId, modelId: selectedModel } })
-      .then(() => loadAgents())
+      .then(() => {
+        completeSession(agentId, activeAgentIdRef.current === agentId)
+        loadAgents()
+      })
   }
 
   const activeAgent = agents.find((a) => a._id === activeAgentId)
@@ -324,25 +347,37 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
             </button>
           </div>
           <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-            {agents.map((agent) => (
-              <div
-                key={agent._id}
-                onClick={() => loadAgent(agent._id)}
-                className={`group flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer text-xs transition-colors ${
-                  activeAgentId === agent._id
-                    ? 'bg-[#e8e8e8] text-[#0a0a0a]'
-                    : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
-                }`}
-              >
-                <span className="truncate">{agent.title}</span>
-                <button
-                  onClick={(e) => deleteAgent(agent._id, e)}
-                  className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity"
+            {agents.map((agent) => {
+              const isStreaming = sessions[agent._id]?.status === 'streaming'
+              const unread = getUnread(agent._id)
+              return (
+                <div
+                  key={agent._id}
+                  onClick={() => loadAgent(agent._id)}
+                  className={`group flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer text-xs transition-colors ${
+                    activeAgentId === agent._id
+                      ? 'bg-[#e8e8e8] text-[#0a0a0a]'
+                      : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
+                  }`}
                 >
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            ))}
+                  <span className="truncate flex-1">{agent.title}</span>
+                  {isStreaming && !unread && (
+                    <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#525252] animate-pulse ml-1" />
+                  )}
+                  {unread > 0 && (
+                    <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#0a0a0a] text-[#fafafa] text-[9px] font-medium ml-1">
+                      {unread}
+                    </span>
+                  )}
+                  <button
+                    onClick={(e) => deleteAgent(agent._id, e)}
+                    className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

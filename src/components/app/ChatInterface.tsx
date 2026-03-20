@@ -7,6 +7,7 @@ import { DefaultChatTransport } from 'ai'
 import { useSearchParams } from 'next/navigation'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID } from '@/lib/models'
 import { dispatchChatTitleUpdated, sanitizeChatTitle } from '@/lib/chat-title'
+import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
 
 interface Chat {
@@ -159,6 +160,16 @@ const CHAT_MODEL_KEY = 'overlay_chat_model'
 export default function ChatInterface({ userId: _userId, hideSidebar, projectName }: { userId: string; hideSidebar?: boolean; projectName?: string }) {
   void _userId
   const searchParams = useSearchParams()
+  const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
+  const activeChatIdRef = useRef<string | null>(null)
+
+  // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
+  useEffect(() => {
+    return () => {
+      activeChatIdRef.current = null
+      setActiveViewer('chat', null)
+    }
+  }, [setActiveViewer])
 
   const [chats, setChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
@@ -419,6 +430,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       // Add directly to state — no loadChats() here so there's no race with pendingTitleRef
       const newChat: Chat = { _id: data.id, title: DEFAULT_CHAT_TITLE, model: selectedModels[0], lastModified: Date.now() }
       setChats((prev) => [newChat, ...prev])
+      activeChatIdRef.current = data.id
+      setActiveViewer('chat', data.id)
       setActiveChatId(data.id)
       setActiveChatTitle(DEFAULT_CHAT_TITLE)
       setIsFirstMessage(true)
@@ -429,6 +442,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   }
 
   async function loadChat(chatId: string) {
+    markRead(chatId)
+    activeChatIdRef.current = chatId
+    setActiveViewer('chat', chatId)
     setActiveChatId(chatId)
     setActiveChatTitle(null) // clear while loading
     const existingChat = chats.find((chat) => chat._id === chatId)
@@ -561,6 +577,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       startFirstMessageRename(chatId, text)
     }
 
+    const msgCountBeforeSend = chat0.messages.length
+    startSession(chatId, 'chat', activeChatTitle ?? '', msgCountBeforeSend)
+    activeChatIdRef.current = chatId
+
     void Promise.all(
       selectedModels.map((modelId, idx) =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -568,7 +588,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           body: { modelId, chatId, skipUserMessage: idx !== 0 },
         })
       )
-    ).then(() => loadChats())
+    ).then(() => {
+      completeSession(chatId, activeChatIdRef.current === chatId)
+      loadChats()
+    })
   }
 
   function toggleModel(modelId: string) {
@@ -625,25 +648,37 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             </button>
           </div>
           <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-            {chats.map((chat) => (
-              <div
-                key={chat._id}
-                onClick={() => loadChat(chat._id)}
-                className={`group flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer text-xs transition-colors ${
-                  activeChatId === chat._id
-                    ? 'bg-[#e8e8e8] text-[#0a0a0a]'
-                    : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
-                }`}
-              >
-                <span className="truncate">{chat.title}</span>
-                <button
-                  onClick={(e) => deleteChat(chat._id, e)}
-                  className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity"
+            {chats.map((chat) => {
+              const isStreaming = sessions[chat._id]?.status === 'streaming'
+              const unread = getUnread(chat._id)
+              return (
+                <div
+                  key={chat._id}
+                  onClick={() => loadChat(chat._id)}
+                  className={`group flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer text-xs transition-colors ${
+                    activeChatId === chat._id
+                      ? 'bg-[#e8e8e8] text-[#0a0a0a]'
+                      : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
+                  }`}
                 >
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            ))}
+                  <span className="truncate flex-1">{chat.title}</span>
+                  {isStreaming && !unread && (
+                    <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#525252] animate-pulse ml-1" />
+                  )}
+                  {unread > 0 && (
+                    <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#0a0a0a] text-[#fafafa] text-[9px] font-medium ml-1">
+                      {unread}
+                    </span>
+                  )}
+                  <button
+                    onClick={(e) => deleteChat(chat._id, e)}
+                    className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

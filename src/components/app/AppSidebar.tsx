@@ -10,6 +10,7 @@ import {
   FolderOpen, Cpu,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
+import { useAsyncSessions } from '@/lib/async-sessions-store'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
 import ComputerSidebar from './ComputerSidebar'
@@ -94,6 +95,7 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
 export default function AppSidebar({ user, accessToken }: { user: AuthUser; accessToken: string }) {
   const pathname = usePathname()
   const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
+  const { totalChatUnread, totalAgentUnread } = useAsyncSessions()
 
   const projectsOpen = pathname.startsWith('/app/projects')
   const toolsOpen = pathname.startsWith('/app/tools')
@@ -161,6 +163,9 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
       <nav className="flex-1 px-2 py-3 space-y-0.5">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href)
+          const unreadCount =
+            href === '/app/chat' ? totalChatUnread :
+            href === '/app/agent' ? totalAgentUnread : 0
           return (
             <Link
               key={href}
@@ -172,7 +177,14 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
               }`}
             >
               <Icon size={15} />
-              {label}
+              <span className="flex-1">{label}</span>
+              {unreadCount > 0 && (
+                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-medium ${
+                  active ? 'bg-[#fafafa] text-[#0a0a0a]' : 'bg-[#0a0a0a] text-[#fafafa]'
+                }`}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </Link>
           )
         })}
