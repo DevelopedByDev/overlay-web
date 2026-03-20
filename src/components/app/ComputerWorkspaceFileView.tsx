@@ -7,15 +7,18 @@ import { FileViewer, getFileType, isEditableType } from './FileViewer'
 export default function ComputerWorkspaceFileView({
   computerId,
   fileName,
+  isEditingMarkdown = false,
+  onEditingMarkdownChange,
 }: {
   computerId: string
   fileName: string
+  isEditingMarkdown?: boolean
+  onEditingMarkdownChange?: (value: boolean) => void
 }) {
   const [file, setFile] = useState<{ name: string; content: string; missing: boolean } | null>(null)
   const [loading, setLoading] = useState(true)
   const [fileContent, setFileContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
-  const [isEditingMarkdown, setIsEditingMarkdown] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -33,7 +36,7 @@ export default function ComputerWorkspaceFileView({
       })
       .finally(() => {
         if (!cancelled) {
-          setIsEditingMarkdown(false)
+          onEditingMarkdownChange?.(false)
           setLoading(false)
         }
       })
@@ -44,7 +47,7 @@ export default function ComputerWorkspaceFileView({
         clearTimeout(saveTimerRef.current)
       }
     }
-  }, [computerId, fileName])
+  }, [computerId, fileName, onEditingMarkdownChange])
 
   function handleContentChange(value: string) {
     setFileContent(value)
@@ -95,29 +98,23 @@ export default function ComputerWorkspaceFileView({
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-white">
-      {editable && (
-        <div className="flex h-12 items-center justify-end gap-2 border-b border-[#e5e5e5] px-6 shrink-0">
-          {isSaving && <Loader2 size={14} className="animate-spin text-[#aaa]" />}
-          {fileType === 'markdown' && (
-            <button
-              onClick={() => setIsEditingMarkdown((current) => !current)}
-              className="rounded-md bg-[#f0f0f0] px-2.5 py-1 text-[11px] text-[#525252] transition-colors hover:bg-[#e8e8e8]"
-            >
-              {isEditingMarkdown ? 'Preview' : 'Edit'}
-            </button>
-          )}
-        </div>
-      )}
-
       {editable && (fileType === 'text' || isEditingMarkdown) ? (
-        <textarea
-          value={fileContent}
-          onChange={(event) => handleContentChange(event.target.value)}
-          placeholder="Start typing..."
-          className="flex-1 resize-none bg-white px-6 py-4 text-sm leading-8 text-[#0a0a0a] outline-none placeholder:text-[#aaa]"
-        />
+        <div className="relative flex-1">
+          {isSaving && (
+            <div className="absolute right-6 top-4 z-10 flex items-center gap-1.5 rounded-full bg-white/95 px-2 py-1 text-[11px] text-[#888] shadow-sm">
+              <Loader2 size={12} className="animate-spin text-[#aaa]" />
+              Saving
+            </div>
+          )}
+          <textarea
+            value={fileContent}
+            onChange={(event) => handleContentChange(event.target.value)}
+            placeholder="Start typing..."
+            className="flex-1 h-full w-full resize-none bg-white px-6 py-4 text-sm leading-8 text-[#0a0a0a] outline-none placeholder:text-[#aaa]"
+          />
+        </div>
       ) : showMarkdownPreview ? (
-        <div className="flex-1" onDoubleClick={() => setIsEditingMarkdown(true)}>
+        <div className="flex-1" onDoubleClick={() => onEditingMarkdownChange?.(true)}>
           <FileViewer name={file.name} content={fileContent} />
         </div>
       ) : (

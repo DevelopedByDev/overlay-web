@@ -89,6 +89,7 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const pendingTitleRef = useRef<{ agentId: string; title: string } | null>(null)
 
   const transport = useMemo(() => new DefaultChatTransport({ api: '/api/app/agent' }), [])
@@ -193,6 +194,15 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const maxHeight = 160
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [input])
 
   async function createNewAgent(): Promise<string | null> {
     const res = await fetch('/api/app/agents', {
@@ -510,7 +520,7 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
                   : 'No credits remaining. Please top up your account.'}
               </div>
             ) : (
-              <div className="flex items-end gap-2 bg-[#f0f0f0] rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-2 bg-[#f0f0f0] rounded-2xl px-4 py-2.5">
                 {supportsVision && (
                   <>
                     <input
@@ -531,6 +541,7 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
                   </>
                 )}
                 <textarea
+                  ref={textareaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onPaste={handlePaste}
@@ -542,7 +553,7 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
                       handleSend()
                     }
                   }}
-                  className="flex-1 bg-transparent text-sm text-[#0a0a0a] placeholder-[#aaa] resize-none outline-none max-h-32"
+                  className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-6 text-[#0a0a0a] outline-none placeholder-[#aaa]"
                 />
                 {isLoading ? (
                   <button

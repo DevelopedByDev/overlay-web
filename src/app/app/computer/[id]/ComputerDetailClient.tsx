@@ -9,6 +9,7 @@ import { convex } from '@/lib/convex'
 import { MarkdownMessage } from '@/components/app/MarkdownMessage'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID } from '@/lib/models'
 import ComputerWorkspaceFileView from '@/components/app/ComputerWorkspaceFileView'
+import { getFileType, isEditableType } from '@/components/app/FileViewer'
 import { CommandBubble, CommandResultCard } from '@/components/app/ComputerCommandResults'
 import {
   type ComputerCommandResult,
@@ -275,11 +276,14 @@ export default function ComputerDetailClient({
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [hydratedTranscriptKey, setHydratedTranscriptKey] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
+  const [isEditingMarkdownFile, setIsEditingMarkdownFile] = useState(false)
   const [input, setInput] = useState('')
   const [activeSlashIndex, setActiveSlashIndex] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const selectedModelRef = useRef(selectedModel)
   const activeSessionKeyRef = useRef(activeSessionKey)
+  const hydrateRequestIdRef = useRef(0)
 
   useEffect(() => {
     selectedModelRef.current = selectedModel
@@ -383,11 +387,18 @@ export default function ComputerDetailClient({
   }, [computerId])
 
   const hydrateMessages = useCallback(async (sessionKey: string) => {
+    const requestId = ++hydrateRequestIdRef.current
     const response = await fetch(
       `/api/app/computer-sessions?computerId=${computerId}&sessionKey=${encodeURIComponent(sessionKey)}&messages=true`
     )
     if (!response.ok) return
     const data = await response.json()
+    if (
+      requestId !== hydrateRequestIdRef.current ||
+      activeSessionKeyRef.current !== sessionKey
+    ) {
+      return
+    }
     setMessages((Array.isArray(data.messages) ? data.messages : []) as ComputerUiMessage[])
     setHydratedTranscriptKey(sessionKey)
   }, [computerId, setMessages])
@@ -701,7 +712,12 @@ export default function ComputerDetailClient({
   useEffect(() => {
     setMessages([])
     setHydratedTranscriptKey(null)
+    hydrateRequestIdRef.current += 1
   }, [activeSessionKey, setMessages])
+
+  useEffect(() => {
+    setIsEditingMarkdownFile(false)
+  }, [requestedFileName])
 
   useEffect(() => {
     if (computer?.status !== 'ready' || isWorkspaceFileView || !activeSessionKey) return
@@ -727,6 +743,15 @@ export default function ComputerDetailClient({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const maxHeight = 160
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [input])
+
   const daysLeft = useMemo(() => {
     if (!computer?.pastDueAt) return null
     return Math.max(0, 7 - Math.floor((now - computer.pastDueAt) / (1000 * 60 * 60 * 24)))
@@ -739,6 +764,9 @@ export default function ComputerDetailClient({
       ? `${computer.chatEffectiveProvider}/${computer.chatEffectiveModel}`
       : computer?.chatRequestedModelRef || null
   const headerTitle = isWorkspaceFileView ? requestedFileName : activeSessionTitle || computer?.name || 'Computer'
+  const workspaceFileType = isWorkspaceFileView ? getFileType(requestedFileName) : null
+  const isEditableWorkspaceFile = isWorkspaceFileView && isEditableType(requestedFileName)
+  const isMarkdownWorkspaceFile = workspaceFileType === 'markdown'
   const slashMenuRef = useRef<HTMLDivElement>(null)
   const slashQuery = input.trimStart()
   const slashCommands = useMemo(() => (
@@ -1108,6 +1136,19 @@ export default function ComputerDetailClient({
           </div>
         )}
 
+        {computer.status === 'ready' && isWorkspaceFileView && (
+          <div className="flex items-center gap-2">
+            {isEditableWorkspaceFile && isMarkdownWorkspaceFile && (
+              <button
+                onClick={() => setIsEditingMarkdownFile((current) => !current)}
+                className="flex items-center gap-1.5 rounded-md bg-[#f0f0f0] px-2.5 py-1 text-xs text-[#525252] transition-colors hover:bg-[#e8e8e8]"
+              >
+                {isEditingMarkdownFile ? 'Preview' : 'Edit'}
+              </button>
+            )}
+          </div>
+        )}
+
         {computer.status === 'provisioning' && (
           <div className="flex items-center gap-2 text-xs text-[#f5a623]">
             <Loader2 size={11} className="animate-spin" />
@@ -1143,6 +1184,8 @@ export default function ComputerDetailClient({
             key={requestedFileName}
             computerId={computerId}
             fileName={requestedFileName}
+            isEditingMarkdown={isEditingMarkdownFile}
+            onEditingMarkdownChange={setIsEditingMarkdownFile}
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col bg-[#fbfbfb]">
@@ -1229,7 +1272,8 @@ export default function ComputerDetailClient({
                   {showSlashCommands && (
                     <div
                       ref={slashMenuRef}
-                      className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-[260px] overflow-y-auto rounded-2xl border border-[#e5e5e5] bg-white p-1 shadow-lg"
+                      className="absolute bottom-full left-0 right-0 z-10 mb-2 overflow-y-auto rounded-2xl border border-[#e5e5e5] bg-white p-1 shadow-lg"
+                      style={{ maxHeight: '205px' }}
                     >
                       {slashCommands.map((entry, index) => (
                         <button
@@ -1252,8 +1296,9 @@ export default function ComputerDetailClient({
                     </div>
                   )}
 
-                  <div className="flex items-end gap-2 rounded-2xl bg-[#f0f0f0] px-4 py-3">
+                  <div className="flex items-center gap-2 rounded-2xl bg-[#f0f0f0] px-4 py-2.5">
                     <textarea
+                      ref={textareaRef}
                       value={input}
                       onChange={(event) => {
                         setInput(event.target.value)
@@ -1274,7 +1319,7 @@ export default function ComputerDetailClient({
                           return
                         }
 
-                        if (showSlashCommands && event.key === 'Tab') {
+                        if (showSlashCommands && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))) {
                           event.preventDefault()
                           const activeCommand = slashCommands[activeSlashIndex]
                           if (activeCommand) {
@@ -1288,7 +1333,7 @@ export default function ComputerDetailClient({
                           void submitMessage()
                         }
                       }}
-                      className="max-h-32 flex-1 resize-none bg-transparent text-sm text-[#0a0a0a] outline-none placeholder:text-[#aaa]"
+                      className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-6 text-[#0a0a0a] outline-none placeholder:text-[#aaa]"
                     />
                     {isLoading ? (
                       <button

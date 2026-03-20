@@ -195,6 +195,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const shouldScrollRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const wasStreamingRef = useRef(false)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
@@ -340,6 +341,15 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [showModelPicker])
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const maxHeight = 160
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [input])
 
   // ── scroll tracking — which exchange is currently in view ─────────────────
 
@@ -830,7 +840,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   : 'No credits remaining. Please top up your account.'}
               </div>
             ) : (
-              <div className="flex items-end gap-2 bg-[#f0f0f0] rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-2 bg-[#f0f0f0] rounded-2xl px-4 py-2.5">
                 {supportsVision && (
                   <>
                     <input
@@ -851,6 +861,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   </>
                 )}
                 <textarea
+                  ref={textareaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onPaste={handlePaste}
@@ -862,7 +873,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                       handleSend()
                     }
                   }}
-                  className="flex-1 bg-transparent text-sm text-[#0a0a0a] placeholder-[#aaa] resize-none outline-none max-h-32"
+                  className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-6 text-[#0a0a0a] outline-none placeholder-[#aaa]"
                 />
                 {isAnyLoading ? (
                   <button
