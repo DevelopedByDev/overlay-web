@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   MessageSquare, BookOpen, Bot, Brain, Wrench, LogOut, User,
@@ -95,8 +95,12 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
 
 export default function AppSidebar({ user, accessToken }: { user: AuthUser; accessToken: string }) {
   const pathname = usePathname()
+  const router = useRouter()
   const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
   const { totalChatUnread, totalAgentUnread } = useAsyncSessions()
+
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+  const effectivePendingHref = pendingHref && !pathname.startsWith(pendingHref) ? pendingHref : null
 
   const projectsOpen = pathname.startsWith('/app/projects')
   const toolsOpen = pathname.startsWith('/app/tools')
@@ -163,30 +167,38 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
       {/* Navigation */}
       <nav className="flex-1 px-2 py-3 space-y-0.5">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href)
+          const active = effectivePendingHref ? effectivePendingHref === href : pathname.startsWith(href)
+          const isPending = effectivePendingHref === href
           const unreadCount =
             href === '/app/chat' ? totalChatUnread :
             href === '/app/agent' ? totalAgentUnread : 0
           return (
-            <Link
+            <button
               key={href}
-              href={href}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+              type="button"
+              onClick={() => {
+                if (pathname.startsWith(href)) return
+                setPendingHref(href)
+                router.push(href)
+              }}
+              className={`flex w-full items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
                 active
                   ? 'bg-[#0a0a0a] text-[#fafafa]'
                   : 'text-[#525252] hover:bg-[#f0f0f0] hover:text-[#0a0a0a]'
               }`}
             >
               <Icon size={15} />
-              <span className="flex-1">{label}</span>
-              {unreadCount > 0 && (
+              <span className="flex-1 text-left">{label}</span>
+              {isPending ? (
+                <div className="w-3.5 h-3.5 rounded-full border-2 border-[#fafafa]/30 border-t-[#fafafa] animate-spin shrink-0" />
+              ) : unreadCount > 0 ? (
                 <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-medium ${
                   active ? 'bg-[#fafafa] text-[#0a0a0a]' : 'bg-[#0a0a0a] text-[#fafafa]'
                 }`}>
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
-              )}
-            </Link>
+              ) : null}
+            </button>
           )
         })}
       </nav>

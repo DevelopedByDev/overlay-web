@@ -9,6 +9,7 @@ import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, IMAGE_MODELS, VIDEO_MODELS, DEFAULT
 import { GenerationModeToggle } from './GenerationModeToggle'
 import { dispatchChatTitleUpdated, sanitizeChatTitle } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
+import { useNavigationProgress } from '@/lib/navigation-progress'
 import { MarkdownMessage } from './MarkdownMessage'
 
 interface Chat {
@@ -249,7 +250,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   void _userId
   const searchParams = useSearchParams()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
+  const { begin, done } = useNavigationProgress()
   const activeChatIdRef = useRef<string | null>(null)
+  const loadChatRequestRef = useRef(0)
 
   // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
   useEffect(() => {
@@ -262,6 +265,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const [chats, setChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
+  const [isSwitchingChat, setIsSwitchingChat] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem(CHAT_MODEL_KEY)
@@ -274,7 +278,6 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     }
     const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
     if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const [exchangeModels, setExchangeModels] = useState<string[][]>([])
@@ -422,7 +425,6 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     })
   }, [applyChatTitleUpdate, loadChats])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadChats(); loadSubscription() }, [loadChats, loadSubscription])
 
   // Auto-load a specific chat when embedded in project view
@@ -560,35 +562,33 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   }
 
   async function loadChat(chatId: string) {
+    const requestId = ++loadChatRequestRef.current
+    const progressToken = begin('secondary')
     markRead(chatId)
     activeChatIdRef.current = chatId
     setActiveViewer('chat', chatId)
     setActiveChatId(chatId)
-    setActiveChatTitle(null) // clear while loading
     const existingChat = chats.find((chat) => chat._id === chatId)
     if (existingChat) {
       setActiveChatTitle(existingChat.title)
       setIsFirstMessage(existingChat.title === DEFAULT_CHAT_TITLE)
     } else {
-      // Project chat not in the global list — fetch its metadata
-      fetch(`/api/app/chats?chatId=${chatId}`)
-        .then((r) => r.ok ? r.json() : null)
-        .then((data: { title?: string } | null) => {
-          if (data?.title) setActiveChatTitle(data.title)
-        })
-        .catch(() => {})
+      setActiveChatTitle(null)
     }
     pendingTitleRef.current = null
-    resetChatState()
+    setIsSwitchingChat(true)
     try {
-      const res = await fetch(`/api/app/chats?chatId=${chatId}&messages=true`)
-      if (!res.ok) return
-      const data = await res.json()
+      const [messagesRes, outputsRes] = await Promise.all([
+        fetch(`/api/app/chats?chatId=${chatId}&messages=true`),
+        fetch(`/api/app/outputs?chatId=${chatId}`),
+      ])
+      if (requestId !== loadChatRequestRef.current) return
+      if (!messagesRes.ok) return
+      const data = await messagesRes.json()
       type RawMsg = { id: string; role: 'user' | 'assistant'; parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }>; model?: string }
       let rawMessages: RawMsg[] = data.messages || []
 
-      const outRes = await fetch(`/api/app/outputs?chatId=${chatId}`)
-      const outputs: ChatOutput[] = outRes.ok ? await outRes.json() : []
+      const outputs: ChatOutput[] = outputsRes.ok ? await outputsRes.json() : []
       const outputGroups = groupOutputsIntoExchanges(outputs)
 
       if (rawMessages.length === 0 && outputGroups.length > 0) {
@@ -619,6 +619,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           if (!uniqueModels.includes(model)) uniqueModels.push(model)
         }
       }
+
+      resetChatState()
 
       if (uniqueModels.length === 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -665,7 +667,24 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       setSelectedTabPerExchange(exchanges.map(() => 0))
       setExchangeGenTypes(restoredGenTypes)
       setGenerationResults(restoredResults)
+
+      if (!existingChat) {
+        try {
+          const metaRes = await fetch(`/api/app/chats?chatId=${chatId}`)
+          if (requestId !== loadChatRequestRef.current) return
+          if (metaRes.ok) {
+            const meta = await metaRes.json() as { title?: string }
+            if (meta.title) setActiveChatTitle(meta.title)
+          }
+        } catch {
+          // keep the current title fallback if metadata lookup fails
+        }
+      }
     } catch { /* already cleared */ }
+    finally {
+      if (requestId === loadChatRequestRef.current) setIsSwitchingChat(false)
+      done(progressToken)
+    }
   }
 
   async function deleteChat(chatId: string, e: React.MouseEvent) {
@@ -1091,6 +1110,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             <h2 className="text-sm font-medium text-[#0a0a0a] truncate">
               {activeChatTitle ?? activeChat?.title ?? 'New conversation'}
             </h2>
+            {isSwitchingChat && (
+              <div className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
+            )}
             {projectName && (
               <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-[#f0f0f0] text-[#525252] border border-[#e8e8e8] shrink-0 whitespace-nowrap">
                 <FolderOpen size={9} />

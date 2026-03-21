@@ -3,12 +3,13 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, Plus, Trash2, ChevronDown, ImageIcon, FileText, X, AlertCircle, FolderOpen, Video, Download } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport } from 'ai'
+import { DefaultChatTransport, type UIMessage } from 'ai'
 import { useSearchParams } from 'next/navigation'
 import { AVAILABLE_MODELS, IMAGE_MODELS, VIDEO_MODELS, DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID, type GenerationMode } from '@/lib/models'
 import { GenerationModeToggle } from './GenerationModeToggle'
 import { sanitizeChatTitle, dispatchChatTitleUpdated } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
+import { useNavigationProgress } from '@/lib/navigation-progress'
 import { MarkdownMessage } from './MarkdownMessage'
 
 interface Agent {
@@ -98,7 +99,9 @@ const DEFAULT_AGENT_TITLE = 'New Agent'
 export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: boolean; projectName?: string } = {}) {
   const searchParams = useSearchParams()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
+  const { begin, done } = useNavigationProgress()
   const activeAgentIdRef = useRef<string | null>(null)
+  const loadAgentRequestRef = useRef(0)
 
   // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
   useEffect(() => {
@@ -110,13 +113,13 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
   const [agents, setAgents] = useState<Agent[]>([])
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_AGENT_MODEL)
+  const [isSwitchingAgent, setIsSwitchingAgent] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem(AGENT_MODEL_KEY)
     if (saved) setSelectedModel(saved)
     const savedMode = localStorage.getItem(AGENT_GEN_MODE_KEY) as GenerationMode | null
     if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
   const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
@@ -226,7 +229,6 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
     })
   }, [applyAgentTitleUpdate, loadAgents])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadAgents(); loadSubscription() }, [loadAgents, loadSubscription])
 
   // Auto-load a specific agent when embedded in project view
@@ -287,32 +289,36 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
   }
 
   async function loadAgent(agentId: string) {
+    const requestId = ++loadAgentRequestRef.current
+    const progressToken = begin('secondary')
     markRead(agentId)
     activeAgentIdRef.current = agentId
     setActiveViewer('agent', agentId)
     setActiveAgentId(agentId)
-    setIsFirstMessage(false)
-    setGenerationItems([])
-    setLoadedAgentOutputs([])
-    lastGeneratedImageUrlRef.current = null
+    setIsSwitchingAgent(true)
     try {
-      const res = await fetch(`/api/app/agents?agentId=${agentId}&messages=true`)
-      if (res.ok) {
-        const data = await res.json()
-        setMessages(data.messages || [])
-      }
-    } catch {
-      setMessages([])
-    }
+      const [messagesRes, outputsRes] = await Promise.all([
+        fetch(`/api/app/agents?agentId=${agentId}&messages=true`),
+        fetch(`/api/app/outputs?agentId=${agentId}`),
+      ])
+      if (requestId !== loadAgentRequestRef.current) return
 
-    try {
-      const outRes = await fetch(`/api/app/outputs?agentId=${agentId}`)
-      if (outRes.ok) {
-        const outputs: AgentOutput[] = await outRes.json()
-        setLoadedAgentOutputs(outputs.slice().reverse())
+      const nextMessages = messagesRes.ok
+        ? (await messagesRes.json()) as { messages?: UIMessage[] }
+        : { messages: [] as UIMessage[] }
+      const nextOutputs: AgentOutput[] = outputsRes.ok ? await outputsRes.json() : []
+
+      setMessages(nextMessages.messages || [])
+      setLoadedAgentOutputs(nextOutputs.slice().reverse())
+      setGenerationItems([])
+      lastGeneratedImageUrlRef.current = null
+      setIsFirstMessage(!(nextMessages.messages || []).some((msg) => msg.role === 'user'))
+    }
+    finally {
+      if (requestId === loadAgentRequestRef.current) {
+        setIsSwitchingAgent(false)
       }
-    } catch {
-      setLoadedAgentOutputs([])
+      done(progressToken)
     }
   }
 
@@ -569,6 +575,9 @@ export default function AgentChat({ hideSidebar, projectName }: { hideSidebar?: 
             <h2 className="text-sm font-medium text-[#0a0a0a] truncate">
               {activeAgent?.title || 'New conversation'}
             </h2>
+            {isSwitchingAgent && (
+              <div className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
+            )}
             {projectName && (
               <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-[#f0f0f0] text-[#525252] border border-[#e8e8e8] shrink-0 whitespace-nowrap">
                 <FolderOpen size={9} />
