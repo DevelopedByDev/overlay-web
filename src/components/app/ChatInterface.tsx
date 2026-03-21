@@ -230,6 +230,13 @@ function groupOutputsIntoExchanges(outputs: ChatOutput[]): RestoredOutputGroup[]
   return groups
 }
 
+function buildMediaSummary(type: 'image' | 'video', prompt: string, modelIds: string[], completedCount: number, failedCount: number): string {
+  const noun = type === 'image' ? (completedCount === 1 ? 'image' : 'images') : (completedCount === 1 ? 'video' : 'videos')
+  const modelList = modelIds.join(', ')
+  const failureSuffix = failedCount > 0 ? ` ${failedCount} generation${failedCount === 1 ? '' : 's'} failed.` : ''
+  return `Generated ${completedCount} ${noun} for the prompt "${prompt}" using ${modelList}.${failureSuffix}`
+}
+
 // ─── main component ───────────────────────────────────────────────────────────
 
 export default function ChatInterface({ userId: _userId, hideSidebar, projectName }: { userId: string; hideSidebar?: boolean; projectName?: string }) {
@@ -720,17 +727,24 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
         return next
       })
 
-      chatInstances[0].setMessages((prev) => [
-        ...prev,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { id: `gen-${Date.now()}`, role: 'user', parts: [{ type: 'text', text }] } as any,
-      ])
+      const mediaUserMessage = {
+        id: `gen-${Date.now()}`,
+        role: 'user',
+        parts: [{ type: 'text', text }],
+      }
+      chatInstances.slice(0, selectedModels.length).forEach((chat) => {
+        chat.setMessages((prev) => [
+          ...prev,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          mediaUserMessage as any,
+        ])
+      })
 
       if (wasFirst && text) startFirstMessageRename(chatId, text)
 
       if (effectiveGenType === 'image') {
         const imageUrl = lastGeneratedImageUrlRef.current
-        activeModels.forEach((modelId, mIdx) => {
+        const generationTasks = activeModels.map((modelId, mIdx) =>
           fetch('/api/app/generate-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -740,18 +754,37 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               if (!res.ok) {
                 const err = await res.json().catch(() => ({ message: 'Generation failed' }))
                 setGenerationResults((prev) => { const n = new Map(prev); const arr = [...(n.get(exchIdx) ?? activeModels.map(() => ({ type: 'image' as const, status: 'generating' as const })))]; arr[mIdx] = { type: 'image', status: 'failed', error: (err as { message?: string }).message }; n.set(exchIdx, arr); return n })
-                return
+                return { ok: false as const, modelId }
               }
               const data = await res.json() as { url?: string; modelUsed?: string; outputId?: string }
               if (data.url && mIdx === 0) lastGeneratedImageUrlRef.current = data.url
               setGenerationResults((prev) => { const n = new Map(prev); const arr = [...(n.get(exchIdx) ?? activeModels.map(() => ({ type: 'image' as const, status: 'generating' as const })))]; arr[mIdx] = { type: 'image', status: 'completed', url: data.url, modelUsed: data.modelUsed, outputId: data.outputId }; n.set(exchIdx, arr); return n })
+              return { ok: true as const, modelId: data.modelUsed ?? modelId }
             })
             .catch((err) => {
               setGenerationResults((prev) => { const n = new Map(prev); const arr = [...(n.get(exchIdx) ?? activeModels.map(() => ({ type: 'image' as const, status: 'generating' as const })))]; arr[mIdx] = { type: 'image', status: 'failed', error: String(err) }; n.set(exchIdx, arr); return n })
+              return { ok: false as const, modelId }
             })
+        )
+
+        void Promise.all(generationTasks).then((results) => {
+          const completed = results.filter((r) => r.ok)
+          const summary = buildMediaSummary('image', text, activeModels, completed.length, results.length - completed.length)
+          const assistantMessage = {
+            id: `gen-summary-${Date.now()}`,
+            role: 'assistant',
+            parts: [{ type: 'text', text: summary }],
+          }
+          chatInstances.slice(0, selectedModels.length).forEach((chat) => {
+            chat.setMessages((prev) => [
+              ...prev,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              assistantMessage as any,
+            ])
+          })
         })
       } else {
-        activeModels.forEach((modelId, mIdx) => {
+        const generationTasks = activeModels.map((modelId, mIdx) =>
           fetch('/api/app/generate-video', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -760,10 +793,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             .then(async (res) => {
               if (!res.ok) {
                 setGenerationResults((prev) => { const n = new Map(prev); const arr = [...(n.get(exchIdx) ?? activeModels.map(() => ({ type: 'video' as const, status: 'generating' as const })))]; arr[mIdx] = { type: 'video', status: 'failed', error: 'Request failed' }; n.set(exchIdx, arr); return n })
-                return
+                return { ok: false as const, modelId }
               }
               const reader = res.body?.getReader()
-              if (!reader) return
+              if (!reader) return { ok: false as const, modelId }
               const decoder = new TextDecoder()
               let buf = ''
               while (true) {
@@ -778,16 +811,37 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     const evt = JSON.parse(line.slice(6)) as { type: string; url?: string; modelUsed?: string; outputId?: string; error?: string }
                     if (evt.type === 'completed') {
                       setGenerationResults((prev) => { const n = new Map(prev); const arr = [...(n.get(exchIdx) ?? activeModels.map(() => ({ type: 'video' as const, status: 'generating' as const })))]; arr[mIdx] = { type: 'video', status: 'completed', url: evt.url, modelUsed: evt.modelUsed, outputId: evt.outputId }; n.set(exchIdx, arr); return n })
+                      return { ok: true as const, modelId: evt.modelUsed ?? modelId }
                     } else if (evt.type === 'failed') {
                       setGenerationResults((prev) => { const n = new Map(prev); const arr = [...(n.get(exchIdx) ?? activeModels.map(() => ({ type: 'video' as const, status: 'generating' as const })))]; arr[mIdx] = { type: 'video', status: 'failed', error: evt.error }; n.set(exchIdx, arr); return n })
+                      return { ok: false as const, modelId }
                     }
                   } catch { /* ignore */ }
                 }
               }
+              return { ok: false as const, modelId }
             })
             .catch((err) => {
               setGenerationResults((prev) => { const n = new Map(prev); const arr = [...(n.get(exchIdx) ?? activeModels.map(() => ({ type: 'video' as const, status: 'generating' as const })))]; arr[mIdx] = { type: 'video', status: 'failed', error: String(err) }; n.set(exchIdx, arr); return n })
+              return { ok: false as const, modelId }
             })
+        )
+
+        void Promise.all(generationTasks).then((results) => {
+          const completed = results.filter((r) => r.ok)
+          const summary = buildMediaSummary('video', text, activeModels, completed.length, results.length - completed.length)
+          const assistantMessage = {
+            id: `gen-summary-${Date.now()}`,
+            role: 'assistant',
+            parts: [{ type: 'text', text: summary }],
+          }
+          chatInstances.slice(0, selectedModels.length).forEach((chat) => {
+            chat.setMessages((prev) => [
+              ...prev,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              assistantMessage as any,
+            ])
+          })
         })
       }
       return

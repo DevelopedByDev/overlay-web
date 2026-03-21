@@ -121,7 +121,13 @@ export default function OutputsView() {
 
         {/* Pinterest-style masonry grid */}
         {filtered.length > 0 && (
-          <div className="mx-auto w-full max-w-[1440px] columns-2 gap-4 space-y-4 md:columns-3 xl:columns-4">
+          <div
+            className="mx-auto w-full max-w-[1440px]"
+            style={{
+              columnCount: 4,
+              columnGap: '16px',
+            }}
+          >
             {filtered.map((output) => (
               <OutputCard
                 key={output._id}
@@ -179,7 +185,9 @@ function OutputCard({ output, onExpand }: { output: Output; onExpand: () => void
   const isPending = output.status === 'pending'
 
   return (
-    <div className="mb-4 inline-block w-full break-inside-avoid rounded-xl overflow-hidden border border-[#e5e5e5] bg-white group cursor-pointer hover:shadow-md transition-shadow"
+    <div
+      className="mb-4 block w-full break-inside-avoid rounded-xl overflow-hidden border border-[#e5e5e5] bg-white group cursor-pointer hover:shadow-md transition-shadow"
+      style={{ breakInside: 'avoid' }}
       onClick={isCompleted ? onExpand : undefined}>
       {/* Media area */}
       <div className="relative bg-[#f5f5f5]">
