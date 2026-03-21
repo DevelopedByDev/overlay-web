@@ -2,10 +2,11 @@ import { v } from 'convex/values'
 import {
   action, mutation, query, internalMutation, internalQuery, internalAction
 } from './_generated/server'
-import { internal, components } from './_generated/api'
+import { api, internal, components } from './_generated/api'
 import { StripeSubscriptions } from '@convex-dev/stripe'
 import { validateAccessToken } from './lib/auth'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getModel } from '../src/lib/models'
+import { calculateTokenCost } from '../src/lib/model-pricing'
 
 const TAG = '[Computer]'
 const stripeClient = new StripeSubscriptions(components.stripe, {})
@@ -440,6 +441,22 @@ export const sendChatMessage = action({
       throw new Error('Message cannot be empty')
     }
 
+    // ── Subscription enforcement ──────────────────────────────────────────
+    const entitlements = await ctx.runQuery(internal.usage.getEntitlementsInternal, { userId: args.userId })
+    if (entitlements) {
+      const { tier, creditsUsed, creditsTotal } = entitlements
+      const creditsTotalCents = creditsTotal * 100
+      const remainingCents = creditsTotalCents - creditsUsed
+      const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
+      console.log(`${TAG} sendChatMessage — 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${args.userId}`)
+      if (tier === 'free') {
+        throw new Error('Computer chat requires a Pro or Max subscription.')
+      }
+      if (remainingCents <= 0) {
+        throw new Error('No credits remaining. Please check your subscription to continue using Computer.')
+      }
+    }
+
     await ctx.runMutation(internal.computers.logEvent, {
       computerId: args.computerId,
       type: 'chat_user',
@@ -453,6 +470,8 @@ export const sendChatMessage = action({
       let content = ''
       const failures: string[] = []
       let succeededModelRef: string | null = null
+      let succeededModelId: string | null = null
+      let succeededData: unknown = null
 
       for (const candidate of modelCandidates) {
         let pendingModelOverrideRetry = false
@@ -532,6 +551,8 @@ export const sendChatMessage = action({
 
         content = candidateContent
         succeededModelRef = candidate.ref
+        succeededModelId = candidate.id
+        succeededData = data
 
         if (pendingModelOverrideRetry) {
           try {
@@ -565,6 +586,49 @@ export const sendChatMessage = action({
         type: 'chat_assistant',
         message: content,
       })
+
+      // ── Usage recording ───────────────────────────────────────────────────
+      if (succeededModelId) {
+        const gatewayUsage = extractGatewayUsage(succeededData)
+        const costDollars = calculateTokenCost(
+          succeededModelId,
+          gatewayUsage.promptTokens,
+          gatewayUsage.cachedTokens,
+          gatewayUsage.completionTokens
+        )
+        const costCents = Math.round(costDollars * 100)
+        console.log(
+          `${TAG} sendChatMessage — 💰 Cost: model=${succeededModelId} | ` +
+          `in=${gatewayUsage.promptTokens} cached=${gatewayUsage.cachedTokens} out=${gatewayUsage.completionTokens} | ` +
+          `$${costDollars.toFixed(4)} = ${costCents}¢`
+        )
+        if (costCents > 0) {
+          await ctx.runMutation(api.usage.recordBatch, {
+            accessToken: args.accessToken,
+            userId: args.userId,
+            events: [{
+              type: 'ask',
+              modelId: succeededModelId,
+              inputTokens: gatewayUsage.promptTokens,
+              outputTokens: gatewayUsage.completionTokens,
+              cachedTokens: gatewayUsage.cachedTokens,
+              cost: costCents,
+              timestamp: Date.now(),
+            }],
+          })
+          const updated = await ctx.runQuery(internal.usage.getEntitlementsInternal, { userId: args.userId })
+          if (updated) {
+            const totalCents = updated.creditsTotal * 100
+            const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'
+            console.log(
+              `${TAG} sendChatMessage — ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ ` +
+              `(${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`
+            )
+          }
+        } else {
+          console.log(`${TAG} sendChatMessage — ⚠️  Cost is 0¢ for model=${succeededModelId} — free model or no token data`)
+        }
+      }
 
       if (succeededModelRef && succeededModelRef !== modelCandidates[0]?.ref) {
         await ctx.runMutation(internal.computers.logEvent, {
@@ -1171,6 +1235,27 @@ async function applySessionModelOverride(params: {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function extractGatewayUsage(data: unknown): {
+  promptTokens: number
+  cachedTokens: number
+  completionTokens: number
+} {
+  const DEFAULT = { promptTokens: 0, cachedTokens: 0, completionTokens: 0 }
+  if (!data || typeof data !== 'object') return DEFAULT
+  const usageRaw = (data as Record<string, unknown>).usage
+  if (!usageRaw || typeof usageRaw !== 'object') return DEFAULT
+  const usage = usageRaw as Record<string, unknown>
+  const promptTokens = typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : 0
+  const completionTokens = typeof usage.completion_tokens === 'number' ? usage.completion_tokens : 0
+  let cachedTokens = 0
+  const details = usage.prompt_tokens_details
+  if (details && typeof details === 'object') {
+    const d = details as Record<string, unknown>
+    if (typeof d.cached_tokens === 'number') cachedTokens = d.cached_tokens
+  }
+  return { promptTokens, cachedTokens, completionTokens }
 }
 
 function extractAssistantContent(data: unknown): string {

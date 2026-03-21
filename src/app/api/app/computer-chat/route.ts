@@ -3,9 +3,17 @@ import { createUIMessageStream, createUIMessageStreamResponse, type UIMessage } 
 import { convex } from '@/lib/convex'
 import { getSession } from '@/lib/workos-auth'
 import { DEFAULT_MODEL_ID, getModel } from '@/lib/models'
+import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 
 export const maxDuration = 300
 const GATEWAY_PROTOCOL_VERSION = 3
+
+interface Entitlements {
+  tier: 'free' | 'pro' | 'max'
+  creditsUsed: number
+  creditsTotal: number
+  dailyUsage: { ask: number; write: number; agent: number }
+}
 
 interface ComputerConnectionInfo {
   gatewayToken: string
@@ -137,6 +145,33 @@ export async function POST(request: NextRequest) {
       gatewayToken: connection.gatewayToken,
       sessionKey,
     }).catch(() => null)
+
+    // ── Subscription enforcement ──────────────────────────────────────────────────
+    const entitlements = await convex.query<Entitlements>('usage:getEntitlements', {
+      accessToken,
+      userId,
+    })
+
+    if (entitlements) {
+      const { tier, creditsUsed, creditsTotal } = entitlements
+      const creditsTotalCents = creditsTotal * 100
+      const remainingCents = creditsTotalCents - creditsUsed
+      const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
+      console.log(`[Computer Chat] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | model=${selectedModelId} | userId=${userId}`)
+      if (tier === 'free') {
+        return NextResponse.json(
+          { error: 'subscription_required', message: 'Computer chat requires a Pro or Max subscription.' },
+          { status: 403 }
+        )
+      }
+      if (remainingCents <= 0 && isPremiumModel(selectedModelId)) {
+        console.log(`[Computer Chat] ⛔ Blocked: no credits remaining (${creditsUsed}¢ / ${creditsTotalCents}¢) | model=${selectedModelId}`)
+        return NextResponse.json(
+          { error: 'insufficient_credits', message: 'No credits remaining. Please check your subscription.' },
+          { status: 402 }
+        )
+      }
+    }
 
     console.log('[Computer Chat API][Debug] POST start', {
       computerId,
@@ -277,6 +312,39 @@ export async function POST(request: NextRequest) {
             latestSessionModel,
             latestHistoryTail: latestHistory ? summarizeTranscriptTail(latestHistory.messages) : [],
           })
+
+          // ── Usage recording (estimated tokens from text length) ───────────────
+          const estimatedInputTokens = Math.ceil(latestUserText.length / 4)
+          const estimatedOutputTokens = Math.ceil(finalText.length / 4)
+          const costDollars = calculateTokenCost(selectedModelId, estimatedInputTokens, 0, estimatedOutputTokens)
+          const costCents = Math.round(costDollars * 100)
+          console.log(
+            `[Computer Chat] 💰 Cost (estimated): model=${selectedModelId} | ` +
+            `in≈${estimatedInputTokens} out≈${estimatedOutputTokens} (from char length) | ` +
+            `$${costDollars.toFixed(4)} = ${costCents}¢`
+          )
+          if (costCents > 0) {
+            try {
+              await convex.mutation('usage:recordBatch', {
+                accessToken,
+                userId,
+                events: [{
+                  type: 'ask',
+                  modelId: selectedModelId,
+                  inputTokens: estimatedInputTokens,
+                  outputTokens: estimatedOutputTokens,
+                  cachedTokens: 0,
+                  cost: costCents,
+                  timestamp: Date.now(),
+                }],
+              })
+              console.log(`[Computer Chat] ✅ Usage recorded: ${costCents}¢ for model=${selectedModelId}`)
+            } catch (err) {
+              console.error('[Computer Chat] Failed to record usage:', err)
+            }
+          } else {
+            console.log(`[Computer Chat] ⚠️  Cost is 0¢ for model=${selectedModelId} — free model or no pricing data`)
+          }
 
           await convex.mutation(
             'computers:setChatRuntimeState',

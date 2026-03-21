@@ -1305,7 +1305,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                                   modelId
                                 return (
                                   <button
-                                    key={modelId}
+                                    key={`${modelId}-${tabIdx}`}
                                     onClick={() => handleTabSelect(curExchIdx, tabIdx)}
                                     className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
                                       isActive ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f0f0f0] text-[#525252] hover:bg-[#e8e8e8]'

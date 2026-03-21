@@ -49,6 +49,10 @@ export async function POST(request: NextRequest) {
 
     if (entitlements) {
       const { tier, dailyUsage, creditsUsed, creditsTotal } = entitlements
+      const creditsTotalCents = creditsTotal * 100
+      const remainingCents = creditsTotalCents - creditsUsed
+      const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
+      console.log(`[Chat] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | model=${effectiveModelId} | userId=${userId}`)
 
       if (tier === 'free') {
         if (isPremiumModel(effectiveModelId)) {
@@ -65,9 +69,8 @@ export async function POST(request: NextRequest) {
           )
         }
       } else {
-        // Pro / Max — check credits for premium models
-        const remainingCents = creditsTotal * 100 - creditsUsed
         if (remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
+          console.log(`[Chat] ⛔ Blocked: no credits remaining (${creditsUsed}¢ / ${creditsTotalCents}¢) | model=${effectiveModelId}`)
           return NextResponse.json(
             { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
             { status: 402 }
@@ -147,21 +150,31 @@ export async function POST(request: NextRequest) {
             0,
             usage.outputTokens ?? 0
           )
-          const costCents = costDollars * 100
+          const costCents = Math.round(costDollars * 100)
+          console.log(`[Chat] 💰 Cost: model=${effectiveModelId} | in=${usage.inputTokens ?? 0} out=${usage.outputTokens ?? 0} | $${costDollars.toFixed(4)} = ${costCents}¢`)
 
-          convex.mutation('usage:recordBatch', {
-            accessToken: session.accessToken,
-            userId,
-            events: [{
-              type: 'ask',
-              modelId: effectiveModelId,
-              inputTokens: usage.inputTokens ?? 0,
-              outputTokens: usage.outputTokens ?? 0,
-              cachedTokens: 0,
-              cost: costCents,
-              timestamp: Date.now(),
-            }],
-          }).catch((err) => console.error('[Chat] Failed to record usage:', err))
+          if (costCents > 0 || (usage.inputTokens ?? 0) > 0) {
+            try {
+              await convex.mutation('usage:recordBatch', {
+                accessToken: session.accessToken,
+                userId,
+                events: [{
+                  type: 'ask',
+                  modelId: effectiveModelId,
+                  inputTokens: usage.inputTokens ?? 0,
+                  outputTokens: usage.outputTokens ?? 0,
+                  cachedTokens: 0,
+                  cost: costCents,
+                  timestamp: Date.now(),
+                }],
+              })
+              console.log(`[Chat] ✅ Usage recorded: ${costCents}¢ for model=${effectiveModelId}`)
+            } catch (err) {
+              console.error('[Chat] Failed to record usage:', err)
+            }
+          } else {
+            console.log(`[Chat] ⚠️  Cost is 0¢ for model=${effectiveModelId} — free model or no token data`)
+          }
         }
 
         // ── Save assistant message ────────────────────────────────────────────

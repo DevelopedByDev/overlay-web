@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation, query, internalMutation } from './_generated/server'
+import { mutation, query, internalMutation, internalQuery } from './_generated/server'
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []
@@ -128,6 +128,24 @@ export const getEntitlements = query({
         ? new Date(subscription.currentPeriodEnd).toISOString()
         : '',
       lastSyncedAt: Date.now()
+    }
+  }
+})
+
+// Internal query for server-side credit enforcement (no access token needed).
+export const getEntitlementsInternal = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    const tier = (subscription?.tier ?? 'free') as 'free' | 'pro' | 'max'
+    const creditsTotalByTier: Record<string, number> = { free: 0, pro: 15, max: 90 }
+    return {
+      tier,
+      creditsUsed: subscription?.creditsUsed ?? 0,
+      creditsTotal: creditsTotalByTier[tier] ?? 0,
     }
   }
 })

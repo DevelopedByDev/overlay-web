@@ -39,6 +39,10 @@ export async function POST(request: NextRequest) {
 
     if (entitlements) {
       const { tier, dailyUsage, creditsUsed, creditsTotal } = entitlements
+      const creditsTotalCents = creditsTotal * 100
+      const remainingCents = creditsTotalCents - creditsUsed
+      const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
+      console.log(`[Agent] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | model=${effectiveModelId} | userId=${userId}`)
 
       if (tier === 'free') {
         if (isPremiumModel(effectiveModelId)) {
@@ -55,8 +59,8 @@ export async function POST(request: NextRequest) {
           )
         }
       } else {
-        const remainingCents = creditsTotal * 100 - creditsUsed
         if (remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
+          console.log(`[Agent] ⛔ Blocked: no credits remaining (${creditsUsed}¢ / ${creditsTotalCents}¢) | model=${effectiveModelId}`)
           return NextResponse.json(
             { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
             { status: 402 }
@@ -148,22 +152,30 @@ export async function POST(request: NextRequest) {
         }
 
         const costDollars = calculateTokenCost(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
-        const costCents = costDollars * 100
+        const costCents = Math.round(costDollars * 100)
+        console.log(`[Agent] 💰 Cost: model=${effectiveModelId} | in=${totalInputTokens} out=${totalOutputTokens} | $${costDollars.toFixed(4)} = ${costCents}¢`)
 
         if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
-          convex.mutation('usage:recordBatch', {
-            accessToken: session.accessToken,
-            userId,
-            events: [{
-              type: 'agent',
-              modelId: effectiveModelId,
-              inputTokens: totalInputTokens,
-              outputTokens: totalOutputTokens,
-              cachedTokens: 0,
-              cost: costCents,
-              timestamp: Date.now(),
-            }],
-          }).catch((err) => console.error('[Agent] Failed to record usage:', err))
+          try {
+            await convex.mutation('usage:recordBatch', {
+              accessToken: session.accessToken,
+              userId,
+              events: [{
+                type: 'agent',
+                modelId: effectiveModelId,
+                inputTokens: totalInputTokens,
+                outputTokens: totalOutputTokens,
+                cachedTokens: 0,
+                cost: costCents,
+                timestamp: Date.now(),
+              }],
+            })
+            console.log(`[Agent] ✅ Usage recorded: ${costCents}¢ for model=${effectiveModelId}`)
+          } catch (err) {
+            console.error('[Agent] Failed to record usage:', err)
+          }
+        } else {
+          console.log(`[Agent] ⚠️  Cost is 0¢ for model=${effectiveModelId} — free model or no token data`)
         }
 
         // ── Save assistant message ────────────────────────────────────────────
