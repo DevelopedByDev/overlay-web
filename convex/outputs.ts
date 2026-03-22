@@ -18,8 +18,8 @@ export const create = mutation({
     modelId: v.string(),
     storageId: v.optional(v.id('_storage')),
     url: v.optional(v.string()),
-    chatId: v.optional(v.string()),
-    agentId: v.optional(v.string()),
+    conversationId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -87,26 +87,12 @@ export const list = query({
   },
 })
 
-export const listByChatId = query({
-  args: { chatId: v.string() },
-  handler: async (ctx, { chatId }) => {
+export const listByConversationId = query({
+  args: { conversationId: v.string() },
+  handler: async (ctx, { conversationId }) => {
     const all = await ctx.db
       .query('outputs')
-      .withIndex('by_chatId', (q) => q.eq('chatId', chatId))
-      .order('desc')
-      .collect()
-    return await Promise.all(
-      all.map(async (o) => ({ ...o, url: await resolveUrl(ctx, o) }))
-    )
-  },
-})
-
-export const listByAgentId = query({
-  args: { agentId: v.string() },
-  handler: async (ctx, { agentId }) => {
-    const all = await ctx.db
-      .query('outputs')
-      .withIndex('by_agentId', (q) => q.eq('agentId', agentId))
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('desc')
       .collect()
     return await Promise.all(

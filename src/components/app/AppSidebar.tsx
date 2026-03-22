@@ -17,8 +17,7 @@ import ComputerSidebar from './ComputerSidebar'
 
 const NAV_ITEMS = [
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
-  { href: '/app/chat', label: 'Chats', icon: MessageSquare },
-  { href: '/app/agent', label: 'Agents', icon: Bot },
+  { href: '/app/chat', label: 'Chat', icon: MessageSquare },
   { href: '/app/outputs', label: 'Outputs', icon: Images },
   { href: '/app/notes', label: 'Notes', icon: BookOpen },
   { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
@@ -99,7 +98,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
   const pathname = usePathname()
   const router = useRouter()
   const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
-  const { totalChatUnread, totalAgentUnread } = useAsyncSessions()
+  const { totalUnread } = useAsyncSessions()
 
   const [pendingHref, setPendingHref] = useState<string | null>(null)
   const effectivePendingHref = pendingHref && !pathname.startsWith(pendingHref) ? pendingHref : null
@@ -181,9 +180,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = effectivePendingHref ? effectivePendingHref === href : pathname.startsWith(href)
           const isPending = effectivePendingHref === href
-          const unreadCount =
-            href === '/app/chat' ? totalChatUnread :
-            href === '/app/agent' ? totalAgentUnread : 0
+          const unreadCount = href === '/app/chat' ? totalUnread : 0
           return (
             <button
               key={href}

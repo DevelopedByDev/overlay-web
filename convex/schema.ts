@@ -86,31 +86,39 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_userId', ['userId']).index('by_projectId', ['projectId']),
 
-  chats: defineTable({
+  conversations: defineTable({
     userId: v.string(),
     title: v.string(),
     projectId: v.optional(v.string()),
     lastModified: v.number(),
-    model: v.string(),
+    createdAt: v.number(),
+    lastMode: v.union(v.literal('ask'), v.literal('act')),
+    askModelIds: v.array(v.string()),
+    actModelId: v.string(),
   }).index('by_userId', ['userId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
     .index('by_projectId', ['projectId']),
 
-  messages: defineTable({
-    chatId: v.id('chats'),
+  conversationMessages: defineTable({
+    conversationId: v.id('conversations'),
     userId: v.string(),
+    turnId: v.string(),
     role: v.union(v.literal('user'), v.literal('assistant')),
+    mode: v.union(v.literal('ask'), v.literal('act')),
     content: v.string(),
+    contentType: v.union(v.literal('text'), v.literal('image'), v.literal('video')),
     parts: v.optional(v.array(v.object({
       type: v.string(),
       text: v.optional(v.string()),
       url: v.optional(v.string()),
       mediaType: v.optional(v.string()),
     }))),
-    model: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    variantIndex: v.optional(v.number()),
     tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
     createdAt: v.number(),
-  }).index('by_chatId', ['chatId']).index('by_userId', ['userId']),
+  }).index('by_conversationId', ['conversationId'])
+    .index('by_userId', ['userId']),
 
   notes: defineTable({
     userId: v.string(),
@@ -129,23 +137,6 @@ export default defineSchema({
     source: v.union(v.literal('chat'), v.literal('note'), v.literal('manual')),
     createdAt: v.number(),
   }).index('by_userId', ['userId']),
-
-  agents: defineTable({
-    userId: v.string(),
-    title: v.string(),
-    projectId: v.optional(v.string()),
-    lastModified: v.number(),
-  }).index('by_userId', ['userId'])
-    .index('by_userId_lastModified', ['userId', 'lastModified'])
-    .index('by_projectId', ['projectId']),
-
-  agentMessages: defineTable({
-    agentId: v.id('agents'),
-    userId: v.string(),
-    role: v.union(v.literal('user'), v.literal('assistant')),
-    content: v.string(),
-    createdAt: v.number(),
-  }).index('by_agentId', ['agentId']).index('by_userId', ['userId']),
 
   slackInstallations: defineTable({
     teamId: v.string(),
@@ -240,15 +231,14 @@ export default defineSchema({
     modelId: v.string(),
     storageId: v.optional(v.id('_storage')),
     url: v.optional(v.string()),
-    chatId: v.optional(v.string()),
-    agentId: v.optional(v.string()),
+    conversationId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_chatId', ['chatId'])
-    .index('by_agentId', ['agentId']),
+    .index('by_conversationId', ['conversationId']),
 
   // Knowledge base and project files. Text content is stored in `content`;
   // binary files (images, PDFs, audio, video) are stored in Convex File Storage

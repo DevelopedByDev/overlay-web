@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Plus, FolderOpen, Folder, ChevronRight, MessageSquare,
-  BookOpen, FileText, Upload, FolderPlus, Loader2, Trash2, ArrowLeft, Bot,
+  BookOpen, FileText, Upload, FolderPlus, Loader2, Trash2, ArrowLeft,
 } from 'lucide-react'
 import { CHAT_TITLE_UPDATED_EVENT, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
 import { readFileAsContent } from './FileViewer'
@@ -20,8 +20,6 @@ interface Project {
 interface ProjectChat { _id: string; title: string; lastModified: number }
 interface ProjectNote { _id: string; title: string; updatedAt: number }
 interface ProjectFile { _id: string; name: string; type: 'file' | 'folder'; parentId: string | null }
-interface ProjectAgent { _id: string; title: string; lastModified: number }
-
 // ─── Project tree node ────────────────────────────────────────────────────────
 
 function ProjectNode({
@@ -36,14 +34,14 @@ function ProjectNode({
   onToggle: (id: string, e: React.MouseEvent) => void
   onDelete: (id: string, e: React.MouseEvent) => void
   onNavigateItem: (project: Project, view: string, id: string) => void
-  onDeleteItem: (type: 'chat' | 'note' | 'agent', id: string, e: React.MouseEvent) => void
+  onDeleteItem: (type: 'chat' | 'note', id: string, e: React.MouseEvent) => void
 }) {
   const children = allProjects.filter((p) => p.parentId === project._id)
   const isOpen = expandedIds.has(project._id)
   const isSelected = project._id === selectedId
 
   // Inline items loaded on-demand when expanded
-  const [items, setItems] = useState<{ chats: ProjectChat[]; notes: ProjectNote[]; agents: ProjectAgent[] } | null>(null)
+  const [items, setItems] = useState<{ chats: ProjectChat[]; notes: ProjectNote[] } | null>(null)
   const [itemsLoading, setItemsLoading] = useState(false)
 
   useEffect(() => {
@@ -52,18 +50,16 @@ function ProjectNode({
     async function load() {
       setItemsLoading(true)
       try {
-        const [cr, nr, ar] = await Promise.all([
-          fetch(`/api/app/chats?projectId=${project._id}`),
+        const [cr, nr] = await Promise.all([
+          fetch(`/api/app/conversations?projectId=${project._id}`),
           fetch(`/api/app/notes?projectId=${project._id}`),
-          fetch(`/api/app/agents?projectId=${project._id}`),
         ])
         if (cancelled) return
-        const [chats, notes, agents] = await Promise.all([
+        const [chats, notes] = await Promise.all([
           cr.ok ? cr.json() : [],
           nr.ok ? nr.json() : [],
-          ar.ok ? ar.json() : [],
         ])
-        if (!cancelled) setItems({ chats, notes, agents })
+        if (!cancelled) setItems({ chats, notes })
       } finally {
         if (!cancelled) setItemsLoading(false)
       }
@@ -163,24 +159,7 @@ function ProjectNode({
                   </button>
                 </div>
               ))}
-              {items.agents.map((agent) => (
-                <div
-                  key={agent._id}
-                  onClick={() => onNavigateItem(project, 'agent', agent._id)}
-                  className="group flex items-center gap-1.5 py-1 rounded-md cursor-pointer text-xs text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a] transition-colors"
-                  style={{ paddingLeft: itemPl, paddingRight: '8px' }}
-                >
-                  <Bot size={10} className="shrink-0 text-[#aaa]" />
-                  <span className="flex-1 truncate">{agent.title}</span>
-                  <button
-                    onClick={(e) => onDeleteItem('agent', agent._id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
-                  >
-                    <Trash2 size={9} />
-                  </button>
-                </div>
-              ))}
-              {children.length === 0 && items.chats.length === 0 && items.notes.length === 0 && items.agents.length === 0 && (
+              {children.length === 0 && items.chats.length === 0 && items.notes.length === 0 && (
                 <p className="text-[10px] text-[#bbb] py-1" style={{ paddingLeft: itemPl }}>Empty</p>
               )}
             </>
@@ -218,7 +197,6 @@ export default function ProjectsSidebar() {
   const [projectChats, setProjectChats] = useState<ProjectChat[]>([])
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>([])
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([])
-  const [projectAgents, setProjectAgents] = useState<ProjectAgent[]>([])
   const [itemsLoading, setItemsLoading] = useState(false)
 
   const loadProjects = useCallback(async () => {
@@ -245,16 +223,14 @@ export default function ProjectsSidebar() {
   const loadProjectItems = useCallback(async (projectId: string) => {
     setItemsLoading(true)
     try {
-      const [chatsRes, notesRes, filesRes, agentsRes] = await Promise.all([
-        fetch(`/api/app/chats?projectId=${projectId}`),
+      const [chatsRes, notesRes, filesRes] = await Promise.all([
+        fetch(`/api/app/conversations?projectId=${projectId}`),
         fetch(`/api/app/notes?projectId=${projectId}`),
         fetch(`/api/app/files?projectId=${projectId}`),
-        fetch(`/api/app/agents?projectId=${projectId}`),
       ])
       if (chatsRes.ok) setProjectChats(await chatsRes.json())
       if (notesRes.ok) setProjectNotes(await notesRes.json())
       if (filesRes.ok) setProjectFiles(await filesRes.json())
-      if (agentsRes.ok) setProjectAgents(await agentsRes.json())
     } catch { /* ignore */ } finally { setItemsLoading(false) }
   }, [])
 
@@ -336,17 +312,14 @@ export default function ProjectsSidebar() {
     projectNav(view, id, project)
   }
 
-  async function handleDeleteItem(type: 'chat' | 'note' | 'agent', id: string, e: React.MouseEvent) {
+  async function handleDeleteItem(type: 'chat' | 'note', id: string, e: React.MouseEvent) {
     e.stopPropagation()
     if (type === 'chat') {
-      await fetch(`/api/app/chats?chatId=${id}`, { method: 'DELETE' })
+      await fetch(`/api/app/conversations?conversationId=${id}`, { method: 'DELETE' })
       setProjectChats((prev) => prev.filter((c) => c._id !== id))
     } else if (type === 'note') {
       await fetch(`/api/app/notes?noteId=${id}`, { method: 'DELETE' })
       setProjectNotes((prev) => prev.filter((n) => n._id !== id))
-    } else {
-      await fetch(`/api/app/agents?agentId=${id}`, { method: 'DELETE' })
-      setProjectAgents((prev) => prev.filter((a) => a._id !== id))
     }
   }
 
@@ -359,10 +332,16 @@ export default function ProjectsSidebar() {
   async function handleNewChat() {
     if (!selectedProject) return
     setAddMenuOpen(false)
-    const res = await fetch('/api/app/chats', {
+    const res = await fetch('/api/app/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'New Chat', model: 'claude-sonnet-4-6', projectId: selectedProject._id }),
+      body: JSON.stringify({
+        title: 'New Chat',
+        projectId: selectedProject._id,
+        askModelIds: ['claude-sonnet-4-6'],
+        actModelId: 'claude-sonnet-4-6',
+        lastMode: 'ask',
+      }),
     })
     if (res.ok) {
       const { id } = await res.json()
@@ -382,21 +361,6 @@ export default function ProjectsSidebar() {
     if (res.ok) {
       const { id } = await res.json()
       projectNav('note', id)
-      await loadProjectItems(selectedProject._id)
-    }
-  }
-
-  async function handleNewAgent() {
-    if (!selectedProject) return
-    setAddMenuOpen(false)
-    const res = await fetch('/api/app/agents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'New Agent', projectId: selectedProject._id }),
-    })
-    if (res.ok) {
-      const { id } = await res.json()
-      projectNav('agent', id)
       await loadProjectItems(selectedProject._id)
     }
   }
@@ -490,9 +454,6 @@ export default function ProjectsSidebar() {
                   </button>
                   <button onClick={handleNewNote} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors">
                     <BookOpen size={12} />New Note
-                  </button>
-                  <button onClick={handleNewAgent} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors">
-                    <Bot size={12} />New Agent
                   </button>
                   <button onClick={() => { setAddMenuOpen(false); fileInputRef.current?.click() }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors">
                     <Upload size={12} />Upload File
@@ -611,23 +572,6 @@ export default function ProjectsSidebar() {
                   </button>
                 </div>
               ))}
-              {/* Agents */}
-              {projectAgents.map((agent) => (
-                <div
-                  key={agent._id}
-                  onClick={() => projectNav('agent', agent._id)}
-                  className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a] transition-colors cursor-pointer"
-                >
-                  <Bot size={12} className="shrink-0 text-[#888]" />
-                  <span className="flex-1 truncate">{agent.title}</span>
-                  <button
-                    onClick={(e) => handleDeleteItem('agent', agent._id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
-                  >
-                    <Trash2 size={10} />
-                  </button>
-                </div>
-              ))}
               {/* Files */}
               {rootProjectFiles.map((file) => (
                 <div
@@ -647,7 +591,7 @@ export default function ProjectsSidebar() {
                   </button>
                 </div>
               ))}
-              {subprojects.length === 0 && projectChats.length === 0 && projectNotes.length === 0 && projectAgents.length === 0 && projectFiles.length === 0 && (
+              {subprojects.length === 0 && projectChats.length === 0 && projectNotes.length === 0 && projectFiles.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-10 gap-2 text-[#aaa] text-center">
                   <FolderOpen size={28} strokeWidth={1} className="opacity-40" />
                   <p className="text-xs">Empty project</p>

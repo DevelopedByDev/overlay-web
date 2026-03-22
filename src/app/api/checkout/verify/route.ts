@@ -22,9 +22,8 @@ function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscript
 
 export async function POST(request: NextRequest) {
   try {
-    // Validate user session
     const authSession = await getSession()
-    
+
     if (!authSession || !authSession.user) {
       return NextResponse.json(
         { error: 'Authentication required' },
@@ -38,23 +37,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session ID required' }, { status: 400 })
     }
 
-    // Retrieve the checkout session from Stripe
     const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ['subscription']
+      expand: ['subscription'],
     })
 
-    // Verify the session belongs to this user
     if (checkoutSession.metadata?.userId !== authSession.user.id) {
       return NextResponse.json({ error: 'Session mismatch' }, { status: 403 })
     }
 
-    // Check if payment was successful
     if (checkoutSession.payment_status !== 'paid') {
       return NextResponse.json({ error: 'Payment not completed' }, { status: 400 })
     }
 
     const subscription = checkoutSession.subscription as import('stripe').Stripe.Subscription
-    const tier = checkoutSession.metadata?.tier as 'pro' | 'max' || 'pro'
+    const tier = (checkoutSession.metadata?.tier as 'pro' | 'max') || 'pro'
     const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
 
     await convex.mutation('subscriptions:upsertSubscription', {
@@ -65,15 +61,15 @@ export async function POST(request: NextRequest) {
       tier,
       status: 'active',
       currentPeriodStart,
-      currentPeriodEnd
+      currentPeriodEnd,
     })
 
-    console.log(`[Checkout Verify] Subscription verified and updated`)
+    console.log('[Checkout Verify] Subscription verified and updated')
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       tier,
-      message: 'Subscription activated successfully'
+      message: 'Subscription activated successfully',
     })
   } catch (error) {
     console.error('[Checkout Verify] Error:', error)

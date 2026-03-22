@@ -21,12 +21,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { prompt, modelId, aspectRatio, chatId, agentId, imageUrl }: {
+    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl }: {
       prompt: string
       modelId?: string
       aspectRatio?: string
-      chatId?: string
-      agentId?: string
+      conversationId?: string
+      turnId?: string
       imageUrl?: string
     } = await request.json()
 
@@ -159,8 +159,8 @@ export async function POST(request: NextRequest) {
         prompt: prompt.trim(),
         modelId: usedModelId,
         ...(storageId ? { storageId } : {}),
-        chatId,
-        agentId,
+        ...(conversationId ? { conversationId } : {}),
+        ...(turnId ? { turnId } : {}),
       })
     } catch (err) {
       console.error('[GenerateImage] Failed to save output:', err)

@@ -40,29 +40,31 @@ export const update = mutation({
   },
 })
 
-// Removes a single project and all its chats/notes/agents (no child-project cascade — handle that in the API layer).
+// Removes a single project and all its conversations/notes (no child-project cascade — handle that in the API layer).
 export const remove = mutation({
   args: { projectId: v.id('projects') },
   handler: async (ctx, { projectId }) => {
     const pid = projectId as string
 
-    const [chats, notes, agents] = await Promise.all([
-      ctx.db.query('chats').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
+    const [conversations, notes] = await Promise.all([
+      ctx.db.query('conversations').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
       ctx.db.query('notes').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
-      ctx.db.query('agents').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
     ])
 
-    for (const chat of chats) {
-      const messages = await ctx.db.query('messages').withIndex('by_chatId', (q) => q.eq('chatId', chat._id)).collect()
+    for (const conv of conversations) {
+      const messages = await ctx.db
+        .query('conversationMessages')
+        .withIndex('by_conversationId', (q) => q.eq('conversationId', conv._id))
+        .collect()
       for (const msg of messages) await ctx.db.delete(msg._id)
-      await ctx.db.delete(chat._id)
+      const outputs = await ctx.db
+        .query('outputs')
+        .withIndex('by_conversationId', (q) => q.eq('conversationId', conv._id as string))
+        .collect()
+      for (const o of outputs) await ctx.db.delete(o._id)
+      await ctx.db.delete(conv._id)
     }
     for (const note of notes) await ctx.db.delete(note._id)
-    for (const agent of agents) {
-      const messages = await ctx.db.query('agentMessages').withIndex('by_agentId', (q) => q.eq('agentId', agent._id)).collect()
-      for (const msg of messages) await ctx.db.delete(msg._id)
-      await ctx.db.delete(agent._id)
-    }
 
     await ctx.db.delete(projectId)
   },

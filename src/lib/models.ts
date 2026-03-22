@@ -53,7 +53,7 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', openClawRef: 'vercel-ai-gateway/openai/gpt-oss-120b', description: 'OpenAI OSS', supportsVision: false, supportsReasoning: false, supportsSearch: false },
   { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B', provider: 'groq', openClawRef: 'vercel-ai-gateway/openai/gpt-oss-20b', description: 'OpenAI OSS', supportsVision: false, supportsReasoning: false, supportsSearch: false },
 
-  // OpenRouter Models (free)
+  // OpenRouter (free) — `openrouter/free` etc. stay full id for the API; vendor slugs like `openrouter/arcee-ai/...` strip to `arcee-ai/...`.
   { id: 'openrouter/free', name: 'Free Router', provider: 'openrouter', openClawRef: 'openrouter/free', description: 'Auto free model', supportsVision: false, supportsReasoning: false, supportsSearch: false },
   { id: 'openrouter/hunter-alpha', name: 'Hunter Alpha', provider: 'openrouter', openClawRef: 'openrouter/hunter-alpha', description: 'Free alpha model', supportsVision: false, supportsReasoning: false, supportsSearch: false },
   { id: 'openrouter/healer-alpha', name: 'Healer Alpha', provider: 'openrouter', openClawRef: 'openrouter/healer-alpha', description: 'Free alpha model', supportsVision: false, supportsReasoning: false, supportsSearch: false },

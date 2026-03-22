@@ -2,6 +2,7 @@ import { createGateway } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { convex } from '@/lib/convex'
 import { getModel } from '@/lib/models'
+import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
 
 let cachedGateway: ReturnType<typeof createGateway> | null = null
 let cachedApiKey: string | null = null
@@ -75,9 +76,10 @@ export async function getOpenRouterLanguageModel(modelId: string, accessToken?: 
       'HTTP-Referer': 'https://getoverlay.io',
       'X-Title': 'Overlay',
     },
+    fetch: openRouterFetchWithRetry,
   })
 
-  return openrouter.chat(modelId)
+  return openrouter.chat(toOpenRouterApiModelId(modelId))
 }
 
 export async function getGatewayLanguageModel(modelId: string, accessToken?: string) {

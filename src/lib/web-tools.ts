@@ -12,8 +12,7 @@ import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/models'
 export interface WebToolsOptions {
   userId: string
   accessToken?: string
-  chatId?: string
-  agentId?: string
+  conversationId?: string
   baseUrl?: string
 }
 
@@ -35,7 +34,7 @@ async function callInternalApi(
 }
 
 export function createWebTools(options: WebToolsOptions): ToolSet {
-  const { chatId, agentId, baseUrl } = options
+  const { conversationId, baseUrl } = options
 
   const tools: ToolSet = {}
 
@@ -60,7 +59,7 @@ export function createWebTools(options: WebToolsOptions): ToolSet {
       try {
         const res = await callInternalApi(
           '/api/app/generate-image',
-          { prompt, modelId, aspectRatio, chatId, agentId },
+          { prompt, modelId, aspectRatio, conversationId },
           options.accessToken,
           baseUrl,
         )
@@ -116,7 +115,7 @@ export function createWebTools(options: WebToolsOptions): ToolSet {
       try {
         const res = await callInternalApi(
           '/api/app/generate-video',
-          { prompt, modelId, aspectRatio, duration, chatId, agentId },
+          { prompt, modelId, aspectRatio, duration, conversationId },
           options.accessToken,
           baseUrl,
         )

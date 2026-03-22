@@ -4,81 +4,14 @@ import { httpAction } from './_generated/server'
 import { registerRoutes } from '@convex-dev/stripe'
 import type Stripe from 'stripe'
 import type { Id } from './_generated/dataModel'
+import {
+  extractCustomerInfo,
+  getSubscriptionPeriodMs,
+  mapPriceToTier,
+  mapSubscriptionStatus,
+} from './lib/stripeOverlaySubscription'
 
 const http = httpRouter()
-
-function getSubscriptionPeriodMs(subscription: Stripe.Subscription): {
-  currentPeriodStart: number
-  currentPeriodEnd: number
-} {
-  const now = Date.now()
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000
-  const firstItem = subscription.items.data[0]
-
-  const itemPeriodStart = firstItem?.current_period_start
-  const itemPeriodEnd = firstItem?.current_period_end
-
-  return {
-    currentPeriodStart:
-      typeof itemPeriodStart === 'number' && itemPeriodStart > 0
-        ? itemPeriodStart * 1000
-        : subscription.billing_cycle_anchor * 1000 || now,
-    currentPeriodEnd:
-      typeof itemPeriodEnd === 'number' && itemPeriodEnd > 0
-        ? itemPeriodEnd * 1000
-        : now + thirtyDays,
-  }
-}
-
-// Map Stripe price ID to subscription tier
-function mapPriceToTier(priceId?: string): 'free' | 'pro' | 'max' {
-  // Check both DEV_ prefixed (for dev environment) and non-prefixed (for production) env vars
-  const proPriceId = process.env.STRIPE_PRO_PRICE_ID || process.env.DEV_STRIPE_PRO_PRICE_ID
-  const maxPriceId = process.env.STRIPE_MAX_PRICE_ID || process.env.DEV_STRIPE_MAX_PRICE_ID
-
-  console.log(`[Stripe Webhook] mapPriceToTier: priceId=${priceId}, proPriceId=${proPriceId}, maxPriceId=${maxPriceId}`)
-
-  if (priceId === proPriceId) return 'pro'
-  if (priceId === maxPriceId) return 'max'
-  
-  console.warn(`[Stripe Webhook] Unknown price ID: ${priceId}, defaulting to free`)
-  return 'free'
-}
-
-// Extract customer email and name from Stripe customer object
-function extractCustomerInfo(customer: string | Stripe.Customer | Stripe.DeletedCustomer | null): { email?: string; name?: string } {
-  if (!customer || typeof customer === 'string') {
-    return {}
-  }
-  
-  if ('deleted' in customer && customer.deleted) {
-    return {}
-  }
-  
-  return {
-    email: customer.email || undefined,
-    name: customer.name || undefined
-  }
-}
-
-// Map Stripe subscription status to our status
-function mapSubscriptionStatus(
-  status: string
-): 'active' | 'canceled' | 'past_due' | 'trialing' {
-  switch (status) {
-    case 'active':
-      return 'active'
-    case 'canceled':
-    case 'unpaid':
-      return 'canceled'
-    case 'past_due':
-      return 'past_due'
-    case 'trialing':
-      return 'trialing'
-    default:
-      return 'active'
-  }
-}
 
 // Register Stripe webhook handler using @convex-dev/stripe component
 registerRoutes(http, components.stripe, {

@@ -8,13 +8,13 @@
  * @module
  */
 
-import type * as agents from "../agents.js";
-import type * as chats from "../chats.js";
 import type * as computers from "../computers.js";
+import type * as conversations from "../conversations.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as keys from "../keys.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_stripeOverlaySubscription from "../lib/stripeOverlaySubscription.js";
 import type * as memories from "../memories.js";
 import type * as notes from "../notes.js";
 import type * as outputs from "../outputs.js";
@@ -23,6 +23,7 @@ import type * as sessionTransfer from "../sessionTransfer.js";
 import type * as skills from "../skills.js";
 import type * as slack from "../slack.js";
 import type * as stripe from "../stripe.js";
+import type * as stripeSync from "../stripeSync.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as usage from "../usage.js";
 import type * as users from "../users.js";
@@ -34,13 +35,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  agents: typeof agents;
-  chats: typeof chats;
   computers: typeof computers;
+  conversations: typeof conversations;
   files: typeof files;
   http: typeof http;
   keys: typeof keys;
   "lib/auth": typeof lib_auth;
+  "lib/stripeOverlaySubscription": typeof lib_stripeOverlaySubscription;
   memories: typeof memories;
   notes: typeof notes;
   outputs: typeof outputs;
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   skills: typeof skills;
   slack: typeof slack;
   stripe: typeof stripe;
+  stripeSync: typeof stripeSync;
   subscriptions: typeof subscriptions;
   usage: typeof usage;
   users: typeof users;

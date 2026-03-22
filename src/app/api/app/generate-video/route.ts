@@ -24,13 +24,13 @@ export async function POST(request: NextRequest) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const { prompt, modelId, aspectRatio, duration, chatId, agentId }: {
+  const { prompt, modelId, aspectRatio, duration, conversationId, turnId }: {
     prompt: string
     modelId?: string
     aspectRatio?: string
     duration?: number
-    chatId?: string
-    agentId?: string
+    conversationId?: string
+    turnId?: string
   } = await request.json()
 
   if (!prompt?.trim()) {
@@ -77,8 +77,8 @@ export async function POST(request: NextRequest) {
             status: 'pending',
             prompt: prompt.trim(),
             modelId: modelId ?? VIDEO_MODELS[0].id,
-            chatId,
-            agentId,
+            ...(conversationId ? { conversationId } : {}),
+            ...(turnId ? { turnId } : {}),
           })
         } catch (err) {
           console.error('[GenerateVideo] Failed to create output record:', err)

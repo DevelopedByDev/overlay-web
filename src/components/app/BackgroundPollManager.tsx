@@ -21,19 +21,13 @@ export default function BackgroundPollManager() {
       await Promise.all(
         pending.map(async (session) => {
           try {
-            const url =
-              session.type === 'chat'
-                ? `/api/app/chats?chatId=${session.id}&messages=true`
-                : `/api/app/agents?agentId=${session.id}&messages=true`
+            const url = `/api/app/conversations?conversationId=${session.id}&messages=true`
             const res = await fetch(url)
             if (!res.ok) return
             const data = await res.json()
             const messages: unknown[] = data.messages || []
             if (messages.length > session.messageCountAtStart + 1) {
-              const currentViewer =
-                session.type === 'chat'
-                  ? activeViewerIdsRef.current.chat
-                  : activeViewerIdsRef.current.agent
+              const currentViewer = activeViewerIdsRef.current.conversation
               completeSessionRef.current(session.id, currentViewer === session.id)
             }
           } catch {
@@ -44,7 +38,7 @@ export default function BackgroundPollManager() {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, []) // intentionally empty — refs keep values fresh
+  }, [])
 
   return null
 }

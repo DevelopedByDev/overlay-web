@@ -4,7 +4,7 @@ import React, { createContext, useContext, useReducer, useMemo, useCallback } fr
 
 interface StreamingSession {
   id: string
-  type: 'chat' | 'agent'
+  mode: 'ask' | 'act'
   title: string
   startedAt: number
   messageCountAtStart: number
@@ -14,14 +14,14 @@ interface StreamingSession {
 interface AsyncSessionsState {
   sessions: Record<string, StreamingSession>
   unreadCounts: Record<string, number>
-  activeViewerIds: { chat: string | null; agent: string | null }
+  activeViewerIds: { conversation: string | null }
 }
 
 type Action =
-  | { type: 'START_SESSION'; id: string; sessionType: 'chat' | 'agent'; title: string; messageCountAtStart: number }
+  | { type: 'START_SESSION'; id: string; mode: 'ask' | 'act'; title: string; messageCountAtStart: number }
   | { type: 'COMPLETE_SESSION'; id: string; isActive: boolean }
   | { type: 'MARK_READ'; id: string }
-  | { type: 'SET_ACTIVE_VIEWER'; viewerType: 'chat' | 'agent'; id: string | null }
+  | { type: 'SET_ACTIVE_VIEWER'; id: string | null }
 
 function reducer(state: AsyncSessionsState, action: Action): AsyncSessionsState {
   switch (action.type) {
@@ -32,7 +32,7 @@ function reducer(state: AsyncSessionsState, action: Action): AsyncSessionsState 
           ...state.sessions,
           [action.id]: {
             id: action.id,
-            type: action.sessionType,
+            mode: action.mode,
             title: action.title,
             startedAt: Date.now(),
             messageCountAtStart: action.messageCountAtStart,
@@ -62,7 +62,7 @@ function reducer(state: AsyncSessionsState, action: Action): AsyncSessionsState 
     case 'SET_ACTIVE_VIEWER': {
       return {
         ...state,
-        activeViewerIds: { ...state.activeViewerIds, [action.viewerType]: action.id },
+        activeViewerIds: { conversation: action.id },
       }
     }
     default:
@@ -71,15 +71,14 @@ function reducer(state: AsyncSessionsState, action: Action): AsyncSessionsState 
 }
 
 interface AsyncSessionsContextValue {
-  startSession(id: string, type: 'chat' | 'agent', title: string, messageCountAtStart: number): void
+  startSession(id: string, mode: 'ask' | 'act', title: string, messageCountAtStart: number): void
   completeSession(id: string, isActive: boolean): void
   markRead(id: string): void
-  setActiveViewer(type: 'chat' | 'agent', id: string | null): void
+  setActiveViewer(id: string | null): void
   getUnread(id: string): number
   sessions: Record<string, StreamingSession>
-  activeViewerIds: { chat: string | null; agent: string | null }
-  totalChatUnread: number
-  totalAgentUnread: number
+  activeViewerIds: { conversation: string | null }
+  totalUnread: number
 }
 
 const AsyncSessionsContext = createContext<AsyncSessionsContextValue | null>(null)
@@ -87,15 +86,14 @@ const AsyncSessionsContext = createContext<AsyncSessionsContextValue | null>(nul
 const INITIAL_STATE: AsyncSessionsState = {
   sessions: {},
   unreadCounts: {},
-  activeViewerIds: { chat: null, agent: null },
+  activeViewerIds: { conversation: null },
 }
 
 export function AsyncSessionsProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
 
-  // Stable dispatch wrappers — don't change on every render
-  const startSession = useCallback((id: string, type: 'chat' | 'agent', title: string, messageCountAtStart: number) => {
-    dispatch({ type: 'START_SESSION', id, sessionType: type, title, messageCountAtStart })
+  const startSession = useCallback((id: string, mode: 'ask' | 'act', title: string, messageCountAtStart: number) => {
+    dispatch({ type: 'START_SESSION', id, mode, title, messageCountAtStart })
   }, [])
 
   const completeSession = useCallback((id: string, isActive: boolean) => {
@@ -106,8 +104,8 @@ export function AsyncSessionsProvider({ children }: { children: React.ReactNode 
     dispatch({ type: 'MARK_READ', id })
   }, [])
 
-  const setActiveViewer = useCallback((viewerType: 'chat' | 'agent', id: string | null) => {
-    dispatch({ type: 'SET_ACTIVE_VIEWER', viewerType, id })
+  const setActiveViewer = useCallback((id: string | null) => {
+    dispatch({ type: 'SET_ACTIVE_VIEWER', id })
   }, [])
 
   const value = useMemo<AsyncSessionsContextValue>(() => ({
@@ -118,12 +116,7 @@ export function AsyncSessionsProvider({ children }: { children: React.ReactNode 
     getUnread: (id: string) => state.unreadCounts[id] ?? 0,
     sessions: state.sessions,
     activeViewerIds: state.activeViewerIds,
-    totalChatUnread: Object.entries(state.unreadCounts)
-      .filter(([id]) => state.sessions[id]?.type === 'chat')
-      .reduce((sum, [, count]) => sum + count, 0),
-    totalAgentUnread: Object.entries(state.unreadCounts)
-      .filter(([id]) => state.sessions[id]?.type === 'agent')
-      .reduce((sum, [, count]) => sum + count, 0),
+    totalUnread: Object.values(state.unreadCounts).reduce((sum, n) => sum + n, 0),
   }), [state, startSession, completeSession, markRead, setActiveViewer])
 
   return (

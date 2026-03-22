@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type UIMessage } from 'ai'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
-import { addAgentMessage, listMemories } from '@/lib/app-store'
+import { listMemories } from '@/lib/app-store'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
+import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
+import type { Id } from '../../../../../../convex/_generated/dataModel'
+
+export const maxDuration = 120
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
@@ -22,16 +26,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { messages, systemPrompt, agentId, modelId }: {
+    const { messages, systemPrompt, conversationId, turnId, modelId }: {
       messages: UIMessage[]
       systemPrompt?: string
-      agentId?: string
+      conversationId?: string
+      turnId?: string
       modelId?: string
     } = await request.json()
     const userId = session.user.id
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
 
-    // ── Subscription enforcement ──────────────────────────────────────────────
     const entitlements = await convex.query<Entitlements>('usage:getEntitlements', {
       accessToken: session.accessToken,
       userId,
@@ -41,65 +45,78 @@ export async function POST(request: NextRequest) {
       const { tier, dailyUsage, creditsUsed, creditsTotal } = entitlements
       const creditsTotalCents = creditsTotal * 100
       const remainingCents = creditsTotalCents - creditsUsed
-      const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-      console.log(`[Agent] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | model=${effectiveModelId} | userId=${userId}`)
 
       if (tier === 'free') {
         if (isPremiumModel(effectiveModelId)) {
           return NextResponse.json(
             { error: 'premium_model_not_allowed', message: 'Upgrade to Pro to use premium models' },
-            { status: 403 }
+            { status: 403 },
           )
         }
         const totalWeekly = dailyUsage.ask + dailyUsage.write + dailyUsage.agent
         if (totalWeekly >= 15) {
           return NextResponse.json(
             { error: 'weekly_limit_exceeded', message: 'Weekly message limit reached. Upgrade to Pro for unlimited messages.' },
-            { status: 429 }
+            { status: 429 },
           )
         }
       } else {
         if (remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
-          console.log(`[Agent] ⛔ Blocked: no credits remaining (${creditsUsed}¢ / ${creditsTotalCents}¢) | model=${effectiveModelId}`)
           return NextResponse.json(
             { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
-            { status: 402 }
+            { status: 402 },
           )
         }
       }
     }
 
-    // ── Save user message ─────────────────────────────────────────────────────
     const latestUserMessage = [...messages].reverse().find((m) => m.role === 'user')
     const latestUserText = latestUserMessage?.parts
       ?.filter((p) => p.type === 'text')
       .map((p) => (p as { type: string; text?: string }).text || '')
       .join('')
       .trim()
-
-    if (agentId && latestUserText) {
-      try {
-        const saved = await convex.mutation('agents:addMessage', {
-          agentId,
-          userId,
-          role: 'user',
-          content: latestUserText,
-        })
-        if (!saved) {
-          addAgentMessage({ agentId, userId, role: 'user', content: latestUserText })
+    const latestUserParts = latestUserMessage?.parts
+      ?.filter((p) => p.type === 'text' || p.type === 'file')
+      .map((part) => {
+        if (part.type === 'text') {
+          return { type: 'text' as const, text: 'text' in part ? part.text || '' : '' }
         }
+        return {
+          type: 'file' as const,
+          url: 'url' in part ? part.url : undefined,
+          mediaType: 'mediaType' in part ? part.mediaType : undefined,
+        }
+      })
+    const latestUserContent = latestUserText || (latestUserParts?.some((p) => p.type === 'file') ? '[Image attachment]' : '')
+
+    const cid = conversationId as Id<'conversations'> | undefined
+    const tid = (turnId?.trim() || `act-${Date.now()}`)
+
+    if (cid && latestUserContent) {
+      try {
+        await convex.mutation('conversations:addMessage', {
+          conversationId: cid,
+          userId,
+          turnId: tid,
+          role: 'user',
+          mode: 'act',
+          content: latestUserContent,
+          contentType: 'text',
+          parts: latestUserParts,
+          modelId: effectiveModelId,
+        })
         if (messages.filter((m) => m.role === 'user').length === 1) {
-          await convex.mutation('agents:update', {
-            agentId,
-            title: latestUserText.slice(0, 48),
+          await convex.mutation('conversations:update', {
+            conversationId: cid,
+            title: (latestUserText || latestUserContent).slice(0, 48) || 'New Chat',
           })
         }
       } catch (err) {
-        console.error('[Agent] Failed to save user message:', err)
+        console.error('[conversations/act] Failed to save user message:', err)
       }
     }
 
-    // ── Memory context ────────────────────────────────────────────────────────
     let memoryContext = ''
     try {
       const memories = await convex.query<Array<{ content: string }>>('memories:list', { userId })
@@ -120,7 +137,11 @@ export async function POST(request: NextRequest) {
     const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
     const [composioTools, webToolSet] = await Promise.all([
       createBrowserUnifiedTools({ userId, accessToken: session.accessToken }),
-      Promise.resolve(createWebTools({ userId, accessToken: session.accessToken, agentId: agentId ?? undefined })),
+      Promise.resolve(createWebTools({
+        userId,
+        accessToken: session.accessToken,
+        conversationId: conversationId ?? undefined,
+      })),
     ])
     const tools = { ...composioTools, ...webToolSet }
 
@@ -138,14 +159,12 @@ export async function POST(request: NextRequest) {
         memoryContext,
     })
 
-    // Track total usage across all agent steps
     let totalInputTokens = 0
     let totalOutputTokens = 0
 
     const result = await agent.stream({
       messages: modelMessages,
       onFinish: async ({ text, usage }) => {
-        // ── Usage tracking ────────────────────────────────────────────────────
         if (usage) {
           totalInputTokens += usage.inputTokens ?? 0
           totalOutputTokens += usage.outputTokens ?? 0
@@ -153,7 +172,6 @@ export async function POST(request: NextRequest) {
 
         const costDollars = calculateTokenCost(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
         const costCents = Math.round(costDollars * 100)
-        console.log(`[Agent] 💰 Cost: model=${effectiveModelId} | in=${totalInputTokens} out=${totalOutputTokens} | $${costDollars.toFixed(4)} = ${costCents}¢`)
 
         if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
           try {
@@ -170,28 +188,27 @@ export async function POST(request: NextRequest) {
                 timestamp: Date.now(),
               }],
             })
-            console.log(`[Agent] ✅ Usage recorded: ${costCents}¢ for model=${effectiveModelId}`)
           } catch (err) {
-            console.error('[Agent] Failed to record usage:', err)
+            console.error('[conversations/act] Failed to record usage:', err)
           }
-        } else {
-          console.log(`[Agent] ⚠️  Cost is 0¢ for model=${effectiveModelId} — free model or no token data`)
         }
 
-        // ── Save assistant message ────────────────────────────────────────────
-        if (agentId && text) {
+        if (cid && text) {
           try {
-            const saved = await convex.mutation('agents:addMessage', {
-              agentId,
+            await convex.mutation('conversations:addMessage', {
+              conversationId: cid,
               userId,
+              turnId: tid,
               role: 'assistant',
+              mode: 'act',
               content: text,
+              contentType: 'text',
+              parts: [{ type: 'text', text }],
+              modelId: effectiveModelId,
+              tokens: { input: totalInputTokens, output: totalOutputTokens },
             })
-            if (!saved) {
-              addAgentMessage({ agentId, userId, role: 'assistant', content: text })
-            }
           } catch (err) {
-            console.error('[Agent] Failed to save assistant message:', err)
+            console.error('[conversations/act] Failed to save assistant message:', err)
           }
         }
       },
@@ -199,13 +216,13 @@ export async function POST(request: NextRequest) {
 
     return result.toUIMessageStreamResponse({
       originalMessages: messages,
-      onError: (error: unknown) => (error instanceof Error ? error.message : 'Agent request failed'),
+      onError: (error: unknown) => userFacingOpenRouterError(error),
     })
   } catch (error) {
-    console.error('[Agent API] Error:', error)
+    console.error('[conversations/act] Error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Agent request failed' },
-      { status: 500 }
+      { error: userFacingOpenRouterError(error) },
+      { status: 500 },
     )
   }
 }

@@ -12,13 +12,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') as 'image' | 'video' | null
     const limit = parseInt(searchParams.get('limit') ?? '50', 10)
-    const chatId = searchParams.get('chatId')
-    const agentId = searchParams.get('agentId')
+    const conversationId = searchParams.get('conversationId')
 
-    const outputs = chatId
-      ? await convex.query('outputs:listByChatId', { chatId })
-      : agentId
-      ? await convex.query('outputs:listByAgentId', { agentId })
+    const outputs = conversationId
+      ? await convex.query('outputs:listByConversationId', { conversationId })
       : await convex.query('outputs:list', {
           userId: session.user.id,
           type: type ?? undefined,

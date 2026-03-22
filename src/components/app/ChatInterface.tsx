@@ -12,11 +12,13 @@ import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { useNavigationProgress } from '@/lib/navigation-progress'
 import { MarkdownMessage } from './MarkdownMessage'
 
-interface Chat {
+interface Conversation {
   _id: string
   title: string
-  model: string
   lastModified: number
+  lastMode?: 'ask' | 'act'
+  askModelIds?: string[]
+  actModelId?: string
 }
 
 interface AttachedImage {
@@ -89,12 +91,13 @@ interface ExchangeBlockProps {
   selectedTab: number
   onTabSelect: (tabIdx: number) => void
   isLoadingTabs: boolean
+  prependedAssistantContent?: React.ReactNode
 }
 
 const ExchangeBlock = React.memo(
   function ExchangeBlock({
     userText, userImages, exchIdx, slotIdx, responseText, isStreaming, showThinking, errorMessage,
-    exchModelList, selectedTab, onTabSelect, isLoadingTabs,
+    exchModelList, selectedTab, onTabSelect, isLoadingTabs, prependedAssistantContent,
   }: ExchangeBlockProps) {
     return (
       <div className="flex flex-col gap-2 message-appear" data-exchange-idx={exchIdx}>
@@ -141,6 +144,8 @@ const ExchangeBlock = React.memo(
           </div>
         )}
 
+        {prependedAssistantContent}
+
         {/* Assistant response */}
         {responseText ? (
           <div className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
@@ -182,6 +187,10 @@ const ExchangeBlock = React.memo(
 
 function errorLabel(err: Error | null | undefined): string | null {
   if (!err) return null
+  const m = err.message || ''
+  if (m.includes('OpenRouter') || m.includes('rate-limited') || m.includes('rate limit')) {
+    return m
+  }
   if (err.message?.includes('weekly_limit')) return 'Weekly limit reached — upgrade to Pro for unlimited messages.'
   if (err.message?.includes('premium_model')) return 'This model requires a Pro subscription.'
   if (err.message?.includes('insufficient_credits')) return 'No credits remaining.'
@@ -202,6 +211,7 @@ const CHAT_SUGGESTIONS = [
 
 const DEFAULT_CHAT_TITLE = 'New Chat'
 const CHAT_MODEL_KEY = 'overlay_chat_model'
+const ACT_MODEL_KEY = 'overlay_act_model'
 const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
 const SUPPORTED_INPUT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 
@@ -287,24 +297,30 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   useEffect(() => {
     return () => {
       activeChatIdRef.current = null
-      setActiveViewer('chat', null)
+      setActiveViewer(null)
     }
   }, [setActiveViewer])
 
-  const [chats, setChats] = useState<Chat[]>([])
+  const [chats, setChats] = useState<Conversation[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const [composerMode, setComposerMode] = useState<'ask' | 'act'>('ask')
+  const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
   const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
   const [isSwitchingChat, setIsSwitchingChat] = useState(false)
+  const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
 
   useEffect(() => {
     const saved = localStorage.getItem(CHAT_MODEL_KEY)
-    if (!saved) return
-    try {
-      const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed) && parsed.length > 0) setSelectedModels(parsed.slice(0, 4))
-    } catch {
-      setSelectedModels([saved])
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) setSelectedModels(parsed.slice(0, 4))
+      } catch {
+        setSelectedModels([saved])
+      }
     }
+    const savedAct = localStorage.getItem(ACT_MODEL_KEY)
+    if (savedAct) setSelectedActModel(savedAct)
     const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
     if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
   }, [])
@@ -346,15 +362,17 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
   // ── 4 fixed chat instances ────────────────────────────────────────────────
-  const transport0 = useMemo(() => new DefaultChatTransport({ api: '/api/app/chat' }), [])
-  const transport1 = useMemo(() => new DefaultChatTransport({ api: '/api/app/chat' }), [])
-  const transport2 = useMemo(() => new DefaultChatTransport({ api: '/api/app/chat' }), [])
-  const transport3 = useMemo(() => new DefaultChatTransport({ api: '/api/app/chat' }), [])
+  const transport0 = useMemo(() => new DefaultChatTransport({ api: '/api/app/conversations/ask' }), [])
+  const transport1 = useMemo(() => new DefaultChatTransport({ api: '/api/app/conversations/ask' }), [])
+  const transport2 = useMemo(() => new DefaultChatTransport({ api: '/api/app/conversations/ask' }), [])
+  const transport3 = useMemo(() => new DefaultChatTransport({ api: '/api/app/conversations/ask' }), [])
+  const actTransport = useMemo(() => new DefaultChatTransport({ api: '/api/app/conversations/act' }), [])
 
   const chat0 = useChat({ transport: transport0 })
   const chat1 = useChat({ transport: transport1 })
   const chat2 = useChat({ transport: transport2 })
   const chat3 = useChat({ transport: transport3 })
+  const actChat = useChat({ transport: actTransport })
 
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
 
@@ -364,13 +382,17 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     return map
   }, [selectedModels])
 
-  const isAnyLoading = chatInstances
-    .slice(0, selectedModels.length)
-    .some((c) => c.status === 'streaming' || c.status === 'submitted')
+  const isAnyLoading =
+    chatInstances
+      .slice(0, selectedModels.length)
+      .some((c) => c.status === 'streaming' || c.status === 'submitted') ||
+    actChat.status === 'streaming' ||
+    actChat.status === 'submitted'
 
-  const supportsVision = selectedModels.every(
-    (id) => AVAILABLE_MODELS.find((m) => m.id === id)?.supportsVision ?? false
-  )
+  const supportsVision =
+    composerMode === 'act'
+      ? (AVAILABLE_MODELS.find((m) => m.id === selectedActModel)?.supportsVision ?? false)
+      : selectedModels.every((id) => AVAILABLE_MODELS.find((m) => m.id === id)?.supportsVision ?? false)
 
   const isFreeTier = entitlements?.tier === 'free'
   const weeklyUsed = isFreeTier
@@ -379,7 +401,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const weeklyLimitReached = isFreeTier && weeklyUsed >= 15
   const premiumModelBlocked =
     isFreeTier &&
-    selectedModels.some((id) => AVAILABLE_MODELS.find((m) => m.id === id)?.provider !== 'openrouter')
+    (composerMode === 'act'
+      ? AVAILABLE_MODELS.find((m) => m.id === selectedActModel)?.provider !== 'openrouter'
+      : selectedModels.some((id) => AVAILABLE_MODELS.find((m) => m.id === id)?.provider !== 'openrouter'))
   const creditsExhausted =
     !isFreeTier &&
     entitlements != null &&
@@ -401,9 +425,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const loadChats = useCallback(async () => {
     try {
       const pending = pendingTitleRef.current
-      const res = await fetch('/api/app/chats')
+      const res = await fetch('/api/app/conversations')
       if (res.ok) {
-        const serverChats: Chat[] = await res.json()
+        const serverChats: Conversation[] = await res.json()
         setChats(
           pending
             ? serverChats.map((c) => (c._id === pending.chatId ? { ...c, title: pending.title } : c))
@@ -425,7 +449,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       const exists = prev.some((c) => c._id === chatId)
       if (!exists) {
         // Chat not yet in local state (edge case: generateTitle resolved before createNewChat state settled)
-        return [{ _id: chatId, title: nextTitle, model: DEFAULT_MODEL_ID, lastModified: Date.now() }, ...prev]
+        return [{ _id: chatId, title: nextTitle, lastModified: Date.now() }, ...prev]
       }
       return prev.map((c) => (c._id === chatId ? { ...c, title: nextTitle } : c))
     })
@@ -442,10 +466,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     void generateTitle(text).then(async (aiTitle) => {
       const finalTitle = applyChatTitleUpdate(chatId, aiTitle || fallbackTitle)
       try {
-        const res = await fetch('/api/app/chats', {
+        const res = await fetch('/api/app/conversations', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId, title: finalTitle }),
+          body: JSON.stringify({ conversationId: chatId, title: finalTitle }),
         })
         if (res.ok) void loadChats()
       } catch { /* keep local title */ }
@@ -454,26 +478,46 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   useEffect(() => { loadChats(); loadSubscription() }, [loadChats, loadSubscription])
 
+  useEffect(() => {
+    if (!activeChatId) return
+    const t = window.setTimeout(() => {
+      void fetch('/api/app/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: activeChatId,
+          lastMode: composerMode,
+          askModelIds: selectedModels,
+          actModelId: selectedActModel,
+        }),
+      })
+    }, 600)
+    return () => clearTimeout(t)
+  }, [composerMode, selectedModels, selectedActModel, activeChatId])
+
   // Auto-load a specific chat when embedded in project view
   const idParam = hideSidebar ? searchParams.get('id') : null
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (idParam) void loadChat(idParam) }, [idParam])
 
   useEffect(() => {
-    const isStreaming = chatInstances.some((c) => c.status === 'streaming' || c.status === 'submitted')
+    const isStreaming =
+      chatInstances.some((c) => c.status === 'streaming' || c.status === 'submitted') ||
+      actChat.status === 'streaming' ||
+      actChat.status === 'submitted'
     if (wasStreamingRef.current && !isStreaming && chat0.messages.length > 0) {
       loadSubscription()
     }
     wasStreamingRef.current = isStreaming
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat0.status, chat1.status, chat2.status, chat3.status])
+  }, [chat0.status, chat1.status, chat2.status, chat3.status, actChat.status])
 
   useEffect(() => {
     if (shouldScrollRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       shouldScrollRef.current = false
     }
-  }, [chat0.messages])
+  }, [chat0.messages, actChat.messages])
 
   useEffect(() => {
     if (!showModelPicker) return
@@ -538,6 +582,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   function resetChatState() {
     setExchangeModels([])
+    setExchangeModes([])
     setSelectedTabPerExchange([])
     setGenerationResults(new Map())
     setExchangeGenTypes([])
@@ -545,21 +590,33 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     setSelectedImageModels([DEFAULT_IMAGE_MODEL_ID])
     setSelectedVideoModels([DEFAULT_VIDEO_MODEL_ID])
     chatInstances.forEach((c) => c.setMessages([]))
+    actChat.setMessages([])
   }
 
   async function createNewChat(): Promise<string | null> {
-    const res = await fetch('/api/app/chats', {
+    const res = await fetch('/api/app/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: selectedModels[0] }),
+      body: JSON.stringify({
+        title: DEFAULT_CHAT_TITLE,
+        askModelIds: selectedModels,
+        actModelId: selectedActModel,
+        lastMode: composerMode,
+      }),
     })
     if (res.ok) {
       const data = await res.json()
-      // Add directly to state — no loadChats() here so there's no race with pendingTitleRef
-      const newChat: Chat = { _id: data.id, title: DEFAULT_CHAT_TITLE, model: selectedModels[0], lastModified: Date.now() }
+      const newChat: Conversation = {
+        _id: data.id,
+        title: DEFAULT_CHAT_TITLE,
+        lastModified: Date.now(),
+        lastMode: composerMode,
+        askModelIds: selectedModels,
+        actModelId: selectedActModel,
+      }
       setChats((prev) => [newChat, ...prev])
       activeChatIdRef.current = data.id
-      setActiveViewer('chat', data.id)
+      setActiveViewer(data.id)
       setActiveChatId(data.id)
       setActiveChatTitle(DEFAULT_CHAT_TITLE)
       setIsFirstMessage(true)
@@ -574,26 +631,43 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     const progressToken = begin('secondary')
     markRead(chatId)
     activeChatIdRef.current = chatId
-    setActiveViewer('chat', chatId)
+    setActiveViewer(chatId)
     setActiveChatId(chatId)
     const existingChat = chats.find((chat) => chat._id === chatId)
     if (existingChat) {
       setActiveChatTitle(existingChat.title)
       setIsFirstMessage(existingChat.title === DEFAULT_CHAT_TITLE)
+      if (existingChat.lastMode) setComposerMode(existingChat.lastMode)
+      if (existingChat.askModelIds?.length) {
+        setSelectedModels(existingChat.askModelIds.slice(0, 4))
+        localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(existingChat.askModelIds.slice(0, 4)))
+      }
+      if (existingChat.actModelId) {
+        setSelectedActModel(existingChat.actModelId)
+        localStorage.setItem(ACT_MODEL_KEY, existingChat.actModelId)
+      }
     } else {
       setActiveChatTitle(null)
     }
     pendingTitleRef.current = null
     setIsSwitchingChat(true)
     try {
-      const [messagesRes, outputsRes] = await Promise.all([
-        fetch(`/api/app/chats?chatId=${chatId}&messages=true`),
-        fetch(`/api/app/outputs?chatId=${chatId}`),
+      const [messagesRes, outputsRes, metaRes] = await Promise.all([
+        fetch(`/api/app/conversations?conversationId=${chatId}&messages=true`),
+        fetch(`/api/app/outputs?conversationId=${chatId}`),
+        fetch(`/api/app/conversations?conversationId=${chatId}`),
       ])
       if (requestId !== loadChatRequestRef.current) return
       if (!messagesRes.ok) return
       const data = await messagesRes.json()
-      type RawMsg = { id: string; role: 'user' | 'assistant'; parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }>; model?: string }
+      type RawMsg = {
+        id: string
+        turnId?: string
+        mode?: 'ask' | 'act'
+        role: 'user' | 'assistant'
+        parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }>
+        model?: string
+      }
       let rawMessages: RawMsg[] = data.messages || []
 
       const outputs: ChatOutput[] = outputsRes.ok ? await outputsRes.json() : []
@@ -602,24 +676,78 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       if (rawMessages.length === 0 && outputGroups.length > 0) {
         rawMessages = outputGroups.map((group, idx) => ({
           id: `restored-output-${idx}`,
-          role: 'user',
+          turnId: `out-${idx}`,
+          mode: 'ask' as const,
+          role: 'user' as const,
           parts: [{ type: 'text', text: group.prompt }],
         }))
       }
 
       setIsFirstMessage(!rawMessages.some((msg) => msg.role === 'user'))
 
-      const exchanges: Array<{ userMsg: RawMsg; responses: Array<{ model: string; msg: RawMsg }> }> = []
-      let cur: (typeof exchanges)[0] | null = null
-      for (const msg of rawMessages) {
-        if (msg.role === 'user') {
-          if (cur) exchanges.push(cur)
-          cur = { userMsg: msg, responses: [] }
-        } else if (msg.role === 'assistant' && cur) {
-          cur.responses.push({ model: msg.model || DEFAULT_MODEL_ID, msg })
+      if (metaRes.ok) {
+        const meta = await metaRes.json() as {
+          title?: string
+          lastMode?: 'ask' | 'act'
+          askModelIds?: string[]
+          actModelId?: string
+        }
+        if (meta.title) setActiveChatTitle(meta.title)
+        if (meta.lastMode) setComposerMode(meta.lastMode)
+        if (meta.askModelIds?.length) {
+          setSelectedModels(meta.askModelIds.slice(0, 4))
+          localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(meta.askModelIds.slice(0, 4)))
+        }
+        if (meta.actModelId) {
+          setSelectedActModel(meta.actModelId)
+          localStorage.setItem(ACT_MODEL_KEY, meta.actModelId)
         }
       }
-      if (cur) exchanges.push(cur)
+
+      const exchanges: Array<{
+        userMsg: RawMsg
+        responses: Array<{ model: string; msg: RawMsg }>
+        mode: 'ask' | 'act'
+      }> = []
+
+      const hasTurnIds = rawMessages.some((m) => m.turnId)
+      if (hasTurnIds) {
+        const turnOrder: string[] = []
+        const byTurn = new Map<string, { user?: RawMsg; assistants: RawMsg[] }>()
+        for (const msg of rawMessages) {
+          const tid = msg.turnId || msg.id
+          if (!byTurn.has(tid)) {
+            byTurn.set(tid, { assistants: [] })
+            turnOrder.push(tid)
+          }
+          const g = byTurn.get(tid)!
+          if (msg.role === 'user') g.user = msg
+          else g.assistants.push(msg)
+        }
+        for (const tid of turnOrder) {
+          const g = byTurn.get(tid)!
+          if (!g.user) continue
+          const mode = (g.assistants[0]?.mode || g.user.mode || 'ask') as 'ask' | 'act'
+          const responses = g.assistants.map((a) => ({
+            model: a.model || DEFAULT_MODEL_ID,
+            msg: a,
+          }))
+          exchanges.push({ userMsg: g.user, responses, mode })
+        }
+      } else {
+        let cur: (typeof exchanges)[0] | null = null
+        for (const msg of rawMessages) {
+          if (msg.role === 'user') {
+            if (cur) exchanges.push(cur)
+            cur = { userMsg: msg, responses: [], mode: 'ask' }
+          } else if (msg.role === 'assistant' && cur) {
+            cur.responses.push({ model: msg.model || DEFAULT_MODEL_ID, msg })
+          }
+        }
+        if (cur) exchanges.push(cur)
+      }
+
+      setExchangeModes(exchanges.map((e) => e.mode))
 
       const uniqueModels: string[] = []
       for (const ex of exchanges) {
@@ -631,8 +759,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       resetChatState()
 
       if (uniqueModels.length === 0) {
+        const linear: RawMsg[] = []
+        for (const ex of exchanges) {
+          linear.push(ex.userMsg)
+          for (const r of ex.responses) linear.push(r.msg)
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        chat0.setMessages(rawMessages as any)
+        chat0.setMessages(linear as any)
       } else {
         const slotModels = uniqueModels.slice(0, 4)
         setSelectedModels(slotModels)
@@ -642,8 +775,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           const msgs: RawMsg[] = []
           for (const ex of exchanges) {
             msgs.push(ex.userMsg)
-            const r = ex.responses.find((r) => r.model === modelId)
-            if (r) msgs.push(r.msg)
+            if (ex.mode === 'act') {
+              const r = ex.responses[0]
+              if (r && r.model === modelId) msgs.push(r.msg)
+            } else {
+              const r = ex.responses.find((x) => x.model === modelId)
+              if (r) msgs.push(r.msg)
+            }
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           chatInstances[slotIdx].setMessages(msgs as any)
@@ -651,6 +789,15 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
         setExchangeModels(exchanges.map((ex) => ex.responses.map((r) => r.model)))
       }
+
+      const actLinear: RawMsg[] = []
+      for (const ex of exchanges) {
+        if (ex.mode !== 'act') continue
+        actLinear.push(ex.userMsg)
+        if (ex.responses[0]) actLinear.push(ex.responses[0].msg)
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      actChat.setMessages(actLinear as any)
 
       const restoredGenTypes: ('text' | 'image' | 'video')[] = exchanges.map(() => 'text')
       const restoredResults = new Map<number, GenerationResult[]>()
@@ -675,19 +822,6 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       setSelectedTabPerExchange(exchanges.map(() => 0))
       setExchangeGenTypes(restoredGenTypes)
       setGenerationResults(restoredResults)
-
-      if (!existingChat) {
-        try {
-          const metaRes = await fetch(`/api/app/chats?chatId=${chatId}`)
-          if (requestId !== loadChatRequestRef.current) return
-          if (metaRes.ok) {
-            const meta = await metaRes.json() as { title?: string }
-            if (meta.title) setActiveChatTitle(meta.title)
-          }
-        } catch {
-          // keep the current title fallback if metadata lookup fails
-        }
-      }
     } catch { /* already cleared */ }
     finally {
       if (requestId === loadChatRequestRef.current) setIsSwitchingChat(false)
@@ -697,7 +831,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   async function deleteChat(chatId: string, e: React.MouseEvent) {
     e.stopPropagation()
-    await fetch(`/api/app/chats?chatId=${chatId}`, { method: 'DELETE' })
+    await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
     if (activeChatId === chatId) {
       setActiveChatId(null)
       pendingTitleRef.current = null
@@ -754,7 +888,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
       // Inject a placeholder user message into the primary chat slot so the exchange renders
       const exchIdx = exchangeModels.length
+      const mediaTurnId = crypto.randomUUID()
       const activeModels = effectiveGenType === 'image' ? selectedImageModels : selectedVideoModels
+      setExchangeModes((prev) => [...prev, composerMode])
       setExchangeModels((prev) => [...prev, [...activeModels]])
       setSelectedTabPerExchange((prev) => [...prev, 0])
       setExchangeGenTypes((prev) => [...prev, effectiveGenType])
@@ -776,14 +912,17 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           mediaUserMessage as any,
         ])
       })
-      void fetch('/api/app/chats/message', {
+      void fetch('/api/app/conversations/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chatId,
+          conversationId: chatId,
+          turnId: mediaTurnId,
+          mode: composerMode,
           role: 'user',
           content: text,
           parts: [{ type: 'text', text }],
+          modelId: selectedModels[0],
         }),
       })
 
@@ -795,7 +934,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           fetch('/api/app/generate-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: text, modelId, chatId, imageUrl }),
+            body: JSON.stringify({ prompt: text, modelId, conversationId: chatId, turnId: mediaTurnId, imageUrl }),
           })
             .then(async (res) => {
               if (!res.ok) {
@@ -829,13 +968,16 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               assistantMessage as any,
             ])
           })
-          void fetch('/api/app/chats/message', {
+          void fetch('/api/app/conversations/message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              chatId,
+              conversationId: chatId,
+              turnId: mediaTurnId,
+              mode: composerMode,
               role: 'assistant',
               content: summary,
+              contentType: 'text',
               parts: [{ type: 'text', text: summary }],
             }),
           })
@@ -845,7 +987,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           fetch('/api/app/generate-video', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: text, modelId, chatId }),
+            body: JSON.stringify({ prompt: text, modelId, conversationId: chatId, turnId: mediaTurnId }),
           })
             .then(async (res) => {
               if (!res.ok) {
@@ -899,13 +1041,16 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               assistantMessage as any,
             ])
           })
-          void fetch('/api/app/chats/message', {
+          void fetch('/api/app/conversations/message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              chatId,
+              conversationId: chatId,
+              turnId: mediaTurnId,
+              mode: composerMode,
               role: 'assistant',
               content: summary,
+              contentType: 'text',
               parts: [{ type: 'text', text: summary }],
             }),
           })
@@ -928,9 +1073,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     setAttachmentError(null)
     setIsFirstMessage(false)
     shouldScrollRef.current = true
-    setExchangeModels((prev) => [...prev, [...selectedModels]])
-    setSelectedTabPerExchange((prev) => [...prev, 0])
-    setExchangeGenTypes((prev) => [...prev, 'text'])
+    const textTurnId = crypto.randomUUID()
 
     const parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }> = []
     if (text) parts.push({ type: 'text', text })
@@ -939,27 +1082,54 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     }
     const persistedContent = text || (parts.some((part) => part.type === 'file') ? '[Image attachment]' : '')
 
-    // Title generation: show truncated text immediately, replace with GPT OSS 20B-generated title once it arrives.
-    // pendingTitleRef guards against loadChats() overwriting the title mid-flight.
     if (wasFirst && text) {
       startFirstMessageRename(chatId, text)
     }
 
     const msgCountBeforeSend = chat0.messages.length
-    startSession(chatId, 'chat', activeChatTitle ?? '', msgCountBeforeSend)
     activeChatIdRef.current = chatId
+
+    if (composerMode === 'act') {
+      setExchangeModes((prev) => [...prev, 'act'])
+      setExchangeModels((prev) => [...prev, [selectedActModel]])
+      setSelectedTabPerExchange((prev) => [...prev, 0])
+      setExchangeGenTypes((prev) => [...prev, 'text'])
+
+      startSession(chatId, 'act', activeChatTitle ?? '', msgCountBeforeSend)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      chat0.setMessages((prev) => [...prev, { id: `act-user-${Date.now()}`, role: 'user', parts } as any])
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      void actChat.sendMessage({ role: 'user', parts: parts as any }, {
+        body: { conversationId: chatId, turnId: textTurnId, modelId: selectedActModel },
+      }).then(() => {
+        completeSession(chatId, activeChatIdRef.current === chatId)
+        loadChats()
+      })
+      return
+    }
+
+    setExchangeModes((prev) => [...prev, 'ask'])
+    setExchangeModels((prev) => [...prev, [...selectedModels]])
+    setSelectedTabPerExchange((prev) => [...prev, 0])
+    setExchangeGenTypes((prev) => [...prev, 'text'])
+
+    startSession(chatId, 'ask', activeChatTitle ?? '', msgCountBeforeSend)
 
     let persistedUserMessage = false
     try {
-      const persistRes = await fetch('/api/app/chats/message', {
+      const persistRes = await fetch('/api/app/conversations/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chatId,
+          conversationId: chatId,
+          turnId: textTurnId,
+          mode: 'ask',
           role: 'user',
           content: persistedContent,
           parts,
-          model: selectedModels[0],
+          modelId: selectedModels[0],
         }),
       })
       persistedUserMessage = persistRes.ok
@@ -974,7 +1144,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       selectedModels.map((modelId, idx) =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         chatInstances[idx].sendMessage({ role: 'user', parts: parts as any }, {
-          body: { modelId, chatId, skipUserMessage: persistedUserMessage || idx !== 0 },
+          body: {
+            modelId,
+            conversationId: chatId,
+            turnId: textTurnId,
+            variantIndex: idx,
+            skipUserMessage: persistedUserMessage || idx !== 0,
+          },
         })
       )
     ).then(() => {
@@ -990,7 +1166,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   }
 
   function toggleModel(modelId: string) {
-    if (isAnyLoading) return
+    if (isAnyLoading || composerMode === 'act') return
     const isSelected = selectedModels.includes(modelId)
     if (isSelected) {
       if (selectedModels.length === 1) return
@@ -1009,6 +1185,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   function stopAll() {
     chatInstances.slice(0, selectedModels.length).forEach((c) => c.stop())
+    actChat.stop()
   }
 
   // ── derived values for header ─────────────────────────────────────────────
@@ -1018,6 +1195,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     ? (selectedImageModels.length === 1 ? (IMAGE_MODELS.find((m) => m.id === selectedImageModels[0])?.name ?? 'Select model') : `${selectedImageModels.length} models`)
     : generationMode === 'video'
     ? (selectedVideoModels.length === 1 ? (VIDEO_MODELS.find((m) => m.id === selectedVideoModels[0])?.name ?? 'Select model') : `${selectedVideoModels.length} models`)
+    : composerMode === 'act'
+    ? (AVAILABLE_MODELS.find((m) => m.id === selectedActModel)?.name ?? 'Select model')
     : selectedModels.length === 1
     ? (AVAILABLE_MODELS.find((m) => m.id === selectedModels[0])?.name ?? 'Select model')
     : `${selectedModels.length} models`
@@ -1124,8 +1303,30 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             )}
           </div>
 
-          {/* Model picker + Generation mode toggle */}
+          {/* Ask / Act + Model picker + Generation mode toggle */}
           <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-[#e5e5e5] overflow-hidden text-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => !isAnyLoading && setComposerMode('ask')}
+                disabled={isAnyLoading}
+                className={`px-2.5 py-1 transition-colors ${
+                  composerMode === 'ask' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-white text-[#525252] hover:bg-[#f5f5f5]'
+                }`}
+              >
+                Ask
+              </button>
+              <button
+                type="button"
+                onClick={() => !isAnyLoading && setComposerMode('act')}
+                disabled={isAnyLoading}
+                className={`px-2.5 py-1 transition-colors border-l border-[#e5e5e5] ${
+                  composerMode === 'act' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-white text-[#525252] hover:bg-[#f5f5f5]'
+                }`}
+              >
+                Act
+              </button>
+            </div>
             <div ref={modelPickerRef} className="relative">
               <button
                 onClick={() => !isAnyLoading && setShowModelPicker((v) => !v)}
@@ -1177,6 +1378,26 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                           </button>
                         )
                       })
+                  ) : composerMode === 'act' ? (
+                    AVAILABLE_MODELS.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => {
+                          setSelectedActModel(m.id)
+                          localStorage.setItem(ACT_MODEL_KEY, m.id)
+                          setShowModelPicker(false)
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[#f5f5f5] ${
+                          m.id === selectedActModel ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          {m.id === selectedActModel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
+                          {m.name}
+                        </span>
+                        <span className="text-[#aaa] ml-2">{m.provider}</span>
+                      </button>
+                    ))
                   ) : (
                     AVAILABLE_MODELS.map((m) => {
                       const isSelected = selectedModels.includes(m.id)
@@ -1326,14 +1547,65 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 const slotIdx = modelSlotMap.get(selectedModelId) ?? 0
                 const isLatest = curExchIdx === latestExchIdx
                 const slotInst = chatInstances[slotIdx]
+                const isActExch = (exchangeModes[curExchIdx] ?? 'ask') === 'act'
 
-                const responseMsg = getResponseForExchange(slotIdx, curExchIdx)
-                const responseText = responseMsg ? getMessageText(responseMsg) : ''
+                let responseMsg = getResponseForExchange(slotIdx, curExchIdx)
+                let responseText = responseMsg ? getMessageText(responseMsg) : ''
 
-                const instLoading = isLatest && (slotInst.status === 'streaming' || slotInst.status === 'submitted')
+                // Act: user rows live on chat0 for layout, but assistants stream into actChat only.
+                // While streaming we showed actChat; after finish, getResponseForExchange still
+                // searches ask slots (chat0–3) — so the reply vanished until reload. Always map
+                // act exchanges to the paired assistant in actChat by turn order.
+                if (isActExch) {
+                  const actTurnIndex =
+                    exchangeModes.slice(0, curExchIdx + 1).filter((m) => m === 'act').length - 1
+                  if (actTurnIndex >= 0) {
+                    const pairAssistIdx = 2 * actTurnIndex + 1
+                    const paired = actChat.messages[pairAssistIdx]
+                    if (paired?.role === 'assistant') {
+                      responseMsg = paired
+                      responseText = getMessageText(paired)
+                    }
+                  }
+                  // Latest act turn: prefer trailing assistant while stream is in flight (incremental deltas).
+                  if (isLatest && (actChat.status === 'streaming' || actChat.status === 'submitted')) {
+                    const lastAssist = [...actChat.messages].reverse().find((m) => m.role === 'assistant')
+                    if (lastAssist) {
+                      responseMsg = lastAssist
+                      responseText = getMessageText(lastAssist)
+                    }
+                  }
+                }
+
+                const instLoading = isLatest && (
+                  isActExch
+                    ? (actChat.status === 'streaming' || actChat.status === 'submitted')
+                    : (slotInst.status === 'streaming' || slotInst.status === 'submitted')
+                )
                 const isStreaming = instLoading && responseText.length > 0
                 const showThinking = instLoading && responseText.length === 0
-                const instError = isLatest ? slotInst.error : null
+                const instError = isLatest ? (isActExch ? actChat.error : slotInst.error) : null
+
+                const toolParts =
+                  responseMsg && 'parts' in responseMsg && Array.isArray((responseMsg as { parts?: unknown[] }).parts)
+                    ? (responseMsg as { parts: Array<{ type: string; toolInvocation?: { toolName: string; state: string } }> }).parts.filter((p) => p.type === 'tool-invocation')
+                    : []
+
+                const toolNodes =
+                  toolParts.length > 0 ? (
+                    <div className="w-full px-1 space-y-2">
+                      {toolParts.map((part, i) => {
+                        const tp = part as { toolInvocation?: { toolName: string; state: string } }
+                        return (
+                          <div key={i} className="flex items-center gap-2 text-xs text-[#888] bg-[#f5f5f5] rounded-lg px-3 py-2 w-fit">
+                            <span className="text-[#aaa]">⚙</span>
+                            <span className="font-medium">{tp.toolInvocation?.toolName}</span>
+                            {tp.toolInvocation?.state === 'result' && <span className="text-[#aaa]">- done</span>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : undefined
 
                 blocks.push(
                   <ExchangeBlock
@@ -1352,6 +1624,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     selectedTab={selectedTab}
                     onTabSelect={(tabIdx) => handleTabSelect(curExchIdx, tabIdx)}
                     isLoadingTabs={isAnyLoading}
+                    prependedAssistantContent={toolNodes}
                   />
                 )
               }

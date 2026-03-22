@@ -4,9 +4,12 @@ export const maxDuration = 120
 import { getSession } from '@/lib/workos-auth'
 import { convertToModelMessages, streamText, type UIMessage } from 'ai'
 import { convex } from '@/lib/convex'
-import { addMessage, listMemories } from '@/lib/app-store'
+import { listMemories } from '@/lib/app-store'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
+import { getModel } from '@/lib/models'
+import { buildOpenRouterMessagesFromUi, streamOpenRouterChat } from '@/lib/openrouter-service'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
+import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 const MATH_FORMAT_INSTRUCTION = [
   'Formatting requirements for math output:',
@@ -31,17 +34,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { messages, modelId, chatId, systemPrompt, skipUserMessage }: {
+    const {
+      messages,
+      modelId,
+      conversationId,
+      turnId,
+      variantIndex,
+      systemPrompt,
+      skipUserMessage,
+    }: {
       messages: UIMessage[]
       modelId?: string
-      chatId?: string
+      conversationId?: string
+      turnId?: string
+      variantIndex?: number
       systemPrompt?: string
       skipUserMessage?: boolean
     } = await request.json()
     const userId = session.user.id
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
 
-    // ── Subscription enforcement ──────────────────────────────────────────────
     const entitlements = await convex.query<Entitlements>('usage:getEntitlements', {
       accessToken: session.accessToken,
       userId,
@@ -51,35 +63,31 @@ export async function POST(request: NextRequest) {
       const { tier, dailyUsage, creditsUsed, creditsTotal } = entitlements
       const creditsTotalCents = creditsTotal * 100
       const remainingCents = creditsTotalCents - creditsUsed
-      const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-      console.log(`[Chat] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | model=${effectiveModelId} | userId=${userId}`)
 
       if (tier === 'free') {
         if (isPremiumModel(effectiveModelId)) {
           return NextResponse.json(
             { error: 'premium_model_not_allowed', message: 'Upgrade to Pro to use premium models' },
-            { status: 403 }
+            { status: 403 },
           )
         }
         const totalWeekly = dailyUsage.ask + dailyUsage.write + dailyUsage.agent
         if (totalWeekly >= 15) {
           return NextResponse.json(
             { error: 'weekly_limit_exceeded', message: 'Weekly message limit reached. Upgrade to Pro for unlimited messages.' },
-            { status: 429 }
+            { status: 429 },
           )
         }
       } else {
         if (remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
-          console.log(`[Chat] ⛔ Blocked: no credits remaining (${creditsUsed}¢ / ${creditsTotalCents}¢) | model=${effectiveModelId}`)
           return NextResponse.json(
             { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
-            { status: 402 }
+            { status: 402 },
           )
         }
       }
     }
 
-    // ── Memory context ────────────────────────────────────────────────────────
     let memoryContext = ''
     try {
       const memories = await convex.query<Array<{ content: string }>>('memories:list', { userId })
@@ -88,7 +96,7 @@ export async function POST(request: NextRequest) {
         memoryContext = '\n\nRelevant user memories:\n' + effectiveMemories.slice(0, 10).map((m) => `- ${m.content}`).join('\n')
       }
     } catch {
-      // Memory context is optional
+      // optional
     }
 
     const systemMessage = [
@@ -97,7 +105,6 @@ export async function POST(request: NextRequest) {
       memoryContext,
     ].filter(Boolean).join('\n\n')
 
-    // ── Save user message ─────────────────────────────────────────────────────
     const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')
     const latestUserText = latestUserMessage?.parts
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,18 +127,84 @@ export async function POST(request: NextRequest) {
       })
     const latestUserContent = latestUserText || (latestUserParts?.some((part) => part.type === 'file') ? '[Image attachment]' : '')
 
-    if (chatId && latestUserContent && !skipUserMessage) {
-      const savedUserMessage = await convex.mutation('chats:addMessage', {
-        chatId,
+    const cid = conversationId as Id<'conversations'> | undefined
+    const tid = turnId?.trim()
+
+    if (cid && tid && latestUserContent && !skipUserMessage) {
+      await convex.mutation('conversations:addMessage', {
+        conversationId: cid,
         userId,
+        turnId: tid,
         role: 'user',
+        mode: 'ask',
         content: latestUserContent,
+        contentType: 'text',
         parts: latestUserParts,
-        model: effectiveModelId,
+        modelId: effectiveModelId,
       })
-      if (!savedUserMessage) {
-        addMessage({ chatId, userId, role: 'user', content: latestUserContent, parts: latestUserParts, model: effectiveModelId })
+    }
+
+    const finishAsk = async (
+      text: string,
+      usage: { inputTokens: number; outputTokens: number },
+    ) => {
+      const costDollars = calculateTokenCost(
+        effectiveModelId,
+        usage.inputTokens,
+        0,
+        usage.outputTokens,
+      )
+      const costCents = Math.round(costDollars * 100)
+
+      if (costCents > 0 || usage.inputTokens > 0 || usage.outputTokens > 0) {
+        try {
+          await convex.mutation('usage:recordBatch', {
+            accessToken: session.accessToken,
+            userId,
+            events: [{
+              type: 'ask',
+              modelId: effectiveModelId,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              cachedTokens: 0,
+              cost: costCents,
+              timestamp: Date.now(),
+            }],
+          })
+        } catch (err) {
+          console.error('[conversations/ask] Failed to record usage:', err)
+        }
       }
+
+      if (cid && tid) {
+        try {
+          await convex.mutation('conversations:addMessage', {
+            conversationId: cid,
+            userId,
+            turnId: tid,
+            role: 'assistant',
+            mode: 'ask',
+            content: text,
+            contentType: 'text',
+            parts: [{ type: 'text', text }],
+            modelId: effectiveModelId,
+            variantIndex: variantIndex ?? 0,
+            tokens: { input: usage.inputTokens, output: usage.outputTokens },
+          })
+        } catch (err) {
+          console.error('[conversations/ask] Failed to save message:', err)
+        }
+      }
+    }
+
+    if (getModel(effectiveModelId)?.provider === 'openrouter') {
+      const orMessages = buildOpenRouterMessagesFromUi(messages, systemMessage)
+      return streamOpenRouterChat({
+        modelId: effectiveModelId,
+        messages: orMessages,
+        accessToken: session.accessToken,
+        onFinish: finishAsk,
+      })
     }
 
     const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
@@ -142,74 +215,16 @@ export async function POST(request: NextRequest) {
       system: systemMessage,
       messages: modelMessages,
       onFinish: async ({ text, usage }) => {
-        // ── Usage tracking ────────────────────────────────────────────────────
-        if (usage) {
-          const costDollars = calculateTokenCost(
-            effectiveModelId,
-            usage.inputTokens ?? 0,
-            0,
-            usage.outputTokens ?? 0
-          )
-          const costCents = Math.round(costDollars * 100)
-          console.log(`[Chat] 💰 Cost: model=${effectiveModelId} | in=${usage.inputTokens ?? 0} out=${usage.outputTokens ?? 0} | $${costDollars.toFixed(4)} = ${costCents}¢`)
-
-          if (costCents > 0 || (usage.inputTokens ?? 0) > 0) {
-            try {
-              await convex.mutation('usage:recordBatch', {
-                accessToken: session.accessToken,
-                userId,
-                events: [{
-                  type: 'ask',
-                  modelId: effectiveModelId,
-                  inputTokens: usage.inputTokens ?? 0,
-                  outputTokens: usage.outputTokens ?? 0,
-                  cachedTokens: 0,
-                  cost: costCents,
-                  timestamp: Date.now(),
-                }],
-              })
-              console.log(`[Chat] ✅ Usage recorded: ${costCents}¢ for model=${effectiveModelId}`)
-            } catch (err) {
-              console.error('[Chat] Failed to record usage:', err)
-            }
-          } else {
-            console.log(`[Chat] ⚠️  Cost is 0¢ for model=${effectiveModelId} — free model or no token data`)
-          }
-        }
-
-        // ── Save assistant message ────────────────────────────────────────────
-        if (chatId) {
-          try {
-            const savedAssistantMessage = await convex.mutation('chats:addMessage', {
-              chatId,
-              userId,
-              role: 'assistant',
-              content: text,
-              parts: [{ type: 'text', text }],
-              model: effectiveModelId,
-              tokens: usage ? { input: usage.inputTokens ?? 0, output: usage.outputTokens ?? 0 } : undefined,
-            })
-            if (!savedAssistantMessage) {
-              addMessage({
-                chatId,
-                userId,
-                role: 'assistant',
-                content: text,
-                parts: [{ type: 'text', text }],
-                model: effectiveModelId,
-                tokens: usage ? { input: usage.inputTokens ?? 0, output: usage.outputTokens ?? 0 } : undefined,
-              })
-            }
-          } catch (err) {
-            console.error('[Chat] Failed to save message:', err)
-          }
-        }
+        await finishAsk(text, {
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
+        })
       },
     })
 
     return result.toUIMessageStreamResponse()
   } catch (error) {
-    console.error('[Chat API] Error:', error)
-    return NextResponse.json({ error: 'Failed to process chat request' }, { status: 500 })
+    console.error('[conversations/ask] Error:', error)
+    return NextResponse.json({ error: 'Failed to process ask request' }, { status: 500 })
   }
 }

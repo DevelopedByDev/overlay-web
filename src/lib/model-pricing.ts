@@ -75,6 +75,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'openrouter/free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'openrouter/hunter-alpha': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'openrouter/healer-alpha': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'openrouter/arcee-ai/trinity-large-preview:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'arcee-ai/trinity-large-preview:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
 
   // Anthropic Claude
