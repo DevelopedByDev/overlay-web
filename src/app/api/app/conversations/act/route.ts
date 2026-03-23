@@ -3,19 +3,32 @@ import { convertToModelMessages, stepCountIs, ToolLoopAgent, type UIMessage } fr
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { listMemories } from '@/lib/app-store'
-import { getGatewayLanguageModel } from '@/lib/ai-gateway'
+import { getGatewayLanguageModel, getGatewayPerplexitySearchTool } from '@/lib/ai-gateway'
 import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
+import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import {
+  ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
   MEMORY_SAVE_PROTOCOL,
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
 } from '@/lib/knowledge-agent-instructions'
+import { filterComposioToolSet } from '@/lib/tools/composio-filter'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+
+function summarizeToolOutputForLog(output: unknown): string {
+  if (output == null) return 'null/undefined'
+  if (typeof output === 'string') return `string length=${output.length}`
+  if (typeof output === 'object') {
+    const keys = Object.keys(output as object)
+    return `object keys=[${keys.slice(0, 12).join(', ')}${keys.length > 12 ? ', …' : ''}]`
+  }
+  return typeof output
+}
 
 export const maxDuration = 120
 
@@ -187,29 +200,44 @@ export async function POST(request: NextRequest) {
 
     const modelMessages = await convertToModelMessages(messagesForModel)
     const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
-    const [composioTools, webToolSet] = await Promise.all([
+    const [composioRaw, webToolSet, perplexityTool] = await Promise.all([
       createBrowserUnifiedTools({ userId, accessToken: session.accessToken }),
-      Promise.resolve(createWebTools({
-        userId,
-        accessToken: session.accessToken,
-        conversationId: conversationId ?? undefined,
-        projectId: conversationProjectId,
-      })),
+      Promise.resolve(
+        createWebTools({
+          userId,
+          accessToken: session.accessToken,
+          conversationId: conversationId ?? undefined,
+          projectId: conversationProjectId,
+        }),
+      ),
+      getGatewayPerplexitySearchTool(session.accessToken, effectiveModelId),
     ])
-    const tools = { ...composioTools, ...webToolSet }
+    const composioTools = filterComposioToolSet(composioRaw, 'act')
+    const tools = {
+      ...composioTools,
+      ...webToolSet,
+      ...(perplexityTool ? { perplexity_search: perplexityTool } : {}),
+    }
+
+    console.log(
+      '[conversations/act] tool ids:',
+      Object.keys(tools).sort().join(', '),
+      '| perplexity_search:',
+      perplexityTool ? 'yes' : 'NO (missing gateway key or init failed — see [AI Gateway] logs)',
+    )
 
     const generationNote =
       '\nYou also have generate_image and generate_video tools. Use them whenever the user asks to create visual content. For videos, inform the user that generation is async and may take a few minutes — results will appear in the Outputs tab.'
     const knowledgeNote =
-      '\nYou have search_knowledge (hybrid search over the user\'s notebook files and memories), save_memory, update_memory, and delete_memory. ' +
-      'Use search_knowledge for extra retrieval beyond AUTO_RETRIEVED_KNOWLEDGE. ' +
-      'When you use AUTO_RETRIEVED_KNOWLEDGE or search results, end your reply with **Sources:** listing [n] labels as instructed in that block.\n\n' +
+      '\n' +
+      ACT_KNOWLEDGE_WEB_TOOLS_NOTE +
+      '\n\nYou also have save_memory, update_memory, and delete_memory.\n\n' +
       MEMORY_SAVE_PROTOCOL
 
     const agent = new ToolLoopAgent({
       model: languageModel,
       tools,
-      stopWhen: stepCountIs(12),
+      stopWhen: stepCountIs(MAX_TOOL_STEPS_ACT),
       instructions:
         (systemPrompt ||
           'You are Overlay\u2019s browser agent. Use the available Composio tools to complete the user\u2019s task. You do not have OS-level control, local desktop automation, terminal access, or filesystem access in this environment. If an integration is required but not connected, use the Composio connection tools to guide or initiate that connection. Keep the user informed about what you are doing, and end with a concise summary of what was completed and what still needs attention.') +
@@ -225,6 +253,34 @@ export async function POST(request: NextRequest) {
 
     const result = await agent.stream({
       messages: modelMessages,
+      experimental_onToolCallStart: ({ toolCall }) => {
+        if (!toolCall || toolCall.toolName !== 'perplexity_search') return
+        const input = toolCall.input as Record<string, unknown> | undefined
+        const q =
+          input && typeof input.query === 'string'
+            ? `${input.query.slice(0, 160)}${input.query.length > 160 ? '…' : ''}`
+            : JSON.stringify(input)?.slice(0, 200)
+        console.log('[conversations/act] perplexity_search START', {
+          toolCallId: toolCall.toolCallId,
+          queryPreview: q,
+        })
+      },
+      experimental_onToolCallFinish: ({ toolCall, success, durationMs, output, error }) => {
+        if (!toolCall || toolCall.toolName !== 'perplexity_search') return
+        if (success) {
+          console.log('[conversations/act] perplexity_search OK', {
+            toolCallId: toolCall.toolCallId,
+            durationMs,
+            output: summarizeToolOutputForLog(output),
+          })
+        } else {
+          console.error('[conversations/act] perplexity_search FAILED', {
+            toolCallId: toolCall.toolCallId,
+            durationMs,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      },
       onFinish: async ({ text, usage }) => {
         if (usage) {
           totalInputTokens += usage.inputTokens ?? 0

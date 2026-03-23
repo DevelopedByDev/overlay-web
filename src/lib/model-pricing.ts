@@ -101,6 +101,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // Groq
   'llama-3.3-70b-versatile': { inputPer1M: 0.59, cachedInputPer1M: 0.59, outputPer1M: 0.79, isFree: false },
+  'moonshotai/kimi-k2-0905': { inputPer1M: 1.0, cachedInputPer1M: 0.5, outputPer1M: 3.0, isFree: false },
   'moonshotai/kimi-k2-instruct-0905': { inputPer1M: 1.0, cachedInputPer1M: 0.5, outputPer1M: 3.0, isFree: false },
   'openai/gpt-oss-120b': { inputPer1M: 0.15, cachedInputPer1M: 0.075, outputPer1M: 0.6, isFree: false },
 }

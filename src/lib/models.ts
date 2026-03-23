@@ -49,7 +49,7 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'grok-4-1-fast-reasoning', name: 'Grok 4.1 Fast', provider: 'xai', openClawRef: 'vercel-ai-gateway/xai/grok-4.1-fast-reasoning', description: 'Fast reasoning', supportsVision: true, supportsReasoning: true, supportsSearch: false },
   // Groq Models
   { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', provider: 'groq', openClawRef: 'vercel-ai-gateway/meta/llama-3.3-70b', description: 'Versatile', supportsVision: false, supportsReasoning: false, supportsSearch: false },
-  { id: 'moonshotai/kimi-k2-instruct-0905', name: 'Kimi K2', provider: 'groq', openClawRef: 'vercel-ai-gateway/moonshotai/kimi-k2-0905', description: 'MoonShot AI', supportsVision: false, supportsReasoning: false, supportsSearch: false },
+  { id: 'moonshotai/kimi-k2-0905', name: 'Kimi K2', provider: 'groq', openClawRef: 'vercel-ai-gateway/moonshotai/kimi-k2-0905', description: 'MoonShot AI', supportsVision: false, supportsReasoning: false, supportsSearch: false },
   { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', openClawRef: 'vercel-ai-gateway/openai/gpt-oss-120b', description: 'OpenAI OSS', supportsVision: false, supportsReasoning: false, supportsSearch: false },
   { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B', provider: 'groq', openClawRef: 'vercel-ai-gateway/openai/gpt-oss-20b', description: 'OpenAI OSS', supportsVision: false, supportsReasoning: false, supportsSearch: false },
 
@@ -78,7 +78,7 @@ const ACT_MODEL_QUALITY_PRIORITY: string[] = [
   'gemini-2.5-flash-lite',
   'gpt-5-nano-2025-08-07',
   'llama-3.3-70b-versatile',
-  'moonshotai/kimi-k2-instruct-0905',
+  'moonshotai/kimi-k2-0905',
   'openai/gpt-oss-120b',
   'openai/gpt-oss-20b',
   'openrouter/free',
@@ -94,8 +94,14 @@ export function pickBestModelForAct(selectedAskModelIds: string[]): string {
   return first ?? DEFAULT_MODEL_ID
 }
 
+/** Persisted UI / Convex rows may still reference retired ids. */
+const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
+  'moonshotai/kimi-k2-instruct-0905': 'moonshotai/kimi-k2-0905',
+}
+
 export function getModel(id: string): ChatModel | undefined {
-  return AVAILABLE_MODELS.find((m) => m.id === id)
+  const resolved = LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id
+  return AVAILABLE_MODELS.find((m) => m.id === resolved)
 }
 
 export function getProviderModels(provider: ChatModel['provider']): ChatModel[] {

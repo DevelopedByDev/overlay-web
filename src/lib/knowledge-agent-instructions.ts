@@ -2,6 +2,21 @@
  * Shared system text for Ask / Act so models reliably use knowledge tools.
  */
 
+/** Ask mode: retrieval-only tools; memory writes happen in Act mode. */
+export const ASK_KNOWLEDGE_TOOLS_NOTE = [
+  'Tools in Ask mode (when available): search_knowledge (notebook files and memories), perplexity_search (live web when AI Gateway is configured), and read-only integration tools.',
+  'Use search_knowledge for facts beyond AUTO_RETRIEVED_KNOWLEDGE or the memory list above; use perplexity_search for current events, news, or anything requiring the public web.',
+  'You cannot save, update, or delete memories in Ask mode. If the user wants preferences or facts remembered for future chats, tell them to switch to Act mode.',
+  'When your answer uses AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end with **Sources:** (and include URLs/snippets from web search where relevant).',
+].join('\n')
+
+/** Act mode: knowledge + web search tool guidance (Composio remains separate in route instructions). */
+export const ACT_KNOWLEDGE_WEB_TOOLS_NOTE = [
+  'You have search_knowledge (hybrid search over the user\'s notebook files and memories) and perplexity_search (live web via AI Gateway when configured).',
+  'Use search_knowledge for extra retrieval beyond AUTO_RETRIEVED_KNOWLEDGE; use perplexity_search for current web information.',
+  'When you use AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end your reply with **Sources:** listing [n] labels as instructed in that block.',
+].join('\n')
+
 /** Instructs the model when to call save_memory (preferences, facts, standing instructions). */
 export const MEMORY_SAVE_PROTOCOL = [
   'Memory tool (save_memory) — required behavior:',

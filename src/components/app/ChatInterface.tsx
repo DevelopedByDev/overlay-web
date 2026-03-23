@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, Plus, Trash2, ChevronDown, ImageIcon, FileText, X, AlertCircle, Check, FolderOpen, Video, Download, Copy, Reply } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport } from 'ai'
+import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai'
 import { useSearchParams } from 'next/navigation'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, IMAGE_MODELS, VIDEO_MODELS, DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID, pickBestModelForAct, type GenerationMode } from '@/lib/models'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
@@ -59,6 +59,53 @@ interface Entitlements {
 function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> }): string {
   if (!msg.parts) return ''
   return msg.parts.filter((p) => p.type === 'text').map((p) => p.text || '').join('')
+}
+
+const TOOL_UI_DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
+
+type ToolDisplayInfo = { key: string; name: string; state: string }
+
+/** AI SDK v6 uses `tool-{name}` / `dynamic-tool` parts; older persisted rows may use `tool-invocation`. */
+function extractToolDisplayInfos(parts: unknown[] | undefined): ToolDisplayInfo[] {
+  if (!parts?.length) return []
+  const out: ToolDisplayInfo[] = []
+  for (const p of parts) {
+    if (isToolUIPart(p as never)) {
+      const part = p as { toolCallId: string; state: string }
+      out.push({
+        key: part.toolCallId,
+        name: getToolName(p as never),
+        state: part.state,
+      })
+      continue
+    }
+    const legacy = p as { type?: string; toolInvocation?: { toolCallId?: string; toolName?: string; state?: string } }
+    if (legacy?.type === 'tool-invocation' && legacy.toolInvocation?.toolName) {
+      const inv = legacy.toolInvocation
+      const legacyName = inv.toolName
+      if (!legacyName) continue
+      out.push({
+        key: inv.toolCallId ?? `legacy-${out.length}`,
+        name: legacyName,
+        state: inv.state ?? 'unknown',
+      })
+    }
+  }
+  return out
+}
+
+function formatToolLabel(toolId: string): string {
+  if (toolId === 'perplexity_search') return 'Web search'
+  return toolId.replace(/_/g, ' ')
+}
+
+function toolStateUiLabel(state: string): string {
+  if (state === 'output-available') return 'Done'
+  if (state === 'output-error') return 'Error'
+  if (state === 'output-denied') return 'Denied'
+  if (state === 'input-streaming' || state === 'input-available') return 'Running…'
+  if (state === 'approval-requested' || state === 'approval-responded') return 'Approval'
+  return state
 }
 
 function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; mediaType?: string }> }): string[] {
@@ -163,13 +210,13 @@ interface ExchangeBlockProps {
   slotIdx: number
   responseText: string
   isStreaming: boolean
-  showThinking: boolean
   errorMessage: string | null
   exchModelList: string[]
   selectedTab: number
   onTabSelect: (tabIdx: number) => void
   isLoadingTabs: boolean
-  prependedAssistantContent?: React.ReactNode
+  toolInfos: ToolDisplayInfo[]
+  responseInProgress: boolean
   sourceCitations?: SourceCitationMap
   turnIdForActions: string | null
   modelLabel: string
@@ -182,12 +229,13 @@ interface ExchangeBlockProps {
 }
 
 function ExchangeBlock({
-  userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, slotIdx, responseText, isStreaming, showThinking, errorMessage,
-  exchModelList, selectedTab, onTabSelect, isLoadingTabs, prependedAssistantContent, sourceCitations,
+  userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, slotIdx, responseText, isStreaming, errorMessage,
+  exchModelList, selectedTab, onTabSelect, isLoadingTabs, toolInfos, responseInProgress, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
-    const responseSettled = !isStreaming && !showThinking
+    const runningTools = toolInfos.filter((t) => !TOOL_UI_DONE_STATES.has(t.state))
+    const responseSettled = !responseInProgress
     const showFooter =
       responseSettled && (responseText.length > 0 || !!errorMessage)
     return (
@@ -269,7 +317,47 @@ function ExchangeBlock({
           </div>
         )}
 
-        {prependedAssistantContent}
+        {toolInfos.length > 0 && (
+          <div className="w-full px-1 space-y-2">
+            {toolInfos.map((t) => {
+              const running = !TOOL_UI_DONE_STATES.has(t.state)
+              const err = t.state === 'output-error'
+              return (
+                <div
+                  key={t.key}
+                  className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 w-fit max-w-full border ${
+                    err
+                      ? 'border-red-200 bg-red-50 text-red-800'
+                      : 'border-[#e8e8e8] bg-[#f7f7f7] text-[#525252]'
+                  }`}
+                >
+                  {running ? (
+                    <span className="inline-block size-3.5 shrink-0 rounded-full border-2 border-[#c4c4c4] border-t-[#404040] animate-spin" />
+                  ) : (
+                    <span className="text-[#888]" aria-hidden>
+                      ⚙
+                    </span>
+                  )}
+                  <span className="font-medium truncate">{formatToolLabel(t.name)}</span>
+                  <span className={`shrink-0 ${err ? 'text-red-600' : 'text-[#aaa]'}`}>
+                    {toolStateUiLabel(t.state)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {responseInProgress && (
+          <div className="flex items-center gap-2 px-1 py-1 text-[11px] text-[#737373]" aria-live="polite">
+            <span className="inline-block size-3 shrink-0 rounded-full border-2 border-[#d4d4d4] border-t-[#525252] animate-spin" />
+            {runningTools.length > 0
+              ? `Using tools: ${runningTools.map((t) => formatToolLabel(t.name)).join(', ')}`
+              : responseText.length > 0
+                ? 'Finishing response…'
+                : 'Thinking…'}
+          </div>
+        )}
 
         {/* Assistant response */}
         {responseText ? (
@@ -281,13 +369,9 @@ function ExchangeBlock({
               sourceCitations={sourceCitations}
             />
           </div>
-        ) : showThinking ? (
-          <div className="px-1 py-2">
-            <div className="w-5 h-5 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
-          </div>
         ) : null}
 
-        {errorMessage && !isStreaming && !showThinking && (
+        {errorMessage && !responseInProgress && (
           <div className="flex justify-start">
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 text-xs">
               <AlertCircle size={12} />
@@ -1632,8 +1716,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
       startSession(chatId, 'act', activeChatTitle ?? '', msgCountBeforeSend)
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const nextTranscript = [...chat0.messages, userUIMessage as any]
+      // Assistant replies stream only into actChat; chat0 would still be user-only without this.
+      // Base the next transcript on actChat so prior act assistant messages are not dropped.
+      const actThreadBase: UIMessage[] =
+        actChat.messages.length > 0 ? actChat.messages : chat0.messages
+      const nextTranscript = [...actThreadBase, userUIMessage as UIMessage]
       chat0.setMessages(nextTranscript)
       // actChat.sendMessage({ messageId }) resolves the id against actChat.messages — keep in sync with chat0
       actChat.setMessages(nextTranscript)
@@ -2248,29 +2335,12 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     : (slotInst.status === 'streaming' || slotInst.status === 'submitted')
                 )
                 const isStreaming = instLoading && responseText.length > 0
-                const showThinking = instLoading && responseText.length === 0
                 const instError = isLatest ? (isActExch ? actChat.error : slotInst.error) : null
 
-                const toolParts =
+                const toolInfos =
                   responseMsg && 'parts' in responseMsg && Array.isArray((responseMsg as { parts?: unknown[] }).parts)
-                    ? (responseMsg as { parts: Array<{ type: string; toolInvocation?: { toolName: string; state: string } }> }).parts.filter((p) => p.type === 'tool-invocation')
+                    ? extractToolDisplayInfos((responseMsg as { parts: unknown[] }).parts)
                     : []
-
-                const toolNodes =
-                  toolParts.length > 0 ? (
-                    <div className="w-full px-1 space-y-2">
-                      {toolParts.map((part, i) => {
-                        const tp = part as { toolInvocation?: { toolName: string; state: string } }
-                        return (
-                          <div key={i} className="flex items-center gap-2 text-xs text-[#888] bg-[#f5f5f5] rounded-lg px-3 py-2 w-fit">
-                            <span className="text-[#aaa]">⚙</span>
-                            <span className="font-medium">{tp.toolInvocation?.toolName}</span>
-                            {tp.toolInvocation?.state === 'result' && <span className="text-[#aaa]">- done</span>}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : undefined
 
                 const rawUserText = getMessageText(msg)
                 const metaDocs = getUserMessageDocNames(msg)
@@ -2304,13 +2374,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     slotIdx={slotIdx}
                     responseText={responseText}
                     isStreaming={isStreaming}
-                    showThinking={showThinking}
                     errorMessage={errorLabel(instError)}
                     exchModelList={exchModelList}
                     selectedTab={selectedTab}
                     onTabSelect={(tabIdx) => handleTabSelect(curExchIdx, tabIdx)}
                     isLoadingTabs={isAnyLoading}
-                    prependedAssistantContent={toolNodes}
+                    toolInfos={toolInfos}
+                    responseInProgress={instLoading}
                     sourceCitations={sourceCitations}
                     turnIdForActions={textTurnIdForActions}
                     modelLabel={modelLabel}

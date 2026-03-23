@@ -1,5 +1,6 @@
-import { createGateway } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGateway, generateText, stepCountIs, tool } from 'ai'
+import { createOpenRouter } from '@openrouter/ai-sdk-provider'
+import { z } from 'zod'
 import { convex } from '@/lib/convex'
 import { getModel } from '@/lib/models'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
@@ -66,12 +67,11 @@ export async function getOpenRouterLanguageModel(modelId: string, accessToken?: 
     )
   }
 
-  // Use .chat() explicitly to force the Chat Completions API (/v1/chat/completions).
-  // Calling openrouter(modelId) directly targets the Responses API (/v1/responses)
-  // which OpenRouter does not support.
-  const openrouter = createOpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
+  // Official OpenRouter AI SDK provider — chat() uses /v1/chat/completions (tool + stream compatible).
+  // See https://openrouter.ai/docs/guides/community/vercel-ai-sdk
+  const openrouter = createOpenRouter({
     apiKey,
+    compatibility: 'strict',
     headers: {
       'HTTP-Referer': 'https://getoverlay.io',
       'X-Title': 'Overlay',
@@ -127,4 +127,110 @@ export async function getGatewayImageModel(modelId: string, accessToken?: string
 export async function getGatewayVideoModel(modelId: string, accessToken?: string) {
   const gateway = await getOrCreateGateway(accessToken)
   return gateway.video(modelId)
+}
+
+/** Cheap Gateway model to force a real provider `perplexity_search` round-trip (OpenRouter cannot send provider tools). */
+const PERPLEXITY_PROXY_LANGUAGE_MODEL_ID = 'openai/gpt-5-nano-2025-08-07'
+
+function isPerplexityErrorOutput(
+  out: unknown,
+): out is { error: string; message?: string } {
+  return (
+    typeof out === 'object' &&
+    out != null &&
+    'error' in out &&
+    typeof (out as { error: unknown }).error === 'string'
+  )
+}
+
+/**
+ * Perplexity as a normal function `tool()` whose `execute` runs the real Gateway provider tool via a tiny
+ * `generateText` pass on `openai/gpt-5-nano`.
+ *
+ * We always use this wrapper (not `gateway.tools.perplexitySearch()` directly on the chat model) because:
+ * 1. OpenRouter's adapter only sends `type: "function"` tools — provider tools are dropped.
+ * 2. For AI Gateway chat models, native provider Perplexity returns inline `tool-result` with
+ *    `providerExecuted: true`. The AI SDK multi-step loop then exits immediately (no client tool calls and
+ *    no pending deferred results), so the model never runs a second step to turn search hits into an answer.
+ */
+function createPerplexitySearchFunctionTool(accessToken?: string) {
+  return tool({
+    description:
+      'Search the public web for current information, news, and real-time facts (Perplexity via Vercel AI Gateway). ' +
+      'Use for anything that needs the live web.',
+    inputSchema: z.object({
+      query: z
+        .union([z.string().min(1), z.array(z.string().min(1)).max(5)])
+        .describe('Search query string, or up to 5 queries to combine results'),
+    }),
+    execute: async (input) => {
+      const apiKey = await resolveGatewayApiKey(accessToken)
+      if (!apiKey) {
+        throw new Error('AI Gateway API key is not configured (needed for web search)')
+      }
+      const gw = createGateway({ apiKey })
+      const perplexityTool = gw.tools.perplexitySearch({
+        maxResults: 8,
+        maxTokens: 50_000,
+        maxTokensPerPage: 2048,
+        searchRecencyFilter: 'day',
+      })
+      const payload = { query: input.query }
+      const prompt = `Call perplexity_search exactly once with this JSON input and no other tools:\n${JSON.stringify(payload)}`
+
+      console.log('[AI Gateway] perplexity_search inner generateText start')
+      const result = await generateText({
+        model: gw(PERPLEXITY_PROXY_LANGUAGE_MODEL_ID),
+        tools: { perplexity_search: perplexityTool },
+        toolChoice: { type: 'tool', toolName: 'perplexity_search' },
+        prompt,
+        stopWhen: stepCountIs(2),
+      })
+
+      for (const step of result.steps) {
+        for (const tr of step.toolResults) {
+          if (tr.toolName !== 'perplexity_search' || tr.type !== 'tool-result') continue
+          const out = tr.output
+          if (isPerplexityErrorOutput(out)) {
+            throw new Error(out.message || out.error || 'Perplexity search returned an error')
+          }
+          console.log('[AI Gateway] perplexity_search inner generateText OK')
+          return out
+        }
+        for (const part of step.content) {
+          if (part.type === 'tool-error' && part.toolName === 'perplexity_search') {
+            throw new Error(
+              part.error instanceof Error ? part.error.message : String(part.error),
+            )
+          }
+        }
+      }
+
+      console.error('[AI Gateway] perplexity_search inner generateText missing tool result', {
+        finishReason: result.finishReason,
+        steps: result.steps.length,
+      })
+      throw new Error('Web search did not return results — check AI Gateway / Perplexity billing and logs')
+    },
+  })
+}
+
+/**
+ * AI Gateway Perplexity web search tool (billed per Gateway pricing).
+ * Returns null if no AI Gateway API key is configured.
+ *
+ * Always returns a **function** `tool()` wrapper so `streamText` performs client-side `execute`, which keeps
+ * the tool loop alive for a follow-up model turn (see `createPerplexitySearchFunctionTool`).
+ *
+ * @param chatModelId — Logged for debugging only.
+ */
+export async function getGatewayPerplexitySearchTool(accessToken?: string, chatModelId?: string) {
+  try {
+    await getOrCreateGateway(accessToken)
+    console.log('[AI Gateway] perplexity_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)')
+    return createPerplexitySearchFunctionTool(accessToken)
+  } catch (err) {
+    console.error('[AI Gateway] perplexity_search unavailable — check AI_GATEWAY_API_KEY / keys:getAPIKey:', err)
+    return null
+  }
 }

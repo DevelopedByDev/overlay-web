@@ -20,6 +20,7 @@
     "@ai-sdk/react": "^3.0.118",
     "@ai-sdk/xai": "^3.0.67",
     "@convex-dev/stripe": "^0.1.3",
+    "@openrouter/ai-sdk-provider": "^2.3.3",
     "@slack/bolt": "^4.6.0",
     "@slack/web-api": "^7.15.0",
     "@tiptap/extension-character-count": "^3.20.1",

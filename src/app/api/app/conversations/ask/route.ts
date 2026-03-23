@@ -5,30 +5,38 @@ import { getSession } from '@/lib/workos-auth'
 import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from 'ai'
 import { convex } from '@/lib/convex'
 import { listMemories } from '@/lib/app-store'
-import { createWebTools } from '@/lib/web-tools'
-import { getGatewayLanguageModel } from '@/lib/ai-gateway'
+import { getGatewayLanguageModel, getGatewayPerplexitySearchTool } from '@/lib/ai-gateway'
+import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { getModel } from '@/lib/models'
 import {
   buildOpenRouterMessagesFromUi,
   encodeAssistantTextAsUiDataStream,
   streamOpenRouterChat,
-  streamOpenRouterChatWithToolLoop,
   shouldFallbackOpenRouterWithoutTools,
   userFacingOpenRouterError,
 } from '@/lib/openrouter-service'
 import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
-import {
-  OPENROUTER_KNOWLEDGE_TOOLS,
-  createKnowledgeToolExecutor,
-} from '@/lib/knowledge-openrouter'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
+import { buildOverlayToolSet } from '@/lib/tools/build'
+import { filterComposioToolSet } from '@/lib/tools/composio-filter'
+import { MAX_TOOL_STEPS_ASK } from '@/lib/tools/policy'
 import {
-  MEMORY_SAVE_PROTOCOL,
+  ASK_KNOWLEDGE_TOOLS_NOTE,
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
 } from '@/lib/knowledge-agent-instructions'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+
+function summarizeToolOutputForLog(output: unknown): string {
+  if (output == null) return 'null/undefined'
+  if (typeof output === 'string') return `string length=${output.length}`
+  if (typeof output === 'object') {
+    const keys = Object.keys(output as object)
+    return `object keys=[${keys.slice(0, 12).join(', ')}${keys.length > 12 ? ', …' : ''}]`
+  }
+  return typeof output
+}
 
 const MATH_FORMAT_INSTRUCTION = [
   'Formatting requirements for math output:',
@@ -194,11 +202,7 @@ export async function POST(request: NextRequest) {
       indexedNote,
     ].filter(Boolean).join('\n\n')
 
-    const knowledgeToolNote =
-      '\n\nYou can call tools: search_knowledge (search notebook files and memories), save_memory, update_memory, delete_memory. ' +
-      'Use search_knowledge for extra retrieval beyond AUTO_RETRIEVED_KNOWLEDGE. ' +
-      'When your answer uses AUTO_RETRIEVED_KNOWLEDGE or tool search results, end with **Sources:** as instructed there.\n\n' +
-      MEMORY_SAVE_PROTOCOL
+    const knowledgeToolNote = '\n\n' + ASK_KNOWLEDGE_TOOLS_NOTE
 
     if (cid && tid && latestUserContent && !skipUserMessage) {
       await convex.mutation('conversations:addMessage', {
@@ -267,81 +271,119 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (getModel(effectiveModelId)?.provider === 'openrouter') {
-      const systemWithTools = baseSystemMessage + knowledgeToolNote
-      const executeTool = createKnowledgeToolExecutor({
-        userId,
-        accessToken: session.accessToken,
-        projectId: conversationProjectId,
-      })
-      try {
-        const orMessages = buildOpenRouterMessagesFromUi(messagesForModel, systemWithTools)
-        return await streamOpenRouterChatWithToolLoop({
-          modelId: effectiveModelId,
-          messages: orMessages,
-          tools: [...OPENROUTER_KNOWLEDGE_TOOLS],
-          executeTool,
+    const systemWithTools = baseSystemMessage + knowledgeToolNote
+
+    const [composioRaw, perplexityTool, overlayAskTools] = await Promise.all([
+      createBrowserUnifiedTools({ userId, accessToken: session.accessToken }).catch((err) => {
+        console.error('[conversations/ask] Composio tools unavailable:', err)
+        return {}
+      }),
+      getGatewayPerplexitySearchTool(session.accessToken, effectiveModelId),
+      Promise.resolve(
+        buildOverlayToolSet('ask', {
+          userId,
           accessToken: session.accessToken,
-          maxToolRounds: 10,
+          conversationId: conversationId ?? undefined,
+          projectId: conversationProjectId,
+        }),
+      ),
+    ])
+    const composioAsk = filterComposioToolSet(composioRaw, 'ask')
+    const askTools = {
+      ...composioAsk,
+      ...overlayAskTools,
+      ...(perplexityTool ? { perplexity_search: perplexityTool } : {}),
+    }
+
+    console.log(
+      '[conversations/ask] tool ids:',
+      Object.keys(askTools).sort().join(', '),
+      '| perplexity_search:',
+      perplexityTool ? 'yes' : 'NO (missing gateway key or init failed — see [AI Gateway] logs)',
+    )
+
+    try {
+      const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
+      const modelMessages = await convertToModelMessages(messagesForModel)
+
+      const result = streamText({
+        model: languageModel,
+        system: systemWithTools,
+        messages: modelMessages,
+        tools: askTools,
+        stopWhen: stepCountIs(MAX_TOOL_STEPS_ASK),
+        experimental_onToolCallStart: ({ toolCall }) => {
+          if (!toolCall || toolCall.toolName !== 'perplexity_search') return
+          const input = toolCall.input as Record<string, unknown> | undefined
+          const q =
+            input && typeof input.query === 'string'
+              ? `${input.query.slice(0, 160)}${input.query.length > 160 ? '…' : ''}`
+              : JSON.stringify(input)?.slice(0, 200)
+          console.log('[conversations/ask] perplexity_search START', {
+            toolCallId: toolCall.toolCallId,
+            queryPreview: q,
+          })
+        },
+        experimental_onToolCallFinish: ({ toolCall, success, durationMs, output, error }) => {
+          if (!toolCall || toolCall.toolName !== 'perplexity_search') return
+          if (success) {
+            console.log('[conversations/ask] perplexity_search OK', {
+              toolCallId: toolCall.toolCallId,
+              durationMs,
+              output: summarizeToolOutputForLog(output),
+            })
+          } else {
+            console.error('[conversations/ask] perplexity_search FAILED', {
+              toolCallId: toolCall.toolCallId,
+              durationMs,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        },
+        onFinish: async ({ text, usage }) => {
+          await finishAsk(text, {
+            inputTokens: usage?.inputTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
+          })
+        },
+      })
+
+      const hasCitations = Object.keys(sourceCitationMap).length > 0
+
+      return result.toUIMessageStreamResponse({
+        originalMessages: messages,
+        messageMetadata: ({ part }) => {
+          if (!hasCitations) return undefined
+          if (part.type === 'start' || part.type === 'finish') {
+            return { sourceCitations: sourceCitationMap }
+          }
+          return undefined
+        },
+      })
+    } catch (err) {
+      console.error('[conversations/ask] streamText failed:', err)
+      const isOpenRouter = getModel(effectiveModelId)?.provider === 'openrouter'
+      if (isOpenRouter && shouldFallbackOpenRouterWithoutTools(err)) {
+        const fallbackSystem =
+          systemWithTools +
+          '\n\n(Provider blocked tool calling this turn — answer from AUTO_RETRIEVED_KNOWLEDGE and listed memories only; you cannot run tools.)'
+        const fallbackMsgs = buildOpenRouterMessagesFromUi(messagesForModel, fallbackSystem)
+        return streamOpenRouterChat({
+          modelId: effectiveModelId,
+          messages: fallbackMsgs,
+          accessToken: session.accessToken,
           onFinish: finishAsk,
         })
-      } catch (err) {
-        console.error('[conversations/ask] OpenRouter tool loop failed:', err)
-        if (shouldFallbackOpenRouterWithoutTools(err)) {
-          const fallbackSystem =
-            systemWithTools +
-            '\n\n(Provider blocked tool calling this turn — answer from AUTO_RETRIEVED_KNOWLEDGE and listed memories only; you cannot run tools.)'
-          const fallbackMsgs = buildOpenRouterMessagesFromUi(messagesForModel, fallbackSystem)
-          return streamOpenRouterChat({
-            modelId: effectiveModelId,
-            messages: fallbackMsgs,
-            accessToken: session.accessToken,
-            onFinish: finishAsk,
-          })
-        }
+      }
+      if (isOpenRouter) {
         return encodeAssistantTextAsUiDataStream(
           userFacingOpenRouterError(err),
           { inputTokens: 0, outputTokens: 0 },
           finishAsk,
         )
       }
+      throw err
     }
-
-    const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
-    const modelMessages = await convertToModelMessages(messagesForModel)
-    const knowledgeTools = createWebTools({
-      userId,
-      accessToken: session.accessToken,
-      conversationId: conversationId ?? undefined,
-      projectId: conversationProjectId,
-    })
-
-    const result = streamText({
-      model: languageModel,
-      system: baseSystemMessage + knowledgeToolNote,
-      messages: modelMessages,
-      tools: knowledgeTools,
-      stopWhen: stepCountIs(10),
-      onFinish: async ({ text, usage }) => {
-        await finishAsk(text, {
-          inputTokens: usage?.inputTokens ?? 0,
-          outputTokens: usage?.outputTokens ?? 0,
-        })
-      },
-    })
-
-    const hasCitations = Object.keys(sourceCitationMap).length > 0
-
-    return result.toUIMessageStreamResponse({
-      originalMessages: messages,
-      messageMetadata: ({ part }) => {
-        if (!hasCitations) return undefined
-        if (part.type === 'start' || part.type === 'finish') {
-          return { sourceCitations: sourceCitationMap }
-        }
-        return undefined
-      },
-    })
   } catch (error) {
     console.error('[conversations/ask] Error:', error)
     return NextResponse.json({ error: 'Failed to process ask request' }, { status: 500 })
