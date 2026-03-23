@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
-  MessageSquare, BookOpen, Bot, Brain, Wrench, LogOut, User,
+  MessageSquare, BookOpen, Brain, Wrench, LogOut, User,
   Smartphone, Puzzle, MessageCircle, Monitor, ChevronUp, AlertCircle,
   FolderOpen, Cpu, Images, Loader2,
 } from 'lucide-react'
@@ -137,6 +137,28 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
     return () => window.removeEventListener('overlay:subscription-refresh', onSubscriptionRefresh)
   }, [loadEntitlements])
 
+  /** ⌥1–⌥7 jump to main app nav when focus is outside text fields (macOS Option = altKey). */
+  useEffect(() => {
+    function onNavShortcut(e: KeyboardEvent) {
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.repeat) return
+      const m = /^Digit([1-7])$/.exec(e.code)
+      if (!m) return
+      const idx = parseInt(m[1]!, 10) - 1
+      const item = NAV_ITEMS[idx]
+      if (!item) return
+      const t = e.target
+      if (t instanceof Node && (t as HTMLElement).closest?.('input, textarea, select, [contenteditable="true"]')) {
+        return
+      }
+      e.preventDefault()
+      if (pathname.startsWith(item.href)) return
+      setPendingHref(item.href)
+      router.push(item.href)
+    }
+    window.addEventListener('keydown', onNavShortcut, true)
+    return () => window.removeEventListener('keydown', onNavShortcut, true)
+  }, [pathname, router])
+
   // Close menu on outside click
   useEffect(() => {
     if (!accountMenuOpen) return
@@ -177,7 +199,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-3 space-y-0.5">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.map(({ href, label, icon: Icon }, navIdx) => {
           const active = effectivePendingHref ? effectivePendingHref === href : pathname.startsWith(href)
           const isPending = effectivePendingHref === href
           const unreadCount = href === '/app/chat' ? totalUnread : 0
@@ -190,7 +212,8 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
                 setPendingHref(href)
                 router.push(href)
               }}
-              className={`flex w-full items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+              title={`${label} · ⌥${navIdx + 1}`}
+              className={`group flex w-full items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
                 active
                   ? 'bg-[#0a0a0a] text-[#fafafa]'
                   : 'text-[#525252] hover:bg-[#f0f0f0] hover:text-[#0a0a0a]'
@@ -198,6 +221,16 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
             >
               <Icon size={15} />
               <span className="flex-1 text-left">{label}</span>
+              <span
+                className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
+                  active
+                    ? 'text-[#fafafa]/70 opacity-0 group-hover:opacity-100'
+                    : 'text-[#a3a3a3] opacity-0 group-hover:opacity-100'
+                }`}
+                aria-hidden
+              >
+                ⌥{navIdx + 1}
+              </span>
               {isPending ? (
                 <Loader2
                   size={14}

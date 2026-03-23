@@ -80,7 +80,7 @@ function mergeTableBlock(lines: string[]): string[] {
   let i = 2
 
   while (i < lines.length) {
-    let line = lines[i]!
+    const line = lines[i]!
     i++
 
     const pipes = countPipes(line)

@@ -135,6 +135,8 @@ export const addMessage = mutation({
     modelId: v.optional(v.string()),
     variantIndex: v.optional(v.number()),
     tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
+    replyToTurnId: v.optional(v.string()),
+    replySnippet: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const msgId = await ctx.db.insert('conversationMessages', {
@@ -147,6 +149,60 @@ export const addMessage = mutation({
 })
 
 /** Batch insert for Ask multi-model assistant variants (same turn). */
+/** Remove one user turn and all associated assistant variants (same turnId), plus matching outputs. */
+export const deleteTurn = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    turnId: v.string(),
+  },
+  handler: async (ctx, { conversationId, userId, turnId }) => {
+    const conv = await ctx.db.get(conversationId)
+    if (!conv || conv.userId !== userId) {
+      throw new Error('Unauthorized')
+    }
+    const tid = turnId.trim()
+    if (!tid) return { deletedMessages: 0, deletedOutputs: 0 }
+
+    const messages = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
+      .collect()
+
+    let deletedMessages = 0
+    for (const m of messages) {
+      if (m.turnId === tid) {
+        await ctx.db.delete(m._id)
+        deletedMessages++
+      }
+    }
+
+    const cid = conversationId as string
+    const outputs = await ctx.db
+      .query('outputs')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', cid))
+      .collect()
+
+    let deletedOutputs = 0
+    for (const o of outputs) {
+      if (o.turnId === tid && o.userId === userId) {
+        if (o.storageId) {
+          try {
+            await ctx.storage.delete(o.storageId)
+          } catch {
+            // best-effort
+          }
+        }
+        await ctx.db.delete(o._id)
+        deletedOutputs++
+      }
+    }
+
+    await ctx.db.patch(conversationId, { lastModified: Date.now() })
+    return { deletedMessages, deletedOutputs }
+  },
+})
+
 export const addMessages = mutation({
   args: {
     conversationId: v.id('conversations'),

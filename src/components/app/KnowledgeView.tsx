@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Brain, Trash2, Plus, X, FilePlus, FolderPlus,
   ChevronRight, FileText, Folder, FolderOpen, Loader2,
@@ -97,6 +98,10 @@ function FileTreeNode({
 
 export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   void _userId
+  const searchParams = useSearchParams()
+  const fileOpenParam = searchParams.get('file')
+  const memoryOpenParam = searchParams.get('memory')
+
   const [activeTab, setActiveTab] = useState<Tab>('memories')
 
   // ── Memories state ──
@@ -138,6 +143,23 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
 
   useEffect(() => { loadMemories() }, [loadMemories])
   useEffect(() => { loadFiles() }, [loadFiles])
+
+  useEffect(() => {
+    if (!fileOpenParam || filesLoading || files.length === 0) return
+    const node = files.find((f) => f._id === fileOpenParam && f.type === 'file')
+    if (!node) return
+    setActiveTab('filesystem')
+    setSelectedFile(node)
+    setFileContent(node.content)
+  }, [fileOpenParam, files, filesLoading])
+
+  useEffect(() => {
+    if (!memoryOpenParam || memoriesLoading || memories.length === 0) return
+    const mem = memories.find((m) => m.memoryId === memoryOpenParam)
+    if (!mem) return
+    setActiveTab('memories')
+    setSelectedMemory(mem)
+  }, [memoryOpenParam, memories, memoriesLoading])
 
   // ── Memory handlers ──
   async function handleAddMemory() {

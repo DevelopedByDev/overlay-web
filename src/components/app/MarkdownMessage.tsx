@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import type { Pluggable } from 'unified'
 import { mergeGfmTableContinuationLines } from '@/lib/markdown-table-fix'
+import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
@@ -31,9 +32,8 @@ const mdSanitizeSchema = {
   },
 }
 
-function normalizeGeneratedMarkdown(text: string): string {
-  return mergeGfmTableContinuationLines(
-    text
+function stripHtmlishToMarkdown(text: string): string {
+  return text
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>\s*<p>/gi, '\n\n')
     .replace(/<p>/gi, '')
@@ -41,8 +41,46 @@ function normalizeGeneratedMarkdown(text: string): string {
     .replace(/<li>/gi, '\n- ')
     .replace(/<\/li>/gi, '')
     .replace(/<\/?(ul|ol)>/gi, '')
-    .replace(/&nbsp;/gi, ' '),
-  )
+    .replace(/&nbsp;/gi, ' ')
+}
+
+/** Models often emit full-width lenticular brackets; normalize to ASCII for **Sources:** lines. */
+function bracketNormalize(text: string): string {
+  return text.replace(/【/g, '[').replace(/】/g, ']')
+}
+
+/** Turn `[n]` on **Sources:** lines into markdown links to Knowledge (when we have retrieval metadata). */
+function linkifySourceCitations(text: string, citations: SourceCitationMap): string {
+  if (!citations || Object.keys(citations).length === 0) return text
+  const lines = text.split('\n')
+  return lines
+    .map((line) => {
+      const trimmed = line.trimStart()
+      if (!/^(\*\*)?Sources:(\*\*)?/i.test(trimmed)) return line
+      return line.replace(/\[\s*(\d+)\s*\](?!\()/g, (_m, d) => {
+        const key = String(Number(d))
+        const src = citations[key]
+        if (!src) return `[${d}]`
+        const href =
+          src.kind === 'memory'
+            ? `/app/knowledge?memory=${encodeURIComponent(src.sourceId)}`
+            : `/app/knowledge?file=${encodeURIComponent(src.sourceId)}`
+        return `[${d}](${href})`
+      })
+    })
+    .join('\n')
+}
+
+function normalizeGeneratedMarkdown(
+  text: string,
+  options?: { sourceCitations?: SourceCitationMap; linkifyCitations?: boolean },
+): string {
+  let t = mergeGfmTableContinuationLines(stripHtmlishToMarkdown(text))
+  t = bracketNormalize(t)
+  if (options?.linkifyCitations && options?.sourceCitations && Object.keys(options.sourceCitations).length > 0) {
+    t = linkifySourceCitations(t, options.sourceCitations)
+  }
+  return t
 }
 
 const CONNECT_SERVICE_DESCRIPTIONS: Record<string, string> = {
@@ -145,6 +183,14 @@ const mdComponents = {
       return <span className="text-[#0a0a0a] whitespace-pre-wrap break-words">{children}</span>
     }
 
+    if (typeof href === 'string' && href.startsWith('/app/')) {
+      return (
+        <a href={href} className="text-[#2563eb] underline underline-offset-2 font-medium hover:text-[#1d4ed8]">
+          {children}
+        </a>
+      )
+    }
+
     return (
       <a href={href} target="_blank" rel="noopener noreferrer">
         {children}
@@ -237,38 +283,49 @@ interface Block {
 interface Props {
   text: string
   isStreaming: boolean
+  /** From stream metadata — links [n] on **Sources:** lines to Knowledge */
+  sourceCitations?: SourceCitationMap
 }
 
-export function MarkdownMessage({ text, isStreaming }: Props) {
-  const normalizedText = normalizeGeneratedMarkdown(text)
+export function MarkdownMessage({ text, isStreaming, sourceCitations }: Props) {
+  const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
+  const normalizedLive = useMemo(
+    () => normalizeGeneratedMarkdown(text, { sourceCitations, linkifyCitations: false }),
+    [text, sourceCitations],
+  )
+  const normalizedFinal = useMemo(
+    () => normalizeGeneratedMarkdown(text, { sourceCitations, linkifyCitations: hasCitationMap }),
+    [text, sourceCitations, hasCitationMap],
+  )
+
   const [blocks, setBlocks] = useState<Block[]>([])
   const nextIdRef = useRef(0)
-  // Tracks how many characters of `text` have been committed into blocks
   const releasedRef = useRef(0)
+  const wasStreamingRef = useRef(false)
 
-  // Reset state when text is cleared (new conversation / new message starts)
   useEffect(() => {
-    if (!normalizedText) {
+    if (!normalizedLive) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setBlocks([])
       releasedRef.current = 0
       nextIdRef.current = 0
     }
-  }, [normalizedText])
+  }, [normalizedLive])
 
   useEffect(() => {
-    if (!isStreaming) {
-      // Stream finished — flush anything remaining
-      const remaining = normalizedText.slice(releasedRef.current).trim()
-      if (remaining) {
-        setBlocks((prev) => [...prev, { id: nextIdRef.current++, text: remaining }])
-        releasedRef.current = normalizedText.length
-      }
-      return
+    if (isStreaming && !wasStreamingRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset stream buffer when a new stream starts
+      setBlocks([])
+      releasedRef.current = 0
+      nextIdRef.current = 0
     }
+    wasStreamingRef.current = isStreaming
+  }, [isStreaming])
 
-    // Find a paragraph boundary in the unprocessed text
-    const unprocessed = normalizedText.slice(releasedRef.current)
+  useEffect(() => {
+    if (!isStreaming) return
+
+    const unprocessed = normalizedLive.slice(releasedRef.current)
     const boundary = findParagraphBoundary(unprocessed)
 
     if (boundary !== null && boundary > 0) {
@@ -276,11 +333,31 @@ export function MarkdownMessage({ text, isStreaming }: Props) {
       if (blockText) {
         setBlocks((prev) => [...prev, { id: nextIdRef.current++, text: blockText }])
       }
-      releasedRef.current += boundary + 1 // skip past the blank line
+      releasedRef.current += boundary + 1
     }
-  }, [normalizedText, isStreaming])
+  }, [normalizedLive, isStreaming])
 
   const hasBlocks = blocks.length > 0
+
+  if (!isStreaming && normalizedFinal.trim()) {
+    return (
+      <div className="markdown-content">
+        <div className="md-block-appear">
+          <ReactMarkdown
+            remarkPlugins={markdownRemarkPlugins}
+            rehypePlugins={markdownRehypePlugins}
+            components={mdComponents}
+          >
+            {normalizedFinal}
+          </ReactMarkdown>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isStreaming && !normalizedFinal.trim()) {
+    return null
+  }
 
   return (
     <div className="markdown-content">
@@ -296,25 +373,11 @@ export function MarkdownMessage({ text, isStreaming }: Props) {
         </div>
       ))}
 
-      {/* Pulsing dots while streaming and waiting for first paragraph boundary */}
       {isStreaming && !hasBlocks && (
         <div className="md-typing-indicator">
           <span />
           <span />
           <span />
-        </div>
-      )}
-
-      {/* Once streaming ends, flush any remaining text that never hit a paragraph boundary */}
-      {!isStreaming && blocks.length === 0 && normalizedText.trim() && (
-        <div className="md-block-appear">
-          <ReactMarkdown
-            remarkPlugins={markdownRemarkPlugins}
-            rehypePlugins={markdownRehypePlugins}
-            components={mdComponents}
-          >
-            {normalizedText}
-          </ReactMarkdown>
         </div>
       )}
     </div>

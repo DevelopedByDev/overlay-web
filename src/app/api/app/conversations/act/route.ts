@@ -8,12 +8,13 @@ import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
-import { buildAutoRetrievalSystemExtension } from '@/lib/ask-knowledge-context'
+import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import {
   MEMORY_SAVE_PROTOCOL,
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
 } from '@/lib/knowledge-agent-instructions'
+import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export const maxDuration = 120
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
       turnId,
       modelId,
       indexedFileNames,
+      replyContextForModel,
     }: {
       messages: UIMessage[]
       systemPrompt?: string
@@ -46,6 +48,7 @@ export async function POST(request: NextRequest) {
       turnId?: string
       modelId?: string
       indexedFileNames?: string[]
+      replyContextForModel?: string
     } = await request.json()
     const userId = session.user.id
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
@@ -160,13 +163,16 @@ export async function POST(request: NextRequest) {
     }
 
     let autoRetrieval = ''
+    let sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> = {}
     try {
-      autoRetrieval = await buildAutoRetrievalSystemExtension({
+      const bundle = await buildAutoRetrievalBundle({
         userMessage: latestUserText ?? '',
         userId,
         accessToken: session.accessToken,
         projectId: conversationProjectId,
       })
+      autoRetrieval = bundle.extension
+      sourceCitationMap = bundle.citations
     } catch {
       // optional
     }
@@ -176,7 +182,8 @@ export async function POST(request: NextRequest) {
       : []
 
     const indexedNote = indexedFilesSystemNote(indexedNames)
-    const messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
+    let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
+    messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
 
     const modelMessages = await convertToModelMessages(messagesForModel)
     const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
@@ -268,9 +275,19 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const hasCitations = Object.keys(sourceCitationMap).length > 0
+
     return result.toUIMessageStreamResponse({
       originalMessages: messages,
       onError: (error: unknown) => userFacingOpenRouterError(error),
+      messageMetadata: ({ part }) => {
+        if (!hasCitations) return undefined
+        // Send early so the client can linkify **Sources:** while the reply streams.
+        if (part.type === 'start' || part.type === 'finish') {
+          return { sourceCitations: sourceCitationMap }
+        }
+        return undefined
+      },
     })
   } catch (error) {
     console.error('[conversations/act] Error:', error)

@@ -5,18 +5,27 @@ const MIN_USER_CHARS = 8
 const MAX_QUERY_CHARS = 500
 const BLOCK_CHAR_BUDGET = 9000
 
+/** 1-based citation index → notebook file or memory (for UI links). */
+export type SourceCitationMap = Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+
+export type AutoRetrievalBundle = {
+  extension: string
+  citations: SourceCitationMap
+}
+
 /**
- * Runs hybrid search on the latest user message and returns a system-prompt extension
- * so Ask/Act always see top notebook + memory chunks (not only when the model calls tools).
+ * Hybrid search for the latest user message: system extension + citation map for **Sources:** links.
  */
-export async function buildAutoRetrievalSystemExtension(args: {
+export async function buildAutoRetrievalBundle(args: {
   userMessage: string
   userId: string
   accessToken: string
   projectId?: string
-}): Promise<string> {
+}): Promise<AutoRetrievalBundle> {
   const q = args.userMessage.trim()
-  if (q.length < MIN_USER_CHARS) return ''
+  if (q.length < MIN_USER_CHARS) {
+    return { extension: '', citations: {} }
+  }
 
   try {
     const result = await convex.action<{ chunks: HybridSearchChunk[] } | null>('knowledge:hybridSearch', {
@@ -29,13 +38,16 @@ export async function buildAutoRetrievalSystemExtension(args: {
       kLex: 40,
     })
     const chunks = result?.chunks ?? []
-    if (chunks.length === 0) return ''
+    if (chunks.length === 0) {
+      return { extension: '', citations: {} }
+    }
 
+    const citations: SourceCitationMap = {}
     const lines: string[] = [
       '---',
       'AUTO_RETRIEVED_KNOWLEDGE (from the user\'s indexed notebook files and saved memories).',
       'Some items may be irrelevant — ignore what does not apply.',
-      'If you use any passage below in your answer, end your reply with a **Sources:** line listing only the numbers you used, e.g. `Sources: [1] Notes/egypt.md; [2] Memory`.',
+      'If you use any passage below in your answer, end your reply with a **Sources:** line listing only the numbers you used, using ASCII brackets, e.g. `Sources: [1], [2], [3]`.',
       '---',
     ]
 
@@ -45,15 +57,30 @@ export async function buildAutoRetrievalSystemExtension(args: {
       const kind = c.sourceKind === 'file' ? 'file' : 'memory'
       const title =
         (c.title && c.title.trim()) || (kind === 'file' ? 'Notebook file' : 'Memory')
-      const block = `[${i + 1}] (${kind}) ${title}\n${c.text}`
+      const n = i + 1
+      citations[String(n)] = { kind: c.sourceKind, sourceId: c.sourceId }
+      const block = `[${n}] (${kind}) ${title}\n${c.text}`
       if (used + block.length > BLOCK_CHAR_BUDGET) break
       lines.push(block, '')
       used += block.length
     }
 
-    return '\n\n' + lines.join('\n')
+    return { extension: '\n\n' + lines.join('\n'), citations }
   } catch (e) {
     console.warn('[ask-knowledge-context] hybridSearch failed:', e)
-    return ''
+    return { extension: '', citations: {} }
   }
+}
+
+/**
+ * @deprecated Prefer {@link buildAutoRetrievalBundle} when you need citation metadata.
+ */
+export async function buildAutoRetrievalSystemExtension(args: {
+  userMessage: string
+  userId: string
+  accessToken: string
+  projectId?: string
+}): Promise<string> {
+  const { extension } = await buildAutoRetrievalBundle(args)
+  return extension
 }

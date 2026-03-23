@@ -7,6 +7,7 @@ import { useChat } from '@ai-sdk/react'
 import { AlertCircle, ChevronDown, Loader2, Plus, Send } from 'lucide-react'
 import { convex } from '@/lib/convex'
 import { MarkdownMessage } from '@/components/app/MarkdownMessage'
+import { DelayedTooltip } from '@/components/app/DelayedTooltip'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID } from '@/lib/models'
 import ComputerWorkspaceFileView from '@/components/app/ComputerWorkspaceFileView'
 import { getFileType, isEditableType } from '@/components/app/FileViewer'
@@ -313,6 +314,29 @@ export default function ComputerDetailClient({
   const { messages, sendMessage, setMessages, status, stop, error } = useChat<ComputerUiMessage>({ transport })
   const isLoading = status === 'streaming' || status === 'submitted'
   const wasChatLoadingRef = useRef(false)
+
+  useEffect(() => {
+    if (computer?.status !== 'ready' || isWorkspaceFileView) return
+
+    function onGlobalKeyDown(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey
+      if (meta && e.shiftKey && (e.key === '/' || e.key === '?')) {
+        e.preventDefault()
+        setShowModelPicker(true)
+        return
+      }
+      if (e.key === '/' && !meta && !e.altKey && !e.shiftKey) {
+        const t = e.target as HTMLElement | null
+        if (!t) return
+        if (textareaRef.current && (t === textareaRef.current || textareaRef.current.contains(t))) return
+        if (t.closest('input, textarea, select, [contenteditable="true"]')) return
+        e.preventDefault()
+        textareaRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onGlobalKeyDown, true)
+    return () => window.removeEventListener('keydown', onGlobalKeyDown, true)
+  }, [computer?.status, isWorkspaceFileView])
 
   useEffect(() => {
     const loading = status === 'streaming' || status === 'submitted'
@@ -1107,23 +1131,28 @@ export default function ComputerDetailClient({
 
         {computer.status === 'ready' && !isWorkspaceFileView && (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => void createNewSession()}
-              disabled={isLoading || isCreatingSession}
-              className="flex items-center justify-center rounded-md bg-[#f0f0f0] p-1.5 text-[#525252] transition-colors hover:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-50"
-              title="New chat"
-            >
-              {isCreatingSession ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-            </button>
+            <DelayedTooltip label="New chat session" side="bottom">
+              <button
+                type="button"
+                onClick={() => void createNewSession()}
+                disabled={isLoading || isCreatingSession}
+                className="flex items-center justify-center rounded-md bg-[#f0f0f0] p-1.5 text-[#525252] transition-colors hover:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCreatingSession ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+              </button>
+            </DelayedTooltip>
 
             <div className="relative">
-              <button
-                onClick={() => setShowModelPicker((current) => !current)}
-                className="flex items-center gap-1.5 rounded-md bg-[#f0f0f0] px-2.5 py-1 text-xs text-[#525252] transition-colors hover:bg-[#e8e8e8]"
-              >
-                {currentModel?.name || 'Select model'}
-                <ChevronDown size={11} />
-              </button>
+              <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
+                <button
+                  type="button"
+                  onClick={() => setShowModelPicker((current) => !current)}
+                  className="flex items-center gap-1.5 rounded-md bg-[#f0f0f0] px-2.5 py-1 text-xs text-[#525252] transition-colors hover:bg-[#e8e8e8]"
+                >
+                  {currentModel?.name || 'Select model'}
+                  <ChevronDown size={11} />
+                </button>
+              </DelayedTooltip>
               {showModelPicker && (
                 <div className="absolute right-0 top-full z-10 mt-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg">
                   {AVAILABLE_MODELS.map((model) => (
@@ -1240,7 +1269,7 @@ export default function ComputerDetailClient({
                       {message.role === 'user' ? (
                         <div className="max-w-[75%] space-y-2">
                           {text && (
-                            <div className="rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm text-[#fafafa]">
+                            <div className="chat-user-bubble rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm text-[#fafafa]">
                               <span className="whitespace-pre-wrap">{text}</span>
                             </div>
                           )}
@@ -1307,64 +1336,75 @@ export default function ComputerDetailClient({
                   )}
 
                   <div className="flex items-center gap-2 rounded-2xl bg-[#f0f0f0] px-4 py-2.5">
-                    <textarea
-                      ref={textareaRef}
-                      value={input}
-                      onChange={(event) => {
-                        setInput(event.target.value)
-                        setActiveSlashIndex(0)
-                      }}
-                      placeholder="Ask the computer to do something or type / for OpenClaw commands..."
-                      rows={1}
-                      onKeyDown={(event) => {
-                        if (showSlashCommands && event.key === 'ArrowDown') {
-                          event.preventDefault()
-                          setActiveSlashIndex((current) => (current + 1) % slashCommands.length)
-                          return
-                        }
-
-                        if (showSlashCommands && event.key === 'ArrowUp') {
-                          event.preventDefault()
-                          setActiveSlashIndex((current) => (current - 1 + slashCommands.length) % slashCommands.length)
-                          return
-                        }
-
-                        if (showSlashCommands && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))) {
-                          event.preventDefault()
-                          const activeCommand = slashCommands[activeSlashIndex]
-                          if (activeCommand) {
-                            insertSlashCommand(getComputerCommandLabel(activeCommand))
+                    <DelayedTooltip
+                      className="min-w-0 flex-1"
+                      label="Slash commands (/) · focus from elsewhere (/)"
+                      side="bottom"
+                    >
+                      <textarea
+                        ref={textareaRef}
+                        value={input}
+                        onChange={(event) => {
+                          setInput(event.target.value)
+                          setActiveSlashIndex(0)
+                        }}
+                        placeholder="Ask the computer to do something or type / for OpenClaw commands..."
+                        rows={1}
+                        onKeyDown={(event) => {
+                          if (showSlashCommands && event.key === 'ArrowDown') {
+                            event.preventDefault()
+                            setActiveSlashIndex((current) => (current + 1) % slashCommands.length)
+                            return
                           }
-                          return
-                        }
 
-                        if (event.key === 'Enter' && !event.shiftKey) {
-                          event.preventDefault()
-                          void submitMessage()
-                        }
-                      }}
-                      className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-6 text-[#0a0a0a] outline-none placeholder:text-[#aaa]"
-                    />
-                    {isLoading ? (
-                      <button
-                        onClick={() => {
-                          if (activeSessionKey) {
-                            void executeComputerCommand('/stop', activeSessionKey)
+                          if (showSlashCommands && event.key === 'ArrowUp') {
+                            event.preventDefault()
+                            setActiveSlashIndex((current) => (current - 1 + slashCommands.length) % slashCommands.length)
+                            return
+                          }
+
+                          if (showSlashCommands && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))) {
+                            event.preventDefault()
+                            const activeCommand = slashCommands[activeSlashIndex]
+                            if (activeCommand) {
+                              insertSlashCommand(getComputerCommandLabel(activeCommand))
+                            }
+                            return
+                          }
+
+                          if (event.key === 'Enter' && !event.shiftKey) {
+                            event.preventDefault()
+                            void submitMessage()
                           }
                         }}
-                        className="shrink-0 rounded-lg bg-[#0a0a0a] p-1.5 text-[#fafafa] transition-colors hover:bg-[#333]"
-                        title="Stop generating"
-                      >
-                        <div className="h-3.5 w-3.5 rounded-sm bg-[#fafafa]" />
-                      </button>
+                        className="w-full min-w-0 resize-none bg-transparent py-1.5 text-sm leading-6 text-[#0a0a0a] outline-none placeholder:text-[#aaa]"
+                      />
+                    </DelayedTooltip>
+                    {isLoading ? (
+                      <DelayedTooltip label="Stop generating (/stop)" side="top">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (activeSessionKey) {
+                              void executeComputerCommand('/stop', activeSessionKey)
+                            }
+                          }}
+                          className="shrink-0 rounded-lg bg-[#0a0a0a] p-1.5 text-[#fafafa] transition-colors hover:bg-[#333]"
+                        >
+                          <div className="h-3.5 w-3.5 rounded-sm bg-[#fafafa]" />
+                        </button>
+                      </DelayedTooltip>
                     ) : (
-                      <button
-                        onClick={() => void submitMessage()}
-                        disabled={!input.trim() || !activeSessionKey}
-                        className="shrink-0 rounded-lg bg-[#0a0a0a] p-1.5 text-[#fafafa] transition-colors hover:bg-[#333] disabled:opacity-40"
-                      >
-                        <Send size={14} />
-                      </button>
+                      <DelayedTooltip label="Send (↵) · new line (⇧↵)" side="top">
+                        <button
+                          type="button"
+                          onClick={() => void submitMessage()}
+                          disabled={!input.trim() || !activeSessionKey}
+                          className="shrink-0 rounded-lg bg-[#0a0a0a] p-1.5 text-[#fafafa] transition-colors hover:bg-[#333] disabled:opacity-40"
+                        >
+                          <Send size={14} />
+                        </button>
+                      </DelayedTooltip>
                     )}
                   </div>
                 </div>

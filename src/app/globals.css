@@ -371,6 +371,95 @@ html {
   animation: messageAppear 0.18s ease-out forwards;
 }
 
+/* Gray shimmer skeleton for media generation */
+@keyframes media-shimmer-slide {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.media-gen-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #d4d4d4;
+  min-height: 8rem;
+  min-width: 8rem;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.media-gen-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -55%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.12) 32%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0.12) 68%,
+    transparent 100%
+  );
+  animation: media-shimmer-slide 1.25s ease-in-out infinite;
+}
+
+/* Soft mesh + sheen for image/video generation (loading) */
+.media-gen-mesh {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  background: linear-gradient(
+    135deg,
+    #efe8f4 0%,
+    #e6dcf2 28%,
+    #ddd0ea 52%,
+    #e8dff6 78%,
+    #f0e9f8 100%
+  );
+  min-width: 8rem;
+  min-height: 8rem;
+}
+
+.media-gen-mesh::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 38%,
+    rgba(255, 255, 255, 0.65) 50%,
+    rgba(255, 255, 255, 0.08) 62%,
+    transparent 100%
+  );
+  filter: blur(0.5px);
+  animation: media-shimmer-slide 1.65s ease-in-out infinite;
+}
+
+/* Selection on dark user bubbles — element + descendants (Safari/WebKit) */
+.chat-user-bubble::selection,
+.chat-user-bubble *::selection {
+  background-color: #c4c4c4 !important;
+  color: #0a0a0a !important;
+  -webkit-text-fill-color: #0a0a0a !important;
+}
+
+.chat-user-bubble::-moz-selection,
+.chat-user-bubble *::-moz-selection {
+  background-color: #c4c4c4 !important;
+  color: #0a0a0a !important;
+}
+
 /* Gradient orb animation */
 @keyframes float {
   0%, 100% {

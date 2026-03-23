@@ -1,16 +1,18 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Plus, Trash2, ChevronDown, ImageIcon, FileText, X, AlertCircle, Check, FolderOpen, Video, Download } from 'lucide-react'
+import { Send, Plus, Trash2, ChevronDown, ImageIcon, FileText, X, AlertCircle, Check, FolderOpen, Video, Download, Copy, Reply } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { useSearchParams } from 'next/navigation'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, IMAGE_MODELS, VIDEO_MODELS, DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID, pickBestModelForAct, type GenerationMode } from '@/lib/models'
+import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
 import { dispatchChatTitleUpdated, sanitizeChatTitle } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { useNavigationProgress } from '@/lib/navigation-progress'
 import { MarkdownMessage } from './MarkdownMessage'
+import { DelayedTooltip } from './DelayedTooltip'
 
 interface Conversation {
   _id: string
@@ -66,7 +68,7 @@ function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; med
     .map((p) => p.url!)
 }
 
-type UserBubbleMetadata = { indexedDocuments?: string[] }
+type UserBubbleMetadata = { indexedDocuments?: string[]; replyToTurnId?: string; replySnippet?: string }
 
 function getUserMessageDocNames(msg: unknown): string[] {
   const m = msg as { metadata?: UserBubbleMetadata }
@@ -87,6 +89,53 @@ function splitUserDisplayText(fullText: string): { bodyText: string; docNames: s
   return { bodyText, docNames }
 }
 
+function getUserTurnId(msg: { id: string; turnId?: string }): string | null {
+  if (typeof msg.turnId === 'string' && msg.turnId.trim()) return msg.turnId.trim()
+  return msg.id?.trim() || null
+}
+
+function getUserReplyThreadMeta(msg: unknown): { replyToTurnId: string; replySnippet: string } | null {
+  const m = msg as {
+    metadata?: UserBubbleMetadata
+    replyToTurnId?: string
+    replySnippet?: string
+  }
+  const tid = m.metadata?.replyToTurnId?.trim() || m.replyToTurnId?.trim()
+  if (!tid) return null
+  const snippet = (m.metadata?.replySnippet || m.replySnippet || 'Earlier message').trim()
+  return { replyToTurnId: tid, replySnippet: snippet }
+}
+
+function scrollToExchangeTurn(turnId: string) {
+  const safe = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(turnId) : turnId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  document.querySelector(`[data-exchange-turn="${safe}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+/**
+ * Act assistant for a user turn: `actChat` mirrors `chat0` until streaming appends the assistant only to `actChat`,
+ * so the assistant is at the same index as the user + 1. Falls back to id-based scan inside `actChat`.
+ */
+function resolveActAssistant(
+  chat0Linear: Array<{ id?: string; role: string }>,
+  actMsgs: Array<{ id?: string; role: string }>,
+  userMsgId: string,
+) {
+  const i = chat0Linear.findIndex((m) => m.role === 'user' && m.id === userMsgId)
+  if (i >= 0) {
+    const next = actMsgs[i + 1]
+    if (next?.role === 'assistant') return next
+  }
+  const ui = actMsgs.findIndex((m) => m.id === userMsgId && m.role === 'user')
+  if (ui >= 0) {
+    for (let j = ui + 1; j < actMsgs.length; j++) {
+      const m = actMsgs[j]!
+      if (m.role === 'assistant') return m
+      if (m.role === 'user') break
+    }
+  }
+  return null
+}
+
 
 async function generateTitle(text: string): Promise<string | null> {
   try {
@@ -103,7 +152,7 @@ async function generateTitle(text: string): Promise<string | null> {
   return null
 }
 
-// ─── ExchangeBlock (memoized) ────────────────────────────────────────────────
+// ─── ExchangeBlock ───────────────────────────────────────────────────────────
 
 interface ExchangeBlockProps {
   userMsgId: string
@@ -121,19 +170,52 @@ interface ExchangeBlockProps {
   onTabSelect: (tabIdx: number) => void
   isLoadingTabs: boolean
   prependedAssistantContent?: React.ReactNode
+  sourceCitations?: SourceCitationMap
+  turnIdForActions: string | null
+  modelLabel: string
+  onDeleteTurn: () => void
+  onReply: () => void
+  actionsLocked: boolean
+  isExiting?: boolean
+  replyThreadMeta: { replyToTurnId: string; replySnippet: string } | null
+  onJumpToReply: (turnId: string) => void
 }
 
-const ExchangeBlock = React.memo(
-  function ExchangeBlock({
-    userBodyText, userDocumentNames, userImages, exchIdx, slotIdx, responseText, isStreaming, showThinking, errorMessage,
-    exchModelList, selectedTab, onTabSelect, isLoadingTabs, prependedAssistantContent,
-  }: ExchangeBlockProps) {
+function ExchangeBlock({
+  userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, slotIdx, responseText, isStreaming, showThinking, errorMessage,
+  exchModelList, selectedTab, onTabSelect, isLoadingTabs, prependedAssistantContent, sourceCitations,
+  turnIdForActions, modelLabel, onDeleteTurn, onReply, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
+}: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
+    const responseSettled = !isStreaming && !showThinking
+    const showFooter =
+      responseSettled && (responseText.length > 0 || !!errorMessage)
     return (
-      <div className="flex flex-col gap-2 message-appear" data-exchange-idx={exchIdx}>
+      <div
+        className={`flex flex-col gap-2 message-appear transition-all duration-300 ease-out ${
+          isExiting ? 'pointer-events-none opacity-0 -translate-y-1' : 'translate-y-0 opacity-100'
+        }`}
+        data-exchange-idx={exchIdx}
+        data-exchange-turn={turnIdForActions ?? undefined}
+      >
         {/* User message */}
         <div className="flex justify-end">
           <div className="max-w-[75%] space-y-2">
+            {replyThreadMeta && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => onJumpToReply(replyThreadMeta.replyToTurnId)}
+                  className="mb-1 max-w-full rounded-lg border border-[#e5e5e5] bg-[#f0f0f0] px-2.5 py-1.5 text-left text-[11px] text-[#525252] transition-colors hover:bg-[#e8e8e8] hover:text-[#0a0a0a]"
+                >
+                  <span className="flex items-center gap-1.5 font-medium text-[#0a0a0a]">
+                    <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[#71717a]" />
+                    Replying to
+                  </span>
+                  <span className="mt-0.5 line-clamp-2 block text-[#71717a]">{replyThreadMeta.replySnippet}</span>
+                </button>
+              </div>
+            )}
             {userImages.length > 0 && (
               <div className="flex flex-wrap gap-1.5 justify-end">
                 {userImages.map((src, i) => (
@@ -156,7 +238,7 @@ const ExchangeBlock = React.memo(
               </div>
             )}
             {showTextBubble && (
-              <div className="rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm leading-relaxed text-[#fafafa]">
+              <div className="chat-user-bubble select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm leading-relaxed text-[#fafafa]">
                 <span className="whitespace-pre-wrap">{userBodyText}</span>
               </div>
             )}
@@ -192,7 +274,12 @@ const ExchangeBlock = React.memo(
         {/* Assistant response */}
         {responseText ? (
           <div className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
-            <MarkdownMessage key={slotIdx} text={responseText} isStreaming={isStreaming} />
+            <MarkdownMessage
+              key={`md-${userMsgId}-${slotIdx}`}
+              text={responseText}
+              isStreaming={isStreaming}
+              sourceCitations={sourceCitations}
+            />
           </div>
         ) : showThinking ? (
           <div className="px-1 py-2">
@@ -208,25 +295,38 @@ const ExchangeBlock = React.memo(
             </div>
           </div>
         )}
+
+        {showFooter && (
+          <div className="message-appear flex items-center gap-1 px-1 pt-0.5">
+            <FlashCopyIconButton
+              copyText={responseText}
+              disabled={responseText.length === 0 || isExiting}
+              ariaLabel="Copy response"
+            />
+            <button
+              type="button"
+              onClick={onDeleteTurn}
+              disabled={!turnIdForActions || actionsLocked || isExiting}
+              className="rounded-md p-1.5 text-[#71717a] transition-all hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 active:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-30"
+              aria-label="Delete this turn from history"
+            >
+              <Trash2 size={14} strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              onClick={onReply}
+              disabled={isExiting}
+              className="rounded-md p-1.5 text-[#71717a] transition-all hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 active:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-30"
+              aria-label="Reply"
+            >
+              <Reply size={14} strokeWidth={1.75} />
+            </button>
+            <span className="ml-2 min-w-0 text-left text-[11px] text-[#aaa]">{modelLabel}</span>
+          </div>
+        )}
       </div>
     )
-  },
-  (prev, next) =>
-    prev.userMsgId === next.userMsgId &&
-    prev.userBodyText === next.userBodyText &&
-    prev.userDocumentNames.length === next.userDocumentNames.length &&
-    prev.userDocumentNames.every((n, i) => n === next.userDocumentNames[i]) &&
-    prev.userImages.length === next.userImages.length &&
-    prev.userImages.every((image, index) => image === next.userImages[index]) &&
-    prev.exchIdx === next.exchIdx &&
-    prev.slotIdx === next.slotIdx &&
-    prev.responseText === next.responseText &&
-    prev.isStreaming === next.isStreaming &&
-    prev.showThinking === next.showThinking &&
-    prev.errorMessage === next.errorMessage &&
-    prev.selectedTab === next.selectedTab &&
-    prev.exchModelList.length === next.exchModelList.length
-)
+}
 
 // ─── error label ─────────────────────────────────────────────────────────────
 
@@ -243,6 +343,52 @@ function errorLabel(err: Error | null | undefined): string | null {
     return 'Unsupported image format. Use JPEG, PNG, GIF, or WebP.'
   }
   return 'Something went wrong. Please try again.'
+}
+
+function FlashCopyIconButton({
+  copyText,
+  disabled,
+  ariaLabel = 'Copy',
+}: {
+  copyText: string
+  disabled?: boolean
+  ariaLabel?: string
+}) {
+  const [showCheck, setShowCheck] = useState(false)
+  const timerRef = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (timerRef.current != null) window.clearTimeout(timerRef.current)
+  }, [])
+
+  const handleClick = async () => {
+    if (disabled || !copyText) return
+    try {
+      await navigator.clipboard.writeText(copyText)
+    } catch {
+      return
+    }
+    setShowCheck(true)
+    if (timerRef.current != null) window.clearTimeout(timerRef.current)
+    timerRef.current = window.setTimeout(() => {
+      setShowCheck(false)
+      timerRef.current = null
+    }, 900)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleClick()}
+      disabled={disabled || !copyText}
+      className={`rounded-md p-1.5 text-[#71717a] transition-all duration-200 hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
+        showCheck ? 'text-emerald-600 hover:text-emerald-600 hover:bg-[#ecfdf5]' : ''
+      }`}
+      aria-label={ariaLabel}
+    >
+      {showCheck ? <Check size={14} strokeWidth={1.75} /> : <Copy size={14} strokeWidth={1.75} />}
+    </button>
+  )
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -267,6 +413,139 @@ interface GenerationResult {
   modelUsed?: string
   outputId?: string
   error?: string
+}
+
+/** Single image/video cell: mesh placeholder while generating; crossfade → media after load. */
+function MediaSlotOutput({
+  genType,
+  isMulti,
+  modelName,
+  result,
+}: {
+  genType: 'image' | 'video'
+  isMulti: boolean
+  modelName: string
+  result: GenerationResult | undefined
+}) {
+  const singleBoxStyle: React.CSSProperties | undefined =
+    !isMulti
+      ? genType === 'image'
+        ? { width: 208, height: 208, minWidth: 208, minHeight: 208, boxSizing: 'border-box' }
+        : { width: 288, height: 160, minWidth: 288, minHeight: 160, boxSizing: 'border-box' }
+      : undefined
+
+  const multiFrameClass =
+    genType === 'image'
+      ? 'aspect-square w-full min-h-[200px]'
+      : 'aspect-video w-full min-h-40'
+
+  if (!result || result.status === 'generating') {
+    return (
+      <div className="flex max-w-full min-w-0 flex-col gap-2 self-start">
+        <p className="text-xs font-medium text-[#71717a]">
+          {genType === 'image' ? 'Creating image' : 'Creating video'}
+        </p>
+        <div
+          className={`media-gen-mesh box-border shrink-0 overflow-hidden rounded-xl border border-[#e4e4e7] ${isMulti ? multiFrameClass : ''}`}
+          style={singleBoxStyle}
+          aria-hidden
+        />
+      </div>
+    )
+  }
+
+  if (result.status !== 'completed' || !result.url) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+        <AlertCircle size={12} />
+        {result?.error ?? 'Failed'}
+      </div>
+    )
+  }
+
+  return (
+    <MediaCompletedReveal
+      key={result.url}
+      genType={genType}
+      isMulti={isMulti}
+      modelName={modelName}
+      url={result.url}
+    />
+  )
+}
+
+function MediaCompletedReveal({
+  genType,
+  isMulti,
+  modelName,
+  url,
+}: {
+  genType: 'image' | 'video'
+  isMulti: boolean
+  modelName: string
+  url: string
+}) {
+  const [ready, setReady] = useState(false)
+  const frameClass =
+    genType === 'image'
+      ? isMulti
+        ? 'aspect-square w-full min-h-[200px]'
+        : ''
+      : isMulti
+        ? 'aspect-video w-full min-h-40'
+        : ''
+
+  const singleBoxStyle: React.CSSProperties | undefined =
+    !isMulti
+      ? genType === 'image'
+        ? { width: 208, height: 208, minWidth: 208, minHeight: 208, boxSizing: 'border-box' }
+        : { width: 288, height: 160, minWidth: 288, minHeight: 160, boxSizing: 'border-box' }
+      : undefined
+
+  const markReady = useCallback(() => setReady(true), [])
+
+  return (
+    <div
+      className={`relative group max-w-full shrink-0 overflow-hidden rounded-xl ${frameClass}`}
+      style={singleBoxStyle}
+    >
+      <div
+        className={`media-gen-mesh pointer-events-none absolute inset-0 z-10 rounded-xl transition-opacity duration-300 ease-out ${
+          ready ? 'opacity-0' : 'opacity-100'
+        }`}
+        aria-hidden
+      />
+      {genType === 'image' ? (
+        <img
+          src={url}
+          alt={`Generated by ${modelName}`}
+          onLoad={markReady}
+          onError={markReady}
+          className={`relative z-20 h-full w-full rounded-xl border border-[#e5e5e5] object-contain transition-opacity duration-300 ease-out ${
+            isMulti ? 'max-h-56' : ''
+          } ${ready ? 'opacity-100' : 'opacity-0'}`}
+        />
+      ) : (
+        <video
+          src={url}
+          controls
+          onLoadedData={markReady}
+          onError={markReady}
+          className={`relative z-20 h-full w-full rounded-xl border border-[#e5e5e5] transition-opacity duration-300 ease-out ${
+            ready ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+      )}
+      <a
+        href={url}
+        download={genType === 'image' ? 'generated.png' : 'generated.mp4'}
+        className="absolute top-2 right-2 z-30 rounded-full bg-white/90 p-1.5 shadow opacity-0 transition-opacity hover:bg-white group-hover:opacity-100"
+        title="Download"
+      >
+        <Download size={13} className="text-[#0a0a0a]" />
+      </a>
+    </div>
+  )
 }
 
 interface RestoredOutputGroup {
@@ -394,7 +673,19 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const [pendingChatDocuments, setPendingChatDocuments] = useState<PendingChatDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [composerNotice, setComposerNotice] = useState<string | null>(null)
+  const [replyContext, setReplyContext] = useState<{
+    snippet: string
+    bodyForModel: string
+    replyToTurnId?: string
+  } | null>(null)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  /** User turn ids currently playing the delete (fade-out) animation */
+  const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
+
+  useEffect(() => {
+    setExitingTurnIds([])
+  }, [activeChatId])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
@@ -627,6 +918,38 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     })
   }, [])
 
+  const beginReplyToAssistantText = useCallback((assistantText: string, targetUserTurnId: string | null) => {
+    const t = assistantText.trim()
+    if (!t) {
+      textareaRef.current?.focus()
+      return
+    }
+    setReplyContext({
+      snippet: t.length > 160 ? `${t.slice(0, 160)}…` : t,
+      bodyForModel: t.slice(0, 16000),
+      ...(targetUserTurnId ? { replyToTurnId: targetUserTurnId } : {}),
+    })
+    textareaRef.current?.focus()
+  }, [])
+
+  const beginReplyToMediaPrompt = useCallback((prompt: string, kind: 'image' | 'video', targetUserTurnId: string | null) => {
+    const t = prompt.trim()
+    if (!t) {
+      textareaRef.current?.focus()
+      return
+    }
+    setReplyContext({
+      snippet: t.length > 120 ? `${t.slice(0, 120)}…` : t,
+      bodyForModel: `[Prior ${kind} generation request]\n${t.slice(0, 12000)}`,
+      ...(targetUserTurnId ? { replyToTurnId: targetUserTurnId } : {}),
+    })
+    textareaRef.current?.focus()
+  }, [])
+
+  const jumpToReplyTarget = useCallback((turnId: string) => {
+    scrollToExchangeTurn(turnId)
+  }, [])
+
   const handleComposerModeChange = useCallback((next: 'ask' | 'act') => {
     if (next === 'act') {
       const best = pickBestModelForAct(selectedModels)
@@ -648,6 +971,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     lastGeneratedImageUrlRef.current = null
     setSelectedImageModels([DEFAULT_IMAGE_MODEL_ID])
     setSelectedVideoModels([DEFAULT_VIDEO_MODEL_ID])
+    setReplyContext(null)
     chatInstances.forEach((c) => c.setMessages([]))
     actChat.setMessages([])
   }
@@ -727,8 +1051,22 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
         role: 'user' | 'assistant'
         parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }>
         model?: string
+        metadata?: UserBubbleMetadata
+        replyToTurnId?: string
+        replySnippet?: string
       }
       let rawMessages: RawMsg[] = data.messages || []
+      rawMessages = rawMessages.map((msg) => {
+        if (msg.role !== 'user' || !msg.replyToTurnId?.trim()) return msg
+        return {
+          ...msg,
+          metadata: {
+            ...(msg.metadata ?? {}),
+            replyToTurnId: msg.replyToTurnId.trim(),
+            ...(msg.replySnippet ? { replySnippet: msg.replySnippet } : {}),
+          },
+        }
+      })
 
       const outputs: ChatOutput[] = outputsRes.ok ? await outputsRes.json() : []
       const outputGroups = groupOutputsIntoExchanges(outputs)
@@ -889,6 +1227,37 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     }
   }
 
+  async function handleDeleteTurnById(turnId: string) {
+    const cid = activeChatIdRef.current ?? activeChatId
+    if (!cid || !turnId) {
+      setComposerNotice('Cannot delete this message right now.')
+      window.setTimeout(() => setComposerNotice(null), 4000)
+      return
+    }
+    const EXIT_MS = 300
+    setExitingTurnIds((prev) => (prev.includes(turnId) ? prev : [...prev, turnId]))
+    await new Promise((r) => window.setTimeout(r, EXIT_MS))
+    try {
+      const res = await fetch('/api/app/conversations/message', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: cid, turnId }),
+      })
+      const payload = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        setComposerNotice(payload.error || 'Could not delete this turn.')
+        window.setTimeout(() => setComposerNotice(null), 5000)
+        return
+      }
+      await loadChat(cid)
+    } catch {
+      setComposerNotice('Could not delete this turn.')
+      window.setTimeout(() => setComposerNotice(null), 5000)
+    } finally {
+      setExitingTurnIds((prev) => prev.filter((id) => id !== turnId))
+    }
+  }
+
   async function deleteChat(chatId: string, e: React.MouseEvent) {
     e.stopPropagation()
     await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
@@ -975,6 +1344,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
 
   async function handleSend() {
+    const replyCtxSnapshot = replyContext
     const text = input.trim()
     const hasReadyDocs = pendingChatDocuments.some((d) => d.status === 'ready')
     if (isAnyLoading) return
@@ -997,9 +1367,15 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
       setInput('')
       setGenerationChip(null)
+      setReplyContext(null)
       const wasFirst = isFirstMessage
       setIsFirstMessage(false)
       shouldScrollRef.current = true
+
+      const promptForModel =
+        replyCtxSnapshot?.bodyForModel && text
+          ? `${text}\n\n---\n[User is replying in thread to prior content]\n${replyCtxSnapshot.bodyForModel}`
+          : text
 
       // Inject a placeholder user message into the primary chat slot so the exchange renders
       const exchIdx = exchangeModels.length
@@ -1016,9 +1392,17 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       })
 
       const mediaUserMessage = {
-        id: `gen-${Date.now()}`,
+        id: mediaTurnId,
         role: 'user',
         parts: [{ type: 'text', text }],
+        ...(replyCtxSnapshot?.replyToTurnId
+          ? {
+              metadata: {
+                replyToTurnId: replyCtxSnapshot.replyToTurnId,
+                replySnippet: replyCtxSnapshot.snippet,
+              },
+            }
+          : {}),
       }
       chatInstances.slice(0, selectedModels.length).forEach((chat) => {
         chat.setMessages((prev) => [
@@ -1038,6 +1422,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           content: text,
           parts: [{ type: 'text', text }],
           modelId: selectedModels[0],
+          ...(replyCtxSnapshot?.replyToTurnId
+            ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
+            : {}),
         }),
       })
 
@@ -1049,7 +1436,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           fetch('/api/app/generate-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: text, modelId, conversationId: chatId, turnId: mediaTurnId, imageUrl }),
+            body: JSON.stringify({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId, imageUrl }),
           })
             .then(async (res) => {
               if (!res.ok) {
@@ -1102,7 +1489,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           fetch('/api/app/generate-video', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: text, modelId, conversationId: chatId, turnId: mediaTurnId }),
+            body: JSON.stringify({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId }),
           })
             .then(async (res) => {
               if (!res.ok) {
@@ -1215,8 +1602,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       persistedContent = `[Indexed documents: ${indexedFileNames.join(', ')}]`
     }
 
-    const userMetadata =
-      indexedFileNames.length > 0 ? { indexedDocuments: indexedFileNames } : undefined
+    const userMeta: UserBubbleMetadata = {}
+    if (indexedFileNames.length > 0) userMeta.indexedDocuments = indexedFileNames
+    if (replyCtxSnapshot?.replyToTurnId) {
+      userMeta.replyToTurnId = replyCtxSnapshot.replyToTurnId
+      userMeta.replySnippet = replyCtxSnapshot.snippet
+    }
+    const userMetadata = Object.keys(userMeta).length > 0 ? userMeta : undefined
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userUIMessage: any = {
       id: textTurnId,
@@ -1250,9 +1642,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       setAttachedImages([])
       setPendingChatDocuments([])
       setAttachmentError(null)
+      setReplyContext(null)
       setIsFirstMessage(false)
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      /* eslint-disable @typescript-eslint/no-explicit-any -- UIMessage / sendMessage payload */
       void actChat.sendMessage(
         {
           role: 'user',
@@ -1266,12 +1659,14 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             turnId: textTurnId,
             modelId: selectedActModel,
             ...(indexedFileNames.length > 0 ? { indexedFileNames } : {}),
+            ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
           },
         },
       ).then(() => {
         completeSession(chatId, activeChatIdRef.current === chatId)
         loadChats()
       })
+      /* eslint-enable @typescript-eslint/no-explicit-any */
       return
     }
 
@@ -1291,6 +1686,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     setAttachedImages([])
     setPendingChatDocuments([])
     setAttachmentError(null)
+    setReplyContext(null)
     setIsFirstMessage(false)
 
     let persistedUserMessage = false
@@ -1306,6 +1702,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           content: persistedContent,
           parts: partsForPersist,
           modelId: selectedModels[0],
+          ...(replyCtxSnapshot?.replyToTurnId
+            ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
+            : {}),
         }),
       })
       persistedUserMessage = persistRes.ok
@@ -1316,9 +1715,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       console.error('[ChatInterface] Failed to persist user message', err)
     }
 
+    /* eslint-disable @typescript-eslint/no-explicit-any -- UIMessage / sendMessage payload */
     void Promise.all(
       selectedModels.map((modelId, idx) =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         chatInstances[idx].sendMessage(
           {
             role: 'user',
@@ -1334,6 +1733,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               variantIndex: idx,
               skipUserMessage: persistedUserMessage || idx !== 0,
               ...(indexedFileNames.length > 0 ? { indexedFileNames } : {}),
+              ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
             },
           },
         ),
@@ -1342,13 +1742,55 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       completeSession(chatId, activeChatIdRef.current === chatId)
       loadChats()
     })
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   }
 
-  function handleModeChange(mode: GenerationMode) {
+  const handleModeChange = useCallback((mode: GenerationMode) => {
     setGenerationMode(mode)
     setGenerationChip(null)
     localStorage.setItem(CHAT_GEN_MODE_KEY, mode)
-  }
+  }, [])
+
+  const isAnyLoadingRef = useRef(isAnyLoading)
+  isAnyLoadingRef.current = isAnyLoading
+
+  useEffect(() => {
+    function onGlobalKeyDown(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey
+
+      if (meta && e.shiftKey && (e.key === '/' || e.key === '?')) {
+        if (isAnyLoadingRef.current) return
+        e.preventDefault()
+        setShowModelPicker(true)
+        return
+      }
+
+      if (meta && e.shiftKey && e.key === '.') {
+        if (isAnyLoadingRef.current) return
+        e.preventDefault()
+        setGenerationMode((prev) => {
+          const order: GenerationMode[] = ['text', 'image', 'video']
+          const i = order.indexOf(prev)
+          const next = order[(i + 1) % order.length]!
+          localStorage.setItem(CHAT_GEN_MODE_KEY, next)
+          return next
+        })
+        setGenerationChip(null)
+        return
+      }
+
+      if (e.key === '/' && !meta && !e.altKey && !e.shiftKey) {
+        const t = e.target as HTMLElement | null
+        if (!t) return
+        if (textareaRef.current && (t === textareaRef.current || textareaRef.current.contains(t))) return
+        if (t.closest('input, textarea, select, [contenteditable="true"]')) return
+        e.preventDefault()
+        textareaRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onGlobalKeyDown, true)
+    return () => window.removeEventListener('keydown', onGlobalKeyDown, true)
+  }, [])
 
   function toggleModel(modelId: string) {
     if (isAnyLoading || composerMode === 'act') return
@@ -1389,7 +1831,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const primaryMessages = chat0.messages
   const hasMessages = primaryMessages.some((m) => m.role === 'user')
   const hasHistory = hasMessages || generationResults.size > 0
-  const latestExchIdx = exchangeModels.length - 1
+  const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
+  const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -1444,7 +1887,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
       {/* Main area */}
       <div
-        className="flex-1 flex flex-col h-full overflow-hidden relative"
+        className="flex-1 flex flex-col h-full min-h-0 relative"
         onDragEnter={(e) => {
           e.preventDefault()
           dragCounterRef.current++
@@ -1504,16 +1947,19 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           {/* Model picker + Generation mode toggle */}
           <div className="flex items-center gap-2">
             <div ref={modelPickerRef} className="relative">
-              <button
-                onClick={() => !isAnyLoading && setShowModelPicker((v) => !v)}
-                disabled={isAnyLoading}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-[#f0f0f0] transition-colors ${
-                  isAnyLoading ? 'text-[#aaa] cursor-not-allowed' : 'text-[#525252] hover:bg-[#e8e8e8]'
-                }`}
-              >
-                {modelPickerLabel}
-                <ChevronDown size={11} />
-              </button>
+              <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
+                <button
+                  type="button"
+                  onClick={() => !isAnyLoading && setShowModelPicker((v) => !v)}
+                  disabled={isAnyLoading}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-[#f0f0f0] transition-colors ${
+                    isAnyLoading ? 'text-[#aaa] cursor-not-allowed' : 'text-[#525252] hover:bg-[#e8e8e8]'
+                  }`}
+                >
+                  {modelPickerLabel}
+                  <ChevronDown size={11} />
+                </button>
+              </DelayedTooltip>
               {showModelPicker && (
                 <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1 max-h-72 overflow-y-auto">
                   {generationMode === 'image' ? (
@@ -1599,14 +2045,18 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 </div>
               )}
             </div>
-            <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isAnyLoading} />
+            <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
+              <span className="inline-flex">
+                <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isAnyLoading} />
+              </span>
+            </DelayedTooltip>
           </div>
         </div>
 
         {/* Messages */}
         <div
           ref={messagesScrollRef}
-          className="flex-1 overflow-y-auto px-4 py-4"
+          className="flex-1 min-h-0 overflow-y-auto px-4 py-4"
         >
           <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col gap-6">
             {!hasHistory && (
@@ -1642,18 +2092,76 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 const genType = exchangeGenTypes[curExchIdx]
 
                 if (genType === 'image' || genType === 'video') {
-                  const exchModelList = exchangeModels[curExchIdx] ?? []
-                  const allResults: GenerationResult[] = genResults ?? exchModelList.map(() => ({ type: genType, status: 'generating' as const }))
+                  let exchModelList = exchangeModels[curExchIdx] ?? []
+                  if (exchModelList.length === 0) {
+                    exchModelList =
+                      genType === 'image'
+                        ? [selectedImageModels[0] ?? DEFAULT_IMAGE_MODEL_ID]
+                        : [selectedVideoModels[0] ?? DEFAULT_VIDEO_MODEL_ID]
+                  }
+                  let allResults: GenerationResult[] =
+                    genResults && genResults.length > 0
+                      ? [...genResults]
+                      : exchModelList.map(() => ({ type: genType, status: 'generating' as const }))
+                  while (allResults.length < exchModelList.length) {
+                    allResults.push({ type: genType, status: 'generating' })
+                  }
+                  if (allResults.length > exchModelList.length) {
+                    allResults = allResults.slice(0, exchModelList.length)
+                  }
                   const isMulti = exchModelList.length > 1
+                  const promptText = getMessageText(msg)
+                  const mediaTurnIdLocal = getUserTurnId(msg)
+                  const mediaModelLabel =
+                    exchModelList.length > 1
+                      ? `${genType === 'image' ? 'Image' : 'Video'} · ${exchModelList.length} models`
+                      : (IMAGE_MODELS.find((m) => m.id === exchModelList[0])?.name ||
+                        VIDEO_MODELS.find((m) => m.id === exchModelList[0])?.name ||
+                        exchModelList[0] ||
+                        genType)
+                  const mediaStillGenerating = allResults.some((r) => !r || r.status === 'generating')
+                  const mediaReplyMeta = getUserReplyThreadMeta(msg)
+                  const mediaIsExiting =
+                    !!mediaTurnIdLocal && exitingTurnIds.includes(mediaTurnIdLocal)
 
                   blocks.push(
-                    <div key={msg.id} className="flex flex-col gap-3 message-appear" data-exchange-idx={curExchIdx}>
+                    <div
+                      key={msg.id}
+                      className={`flex flex-col gap-3 message-appear transition-all duration-300 ease-out ${
+                        mediaIsExiting ? 'pointer-events-none opacity-0 -translate-y-1' : 'translate-y-0 opacity-100'
+                      }`}
+                      data-exchange-idx={curExchIdx}
+                      data-exchange-turn={mediaTurnIdLocal ?? undefined}
+                    >
+                      {mediaReplyMeta && (
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => jumpToReplyTarget(mediaReplyMeta.replyToTurnId)}
+                            className="max-w-[75%] rounded-lg border border-[#e5e5e5] bg-[#f0f0f0] px-2.5 py-1.5 text-left text-[11px] text-[#525252] transition-colors hover:bg-[#e8e8e8] hover:text-[#0a0a0a]"
+                          >
+                            <span className="flex items-center gap-1.5 font-medium text-[#0a0a0a]">
+                              <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[#71717a]" />
+                              Replying to
+                            </span>
+                            <span className="mt-0.5 line-clamp-2 block text-[#71717a]">{mediaReplyMeta.replySnippet}</span>
+                          </button>
+                        </div>
+                      )}
                       <div className="flex justify-end">
-                        <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm leading-relaxed text-[#fafafa]">
-                          <span className="whitespace-pre-wrap">{getMessageText(msg)}</span>
+                        <div className="chat-user-bubble select-text max-w-[75%] rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm leading-relaxed text-[#fafafa]">
+                          <span className="whitespace-pre-wrap">{promptText}</span>
                         </div>
                       </div>
-                      <div className={`px-1 ${isMulti ? 'grid grid-cols-2 gap-3' : 'flex flex-col gap-1'}`}>
+                      <div
+                        className={`px-1 min-w-0 w-full ${isMulti ? 'grid grid-cols-2 gap-3' : 'flex flex-col gap-1 items-start'} ${
+                          mediaStillGenerating && !isMulti
+                            ? genType === 'video'
+                              ? 'min-h-40'
+                              : 'min-h-52'
+                            : ''
+                        }`}
+                      >
                         {exchModelList.map((modelId, mIdx) => {
                           const result = allResults[mIdx]
                           const modelName =
@@ -1661,57 +2169,49 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                             VIDEO_MODELS.find((m) => m.id === modelId)?.name ||
                             modelId
                           return (
-                            <div key={`${modelId}-${mIdx}`} className="flex flex-col gap-1.5">
-                              {!result || result.status === 'generating' ? (
-                                <div className={`rounded-xl bg-[#f0f0f0] flex items-center justify-center ${
-                                  genType === 'image'
-                                    ? (isMulti ? 'w-full aspect-square' : 'w-52 h-52')
-                                    : (isMulti ? 'w-full aspect-video' : 'w-72 h-40')
-                                }`}>
-                                  <div className="flex flex-col items-center gap-2">
-                                    <div className="w-5 h-5 rounded-full border-2 border-[#e0e0e0] border-t-[#888] animate-spin" />
-                                    <span className="text-[10px] text-[#aaa]">Generating…</span>
-                                  </div>
-                                </div>
-                              ) : result.status === 'completed' && result.url ? (
-                                <div className="relative group w-fit">
-                                  {genType === 'image' ? (
-                                    <img
-                                      src={result.url}
-                                      alt={`Generated by ${modelName}`}
-                                      className={`rounded-xl object-contain border border-[#e5e5e5] ${
-                                        isMulti ? 'max-w-full max-h-56 w-full' : 'max-w-xs max-h-80'
-                                      }`}
-                                    />
-                                  ) : (
-                                    <video
-                                      src={result.url}
-                                      controls
-                                      className={`rounded-xl border border-[#e5e5e5] ${
-                                        isMulti ? 'max-w-full w-full' : 'max-w-sm'
-                                      }`}
-                                    />
-                                  )}
-                                  <a
-                                    href={result.url}
-                                    download={genType === 'image' ? 'generated.png' : 'generated.mp4'}
-                                    className="absolute top-2 right-2 p-1.5 bg-white/90 hover:bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity"
-                                    title="Download"
-                                  >
-                                    <Download size={13} className="text-[#0a0a0a]" />
-                                  </a>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 text-xs">
-                                  <AlertCircle size={12} />
-                                  {result?.error ?? 'Failed'}
-                                </div>
-                              )}
-                              <p className="text-[11px] text-[#aaa]">{modelName}</p>
+                            <div key={`${modelId}-${mIdx}`} className="flex min-w-0 flex-col gap-1.5 self-start">
+                              <MediaSlotOutput
+                                genType={genType}
+                                isMulti={isMulti}
+                                modelName={modelName}
+                                result={result}
+                              />
                             </div>
                           )
                         })}
                       </div>
+                      {!mediaStillGenerating && (
+                        <div className="message-appear flex items-center gap-1 px-1 pt-0.5">
+                          <FlashCopyIconButton
+                            copyText={promptText}
+                            disabled={!promptText || mediaIsExiting}
+                            ariaLabel="Copy prompt"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (mediaTurnIdLocal) void handleDeleteTurnById(mediaTurnIdLocal)
+                            }}
+                            disabled={!mediaTurnIdLocal || mediaIsExiting}
+                            className="rounded-md p-1.5 text-[#71717a] transition-all hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 active:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-30"
+                            aria-label="Delete this turn from history"
+                          >
+                            <Trash2 size={14} strokeWidth={1.75} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              beginReplyToMediaPrompt(promptText, genType, mediaTurnIdLocal)
+                            }
+                            disabled={mediaIsExiting}
+                            className="rounded-md p-1.5 text-[#71717a] transition-all hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 active:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-30"
+                            aria-label="Reply"
+                          >
+                            <Reply size={14} strokeWidth={1.75} />
+                          </button>
+                          <span className="ml-2 shrink-0 text-left text-[11px] text-[#aaa]">{mediaModelLabel}</span>
+                        </div>
+                      )}
                     </div>
                   )
                   continue
@@ -1728,28 +2228,17 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 let responseMsg = getResponseForExchange(slotIdx, curExchIdx)
                 let responseText = responseMsg ? getMessageText(responseMsg) : ''
 
-                // Act: user rows live on chat0 for layout, but assistants stream into actChat only.
-                // While streaming we showed actChat; after finish, getResponseForExchange still
-                // searches ask slots (chat0–3) — so the reply vanished until reload. Always map
-                // act exchanges to the paired assistant in actChat by turn order.
+                // Act: assistant streams only into actChat; align with chat0 user index (see resolveActAssistant).
                 if (isActExch) {
-                  const actTurnIndex =
-                    exchangeModes.slice(0, curExchIdx + 1).filter((m) => m === 'act').length - 1
-                  if (actTurnIndex >= 0) {
-                    const pairAssistIdx = 2 * actTurnIndex + 1
-                    const paired = actChat.messages[pairAssistIdx]
-                    if (paired?.role === 'assistant') {
-                      responseMsg = paired
-                      responseText = getMessageText(paired)
-                    }
-                  }
-                  // Latest act turn: prefer trailing assistant while stream is in flight (incremental deltas).
-                  if (isLatest && (actChat.status === 'streaming' || actChat.status === 'submitted')) {
-                    const lastAssist = [...actChat.messages].reverse().find((m) => m.role === 'assistant')
-                    if (lastAssist) {
-                      responseMsg = lastAssist
-                      responseText = getMessageText(lastAssist)
-                    }
+                  const paired = resolveActAssistant(chat0.messages, actChat.messages, msg.id)
+                  if (paired) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    responseMsg = paired as any
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    responseText = getMessageText(paired as any)
+                  } else {
+                    responseMsg = null
+                    responseText = ''
                   }
                 }
 
@@ -1789,6 +2278,20 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 const userDocumentNames = metaDocs.length > 0 ? metaDocs : parsedDocNames
                 const userBodyText = metaDocs.length > 0 ? rawUserText.trim() : bodyText
 
+                const sourceCitations = (
+                  responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined
+                )?.metadata?.sourceCitations
+
+                const modelLabelSingle =
+                  AVAILABLE_MODELS.find((m) => m.id === selectedModelId)?.name ?? selectedModelId
+                const modelLabel =
+                  exchModelList.length > 1
+                    ? `${modelLabelSingle} · ${exchModelList.length} models`
+                    : modelLabelSingle
+
+                const textTurnIdForActions = getUserTurnId(msg)
+                const textIsExiting = !!textTurnIdForActions && exitingTurnIds.includes(textTurnIdForActions)
+
                 blocks.push(
                   <ExchangeBlock
                     key={msg.id}
@@ -1808,6 +2311,20 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     onTabSelect={(tabIdx) => handleTabSelect(curExchIdx, tabIdx)}
                     isLoadingTabs={isAnyLoading}
                     prependedAssistantContent={toolNodes}
+                    sourceCitations={sourceCitations}
+                    turnIdForActions={textTurnIdForActions}
+                    modelLabel={modelLabel}
+                    onDeleteTurn={() => {
+                      const tid = getUserTurnId(msg)
+                      if (tid) void handleDeleteTurnById(tid)
+                    }}
+                    onReply={() =>
+                      beginReplyToAssistantText(responseText, getUserTurnId(msg))
+                    }
+                    actionsLocked={isLatest && isAnyLoading}
+                    isExiting={textIsExiting}
+                    replyThreadMeta={getUserReplyThreadMeta(msg)}
+                    onJumpToReply={jumpToReplyTarget}
                   />
                 )
               }
@@ -1874,6 +2391,12 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 {attachmentError}
               </div>
             )}
+            {composerNotice && (
+              <div className="mb-2 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                <AlertCircle size={13} className="shrink-0 text-amber-600" />
+                {composerNotice}
+              </div>
+            )}
             {isSendBlocked && !isAnyLoading ? (
               <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[#fafafa] border border-[#e5e5e5] text-xs text-[#888]">
                 <AlertCircle size={13} className="text-amber-500 shrink-0" />
@@ -1884,7 +2407,25 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   : 'No credits remaining. Please top up your account.'}
               </div>
             ) : (
-              <div className="rounded-2xl border border-[#e5e5e5] bg-white p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="overflow-visible rounded-2xl border border-[#e5e5e5] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                {replyContext && (
+                  <div className="flex items-start gap-2 border-b border-[#e5e5e5] bg-[#f0f0f0] px-3 py-2.5 text-xs text-[#525252]">
+                    <Reply size={14} className="mt-0.5 shrink-0 text-[#71717a]" strokeWidth={1.75} />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-[#0a0a0a]">Replying to prior response</p>
+                      <p className="mt-0.5 line-clamp-2 text-[#71717a]">{replyContext.snippet}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplyContext(null)}
+                      className="shrink-0 rounded-md p-1 text-[#71717a] transition-colors hover:bg-[#e5e5e5] hover:text-[#0a0a0a]"
+                      aria-label="Cancel reply"
+                    >
+                      <X size={14} strokeWidth={1.75} />
+                    </button>
+                  </div>
+                )}
+                <div className="p-3">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1912,6 +2453,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   placeholder="Ask anything..."
                   rows={1}
                   onKeyDown={(e) => {
+                    if (e.key === 'Tab' && e.shiftKey) {
+                      e.preventDefault()
+                      handleComposerModeChange(composerMode === 'ask' ? 'act' : 'ask')
+                      return
+                    }
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
                       handleSend()
@@ -1921,14 +2467,15 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 />
                 <div className="mt-2 flex min-h-9 items-center gap-2">
                   <div ref={attachMenuRef} className="relative shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setShowAttachMenu((v) => !v)}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#71717a] transition-colors hover:bg-[#f4f4f5] hover:text-[#0a0a0a]"
-                      title="Attach"
-                    >
-                      <Plus size={18} strokeWidth={1.75} />
-                    </button>
+                    <DelayedTooltip label="Attach files or switch to image/video" side="top">
+                      <button
+                        type="button"
+                        onClick={() => setShowAttachMenu((v) => !v)}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#71717a] transition-colors hover:bg-[#f4f4f5] hover:text-[#0a0a0a]"
+                      >
+                        <Plus size={18} strokeWidth={1.75} />
+                      </button>
+                    </DelayedTooltip>
                   {showAttachMenu && (
                     <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#e5e5e5] rounded-xl shadow-lg py-1 w-52 z-20">
                       <button
@@ -1948,7 +2495,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                       <div className="border-t border-[#f0f0f0] my-1" />
                       <button
                         type="button"
-                        onClick={() => { setGenerationChip('image'); setShowAttachMenu(false) }}
+                        onClick={() => { handleModeChange('image'); setShowAttachMenu(false) }}
                         className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors"
                       >
                         <ImageIcon size={13} className="text-[#0a0a0a]" />
@@ -1956,7 +2503,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setGenerationChip('video'); setShowAttachMenu(false) }}
+                        onClick={() => { handleModeChange('video'); setShowAttachMenu(false) }}
                         className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors"
                       >
                         <Video size={13} className="text-[#0a0a0a]" />
@@ -1978,11 +2525,15 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     </div>
                   )}
                   </div>
-                  <AskActModeToggle
-                    mode={composerMode}
-                    onChange={handleComposerModeChange}
-                    disabled={isAnyLoading}
-                  />
+                  <DelayedTooltip label="Ask / Act (⇧Tab in composer)" side="top">
+                    <span className="inline-flex">
+                      <AskActModeToggle
+                        mode={composerMode}
+                        onChange={handleComposerModeChange}
+                        disabled={isAnyLoading}
+                      />
+                    </span>
+                  </DelayedTooltip>
                   {generationChip && (
                     <div className="flex shrink-0 items-center gap-1 rounded-full bg-[#0a0a0a] px-2 py-1 text-xs font-medium text-[#fafafa]">
                       {generationChip === 'image' ? <ImageIcon size={10} /> : <Video size={10} />}
@@ -1995,29 +2546,33 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   <div className="min-w-0 flex-1" />
                   <div className="flex shrink-0 items-center gap-2">
                     {isAnyLoading ? (
-                      <button
-                        type="button"
-                        onClick={stopAll}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0a0a0a] text-[#fafafa] transition-colors hover:bg-[#333]"
-                        title="Stop generating"
-                      >
-                        <div className="h-3.5 w-3.5 rounded-sm bg-[#fafafa]" />
-                      </button>
+                      <DelayedTooltip label="Stop generating" side="top">
+                        <button
+                          type="button"
+                          onClick={stopAll}
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0a0a0a] text-[#fafafa] transition-colors hover:bg-[#333]"
+                        >
+                          <div className="h-3.5 w-3.5 rounded-sm bg-[#fafafa]" />
+                        </button>
+                      </DelayedTooltip>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={handleSend}
-                        disabled={
-                          !input.trim() &&
-                          attachedImages.length === 0 &&
-                          !pendingChatDocuments.some((d) => d.status === 'ready')
-                        }
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0a0a0a] text-[#fafafa] transition-colors hover:bg-[#333] disabled:opacity-40"
-                      >
-                        <Send size={17} strokeWidth={1.75} />
-                      </button>
+                      <DelayedTooltip label="Send (↵) · new line (⇧↵)" side="top">
+                        <button
+                          type="button"
+                          onClick={handleSend}
+                          disabled={
+                            !input.trim() &&
+                            attachedImages.length === 0 &&
+                            !pendingChatDocuments.some((d) => d.status === 'ready')
+                          }
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0a0a0a] text-[#fafafa] transition-colors hover:bg-[#333] disabled:opacity-40"
+                        >
+                          <Send size={17} strokeWidth={1.75} />
+                        </button>
+                      </DelayedTooltip>
                     )}
                   </div>
+                </div>
                 </div>
               </div>
             )}

@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
           parts?: Array<{ type: string; text?: string; url?: string; mediaType?: string }>
           modelId?: string
           variantIndex?: number
+          replyToTurnId?: string
+          replySnippet?: string
         }>
       >('conversations:getMessages', { conversationId: conversationId as Id<'conversations'> })
 
@@ -59,6 +61,8 @@ export async function GET(request: NextRequest) {
               }))
             : [{ type: 'text' as const, text: message.content }],
           model: message.modelId,
+          ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),
+          ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
         })),
       })
     }

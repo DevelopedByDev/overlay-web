@@ -16,7 +16,7 @@ import {
   shouldFallbackOpenRouterWithoutTools,
   userFacingOpenRouterError,
 } from '@/lib/openrouter-service'
-import { buildAutoRetrievalSystemExtension } from '@/lib/ask-knowledge-context'
+import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import {
   OPENROUTER_KNOWLEDGE_TOOLS,
   createKnowledgeToolExecutor,
@@ -27,6 +27,7 @@ import {
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
 } from '@/lib/knowledge-agent-instructions'
+import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 const MATH_FORMAT_INSTRUCTION = [
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
       systemPrompt,
       skipUserMessage,
       indexedFileNames,
+      replyContextForModel,
     }: {
       messages: UIMessage[]
       modelId?: string
@@ -71,6 +73,8 @@ export async function POST(request: NextRequest) {
       skipUserMessage?: boolean
       /** Notebook files just indexed from chat attachments (this turn). */
       indexedFileNames?: string[]
+      /** Thread reply context appended to last user turn for the model only. */
+      replyContextForModel?: string
     } = await request.json()
     const userId = session.user.id
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
@@ -158,13 +162,16 @@ export async function POST(request: NextRequest) {
     }
 
     let autoRetrieval = ''
+    let sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> = {}
     try {
-      autoRetrieval = await buildAutoRetrievalSystemExtension({
+      const bundle = await buildAutoRetrievalBundle({
         userMessage: latestUserText ?? '',
         userId,
         accessToken: session.accessToken,
         projectId: conversationProjectId,
       })
+      autoRetrieval = bundle.extension
+      sourceCitationMap = bundle.citations
     } catch {
       // optional
     }
@@ -175,8 +182,9 @@ export async function POST(request: NextRequest) {
 
     const indexedNote = indexedFilesSystemNote(indexedNames)
 
-    /** Model sees indexed context in the user turn; request `messages` stay unchanged for persistence. */
-    const messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
+    /** Model sees indexed + optional reply context in the user turn; request `messages` stay unchanged for persistence. */
+    let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
+    messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
 
     const baseSystemMessage = [
       systemPrompt || 'You are a helpful AI assistant.',
@@ -322,7 +330,18 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return result.toUIMessageStreamResponse()
+    const hasCitations = Object.keys(sourceCitationMap).length > 0
+
+    return result.toUIMessageStreamResponse({
+      originalMessages: messages,
+      messageMetadata: ({ part }) => {
+        if (!hasCitations) return undefined
+        if (part.type === 'start' || part.type === 'finish') {
+          return { sourceCitations: sourceCitationMap }
+        }
+        return undefined
+      },
+    })
   } catch (error) {
     console.error('[conversations/ask] Error:', error)
     return NextResponse.json({ error: 'Failed to process ask request' }, { status: 500 })

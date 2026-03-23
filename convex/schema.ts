@@ -116,6 +116,9 @@ export default defineSchema({
     modelId: v.optional(v.string()),
     variantIndex: v.optional(v.number()),
     tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
+    /** User message: optional thread reply target (assistant / exchange turn). */
+    replyToTurnId: v.optional(v.string()),
+    replySnippet: v.optional(v.string()),
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
     .index('by_userId', ['userId']),
