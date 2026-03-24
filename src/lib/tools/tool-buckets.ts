@@ -10,6 +10,8 @@ const INTERNAL_TOOL_IDS = new Set<string>([
   'create_note',
   'update_note',
   'delete_note',
+  'list_computer_instances',
+  'get_computer_by_name',
   'list_computer_sessions',
   'get_computer_session_messages',
   'list_computer_workspace_files',

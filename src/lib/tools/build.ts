@@ -4,7 +4,9 @@ import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/models'
 import {
   executeCreateComputerSession,
   executeDeleteComputerSession,
+  executeGetComputerByName,
   executeGetComputerSessionMessages,
+  executeListComputerInstances,
   executeListComputerSessions,
   executeListComputerWorkspaceFiles,
   executeReadComputerWorkspaceFile,
@@ -88,6 +90,31 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     execute: async (input) => {
       assertOverlayToolAllowedForMode(mode, 'get_note')
       return executeGetNote(options, input)
+    },
+  })
+
+  tools.list_computer_instances = tool({
+    description:
+      'List the user\'s Overlay hosted computer instances (display name, status, internal id, region). ' +
+      'Call this when they have multiple machines or before other computer tools so you know which `computerName` to pass. ' +
+      'Instance names are unique per account; users refer to them by name, not id.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      assertOverlayToolAllowedForMode(mode, 'list_computer_instances')
+      return executeListComputerInstances(options)
+    },
+  })
+
+  tools.get_computer_by_name = tool({
+    description:
+      'Look up one hosted computer by its display name (case-insensitive). Returns `computerId` and status — use `computerName` in other computer tools. ' +
+      'If unsure of names, call list_computer_instances first.',
+    inputSchema: z.object({
+      name: z.string().describe('The computer instance name as shown in Overlay (e.g. "Work VM")'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'get_computer_by_name')
+      return executeGetComputerByName(options, input)
     },
   })
 

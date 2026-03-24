@@ -4,7 +4,7 @@
 
 /** Ask mode: retrieval + memory writes; note/file mutations stay in Act mode. */
 export const ASK_KNOWLEDGE_TOOLS_NOTE = [
-  'Tools in Ask mode (when available): search_knowledge (notebook files and memories), save_memory / update_memory / delete_memory when the user shares or corrects durable facts, list_notes / get_note (read-only), read-only computer tools (list_computer_sessions, get_computer_session_messages, workspace file list/read) when the user has a hosted computer, perplexity_search (live web when AI Gateway is configured), and filtered Composio integrations.',
+  'Tools in Ask mode (when available): search_knowledge (notebook files and memories), save_memory / update_memory / delete_memory when the user shares or corrects durable facts, list_notes / get_note (read-only), hosted-computer tools: list_computer_instances and get_computer_by_name (users pick instances by unique display name), then read-only session/workspace tools (list_computer_sessions, get_computer_session_messages, workspace file list/read), perplexity_search (live web when AI Gateway is configured), and filtered Composio integrations.',
   'Use search_knowledge for facts beyond AUTO_RETRIEVED_KNOWLEDGE or the memory list above; use perplexity_search for current events, news, or anything requiring the public web.',
   'You cannot create, update, or delete notebook notes in Ask mode — use Act mode for note CRUD. You CAN save, update, or delete memories in Ask mode when the user states preferences or facts worth recalling later.',
   'When your answer uses AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end with **Sources:** (and include URLs/snippets from web search where relevant).',
@@ -12,7 +12,7 @@ export const ASK_KNOWLEDGE_TOOLS_NOTE = [
 
 /** Act mode: knowledge + web search tool guidance (Composio remains separate in route instructions). */
 export const ACT_KNOWLEDGE_WEB_TOOLS_NOTE = [
-  'You have search_knowledge (hybrid search over the user\'s notebook files and memories), perplexity_search (live web via AI Gateway when configured), full notes CRUD (create_note, update_note, delete_note, list_notes, get_note), and hosted-computer tools (sessions, workspace files, run_computer_gateway_command) when applicable.',
+  'You have search_knowledge (hybrid search over the user\'s notebook files and memories), perplexity_search (live web via AI Gateway when configured), full notes CRUD (create_note, update_note, delete_note, list_notes, get_note), and hosted-computer tools: list_computer_instances, get_computer_by_name (name is unique per user — pass computerName in other computer tools), plus sessions, workspace files, run_computer_gateway_command when applicable.',
   'Use search_knowledge for extra retrieval beyond AUTO_RETRIEVED_KNOWLEDGE; use perplexity_search for current web information.',
   'When you use AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end your reply with **Sources:** listing [n] labels as instructed in that block.',
 ].join('\n')

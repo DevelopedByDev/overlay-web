@@ -243,6 +243,8 @@ function formatToolLabel(toolId: string): string {
     create_note: 'Create note',
     update_note: 'Update note',
     delete_note: 'Delete note',
+    list_computer_instances: 'List computers',
+    get_computer_by_name: 'Find computer',
     list_computer_sessions: 'Computer sessions',
     get_computer_session_messages: 'Computer chat',
     list_computer_workspace_files: 'Computer files',

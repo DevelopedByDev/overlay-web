@@ -24,6 +24,86 @@ function asAuth(options: OverlayToolsOptions): ComputerToolAuth | undefined {
   return { userId: options.userId, accessToken: options.accessToken }
 }
 
+type ComputerListRow = {
+  _id: string
+  name: string
+  status: string
+  region: string
+  setupType: string
+}
+
+export async function executeListComputerInstances(options: OverlayToolsOptions) {
+  const auth = asAuth(options)
+  if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  try {
+    const rows = await convex.query<ComputerListRow[]>('computers:list', {
+      userId: options.userId,
+      accessToken: options.accessToken!,
+    })
+    const computers = (rows ?? []).map((c) => ({
+      computerId: c._id,
+      name: c.name,
+      status: c.status,
+      region: c.region,
+      setupType: c.setupType,
+    }))
+    return { success: true, computers }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to list computer instances',
+    }
+  }
+}
+
+export async function executeGetComputerByName(
+  options: OverlayToolsOptions,
+  input: { name: string },
+) {
+  const auth = asAuth(options)
+  if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const want = input.name?.trim()
+  if (!want) return { success: false, error: 'Computer name is required' }
+  try {
+    const rows = await convex.query<ComputerListRow[]>('computers:list', {
+      userId: options.userId,
+      accessToken: options.accessToken!,
+    })
+    const lower = want.toLowerCase()
+    const matches = (rows ?? []).filter((c) => c.name.trim().toLowerCase() === lower)
+    if (matches.length === 0) {
+      const labels = (rows ?? []).map((c) => `"${c.name}" (${c.status})`)
+      return {
+        success: false,
+        error: labels.length
+          ? `No computer named "${want}". Instances: ${labels.join(', ')}.`
+          : `No computer named "${want}".`,
+      }
+    }
+    if (matches.length > 1) {
+      return {
+        success: false,
+        error:
+          'Multiple computers share that name; rename one in the Computers page so each instance has a unique name.',
+      }
+    }
+    const c = matches[0]!
+    return {
+      success: true,
+      computerId: c._id,
+      name: c.name,
+      status: c.status,
+      region: c.region,
+      setupType: c.setupType,
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to look up computer by name',
+    }
+  }
+}
+
 async function resolveComputerIdForTools(
   options: OverlayToolsOptions,
   input: ComputerTargetInput,

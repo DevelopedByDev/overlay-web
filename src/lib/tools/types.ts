@@ -4,6 +4,7 @@
  * Phase 0 inventory:
  * - search_knowledge: ask + act (hybrid search via /api/app/knowledge/search)
  * - list_notes, get_note: ask + act; create/update/delete_note: act only
+ * - list_computer_instances, get_computer_by_name: ask + act (Convex list / name lookup)
  * - Computer *: read tools ask + act; session/workspace writes + run_computer_gateway_command: act only
  * - save_memory, update_memory, delete_memory: ask + act (/api/app/memory)
  * - generate_image, generate_video: act only (/api/app/generate-*)
