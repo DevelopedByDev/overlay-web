@@ -2,12 +2,25 @@ import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import { Id } from './_generated/dataModel'
 
-const messageParts = v.optional(v.array(v.object({
-  type: v.string(),
-  text: v.optional(v.string()),
-  url: v.optional(v.string()),
-  mediaType: v.optional(v.string()),
-})))
+/** Matches AI SDK UI parts we persist; `tool-invocation` restores tool chips after reload. */
+const messagePart = v.union(
+  v.object({
+    type: v.literal('tool-invocation'),
+    toolInvocation: v.object({
+      toolCallId: v.optional(v.string()),
+      toolName: v.string(),
+      state: v.optional(v.string()),
+    }),
+  }),
+  v.object({
+    type: v.string(),
+    text: v.optional(v.string()),
+    url: v.optional(v.string()),
+    mediaType: v.optional(v.string()),
+  }),
+)
+
+const messageParts = v.optional(v.array(messagePart))
 
 function clampAskModels(ids: string[]): string[] {
   const uniq = [...new Set(ids.filter(Boolean))]

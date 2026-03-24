@@ -20,7 +20,11 @@ export async function resolveAuthenticatedAppUser(
     authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : undefined
   const token =
     (typeof body.accessToken === 'string' && body.accessToken.trim()) || bearer
-  const uid = typeof body.userId === 'string' ? body.userId.trim() : ''
+  const queryUserId = request.nextUrl.searchParams.get('userId')?.trim() || ''
+  const uid =
+    typeof body.userId === 'string' && body.userId.trim()
+      ? body.userId.trim()
+      : queryUserId
   if (!token || !uid) return null
 
   const ent = await convex.query('usage:getEntitlements', {

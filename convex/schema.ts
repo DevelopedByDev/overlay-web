@@ -48,6 +48,28 @@ export default defineSchema({
     outputTokens: v.number()
   }).index('by_userId_period', ['userId', 'billingPeriodStart']),
 
+  /** One row per tool invocation (audit / cost-class tracking for chat tools). */
+  toolInvocations: defineTable({
+    userId: v.string(),
+    toolId: v.string(),
+    mode: v.union(v.literal('ask'), v.literal('act')),
+    modelId: v.optional(v.string()),
+    conversationId: v.optional(v.string()),
+    success: v.boolean(),
+    durationMs: v.optional(v.number()),
+    costBucket: v.union(
+      v.literal('perplexity'),
+      v.literal('image'),
+      v.literal('video'),
+      v.literal('composio'),
+      v.literal('internal'),
+    ),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_userId_toolId', ['userId', 'toolId']),
+
   // Daily counters used exclusively for free-tier weekly limit enforcement.
   dailyUsage: defineTable({
     userId: v.string(),
@@ -107,12 +129,26 @@ export default defineSchema({
     mode: v.union(v.literal('ask'), v.literal('act')),
     content: v.string(),
     contentType: v.union(v.literal('text'), v.literal('image'), v.literal('video')),
-    parts: v.optional(v.array(v.object({
-      type: v.string(),
-      text: v.optional(v.string()),
-      url: v.optional(v.string()),
-      mediaType: v.optional(v.string()),
-    }))),
+    parts: v.optional(
+      v.array(
+        v.union(
+          v.object({
+            type: v.literal('tool-invocation'),
+            toolInvocation: v.object({
+              toolCallId: v.optional(v.string()),
+              toolName: v.string(),
+              state: v.optional(v.string()),
+            }),
+          }),
+          v.object({
+            type: v.string(),
+            text: v.optional(v.string()),
+            url: v.optional(v.string()),
+            mediaType: v.optional(v.string()),
+          }),
+        ),
+      ),
+    ),
     modelId: v.optional(v.string()),
     variantIndex: v.optional(v.number()),
     tokens: v.optional(v.object({ input: v.number(), output: v.number() })),

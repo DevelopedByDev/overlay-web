@@ -1,11 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
+
+type NoteDoc = {
+  _id: string
+  userId: string
+  title: string
+  content: string
+  tags: string[]
+  projectId?: string
+  updatedAt: number
+}
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const noteId = request.nextUrl.searchParams.get('noteId')
+    if (noteId) {
+      const note = await convex.query<NoteDoc | null>('notes:get', { noteId })
+      if (!note || note.userId !== auth.userId) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      }
+      return NextResponse.json(note)
+    }
 
     const projectId = request.nextUrl.searchParams.get('projectId')
     if (projectId !== null) {
@@ -13,7 +32,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(notes || [])
     }
 
-    const notes = await convex.query('notes:list', { userId: session.user.id })
+    const notes = await convex.query('notes:list', { userId: auth.userId })
     return NextResponse.json(notes || [])
   } catch (error) {
     console.error('[Notes API] GET error:', error)
@@ -23,16 +42,23 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const body = (await request.json()) as {
+      title?: string
+      content?: string
+      tags?: string[]
+      projectId?: string
+      accessToken?: string
+      userId?: string
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { title, content, tags, projectId } = await request.json()
     const noteId = await convex.mutation<string>('notes:create', {
-      userId: session.user.id,
-      title: title || 'Untitled',
-      content: content || '',
-      tags: tags || [],
-      projectId: projectId ?? undefined,
+      userId: auth.userId,
+      title: body.title || 'Untitled',
+      content: body.content || '',
+      tags: body.tags || [],
+      projectId: body.projectId ?? undefined,
     })
     return NextResponse.json({ id: noteId })
   } catch (error) {
@@ -43,13 +69,30 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const body = (await request.json()) as {
+      noteId?: string
+      title?: string
+      content?: string
+      tags?: string[]
+      accessToken?: string
+      userId?: string
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { noteId, title, content, tags } = await request.json()
-    if (!noteId) return NextResponse.json({ error: 'noteId required' }, { status: 400 })
+    if (!body.noteId) return NextResponse.json({ error: 'noteId required' }, { status: 400 })
 
-    await convex.mutation('notes:update', { noteId, title, content, tags })
+    const existing = await convex.query<NoteDoc | null>('notes:get', { noteId: body.noteId })
+    if (!existing || existing.userId !== auth.userId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
+    await convex.mutation('notes:update', {
+      noteId: body.noteId,
+      title: body.title,
+      content: body.content,
+      tags: body.tags,
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[Notes API] PATCH error:', error)
@@ -59,12 +102,25 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let body: { accessToken?: string; userId?: string } = {}
+    const contentType = request.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      try {
+        body = await request.json()
+      } catch {
+        body = {}
+      }
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { searchParams } = request.nextUrl
-    const noteId = searchParams.get('noteId')
+    const noteId = request.nextUrl.searchParams.get('noteId')
     if (!noteId) return NextResponse.json({ error: 'noteId required' }, { status: 400 })
+
+    const existing = await convex.query<NoteDoc | null>('notes:get', { noteId })
+    if (!existing || existing.userId !== auth.userId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
 
     await convex.mutation('notes:remove', { noteId })
     return NextResponse.json({ success: true })

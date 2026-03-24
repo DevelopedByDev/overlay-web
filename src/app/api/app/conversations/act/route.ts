@@ -17,7 +17,11 @@ import {
   indexedFilesSystemNote,
 } from '@/lib/knowledge-agent-instructions'
 import { filterComposioToolSet } from '@/lib/tools/composio-filter'
+import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
+import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
+import { getInternalApiBaseUrl } from '@/lib/url'
+import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 function summarizeToolOutputForLog(output: unknown): string {
@@ -197,6 +201,7 @@ export async function POST(request: NextRequest) {
     const indexedNote = indexedFilesSystemNote(indexedNames)
     let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
+    messagesForModel = sanitizeUiMessagesForModelApi(messagesForModel)
 
     const modelMessages = await convertToModelMessages(messagesForModel)
     const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
@@ -208,6 +213,8 @@ export async function POST(request: NextRequest) {
           accessToken: session.accessToken,
           conversationId: conversationId ?? undefined,
           projectId: conversationProjectId,
+          baseUrl: getInternalApiBaseUrl(request),
+          forwardCookie: request.headers.get('cookie') ?? undefined,
         }),
       ),
       getGatewayPerplexitySearchTool(session.accessToken, effectiveModelId),
@@ -248,9 +255,6 @@ export async function POST(request: NextRequest) {
         indexedNote,
     })
 
-    let totalInputTokens = 0
-    let totalOutputTokens = 0
-
     const result = await agent.stream({
       messages: modelMessages,
       experimental_onToolCallStart: ({ toolCall }) => {
@@ -266,26 +270,38 @@ export async function POST(request: NextRequest) {
         })
       },
       experimental_onToolCallFinish: ({ toolCall, success, durationMs, output, error }) => {
-        if (!toolCall || toolCall.toolName !== 'perplexity_search') return
-        if (success) {
-          console.log('[conversations/act] perplexity_search OK', {
-            toolCallId: toolCall.toolCallId,
-            durationMs,
-            output: summarizeToolOutputForLog(output),
-          })
-        } else {
-          console.error('[conversations/act] perplexity_search FAILED', {
-            toolCallId: toolCall.toolCallId,
-            durationMs,
-            error: error instanceof Error ? error.message : String(error),
-          })
+        if (!toolCall?.toolName) return
+        if (toolCall.toolName === 'perplexity_search') {
+          if (success) {
+            console.log('[conversations/act] perplexity_search OK', {
+              toolCallId: toolCall.toolCallId,
+              durationMs,
+              output: summarizeToolOutputForLog(output),
+            })
+          } else {
+            console.error('[conversations/act] perplexity_search FAILED', {
+              toolCallId: toolCall.toolCallId,
+              durationMs,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
         }
+        fireAndForgetRecordToolInvocation({
+          accessToken: session.accessToken,
+          userId,
+          toolName: toolCall.toolName,
+          mode: 'act',
+          modelId: effectiveModelId,
+          conversationId: conversationId ?? undefined,
+          success,
+          durationMs,
+          error,
+        })
       },
-      onFinish: async ({ text, usage }) => {
-        if (usage) {
-          totalInputTokens += usage.inputTokens ?? 0
-          totalOutputTokens += usage.outputTokens ?? 0
-        }
+      onFinish: async (event) => {
+        const totalUsage = event.totalUsage
+        const totalInputTokens = totalUsage?.inputTokens ?? 0
+        const totalOutputTokens = totalUsage?.outputTokens ?? 0
 
         const costDollars = calculateTokenCost(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
         const costCents = Math.round(costDollars * 100)
@@ -310,7 +326,12 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (cid && text) {
+        const { content: persistContent, parts: persistParts } = buildAssistantPersistenceFromSteps(
+          event.steps,
+          event.text,
+        )
+
+        if (cid && persistContent) {
           try {
             await convex.mutation('conversations:addMessage', {
               conversationId: cid,
@@ -318,9 +339,9 @@ export async function POST(request: NextRequest) {
               turnId: tid,
               role: 'assistant',
               mode: 'act',
-              content: text,
+              content: persistContent,
               contentType: 'text',
-              parts: [{ type: 'text', text }],
+              parts: persistParts as never,
               modelId: effectiveModelId,
               tokens: { input: totalInputTokens, output: totalOutputTokens },
             })

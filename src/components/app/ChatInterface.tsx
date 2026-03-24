@@ -13,6 +13,8 @@ import {
   VIDEO_MODELS,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
+  getChatModelDisplayName,
+  getModel,
   pickBestModelForAct,
   type GenerationMode,
 } from '@/lib/models'
@@ -23,6 +25,7 @@ import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { useNavigationProgress } from '@/lib/navigation-progress'
 import { MarkdownMessage } from './MarkdownMessage'
 import { DelayedTooltip } from './DelayedTooltip'
+import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 
 function getAssistantAfterUserExchangeIndex(msgs: UIMessage[], exchIdx: number): UIMessage | null {
   let uCount = 0
@@ -154,42 +157,92 @@ function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> })
   return msg.parts.filter((p) => p.type === 'text').map((p) => p.text || '').join('')
 }
 
-const TOOL_UI_DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
+type AssistantVisualBlock =
+  | { kind: 'tool'; key: string; name: string; state: string }
+  | { kind: 'text'; text: string }
+  | { kind: 'file'; url: string; mediaType?: string }
 
-type ToolDisplayInfo = { key: string; name: string; state: string }
-
-/** AI SDK v6 uses `tool-{name}` / `dynamic-tool` parts; older persisted rows may use `tool-invocation`. */
-function extractToolDisplayInfos(parts: unknown[] | undefined): ToolDisplayInfo[] {
+/**
+ * Preserve message `parts` order so tools and text interleave (matches stream / persisted transcript).
+ */
+function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVisualBlock[] {
   if (!parts?.length) return []
-  const out: ToolDisplayInfo[] = []
+  const out: AssistantVisualBlock[] = []
   for (const p of parts) {
-    if (isToolUIPart(p as never)) {
-      const part = p as { toolCallId: string; state: string }
+    const legacy = p as { type?: string; toolInvocation?: { toolCallId?: string; toolName?: string; state?: string } }
+    if (legacy?.type === 'tool-invocation' && legacy.toolInvocation?.toolName) {
+      const inv = legacy.toolInvocation
       out.push({
-        key: part.toolCallId,
+        kind: 'tool',
+        key: (inv.toolCallId && inv.toolCallId.trim()) || `legacy-inv-${out.length}`,
+        name: inv.toolName as string,
+        state: inv.state ?? 'output-available',
+      })
+      continue
+    }
+    if (isToolUIPart(p as never)) {
+      const part = p as { toolCallId?: string; state: string }
+      out.push({
+        kind: 'tool',
+        key: (part.toolCallId && part.toolCallId.trim()) || `sdk-tool-${out.length}`,
         name: getToolName(p as never),
         state: part.state,
       })
       continue
     }
-    const legacy = p as { type?: string; toolInvocation?: { toolCallId?: string; toolName?: string; state?: string } }
-    if (legacy?.type === 'tool-invocation' && legacy.toolInvocation?.toolName) {
-      const inv = legacy.toolInvocation
-      const legacyName = inv.toolName
-      if (!legacyName) continue
-      out.push({
-        key: inv.toolCallId ?? `legacy-${out.length}`,
-        name: legacyName,
-        state: inv.state ?? 'unknown',
-      })
+    const pt = p as { type?: string; text?: string; url?: string; mediaType?: string }
+    if (pt.type === 'file' && typeof pt.url === 'string' && pt.url) {
+      out.push({ kind: 'file', url: pt.url, mediaType: pt.mediaType })
+      continue
+    }
+    if (pt.type === 'text' && typeof pt.text === 'string') {
+      const merged = normalizeAgentAssistantText(pt.text)
+      if (!merged) continue
+      const prev = out[out.length - 1]
+      if (prev?.kind === 'text') {
+        prev.text = normalizeAgentAssistantText(`${prev.text}\n\n${merged}`)
+      } else {
+        out.push({ kind: 'text', text: merged })
+      }
     }
   }
   return out
 }
 
+function assistantBlocksToPlainText(blocks: AssistantVisualBlock[]): string {
+  return blocks
+    .filter((b): b is { kind: 'text'; text: string } => b.kind === 'text')
+    .map((b) => b.text)
+    .join('\n\n')
+}
+
+const TOOL_UI_DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
+
 function formatToolLabel(toolId: string): string {
-  if (toolId === 'perplexity_search') return 'Web search'
-  return toolId.replace(/_/g, ' ')
+  const map: Record<string, string> = {
+    perplexity_search: 'Web search',
+    search_knowledge: 'Knowledge search',
+    list_notes: 'List notes',
+    get_note: 'Open note',
+    create_note: 'Create note',
+    update_note: 'Update note',
+    delete_note: 'Delete note',
+    list_computer_sessions: 'Computer sessions',
+    get_computer_session_messages: 'Computer chat',
+    list_computer_workspace_files: 'Computer files',
+    read_computer_workspace_file: 'Read computer file',
+    create_computer_session: 'New computer session',
+    update_computer_session: 'Update computer session',
+    delete_computer_session: 'Delete computer session',
+    write_computer_workspace_file: 'Write computer file',
+    run_computer_gateway_command: 'Computer agent',
+    save_memory: 'Save memory',
+    update_memory: 'Update memory',
+    delete_memory: 'Delete memory',
+    generate_image: 'Generate image',
+    generate_video: 'Generate video',
+  }
+  return map[toolId] ?? toolId.replace(/_/g, ' ')
 }
 
 function toolStateUiLabel(state: string): string {
@@ -302,14 +355,14 @@ interface ExchangeBlockProps {
   exchIdx: number
   /** Model id for this tab — stable key for markdown remount when picker slots change */
   responseModelId: string
-  responseText: string
+  /** Ordered tools, text, and file parts as they appear in the assistant message */
+  assistantVisualBlocks: AssistantVisualBlock[]
   isStreaming: boolean
   errorMessage: string | null
   exchModelList: string[]
   selectedTab: number
   onTabSelect: (tabIdx: number) => void
   isLoadingTabs: boolean
-  toolInfos: ToolDisplayInfo[]
   responseInProgress: boolean
   sourceCitations?: SourceCitationMap
   turnIdForActions: string | null
@@ -323,15 +376,25 @@ interface ExchangeBlockProps {
 }
 
 function ExchangeBlock({
-  userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, responseText, isStreaming, errorMessage,
-  exchModelList, selectedTab, onTabSelect, isLoadingTabs, toolInfos, responseInProgress, sourceCitations,
+  userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
+  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
-    const runningTools = toolInfos.filter((t) => !TOOL_UI_DONE_STATES.has(t.state))
+    const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
+    const runningTools = assistantVisualBlocks.filter(
+      (b): b is { kind: 'tool'; key: string; name: string; state: string } => b.kind === 'tool',
+    ).filter((t) => !TOOL_UI_DONE_STATES.has(t.state))
+    const lastTextBlockIndex = (() => {
+      let idx = -1
+      for (let i = 0; i < assistantVisualBlocks.length; i++) {
+        if (assistantVisualBlocks[i]!.kind === 'text') idx = i
+      }
+      return idx
+    })()
     const responseSettled = !responseInProgress
     const showFooter =
-      responseSettled && (responseText.length > 0 || !!errorMessage)
+      responseSettled && (assistantPlainText.length > 0 || !!errorMessage)
     return (
       <div
         className={`flex flex-col gap-2 message-appear transition-all duration-300 ease-out ${
@@ -391,7 +454,7 @@ function ExchangeBlock({
         {exchModelList.length > 1 && (
           <div className="flex items-center gap-1.5 flex-wrap mt-1">
             {exchModelList.map((mId, tabIdx) => {
-              const mName = AVAILABLE_MODELS.find((m) => m.id === mId)?.name ?? mId
+              const mName = getChatModelDisplayName(mId)
               const isActive = tabIdx === selectedTab
               return (
                 <button
@@ -411,18 +474,19 @@ function ExchangeBlock({
           </div>
         )}
 
-        {toolInfos.length > 0 && (
-          <div className="w-full px-1 space-y-2">
-            {toolInfos.map((t) => {
-              const running = !TOOL_UI_DONE_STATES.has(t.state)
-              const err = t.state === 'output-error'
-              return (
+        {assistantVisualBlocks.map((block, bi) => {
+          if (block.kind === 'tool') {
+            const running = !TOOL_UI_DONE_STATES.has(block.state)
+            const err = block.state === 'output-error'
+            return (
+              <div key={`${exchIdx}-seq-${bi}-${block.key}`} className="w-full px-1">
                 <div
-                  key={t.key}
                   className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 w-fit max-w-full border ${
                     err
                       ? 'border-red-200 bg-red-50 text-red-800'
-                      : 'border-[#e8e8e8] bg-[#f7f7f7] text-[#525252]'
+                      : running
+                        ? 'border-[#e0e0e0] bg-[#f3f3f3] text-[#525252] tool-chip-running'
+                        : 'border-[#e8e8e8] bg-[#f7f7f7] text-[#525252]'
                   }`}
                 >
                   {running ? (
@@ -432,38 +496,54 @@ function ExchangeBlock({
                       ⚙
                     </span>
                   )}
-                  <span className="font-medium truncate">{formatToolLabel(t.name)}</span>
+                  <span className="font-medium truncate">{formatToolLabel(block.name)}</span>
                   <span className={`shrink-0 ${err ? 'text-red-600' : 'text-[#aaa]'}`}>
-                    {toolStateUiLabel(t.state)}
+                    {toolStateUiLabel(block.state)}
                   </span>
                 </div>
-              )
-            })}
-          </div>
-        )}
+              </div>
+            )
+          }
+          if (block.kind === 'file') {
+            const isImg = (block.mediaType?.startsWith('image/') ?? true)
+            if (!isImg) return null
+            return (
+              <div key={`${exchIdx}-seq-${bi}-file`} className="w-full px-1 py-1">
+                <img
+                  src={block.url}
+                  alt="Generated"
+                  className="max-w-full max-h-[320px] rounded-xl border border-[#e8e8e8] object-contain"
+                />
+              </div>
+            )
+          }
+          const isLastText = bi === lastTextBlockIndex
+          return (
+            <div key={`${exchIdx}-seq-${bi}-text`} className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
+              <MarkdownMessage
+                key={`md-${userMsgId}-${responseModelId}-${bi}`}
+                text={block.text}
+                isStreaming={isStreaming && isLastText}
+                sourceCitations={isLastText ? sourceCitations : undefined}
+              />
+            </div>
+          )
+        })}
 
         {responseInProgress && (
-          <div className="flex items-center gap-2 px-1 py-1 text-[11px] text-[#737373]" aria-live="polite">
+          <div
+            className="flex items-center gap-2 px-1 py-1.5 text-[12px] text-[#737373]"
+            aria-live="polite"
+            aria-busy="true"
+          >
             <span className="inline-block size-3 shrink-0 rounded-full border-2 border-[#d4d4d4] border-t-[#525252] animate-spin" />
-            {runningTools.length > 0
-              ? `Using tools: ${runningTools.map((t) => formatToolLabel(t.name)).join(', ')}`
-              : responseText.length > 0
-                ? 'Finishing response…'
+            <span className="animate-pulse">
+              {runningTools.length > 0
+                ? `Using tools: ${runningTools.map((t) => formatToolLabel(t.name)).join(', ')}`
                 : 'Thinking…'}
+            </span>
           </div>
         )}
-
-        {/* Assistant response */}
-        {responseText ? (
-          <div className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
-            <MarkdownMessage
-              key={`md-${userMsgId}-${responseModelId}`}
-              text={responseText}
-              isStreaming={isStreaming}
-              sourceCitations={sourceCitations}
-            />
-          </div>
-        ) : null}
 
         {errorMessage && !responseInProgress && (
           <div className="flex justify-start">
@@ -477,8 +557,8 @@ function ExchangeBlock({
         {showFooter && (
           <div className="message-appear flex items-center gap-1 px-1 pt-0.5">
             <FlashCopyIconButton
-              copyText={responseText}
-              disabled={responseText.length === 0 || isExiting}
+              copyText={assistantPlainText}
+              disabled={assistantPlainText.length === 0 || isExiting}
               ariaLabel="Copy response"
             />
             <button
@@ -865,6 +945,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     setExitingTurnIds([])
   }, [activeChatId])
 
+  useEffect(() => {
+    prevActBusyRef.current = false
+  }, [activeChatId])
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const shouldScrollRef = useRef(false)
@@ -874,6 +958,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
   const wasStreamingRef = useRef(false)
+  /** After an Act stream ends, mirror `actChat.messages` into `chat0` so the primary transcript stays aligned for the next send. */
+  const prevActBusyRef = useRef(false)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
@@ -889,6 +975,19 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const chat2 = useChat({ transport: transport2 })
   const chat3 = useChat({ transport: transport3 })
   const actChat = useChat({ transport: actTransport })
+
+  useEffect(() => {
+    if (composerMode !== 'act') {
+      prevActBusyRef.current = false
+      return
+    }
+    const busy = actChat.status === 'streaming' || actChat.status === 'submitted'
+    const wasBusy = prevActBusyRef.current
+    prevActBusyRef.current = busy
+    if (wasBusy && !busy && actChat.messages.length > 0) {
+      chat0.setMessages([...actChat.messages])
+    }
+  }, [composerMode, actChat.status, actChat.messages, chat0])
 
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
 
@@ -945,8 +1044,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   const supportsVision =
     composerMode === 'act'
-      ? (AVAILABLE_MODELS.find((m) => m.id === selectedActModel)?.supportsVision ?? false)
-      : selectedModels.every((id) => AVAILABLE_MODELS.find((m) => m.id === id)?.supportsVision ?? false)
+      ? (getModel(selectedActModel)?.supportsVision ?? false)
+      : selectedModels.every((id) => getModel(id)?.supportsVision ?? false)
 
   const isFreeTier = entitlements?.tier === 'free'
   const weeklyUsed = isFreeTier
@@ -956,8 +1055,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const premiumModelBlocked =
     isFreeTier &&
     (composerMode === 'act'
-      ? AVAILABLE_MODELS.find((m) => m.id === selectedActModel)?.provider !== 'openrouter'
-      : selectedModels.some((id) => AVAILABLE_MODELS.find((m) => m.id === id)?.provider !== 'openrouter'))
+      ? getModel(selectedActModel)?.provider !== 'openrouter'
+      : selectedModels.some((id) => getModel(id)?.provider !== 'openrouter'))
   const creditsExhausted =
     !isFreeTier &&
     entitlements != null &&
@@ -1886,10 +1985,19 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
           },
         },
-      ).then(() => {
-        completeSession(chatId, activeChatIdRef.current === chatId)
-        loadChats()
-      })
+      )
+        .then(() => {
+          completeSession(chatId, activeChatIdRef.current === chatId)
+          loadChats()
+        })
+        .catch((err) => {
+          console.error('[ChatInterface] Act sendMessage failed', err)
+          completeSession(chatId, activeChatIdRef.current === chatId)
+          setComposerNotice(
+            err instanceof Error ? err.message : 'Could not complete Act request. Try again.',
+          )
+          window.setTimeout(() => setComposerNotice(null), 8000)
+        })
       /* eslint-enable @typescript-eslint/no-explicit-any */
       return
     }
@@ -2052,9 +2160,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     : generationMode === 'video'
     ? (selectedVideoModels.length === 1 ? (VIDEO_MODELS.find((m) => m.id === selectedVideoModels[0])?.name ?? 'Select model') : `${selectedVideoModels.length} models`)
     : composerMode === 'act'
-    ? (AVAILABLE_MODELS.find((m) => m.id === selectedActModel)?.name ?? 'Select model')
+    ? (getChatModelDisplayName(selectedActModel) || 'Select model')
     : selectedModels.length === 1
-    ? (AVAILABLE_MODELS.find((m) => m.id === selectedModels[0])?.name ?? 'Select model')
+    ? (getChatModelDisplayName(selectedModels[0] ?? '') || 'Select model')
     : `${selectedModels.length} models`
 
   const primaryMessages = chat0.messages
@@ -2478,13 +2586,18 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     ? (actChat.status === 'streaming' || actChat.status === 'submitted')
                     : !!slotInst && (slotInst.status === 'streaming' || slotInst.status === 'submitted')
                 )
-                const isStreaming = instLoading && responseText.length > 0
                 const instError = isLatest ? (isActExch ? actChat.error : slotInst?.error ?? null) : null
 
-                const toolInfos =
+                const responseParts =
                   responseMsg && 'parts' in responseMsg && Array.isArray((responseMsg as { parts?: unknown[] }).parts)
-                    ? extractToolDisplayInfos((responseMsg as { parts: unknown[] }).parts)
-                    : []
+                    ? (responseMsg as { parts: unknown[] }).parts
+                    : undefined
+                let assistantVisualBlocks = buildAssistantVisualSequence(responseParts)
+                if (assistantVisualBlocks.length === 0 && responseText.trim()) {
+                  assistantVisualBlocks = [{ kind: 'text', text: normalizeAgentAssistantText(responseText) }]
+                }
+                const hasAssistantText = assistantVisualBlocks.some((b) => b.kind === 'text' && b.text.trim().length > 0)
+                const isStreaming = instLoading && hasAssistantText
 
                 const rawUserText = getMessageText(msg)
                 const metaDocs = getUserMessageDocNames(msg)
@@ -2496,8 +2609,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined
                 )?.metadata?.sourceCitations
 
-                const modelLabelSingle =
-                  AVAILABLE_MODELS.find((m) => m.id === selectedModelId)?.name ?? selectedModelId
+                const modelLabelSingle = getChatModelDisplayName(selectedModelId)
                 const modelLabel =
                   exchModelList.length > 1
                     ? `${modelLabelSingle} · ${exchModelList.length} models`
@@ -2505,6 +2617,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
                 const textTurnIdForActions = getUserTurnId(msg)
                 const textIsExiting = !!textTurnIdForActions && exitingTurnIds.includes(textTurnIdForActions)
+
+                const assistantPlainForReply = assistantBlocksToPlainText(assistantVisualBlocks)
 
                 blocks.push(
                   <ExchangeBlock
@@ -2516,14 +2630,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     userImages={getMessageImages(msg as any)}
                     exchIdx={curExchIdx}
                     responseModelId={selectedModelId}
-                    responseText={responseText}
+                    assistantVisualBlocks={assistantVisualBlocks}
                     isStreaming={isStreaming}
                     errorMessage={errorLabel(instError)}
                     exchModelList={exchModelList}
                     selectedTab={selectedTab}
                     onTabSelect={(tabIdx) => handleTabSelect(curExchIdx, tabIdx)}
                     isLoadingTabs={isAnyLoading}
-                    toolInfos={toolInfos}
                     responseInProgress={instLoading}
                     sourceCitations={sourceCitations}
                     turnIdForActions={textTurnIdForActions}
@@ -2533,7 +2646,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                       if (tid) void handleDeleteTurnById(tid)
                     }}
                     onReply={() =>
-                      beginReplyToAssistantText(responseText, getUserTurnId(msg))
+                      beginReplyToAssistantText(assistantPlainForReply, getUserTurnId(msg))
                     }
                     actionsLocked={isLatest && isAnyLoading}
                     isExiting={textIsExiting}

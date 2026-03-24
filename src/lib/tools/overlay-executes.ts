@@ -17,6 +17,7 @@ export async function executeSearchKnowledge(
       },
       options.accessToken,
       options.baseUrl,
+      { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Search failed' }))
@@ -47,6 +48,7 @@ export async function executeSaveMemory(
       },
       options.accessToken,
       options.baseUrl,
+      { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Failed to save' }))
@@ -73,7 +75,7 @@ export async function executeUpdateMemory(
       { memoryId, content, ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
-      'PATCH',
+      { method: 'PATCH', forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Failed to update' }))
@@ -96,7 +98,7 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
       { memoryId, ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
-      'DELETE',
+      { method: 'DELETE', forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Failed to delete' }))
@@ -126,6 +128,7 @@ export async function executeGenerateImage(
       { prompt, modelId, aspectRatio, conversationId: options.conversationId },
       options.accessToken,
       options.baseUrl,
+      { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Unknown error' }))
@@ -166,6 +169,7 @@ export async function executeGenerateVideo(
       { prompt, modelId, aspectRatio, duration, conversationId: options.conversationId },
       options.accessToken,
       options.baseUrl,
+      { forwardCookie: options.forwardCookie },
     )
 
     if (!res.ok) {

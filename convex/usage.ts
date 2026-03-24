@@ -416,3 +416,43 @@ function getNextWeeklyReset(): string {
   nextMonday.setUTCHours(0, 0, 0, 0)
   return nextMonday.toISOString()
 }
+
+/** Audit log for individual chat tool calls (Perplexity, generation, Composio, etc.). */
+export const recordToolInvocation = mutation({
+  args: {
+    accessToken: v.string(),
+    userId: v.string(),
+    toolId: v.string(),
+    mode: v.union(v.literal('ask'), v.literal('act')),
+    modelId: v.optional(v.string()),
+    conversationId: v.optional(v.string()),
+    success: v.boolean(),
+    durationMs: v.optional(v.number()),
+    costBucket: v.union(
+      v.literal('perplexity'),
+      v.literal('image'),
+      v.literal('video'),
+      v.literal('composio'),
+      v.literal('internal'),
+    ),
+    errorMessage: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!validateAccessToken(args.accessToken)) {
+      throw new Error('Unauthorized: invalid or expired access token')
+    }
+    await ctx.db.insert('toolInvocations', {
+      userId: args.userId,
+      toolId: args.toolId.slice(0, 256),
+      mode: args.mode,
+      modelId: args.modelId?.slice(0, 256),
+      conversationId: args.conversationId?.slice(0, 256),
+      success: args.success,
+      durationMs: args.durationMs,
+      costBucket: args.costBucket,
+      errorMessage: args.errorMessage?.slice(0, 2000),
+      createdAt: Date.now(),
+    })
+    return { success: true }
+  },
+})

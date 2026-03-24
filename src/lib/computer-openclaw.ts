@@ -1,9 +1,13 @@
 import { DEFAULT_MODEL_ID, AVAILABLE_MODELS, getModel } from '@/lib/models'
 import { convex } from '@/lib/convex'
 import { getSession } from '@/lib/workos-auth'
+import type { Id } from '../../convex/_generated/dataModel'
 
 const GATEWAY_PROTOCOL_VERSION = 3
-const MAIN_AGENT_ID = 'main'
+export const MAIN_AGENT_ID = 'main'
+
+/** Bearer + userId from chat tool execution (no browser cookie on internal fetch). */
+export type ComputerToolAuth = { userId: string; accessToken: string }
 
 export interface ComputerConnectionInfo {
   gatewayToken: string
@@ -225,27 +229,21 @@ export function resolveOverlayModelIdFromGatewayModel(
   return null
 }
 
-export async function getAuthenticatedComputerContext(
+export async function getAuthenticatedComputerContextWithToken(params: {
   computerId: string
-): Promise<AuthenticatedComputerContext> {
-  const session = await getSession()
-  if (!session) {
-    throw new Error('Unauthorized')
-  }
-
-  const userId = session.user.id
-  const accessToken = session.accessToken
-
-  const connection = await convex.query<ComputerConnectionInfo>(
+  userId: string
+  accessToken: string
+}): Promise<AuthenticatedComputerContext> {
+  const { computerId, userId, accessToken } = params
+  const connection = await convex.query<ComputerConnectionInfo | null>(
     'computers:getChatConnection',
     {
-      computerId,
+      computerId: computerId as Id<'computers'>,
       userId,
       accessToken,
     },
-    { throwOnError: true, timeoutMs: 30_000 }
+    { throwOnError: true, timeoutMs: 30_000 },
   )
-
   if (!connection) {
     throw new Error('Computer is not ready')
   }
@@ -253,11 +251,11 @@ export async function getAuthenticatedComputerContext(
   const computer = await convex.query<ComputerRuntimeState | null>(
     'computers:get',
     {
-      computerId,
+      computerId: computerId as Id<'computers'>,
       userId,
       accessToken,
     },
-    { throwOnError: true, timeoutMs: 30_000 }
+    { throwOnError: true, timeoutMs: 30_000 },
   )
 
   return {
@@ -269,12 +267,31 @@ export async function getAuthenticatedComputerContext(
   }
 }
 
-export async function listComputerSessions(computerId: string): Promise<{
+export async function getAuthenticatedComputerContext(
+  computerId: string,
+): Promise<AuthenticatedComputerContext> {
+  const session = await getSession()
+  if (!session) {
+    throw new Error('Unauthorized')
+  }
+  return getAuthenticatedComputerContextWithToken({
+    computerId,
+    userId: session.user.id,
+    accessToken: session.accessToken,
+  })
+}
+
+export async function listComputerSessions(
+  computerId: string,
+  toolAuth?: ComputerToolAuth,
+): Promise<{
   activeSessionKey: string | null
   storePath: string | null
   sessions: ComputerSessionItem[]
 }> {
-  const context = await getAuthenticatedComputerContext(computerId)
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(computerId)
   const payload = await callGatewayRequest<GatewaySessionListPayload>({
     ip: context.connection.hetznerServerIp,
     gatewayToken: context.connection.gatewayToken,
@@ -328,11 +345,16 @@ export async function listComputerSessions(computerId: string): Promise<{
   }
 }
 
-export async function getComputerSessionMessages(params: {
-  computerId: string
-  sessionKey: string
-}): Promise<{ sessionKey: string; messages: OpenClawTranscriptMessage[] }> {
-  const context = await getAuthenticatedComputerContext(params.computerId)
+export async function getComputerSessionMessages(
+  params: {
+    computerId: string
+    sessionKey: string
+  },
+  toolAuth?: ComputerToolAuth,
+): Promise<{ sessionKey: string; messages: OpenClawTranscriptMessage[] }> {
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(params.computerId)
   const payload = await callGatewayRequest<GatewaySessionGetPayload>({
     ip: context.connection.hetznerServerIp,
     gatewayToken: context.connection.gatewayToken,
@@ -355,17 +377,22 @@ export async function getComputerSessionMessages(params: {
   }
 }
 
-export async function createComputerSession(params: {
-  computerId: string
-  modelId?: string
-}): Promise<{
+export async function createComputerSession(
+  params: {
+    computerId: string
+    modelId?: string
+  },
+  toolAuth?: ComputerToolAuth,
+): Promise<{
   sessionKey: string
   requestedModelId: string
   requestedModelRef: string | null
   effectiveProvider: string | null
   effectiveModel: string | null
 }> {
-  const context = await getAuthenticatedComputerContext(params.computerId)
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(params.computerId)
   const requestedModelId =
     params.modelId?.trim() ||
     context.computer.chatRequestedModelId?.trim() ||
@@ -426,19 +453,24 @@ export async function createComputerSession(params: {
   }
 }
 
-export async function updateComputerSession(params: {
-  computerId: string
-  sessionKey: string
-  modelId?: string
-  label?: string
-}): Promise<{
+export async function updateComputerSession(
+  params: {
+    computerId: string
+    sessionKey: string
+    modelId?: string
+    label?: string
+  },
+  toolAuth?: ComputerToolAuth,
+): Promise<{
   sessionKey: string
   requestedModelId: string
   requestedModelRef: string | null
   effectiveProvider: string | null
   effectiveModel: string | null
 }> {
-  const context = await getAuthenticatedComputerContext(params.computerId)
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(params.computerId)
   const selectedModelId =
     params.modelId?.trim() ||
     context.computer.chatRequestedModelId?.trim() ||
@@ -514,10 +546,13 @@ export async function updateComputerSession(params: {
   }
 }
 
-export async function deleteComputerSession(params: {
-  computerId: string
-  sessionKey: string
-}): Promise<{
+export async function deleteComputerSession(
+  params: {
+    computerId: string
+    sessionKey: string
+  },
+  toolAuth?: ComputerToolAuth,
+): Promise<{
   deleted: boolean
   deletedSessionKey: string
   sessionKey: string | null
@@ -526,7 +561,9 @@ export async function deleteComputerSession(params: {
   effectiveProvider: string | null
   effectiveModel: string | null
 }> {
-  const context = await getAuthenticatedComputerContext(params.computerId)
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(params.computerId)
   const deletedSessionKey = params.sessionKey.trim()
 
   const deleted = await callGatewayRequest<GatewaySessionsDeletePayload>({
@@ -564,14 +601,17 @@ export async function deleteComputerSession(params: {
     }
   }
 
-  const remainingSessions = await listComputerSessions(params.computerId)
+  const remainingSessions = await listComputerSessions(params.computerId, toolAuth)
   const nextSession = remainingSessions.sessions[0]
 
   if (nextSession) {
-    const runtime = await updateComputerSession({
-      computerId: params.computerId,
-      sessionKey: nextSession.key,
-    })
+    const runtime = await updateComputerSession(
+      {
+        computerId: params.computerId,
+        sessionKey: nextSession.key,
+      },
+      toolAuth,
+    )
 
     return {
       deleted: true,
@@ -584,10 +624,13 @@ export async function deleteComputerSession(params: {
     }
   }
 
-  const runtime = await createComputerSession({
-    computerId: params.computerId,
-    modelId: context.computer.chatRequestedModelId?.trim() || DEFAULT_MODEL_ID,
-  })
+  const runtime = await createComputerSession(
+    {
+      computerId: params.computerId,
+      modelId: context.computer.chatRequestedModelId?.trim() || DEFAULT_MODEL_ID,
+    },
+    toolAuth,
+  )
 
   return {
     deleted: true,
@@ -601,9 +644,12 @@ export async function deleteComputerSession(params: {
 }
 
 export async function listComputerWorkspaceFiles(
-  computerId: string
+  computerId: string,
+  toolAuth?: ComputerToolAuth,
 ): Promise<{ workspace: string; files: ComputerWorkspaceFileItem[] }> {
-  const context = await getAuthenticatedComputerContext(computerId)
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(computerId)
   const payload = await callGatewayRequest<{
     workspace?: string
     files?: ComputerWorkspaceFileItem[]
@@ -622,11 +668,16 @@ export async function listComputerWorkspaceFiles(
   }
 }
 
-export async function getComputerWorkspaceFile(params: {
-  computerId: string
-  name: string
-}): Promise<{ workspace: string; file: ComputerWorkspaceFileItem }> {
-  const context = await getAuthenticatedComputerContext(params.computerId)
+export async function getComputerWorkspaceFile(
+  params: {
+    computerId: string
+    name: string
+  },
+  toolAuth?: ComputerToolAuth,
+): Promise<{ workspace: string; file: ComputerWorkspaceFileItem }> {
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(params.computerId)
   const payload = await callGatewayRequest<{
     workspace?: string
     file?: ComputerWorkspaceFileItem
@@ -651,12 +702,17 @@ export async function getComputerWorkspaceFile(params: {
   }
 }
 
-export async function setComputerWorkspaceFile(params: {
-  computerId: string
-  name: string
-  content: string
-}): Promise<{ workspace: string; file: ComputerWorkspaceFileItem }> {
-  const context = await getAuthenticatedComputerContext(params.computerId)
+export async function setComputerWorkspaceFile(
+  params: {
+    computerId: string
+    name: string
+    content: string
+  },
+  toolAuth?: ComputerToolAuth,
+): Promise<{ workspace: string; file: ComputerWorkspaceFileItem }> {
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(params.computerId)
   const payload = await callGatewayRequest<{
     workspace?: string
     file?: ComputerWorkspaceFileItem
@@ -718,12 +774,17 @@ export async function readGatewaySessionModel(params: {
   }
 }
 
-export async function callComputerGatewayMethod<T>(params: {
-  computerId: string
-  method: string
-  params?: unknown
-}): Promise<T> {
-  const context = await getAuthenticatedComputerContext(params.computerId)
+export async function callComputerGatewayMethod<T>(
+  params: {
+    computerId: string
+    method: string
+    params?: unknown
+  },
+  toolAuth?: ComputerToolAuth,
+): Promise<T> {
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(params.computerId)
   return await callGatewayRequest<T>({
     ip: context.connection.hetznerServerIp,
     gatewayToken: context.connection.gatewayToken,
@@ -732,12 +793,17 @@ export async function callComputerGatewayMethod<T>(params: {
   })
 }
 
-export async function runComputerGatewayCommand(params: {
-  computerId: string
-  sessionKey: string
-  message: string
-}): Promise<string> {
-  const context = await getAuthenticatedComputerContext(params.computerId)
+export async function runComputerGatewayCommand(
+  params: {
+    computerId: string
+    sessionKey: string
+    message: string
+  },
+  toolAuth?: ComputerToolAuth,
+): Promise<string> {
+  const context = toolAuth
+    ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
+    : await getAuthenticatedComputerContext(params.computerId)
   const ws = await openGatewaySocket(context.connection.hetznerServerIp)
 
   try {

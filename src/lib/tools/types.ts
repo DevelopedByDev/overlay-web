@@ -3,6 +3,8 @@
  *
  * Phase 0 inventory:
  * - search_knowledge: ask + act (hybrid search via /api/app/knowledge/search)
+ * - list_notes, get_note: ask + act; create/update/delete_note: act only
+ * - Computer *: read tools ask + act; session/workspace writes + run_computer_gateway_command: act only
  * - save_memory, update_memory, delete_memory: act only (/api/app/memory)
  * - generate_image, generate_video: act only (/api/app/generate-*)
  * Composio: act + filtered ask (unchanged in composio-tools); merged in routes.
@@ -10,7 +12,7 @@
 
 export type ToolMode = 'ask' | 'act'
 
-export type ToolCategory = 'knowledge' | 'memory' | 'media'
+export type ToolCategory = 'knowledge' | 'memory' | 'media' | 'notes' | 'computer'
 
 export interface OverlayToolsOptions {
   userId: string
@@ -18,4 +20,6 @@ export interface OverlayToolsOptions {
   conversationId?: string
   projectId?: string
   baseUrl?: string
+  /** Original browser Cookie header — required for server-side tool `fetch` to `/api/app/*` (middleware expects session cookie). */
+  forwardCookie?: string
 }

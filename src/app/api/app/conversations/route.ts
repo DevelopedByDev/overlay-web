@@ -36,7 +36,13 @@ export async function GET(request: NextRequest) {
           mode: 'ask' | 'act'
           content: string
           contentType: 'text' | 'image' | 'video'
-          parts?: Array<{ type: string; text?: string; url?: string; mediaType?: string }>
+          parts?: Array<
+            | { type: string; text?: string; url?: string; mediaType?: string }
+            | {
+                type: 'tool-invocation'
+                toolInvocation: { toolCallId?: string; toolName: string; state?: string }
+              }
+          >
           modelId?: string
           variantIndex?: number
           replyToTurnId?: string
@@ -53,12 +59,21 @@ export async function GET(request: NextRequest) {
           variantIndex: message.variantIndex,
           role: message.role,
           parts: message.parts?.length
-            ? message.parts.map((part) => ({
-                type: part.type as 'text' | 'file',
-                text: part.text,
-                url: part.url,
-                mediaType: part.mediaType,
-              }))
+            ? message.parts.map((part) => {
+                if (part.type === 'tool-invocation' && 'toolInvocation' in part && part.toolInvocation) {
+                  return {
+                    type: 'tool-invocation' as const,
+                    toolInvocation: part.toolInvocation,
+                  }
+                }
+                const p = part as { type: string; text?: string; url?: string; mediaType?: string }
+                return {
+                  type: p.type as 'text' | 'file',
+                  text: p.text,
+                  url: p.url,
+                  mediaType: p.mediaType,
+                }
+              })
             : [{ type: 'text' as const, text: message.content }],
           model: message.modelId,
           ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),

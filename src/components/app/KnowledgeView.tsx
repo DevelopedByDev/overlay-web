@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Brain, Trash2, Plus, X, FilePlus, FolderPlus,
-  ChevronRight, FileText, Folder, FolderOpen, Loader2,
+  ChevronRight, FileText, Folder, FolderOpen, Loader2, Search,
 } from 'lucide-react'
 import { FileViewerPanel, getFileType, isEditableType } from './FileViewer'
 
@@ -125,6 +125,11 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   const fileUploadRef = useRef<HTMLInputElement>(null)
   const folderUploadRef = useRef<HTMLInputElement>(null)
 
+  const [memorySearchOpen, setMemorySearchOpen] = useState(false)
+  const [memorySearchQuery, setMemorySearchQuery] = useState('')
+  const [fileSearchOpen, setFileSearchOpen] = useState(false)
+  const [fileSearchQuery, setFileSearchQuery] = useState('')
+
   // ── Load memories ──
   const loadMemories = useCallback(async () => {
     try {
@@ -143,6 +148,16 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
 
   useEffect(() => { loadMemories() }, [loadMemories])
   useEffect(() => { loadFiles() }, [loadFiles])
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        void loadMemories()
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [loadMemories])
 
   useEffect(() => {
     if (!fileOpenParam || filesLoading || files.length === 0) return
@@ -293,7 +308,34 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     e.target.value = ''
   }
 
-  const rootNodes = files.filter((f) => f.parentId === null)
+  const filesFiltered = useMemo(() => {
+    const q = fileSearchQuery.trim().toLowerCase()
+    if (!q) return files
+    const keep = new Set<string>()
+    for (const n of files) {
+      if (n.type === 'file' && n.name.toLowerCase().includes(q)) {
+        keep.add(n._id)
+        let p = n.parentId
+        while (p) {
+          keep.add(p)
+          p = files.find((x) => x._id === p)?.parentId ?? null
+        }
+      }
+    }
+    return files.filter((f) => keep.has(f._id))
+  }, [files, fileSearchQuery])
+
+  const memoriesFiltered = useMemo(() => {
+    const q = memorySearchQuery.trim().toLowerCase()
+    if (!q) return memories
+    return memories.filter(
+      (m) =>
+        m.fullContent.toLowerCase().includes(q) ||
+        m.content.toLowerCase().includes(q),
+    )
+  }, [memories, memorySearchQuery])
+
+  const rootNodes = filesFiltered.filter((f) => f.parentId === null)
 
   return (
     <div className="flex h-full flex-col min-h-0">
@@ -379,41 +421,89 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       {/* ── Secondary sidebar ── */}
       <div className="w-52 h-full flex flex-col border-r border-[#e5e5e5] bg-[#f5f5f5] shrink-0">
         {/* Action buttons */}
-        <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3 gap-2 shrink-0">
+        <div className="flex flex-col border-b border-[#e5e5e5] px-3 py-2 gap-1.5 shrink-0">
           {activeTab === 'memories' ? (
-            <button
-              onClick={() => setShowAddMemory(true)}
-              className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
-            >
-              <Plus size={13} />
-              New Memory
-            </button>
+            <>
+              <div className="flex items-center gap-1.5 w-full min-w-0">
+                <button
+                  type="button"
+                  title="Search memories"
+                  aria-label="Search memories"
+                  aria-pressed={memorySearchOpen}
+                  onClick={() => setMemorySearchOpen((v) => !v)}
+                  className={`shrink-0 flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#ebebeb] ${
+                    memorySearchOpen ? 'border-[#0a0a0a] bg-[#ebebeb]' : ''
+                  }`}
+                >
+                  <Search size={14} strokeWidth={1.75} />
+                </button>
+                <button
+                  onClick={() => setShowAddMemory(true)}
+                  className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-sm bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
+                >
+                  <Plus size={13} />
+                  New Memory
+                </button>
+              </div>
+              {memorySearchOpen && (
+                <input
+                  value={memorySearchQuery}
+                  onChange={(e) => setMemorySearchQuery(e.target.value)}
+                  placeholder="Search memories…"
+                  className="w-full rounded-md border border-[#e5e5e5] bg-white px-2 py-1.5 text-xs text-[#0a0a0a] outline-none placeholder-[#aaa] focus:border-[#0a0a0a]"
+                />
+              )}
+            </>
           ) : (
-            <div className="flex gap-1.5 w-full">
-              <input ref={fileUploadRef} type="file" className="hidden" onChange={handleUploadFile} />
-              <input
-                ref={folderUploadRef}
-                type="file"
-                className="hidden"
-                onChange={handleUploadFolder}
-                // @ts-expect-error webkitdirectory is non-standard
-                webkitdirectory=""
-              />
-              <button
-                onClick={() => fileUploadRef.current?.click()}
-                className="flex items-center gap-1 flex-1 px-2 py-1.5 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors justify-center"
-              >
-                <FilePlus size={12} />
-                File
-              </button>
-              <button
-                onClick={() => folderUploadRef.current?.click()}
-                className="flex items-center gap-1 flex-1 px-2 py-1.5 rounded-md text-xs bg-[#f0f0f0] text-[#525252] hover:bg-[#e8e8e8] transition-colors justify-center"
-              >
-                <FolderPlus size={12} />
-                Folder
-              </button>
-            </div>
+            <>
+              <div className="flex items-center gap-1.5 w-full">
+                <button
+                  type="button"
+                  title="Search files"
+                  aria-label="Search files"
+                  aria-pressed={fileSearchOpen}
+                  onClick={() => setFileSearchOpen((v) => !v)}
+                  className={`shrink-0 flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#ebebeb] ${
+                    fileSearchOpen ? 'border-[#0a0a0a] bg-[#ebebeb]' : ''
+                  }`}
+                >
+                  <Search size={14} strokeWidth={1.75} />
+                </button>
+                <div className="flex min-w-0 flex-1 gap-1.5">
+                  <input ref={fileUploadRef} type="file" className="hidden" onChange={handleUploadFile} />
+                  <input
+                    ref={folderUploadRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleUploadFolder}
+                    // @ts-expect-error webkitdirectory is non-standard
+                    webkitdirectory=""
+                  />
+                  <button
+                    onClick={() => fileUploadRef.current?.click()}
+                    className="flex items-center gap-1 flex-1 px-2 py-1.5 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors justify-center"
+                  >
+                    <FilePlus size={12} />
+                    File
+                  </button>
+                  <button
+                    onClick={() => folderUploadRef.current?.click()}
+                    className="flex items-center gap-1 flex-1 px-2 py-1.5 rounded-md text-xs bg-[#f0f0f0] text-[#525252] hover:bg-[#e8e8e8] transition-colors justify-center"
+                  >
+                    <FolderPlus size={12} />
+                    Folder
+                  </button>
+                </div>
+              </div>
+              {fileSearchOpen && (
+                <input
+                  value={fileSearchQuery}
+                  onChange={(e) => setFileSearchQuery(e.target.value)}
+                  placeholder="Search file names…"
+                  className="w-full rounded-md border border-[#e5e5e5] bg-white px-2 py-1.5 text-xs text-[#0a0a0a] outline-none placeholder-[#aaa] focus:border-[#0a0a0a]"
+                />
+              )}
+            </>
           )}
         </div>
 
@@ -444,9 +534,14 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 <Brain size={28} strokeWidth={1} className="opacity-40" />
                 <p className="text-xs">No memories yet</p>
               </div>
+            ) : memoriesFiltered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-[#aaa] px-4 text-center py-8">
+                <Search size={28} strokeWidth={1} className="opacity-40" />
+                <p className="text-xs">No memories match your search</p>
+              </div>
             ) : (
               <div className="space-y-0.5">
-                {memories.map((memory) => (
+                {memoriesFiltered.map((memory) => (
                   <div
                     key={memory.key}
                     onClick={() => setSelectedMemory(memory)}
@@ -475,13 +570,18 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 <FileText size={28} strokeWidth={1} className="opacity-40" />
                 <p className="text-xs">No files yet</p>
               </div>
+            ) : rootNodes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-[#aaa] px-4 text-center py-8">
+                <Search size={28} strokeWidth={1} className="opacity-40" />
+                <p className="text-xs">No files match your search</p>
+              </div>
             ) : (
               <div className="space-y-0.5">
                 {rootNodes.map((node) => (
                   <FileTreeNode
                     key={node._id}
                     node={node}
-                    allNodes={files}
+                    allNodes={filesFiltered}
                     depth={0}
                     selectedId={selectedFile?._id ?? null}
                     onSelect={handleSelectFile}

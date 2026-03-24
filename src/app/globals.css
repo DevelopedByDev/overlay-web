@@ -92,6 +92,21 @@ html {
   transition: opacity 0.1s ease;
 }
 
+/* Tool chip: gentle pulse while a tool is running */
+@keyframes tool-chip-soft-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.68;
+  }
+}
+
+.tool-chip-running {
+  animation: tool-chip-soft-blink 1.4s ease-in-out infinite;
+}
+
 /* Code block with header */
 .code-block-wrapper {
   margin: 0 0 1em;

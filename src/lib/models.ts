@@ -36,7 +36,6 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google', openClawRef: 'vercel-ai-gateway/google/gemini-2.5-flash', description: 'Balanced', supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', provider: 'google', openClawRef: 'vercel-ai-gateway/google/gemini-2.5-flash-lite', description: 'Lightweight', supportsVision: true, supportsReasoning: true, supportsSearch: false },
   // OpenAI Models
-  { id: 'gpt-5.2-pro-2025-12-11', name: 'GPT-5.2 Pro', provider: 'openai', openClawRef: 'vercel-ai-gateway/openai/gpt-5.2-pro', description: 'Most capable', supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'gpt-5.2-2025-12-11', name: 'GPT-5.2', provider: 'openai', openClawRef: 'vercel-ai-gateway/openai/gpt-5.2', description: 'Powerful', supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'gpt-5-mini-2025-08-07', name: 'GPT-5 Mini', provider: 'openai', openClawRef: 'vercel-ai-gateway/openai/gpt-5-mini', description: 'Compact', supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'gpt-5-nano-2025-08-07', name: 'GPT-5 Nano', provider: 'openai', openClawRef: 'vercel-ai-gateway/openai/gpt-5-nano', description: 'Fastest', supportsVision: true, supportsReasoning: true, supportsSearch: false },
@@ -65,7 +64,6 @@ export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
  */
 export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'claude-opus-4-6',
-  'gpt-5.2-pro-2025-12-11',
   'gemini-3.1-pro-preview',
   'gpt-5.2-2025-12-11',
   'claude-sonnet-4-6',
@@ -97,11 +95,17 @@ export function pickBestModelForAct(selectedAskModelIds: string[]): string {
 /** Persisted UI / Convex rows may still reference retired ids. */
 const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'moonshotai/kimi-k2-instruct-0905': 'moonshotai/kimi-k2-0905',
+  'gpt-5.2-pro-2025-12-11': 'gpt-5.2-2025-12-11',
 }
 
 export function getModel(id: string): ChatModel | undefined {
   const resolved = LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id
   return AVAILABLE_MODELS.find((m) => m.id === resolved)
+}
+
+/** UI labels — resolves legacy / gateway ids (e.g. Kimi instruct variant) to catalog names. */
+export function getChatModelDisplayName(modelId: string): string {
+  return getModel(modelId)?.name ?? modelId
 }
 
 export function getProviderModels(provider: ChatModel['provider']): ChatModel[] {

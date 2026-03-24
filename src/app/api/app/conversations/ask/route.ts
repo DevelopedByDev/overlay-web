@@ -20,12 +20,17 @@ import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 import { buildOverlayToolSet } from '@/lib/tools/build'
 import { filterComposioToolSet } from '@/lib/tools/composio-filter'
 import { MAX_TOOL_STEPS_ASK } from '@/lib/tools/policy'
+import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
 import {
   ASK_KNOWLEDGE_TOOLS_NOTE,
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
 } from '@/lib/knowledge-agent-instructions'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
+import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
+import { getInternalApiBaseUrl } from '@/lib/url'
+import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
+import type { StepResult, ToolSet } from 'ai'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 function summarizeToolOutputForLog(output: unknown): string {
@@ -193,6 +198,7 @@ export async function POST(request: NextRequest) {
     /** Model sees indexed + optional reply context in the user turn; request `messages` stay unchanged for persistence. */
     let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
+    messagesForModel = sanitizeUiMessagesForModelApi(messagesForModel)
 
     const baseSystemMessage = [
       systemPrompt || 'You are a helpful AI assistant.',
@@ -221,7 +227,12 @@ export async function POST(request: NextRequest) {
     const finishAsk = async (
       text: string,
       usage: { inputTokens: number; outputTokens: number },
+      steps?: StepResult<ToolSet>[],
     ) => {
+      const { content: persistContent, parts: persistParts } = buildAssistantPersistenceFromSteps(
+        steps,
+        text,
+      )
       const costDollars = calculateTokenCost(
         effectiveModelId,
         usage.inputTokens,
@@ -250,7 +261,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (cid && tid) {
+      if (cid && tid && persistContent) {
         try {
           await convex.mutation('conversations:addMessage', {
             conversationId: cid,
@@ -258,9 +269,9 @@ export async function POST(request: NextRequest) {
             turnId: tid,
             role: 'assistant',
             mode: 'ask',
-            content: text,
+            content: persistContent,
             contentType: 'text',
-            parts: [{ type: 'text', text }],
+            parts: persistParts as never,
             modelId: effectiveModelId,
             variantIndex: variantIndex ?? 0,
             tokens: { input: usage.inputTokens, output: usage.outputTokens },
@@ -273,33 +284,47 @@ export async function POST(request: NextRequest) {
 
     const systemWithTools = baseSystemMessage + knowledgeToolNote
 
+    const unifiedAskEnabled =
+      process.env.UNIFIED_TOOLS_ASK !== 'false' && process.env.UNIFIED_TOOLS_ASK !== '0'
+
     const [composioRaw, perplexityTool, overlayAskTools] = await Promise.all([
-      createBrowserUnifiedTools({ userId, accessToken: session.accessToken }).catch((err) => {
-        console.error('[conversations/ask] Composio tools unavailable:', err)
-        return {}
-      }),
-      getGatewayPerplexitySearchTool(session.accessToken, effectiveModelId),
+      unifiedAskEnabled
+        ? createBrowserUnifiedTools({ userId, accessToken: session.accessToken }).catch((err) => {
+            console.error('[conversations/ask] Composio tools unavailable:', err)
+            return {}
+          })
+        : Promise.resolve({}),
+      unifiedAskEnabled
+        ? getGatewayPerplexitySearchTool(session.accessToken, effectiveModelId)
+        : Promise.resolve(null),
       Promise.resolve(
         buildOverlayToolSet('ask', {
           userId,
           accessToken: session.accessToken,
           conversationId: conversationId ?? undefined,
           projectId: conversationProjectId,
+          baseUrl: getInternalApiBaseUrl(request),
+          forwardCookie: request.headers.get('cookie') ?? undefined,
         }),
       ),
     ])
     const composioAsk = filterComposioToolSet(composioRaw, 'ask')
-    const askTools = {
-      ...composioAsk,
-      ...overlayAskTools,
-      ...(perplexityTool ? { perplexity_search: perplexityTool } : {}),
-    }
+
+    const askTools = unifiedAskEnabled
+      ? {
+          ...composioAsk,
+          ...overlayAskTools,
+          ...(perplexityTool ? { perplexity_search: perplexityTool } : {}),
+        }
+      : { ...overlayAskTools }
 
     console.log(
       '[conversations/ask] tool ids:',
       Object.keys(askTools).sort().join(', '),
       '| perplexity_search:',
       perplexityTool ? 'yes' : 'NO (missing gateway key or init failed — see [AI Gateway] logs)',
+      '| unified_ask:',
+      unifiedAskEnabled ? 'on' : 'ROLLBACK (UNIFIED_TOOLS_ASK=false)',
     )
 
     try {
@@ -325,26 +350,42 @@ export async function POST(request: NextRequest) {
           })
         },
         experimental_onToolCallFinish: ({ toolCall, success, durationMs, output, error }) => {
-          if (!toolCall || toolCall.toolName !== 'perplexity_search') return
-          if (success) {
-            console.log('[conversations/ask] perplexity_search OK', {
-              toolCallId: toolCall.toolCallId,
-              durationMs,
-              output: summarizeToolOutputForLog(output),
-            })
-          } else {
-            console.error('[conversations/ask] perplexity_search FAILED', {
-              toolCallId: toolCall.toolCallId,
-              durationMs,
-              error: error instanceof Error ? error.message : String(error),
-            })
+          if (!toolCall?.toolName) return
+          if (toolCall.toolName === 'perplexity_search') {
+            if (success) {
+              console.log('[conversations/ask] perplexity_search OK', {
+                toolCallId: toolCall.toolCallId,
+                durationMs,
+                output: summarizeToolOutputForLog(output),
+              })
+            } else {
+              console.error('[conversations/ask] perplexity_search FAILED', {
+                toolCallId: toolCall.toolCallId,
+                durationMs,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
           }
-        },
-        onFinish: async ({ text, usage }) => {
-          await finishAsk(text, {
-            inputTokens: usage?.inputTokens ?? 0,
-            outputTokens: usage?.outputTokens ?? 0,
+          fireAndForgetRecordToolInvocation({
+            accessToken: session.accessToken,
+            userId,
+            toolName: toolCall.toolName,
+            mode: 'ask',
+            modelId: effectiveModelId,
+            conversationId: conversationId ?? undefined,
+            success,
+            durationMs,
+            error,
           })
+        },
+        onFinish: async (event) => {
+          const inTok = event.totalUsage?.inputTokens ?? event.usage?.inputTokens ?? 0
+          const outTok = event.totalUsage?.outputTokens ?? event.usage?.outputTokens ?? 0
+          await finishAsk(
+            event.text,
+            { inputTokens: inTok, outputTokens: outTok },
+            event.steps,
+          )
         },
       })
 
