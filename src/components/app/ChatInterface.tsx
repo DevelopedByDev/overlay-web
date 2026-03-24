@@ -16,7 +16,6 @@ import {
   Download,
   Copy,
   Reply,
-  Wrench,
 } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai'
@@ -504,38 +503,35 @@ function ExchangeBlock({
           if (block.kind === 'tool') {
             const running = !TOOL_UI_DONE_STATES.has(block.state)
             const err = block.state === 'output-error'
+            const stateLabel = toolStateUiLabel(block.state)
             return (
               <div key={`${exchIdx}-seq-${bi}-${block.key}`} className="w-full px-1">
                 <div
-                  className={`group flex items-center gap-2.5 text-xs rounded-xl pl-2.5 pr-3 py-2 w-fit max-w-full border shadow-sm transition-shadow ${
+                  className={`inline-flex max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-[12px] leading-none ${
                     err
-                      ? 'border-red-200/90 bg-gradient-to-r from-red-50 to-red-50/50 text-red-900 border-l-[3px] border-l-red-400'
+                      ? 'border-red-200 bg-red-50/80 text-red-700'
                       : running
-                        ? 'border-[#e4e4e7] bg-gradient-to-r from-[#fafafa] to-white text-[#3f3f46] border-l-[3px] border-l-[#71717a] tool-chip-running'
-                        : 'border-[#e4e4e7] bg-gradient-to-r from-white to-[#fafafa] text-[#3f3f46] border-l-[3px] border-l-emerald-500/70'
+                        ? 'border-[#e4e4e7] bg-[#fafafa] text-[#3f3f46]'
+                        : 'border-[#e4e4e7] bg-white text-[#3f3f46]'
                   }`}
                 >
-                  {running ? (
-                    <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#f4f4f5] border border-[#e4e4e7]">
-                      <span className="inline-block size-3.5 rounded-full border-2 border-[#d4d4d8] border-t-[#27272a] animate-spin" />
-                    </span>
-                  ) : (
-                    <span
-                      className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg border ${
-                        err ? 'border-red-200 bg-red-100/80 text-red-700' : 'border-emerald-200/80 bg-emerald-50/90 text-emerald-800'
-                      }`}
-                      aria-hidden
-                    >
-                      <Wrench size={14} strokeWidth={2} className="opacity-90" />
-                    </span>
-                  )}
-                  <span className="font-medium tracking-tight truncate min-w-0">{formatToolLabel(block.name)}</span>
                   <span
-                    className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide ${
-                      err ? 'text-red-600' : running ? 'text-[#71717a]' : 'text-emerald-700/90'
+                    className={`mt-px inline-flex size-2 shrink-0 rounded-full ${
+                      err ? 'bg-red-500' : running ? 'bg-[#71717a] animate-pulse' : 'bg-emerald-500'
+                    }`}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 truncate font-medium text-[#27272a]">{formatToolLabel(block.name)}</span>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      err
+                        ? 'bg-red-100 text-red-700'
+                        : running
+                          ? 'bg-[#f4f4f5] text-[#71717a]'
+                          : 'bg-emerald-50 text-emerald-700'
                     }`}
                   >
-                    {toolStateUiLabel(block.state)}
+                    {stateLabel}
                   </span>
                 </div>
               </div>

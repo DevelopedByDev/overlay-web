@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
@@ -158,7 +158,7 @@ const mdComponents = {
             style={{ minWidth: 260, maxWidth: 360 }}
           >
             <span
-              className="inline-flex items-center justify-center flex-shrink-0 rounded-lg bg-[#f5f5f5] border border-[#e5e5e5] text-xs font-bold text-[#0a0a0a]"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[#e5e5e5] bg-[#f5f5f5] text-xs font-bold text-[#0a0a0a]"
               style={{ width: 36, height: 36 }}
             >
               {serviceName.charAt(0).toUpperCase()}
@@ -167,7 +167,7 @@ const mdComponents = {
               <span className="block text-sm font-medium text-[#0a0a0a] leading-snug">{serviceName}</span>
               <span className="block text-xs text-[#888] leading-snug">{description}</span>
             </span>
-            <span className="flex-shrink-0 text-xs bg-[#0a0a0a] text-[#fafafa] rounded-md px-3 py-1.5 whitespace-nowrap">
+            <span className="shrink-0 rounded-md bg-[#0a0a0a] px-3 py-1.5 text-xs whitespace-nowrap text-[#fafafa]">
               Connect
             </span>
           </span>
@@ -181,7 +181,7 @@ const mdComponents = {
       href.startsWith('/app/') &&
       (href.length > 96 || href.includes('%7C') || href.includes('|'))
     ) {
-      return <span className="text-[#0a0a0a] whitespace-pre-wrap break-words">{children}</span>
+      return <span className="text-[#0a0a0a] whitespace-pre-wrap wrap-break-word">{children}</span>
     }
 
     if (typeof href === 'string' && href.startsWith('/app/')) {
@@ -276,11 +276,6 @@ function findParagraphBoundary(text: string): number | null {
   return null
 }
 
-interface Block {
-  id: number
-  text: string
-}
-
 interface Props {
   text: string
   isStreaming: boolean
@@ -293,6 +288,71 @@ interface Props {
   suppressTypingIndicator?: boolean
 }
 
+function splitStreamingMarkdown(text: string): { completedBlocks: string[]; streamTail: string } {
+  const completedBlocks: string[] = []
+  let offset = 0
+
+  while (offset < text.length) {
+    const boundary = findParagraphBoundary(text.slice(offset))
+    if (boundary === null) break
+    if (boundary === 0) {
+      offset += 1
+      continue
+    }
+
+    const blockText = text.slice(offset, offset + boundary).trim()
+    if (blockText) completedBlocks.push(blockText)
+    offset += boundary + 1
+  }
+
+  return { completedBlocks, streamTail: text.slice(offset) }
+}
+
+function splitStreamingTailForAnimation(
+  text: string,
+): { completedChunks: Array<{ key: string; text: string }>; activeChunk: string } {
+  const completedChunks: Array<{ key: string; text: string }> = []
+  let start = 0
+  let i = 0
+
+  while (i < text.length) {
+    const ch = text[i]!
+
+    if (ch === '\n') {
+      const chunk = text.slice(start, i + 1)
+      if (chunk) completedChunks.push({ key: `line-${i}`, text: chunk })
+      start = i + 1
+      i += 1
+      continue
+    }
+
+    if (ch === '.' || ch === '!' || ch === '?') {
+      let end = i + 1
+      while (end < text.length && `"'”’)]}`.includes(text[end]!)) end += 1
+
+      if (end >= text.length) break
+      if (!/\s/.test(text[end]!)) {
+        i += 1
+        continue
+      }
+
+      while (end < text.length && /\s/.test(text[end]!) && text[end] !== '\n') end += 1
+      const chunk = text.slice(start, end)
+      if (chunk) completedChunks.push({ key: `sent-${end}`, text: chunk })
+      start = end
+      i = end
+      continue
+    }
+
+    i += 1
+  }
+
+  return {
+    completedChunks,
+    activeChunk: text.slice(start),
+  }
+}
+
 export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTypingIndicator = false }: Props) {
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const normalizedLive = useMemo(
@@ -303,48 +363,15 @@ export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTy
     () => normalizeGeneratedMarkdown(text, { sourceCitations, linkifyCitations: hasCitationMap }),
     [text, sourceCitations, hasCitationMap],
   )
-
-  const [blocks, setBlocks] = useState<Block[]>([])
-  const nextIdRef = useRef(0)
-  const releasedRef = useRef(0)
-  const wasStreamingRef = useRef(false)
-
-  useEffect(() => {
-    if (!normalizedLive) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setBlocks([])
-      releasedRef.current = 0
-      nextIdRef.current = 0
-    }
-  }, [normalizedLive])
-
-  useEffect(() => {
-    if (isStreaming && !wasStreamingRef.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset stream buffer when a new stream starts
-      setBlocks([])
-      releasedRef.current = 0
-      nextIdRef.current = 0
-    }
-    wasStreamingRef.current = isStreaming
-  }, [isStreaming])
-
-  useEffect(() => {
-    if (!isStreaming) return
-
-    const unprocessed = normalizedLive.slice(releasedRef.current)
-    const boundary = findParagraphBoundary(unprocessed)
-
-    if (boundary !== null && boundary > 0) {
-      const blockText = unprocessed.slice(0, boundary).trim()
-      if (blockText) {
-        setBlocks((prev) => [...prev, { id: nextIdRef.current++, text: blockText }])
-      }
-      releasedRef.current += boundary + 1
-    }
-  }, [normalizedLive, isStreaming])
-
-  const hasBlocks = blocks.length > 0
-  const streamTail = isStreaming ? normalizedLive.slice(releasedRef.current) : ''
+  const { completedBlocks, streamTail } = useMemo(
+    () => (isStreaming ? splitStreamingMarkdown(normalizedLive) : { completedBlocks: [], streamTail: '' }),
+    [isStreaming, normalizedLive],
+  )
+  const { completedChunks, activeChunk } = useMemo(
+    () => (isStreaming ? splitStreamingTailForAnimation(streamTail) : { completedChunks: [], activeChunk: '' }),
+    [isStreaming, streamTail],
+  )
+  const hasBlocks = completedBlocks.length > 0
   const showInlineTypingDots =
     isStreaming && !suppressTypingIndicator && !hasBlocks && !streamTail.trim()
 
@@ -370,27 +397,27 @@ export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTy
 
   return (
     <div className="markdown-content">
-      {blocks.map((block) => (
-        <div key={block.id} className="md-block-appear">
+      {completedBlocks.map((block, index) => (
+        <div key={`md-block-${index}`} className="md-block-appear">
           <ReactMarkdown
             remarkPlugins={markdownRemarkPlugins}
             rehypePlugins={markdownRehypePlugins}
             components={mdComponents}
           >
-            {block.text}
+            {block}
           </ReactMarkdown>
         </div>
       ))}
 
       {isStreaming && streamTail.trim() ? (
-        <div key="md-stream-tail" className="md-block-appear md-stream-tail">
-          <ReactMarkdown
-            remarkPlugins={markdownRemarkPlugins}
-            rehypePlugins={markdownRehypePlugins}
-            components={mdComponents}
-          >
-            {streamTail}
-          </ReactMarkdown>
+        <div key="md-stream-tail" className="md-stream-tail whitespace-pre-wrap wrap-break-word text-inherit">
+          {/* Animate only finalized sentence/line chunks so the stream feels alive without reflow flicker. */}
+          {completedChunks.map((chunk) => (
+            <span key={chunk.key} className="md-inline-appear">
+              {chunk.text}
+            </span>
+          ))}
+          {activeChunk ? <span>{activeChunk}</span> : null}
         </div>
       ) : null}
 
