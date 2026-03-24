@@ -2,6 +2,15 @@ import { v } from 'convex/values'
 import { mutation } from './_generated/server'
 import { requireServerSecret } from './lib/auth'
 
+const textEncoder = new TextEncoder()
+
+async function hashTransferToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', textEncoder.encode(token.trim()))
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 export const storeToken = mutation({
   args: {
     serverSecret: v.string(),
@@ -11,7 +20,8 @@ export const storeToken = mutation({
   },
   handler: async (ctx, { serverSecret, token, data, expiresAt }) => {
     requireServerSecret(serverSecret)
-    await ctx.db.insert('sessionTransferTokens', { token, data, expiresAt })
+    const tokenHash = await hashTransferToken(token)
+    await ctx.db.insert('sessionTransferTokens', { tokenHash, data, expiresAt })
   },
 })
 
@@ -19,10 +29,18 @@ export const consumeToken = mutation({
   args: { token: v.string(), serverSecret: v.string() },
   handler: async (ctx, { token, serverSecret }) => {
     requireServerSecret(serverSecret)
-    const entry = await ctx.db
+    const tokenHash = await hashTransferToken(token)
+    let entry = await ctx.db
       .query('sessionTransferTokens')
-      .withIndex('by_token', (q) => q.eq('token', token))
+      .withIndex('by_tokenHash', (q) => q.eq('tokenHash', tokenHash))
       .unique()
+
+    if (!entry) {
+      entry = await ctx.db
+        .query('sessionTransferTokens')
+        .withIndex('by_token', (q) => q.eq('token', token))
+        .unique()
+    }
 
     if (!entry) return null
 

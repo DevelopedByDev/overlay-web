@@ -5,12 +5,49 @@ import {
 import { api, internal, components } from './_generated/api'
 import { StripeSubscriptions } from '@convex-dev/stripe'
 import { requireAccessToken } from './lib/auth'
+import {
+  redactIdentifierForLog,
+  redactIpForLog,
+  summarizeErrorForLog,
+  summarizeTextForLog,
+} from './lib/logging'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getModel } from '../src/lib/models'
 import { calculateTokenCost } from '../src/lib/model-pricing'
 import type { Id } from './_generated/dataModel'
 
 const TAG = '[Computer]'
 const stripeClient = new StripeSubscriptions(components.stripe, {})
+
+function summarizeUrlForLog(value: string): string {
+  try {
+    const url = new URL(value)
+    const sanitizedPath = url.pathname
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => (/^\d+$/.test(segment) ? ':id' : segment))
+      .join('/')
+    return `${url.origin}/${sanitizedPath}`
+  } catch {
+    return '[redacted-url]'
+  }
+}
+
+function summarizeToolOutputForLog(output: unknown): string {
+  if (output == null) {
+    return 'nullish'
+  }
+
+  if (typeof output === 'string') {
+    return `string length=${output.length}`
+  }
+
+  if (typeof output === 'object') {
+    const keys = Object.keys(output as object)
+    return `object keys=${keys.slice(0, 8).join(',')}${keys.length > 8 ? ',…' : ''}`
+  }
+
+  return typeof output
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MUTATIONS
@@ -25,7 +62,9 @@ export const create = mutation({
   },
   returns: v.id('computers'),
   handler: async (ctx, args) => {
-    console.log(`${TAG} create — userId=${args.userId} name="${args.name}" region=${args.region}`)
+    console.log(
+      `${TAG} create — region=${args.region} name=${summarizeTextForLog(args.name)}`
+    )
     await requireAccessToken(args.accessToken, args.userId)
     const trimmedName = args.name.trim()
     if (!trimmedName) {
@@ -57,7 +96,7 @@ export const create = mutation({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     })
-    console.log(`${TAG} create — SUCCESS: computerId=${id} status=pending_payment`)
+    console.log(`${TAG} create — SUCCESS: computerId=${redactIdentifierForLog(id)} status=pending_payment`)
     return id
   },
 })
@@ -73,7 +112,9 @@ export const setStripeInfo = internalMutation({
     stripeCustomerId: v.string(),
   },
   handler: async (ctx, args) => {
-    console.log(`${TAG} setStripeInfo — computerId=${args.computerId} subId=${args.stripeSubscriptionId} customerId=${args.stripeCustomerId}`)
+    console.log(
+      `${TAG} setStripeInfo — computerId=${redactIdentifierForLog(args.computerId)}`
+    )
     await ctx.db.patch(args.computerId, {
       stripeSubscriptionId: args.stripeSubscriptionId,
       stripeCustomerId: args.stripeCustomerId,
@@ -91,7 +132,9 @@ export const setProvisioningInfo = internalMutation({
     hetznerFirewallId: v.number(),
   },
   handler: async (ctx, args) => {
-    console.log(`${TAG} setProvisioningInfo — computerId=${args.computerId} serverId=${args.hetznerServerId} ip=${args.hetznerServerIp} firewallId=${args.hetznerFirewallId}`)
+    console.log(
+      `${TAG} setProvisioningInfo — computerId=${redactIdentifierForLog(args.computerId)} ip=${redactIpForLog(args.hetznerServerIp)}`
+    )
     await ctx.db.patch(args.computerId, {
       status: 'provisioning',
       provisioningStep: 'creating_server',
@@ -107,7 +150,9 @@ export const setProvisioningInfo = internalMutation({
 export const setProvisioningStep = internalMutation({
   args: { computerId: v.id('computers'), step: v.string() },
   handler: async (ctx, args) => {
-    console.log(`${TAG} setProvisioningStep — computerId=${args.computerId} step=${args.step}`)
+    console.log(
+      `${TAG} setProvisioningStep — computerId=${redactIdentifierForLog(args.computerId)} step=${args.step}`
+    )
     await ctx.db.patch(args.computerId, {
       provisioningStep: args.step,
       updatedAt: Date.now(),
@@ -118,7 +163,7 @@ export const setProvisioningStep = internalMutation({
 export const setReady = internalMutation({
   args: { computerId: v.id('computers'), readySecret: v.string() },
   handler: async (ctx, args) => {
-    console.log(`${TAG} setReady — computerId=${args.computerId}`)
+    console.log(`${TAG} setReady — computerId=${redactIdentifierForLog(args.computerId)}`)
     const computer = await ctx.db.get(args.computerId)
     if (!computer) {
       console.error(`${TAG} setReady — FAILED: computer not found`)
@@ -129,7 +174,9 @@ export const setReady = internalMutation({
       return
     }
     if (computer.readySecret !== args.readySecret) {
-      console.error(`${TAG} setReady — FAILED: invalid readySecret for computerId=${args.computerId}`)
+      console.error(
+        `${TAG} setReady — FAILED: invalid readySecret for computerId=${redactIdentifierForLog(args.computerId)}`
+      )
       throw new Error('Invalid readySecret')
     }
     await ctx.db.patch(args.computerId, {
@@ -138,14 +185,18 @@ export const setReady = internalMutation({
       provisioningStep: undefined,
       updatedAt: Date.now(),
     })
-    console.log(`${TAG} setReady — SUCCESS: computerId=${args.computerId} status=ready readySecret cleared`)
+    console.log(
+      `${TAG} setReady — SUCCESS: computerId=${redactIdentifierForLog(args.computerId)} status=ready readySecret cleared`
+    )
   },
 })
 
 export const setError = internalMutation({
   args: { computerId: v.id('computers'), message: v.string() },
   handler: async (ctx, args) => {
-    console.error(`${TAG} setError — computerId=${args.computerId} message="${args.message}"`)
+    console.error(
+      `${TAG} setError — computerId=${redactIdentifierForLog(args.computerId)} message=${summarizeTextForLog(args.message)}`
+    )
     await ctx.db.patch(args.computerId, {
       status: 'error',
       errorMessage: args.message,
@@ -158,7 +209,9 @@ export const setPastDue = internalMutation({
   args: { computerId: v.id('computers') },
   handler: async (ctx, args) => {
     const now = Date.now()
-    console.warn(`${TAG} setPastDue — computerId=${args.computerId} teardown scheduled in 7 days`)
+    console.warn(
+      `${TAG} setPastDue — computerId=${redactIdentifierForLog(args.computerId)} teardown scheduled in 7 days`
+    )
     await ctx.db.patch(args.computerId, {
       status: 'past_due',
       pastDueAt: now,
@@ -176,7 +229,7 @@ export const setPastDue = internalMutation({
 export const markDeleted = internalMutation({
   args: { computerId: v.id('computers') },
   handler: async (ctx, args) => {
-    console.log(`${TAG} markDeleted — computerId=${args.computerId}`)
+    console.log(`${TAG} markDeleted — computerId=${redactIdentifierForLog(args.computerId)}`)
     await ctx.db.patch(args.computerId, {
       status: 'deleted',
       gatewayToken: undefined,
@@ -194,7 +247,9 @@ export const logEvent = internalMutation({
     message: v.string(),
   },
   handler: async (ctx, args) => {
-    console.log(`${TAG} event [${args.type}] computerId=${args.computerId} — ${args.message}`)
+    console.log(
+      `${TAG} event [${args.type}] computerId=${redactIdentifierForLog(args.computerId)} message=${summarizeTextForLog(args.message)}`
+    )
     await ctx.db.insert('computerEvents', {
       computerId: args.computerId,
       type: args.type,
@@ -506,7 +561,9 @@ export const sendChatMessage = action({
     modelId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    console.log(`${TAG} sendChatMessage — START computerId=${args.computerId} userId=${args.userId}`)
+    console.log(
+      `${TAG} sendChatMessage — START computerId=${redactIdentifierForLog(args.computerId)}`
+    )
 
     await requireAccessToken(args.accessToken, args.userId)
 
@@ -537,8 +594,9 @@ export const sendChatMessage = action({
       const { tier, creditsUsed, creditsTotal } = entitlements
       const creditsTotalCents = creditsTotal * 100
       const remainingCents = creditsTotalCents - creditsUsed
-      const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-      console.log(`${TAG} sendChatMessage — 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${args.userId}`)
+      console.log(
+        `${TAG} sendChatMessage — entitlement check tier=${tier} hasCredits=${remainingCents > 0 ? 'yes' : 'no'}`
+      )
       if (tier === 'free') {
         throw new Error('Computer chat requires a Pro or Max subscription.')
       }
@@ -576,9 +634,7 @@ export const sendChatMessage = action({
         } catch (error) {
           pendingModelOverrideRetry = true
           console.warn(
-            `${TAG} sendChatMessage — model override deferred for ${candidate.ref}: ${
-              error instanceof Error ? error.message : String(error)
-            }`
+            `${TAG} sendChatMessage — model override deferred for ${candidate.id}: ${summarizeErrorForLog(error)}`
           )
         }
 
@@ -620,7 +676,7 @@ export const sendChatMessage = action({
             throw new Error('OpenClaw gateway authentication failed.')
           }
 
-          const failure = `${candidate.ref}: HTTP ${response.status} ${responseText}`
+          const failure = `${candidate.id}: HTTP ${response.status} body_length=${responseText.length}`
           failures.push(failure)
           console.warn(`${TAG} sendChatMessage — candidate failed ${failure}`)
 
@@ -628,14 +684,14 @@ export const sendChatMessage = action({
             continue
           }
 
-          throw new Error(`Gateway returned ${response.status}: ${responseText}`)
+          throw new Error(`Gateway returned HTTP ${response.status}`)
         }
 
         const data = await response.json()
         const candidateContent = extractAssistantContent(data)
 
         if (!candidateContent) {
-          failures.push(`${candidate.ref}: empty response ${JSON.stringify(data)}`)
+          failures.push(`${candidate.id}: empty response ${summarizeToolOutputForLog(data)}`)
           continue
         }
 
@@ -653,13 +709,11 @@ export const sendChatMessage = action({
               model: candidate.ref,
             })
             console.log(
-              `${TAG} sendChatMessage — model override applied after session bootstrap computerId=${args.computerId} model=${candidate.ref}`
+              `${TAG} sendChatMessage — model override applied after session bootstrap computerId=${redactIdentifierForLog(args.computerId)} model=${candidate.id}`
             )
           } catch (retryError) {
             console.warn(
-              `${TAG} sendChatMessage — model override retry failed for ${candidate.ref}: ${
-                retryError instanceof Error ? retryError.message : String(retryError)
-              }`
+              `${TAG} sendChatMessage — model override retry failed for ${candidate.id}: ${summarizeErrorForLog(retryError)}`
             )
           }
         }
@@ -688,9 +742,7 @@ export const sendChatMessage = action({
         )
         const costCents = Math.round(costDollars * 100)
         console.log(
-          `${TAG} sendChatMessage — 💰 Cost: model=${succeededModelId} | ` +
-          `in=${gatewayUsage.promptTokens} cached=${gatewayUsage.cachedTokens} out=${gatewayUsage.completionTokens} | ` +
-          `$${costDollars.toFixed(4)} = ${costCents}¢`
+          `${TAG} sendChatMessage — usage recorded model=${succeededModelId} input=${gatewayUsage.promptTokens} cached=${gatewayUsage.cachedTokens} output=${gatewayUsage.completionTokens} cost_cents=${costCents}`
         )
         if (costCents > 0) {
           await ctx.runMutation(api.usage.recordBatch, {
@@ -708,11 +760,8 @@ export const sendChatMessage = action({
           })
           const updated = await ctx.runQuery(internal.usage.getEntitlementsInternal, { userId: args.userId })
           if (updated) {
-            const totalCents = updated.creditsTotal * 100
-            const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'
             console.log(
-              `${TAG} sendChatMessage — ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ ` +
-              `(${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`
+              `${TAG} sendChatMessage — usage state updated hasRemainingCredits=${updated.creditsUsed < updated.creditsTotal * 100 ? 'yes' : 'no'}`
             )
           }
         } else {
@@ -728,7 +777,7 @@ export const sendChatMessage = action({
         })
       }
 
-      console.log(`${TAG} sendChatMessage — SUCCESS computerId=${args.computerId}`)
+      console.log(`${TAG} sendChatMessage — SUCCESS computerId=${redactIdentifierForLog(args.computerId)}`)
       return { content }
     } catch (error) {
       const message =
@@ -744,7 +793,9 @@ export const sendChatMessage = action({
         message: `Error: ${message}`,
       })
 
-      console.error(`${TAG} sendChatMessage — ERROR: ${message}`)
+      console.error(
+        `${TAG} sendChatMessage — ERROR computerId=${redactIdentifierForLog(args.computerId)} message=${summarizeTextForLog(message)}`
+      )
       throw new Error(message)
     }
   },
@@ -753,7 +804,7 @@ export const sendChatMessage = action({
 export const deleteComputer = internalMutation({
   args: { computerId: v.id('computers') },
   handler: async (ctx, { computerId }) => {
-    console.warn(`${TAG} deleteComputer — START computerId=${computerId}`)
+    console.warn(`${TAG} deleteComputer — START computerId=${redactIdentifierForLog(computerId)}`)
     const computer = await ctx.db.get(computerId)
     if (!computer) {
       console.warn(`${TAG} deleteComputer — SKIP: computer not found`)
@@ -770,7 +821,9 @@ export const deleteComputer = internalMutation({
     }
 
     await ctx.db.delete(computerId)
-    console.warn(`${TAG} deleteComputer — DONE computerId=${computerId} eventsDeleted=${events.length}`)
+    console.warn(
+      `${TAG} deleteComputer — DONE computerId=${redactIdentifierForLog(computerId)} eventsDeleted=${events.length}`
+    )
     return { deleted: true, eventsDeleted: events.length }
   },
 })
@@ -799,14 +852,16 @@ export const getInternal = internalQuery({
 export const provisionComputer = internalAction({
   args: { computerId: v.id('computers') },
   handler: async (ctx, { computerId }) => {
-    console.log(`${TAG} provisionComputer — START computerId=${computerId}`)
+    console.log(`${TAG} provisionComputer — START computerId=${redactIdentifierForLog(computerId)}`)
 
     const computer = await ctx.runQuery(internal.computers.getInternal, { computerId })
     if (!computer) {
       console.error(`${TAG} provisionComputer — ABORT: computer not found`)
       throw new Error(`Computer ${computerId} not found`)
     }
-    console.log(`${TAG} provisionComputer — loaded computer name="${computer.name}" region=${computer.region} status=${computer.status}`)
+    console.log(
+      `${TAG} provisionComputer — loaded computer region=${computer.region} status=${computer.status} name=${summarizeTextForLog(computer.name)}`
+    )
 
     const HETZNER_TOKEN = process.env.HETZNER_API_TOKEN!
     const CONVEX_HTTP_URL = process.env.CONVEX_HTTP_URL!
@@ -856,10 +911,10 @@ export const provisionComputer = internalAction({
       )
       const fwData = await fwRes.json()
       const firewallId: number = fwData.firewall.id
-      console.log(`${TAG} provisionComputer — firewall created: firewallId=${firewallId}`)
+      console.log(`${TAG} provisionComputer — firewall created`)
 
       // ── Step 2: Create server with firewall attached at creation time ────────
-      console.log(`${TAG} provisionComputer — calling Hetzner POST /v1/servers (type=cpx21 location=${location} firewall=${firewallId})`)
+      console.log(`${TAG} provisionComputer — calling Hetzner POST /v1/servers (type=cpx21 location=${location})`)
       const serverRes = await retryFetch(
         'https://api.hetzner.cloud/v1/servers',
         {
@@ -884,7 +939,7 @@ export const provisionComputer = internalAction({
       const serverData = await serverRes.json()
       const serverId: number = serverData.server.id
       const serverIp: string = serverData.server.public_net.ipv4.ip
-      console.log(`${TAG} provisionComputer — Hetzner server created: serverId=${serverId} ip=${serverIp}`)
+      console.log(`${TAG} provisionComputer — Hetzner server created ip=${redactIpForLog(serverIp)}`)
 
       await ctx.runMutation(internal.computers.setProvisioningInfo, {
         computerId,
@@ -907,11 +962,15 @@ export const provisionComputer = internalAction({
         { computerId, attempt: 0 }
       )
 
-      console.log(`${TAG} provisionComputer — COMPLETE: server=${serverIp} waiting for VPS callback or poll fallback`)
+      console.log(
+        `${TAG} provisionComputer — COMPLETE computerId=${redactIdentifierForLog(computerId)} waiting for VPS callback or poll fallback`
+      )
 
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error(`${TAG} provisionComputer — ERROR: ${message}`)
+      console.error(
+        `${TAG} provisionComputer — ERROR computerId=${redactIdentifierForLog(computerId)} message=${summarizeTextForLog(message)}`
+      )
       await ctx.runMutation(internal.computers.setError, { computerId, message })
       await ctx.runMutation(internal.computers.logEvent, {
         computerId, type: 'error', message: `Provisioning failed: ${message}`,
@@ -926,7 +985,9 @@ export const pollStatus = internalAction({
     attempt: v.optional(v.number()),
   },
   handler: async (ctx, { computerId, attempt = 0 }) => {
-    console.log(`${TAG} pollStatus — computerId=${computerId} attempt=${attempt}`)
+    console.log(
+      `${TAG} pollStatus — computerId=${redactIdentifierForLog(computerId)} attempt=${attempt}`
+    )
 
     const computer = await ctx.runQuery(internal.computers.getInternal, { computerId })
     if (!computer || computer.status !== 'provisioning') {
@@ -937,7 +998,7 @@ export const pollStatus = internalAction({
     const HETZNER_TOKEN = process.env.HETZNER_API_TOKEN!
 
     try {
-      console.log(`${TAG} pollStatus — checking Hetzner server ${computer.hetznerServerId} status`)
+      console.log(`${TAG} pollStatus — checking Hetzner server status`)
       const res = await retryFetch(
         `https://api.hetzner.cloud/v1/servers/${computer.hetznerServerId}`,
         { headers: { Authorization: `Bearer ${HETZNER_TOKEN}` } }
@@ -947,7 +1008,9 @@ export const pollStatus = internalAction({
       console.log(`${TAG} pollStatus — Hetzner server status=${serverStatus}`)
 
       if (serverStatus === 'running') {
-        console.log(`${TAG} pollStatus — probing OpenClaw health at http://${computer.hetznerServerIp}:18789/healthz`)
+        console.log(
+          `${TAG} pollStatus — probing OpenClaw health at ${redactIpForLog(computer.hetznerServerIp)}`
+        )
         try {
           const healthRes = await fetch(`http://${computer.hetznerServerIp}:18789/healthz`, {
             signal: AbortSignal.timeout(5000),
@@ -967,11 +1030,13 @@ export const pollStatus = internalAction({
             return
           }
         } catch (healthErr) {
-          console.log(`${TAG} pollStatus — health probe failed (not ready yet): ${healthErr instanceof Error ? healthErr.message : healthErr}`)
+          console.log(
+            `${TAG} pollStatus — health probe failed (not ready yet): ${summarizeErrorForLog(healthErr)}`
+          )
         }
       }
     } catch (apiErr) {
-      console.error(`${TAG} pollStatus — Hetzner API error: ${apiErr instanceof Error ? apiErr.message : apiErr}`)
+      console.error(`${TAG} pollStatus — Hetzner API error: ${summarizeErrorForLog(apiErr)}`)
     }
 
     if (attempt >= 15) {
@@ -995,14 +1060,14 @@ export const pollStatus = internalAction({
 export const teardownComputer = internalAction({
   args: { computerId: v.id('computers') },
   handler: async (ctx, { computerId }) => {
-    console.log(`${TAG} teardownComputer — START computerId=${computerId}`)
+    console.log(`${TAG} teardownComputer — START computerId=${redactIdentifierForLog(computerId)}`)
 
     const computer = await ctx.runQuery(internal.computers.getInternal, { computerId })
     if (!computer || computer.status === 'deleted') {
       console.log(`${TAG} teardownComputer — SKIP: already deleted or not found`)
       return
     }
-    console.log(`${TAG} teardownComputer — current status=${computer.status} serverId=${computer.hetznerServerId} firewallId=${computer.hetznerFirewallId}`)
+    console.log(`${TAG} teardownComputer — current status=${computer.status}`)
     await ctx.runMutation(internal.computers.markDeleted, { computerId })
     await ctx.runMutation(internal.computers.logEvent, {
       computerId, type: 'status_change',
@@ -1023,7 +1088,9 @@ export const deleteComputerInstance = action({
     accessToken: v.string(),
   },
   handler: async (ctx, { computerId, userId, accessToken }) => {
-    console.log(`${TAG} deleteComputerInstance — START computerId=${computerId} userId=${userId}`)
+    console.log(
+      `${TAG} deleteComputerInstance — START computerId=${redactIdentifierForLog(computerId)}`
+    )
 
     await requireAccessToken(accessToken, userId)
 
@@ -1033,15 +1100,17 @@ export const deleteComputerInstance = action({
     }
 
     if (computer.stripeSubscriptionId) {
-      console.log(`${TAG} deleteComputerInstance — canceling Stripe subscription ${computer.stripeSubscriptionId}`)
+      console.log(`${TAG} deleteComputerInstance — canceling Stripe subscription`)
       try {
         await stripeClient.cancelSubscription(ctx, {
           stripeSubscriptionId: computer.stripeSubscriptionId,
           cancelAtPeriodEnd: false,
         })
-        console.log(`${TAG} deleteComputerInstance — Stripe subscription canceled ${computer.stripeSubscriptionId}`)
+        console.log(`${TAG} deleteComputerInstance — Stripe subscription canceled`)
       } catch (err) {
-        console.warn(`${TAG} deleteComputerInstance — Stripe cancel failed for ${computer.stripeSubscriptionId}: ${err instanceof Error ? err.message : err}`)
+        console.warn(
+          `${TAG} deleteComputerInstance — Stripe cancel failed: ${summarizeErrorForLog(err)}`
+        )
       }
     } else {
       console.log(`${TAG} deleteComputerInstance — no stripeSubscriptionId, skipping Stripe cancel`)
@@ -1054,7 +1123,9 @@ export const deleteComputerInstance = action({
       { computerId, attempt: 0 }
     )
 
-    console.log(`${TAG} deleteComputerInstance — queued background cleanup computerId=${computerId}`)
+    console.log(
+      `${TAG} deleteComputerInstance — queued background cleanup computerId=${redactIdentifierForLog(computerId)}`
+    )
     return { queued: true }
   },
 })
@@ -1065,7 +1136,9 @@ export const deleteComputerResources = internalAction({
     attempt: v.optional(v.number()),
   },
   handler: async (ctx, { computerId, attempt = 0 }) => {
-    console.log(`${TAG} deleteComputerResources — START computerId=${computerId} attempt=${attempt}`)
+    console.log(
+      `${TAG} deleteComputerResources — START computerId=${redactIdentifierForLog(computerId)} attempt=${attempt}`
+    )
 
     const computer = await ctx.runQuery(internal.computers.getInternal, { computerId })
     if (!computer) {
@@ -1079,15 +1152,17 @@ export const deleteComputerResources = internalAction({
     }
 
     if (computer.stripeSubscriptionId) {
-      console.log(`${TAG} deleteComputerResources — canceling Stripe subscription ${computer.stripeSubscriptionId}`)
+      console.log(`${TAG} deleteComputerResources — canceling Stripe subscription`)
       try {
         await stripeClient.cancelSubscription(ctx, {
           stripeSubscriptionId: computer.stripeSubscriptionId,
           cancelAtPeriodEnd: false,
         })
-        console.log(`${TAG} deleteComputerResources — Stripe subscription canceled ${computer.stripeSubscriptionId}`)
+        console.log(`${TAG} deleteComputerResources — Stripe subscription canceled`)
       } catch (err) {
-        console.warn(`${TAG} deleteComputerResources — Stripe cancel failed for ${computer.stripeSubscriptionId}: ${err instanceof Error ? err.message : err}`)
+        console.warn(
+          `${TAG} deleteComputerResources — Stripe cancel failed: ${summarizeErrorForLog(err)}`
+        )
       }
     } else {
       console.log(`${TAG} deleteComputerResources — no stripeSubscriptionId, skipping Stripe cancel`)
@@ -1136,7 +1211,9 @@ export const deleteComputerResources = internalAction({
     }
 
     await ctx.runMutation(internal.computers.deleteComputer, { computerId })
-    console.log(`${TAG} deleteComputerResources — COMPLETE computerId=${computerId}`)
+    console.log(
+      `${TAG} deleteComputerResources — COMPLETE computerId=${redactIdentifierForLog(computerId)}`
+    )
   },
 })
 
@@ -1158,24 +1235,28 @@ async function retryFetch(
   let lastErr: unknown
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      console.log(`${TAG} retryFetch — attempt ${i + 1}/${maxAttempts} ${init.method ?? 'GET'} ${url}`)
+      console.log(
+        `${TAG} retryFetch — attempt ${i + 1}/${maxAttempts} ${init.method ?? 'GET'} ${summarizeUrlForLog(url)}`
+      )
       const res = await fetch(url, init)
       if (opts.ignore404 && res.status === 404) {
-        console.log(`${TAG} retryFetch — 404 ignored for ${url}`)
+        console.log(`${TAG} retryFetch — 404 ignored for ${summarizeUrlForLog(url)}`)
         return res
       }
       if (res.status === 429 || res.status >= 500) {
-        lastErr = new Error(`HTTP ${res.status} from ${url}`)
+        lastErr = new Error(`HTTP ${res.status} from ${summarizeUrlForLog(url)}`)
         console.warn(`${TAG} retryFetch — ${res.status} error, retrying in ${baseDelayMs * 2 ** i}ms`)
         await sleep(baseDelayMs * 2 ** i)
         continue
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}: ${await res.text()}`)
-      console.log(`${TAG} retryFetch — OK ${res.status} ${url}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status} from ${summarizeUrlForLog(url)}`)
+      console.log(`${TAG} retryFetch — OK ${res.status} ${summarizeUrlForLog(url)}`)
       return res
     } catch (err) {
       lastErr = err
-      console.error(`${TAG} retryFetch — attempt ${i + 1} threw: ${err instanceof Error ? err.message : err}`)
+      console.error(
+        `${TAG} retryFetch — attempt ${i + 1} threw: ${summarizeErrorForLog(err)}`
+      )
       if (i < maxAttempts - 1) await sleep(baseDelayMs * 2 ** i)
     }
   }
@@ -1183,7 +1264,7 @@ async function retryFetch(
 }
 
 async function ensureServerDeleted(serverId: number, token: string): Promise<boolean> {
-  console.log(`${TAG} ensureServerDeleted — requesting deletion for serverId=${serverId}`)
+  console.log(`${TAG} ensureServerDeleted — requesting deletion for server=${redactIdentifierForLog(serverId)}`)
   await retryFetch(
     `https://api.hetzner.cloud/v1/servers/${serverId}`,
     { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
@@ -1195,21 +1276,23 @@ async function ensureServerDeleted(serverId: number, token: string): Promise<boo
       headers: { Authorization: `Bearer ${token}` },
     })
     if (res.status === 404) {
-      console.log(`${TAG} ensureServerDeleted — serverId=${serverId} confirmed deleted`)
+      console.log(`${TAG} ensureServerDeleted — server confirmed deleted`)
       return true
     }
     if (!res.ok) {
-      throw new Error(`Failed to check server deletion for ${serverId}: HTTP ${res.status}`)
+      throw new Error(`Failed to check server deletion: HTTP ${res.status}`)
     }
     await sleep(5000)
   }
 
-  console.log(`${TAG} ensureServerDeleted — serverId=${serverId} still exists after wait window`)
+  console.log(`${TAG} ensureServerDeleted — server still exists after wait window`)
   return false
 }
 
 async function ensureFirewallDeleted(firewallId: number, token: string): Promise<boolean> {
-  console.log(`${TAG} ensureFirewallDeleted — requesting deletion for firewallId=${firewallId}`)
+  console.log(
+    `${TAG} ensureFirewallDeleted — requesting deletion for firewall=${redactIdentifierForLog(firewallId)}`
+  )
 
   for (let i = 0; i < 12; i++) {
     const res = await fetch(`https://api.hetzner.cloud/v1/firewalls/${firewallId}`, {
@@ -1218,31 +1301,31 @@ async function ensureFirewallDeleted(firewallId: number, token: string): Promise
     })
 
     if (res.status === 404) {
-      console.log(`${TAG} ensureFirewallDeleted — firewallId=${firewallId} already deleted`)
+      console.log(`${TAG} ensureFirewallDeleted — firewall already deleted`)
       return true
     }
 
     if (res.ok) {
-      console.log(`${TAG} ensureFirewallDeleted — firewallId=${firewallId} deleted`)
+      console.log(`${TAG} ensureFirewallDeleted — firewall deleted`)
       return true
     }
 
     if (res.status === 409) {
-      console.log(`${TAG} ensureFirewallDeleted — firewallId=${firewallId} still in use, waiting`)
+      console.log(`${TAG} ensureFirewallDeleted — firewall still in use, waiting`)
       await sleep(5000)
       continue
     }
 
     if (res.status === 429 || res.status >= 500) {
-      console.log(`${TAG} ensureFirewallDeleted — firewallId=${firewallId} temporary error HTTP ${res.status}, waiting`)
+      console.log(`${TAG} ensureFirewallDeleted — firewall temporary error HTTP ${res.status}, waiting`)
       await sleep(5000)
       continue
     }
 
-    throw new Error(`Failed to delete firewall ${firewallId}: HTTP ${res.status} ${await res.text()}`)
+    throw new Error(`Failed to delete firewall: HTTP ${res.status}`)
   }
 
-  console.log(`${TAG} ensureFirewallDeleted — firewallId=${firewallId} still in use after wait window`)
+  console.log(`${TAG} ensureFirewallDeleted — firewall still in use after wait window`)
   return false
 }
 
@@ -1315,9 +1398,7 @@ async function applySessionModelOverride(params: {
   })
 
   if (!response.ok) {
-    throw new Error(
-      `Failed to apply computer model override: ${response.status} ${await response.text()}`
-    )
+    throw new Error(`Failed to apply computer model override: HTTP ${response.status}`)
   }
 }
 

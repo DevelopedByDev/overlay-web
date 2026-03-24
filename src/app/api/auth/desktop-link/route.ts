@@ -2,14 +2,17 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
 import { randomBytes } from 'crypto'
 import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { summarizeErrorForLog } from '@/lib/safe-log'
+import {
+  decryptSessionTransferPayload,
+  encryptSessionTransferPayload,
+} from '@/lib/session-transfer-crypto'
 
-function getInternalApiSecret(): string {
-  const secret = process.env.INTERNAL_API_SECRET?.trim()
-  if (!secret) {
-    throw new Error('INTERNAL_API_SECRET is not configured')
-  }
-  return secret
-}
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'no-store, max-age=0',
+  Pragma: 'no-cache',
+} as const
 
 export async function POST() {
   try {
@@ -37,18 +40,18 @@ export async function POST() {
     await convex.mutation('sessionTransfer:storeToken', {
       serverSecret: getInternalApiSecret(),
       token,
-      data: JSON.stringify(authData),
+      data: encryptSessionTransferPayload(JSON.stringify(authData)),
       expiresAt,
     })
 
     const deepLink = `overlay://auth/transfer?token=${token}`
 
-    return NextResponse.json({ deepLink })
+    return NextResponse.json({ deepLink }, { headers: NO_STORE_HEADERS })
   } catch (error) {
-    console.error('[Desktop Link] Error:', error)
+    console.error('[Desktop Link] Error:', summarizeErrorForLog(error))
     return NextResponse.json(
       { error: 'Failed to generate desktop link' },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     )
   }
 }
@@ -56,12 +59,12 @@ export async function POST() {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const token = searchParams.get('token')
+    const token = searchParams.get('token')?.trim()
     
     if (!token) {
       return NextResponse.json(
         { error: 'Token required' },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       )
     }
 
@@ -73,17 +76,17 @@ export async function GET(request: Request) {
     if (!dataJson) {
       return NextResponse.json(
         { error: 'Invalid or expired token' },
-        { status: 404 }
+        { status: 404, headers: NO_STORE_HEADERS }
       )
     }
 
-    const data = JSON.parse(dataJson)
-    return NextResponse.json(data)
+    const data = JSON.parse(decryptSessionTransferPayload(dataJson))
+    return NextResponse.json(data, { headers: NO_STORE_HEADERS })
   } catch (error) {
-    console.error('[Desktop Link] Error retrieving session:', error)
+    console.error('[Desktop Link] Error retrieving session:', summarizeErrorForLog(error))
     return NextResponse.json(
       { error: 'Failed to retrieve session' },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     )
   }
 }

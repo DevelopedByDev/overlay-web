@@ -1,21 +1,35 @@
 import type { NextRequest } from 'next/server'
 
+function isLocalOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin)
+    return url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+  } catch {
+    return false
+  }
+}
+
 /**
  * Base URL for server-side `fetch` to this app's own Route Handlers (memory, knowledge, files).
- * Prefer the incoming request's host so local dev does not POST to production.
+ * Only trust the incoming request origin when it matches the configured app origin,
+ * or when local development is explicitly using localhost.
  */
 export function getInternalApiBaseUrl(request?: NextRequest): string {
+  const canonicalBaseUrl = getBaseUrl()
+  const canonicalOrigin = new URL(canonicalBaseUrl).origin
+
   if (request) {
-    const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host')
-    if (host) {
-      const forwarded = request.headers.get('x-forwarded-proto')
-      const proto =
-        forwarded ||
-        (host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https')
-      return `${proto}://${host}`
+    const requestOrigin = request.nextUrl.origin
+    if (requestOrigin === canonicalOrigin) {
+      return requestOrigin
+    }
+
+    if (process.env.NODE_ENV === 'development' && isLocalOrigin(requestOrigin)) {
+      return requestOrigin
     }
   }
-  return getBaseUrl()
+
+  return canonicalBaseUrl
 }
 
 export function getBaseUrl(): string {

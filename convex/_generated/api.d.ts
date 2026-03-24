@@ -15,6 +15,7 @@ import type * as http from "../http.js";
 import type * as keys from "../keys.js";
 import type * as knowledge from "../knowledge.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_logging from "../lib/logging.js";
 import type * as lib_stripeOverlaySubscription from "../lib/stripeOverlaySubscription.js";
 import type * as memories from "../memories.js";
 import type * as notes from "../notes.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   keys: typeof keys;
   knowledge: typeof knowledge;
   "lib/auth": typeof lib_auth;
+  "lib/logging": typeof lib_logging;
   "lib/stripeOverlaySubscription": typeof lib_stripeOverlaySubscription;
   memories: typeof memories;
   notes: typeof notes;

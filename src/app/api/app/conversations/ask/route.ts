@@ -35,6 +35,11 @@ import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
 } from '@/lib/chat-message-persistence'
+import {
+  summarizeErrorForLog,
+  summarizeToolInputForLog,
+  summarizeToolSetForLog,
+} from '@/lib/safe-log'
 import type { StepResult, ToolSet } from 'ai'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
@@ -274,7 +279,7 @@ export async function POST(request: NextRequest) {
             }],
           })
         } catch (err) {
-          console.error('[conversations/ask] Failed to record usage:', err)
+          console.error('[conversations/ask] Failed to record usage:', summarizeErrorForLog(err))
         }
       }
 
@@ -295,7 +300,7 @@ export async function POST(request: NextRequest) {
             tokens: { input: usage.inputTokens, output: usage.outputTokens },
           })
         } catch (err) {
-          console.error('[conversations/ask] Failed to save message:', err)
+          console.error('[conversations/ask] Failed to save message:', summarizeErrorForLog(err))
         }
       }
     }
@@ -308,7 +313,7 @@ export async function POST(request: NextRequest) {
     const [composioRaw, perplexityTool, overlayAskTools] = await Promise.all([
       unifiedAskEnabled
         ? createBrowserUnifiedTools({ userId, accessToken: session.accessToken }).catch((err) => {
-            console.error('[conversations/ask] Composio tools unavailable:', err)
+            console.error('[conversations/ask] Composio tools unavailable:', summarizeErrorForLog(err))
             return {}
           })
         : Promise.resolve({}),
@@ -337,8 +342,8 @@ export async function POST(request: NextRequest) {
       : { ...overlayAskTools }
 
     console.log(
-      '[conversations/ask] tool ids:',
-      Object.keys(askTools).sort().join(', '),
+      '[conversations/ask] tools:',
+      summarizeToolSetForLog(askTools),
       '| perplexity_search:',
       perplexityTool ? 'yes' : 'NO (missing gateway key or init failed — see [AI Gateway] logs)',
       '| unified_ask:',
@@ -358,13 +363,9 @@ export async function POST(request: NextRequest) {
         experimental_onToolCallStart: ({ toolCall }) => {
           if (!toolCall || toolCall.toolName !== 'perplexity_search') return
           const input = toolCall.input as Record<string, unknown> | undefined
-          const q =
-            input && typeof input.query === 'string'
-              ? `${input.query.slice(0, 160)}${input.query.length > 160 ? '…' : ''}`
-              : JSON.stringify(input)?.slice(0, 200)
           console.log('[conversations/ask] perplexity_search START', {
             toolCallId: toolCall.toolCallId,
-            queryPreview: q,
+            input: summarizeToolInputForLog(input),
           })
         },
         experimental_onToolCallFinish: ({ toolCall, success, durationMs, output, error }) => {
@@ -380,7 +381,7 @@ export async function POST(request: NextRequest) {
               console.error('[conversations/ask] perplexity_search FAILED', {
                 toolCallId: toolCall.toolCallId,
                 durationMs,
-                error: error instanceof Error ? error.message : String(error),
+                error: summarizeErrorForLog(error),
               })
             }
           }
@@ -420,7 +421,7 @@ export async function POST(request: NextRequest) {
         },
       })
     } catch (err) {
-      console.error('[conversations/ask] streamText failed:', err)
+      console.error('[conversations/ask] streamText failed:', summarizeErrorForLog(err))
       const isOpenRouter = getModel(effectiveModelId)?.provider === 'openrouter'
       if (isOpenRouter && shouldFallbackOpenRouterWithoutTools(err)) {
         const fallbackSystem =
@@ -444,7 +445,7 @@ export async function POST(request: NextRequest) {
       throw err
     }
   } catch (error) {
-    console.error('[conversations/ask] Error:', error)
+    console.error('[conversations/ask] Error:', summarizeErrorForLog(error))
     return NextResponse.json({ error: 'Failed to process ask request' }, { status: 500 })
   }
 }

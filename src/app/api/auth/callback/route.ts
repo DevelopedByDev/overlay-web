@@ -10,6 +10,7 @@ import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../../../convex/_generated/api'
 import { randomBytes } from 'crypto'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { encryptSessionTransferPayload } from '@/lib/session-transfer-crypto'
 
 // Use dev Convex URL in development
 const IS_DEV = process.env.NODE_ENV === 'development'
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest) {
         await convex.mutation(api.sessionTransfer.storeToken, {
           serverSecret: getInternalApiSecret(),
           token,
-          data: JSON.stringify(authData),
+          data: encryptSessionTransferPayload(JSON.stringify(authData)),
           expiresAt,
         })
 

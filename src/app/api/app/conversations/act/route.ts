@@ -26,6 +26,11 @@ import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
 } from '@/lib/chat-message-persistence'
+import {
+  summarizeErrorForLog,
+  summarizeToolInputForLog,
+  summarizeToolSetForLog,
+} from '@/lib/safe-log'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 function summarizeToolOutputForLog(output: unknown): string {
@@ -160,7 +165,7 @@ export async function POST(request: NextRequest) {
           })
         }
       } catch (err) {
-        console.error('[conversations/act] Failed to save user message:', err)
+        console.error('[conversations/act] Failed to save user message:', summarizeErrorForLog(err))
       }
     }
 
@@ -245,8 +250,8 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(
-      '[conversations/act] tool ids:',
-      Object.keys(tools).sort().join(', '),
+      '[conversations/act] tools:',
+      summarizeToolSetForLog(tools),
       '| perplexity_search:',
       perplexityTool ? 'yes' : 'NO (missing gateway key or init failed — see [AI Gateway] logs)',
     )
@@ -278,13 +283,9 @@ export async function POST(request: NextRequest) {
       experimental_onToolCallStart: ({ toolCall }) => {
         if (!toolCall || toolCall.toolName !== 'perplexity_search') return
         const input = toolCall.input as Record<string, unknown> | undefined
-        const q =
-          input && typeof input.query === 'string'
-            ? `${input.query.slice(0, 160)}${input.query.length > 160 ? '…' : ''}`
-            : JSON.stringify(input)?.slice(0, 200)
         console.log('[conversations/act] perplexity_search START', {
           toolCallId: toolCall.toolCallId,
-          queryPreview: q,
+          input: summarizeToolInputForLog(input),
         })
       },
       experimental_onToolCallFinish: ({ toolCall, success, durationMs, output, error }) => {
@@ -300,7 +301,7 @@ export async function POST(request: NextRequest) {
             console.error('[conversations/act] perplexity_search FAILED', {
               toolCallId: toolCall.toolCallId,
               durationMs,
-              error: error instanceof Error ? error.message : String(error),
+              error: summarizeErrorForLog(error),
             })
           }
         }
@@ -340,7 +341,7 @@ export async function POST(request: NextRequest) {
               }],
             })
           } catch (err) {
-            console.error('[conversations/act] Failed to record usage:', err)
+            console.error('[conversations/act] Failed to record usage:', summarizeErrorForLog(err))
           }
         }
 
@@ -365,7 +366,7 @@ export async function POST(request: NextRequest) {
               tokens: { input: totalInputTokens, output: totalOutputTokens },
             })
           } catch (err) {
-            console.error('[conversations/act] Failed to save assistant message:', err)
+            console.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
           }
         }
       },
@@ -386,7 +387,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('[conversations/act] Error:', error)
+    console.error('[conversations/act] Error:', summarizeErrorForLog(error))
     return NextResponse.json(
       { error: userFacingOpenRouterError(error) },
       { status: 500 },
