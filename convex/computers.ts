@@ -4,7 +4,7 @@ import {
 } from './_generated/server'
 import { api, internal, components } from './_generated/api'
 import { StripeSubscriptions } from '@convex-dev/stripe'
-import { validateAccessToken } from './lib/auth'
+import { requireAccessToken } from './lib/auth'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getModel } from '../src/lib/models'
 import { calculateTokenCost } from '../src/lib/model-pricing'
 import type { Id } from './_generated/dataModel'
@@ -26,10 +26,7 @@ export const create = mutation({
   returns: v.id('computers'),
   handler: async (ctx, args) => {
     console.log(`${TAG} create — userId=${args.userId} name="${args.name}" region=${args.region}`)
-    if (!validateAccessToken(args.accessToken)) {
-      console.error(`${TAG} create — REJECTED: invalid accessToken for userId=${args.userId}`)
-      throw new Error('Unauthorized')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
     const trimmedName = args.name.trim()
     if (!trimmedName) {
       throw new Error('Computer name is required')
@@ -218,7 +215,11 @@ export const get = query({
     accessToken: v.string(),
   },
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) return null
+    try {
+      await requireAccessToken(args.accessToken, args.userId)
+    } catch {
+      return null
+    }
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) return null
     return { ...computer, gatewayToken: undefined, readySecret: undefined }
@@ -239,7 +240,9 @@ export const resolveForChatTools = query({
   ): Promise<
     { ok: true; computerId: Id<'computers'>; displayName: string } | { ok: false; error: string }
   > => {
-    if (!validateAccessToken(args.accessToken)) {
+    try {
+      await requireAccessToken(args.accessToken, args.userId)
+    } catch {
       return { ok: false, error: 'Unauthorized' }
     }
     const rows = await ctx.db
@@ -297,7 +300,11 @@ export const resolveForChatTools = query({
 export const list = query({
   args: { userId: v.string(), accessToken: v.string() },
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) return []
+    try {
+      await requireAccessToken(args.accessToken, args.userId)
+    } catch {
+      return []
+    }
     const computers = await ctx.db
       .query('computers')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
@@ -310,7 +317,11 @@ export const list = query({
 export const listEvents = query({
   args: { computerId: v.id('computers'), userId: v.string(), accessToken: v.string() },
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) return []
+    try {
+      await requireAccessToken(args.accessToken, args.userId)
+    } catch {
+      return []
+    }
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) return []
     return ctx.db
@@ -324,7 +335,11 @@ export const listEvents = query({
 export const listChatMessages = query({
   args: { computerId: v.id('computers'), userId: v.string(), accessToken: v.string() },
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) return []
+    try {
+      await requireAccessToken(args.accessToken, args.userId)
+    } catch {
+      return []
+    }
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) return []
 
@@ -368,9 +383,7 @@ export const getChatConnection = query({
     ctx,
     args
   ): Promise<{ gatewayToken: string; hooksToken: string; hetznerServerIp: string }> => {
-    if (!validateAccessToken(args.accessToken)) {
-      throw new Error('Unauthorized')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
 
     const computer = await ctx.runQuery(internal.computers.getInternal, {
       computerId: args.computerId,
@@ -401,9 +414,7 @@ export const addChatMessage = mutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) {
-      throw new Error('Unauthorized')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
 
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) {
@@ -434,9 +445,7 @@ export const addChatError = mutation({
     message: v.string(),
   },
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) {
-      throw new Error('Unauthorized')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
 
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) {
@@ -466,9 +475,7 @@ export const setChatRuntimeState = mutation({
     effectiveModel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) {
-      throw new Error('Unauthorized')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
 
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) {
@@ -501,9 +508,7 @@ export const sendChatMessage = action({
   handler: async (ctx, args) => {
     console.log(`${TAG} sendChatMessage — START computerId=${args.computerId} userId=${args.userId}`)
 
-    if (!validateAccessToken(args.accessToken)) {
-      throw new Error('Unauthorized')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
 
     const computer = await ctx.runQuery(internal.computers.getInternal, {
       computerId: args.computerId,
@@ -1020,9 +1025,7 @@ export const deleteComputerInstance = action({
   handler: async (ctx, { computerId, userId, accessToken }) => {
     console.log(`${TAG} deleteComputerInstance — START computerId=${computerId} userId=${userId}`)
 
-    if (!validateAccessToken(accessToken)) {
-      throw new Error('Unauthorized')
-    }
+    await requireAccessToken(accessToken, userId)
 
     const computer = await ctx.runQuery(internal.computers.getInternal, { computerId })
     if (!computer || computer.userId !== userId) {
@@ -1466,6 +1469,7 @@ write_files:
       #!/bin/bash
       set -eo pipefail
       COMPUTER_ID="{{COMPUTER_ID}}"
+      READY_SECRET="{{READY_SECRET}}"
       CONVEX_URL="{{CONVEX_HTTP_URL}}"
 
       # Redirect all output to log file so the UI can stream it
@@ -1484,7 +1488,7 @@ write_files:
               if [ -n "$escaped" ]; then
                 curl -sf -X POST "$CONVEX_URL/computer/log" \\
                   -H "Content-Type: application/json" \\
-                  -d "{\\"computerId\\":\\"$COMPUTER_ID\\",\\"message\\":$escaped}" > /dev/null 2>&1 || true
+                  -d "{\\"computerId\\":\\"$COMPUTER_ID\\",\\"readySecret\\":\\"$READY_SECRET\\",\\"message\\":$escaped}" > /dev/null 2>&1 || true
               fi
             fi
             last_line=$current_line
@@ -1495,7 +1499,7 @@ write_files:
       clog() {
         curl -sf -X POST "$CONVEX_URL/computer/log" \\
           -H "Content-Type: application/json" \\
-          -d "{\\"computerId\\":\\"$COMPUTER_ID\\",\\"message\\":\\"$1\\"}" > /dev/null 2>&1 || true
+          -d "{\\"computerId\\":\\"$COMPUTER_ID\\",\\"readySecret\\":\\"$READY_SECRET\\",\\"message\\":\\"$1\\"}" > /dev/null 2>&1 || true
       }
 
       docker_openclaw() {

@@ -15,9 +15,14 @@ export async function GET(request: NextRequest) {
     const conversationId = searchParams.get('conversationId')
 
     const outputs = conversationId
-      ? await convex.query('outputs:listByConversationId', { conversationId })
+      ? await convex.query('outputs:listByConversationId', {
+          conversationId,
+          userId: session.user.id,
+          accessToken: session.accessToken,
+        })
       : await convex.query('outputs:list', {
           userId: session.user.id,
+          accessToken: session.accessToken,
           type: type ?? undefined,
           limit,
         })

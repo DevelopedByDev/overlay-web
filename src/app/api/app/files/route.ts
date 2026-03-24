@@ -10,14 +10,21 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const fileId = searchParams.get('fileId')
     if (fileId) {
-      const file = await convex.query('files:get', { fileId })
+      const file = await convex.query('files:get', {
+        fileId,
+        userId: session.user.id,
+        accessToken: session.accessToken,
+      })
       if (!file || (file as { userId: string }).userId !== session.user.id) {
         return NextResponse.json({ error: 'Not found' }, { status: 404 })
       }
       return NextResponse.json(file)
     }
     const projectId = searchParams.get('projectId')
-    const args: Record<string, unknown> = { userId: session.user.id }
+    const args: Record<string, unknown> = {
+      userId: session.user.id,
+      accessToken: session.accessToken,
+    }
     if (projectId !== null) args.projectId = projectId
     const files = await convex.query('files:list', args)
     return NextResponse.json(files ?? [])
@@ -35,6 +42,7 @@ export async function POST(request: NextRequest) {
 
     const args: Record<string, unknown> = {
       userId: session.user.id,
+      accessToken: session.accessToken,
       name,
       type,
     }
@@ -82,7 +90,11 @@ export async function PATCH(request: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { fileId, name, content } = await request.json()
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
-    const args: Record<string, unknown> = { fileId }
+    const args: Record<string, unknown> = {
+      fileId,
+      userId: session.user.id,
+      accessToken: session.accessToken,
+    }
     if (name !== undefined) args.name = name
     if (content !== undefined) args.content = content
     await convex.mutation('files:update', args)
@@ -98,7 +110,11 @@ export async function DELETE(request: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const fileId = request.nextUrl.searchParams.get('fileId')
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
-    await convex.mutation('files:remove', { fileId })
+    await convex.mutation('files:remove', {
+      fileId,
+      userId: session.user.id,
+      accessToken: session.accessToken,
+    })
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: 'Failed to delete file' }, { status: 500 })

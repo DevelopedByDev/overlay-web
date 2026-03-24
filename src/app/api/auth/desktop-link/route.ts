@@ -3,6 +3,14 @@ import { getSession } from '@/lib/workos-auth'
 import { randomBytes } from 'crypto'
 import { convex } from '@/lib/convex'
 
+function getInternalApiSecret(): string {
+  const secret = process.env.INTERNAL_API_SECRET?.trim()
+  if (!secret) {
+    throw new Error('INTERNAL_API_SECRET is not configured')
+  }
+  return secret
+}
+
 export async function POST() {
   try {
     const session = await getSession()
@@ -27,6 +35,7 @@ export async function POST() {
     const expiresAt = Date.now() + 5 * 60 * 1000
 
     await convex.mutation('sessionTransfer:storeToken', {
+      serverSecret: getInternalApiSecret(),
       token,
       data: JSON.stringify(authData),
       expiresAt,
@@ -56,7 +65,10 @@ export async function GET(request: Request) {
       )
     }
 
-    const dataJson = await convex.mutation<string>('sessionTransfer:consumeToken', { token })
+    const dataJson = await convex.mutation<string>('sessionTransfer:consumeToken', {
+      token,
+      serverSecret: getInternalApiSecret(),
+    })
 
     if (!dataJson) {
       return NextResponse.json(

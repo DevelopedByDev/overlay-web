@@ -1,20 +1,24 @@
 import { v } from 'convex/values'
 import { mutation } from './_generated/server'
+import { requireServerSecret } from './lib/auth'
 
 export const storeToken = mutation({
   args: {
+    serverSecret: v.string(),
     token: v.string(),
     data: v.string(),
     expiresAt: v.number(),
   },
-  handler: async (ctx, { token, data, expiresAt }) => {
+  handler: async (ctx, { serverSecret, token, data, expiresAt }) => {
+    requireServerSecret(serverSecret)
     await ctx.db.insert('sessionTransferTokens', { token, data, expiresAt })
   },
 })
 
 export const consumeToken = mutation({
-  args: { token: v.string() },
-  handler: async (ctx, { token }) => {
+  args: { token: v.string(), serverSecret: v.string() },
+  handler: async (ctx, { token, serverSecret }) => {
+    requireServerSecret(serverSecret)
     const entry = await ctx.db
       .query('sessionTransferTokens')
       .withIndex('by_token', (q) => q.eq('token', token))
@@ -31,8 +35,9 @@ export const consumeToken = mutation({
 })
 
 export const cleanExpired = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { serverSecret: v.string() },
+  handler: async (ctx, { serverSecret }) => {
+    requireServerSecret(serverSecret)
     const now = Date.now()
     const expired = await ctx.db
       .query('sessionTransferTokens')

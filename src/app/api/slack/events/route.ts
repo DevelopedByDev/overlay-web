@@ -3,6 +3,7 @@ import { verifySlackSignature, postSlackMessage, textToBlocks } from '@/lib/slac
 import { convex } from '@/lib/convex'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { generateText } from 'ai'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 
 export async function POST(request: NextRequest) {
   const body = await request.text()
@@ -54,17 +55,18 @@ async function processEvent({
   event: { type: string; user: string; text: string; channel: string; ts: string; thread_ts?: string }
   teamId: string
 }) {
+  const serverSecret = getInternalApiSecret()
   // Look up installation
   const installation = await convex.query<{ botToken: string; botUserId: string }>(
     'slack:getInstallation',
-    { teamId }
+    { teamId, serverSecret }
   )
   if (!installation) return
 
   // Look up user link
   const userLink = await convex.query<{ overlayUserId: string }>(
     'slack:getUserLink',
-    { slackUserId: event.user, teamId }
+    { slackUserId: event.user, teamId, serverSecret }
   )
 
   const userText = event.text.replace(/<@[^>]+>/g, '').trim()
@@ -85,7 +87,11 @@ async function processEvent({
   // Get conversation history
   const convo = await convex.query<{
     messages: Array<{ role: 'user' | 'assistant'; content: string; ts: string }>
-  }>('slack:getConversation', { slackChannelId: event.channel, slackThreadTs: threadTs })
+  }>('slack:getConversation', {
+    slackChannelId: event.channel,
+    slackThreadTs: threadTs,
+    serverSecret,
+  })
 
   const history = convo?.messages || []
 
@@ -94,6 +100,7 @@ async function processEvent({
   try {
     const memories = await convex.query<Array<{ content: string }>>('memories:list', {
       userId: userLink.overlayUserId,
+      serverSecret,
     })
     if (memories && memories.length > 0) {
       memoryContext = '\n\nUser memories:\n' + memories.slice(0, 8).map((m) => `- ${m.content}`).join('\n')
@@ -129,6 +136,7 @@ async function processEvent({
     { role: 'assistant' as const, content: aiResponse, ts: Date.now().toString() },
   ]
   await convex.mutation('slack:upsertConversation', {
+    serverSecret,
     slackChannelId: event.channel,
     slackThreadTs: threadTs,
     overlayUserId: userLink.overlayUserId,

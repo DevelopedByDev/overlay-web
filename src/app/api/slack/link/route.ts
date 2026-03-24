@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 
 export async function POST(request: NextRequest) {
   const session = await getSession()
@@ -15,6 +16,7 @@ export async function POST(request: NextRequest) {
     slackUserId,
     teamId,
     overlayUserId: session.user.id,
+    serverSecret: getInternalApiSecret(),
   })
 
   return NextResponse.json({ success: true })

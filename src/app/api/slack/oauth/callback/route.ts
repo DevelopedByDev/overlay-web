@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
   }
 
   await convex.mutation('slack:saveInstallation', {
+    serverSecret: getInternalApiSecret(),
     teamId: data.team.id,
     teamName: data.team.name,
     botToken: data.access_token,

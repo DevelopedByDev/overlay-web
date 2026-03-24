@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
+import { getSession, getSessionSecret } from '@/lib/workos-auth'
 import { createHmac } from 'crypto'
 
 export async function GET() {
@@ -9,11 +9,12 @@ export async function GET() {
   }
 
   // Create a short-lived extension token (1 hour)
-  const secret = process.env.SESSION_SECRET || 'overlay-dev-secret'
+  const secret = getSessionSecret()
+  const expiresAt = Date.now() + 60 * 60 * 1000
   const payload = JSON.stringify({
     userId: session.user.id,
     email: session.user.email,
-    expiresAt: Date.now() + 60 * 60 * 1000,
+    expiresAt,
   })
   const encodedPayload = Buffer.from(payload).toString('base64')
   const signature = createHmac('sha256', secret).update(encodedPayload).digest('hex')
@@ -27,6 +28,6 @@ export async function GET() {
       firstName: session.user.firstName,
       lastName: session.user.lastName,
     },
-    expiresAt: Date.now() + 60 * 60 * 1000,
+    expiresAt,
   })
 }

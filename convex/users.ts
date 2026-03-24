@@ -1,25 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
-
-function validateAccessToken(accessToken: string): boolean {
-  if (!accessToken || typeof accessToken !== 'string') return false
-  const trimmed = accessToken.trim()
-  if (trimmed.length < 20) return false
-  const parts = trimmed.split('.')
-  if (parts.length === 3) {
-    try {
-      const payload = JSON.parse(
-        Buffer.from(parts[1], 'base64url').toString('utf-8')
-      )
-      if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()) {
-        return false
-      }
-    } catch {
-      // Accept as opaque token
-    }
-  }
-  return true
-}
+import { requireAccessToken } from './lib/auth'
 
 // Sync user profile from auth system (called after login).
 // For new users, always sets currentPeriodStart/End so the billingPeriodStart
@@ -34,9 +15,7 @@ export const syncUserProfile = mutation({
     profilePictureUrl: v.optional(v.string()),
   },
   handler: async (ctx, { accessToken, userId, email, firstName, lastName, profilePictureUrl }) => {
-    if (!validateAccessToken(accessToken)) {
-      throw new Error('Unauthorized: invalid or expired access token')
-    }
+    await requireAccessToken(accessToken, userId)
 
     const existing = await ctx.db
       .query('subscriptions')
@@ -90,7 +69,9 @@ export const syncUserProfile = mutation({
 export const getUserProfile = query({
   args: { accessToken: v.string(), userId: v.string() },
   handler: async (ctx, { accessToken, userId }) => {
-    if (!validateAccessToken(accessToken)) {
+    try {
+      await requireAccessToken(accessToken, userId)
+    } catch {
       return null
     }
 

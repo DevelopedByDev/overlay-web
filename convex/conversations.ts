@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import { Id } from './_generated/dataModel'
+import { requireAccessToken } from './lib/auth'
 
 /** Matches AI SDK UI parts we persist; `tool-invocation` restores tool chips after reload. */
 const messagePart = v.union(
@@ -29,8 +30,13 @@ function clampAskModels(ids: string[]): string[] {
 }
 
 export const list = query({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
+  args: { userId: v.string(), accessToken: v.string() },
+  handler: async (ctx, { userId, accessToken }) => {
+    try {
+      await requireAccessToken(accessToken, userId)
+    } catch {
+      return []
+    }
     const all = await ctx.db
       .query('conversations')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -41,33 +47,53 @@ export const list = query({
 })
 
 export const listByProject = query({
-  args: { projectId: v.string() },
-  handler: async (ctx, { projectId }) => {
-    return await ctx.db
+  args: { projectId: v.string(), userId: v.string(), accessToken: v.string() },
+  handler: async (ctx, { projectId, userId, accessToken }) => {
+    try {
+      await requireAccessToken(accessToken, userId)
+    } catch {
+      return []
+    }
+    const conversations = await ctx.db
       .query('conversations')
       .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
       .order('desc')
       .collect()
+    return conversations.filter((conversation) => conversation.userId === userId)
   },
 })
 
 export const get = query({
-  args: { conversationId: v.id('conversations') },
-  handler: async (ctx, { conversationId }) => {
-    return await ctx.db.get(conversationId)
+  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.string() },
+  handler: async (ctx, { conversationId, userId, accessToken }) => {
+    try {
+      await requireAccessToken(accessToken, userId)
+    } catch {
+      return null
+    }
+    const conversation = await ctx.db.get(conversationId)
+    return conversation?.userId === userId ? conversation : null
   },
 })
 
 export const create = mutation({
   args: {
     userId: v.string(),
+    accessToken: v.string(),
     title: v.string(),
     projectId: v.optional(v.string()),
     askModelIds: v.optional(v.array(v.string())),
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
   },
-  handler: async (ctx, { userId, title, projectId, askModelIds, actModelId, lastMode }) => {
+  handler: async (ctx, { userId, accessToken, title, projectId, askModelIds, actModelId, lastMode }) => {
+    await requireAccessToken(accessToken, userId)
+    if (projectId) {
+      const project = await ctx.db.get(projectId as Id<'projects'>)
+      if (!project || project.userId !== userId) {
+        throw new Error('Unauthorized')
+      }
+    }
     const ask = clampAskModels(askModelIds ?? ['claude-sonnet-4-6'])
     const act = actModelId?.trim() || ask[0] || 'claude-sonnet-4-6'
     const now = Date.now()
@@ -86,13 +112,20 @@ export const create = mutation({
 
 export const update = mutation({
   args: {
+    userId: v.string(),
+    accessToken: v.string(),
     conversationId: v.id('conversations'),
     title: v.optional(v.string()),
     askModelIds: v.optional(v.array(v.string())),
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
   },
-  handler: async (ctx, { conversationId, title, askModelIds, actModelId, lastMode }) => {
+  handler: async (ctx, { userId, accessToken, conversationId, title, askModelIds, actModelId, lastMode }) => {
+    await requireAccessToken(accessToken, userId)
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId) {
+      throw new Error('Unauthorized')
+    }
     const updates: Record<string, unknown> = { lastModified: Date.now() }
     if (title !== undefined) updates.title = title
     if (askModelIds !== undefined) updates.askModelIds = clampAskModels(askModelIds)
@@ -103,8 +136,13 @@ export const update = mutation({
 })
 
 export const remove = mutation({
-  args: { conversationId: v.id('conversations') },
-  handler: async (ctx, { conversationId }) => {
+  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.string() },
+  handler: async (ctx, { conversationId, userId, accessToken }) => {
+    await requireAccessToken(accessToken, userId)
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId) {
+      throw new Error('Unauthorized')
+    }
     const cid = conversationId as string
     const messages = await ctx.db
       .query('conversationMessages')
@@ -125,8 +163,17 @@ export const remove = mutation({
 })
 
 export const getMessages = query({
-  args: { conversationId: v.id('conversations') },
-  handler: async (ctx, { conversationId }) => {
+  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.string() },
+  handler: async (ctx, { conversationId, userId, accessToken }) => {
+    try {
+      await requireAccessToken(accessToken, userId)
+    } catch {
+      return []
+    }
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId) {
+      return []
+    }
     return await ctx.db
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
@@ -139,6 +186,7 @@ export const addMessage = mutation({
   args: {
     conversationId: v.id('conversations'),
     userId: v.string(),
+    accessToken: v.string(),
     turnId: v.string(),
     role: v.union(v.literal('user'), v.literal('assistant')),
     mode: v.union(v.literal('ask'), v.literal('act')),
@@ -152,8 +200,25 @@ export const addMessage = mutation({
     replySnippet: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAccessToken(args.accessToken, args.userId)
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.userId !== args.userId) {
+      throw new Error('Unauthorized')
+    }
     const msgId = await ctx.db.insert('conversationMessages', {
-      ...args,
+      conversationId: args.conversationId,
+      userId: args.userId,
+      turnId: args.turnId,
+      role: args.role,
+      mode: args.mode,
+      content: args.content,
+      contentType: args.contentType,
+      parts: args.parts,
+      modelId: args.modelId,
+      variantIndex: args.variantIndex,
+      tokens: args.tokens,
+      replyToTurnId: args.replyToTurnId,
+      replySnippet: args.replySnippet,
       createdAt: Date.now(),
     })
     await ctx.db.patch(args.conversationId, { lastModified: Date.now() })
@@ -167,9 +232,11 @@ export const deleteTurn = mutation({
   args: {
     conversationId: v.id('conversations'),
     userId: v.string(),
+    accessToken: v.string(),
     turnId: v.string(),
   },
-  handler: async (ctx, { conversationId, userId, turnId }) => {
+  handler: async (ctx, { conversationId, userId, accessToken, turnId }) => {
+    await requireAccessToken(accessToken, userId)
     const conv = await ctx.db.get(conversationId)
     if (!conv || conv.userId !== userId) {
       throw new Error('Unauthorized')
@@ -220,6 +287,7 @@ export const addMessages = mutation({
   args: {
     conversationId: v.id('conversations'),
     userId: v.string(),
+    accessToken: v.string(),
     rows: v.array(v.object({
       turnId: v.string(),
       role: v.union(v.literal('user'), v.literal('assistant')),
@@ -232,7 +300,12 @@ export const addMessages = mutation({
       tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
     })),
   },
-  handler: async (ctx, { conversationId, userId, rows }) => {
+  handler: async (ctx, { conversationId, userId, accessToken, rows }) => {
+    await requireAccessToken(accessToken, userId)
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId) {
+      throw new Error('Unauthorized')
+    }
     const now = Date.now()
     const ids: Id<'conversationMessages'>[] = []
     for (const row of rows) {

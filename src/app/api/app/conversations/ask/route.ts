@@ -165,6 +165,8 @@ export async function POST(request: NextRequest) {
       try {
         const conv = await convex.query<{ projectId?: string } | null>('conversations:get', {
           conversationId: cid,
+          userId,
+          accessToken: session.accessToken,
         })
         conversationProjectId = conv?.projectId
       } catch {
@@ -174,7 +176,10 @@ export async function POST(request: NextRequest) {
 
     let memoryContext = ''
     try {
-      const memories = await convex.query<Array<{ content: string }>>('memories:list', { userId })
+      const memories = await convex.query<Array<{ content: string }>>('memories:list', {
+        userId,
+        accessToken: session.accessToken,
+      })
       const effectiveMemories = memories || listMemories(userId)
       if (effectiveMemories.length > 0) {
         memoryContext = '\n\nRelevant user memories:\n' + effectiveMemories.slice(0, 10).map((m) => `- ${m.content}`).join('\n')
@@ -223,6 +228,7 @@ export async function POST(request: NextRequest) {
       await convex.mutation('conversations:addMessage', {
         conversationId: cid,
         userId,
+        accessToken: session.accessToken,
         turnId: tid,
         role: 'user',
         mode: 'ask',
@@ -277,6 +283,7 @@ export async function POST(request: NextRequest) {
           await convex.mutation('conversations:addMessage', {
             conversationId: cid,
             userId,
+            accessToken: session.accessToken,
             turnId: tid,
             role: 'assistant',
             mode: 'ask',

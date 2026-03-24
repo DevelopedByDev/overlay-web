@@ -1,20 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { refreshSessionFromRefreshToken, type AuthUser } from '@/lib/workos-auth'
+import { refreshSessionFromRefreshToken } from '@/lib/workos-auth'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const refreshToken = typeof body?.refreshToken === 'string' ? body.refreshToken : ''
-    const user = body?.user as AuthUser | undefined
+    const expectedUserId =
+      typeof body?.userId === 'string'
+        ? body.userId
+        : typeof body?.user?.id === 'string'
+          ? body.user.id
+          : undefined
 
-    if (!refreshToken || !user?.id || !user.email) {
+    if (!refreshToken) {
       return NextResponse.json(
-        { error: 'Refresh token and user are required' },
+        { error: 'Refresh token is required' },
         { status: 400 }
       )
     }
 
-    const session = await refreshSessionFromRefreshToken(refreshToken, user)
+    const session = await refreshSessionFromRefreshToken(refreshToken, expectedUserId)
 
     if (!session) {
       return NextResponse.json(

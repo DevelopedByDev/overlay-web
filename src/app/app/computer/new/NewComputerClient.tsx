@@ -41,6 +41,7 @@ export default function NewComputerClient({ userId, email, accessToken }: Props)
         {
           computerId,
           userId,
+          accessToken,
           email,
           successUrl: `${window.location.origin}/app/computer/${computerId}?paid=1`,
           cancelUrl: `${window.location.origin}/app/computer/new`,

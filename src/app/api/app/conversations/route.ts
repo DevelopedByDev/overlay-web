@@ -22,7 +22,11 @@ export async function GET(request: NextRequest) {
         askModelIds: string[]
         actModelId: string
         projectId?: string
-      } | null>('conversations:get', { conversationId: conversationId as Id<'conversations'> })
+      } | null>('conversations:get', {
+        conversationId: conversationId as Id<'conversations'>,
+        userId: session.user.id,
+        accessToken: session.accessToken,
+      })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(conv)
     }
@@ -48,7 +52,11 @@ export async function GET(request: NextRequest) {
           replyToTurnId?: string
           replySnippet?: string
         }>
-      >('conversations:getMessages', { conversationId: conversationId as Id<'conversations'> })
+      >('conversations:getMessages', {
+        conversationId: conversationId as Id<'conversations'>,
+        userId: session.user.id,
+        accessToken: session.accessToken,
+      })
 
       return NextResponse.json({
         messages: (messages || []).map((message) => ({
@@ -92,7 +100,11 @@ export async function GET(request: NextRequest) {
           askModelIds: string[]
           actModelId: string
         }>
-      >('conversations:listByProject', { projectId })
+      >('conversations:listByProject', {
+        projectId,
+        userId: session.user.id,
+        accessToken: session.accessToken,
+      })
       return NextResponse.json(list || [])
     }
 
@@ -105,7 +117,10 @@ export async function GET(request: NextRequest) {
         askModelIds: string[]
         actModelId: string
       }>
-    >('conversations:list', { userId: session.user.id })
+    >('conversations:list', {
+      userId: session.user.id,
+      accessToken: session.accessToken,
+    })
 
     return NextResponse.json(list || [])
   } catch {
@@ -126,6 +141,7 @@ export async function POST(request: NextRequest) {
     }
     const id = await convex.mutation<Id<'conversations'>>('conversations:create', {
       userId: session.user.id,
+      accessToken: session.accessToken,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
       askModelIds: body.askModelIds,
@@ -156,6 +172,8 @@ export async function PATCH(request: NextRequest) {
 
     await convex.mutation('conversations:update', {
       conversationId: body.conversationId as Id<'conversations'>,
+      userId: session.user.id,
+      accessToken: session.accessToken,
       title: body.title,
       askModelIds: body.askModelIds,
       actModelId: body.actModelId,
@@ -178,6 +196,8 @@ export async function DELETE(request: NextRequest) {
 
     await convex.mutation('conversations:remove', {
       conversationId: conversationId as Id<'conversations'>,
+      userId: session.user.id,
+      accessToken: session.accessToken,
     })
     return NextResponse.json({ success: true })
   } catch {

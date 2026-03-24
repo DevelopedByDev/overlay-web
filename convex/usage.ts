@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query, internalMutation, internalQuery } from './_generated/server'
+import { requireAccessToken } from './lib/auth'
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []
@@ -12,35 +13,14 @@ function getPastWeekDates(): string[] {
   return dates
 }
 
-function validateAccessToken(accessToken: string): boolean {
-  if (!accessToken || typeof accessToken !== 'string') return false
-  const trimmed = accessToken.trim()
-  if (trimmed.length < 20) return false
-
-  // If it looks like a JWT, validate expiry
-  const parts = trimmed.split('.')
-  if (parts.length === 3) {
-    try {
-      const payload = JSON.parse(
-        Buffer.from(parts[1], 'base64url').toString('utf-8')
-      )
-      if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()) {
-        return false
-      }
-    } catch {
-      // Not a valid JWT payload — still accept as opaque token
-    }
-  }
-
-  return true
-}
-
 // creditsUsed is now read directly from subscriptions (single source of truth).
 // tokenUsage is queried only for the audit-log token counts shown on the account page.
 export const getEntitlements = query({
-  args: { accessToken: v.optional(v.string()), userId: v.string() },
+  args: { accessToken: v.string(), userId: v.string() },
   handler: async (ctx, { accessToken, userId }) => {
-    if (accessToken && !validateAccessToken(accessToken)) {
+    try {
+      await requireAccessToken(accessToken, userId)
+    } catch {
       return null
     }
     const subscription = await ctx.db
@@ -177,9 +157,7 @@ export const recordBatch = mutation({
     )
   },
   handler: async (ctx, { accessToken, userId, events }) => {
-    if (!validateAccessToken(accessToken)) {
-      throw new Error('Unauthorized: invalid or expired access token')
-    }
+    await requireAccessToken(accessToken, userId)
 
     const today = new Date().toISOString().split('T')[0]
 
@@ -316,9 +294,7 @@ export const recordUsage = mutation({
     cost: v.number()
   },
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) {
-      throw new Error('Unauthorized: invalid or expired access token')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
 
     const today = new Date().toISOString().split('T')[0]
 
@@ -438,9 +414,7 @@ export const recordToolInvocation = mutation({
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) {
-      throw new Error('Unauthorized: invalid or expired access token')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
     await ctx.db.insert('toolInvocations', {
       userId: args.userId,
       toolId: args.toolId.slice(0, 256),

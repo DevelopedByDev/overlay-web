@@ -141,6 +141,7 @@ export async function POST(request: NextRequest) {
       const partName = partedFileName(safeName, p + 1, total)
       const fid = await convex.mutation<Id<'files'>>('files:create', {
         userId: session.user.id,
+        accessToken: session.accessToken,
         name: partName,
         type: 'file',
         content: parts[p],

@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
       {
         conversationId: body.conversationId as Id<'conversations'>,
         userId: session.user.id,
+        accessToken: session.accessToken,
         turnId,
         role: body.role,
         mode,
@@ -93,6 +94,7 @@ export async function DELETE(request: NextRequest) {
         {
           conversationId: conversationId as Id<'conversations'>,
           userId: session.user.id,
+          accessToken: session.accessToken,
           turnId,
         },
         { throwOnError: true },

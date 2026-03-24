@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
+import { getSession } from '@/lib/workos-auth'
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
@@ -29,13 +30,13 @@ interface Entitlements {
   billingPeriodEnd?: number
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const userId = request.nextUrl.searchParams.get('userId')
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID required' }, { status: 400 })
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const userId = session.user.id
 
     // Convex returns a different structure, so we need to transform it
     interface ConvexEntitlements {
@@ -52,7 +53,10 @@ export async function GET(request: NextRequest) {
       lastSyncedAt: number
     }
 
-    const convexData = await convex.query<ConvexEntitlements>('usage:getEntitlements', { userId })
+    const convexData = await convex.query<ConvexEntitlements>('usage:getEntitlements', {
+      userId,
+      accessToken: session.accessToken,
+    })
 
     // Transform to the expected format or use defaults
     const tier = convexData?.tier || 'free'

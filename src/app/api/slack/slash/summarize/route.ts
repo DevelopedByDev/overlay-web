@@ -3,6 +3,7 @@ import { verifySlackSignature, postSlackMessage, fetchChannelHistory } from '@/l
 import { convex } from '@/lib/convex'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { generateText } from 'ai'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 
 export async function POST(request: NextRequest) {
   const body = await request.text()
@@ -15,10 +16,9 @@ export async function POST(request: NextRequest) {
 
   const params = new URLSearchParams(body)
   const teamId = params.get('team_id') || ''
-  const userId = params.get('user_id') || ''
   const channelId = params.get('channel_id') || ''
 
-  processSummarize({ teamId, userId, channelId }).catch((err) =>
+  processSummarize({ teamId, channelId }).catch((err) =>
     console.error('[/summarize] Error:', err)
   )
 
@@ -30,16 +30,15 @@ export async function POST(request: NextRequest) {
 
 async function processSummarize({
   teamId,
-  userId,
   channelId,
 }: {
   teamId: string
-  userId: string
   channelId: string
 }) {
+  const serverSecret = getInternalApiSecret()
   const installation = await convex.query<{ botToken: string }>(
     'slack:getInstallation',
-    { teamId }
+    { teamId, serverSecret }
   )
   if (!installation) return
 

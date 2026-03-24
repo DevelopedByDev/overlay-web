@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
         try {
           outputId = await convex.mutation('outputs:create', {
             userId,
+            accessToken: session.accessToken,
             type: 'video',
             status: 'pending',
             prompt: prompt.trim(),
@@ -121,6 +122,8 @@ export async function POST(request: NextRequest) {
           if (outputId) {
             await convex.mutation('outputs:update', {
               outputId,
+              userId,
+              accessToken: session.accessToken,
               status: 'failed',
               errorMessage: lastError?.message ?? 'All models failed',
             }).catch(() => {})
@@ -135,7 +138,10 @@ export async function POST(request: NextRequest) {
         // ── Upload to Convex file storage ─────────────────────────────────────
         let storageId: string | null = null
         try {
-          const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {})
+          const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {
+            userId,
+            accessToken: session.accessToken,
+          })
           if (uploadUrl) {
             const videoBuffer = Buffer.from(videoBase64!, 'base64')
             const uploadRes = await fetch(uploadUrl, {
@@ -156,6 +162,8 @@ export async function POST(request: NextRequest) {
         try {
           await convex.mutation('outputs:update', {
             outputId,
+            userId,
+            accessToken: session.accessToken,
             status: 'completed',
             modelId: usedModelId,
             ...(storageId ? { storageId } : {}),

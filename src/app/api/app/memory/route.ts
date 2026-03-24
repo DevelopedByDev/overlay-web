@@ -10,7 +10,10 @@ export async function GET() {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const fromConvex = await convex.query('memories:list', { userId: session.user.id })
+    const fromConvex = await convex.query('memories:list', {
+      userId: session.user.id,
+      accessToken: session.accessToken,
+    })
     const raw = Array.isArray(fromConvex) ? fromConvex : listMemories(session.user.id)
     return NextResponse.json(expandMemoriesForSidebarList(raw))
   } catch (error) {
@@ -39,6 +42,7 @@ export async function POST(request: NextRequest) {
 
     const memoryId = await convex.mutation<string>('memories:add', {
       userId: auth.userId,
+      accessToken: auth.accessToken,
       content: body.content,
       source,
     })
@@ -68,6 +72,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     await convex.mutation('memories:update', {
+      userId: auth.userId,
+      accessToken: auth.accessToken,
       memoryId: body.memoryId.trim(),
       content: body.content,
     })
@@ -93,7 +99,11 @@ export async function DELETE(request: NextRequest) {
     const memoryId = body.memoryId ?? request.nextUrl.searchParams.get('memoryId')
     if (!memoryId) return NextResponse.json({ error: 'memoryId required' }, { status: 400 })
 
-    await convex.mutation('memories:remove', { memoryId })
+    await convex.mutation('memories:remove', {
+      memoryId,
+      userId: auth.userId,
+      accessToken: auth.accessToken,
+    })
     removeMemory(memoryId)
     return NextResponse.json({ success: true })
   } catch (error) {

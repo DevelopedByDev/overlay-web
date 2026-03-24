@@ -27,7 +27,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const entitlements = await convex.query(api.usage.getEntitlements, { userId })
+    const entitlements = await convex.query(api.usage.getEntitlements, {
+      userId,
+      accessToken: session.accessToken,
+    })
 
     if (!entitlements) {
       return NextResponse.json({ tier: 'free', status: 'active' })

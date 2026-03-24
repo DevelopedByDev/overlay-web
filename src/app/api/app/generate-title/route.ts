@@ -1,23 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
 import Groq from 'groq-sdk'
-import { convex } from '@/lib/convex'
 import { sanitizeChatTitle } from '@/lib/chat-title'
-
-interface APIKeyResponse {
-  key: string | null
-}
+import { getServerProviderKey } from '@/lib/server-provider-keys'
 
 async function resolveGroqApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
-    try {
-      const result = await convex.action<APIKeyResponse>('keys:getAPIKey', {
-        provider: 'groq',
-        accessToken,
-      })
-      if (result?.key) return result.key
-    } catch (error) {
-      console.error('[ChatTitle][server] Failed to fetch Groq API key from Convex', error)
+    const serverKey = await getServerProviderKey('groq')
+    if (serverKey) {
+      return serverKey
     }
   }
 

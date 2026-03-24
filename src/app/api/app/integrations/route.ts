@@ -2,7 +2,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
-import { convex } from '@/lib/convex'
+import { getServerProviderKey } from '@/lib/server-provider-keys'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadComposioSDK(apiKey: string): Promise<any> {
@@ -13,20 +13,9 @@ async function loadComposioSDK(apiKey: string): Promise<any> {
   return new Composio({ apiKey })
 }
 
-interface APIKeyResponse {
-  key: string | null
-}
-
 async function getComposioApiKey(accessToken: string): Promise<string | null> {
-  try {
-    const result = await convex.action<APIKeyResponse>('keys:getAPIKey', {
-      provider: 'composio',
-      accessToken,
-    })
-    return result?.key ?? process.env.COMPOSIO_API_KEY ?? null
-  } catch {
-    return process.env.COMPOSIO_API_KEY ?? null
-  }
+  const serverKey = accessToken ? await getServerProviderKey('composio') : null
+  return serverKey ?? process.env.COMPOSIO_API_KEY ?? null
 }
 
 // GET - list connected integrations, or search toolkits
@@ -138,15 +127,17 @@ export async function POST(request: NextRequest) {
 
     if (action === 'disconnect') {
       // Find all connected accounts for this user+toolkit and delete them all
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const accounts = await composio.connectedAccounts.list({
         userIds: [userId],
         toolkitSlugs: [toolkit],
       })
-      await Promise.all(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (accounts.items ?? []).map((acc: any) => composio.connectedAccounts.delete(acc.id))
-      )
+      const deleteRequests: Array<Promise<unknown>> = []
+      for (const acc of accounts.items ?? []) {
+        if (acc && typeof acc === 'object' && 'id' in acc && typeof acc.id === 'string') {
+          deleteRequests.push(composio.connectedAccounts.delete(acc.id))
+        }
+      }
+      await Promise.all(deleteRequests)
       return NextResponse.json({ success: true })
     }
 
@@ -162,11 +153,9 @@ export async function POST(request: NextRequest) {
     const callbackUrl = `${origin}/auth/composio/callback`
 
     // Get an auth config for this toolkit; create a Composio-managed one if none exists
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let authConfigId: string
     try {
       const authConfigs = await composio.authConfigs.list({ toolkit })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const firstConfig = (authConfigs.items ?? authConfigs)?.[0]
       if (firstConfig?.id) {
         authConfigId = firstConfig.id

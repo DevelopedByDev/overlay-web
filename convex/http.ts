@@ -10,8 +10,13 @@ import {
   mapPriceToTier,
   mapSubscriptionStatus,
 } from './lib/stripeOverlaySubscription'
+import { constantTimeEqualStrings } from './lib/auth'
 
 const http = httpRouter()
+
+function hasMatchingSecret(provided: string | undefined, expected: string | undefined): boolean {
+  return constantTimeEqualStrings(provided, expected)
+}
 
 // Register Stripe webhook handler using @convex-dev/stripe component
 registerRoutes(http, components.stripe, {
@@ -244,19 +249,26 @@ http.route({
   path: '/computer/log',
   method: 'POST',
   handler: httpAction(async (ctx, req) => {
-    let body: { computerId?: string; message?: string }
+    let body: { computerId?: string; message?: string; readySecret?: string }
     try {
       body = await req.json()
     } catch {
       return new Response('Bad Request', { status: 400 })
     }
 
-    const { computerId, message } = body
-    if (!computerId || !message) {
-      return new Response('Missing computerId or message', { status: 400 })
+    const { computerId, message, readySecret } = body
+    if (!computerId || !message || !readySecret) {
+      return new Response('Missing computerId, message, or readySecret', { status: 400 })
     }
 
     try {
+      const computer = await ctx.runQuery(internal.computers.getInternal, {
+        computerId: computerId as Id<'computers'>,
+      })
+      if (!computer || !hasMatchingSecret(readySecret, computer.readySecret)) {
+        return new Response('Unauthorized', { status: 401 })
+      }
+
       await ctx.runMutation(internal.computers.logEvent, {
         computerId: computerId as Id<'computers'>,
         type: 'provisioning_log',

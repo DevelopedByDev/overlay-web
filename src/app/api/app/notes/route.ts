@@ -19,7 +19,11 @@ export async function GET(request: NextRequest) {
 
     const noteId = request.nextUrl.searchParams.get('noteId')
     if (noteId) {
-      const note = await convex.query<NoteDoc | null>('notes:get', { noteId })
+      const note = await convex.query<NoteDoc | null>('notes:get', {
+        noteId,
+        userId: auth.userId,
+        accessToken: auth.accessToken,
+      })
       if (!note || note.userId !== auth.userId) {
         return NextResponse.json({ error: 'Not found' }, { status: 404 })
       }
@@ -28,11 +32,18 @@ export async function GET(request: NextRequest) {
 
     const projectId = request.nextUrl.searchParams.get('projectId')
     if (projectId !== null) {
-      const notes = await convex.query('notes:listByProject', { projectId })
+      const notes = await convex.query('notes:listByProject', {
+        projectId,
+        userId: auth.userId,
+        accessToken: auth.accessToken,
+      })
       return NextResponse.json(notes || [])
     }
 
-    const notes = await convex.query('notes:list', { userId: auth.userId })
+    const notes = await convex.query('notes:list', {
+      userId: auth.userId,
+      accessToken: auth.accessToken,
+    })
     return NextResponse.json(notes || [])
   } catch (error) {
     console.error('[Notes API] GET error:', error)
@@ -55,6 +66,7 @@ export async function POST(request: NextRequest) {
 
     const noteId = await convex.mutation<string>('notes:create', {
       userId: auth.userId,
+      accessToken: auth.accessToken,
       title: body.title || 'Untitled',
       content: body.content || '',
       tags: body.tags || [],
@@ -82,12 +94,18 @@ export async function PATCH(request: NextRequest) {
 
     if (!body.noteId) return NextResponse.json({ error: 'noteId required' }, { status: 400 })
 
-    const existing = await convex.query<NoteDoc | null>('notes:get', { noteId: body.noteId })
+    const existing = await convex.query<NoteDoc | null>('notes:get', {
+      noteId: body.noteId,
+      userId: auth.userId,
+      accessToken: auth.accessToken,
+    })
     if (!existing || existing.userId !== auth.userId) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
     await convex.mutation('notes:update', {
+      userId: auth.userId,
+      accessToken: auth.accessToken,
       noteId: body.noteId,
       title: body.title,
       content: body.content,
@@ -117,12 +135,20 @@ export async function DELETE(request: NextRequest) {
     const noteId = request.nextUrl.searchParams.get('noteId')
     if (!noteId) return NextResponse.json({ error: 'noteId required' }, { status: 400 })
 
-    const existing = await convex.query<NoteDoc | null>('notes:get', { noteId })
+    const existing = await convex.query<NoteDoc | null>('notes:get', {
+      noteId,
+      userId: auth.userId,
+      accessToken: auth.accessToken,
+    })
     if (!existing || existing.userId !== auth.userId) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    await convex.mutation('notes:remove', { noteId })
+    await convex.mutation('notes:remove', {
+      noteId,
+      userId: auth.userId,
+      accessToken: auth.accessToken,
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[Notes API] DELETE error:', error)

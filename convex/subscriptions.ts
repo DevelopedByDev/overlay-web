@@ -1,13 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query, internalMutation, internalQuery } from './_generated/server'
-import { validateAccessToken } from './lib/auth'
-
-// Server-side only: validate the internal secret before allowing mutation
-function validateServerSecret(secret: string | undefined): boolean {
-  const expected = process.env.INTERNAL_API_SECRET
-  if (!expected || !secret) return false
-  return secret === expected
-}
+import { getVerifiedAccessTokenClaims, requireAccessToken, requireServerSecret } from './lib/auth'
 
 // Returns true if the new period start represents a different billing cycle
 // than what is currently stored, indicating credits should be reset.
@@ -24,7 +17,11 @@ function isPeriodRollover(existingPeriodStart: number | undefined, newPeriodStar
 export const getByUserId = query({
   args: { accessToken: v.string(), userId: v.string() },
   handler: async (ctx, { accessToken, userId }) => {
-    if (!validateAccessToken(accessToken)) return null
+    try {
+      await requireAccessToken(accessToken, userId)
+    } catch {
+      return null
+    }
     return await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -47,11 +44,13 @@ export const getByUserIdInternal = internalQuery({
 export const getByEmail = query({
   args: { accessToken: v.string(), email: v.string() },
   handler: async (ctx, { accessToken, email }) => {
-    if (!validateAccessToken(accessToken)) return null
-    return await ctx.db
+    const claims = await getVerifiedAccessTokenClaims(accessToken)
+    if (!claims) return null
+    const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_email', (q) => q.eq('email', email))
       .first()
+    return subscription?.userId === claims.sub ? subscription : null
   }
 })
 
@@ -92,11 +91,13 @@ export const linkSubscriptionToUser = internalMutation({
 export const getByStripeCustomerId = query({
   args: { accessToken: v.string(), stripeCustomerId: v.string() },
   handler: async (ctx, { accessToken, stripeCustomerId }) => {
-    if (!validateAccessToken(accessToken)) return null
-    return await ctx.db
+    const claims = await getVerifiedAccessTokenClaims(accessToken)
+    if (!claims) return null
+    const subscription = await ctx.db
       .query('subscriptions')
       .filter((q) => q.eq(q.field('stripeCustomerId'), stripeCustomerId))
       .first()
+    return subscription?.userId === claims.sub ? subscription : null
   }
 })
 
@@ -123,9 +124,7 @@ export const upsertSubscription = mutation({
     currentPeriodEnd: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    if (!validateServerSecret(args.serverSecret)) {
-      throw new Error('Unauthorized: invalid server secret')
-    }
+    requireServerSecret(args.serverSecret)
 
     const now = Date.now()
     const thirtyDays = 30 * 24 * 60 * 60 * 1000
@@ -210,9 +209,7 @@ export const downgradeToFree = mutation({
     userId: v.string()
   },
   handler: async (ctx, { serverSecret, userId }) => {
-    if (!validateServerSecret(serverSecret)) {
-      throw new Error('Unauthorized: invalid server secret')
-    }
+    requireServerSecret(serverSecret)
 
     const subscription = await ctx.db
       .query('subscriptions')

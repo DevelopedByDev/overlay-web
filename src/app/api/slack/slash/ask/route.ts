@@ -3,6 +3,7 @@ import { verifySlackSignature, postEphemeral } from '@/lib/slack'
 import { convex } from '@/lib/convex'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { generateText } from 'ai'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 
 export async function POST(request: NextRequest) {
   const body = await request.text()
@@ -48,15 +49,16 @@ async function processAsk({
   channelId: string
   text: string
 }) {
+  const serverSecret = getInternalApiSecret()
   const installation = await convex.query<{ botToken: string }>(
     'slack:getInstallation',
-    { teamId }
+    { teamId, serverSecret }
   )
   if (!installation) return
 
   const userLink = await convex.query<{ overlayUserId: string }>(
     'slack:getUserLink',
-    { slackUserId: userId, teamId }
+    { slackUserId: userId, teamId, serverSecret }
   )
 
   if (!userLink) {
@@ -73,6 +75,7 @@ async function processAsk({
   try {
     const memories = await convex.query<Array<{ content: string }>>('memories:list', {
       userId: userLink.overlayUserId,
+      serverSecret,
     })
     if (memories && memories.length > 0) {
       memoryContext = '\n\nUser memories:\n' + memories.slice(0, 8).map((m) => `- ${m.content}`).join('\n')

@@ -1,30 +1,18 @@
 import { createGateway, generateText, stepCountIs, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
-import { convex } from '@/lib/convex'
 import { getModel } from '@/lib/models'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
+import { getServerProviderKey } from '@/lib/server-provider-keys'
 
 let cachedGateway: ReturnType<typeof createGateway> | null = null
 let cachedApiKey: string | null = null
 
-interface APIKeyResponse {
-  key: string | null
-}
-
 async function resolveGatewayApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
-    try {
-      const result = await convex.action<APIKeyResponse>('keys:getAPIKey', {
-        provider: 'ai_gateway',
-        accessToken,
-      })
-
-      if (result?.key) {
-        return result.key
-      }
-    } catch (error) {
-      console.error('[AI Gateway] Failed to fetch key from Convex:', error)
+    const serverKey = await getServerProviderKey('ai_gateway')
+    if (serverKey) {
+      return serverKey
     }
   }
 
@@ -33,14 +21,9 @@ async function resolveGatewayApiKey(accessToken?: string): Promise<string | null
 
 async function resolveOpenRouterApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
-    try {
-      const result = await convex.action<APIKeyResponse>('keys:getAPIKey', {
-        provider: 'openrouter',
-        accessToken,
-      })
-      if (result?.key) return result.key
-    } catch (error) {
-      console.error('[OpenRouter] Failed to fetch key from Convex:', error)
+    const serverKey = await getServerProviderKey('openrouter')
+    if (serverKey) {
+      return serverKey
     }
   }
   return process.env.OPENROUTER_API_KEY ?? null

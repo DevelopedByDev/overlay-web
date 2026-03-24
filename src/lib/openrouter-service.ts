@@ -6,7 +6,7 @@
  */
 
 import type { UIMessage } from 'ai'
-import { convex } from '@/lib/convex'
+import { getServerProviderKey } from '@/lib/server-provider-keys'
 
 type OpenRouterContentPart =
   | { type: 'text'; text: string }
@@ -189,20 +189,11 @@ export function buildOpenRouterMessagesFromUi(
   return out
 }
 
-interface APIKeyResponse {
-  key: string | null
-}
-
 async function resolveApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
-    try {
-      const result = await convex.action<APIKeyResponse>('keys:getAPIKey', {
-        provider: 'openrouter',
-        accessToken,
-      })
-      if (result?.key) return result.key
-    } catch (error) {
-      console.error('[OpenRouter] Failed to fetch key from Convex:', error)
+    const serverKey = await getServerProviderKey('openrouter')
+    if (serverKey) {
+      return serverKey
     }
   }
   return process.env.OPENROUTER_API_KEY ?? null

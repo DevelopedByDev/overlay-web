@@ -31,8 +31,10 @@ export async function POST(request: NextRequest) {
 
     // Otherwise, look up customer from our database
     if (!customerId) {
-      const accessToken = process.env.INTERNAL_API_SECRET || ''
-      const subscription = await convex.query<Subscription>('subscriptions:getByUserId', { accessToken, userId })
+      const subscription = await convex.query<Subscription>('subscriptions:getByUserId', {
+        accessToken: authSession.accessToken,
+        userId,
+      })
       customerId = subscription?.stripeCustomerId
     }
 

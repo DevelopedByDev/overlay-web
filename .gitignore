@@ -42,6 +42,6 @@ yarn-error.log*
 next-env.d.ts
 
 archives/*
-openclaw/*
+openclaw/
 .env*.local
 .cursor/hooks/state/continual-learning.json

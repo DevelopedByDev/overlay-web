@@ -134,7 +134,10 @@ export async function POST(request: NextRequest) {
     let outputId: string | null = null
     try {
       // 1. Get a signed upload URL from Convex
-      const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {})
+      const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {
+        userId,
+        accessToken: session.accessToken,
+      })
       let storageId: string | null = null
 
       if (uploadUrl) {
@@ -154,6 +157,7 @@ export async function POST(request: NextRequest) {
       // 3. Create the output record (with storageId, no large data URL)
       outputId = await convex.mutation<string>('outputs:create', {
         userId,
+        accessToken: session.accessToken,
         type: 'image',
         status: 'completed',
         prompt: prompt.trim(),

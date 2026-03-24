@@ -2,7 +2,7 @@ import { action } from './_generated/server'
 import { internal, components } from './_generated/api'
 import { StripeSubscriptions } from '@convex-dev/stripe'
 import { v } from 'convex/values'
-import { validateAccessToken } from './lib/auth'
+import { requireAccessToken } from './lib/auth'
 
 const stripeClient = new StripeSubscriptions(components.stripe, {})
 
@@ -53,9 +53,7 @@ export const createBillingPortalSession: ReturnType<typeof action> = action({
     url: v.string()
   }),
   handler: async (ctx, args): Promise<{ url: string }> => {
-    if (!validateAccessToken(args.accessToken)) {
-      throw new Error('Invalid or expired access token')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
 
     const subscription = await ctx.runQuery(internal.subscriptions.getByUserIdInternal, {
       userId: args.userId
@@ -82,9 +80,7 @@ export const cancelSubscription = action({
     success: v.boolean()
   }),
   handler: async (ctx, args) => {
-    if (!validateAccessToken(args.accessToken)) {
-      throw new Error('Invalid or expired access token')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
 
     const subscription = await ctx.runQuery(internal.subscriptions.getByUserIdInternal, {
       userId: args.userId
@@ -109,6 +105,7 @@ export const createComputerCheckout = action({
   args: {
     computerId: v.string(),
     userId: v.string(),
+    accessToken: v.string(),
     email: v.optional(v.string()),
     successUrl: v.string(),
     cancelUrl: v.string(),
@@ -118,6 +115,7 @@ export const createComputerCheckout = action({
     url: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, args) => {
+    await requireAccessToken(args.accessToken, args.userId)
     const priceId = process.env.STRIPE_COMPUTER_PRICE_ID
     if (!priceId) throw new Error('STRIPE_COMPUTER_PRICE_ID not configured')
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthorizationUrl } from '@/lib/workos-auth'
+import { getAuthorizationUrl, normalizeAuthRedirect } from '@/lib/workos-auth'
 
 type SSOProvider = 'google' | 'apple' | 'microsoft'
 
@@ -16,6 +16,7 @@ export async function GET(
   const { provider } = await params
   const { searchParams } = new URL(request.url)
   const redirectUri = searchParams.get('redirect') || undefined
+  const normalizedRedirectUri = normalizeAuthRedirect(redirectUri)
   const forceSignIn = searchParams.get('force') === 'true'
   
   // Also force sign-in when redirecting to desktop app (overlay:// protocol)
@@ -28,12 +29,19 @@ export async function GET(
     )
   }
 
+  if (redirectUri && normalizedRedirectUri === null) {
+    return NextResponse.json(
+      { error: 'Invalid redirect URI' },
+      { status: 400 }
+    )
+  }
+
   try {
     console.log('[Auth] SSO request:', { provider, redirectUri, forceSignIn, isDesktopAuth })
     
     const authUrl = getAuthorizationUrl(
       providerMap[provider as SSOProvider],
-      redirectUri,
+      normalizedRedirectUri ?? undefined,
       forceSignIn || isDesktopAuth // Force sign-in screen for desktop auth
     )
 

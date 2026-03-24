@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySlackSignature, postEphemeral } from '@/lib/slack'
 import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 
 export async function POST(request: NextRequest) {
   const body = await request.text()
@@ -45,15 +46,16 @@ async function processSearch({
   channelId: string
   query: string
 }) {
+  const serverSecret = getInternalApiSecret()
   const installation = await convex.query<{ botToken: string }>(
     'slack:getInstallation',
-    { teamId }
+    { teamId, serverSecret }
   )
   if (!installation) return
 
   const userLink = await convex.query<{ overlayUserId: string }>(
     'slack:getUserLink',
-    { slackUserId: userId, teamId }
+    { slackUserId: userId, teamId, serverSecret }
   )
 
   if (!userLink) {
@@ -70,9 +72,11 @@ async function processSearch({
   const [notes, memories] = await Promise.all([
     convex.query<Array<{ _id: string; title: string; content: string }>>('notes:list', {
       userId: userLink.overlayUserId,
+      serverSecret,
     }),
     convex.query<Array<{ content: string }>>('memories:list', {
       userId: userLink.overlayUserId,
+      serverSecret,
     }),
   ])
 

@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 
-const PROTECTED_ROUTES = ['/account', '/api/entitlements', '/api/portal', '/app', '/api/app']
+const PROTECTED_ROUTES = ['/account', '/api/entitlements', '/api/portal', '/api/convex', '/app', '/api/app']
 
 const PUBLIC_ROUTES = [
   '/',

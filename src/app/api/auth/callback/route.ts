@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { handleCallback, getBaseUrl, getSession } from '@/lib/workos-auth'
+import {
+  handleCallback,
+  getBaseUrl,
+  getSession,
+  MOBILE_AUTH_REDIRECT_PATH,
+  normalizeAuthRedirect,
+} from '@/lib/workos-auth'
 import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../../../convex/_generated/api'
 import { randomBytes } from 'crypto'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 
 // Use dev Convex URL in development
 const IS_DEV = process.env.NODE_ENV === 'development'
@@ -61,7 +68,12 @@ export async function GET(request: NextRequest) {
     if (state) {
       try {
         const decodedState = Buffer.from(state, 'base64').toString('utf-8')
-        redirectTo = decodedState
+        const normalizedRedirect = normalizeAuthRedirect(decodedState)
+        if (normalizedRedirect) {
+          redirectTo = normalizedRedirect
+        } else {
+          console.warn('[Auth] Ignoring invalid callback redirect state')
+        }
       } catch {
         // Invalid state, use default redirect
       }
@@ -69,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     // Handle mobile app auth: generate a transfer token and deep link directly
     // instead of redirecting to a separate page that may not be deployed.
-    if (redirectTo === '/auth/mobile-complete' && session) {
+    if (redirectTo === MOBILE_AUTH_REDIRECT_PATH && session) {
       try {
         const authData = {
           userId: session.user.id,
@@ -84,6 +96,7 @@ export async function GET(request: NextRequest) {
         const expiresAt = Date.now() + 5 * 60 * 1000
 
         await convex.mutation(api.sessionTransfer.storeToken, {
+          serverSecret: getInternalApiSecret(),
           token,
           data: JSON.stringify(authData),
           expiresAt,
@@ -96,7 +109,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.redirect(`${getBaseUrl()}${redirectTo}`)
+    return NextResponse.redirect(new URL(redirectTo, getBaseUrl()))
   } catch (error) {
     console.error('[Auth] Callback error:', error)
     return NextResponse.redirect(`${getBaseUrl()}/auth/sign-in?error=Authentication failed`)

@@ -1,11 +1,7 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ToolSet } from 'ai'
-import { convex } from '@/lib/convex'
-
-interface APIKeyResponse {
-  key: string | null
-}
+import { getServerProviderKey } from '@/lib/server-provider-keys'
 
 type JsonRecord = Record<string, unknown>
 
@@ -19,16 +15,8 @@ async function getComposioApiKey(accessToken?: string): Promise<string | null> {
     return process.env.COMPOSIO_API_KEY ?? null
   }
 
-  try {
-    const result = await convex.action<APIKeyResponse>('keys:getAPIKey', {
-      provider: 'composio',
-      accessToken,
-    })
-    return result?.key ?? process.env.COMPOSIO_API_KEY ?? null
-  } catch (error) {
-    console.error('[Composio] Failed to fetch key from Convex:', error)
-    return process.env.COMPOSIO_API_KEY ?? null
-  }
+  const serverKey = await getServerProviderKey('composio')
+  return serverKey ?? process.env.COMPOSIO_API_KEY ?? null
 }
 
 function resolveComposioSessionIdFactory() {

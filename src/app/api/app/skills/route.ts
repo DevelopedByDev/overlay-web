@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const projectId = request.nextUrl.searchParams.get('projectId')
     const skills = await convex.query('skills:list', {
       userId: session.user.id,
+      accessToken: session.accessToken,
       projectId: projectId ?? undefined,
     })
     return NextResponse.json(skills || [])
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
 
     const skillId = await convex.mutation<string>('skills:create', {
       userId: session.user.id,
+      accessToken: session.accessToken,
       name,
       description: description || '',
       instructions: instructions || '',
@@ -47,7 +49,14 @@ export async function PATCH(request: NextRequest) {
     const { skillId, name, description, instructions } = await request.json()
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
 
-    await convex.mutation('skills:update', { skillId, name, description, instructions })
+    await convex.mutation('skills:update', {
+      skillId,
+      userId: session.user.id,
+      accessToken: session.accessToken,
+      name,
+      description,
+      instructions,
+    })
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: 'Failed to update skill' }, { status: 500 })
@@ -62,7 +71,11 @@ export async function DELETE(request: NextRequest) {
     const skillId = request.nextUrl.searchParams.get('skillId')
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
 
-    await convex.mutation('skills:remove', { skillId })
+    await convex.mutation('skills:remove', {
+      skillId,
+      userId: session.user.id,
+      accessToken: session.accessToken,
+    })
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: 'Failed to delete skill' }, { status: 500 })

@@ -1,6 +1,7 @@
-import { WorkOS } from '@workos-inc/node'
-import { cookies } from 'next/headers'
 import { createHmac, timingSafeEqual } from 'crypto'
+import { cookies } from 'next/headers'
+import { WorkOS } from '@workos-inc/node'
+import { getBaseUrl } from './url'
 
 const isDev = process.env.NODE_ENV === 'development'
 const workosApiKey = isDev 
@@ -12,6 +13,8 @@ const clientId = isDev
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30
+const DEFAULT_AUTH_REDIRECT = '/account'
+export const MOBILE_AUTH_REDIRECT_PATH = '/auth/mobile-complete'
 
 function getWorkOS(requireApiKey = false): WorkOS {
   if (requireApiKey && !workosApiKey) {
@@ -37,8 +40,11 @@ function getWorkOS(requireApiKey = false): WorkOS {
   )
 }
 
-function getSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET || process.env.WORKOS_API_KEY || 'overlay-dev-session-secret-change-me'
+export function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET?.trim()
+  if (!secret) {
+    throw new Error('SESSION_SECRET is not configured')
+  }
   return secret
 }
 
@@ -83,8 +89,55 @@ export interface AuthSession {
   expiresAt: number
 }
 
-import { getBaseUrl } from './url'
 export { getBaseUrl }
+
+function toAuthUser(user: {
+  id: string
+  email: string
+  firstName?: string | null
+  lastName?: string | null
+  profilePictureUrl?: string | null
+  emailVerified: boolean
+}): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName || undefined,
+    lastName: user.lastName || undefined,
+    profilePictureUrl: user.profilePictureUrl || undefined,
+    emailVerified: user.emailVerified,
+  }
+}
+
+export function normalizeAuthRedirect(redirectUri?: string | null): string | null {
+  if (redirectUri == null) {
+    return DEFAULT_AUTH_REDIRECT
+  }
+
+  const trimmed = redirectUri.trim()
+  if (!trimmed) {
+    return DEFAULT_AUTH_REDIRECT
+  }
+
+  if (trimmed.startsWith('overlay://')) {
+    return MOBILE_AUTH_REDIRECT_PATH
+  }
+
+  if (trimmed.startsWith('/')) {
+    return trimmed.startsWith('//') ? null : trimmed
+  }
+
+  try {
+    const baseUrl = new URL(getBaseUrl())
+    const candidate = new URL(trimmed)
+    if (candidate.origin !== baseUrl.origin) {
+      return null
+    }
+    return `${candidate.pathname}${candidate.search}${candidate.hash}` || DEFAULT_AUTH_REDIRECT
+  } catch {
+    return null
+  }
+}
 
 // Generate authorization URL for SSO providers
 export function getAuthorizationUrl(
@@ -98,12 +151,19 @@ export function getAuthorizationUrl(
 
   const workos = getWorkOS()
   const baseRedirectUri = `${getBaseUrl()}/api/auth/callback`
+  const normalizedRedirectUri = normalizeAuthRedirect(redirectUri)
+  if (redirectUri && normalizedRedirectUri === null) {
+    throw new Error('Invalid redirect URI')
+  }
   // Build authorization URL options
   const options: Parameters<typeof workos.userManagement.getAuthorizationUrl>[0] = {
     provider,
     clientId,
     redirectUri: baseRedirectUri,
-    state: redirectUri ? Buffer.from(redirectUri).toString('base64') : undefined,
+    state:
+      normalizedRedirectUri && normalizedRedirectUri !== DEFAULT_AUTH_REDIRECT
+        ? Buffer.from(normalizedRedirectUri).toString('base64')
+        : undefined,
   }
   
   // Force sign-in screen when coming from desktop app
@@ -143,14 +203,7 @@ export async function authenticateWithPassword(
       password,
     })
 
-    const user: AuthUser = {
-      id: response.user.id,
-      email: response.user.email,
-      firstName: response.user.firstName || undefined,
-      lastName: response.user.lastName || undefined,
-      profilePictureUrl: response.user.profilePictureUrl || undefined,
-      emailVerified: response.user.emailVerified,
-    }
+    const user = toAuthUser(response.user)
 
     // Create session
     await createSession({
@@ -224,14 +277,7 @@ export async function handleCallback(
       code,
     })
 
-    const user: AuthUser = {
-      id: response.user.id,
-      email: response.user.email,
-      firstName: response.user.firstName || undefined,
-      lastName: response.user.lastName || undefined,
-      profilePictureUrl: response.user.profilePictureUrl || undefined,
-      emailVerified: response.user.emailVerified,
-    }
+    const user = toAuthUser(response.user)
 
     // Create session
     await createSession({
@@ -346,27 +392,18 @@ export async function getSession(): Promise<AuthSession | null> {
   try {
     // Try HMAC-signed format first
     const payload = verifySignedCookie(sessionCookie.value)
-    if (payload) {
-      const session: AuthSession = JSON.parse(
-        Buffer.from(payload, 'base64').toString('utf-8')
-      )
-      if (session.expiresAt < Date.now()) {
-        await clearSession()
-        return null
-      }
-      return session
+    if (!payload) {
+      await clearSession()
+      return null
     }
 
-    // Legacy fallback: unsigned base64 (will be re-signed on next write)
     const session: AuthSession = JSON.parse(
-      Buffer.from(sessionCookie.value, 'base64').toString('utf-8')
+      Buffer.from(payload, 'base64').toString('utf-8')
     )
     if (session.expiresAt < Date.now()) {
       await clearSession()
       return null
     }
-    // Re-sign the session so future reads are HMAC-verified
-    await createSession(session)
     return session
   } catch {
     return null
@@ -419,7 +456,7 @@ export async function refreshSessionIfNeeded(): Promise<AuthSession | null> {
 
 export async function refreshSessionFromRefreshToken(
   refreshToken: string,
-  user: AuthUser
+  expectedUserId?: string
 ): Promise<AuthSession | null> {
   if (!refreshToken) {
     return null
@@ -432,10 +469,14 @@ export async function refreshSessionFromRefreshToken(
       refreshToken,
     })
 
+    if (expectedUserId && response.user.id !== expectedUserId) {
+      return null
+    }
+
     return {
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
-      user,
+      user: toAuthUser(response.user),
       expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
     }
   } catch {

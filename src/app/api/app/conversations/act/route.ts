@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
         await convex.mutation('conversations:addMessage', {
           conversationId: cid,
           userId,
+          accessToken: session.accessToken,
           turnId: tid,
           role: 'user',
           mode: 'act',
@@ -153,6 +154,8 @@ export async function POST(request: NextRequest) {
         if (messages.filter((m) => m.role === 'user').length === 1) {
           await convex.mutation('conversations:update', {
             conversationId: cid,
+            userId,
+            accessToken: session.accessToken,
             title: (latestUserText || latestUserContent).slice(0, 48) || 'New Chat',
           })
         }
@@ -163,7 +166,10 @@ export async function POST(request: NextRequest) {
 
     let memoryContext = ''
     try {
-      const memories = await convex.query<Array<{ content: string }>>('memories:list', { userId })
+      const memories = await convex.query<Array<{ content: string }>>('memories:list', {
+        userId,
+        accessToken: session.accessToken,
+      })
       const effectiveMemories = memories || listMemories(userId)
       if (effectiveMemories.length > 0) {
         memoryContext =
@@ -182,6 +188,8 @@ export async function POST(request: NextRequest) {
       try {
         const conv = await convex.query<{ projectId?: string } | null>('conversations:get', {
           conversationId: cid,
+          userId,
+          accessToken: session.accessToken,
         })
         conversationProjectId = conv?.projectId
       } catch {
@@ -346,6 +354,7 @@ export async function POST(request: NextRequest) {
             await convex.mutation('conversations:addMessage', {
               conversationId: cid,
               userId,
+              accessToken: session.accessToken,
               turnId: tid,
               role: 'assistant',
               mode: 'act',
