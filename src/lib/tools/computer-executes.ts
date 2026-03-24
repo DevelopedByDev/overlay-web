@@ -1,3 +1,4 @@
+import { convex } from '@/lib/convex'
 import type { ComputerToolAuth } from '@/lib/computer-openclaw'
 import {
   createComputerSession,
@@ -12,19 +13,46 @@ import {
 } from '@/lib/computer-openclaw'
 import type { OverlayToolsOptions } from './types'
 
+/** How chat tools refer to a computer: friendly name, internal id, or default when only one exists. */
+export type ComputerTargetInput = {
+  computerName?: string
+  computerId?: string
+}
+
 function asAuth(options: OverlayToolsOptions): ComputerToolAuth | undefined {
   if (!options.accessToken?.trim()) return undefined
   return { userId: options.userId, accessToken: options.accessToken }
 }
 
+async function resolveComputerIdForTools(
+  options: OverlayToolsOptions,
+  input: ComputerTargetInput,
+): Promise<{ ok: true; computerId: string } | { ok: false; error: string }> {
+  const auth = asAuth(options)
+  if (!auth) return { ok: false, error: 'Missing access token for computer tools' }
+  const res = await convex.query<
+    { ok: true; computerId: string; displayName: string } | { ok: false; error: string }
+  >('computers:resolveForChatTools', {
+    userId: options.userId,
+    accessToken: options.accessToken!,
+    computerName: input.computerName?.trim() || undefined,
+    computerId: input.computerId?.trim() || undefined,
+  })
+  if (!res) return { ok: false, error: 'Could not resolve computer (Convex unavailable).' }
+  if (!res.ok) return res
+  return { ok: true, computerId: String(res.computerId) }
+}
+
 export async function executeListComputerSessions(
   options: OverlayToolsOptions,
-  input: { computerId: string },
+  input: ComputerTargetInput,
 ) {
   const auth = asAuth(options)
   if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const resolved = await resolveComputerIdForTools(options, input)
+  if (!resolved.ok) return { success: false, error: resolved.error }
   try {
-    const data = await listComputerSessions(input.computerId.trim(), auth)
+    const data = await listComputerSessions(resolved.computerId, auth)
     return { success: true, ...data }
   } catch (err) {
     return {
@@ -36,13 +64,15 @@ export async function executeListComputerSessions(
 
 export async function executeGetComputerSessionMessages(
   options: OverlayToolsOptions,
-  input: { computerId: string; sessionKey: string },
+  input: ComputerTargetInput & { sessionKey: string },
 ) {
   const auth = asAuth(options)
   if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const resolved = await resolveComputerIdForTools(options, input)
+  if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const data = await getComputerSessionMessages(
-      { computerId: input.computerId.trim(), sessionKey: input.sessionKey.trim() },
+      { computerId: resolved.computerId, sessionKey: input.sessionKey.trim() },
       auth,
     )
     return { success: true, sessionKey: data.sessionKey, messages: data.messages }
@@ -56,12 +86,14 @@ export async function executeGetComputerSessionMessages(
 
 export async function executeListComputerWorkspaceFiles(
   options: OverlayToolsOptions,
-  input: { computerId: string },
+  input: ComputerTargetInput,
 ) {
   const auth = asAuth(options)
   if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const resolved = await resolveComputerIdForTools(options, input)
+  if (!resolved.ok) return { success: false, error: resolved.error }
   try {
-    const data = await listComputerWorkspaceFiles(input.computerId.trim(), auth)
+    const data = await listComputerWorkspaceFiles(resolved.computerId, auth)
     return { success: true, workspace: data.workspace, files: data.files }
   } catch (err) {
     return {
@@ -73,13 +105,15 @@ export async function executeListComputerWorkspaceFiles(
 
 export async function executeReadComputerWorkspaceFile(
   options: OverlayToolsOptions,
-  input: { computerId: string; name: string },
+  input: ComputerTargetInput & { name: string },
 ) {
   const auth = asAuth(options)
   if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const resolved = await resolveComputerIdForTools(options, input)
+  if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const data = await getComputerWorkspaceFile(
-      { computerId: input.computerId.trim(), name: input.name.trim() },
+      { computerId: resolved.computerId, name: input.name.trim() },
       auth,
     )
     return { success: true, workspace: data.workspace, file: data.file }
@@ -93,13 +127,15 @@ export async function executeReadComputerWorkspaceFile(
 
 export async function executeCreateComputerSession(
   options: OverlayToolsOptions,
-  input: { computerId: string; modelId?: string },
+  input: ComputerTargetInput & { modelId?: string },
 ) {
   const auth = asAuth(options)
   if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const resolved = await resolveComputerIdForTools(options, input)
+  if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const data = await createComputerSession(
-      { computerId: input.computerId.trim(), modelId: input.modelId },
+      { computerId: resolved.computerId, modelId: input.modelId },
       auth,
     )
     return { success: true, ...data }
@@ -113,14 +149,16 @@ export async function executeCreateComputerSession(
 
 export async function executeUpdateComputerSession(
   options: OverlayToolsOptions,
-  input: { computerId: string; sessionKey: string; modelId?: string; label?: string },
+  input: ComputerTargetInput & { sessionKey: string; modelId?: string; label?: string },
 ) {
   const auth = asAuth(options)
   if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const resolved = await resolveComputerIdForTools(options, input)
+  if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const data = await updateComputerSession(
       {
-        computerId: input.computerId.trim(),
+        computerId: resolved.computerId,
         sessionKey: input.sessionKey.trim(),
         modelId: input.modelId,
         label: input.label,
@@ -138,13 +176,15 @@ export async function executeUpdateComputerSession(
 
 export async function executeDeleteComputerSession(
   options: OverlayToolsOptions,
-  input: { computerId: string; sessionKey: string },
+  input: ComputerTargetInput & { sessionKey: string },
 ) {
   const auth = asAuth(options)
   if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const resolved = await resolveComputerIdForTools(options, input)
+  if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const data = await deleteComputerSession(
-      { computerId: input.computerId.trim(), sessionKey: input.sessionKey.trim() },
+      { computerId: resolved.computerId, sessionKey: input.sessionKey.trim() },
       auth,
     )
     return { success: true, ...data }
@@ -158,14 +198,16 @@ export async function executeDeleteComputerSession(
 
 export async function executeWriteComputerWorkspaceFile(
   options: OverlayToolsOptions,
-  input: { computerId: string; name: string; content: string },
+  input: ComputerTargetInput & { name: string; content: string },
 ) {
   const auth = asAuth(options)
   if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const resolved = await resolveComputerIdForTools(options, input)
+  if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const data = await setComputerWorkspaceFile(
       {
-        computerId: input.computerId.trim(),
+        computerId: resolved.computerId,
         name: input.name.trim(),
         content: input.content,
       },
@@ -182,14 +224,16 @@ export async function executeWriteComputerWorkspaceFile(
 
 export async function executeRunComputerGatewayCommand(
   options: OverlayToolsOptions,
-  input: { computerId: string; sessionKey: string; message: string },
+  input: ComputerTargetInput & { sessionKey: string; message: string },
 ) {
   const auth = asAuth(options)
   if (!auth) return { success: false, error: 'Missing access token for computer tools' }
+  const resolved = await resolveComputerIdForTools(options, input)
+  if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const text = await runComputerGatewayCommand(
       {
-        computerId: input.computerId.trim(),
+        computerId: resolved.computerId,
         sessionKey: input.sessionKey.trim(),
         message: input.message,
       },

@@ -355,10 +355,10 @@ html {
 
 .md-typing-indicator span {
   display: inline-block;
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: #a1a1aa;
+  background: #3f3f46;
   animation: typingDot 1.2s ease-in-out infinite;
 }
 

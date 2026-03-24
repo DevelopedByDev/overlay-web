@@ -1278,7 +1278,11 @@ export default function ComputerDetailClient({
                         <div className="w-full space-y-2">
                           {text && (
                             <div className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
-                              <MarkdownMessage text={text} isStreaming={isAssistantStreaming} />
+                              <MarkdownMessage
+                                text={text}
+                                isStreaming={isAssistantStreaming}
+                                suppressTypingIndicator
+                              />
                             </div>
                           )}
                         </div>
@@ -1288,8 +1292,12 @@ export default function ComputerDetailClient({
                 })}
 
                 {showLoadingIndicator && (
-                  <div className="px-1 py-2">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#e0e0e0] border-t-[#525252]" />
+                  <div className="flex items-center px-1 py-2 min-h-7" aria-live="polite" aria-busy="true">
+                    <div className="md-typing-indicator" aria-label="Response loading">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
                   </div>
                 )}
 

@@ -30,9 +30,23 @@ import {
 import { assertOverlayToolAllowedForMode } from './policy'
 import type { OverlayToolsOptions, ToolMode } from './types'
 
+/** Resolve hosted computer by user-chosen name, optional Convex id, or default when only one exists. */
+const computerTargetSchema = {
+  computerName: z
+    .string()
+    .optional()
+    .describe(
+      "The user's Overlay computer name (the label they chose). If they have several, use the name they mention. Omit when they only have one ready computer.",
+    ),
+  computerId: z
+    .string()
+    .optional()
+    .describe('Internal Convex id — optional fallback; prefer computerName when the user names their machine.'),
+}
+
 /**
  * Overlay-defined tools only (no Composio, no Gateway perplexity).
- * Ask: knowledge + notes read + computer read. Act: full mutations + media.
+ * Ask: knowledge + memory writes + notes read + computer read. Act: full mutations + media.
  */
 export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
@@ -79,10 +93,8 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
 
   tools.list_computer_sessions = tool({
     description:
-      'List chat sessions on the user\'s Overlay hosted computer (OpenClaw). computerId is the Convex computers row id.',
-    inputSchema: z.object({
-      computerId: z.string().describe('Convex computers document id'),
-    }),
+      'List chat sessions on the user\'s Overlay hosted computer (OpenClaw). Use computerName (their instance name) or omit if they only have one ready computer.',
+    inputSchema: z.object({ ...computerTargetSchema }),
     execute: async (input) => {
       assertOverlayToolAllowedForMode(mode, 'list_computer_sessions')
       return executeListComputerSessions(options, input)
@@ -92,7 +104,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
   tools.get_computer_session_messages = tool({
     description: 'Read transcript messages for one computer chat session (sessionKey from list_computer_sessions).',
     inputSchema: z.object({
-      computerId: z.string(),
+      ...computerTargetSchema,
       sessionKey: z.string(),
     }),
     execute: async (input) => {
@@ -103,9 +115,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
 
   tools.list_computer_workspace_files = tool({
     description: 'List files in the OpenClaw workspace on the user\'s hosted computer.',
-    inputSchema: z.object({
-      computerId: z.string(),
-    }),
+    inputSchema: z.object({ ...computerTargetSchema }),
     execute: async (input) => {
       assertOverlayToolAllowedForMode(mode, 'list_computer_workspace_files')
       return executeListComputerWorkspaceFiles(options, input)
@@ -115,7 +125,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
   tools.read_computer_workspace_file = tool({
     description: 'Read a workspace file by name from the user\'s hosted computer.',
     inputSchema: z.object({
-      computerId: z.string(),
+      ...computerTargetSchema,
       name: z.string().describe('File name/path as returned by list_computer_workspace_files'),
     }),
     execute: async (input) => {
@@ -124,48 +134,48 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     },
   })
 
+  tools.save_memory = tool({
+    description:
+      'Save a durable memory about the user (preferences, facts, standing instructions). ' +
+      'You MUST call this when they state personal preferences or long-lived facts (e.g. "I like pasta", "I am vegetarian", "always cite sources"). ' +
+      'Use one short factual sentence per call. Skip for pure small talk or one-off requests.',
+    inputSchema: z.object({
+      content: z.string().describe('The memory text to store'),
+      source: z
+        .enum(['chat', 'note', 'manual'])
+        .optional()
+        .describe('How the memory was captured (default: chat when learning from conversation)'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'save_memory')
+      return executeSaveMemory(options, input)
+    },
+  })
+
+  tools.update_memory = tool({
+    description: 'Replace the text of an existing memory by id (use after listing or saving a memory).',
+    inputSchema: z.object({
+      memoryId: z.string().describe('Convex document id of the memory'),
+      content: z.string().describe('New full text for the memory'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'update_memory')
+      return executeUpdateMemory(options, input)
+    },
+  })
+
+  tools.delete_memory = tool({
+    description: 'Delete a memory by id.',
+    inputSchema: z.object({
+      memoryId: z.string().describe('Convex document id of the memory to remove'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'delete_memory')
+      return executeDeleteMemory(options, input)
+    },
+  })
+
   if (mode === 'act') {
-    tools.save_memory = tool({
-      description:
-        'Save a durable memory about the user (preferences, facts, standing instructions). ' +
-        'You MUST call this when they state personal preferences or long-lived facts (e.g. "I like pasta", "I am vegetarian", "always cite sources"). ' +
-        'Use one short factual sentence per call. Skip for pure small talk or one-off requests.',
-      inputSchema: z.object({
-        content: z.string().describe('The memory text to store'),
-        source: z
-          .enum(['chat', 'note', 'manual'])
-          .optional()
-          .describe('How the memory was captured (default: chat when learning from conversation)'),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'save_memory')
-        return executeSaveMemory(options, input)
-      },
-    })
-
-    tools.update_memory = tool({
-      description: 'Replace the text of an existing memory by id (use after listing or saving a memory).',
-      inputSchema: z.object({
-        memoryId: z.string().describe('Convex document id of the memory'),
-        content: z.string().describe('New full text for the memory'),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'update_memory')
-        return executeUpdateMemory(options, input)
-      },
-    })
-
-    tools.delete_memory = tool({
-      description: 'Delete a memory by id.',
-      inputSchema: z.object({
-        memoryId: z.string().describe('Convex document id of the memory to remove'),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'delete_memory')
-        return executeDeleteMemory(options, input)
-      },
-    })
-
     tools.generate_image = tool({
       description:
         'Generate an image from a text prompt using AI image generation models. ' +
@@ -261,7 +271,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     tools.create_computer_session = tool({
       description: 'Create a new OpenClaw chat session on the hosted computer.',
       inputSchema: z.object({
-        computerId: z.string(),
+        ...computerTargetSchema,
         modelId: z.string().optional().describe('Overlay chat model id to map into OpenClaw'),
       }),
       execute: async (input) => {
@@ -273,7 +283,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     tools.update_computer_session = tool({
       description: 'Update session label or model on the hosted computer.',
       inputSchema: z.object({
-        computerId: z.string(),
+        ...computerTargetSchema,
         sessionKey: z.string(),
         modelId: z.string().optional(),
         label: z.string().optional(),
@@ -287,7 +297,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     tools.delete_computer_session = tool({
       description: 'Delete a computer chat session and its transcript.',
       inputSchema: z.object({
-        computerId: z.string(),
+        ...computerTargetSchema,
         sessionKey: z.string(),
       }),
       execute: async (input) => {
@@ -299,7 +309,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     tools.write_computer_workspace_file = tool({
       description: 'Write or overwrite a file in the OpenClaw workspace on the hosted computer.',
       inputSchema: z.object({
-        computerId: z.string(),
+        ...computerTargetSchema,
         name: z.string(),
         content: z.string(),
       }),
@@ -314,7 +324,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         'Send a natural-language instruction to the OpenClaw agent on the hosted computer for the given session. ' +
         'Use only when the user wants work done on their Overlay computer.',
       inputSchema: z.object({
-        computerId: z.string(),
+        ...computerTargetSchema,
         sessionKey: z.string(),
         message: z.string(),
       }),

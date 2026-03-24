@@ -1,7 +1,23 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Plus, Trash2, ChevronDown, ImageIcon, FileText, X, AlertCircle, Check, FolderOpen, Video, Download, Copy, Reply } from 'lucide-react'
+import {
+  Send,
+  Plus,
+  Trash2,
+  ChevronDown,
+  ImageIcon,
+  FileText,
+  X,
+  AlertCircle,
+  Check,
+  FolderOpen,
+  Video,
+  Download,
+  Copy,
+  Reply,
+  Wrench,
+} from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai'
 import { useSearchParams } from 'next/navigation'
@@ -242,7 +258,18 @@ function formatToolLabel(toolId: string): string {
     generate_image: 'Generate image',
     generate_video: 'Generate video',
   }
-  return map[toolId] ?? toolId.replace(/_/g, ' ')
+  if (map[toolId]) return map[toolId]!
+  const id = toolId.trim()
+  if (/composio/i.test(id)) {
+    const rest = id.replace(/^composio_?/i, '')
+    const title = rest
+      .split(/_+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ')
+    return title ? `Integration · ${title}` : 'Integration'
+  }
+  return id.replace(/_/g, ' ')
 }
 
 function toolStateUiLabel(state: string): string {
@@ -382,9 +409,6 @@ function ExchangeBlock({
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
-    const runningTools = assistantVisualBlocks.filter(
-      (b): b is { kind: 'tool'; key: string; name: string; state: string } => b.kind === 'tool',
-    ).filter((t) => !TOOL_UI_DONE_STATES.has(t.state))
     const lastTextBlockIndex = (() => {
       let idx = -1
       for (let i = 0; i < assistantVisualBlocks.length; i++) {
@@ -481,23 +505,34 @@ function ExchangeBlock({
             return (
               <div key={`${exchIdx}-seq-${bi}-${block.key}`} className="w-full px-1">
                 <div
-                  className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 w-fit max-w-full border ${
+                  className={`group flex items-center gap-2.5 text-xs rounded-xl pl-2.5 pr-3 py-2 w-fit max-w-full border shadow-sm transition-shadow ${
                     err
-                      ? 'border-red-200 bg-red-50 text-red-800'
+                      ? 'border-red-200/90 bg-gradient-to-r from-red-50 to-red-50/50 text-red-900 border-l-[3px] border-l-red-400'
                       : running
-                        ? 'border-[#e0e0e0] bg-[#f3f3f3] text-[#525252] tool-chip-running'
-                        : 'border-[#e8e8e8] bg-[#f7f7f7] text-[#525252]'
+                        ? 'border-[#e4e4e7] bg-gradient-to-r from-[#fafafa] to-white text-[#3f3f46] border-l-[3px] border-l-[#71717a] tool-chip-running'
+                        : 'border-[#e4e4e7] bg-gradient-to-r from-white to-[#fafafa] text-[#3f3f46] border-l-[3px] border-l-emerald-500/70'
                   }`}
                 >
                   {running ? (
-                    <span className="inline-block size-3.5 shrink-0 rounded-full border-2 border-[#c4c4c4] border-t-[#404040] animate-spin" />
+                    <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#f4f4f5] border border-[#e4e4e7]">
+                      <span className="inline-block size-3.5 rounded-full border-2 border-[#d4d4d8] border-t-[#27272a] animate-spin" />
+                    </span>
                   ) : (
-                    <span className="text-[#888]" aria-hidden>
-                      ⚙
+                    <span
+                      className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg border ${
+                        err ? 'border-red-200 bg-red-100/80 text-red-700' : 'border-emerald-200/80 bg-emerald-50/90 text-emerald-800'
+                      }`}
+                      aria-hidden
+                    >
+                      <Wrench size={14} strokeWidth={2} className="opacity-90" />
                     </span>
                   )}
-                  <span className="font-medium truncate">{formatToolLabel(block.name)}</span>
-                  <span className={`shrink-0 ${err ? 'text-red-600' : 'text-[#aaa]'}`}>
+                  <span className="font-medium tracking-tight truncate min-w-0">{formatToolLabel(block.name)}</span>
+                  <span
+                    className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide ${
+                      err ? 'text-red-600' : running ? 'text-[#71717a]' : 'text-emerald-700/90'
+                    }`}
+                  >
                     {toolStateUiLabel(block.state)}
                   </span>
                 </div>
@@ -525,23 +560,19 @@ function ExchangeBlock({
                 text={block.text}
                 isStreaming={isStreaming && isLastText}
                 sourceCitations={isLastText ? sourceCitations : undefined}
+                suppressTypingIndicator
               />
             </div>
           )
         })}
 
         {responseInProgress && (
-          <div
-            className="flex items-center gap-2 px-1 py-1.5 text-[12px] text-[#737373]"
-            aria-live="polite"
-            aria-busy="true"
-          >
-            <span className="inline-block size-3 shrink-0 rounded-full border-2 border-[#d4d4d4] border-t-[#525252] animate-spin" />
-            <span className="animate-pulse">
-              {runningTools.length > 0
-                ? `Using tools: ${runningTools.map((t) => formatToolLabel(t.name)).join(', ')}`
-                : 'Thinking…'}
-            </span>
+          <div className="flex items-center px-1 py-2 min-h-7" aria-live="polite" aria-busy="true">
+            <div className="md-typing-indicator" aria-label="Response loading">
+              <span />
+              <span />
+              <span />
+            </div>
           </div>
         )}
 

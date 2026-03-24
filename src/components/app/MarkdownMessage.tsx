@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import type { Pluggable } from 'unified'
 import { mergeGfmTableContinuationLines } from '@/lib/markdown-table-fix'
+import { stripThinkingPlaceholderMarkdown } from '@/lib/agent-assistant-text'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -75,7 +76,7 @@ function normalizeGeneratedMarkdown(
   text: string,
   options?: { sourceCitations?: SourceCitationMap; linkifyCitations?: boolean },
 ): string {
-  let t = mergeGfmTableContinuationLines(stripHtmlishToMarkdown(text))
+  let t = mergeGfmTableContinuationLines(stripHtmlishToMarkdown(stripThinkingPlaceholderMarkdown(text)))
   t = bracketNormalize(t)
   if (options?.linkifyCitations && options?.sourceCitations && Object.keys(options.sourceCitations).length > 0) {
     t = linkifySourceCitations(t, options.sourceCitations)
@@ -285,9 +286,14 @@ interface Props {
   isStreaming: boolean
   /** From stream metadata — links [n] on **Sources:** lines to Knowledge */
   sourceCitations?: SourceCitationMap
+  /**
+   * When true, do not render the three-dot typing indicator here (parent shows a single indicator at the bottom).
+   * Still renders completed paragraph blocks plus the in-flight tail so text streams without duplicate dots mid-message.
+   */
+  suppressTypingIndicator?: boolean
 }
 
-export function MarkdownMessage({ text, isStreaming, sourceCitations }: Props) {
+export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTypingIndicator = false }: Props) {
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const normalizedLive = useMemo(
     () => normalizeGeneratedMarkdown(text, { sourceCitations, linkifyCitations: false }),
@@ -338,6 +344,9 @@ export function MarkdownMessage({ text, isStreaming, sourceCitations }: Props) {
   }, [normalizedLive, isStreaming])
 
   const hasBlocks = blocks.length > 0
+  const streamTail = isStreaming ? normalizedLive.slice(releasedRef.current) : ''
+  const showInlineTypingDots =
+    isStreaming && !suppressTypingIndicator && !hasBlocks && !streamTail.trim()
 
   if (!isStreaming && normalizedFinal.trim()) {
     return (
@@ -373,13 +382,25 @@ export function MarkdownMessage({ text, isStreaming, sourceCitations }: Props) {
         </div>
       ))}
 
-      {isStreaming && !hasBlocks && (
-        <div className="md-typing-indicator">
+      {isStreaming && streamTail.trim() ? (
+        <div key="md-stream-tail" className="md-block-appear md-stream-tail">
+          <ReactMarkdown
+            remarkPlugins={markdownRemarkPlugins}
+            rehypePlugins={markdownRehypePlugins}
+            components={mdComponents}
+          >
+            {streamTail}
+          </ReactMarkdown>
+        </div>
+      ) : null}
+
+      {showInlineTypingDots ? (
+        <div className="md-typing-indicator" aria-hidden>
           <span />
           <span />
           <span />
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

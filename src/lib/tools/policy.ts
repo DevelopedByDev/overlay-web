@@ -8,6 +8,9 @@ export const MAX_TOOL_STEPS_ACT = 12
 
 const OVERLAY_TOOL_IDS_ASK = new Set<string>([
   'search_knowledge',
+  'save_memory',
+  'update_memory',
+  'delete_memory',
   'list_notes',
   'get_note',
   'list_computer_sessions',

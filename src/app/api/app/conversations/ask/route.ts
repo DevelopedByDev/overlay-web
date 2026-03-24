@@ -23,6 +23,7 @@ import { MAX_TOOL_STEPS_ASK } from '@/lib/tools/policy'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
 import {
   ASK_KNOWLEDGE_TOOLS_NOTE,
+  MEMORY_SAVE_PROTOCOL,
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
 } from '@/lib/knowledge-agent-instructions'
@@ -208,7 +209,7 @@ export async function POST(request: NextRequest) {
       indexedNote,
     ].filter(Boolean).join('\n\n')
 
-    const knowledgeToolNote = '\n\n' + ASK_KNOWLEDGE_TOOLS_NOTE
+    const knowledgeToolNote = '\n\n' + ASK_KNOWLEDGE_TOOLS_NOTE + '\n\n' + MEMORY_SAVE_PROTOCOL
 
     if (cid && tid && latestUserContent && !skipUserMessage) {
       await convex.mutation('conversations:addMessage', {

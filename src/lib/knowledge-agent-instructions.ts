@@ -2,11 +2,11 @@
  * Shared system text for Ask / Act so models reliably use knowledge tools.
  */
 
-/** Ask mode: retrieval-only tools; memory writes happen in Act mode. */
+/** Ask mode: retrieval + memory writes; note/file mutations stay in Act mode. */
 export const ASK_KNOWLEDGE_TOOLS_NOTE = [
-  'Tools in Ask mode (when available): search_knowledge (notebook files and memories), list_notes / get_note, read-only computer tools (list_computer_sessions, get_computer_session_messages, workspace file list/read) when the user has a hosted computer, perplexity_search (live web when AI Gateway is configured), and filtered Composio integrations.',
+  'Tools in Ask mode (when available): search_knowledge (notebook files and memories), save_memory / update_memory / delete_memory when the user shares or corrects durable facts, list_notes / get_note (read-only), read-only computer tools (list_computer_sessions, get_computer_session_messages, workspace file list/read) when the user has a hosted computer, perplexity_search (live web when AI Gateway is configured), and filtered Composio integrations.',
   'Use search_knowledge for facts beyond AUTO_RETRIEVED_KNOWLEDGE or the memory list above; use perplexity_search for current events, news, or anything requiring the public web.',
-  'You cannot save, update, or delete memories or notes in Ask mode. If the user wants preferences or facts remembered for future chats, tell them to switch to Act mode.',
+  'You cannot create, update, or delete notebook notes in Ask mode — use Act mode for note CRUD. You CAN save, update, or delete memories in Ask mode when the user states preferences or facts worth recalling later.',
   'When your answer uses AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end with **Sources:** (and include URLs/snippets from web search where relevant).',
 ].join('\n')
 

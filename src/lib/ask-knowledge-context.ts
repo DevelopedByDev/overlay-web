@@ -1,6 +1,8 @@
 import { convex } from '@/lib/convex'
 import type { HybridSearchChunk } from '../../convex/knowledge'
 
+/** Retrieval-only context for the model. Durable facts the user wants remembered are written via save_memory (Ask or Act), not here. */
+
 const MIN_USER_CHARS = 8
 const MAX_QUERY_CHARS = 500
 const BLOCK_CHAR_BUDGET = 9000

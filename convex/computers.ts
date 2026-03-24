@@ -7,6 +7,7 @@ import { StripeSubscriptions } from '@convex-dev/stripe'
 import { validateAccessToken } from './lib/auth'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getModel } from '../src/lib/models'
 import { calculateTokenCost } from '../src/lib/model-pricing'
+import type { Id } from './_generated/dataModel'
 
 const TAG = '[Computer]'
 const stripeClient = new StripeSubscriptions(components.stripe, {})
@@ -29,13 +30,28 @@ export const create = mutation({
       console.error(`${TAG} create — REJECTED: invalid accessToken for userId=${args.userId}`)
       throw new Error('Unauthorized')
     }
+    const trimmedName = args.name.trim()
+    if (!trimmedName) {
+      throw new Error('Computer name is required')
+    }
+    const siblings = await ctx.db
+      .query('computers')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .collect()
+    const nameLower = trimmedName.toLowerCase()
+    const duplicate = siblings.some(
+      (c) => c.status !== 'deleted' && c.name.trim().toLowerCase() === nameLower,
+    )
+    if (duplicate) {
+      throw new Error('You already have a computer with this name. Choose a different name.')
+    }
     const gatewayToken =
       crypto.randomUUID().replace(/-/g, '') +
       crypto.randomUUID().replace(/-/g, '')
     const readySecret = crypto.randomUUID().replace(/-/g, '')
     const id = await ctx.db.insert('computers', {
       userId: args.userId,
-      name: args.name,
+      name: trimmedName,
       setupType: 'managed',
       region: args.region,
       status: 'pending_payment',
@@ -206,6 +222,75 @@ export const get = query({
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) return null
     return { ...computer, gatewayToken: undefined, readySecret: undefined }
+  },
+})
+
+/** Resolve chat/tool target: optional computerId, optional computerName, or default when exactly one ready computer. */
+export const resolveForChatTools = query({
+  args: {
+    userId: v.string(),
+    accessToken: v.string(),
+    computerName: v.optional(v.string()),
+    computerId: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    { ok: true; computerId: Id<'computers'>; displayName: string } | { ok: false; error: string }
+  > => {
+    if (!validateAccessToken(args.accessToken)) {
+      return { ok: false, error: 'Unauthorized' }
+    }
+    const rows = await ctx.db
+      .query('computers')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .collect()
+    const active = rows.filter((c) => c.status !== 'deleted')
+
+    const cid = args.computerId?.trim()
+    if (cid) {
+      const c = active.find((x) => x._id === cid)
+      if (!c) return { ok: false, error: 'Computer not found for this account.' }
+      return { ok: true, computerId: c._id, displayName: c.name }
+    }
+
+    const wantName = args.computerName?.trim()
+    if (wantName) {
+      const lower = wantName.toLowerCase()
+      const matches = active.filter((c) => c.name.trim().toLowerCase() === lower)
+      if (matches.length === 0) {
+        const labels = active.map((c) => `"${c.name}"`).join(', ')
+        return {
+          ok: false,
+          error: labels
+            ? `No computer named "${wantName}". Available: ${labels}`
+            : `No computer named "${wantName}".`,
+        }
+      }
+      if (matches.length > 1) {
+        return {
+          ok: false,
+          error: 'Multiple computers share that name; rename one in the app or pass computerId.',
+        }
+      }
+      return { ok: true, computerId: matches[0]!._id, displayName: matches[0]!.name }
+    }
+
+    const ready = active.filter((c) => c.status === 'ready')
+    if (ready.length === 1) {
+      return { ok: true, computerId: ready[0]!._id, displayName: ready[0]!.name }
+    }
+    if (ready.length === 0) {
+      return {
+        ok: false,
+        error: 'No ready computers found. Open the Computers page to provision one, then try again.',
+      }
+    }
+    return {
+      ok: false,
+      error: `You have ${ready.length} computers. Say which one to use by name (e.g. ${ready.map((c) => `"${c.name}"`).join(', ')}).`,
+    }
   },
 })
 

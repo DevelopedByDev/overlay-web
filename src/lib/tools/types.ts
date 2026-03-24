@@ -5,7 +5,7 @@
  * - search_knowledge: ask + act (hybrid search via /api/app/knowledge/search)
  * - list_notes, get_note: ask + act; create/update/delete_note: act only
  * - Computer *: read tools ask + act; session/workspace writes + run_computer_gateway_command: act only
- * - save_memory, update_memory, delete_memory: act only (/api/app/memory)
+ * - save_memory, update_memory, delete_memory: ask + act (/api/app/memory)
  * - generate_image, generate_video: act only (/api/app/generate-*)
  * Composio: act + filtered ask (unchanged in composio-tools); merged in routes.
  */
