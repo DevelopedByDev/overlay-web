@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import { summarizeSessionForLog } from '../src/lib/auth-debug.ts'
+import { decryptSessionCookiePayload } from '../src/lib/session-transfer-crypto.ts'
 
 function getArg(name: string): string | null {
   const exact = `--${name}`
@@ -70,11 +71,27 @@ async function main() {
   const payload = verifySignedCookie(normalizedCookie, secret)
   if (!payload) throw new Error('Cookie signature invalid')
 
-  const session = JSON.parse(Buffer.from(payload, 'base64').toString('utf-8')) as {
+  let session: {
     accessToken: string
     refreshToken: string
     user: { id: string }
     expiresAt: number
+  }
+
+  try {
+    session = JSON.parse(decryptSessionCookiePayload(payload)) as {
+      accessToken: string
+      refreshToken: string
+      user: { id: string }
+      expiresAt: number
+    }
+  } catch {
+    session = JSON.parse(Buffer.from(payload, 'base64').toString('utf-8')) as {
+      accessToken: string
+      refreshToken: string
+      user: { id: string }
+      expiresAt: number
+    }
   }
 
   console.log(JSON.stringify({ session: summarizeSessionForLog(session) }, null, 2))

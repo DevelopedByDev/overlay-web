@@ -84,6 +84,7 @@ export async function POST(request: NextRequest) {
 
     const { text } = await request.json()
     if (!text) return NextResponse.json({ error: 'text required' }, { status: 400 })
+    const fallbackTitle = fallbackTitleFromFirstMessage(text)
     console.log('[ChatTitle][server] Generating title', {
       userId: session.user.id,
       textPreview: text.slice(0, 120),
@@ -93,11 +94,11 @@ export async function POST(request: NextRequest) {
 
     const apiKey = await resolveGroqApiKey(session.accessToken)
     if (!apiKey) {
-      throw new Error('GROQ_API_KEY is not configured')
+      console.warn('[ChatTitle][server] GROQ_API_KEY missing, using fallback title')
+      return NextResponse.json({ title: fallbackTitle })
     }
 
     const groq = new Groq({ apiKey })
-    const fallbackTitle = fallbackTitleFromFirstMessage(text)
     const userPrompt = `Generate a concise 3-6 word title for a conversation that starts with this message:\n\n${text.slice(0, 500)}`
 
     const structuredCompletion = await groq.chat.completions.create({

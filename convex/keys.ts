@@ -1,6 +1,6 @@
 import { action } from './_generated/server'
 import { v } from 'convex/values'
-import { requireServerSecret } from './lib/auth'
+import { requireProviderKeysSecret } from './lib/auth'
 
 const PROVIDER_ENV_VARS: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
@@ -18,10 +18,10 @@ const PROVIDER_ENV_VARS: Record<string, string> = {
 export const getAPIKey = action({
   args: {
     provider: v.string(),
-    serverSecret: v.string(),
+    providerKeysSecret: v.string(),
   },
-  handler: async (_ctx, { provider, serverSecret }) => {
-    requireServerSecret(serverSecret)
+  handler: async (_ctx, { provider, providerKeysSecret }) => {
+    requireProviderKeysSecret(providerKeysSecret)
     const envVarName = PROVIDER_ENV_VARS[provider]
     if (!envVarName) {
       return { key: null }

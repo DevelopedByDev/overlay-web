@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import { mutation } from './_generated/server'
-import { requireServerSecret } from './lib/auth'
+import { constantTimeEqualStrings, requireServerSecret } from './lib/auth'
 
 const textEncoder = new TextEncoder()
 
@@ -11,42 +11,73 @@ async function hashTransferToken(token: string): Promise<string> {
     .join('')
 }
 
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+async function hashCodeVerifier(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', textEncoder.encode(verifier.trim()))
+  return toBase64Url(new Uint8Array(digest))
+}
+
 export const storeToken = mutation({
   args: {
     serverSecret: v.string(),
     token: v.string(),
+    codeChallenge: v.optional(v.string()),
     data: v.string(),
     expiresAt: v.number(),
   },
-  handler: async (ctx, { serverSecret, token, data, expiresAt }) => {
+  handler: async (ctx, { serverSecret, token, codeChallenge, data, expiresAt }) => {
     requireServerSecret(serverSecret)
     const tokenHash = await hashTransferToken(token)
-    await ctx.db.insert('sessionTransferTokens', { tokenHash, data, expiresAt })
+    await ctx.db.insert('sessionTransferTokens', {
+      tokenHash,
+      codeChallenge: codeChallenge?.trim() || undefined,
+      data,
+      expiresAt,
+    })
   },
 })
 
 export const consumeToken = mutation({
-  args: { token: v.string(), serverSecret: v.string() },
-  handler: async (ctx, { token, serverSecret }) => {
+  args: {
+    token: v.string(),
+    codeVerifier: v.optional(v.string()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, { token, codeVerifier, serverSecret }) => {
     requireServerSecret(serverSecret)
     const tokenHash = await hashTransferToken(token)
-    let entry = await ctx.db
+    const entry = await ctx.db
       .query('sessionTransferTokens')
       .withIndex('by_tokenHash', (q) => q.eq('tokenHash', tokenHash))
       .unique()
 
-    if (!entry) {
-      entry = await ctx.db
-        .query('sessionTransferTokens')
-        .withIndex('by_token', (q) => q.eq('token', token))
-        .unique()
-    }
-
     if (!entry) return null
 
-    await ctx.db.delete(entry._id)
+    if (entry.expiresAt < Date.now()) {
+      await ctx.db.delete(entry._id)
+      return null
+    }
 
-    if (entry.expiresAt < Date.now()) return null
+    if (entry.codeChallenge) {
+      const trimmedVerifier = codeVerifier?.trim()
+      if (!trimmedVerifier) {
+        return null
+      }
+
+      const hashedVerifier = await hashCodeVerifier(trimmedVerifier)
+      if (!constantTimeEqualStrings(entry.codeChallenge, hashedVerifier)) {
+        return null
+      }
+    }
+
+    await ctx.db.delete(entry._id)
 
     return entry.data
   },

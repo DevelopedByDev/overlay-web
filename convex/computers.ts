@@ -17,6 +17,39 @@ import type { Id } from './_generated/dataModel'
 
 const TAG = '[Computer]'
 const stripeClient = new StripeSubscriptions(components.stripe, {})
+const textEncoder = new TextEncoder()
+
+function getRequiredHetznerSshKeyId(): number {
+  const raw = process.env.HETZNER_SSH_KEY_ID?.trim()
+  if (!raw) {
+    throw new Error('HETZNER_SSH_KEY_ID is required to provision computers')
+  }
+
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed)) {
+    throw new Error('HETZNER_SSH_KEY_ID must be a valid integer')
+  }
+
+  return parsed
+}
+
+function getRequiredHetznerSshSourceIps(): string[] {
+  const raw = process.env.HETZNER_SSH_ALLOWED_CIDRS?.trim()
+  if (!raw) {
+    throw new Error('HETZNER_SSH_ALLOWED_CIDRS is required to provision computers')
+  }
+
+  const cidrs = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+
+  if (cidrs.length === 0) {
+    throw new Error('HETZNER_SSH_ALLOWED_CIDRS must include at least one CIDR')
+  }
+
+  return cidrs
+}
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -467,7 +500,7 @@ export const getChatConnection = query({
 
     return {
       gatewayToken: computer.gatewayToken,
-      hooksToken: deriveHooksToken(computer.gatewayToken),
+      hooksToken: await deriveHooksToken(computer.gatewayToken),
       hetznerServerIp: computer.hetznerServerIp,
     }
   },
@@ -890,11 +923,13 @@ export const provisionComputer = internalAction({
     if (!AI_GATEWAY_API_KEY) throw new Error('AI_GATEWAY_API_KEY is not configured')
 
     const location = 'ash'
+    const sshKeyId = getRequiredHetznerSshKeyId()
+    const sshSourceIps = getRequiredHetznerSshSourceIps()
     console.log(`${TAG} provisionComputer — using Hetzner location=${location} for region=${computer.region}`)
 
     const userdata = buildCloudInit({
       gatewayToken: computer.gatewayToken!,
-      hooksToken: deriveHooksToken(computer.gatewayToken!),
+      hooksToken: await deriveHooksToken(computer.gatewayToken!),
       readySecret: computer.readySecret!,
       computerId: computerId,
       convexHttpUrl: CONVEX_HTTP_URL,
@@ -919,7 +954,7 @@ export const provisionComputer = internalAction({
           body: JSON.stringify({
             name: `overlay-fw-${computerId}`.slice(0, 63),
             rules: [
-              { direction: 'in', protocol: 'tcp', port: '22',    source_ips: ['0.0.0.0/0', '::/0'] },
+              { direction: 'in', protocol: 'tcp', port: '22',    source_ips: sshSourceIps },
               { direction: 'in', protocol: 'tcp', port: '18789', source_ips: ['0.0.0.0/0', '::/0'] },
             ],
           }),
@@ -946,9 +981,7 @@ export const provisionComputer = internalAction({
             location,
             user_data: userdata,
             firewalls: [{ firewall: firewallId }],
-            ssh_keys: process.env.HETZNER_SSH_KEY_ID
-              ? [parseInt(process.env.HETZNER_SSH_KEY_ID)]
-              : [],
+            ssh_keys: [sshKeyId],
           }),
         }
       )
@@ -1376,8 +1409,23 @@ function buildComputerChatFailureMessage(selectedModelId: string, failures: stri
   return `OpenClaw could not reply to this request using the selected model "${selectedModelId}". Retried the configured fallback models, but all attempts failed. Details: ${detail}`
 }
 
-function deriveHooksToken(gatewayToken: string): string {
-  return `hooks_${gatewayToken}`
+async function deriveHooksToken(gatewayToken: string): Promise<string> {
+  const salt = process.env.HOOKS_TOKEN_SALT?.trim()
+  if (!salt) {
+    throw new Error('HOOKS_TOKEN_SALT is not configured')
+  }
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    textEncoder.encode(salt),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, textEncoder.encode(gatewayToken))
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 function buildComputerModelsAllowlistJson(): string {
@@ -1521,6 +1569,14 @@ write_files:
       OPENROUTER_API_KEY={{OPENROUTER_API_KEY}}
       OPENCLAW_GATEWAY_TOKEN={{GATEWAY_TOKEN}}
       OPENCLAW_HOOKS_TOKEN={{HOOKS_TOKEN}}
+
+  - path: /etc/ssh/sshd_config.d/99-overlay-hardening.conf
+    permissions: '0644'
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+      PubkeyAuthentication yes
 
   - path: /root/openclaw-deploy/docker-compose.yml
     permissions: '0644'
@@ -1692,5 +1748,6 @@ write_files:
       clog "Health check timed out after bootstrap."
 
 runcmd:
+  - systemctl restart ssh
   - /root/provision.sh
 `

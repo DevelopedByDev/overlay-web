@@ -85,12 +85,12 @@ export default defineSchema({
 
   // Short-lived session transfer tokens for desktop app auth linking
   sessionTransferTokens: defineTable({
-    token: v.optional(v.string()),
     tokenHash: v.optional(v.string()),
+    token: v.optional(v.string()),
+    codeChallenge: v.optional(v.string()),
     data: v.string(), // JSON-encoded auth data
     expiresAt: v.number(),
   })
-    .index('by_token', ['token'])
     .index('by_tokenHash', ['tokenHash']),
 
   projects: defineTable({

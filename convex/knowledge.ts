@@ -7,6 +7,7 @@ import {
 } from './_generated/server'
 import { internal, api } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
+import { requireAccessToken } from './lib/auth'
 
 export type HybridSearchChunk = {
   text: string
@@ -377,13 +378,7 @@ export const hybridSearch = action({
     minVecScore: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<{ chunks: HybridSearchChunk[] }> => {
-    const ent = await ctx.runQuery(api.usage.getEntitlements, {
-      accessToken: args.accessToken,
-      userId: args.userId,
-    })
-    if (!ent) {
-      throw new Error('Unauthorized')
-    }
+    await requireAccessToken(args.accessToken, args.userId)
 
     const kVec = Math.min(256, Math.max(1, args.kVec ?? 48))
     const kLex = Math.min(1024, Math.max(1, args.kLex ?? 48))

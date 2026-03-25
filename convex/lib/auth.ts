@@ -455,8 +455,22 @@ export function validateServerSecret(secret: string | undefined): boolean {
   return constantTimeEqualStrings(expected, provided)
 }
 
+export function validateProviderKeysSecret(secret: string | undefined): boolean {
+  const expected = process.env.PROVIDER_KEYS_SECRET?.trim()
+  const provided = secret?.trim()
+  if (!expected || !provided) return false
+
+  return constantTimeEqualStrings(expected, provided)
+}
+
 export function requireServerSecret(secret: string | undefined): void {
   if (!validateServerSecret(secret)) {
+    throw new Error('Unauthorized')
+  }
+}
+
+export function requireProviderKeysSecret(secret: string | undefined): void {
+  if (!validateProviderKeysSecret(secret)) {
     throw new Error('Unauthorized')
   }
 }

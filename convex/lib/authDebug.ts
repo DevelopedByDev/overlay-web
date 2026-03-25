@@ -102,7 +102,7 @@ export function summarizeEnvResolutionForLog() {
 }
 
 function shouldLogAuthDebug(): boolean {
-  return process.env.AUTH_DEBUG === '1'
+  return process.env.AUTH_DEBUG === '1' && process.env.NODE_ENV !== 'production'
 }
 
 export function logAuthDebug(label: string, payload?: unknown) {

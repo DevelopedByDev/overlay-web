@@ -23,6 +23,14 @@ DEV_NEXT_PUBLIC_APP_URL=https://your-preview-app.example.com
 # Auth / server-to-server secrets
 SESSION_SECRET=replace-with-a-long-random-secret
 INTERNAL_API_SECRET=replace-with-another-long-random-secret
+SESSION_TRANSFER_KEY=replace-with-a-third-random-secret
+SESSION_COOKIE_ENCRYPTION_KEY=replace-with-a-fourth-random-secret
+PROVIDER_KEYS_SECRET=replace-with-a-fifth-random-secret
+HOOKS_TOKEN_SALT=replace-with-a-sixth-random-secret
+
+# Computer provisioning hardening
+HETZNER_SSH_KEY_ID=123456
+HETZNER_SSH_ALLOWED_CIDRS=203.0.113.10/32,2001:db8::/64
 
 # Optional integrations
 AI_GATEWAY_API_KEY=vgw_...
@@ -50,9 +58,18 @@ Set the same sensitive values in Convex that your backend needs directly:
 
 ```bash
 npx convex env set INTERNAL_API_SECRET "replace-with-a-long-random-secret"
+npx convex env set PROVIDER_KEYS_SECRET "replace-with-a-dedicated-provider-export-secret"
+npx convex env set HOOKS_TOKEN_SALT "replace-with-a-random-hooks-token-salt"
 npx convex env set WORKOS_API_KEY "sk_..."
 npx convex env set WORKOS_CLIENT_ID "client_..."
 ```
+
+Production deployments must also set `SESSION_TRANSFER_KEY` and
+`SESSION_COOKIE_ENCRYPTION_KEY` in the web environment. In development only, the app can
+temporarily fall back to the legacy secrets while you rotate.
+
+Rotate every real secret in your local env files before sharing the repository with anyone
+outside your trusted team.
 
 If you edit files inside `convex/`, push both deployments:
 
@@ -99,7 +116,8 @@ VAULT_OPENROUTER_KEY_ID=api-key-openrouter
 
 - [ ] Copy `.env.example` into your local env files
 - [ ] Create separate Convex prod and dev deployments
-- [ ] Set `SESSION_SECRET` and `INTERNAL_API_SECRET` everywhere they are required
+- [ ] Set `SESSION_SECRET`, `INTERNAL_API_SECRET`, `SESSION_TRANSFER_KEY`, and `SESSION_COOKIE_ENCRYPTION_KEY`
+- [ ] Set `PROVIDER_KEYS_SECRET`, `HOOKS_TOKEN_SALT`, `HETZNER_SSH_KEY_ID`, and `HETZNER_SSH_ALLOWED_CIDRS`
 - [ ] Configure Stripe products and the Stripe webhook
 - [ ] Configure WorkOS auth and any Vault-backed provider keys
 - [ ] Run `npm run dev`

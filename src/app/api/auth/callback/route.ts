@@ -10,7 +10,7 @@ import { logAuthDebug, summarizeSessionForLog } from '@/lib/auth-debug'
 import { convex as serverConvex } from '@/lib/convex'
 import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../../../convex/_generated/api'
-import { randomBytes } from 'crypto'
+import { createHash, randomBytes } from 'crypto'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { encryptSessionTransferPayload } from '@/lib/session-transfer-crypto'
 
@@ -19,6 +19,12 @@ const IS_DEV = process.env.NODE_ENV === 'development'
 const CONVEX_URL = IS_DEV
   ? (process.env.DEV_NEXT_PUBLIC_CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL!)
   : process.env.NEXT_PUBLIC_CONVEX_URL!
+
+const SESSION_TRANSFER_TTL_MS = 90 * 1000
+
+function hashTransferTokenForLog(token: string): string {
+  return createHash('sha256').update(token).digest('hex').slice(0, 12)
+}
 
 const convex = new ConvexHttpClient(CONVEX_URL)
 
@@ -155,12 +161,18 @@ export async function GET(request: NextRequest) {
         }
 
         const token = randomBytes(16).toString('hex')
-        const expiresAt = Date.now() + 5 * 60 * 1000
+        const expiresAt = Date.now() + SESSION_TRANSFER_TTL_MS
 
         await convex.mutation(api.sessionTransfer.storeToken, {
           serverSecret: getInternalApiSecret(),
           token,
           data: encryptSessionTransferPayload(JSON.stringify(authData)),
+          expiresAt,
+        })
+
+        console.log('[Auth] Created mobile session transfer token', {
+          userId: session.user.id,
+          tokenHashPrefix: hashTransferTokenForLog(token),
           expiresAt,
         })
 

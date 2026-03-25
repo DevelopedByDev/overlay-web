@@ -183,7 +183,11 @@ Overlay currently includes integration surfaces for:
 
 - Public docs use placeholders instead of live deployment identifiers.
 - Local Cursor state files are ignored and should not be committed.
-- Transfer tokens are short-lived, encrypted before storage, and hashed for lookup.
+- Session cookies are encrypted and signed before storage.
+- Transfer tokens are short-lived, encrypted before storage, hashed for lookup, and can be bound to a client-provided verifier.
+- Provider key export is isolated behind a dedicated `PROVIDER_KEYS_SECRET`; the Next.js server reads provider env vars directly.
+- Computer provisioning requires explicit SSH key and allowed-CIDR configuration, and cloud-init disables password SSH.
+- Client-supplied `systemPrompt` values are treated as lower-priority extensions and cannot override operator instructions.
 - Sensitive logs are redacted in the higher-risk chat and computer surfaces.
 - See `SECURITY.md` for reporting guidance and secure contribution expectations.
 

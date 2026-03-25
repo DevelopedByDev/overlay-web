@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
-import { randomBytes } from 'crypto'
+import { createHash, randomBytes } from 'crypto'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { summarizeErrorForLog } from '@/lib/safe-log'
@@ -14,7 +14,13 @@ const NO_STORE_HEADERS = {
   Pragma: 'no-cache',
 } as const
 
-export async function POST() {
+const SESSION_TRANSFER_TTL_MS = 90 * 1000
+
+function hashTransferTokenForLog(token: string): string {
+  return createHash('sha256').update(token).digest('hex').slice(0, 12)
+}
+
+export async function POST(request: Request) {
   try {
     const session = await getSession()
     
@@ -24,6 +30,11 @@ export async function POST() {
         { status: 401 }
       )
     }
+
+    const requestBody = await request.json().catch(() => ({})) as { codeChallenge?: unknown }
+    const codeChallenge = typeof requestBody.codeChallenge === 'string'
+      ? requestBody.codeChallenge.trim()
+      : ''
 
     const authData = {
       userId: session.user.id,
@@ -35,13 +46,21 @@ export async function POST() {
     }
 
     const token = randomBytes(16).toString('hex')
-    const expiresAt = Date.now() + 5 * 60 * 1000
+    const expiresAt = Date.now() + SESSION_TRANSFER_TTL_MS
 
     await convex.mutation('sessionTransfer:storeToken', {
       serverSecret: getInternalApiSecret(),
       token,
+      codeChallenge: codeChallenge || undefined,
       data: encryptSessionTransferPayload(JSON.stringify(authData)),
       expiresAt,
+    })
+
+    console.log('[Desktop Link] Created session transfer token', {
+      userId: session.user.id,
+      tokenHashPrefix: hashTransferTokenForLog(token),
+      expiresAt,
+      hasCodeChallenge: Boolean(codeChallenge),
     })
 
     const deepLink = `overlay://auth/transfer?token=${token}`
@@ -60,6 +79,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const token = searchParams.get('token')?.trim()
+    const codeVerifier = request.headers.get('x-overlay-code-verifier')?.trim() || undefined
     
     if (!token) {
       return NextResponse.json(
@@ -70,10 +90,15 @@ export async function GET(request: Request) {
 
     const dataJson = await convex.mutation<string>('sessionTransfer:consumeToken', {
       token,
+      codeVerifier,
       serverSecret: getInternalApiSecret(),
     })
 
     if (!dataJson) {
+      console.warn('[Desktop Link] Session transfer consume rejected', {
+        tokenHashPrefix: hashTransferTokenForLog(token),
+        hasCodeVerifier: Boolean(codeVerifier),
+      })
       return NextResponse.json(
         { error: 'Invalid or expired token' },
         { status: 404, headers: NO_STORE_HEADERS }
@@ -81,6 +106,11 @@ export async function GET(request: Request) {
     }
 
     const data = JSON.parse(decryptSessionTransferPayload(dataJson))
+    console.log('[Desktop Link] Session transfer consumed', {
+      tokenHashPrefix: hashTransferTokenForLog(token),
+      userId: typeof data?.userId === 'string' ? data.userId : null,
+      hasCodeVerifier: Boolean(codeVerifier),
+    })
     return NextResponse.json(data, { headers: NO_STORE_HEADERS })
   } catch (error) {
     console.error('[Desktop Link] Error retrieving session:', summarizeErrorForLog(error))

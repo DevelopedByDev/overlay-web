@@ -194,7 +194,14 @@ function AccountPageContent() {
   const handleOpenInApp = async () => {
     setActionLoading('openApp')
     try {
-      const response = await fetch('/api/auth/desktop-link', { method: 'POST' })
+      const desktopCodeChallenge = searchParams.get('desktop_code_challenge')?.trim() || ''
+      const response = await fetch('/api/auth/desktop-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          desktopCodeChallenge ? { codeChallenge: desktopCodeChallenge } : {}
+        )
+      })
       if (!response.ok) {
         console.error('[Account] Failed to generate desktop link')
         triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)

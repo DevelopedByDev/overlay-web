@@ -2,6 +2,10 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { cookies } from 'next/headers'
 import { WorkOS } from '@workos-inc/node'
 import {
+  decryptSessionCookiePayload,
+  encryptSessionCookiePayload,
+} from './session-transfer-crypto'
+import {
   logAuthDebug,
   summarizeEnvResolutionForLog,
   summarizeJwtForLog,
@@ -83,6 +87,15 @@ function verifySignedCookie(cookieValue: string): string | null {
   }
 
   return payload
+}
+
+function parseSessionPayload(payload: string): AuthSession {
+  const decrypted = decryptSessionCookiePayload(payload)
+  return JSON.parse(decrypted) as AuthSession
+}
+
+function parseLegacySessionPayload(payload: string): AuthSession {
+  return JSON.parse(Buffer.from(payload, 'base64').toString('utf-8')) as AuthSession
 }
 
 export interface AuthUser {
@@ -394,7 +407,7 @@ export async function resendVerificationEmail(
 
 export async function createSession(session: AuthSession): Promise<void> {
   const cookieStore = await cookies()
-  const payload = Buffer.from(JSON.stringify(session)).toString('base64')
+  const payload = encryptSessionCookiePayload(JSON.stringify(session))
   const signature = signPayload(payload)
   const signedCookie = `${payload}.${signature}`
   logAuthDebug('createSession', summarizeSessionForLog(session))
@@ -493,7 +506,6 @@ export async function getSession(): Promise<AuthSession | null> {
   }
 
   try {
-    // Try HMAC-signed format first
     const payload = verifySignedCookie(sessionCookie.value)
     if (!payload) {
       logAuthDebug('getSession invalid signed cookie', {
@@ -503,9 +515,20 @@ export async function getSession(): Promise<AuthSession | null> {
       return null
     }
 
-    const session: AuthSession = JSON.parse(
-      Buffer.from(payload, 'base64').toString('utf-8')
-    )
+    let session: AuthSession
+    let migratedLegacyCookie = false
+    try {
+      session = parseSessionPayload(payload)
+    } catch {
+      session = parseLegacySessionPayload(payload)
+      migratedLegacyCookie = true
+    }
+
+    if (migratedLegacyCookie) {
+      await createSession(session)
+      logAuthDebug('getSession migrated legacy cookie', summarizeSessionForLog(session))
+    }
+
     logAuthDebug('getSession parsed session', summarizeSessionForLog(session))
     if (session.expiresAt < Date.now()) {
       logAuthDebug('getSession expired session', summarizeSessionForLog(session))
