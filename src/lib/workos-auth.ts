@@ -1,6 +1,13 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import { cookies } from 'next/headers'
 import { WorkOS } from '@workos-inc/node'
+import {
+  logAuthDebug,
+  summarizeEnvResolutionForLog,
+  summarizeJwtForLog,
+  summarizeOpaqueTokenForLog,
+  summarizeSessionForLog,
+} from './auth-debug'
 import { getBaseUrl } from './url'
 
 const isDev = process.env.NODE_ENV === 'development'
@@ -15,6 +22,11 @@ const SESSION_COOKIE_NAME = 'overlay_session'
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30
 const DEFAULT_AUTH_REDIRECT = '/account'
 export const MOBILE_AUTH_REDIRECT_PATH = '/auth/mobile-complete'
+
+logAuthDebug('workos-auth initialized', {
+  isDev,
+  env: summarizeEnvResolutionForLog(),
+})
 
 function getWorkOS(requireApiKey = false): WorkOS {
   if (requireApiKey && !workosApiKey) {
@@ -271,6 +283,10 @@ export async function handleCallback(
   code: string
 ): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
   try {
+    logAuthDebug('handleCallback start', {
+      codeLength: code.length,
+      env: summarizeEnvResolutionForLog(),
+    })
     const workos = getWorkOS(true)
     const response = await workos.userManagement.authenticateWithCode({
       clientId,
@@ -278,6 +294,13 @@ export async function handleCallback(
     })
 
     const user = toAuthUser(response.user)
+
+    logAuthDebug('handleCallback authenticateWithCode success', {
+      responseUserId: response.user.id,
+      user,
+      accessToken: summarizeJwtForLog(response.accessToken),
+      refreshToken: summarizeOpaqueTokenForLog(response.refreshToken),
+    })
 
     // Create session
     await createSession({
@@ -290,6 +313,9 @@ export async function handleCallback(
     return { success: true, user }
   } catch (error: unknown) {
     const err = error as { message?: string }
+    logAuthDebug('handleCallback error', {
+      message: err.message || 'Authentication failed',
+    })
     return { success: false, error: err.message || 'Authentication failed' }
   }
 }
@@ -371,6 +397,7 @@ export async function createSession(session: AuthSession): Promise<void> {
   const payload = Buffer.from(JSON.stringify(session)).toString('base64')
   const signature = signPayload(payload)
   const signedCookie = `${payload}.${signature}`
+  logAuthDebug('createSession', summarizeSessionForLog(session))
   
   cookieStore.set(SESSION_COOKIE_NAME, signedCookie, {
     httpOnly: true,
@@ -381,11 +408,87 @@ export async function createSession(session: AuthSession): Promise<void> {
   })
 }
 
+/** WorkOS access tokens are short-lived; refresh before Convex JWT verification fails. */
+const ACCESS_TOKEN_REFRESH_LEEWAY_MS = 120_000
+const COOKIE_REFRESH_WITHIN_MS = 24 * 60 * 60 * 1000
+
+function decodeJwtExpMs(accessToken: string): number | null {
+  try {
+    const parts = accessToken.trim().split('.')
+    if (parts.length !== 3) return null
+    const segment = parts[1]!
+    const normalized = segment.replace(/-/g, '+').replace(/_/g, '/')
+    const pad = normalized.length % 4
+    const padded = pad === 0 ? normalized : normalized + '='.repeat(4 - pad)
+    const json = Buffer.from(padded, 'base64').toString('utf-8')
+    const payload = JSON.parse(json) as { exp?: number }
+    if (typeof payload.exp !== 'number') return null
+    return payload.exp * 1000
+  } catch {
+    return null
+  }
+}
+
+function shouldRefreshAccessToken(accessToken: string): boolean {
+  const expMs = decodeJwtExpMs(accessToken)
+  if (expMs === null) return true
+  return expMs <= Date.now() + ACCESS_TOKEN_REFRESH_LEEWAY_MS
+}
+
+const refreshInFlightByUserId = new Map<string, Promise<AuthSession | null>>()
+
+async function rotateAccessTokenWithWorkOs(session: AuthSession): Promise<AuthSession | null> {
+  try {
+    logAuthDebug('rotateAccessTokenWithWorkOs start', summarizeSessionForLog(session))
+    const workos = getWorkOS(true)
+    const response = await workos.userManagement.authenticateWithRefreshToken({
+      clientId,
+      refreshToken: session.refreshToken,
+    })
+    const newSession: AuthSession = {
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+      user: toAuthUser(response.user),
+      expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+    }
+    await createSession(newSession)
+    logAuthDebug('rotateAccessTokenWithWorkOs success', {
+      previousSession: summarizeSessionForLog(session),
+      refreshedSession: summarizeSessionForLog(newSession),
+    })
+    return newSession
+  } catch (error) {
+    logAuthDebug('rotateAccessTokenWithWorkOs error', {
+      session: summarizeSessionForLog(session),
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
+async function refreshAccessTokenDeduped(session: AuthSession): Promise<AuthSession | null> {
+  const key = session.user.id
+  const existing = refreshInFlightByUserId.get(key)
+  if (existing) {
+    return existing
+  }
+  const promise = rotateAccessTokenWithWorkOs(session).finally(() => {
+    refreshInFlightByUserId.delete(key)
+  })
+  refreshInFlightByUserId.set(key, promise)
+  return promise
+}
+
 export async function getSession(): Promise<AuthSession | null> {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)
+  logAuthDebug('getSession start', {
+    hasCookie: Boolean(sessionCookie),
+    cookieLength: sessionCookie?.value.length ?? 0,
+  })
   
   if (!sessionCookie) {
+    logAuthDebug('getSession missing cookie')
     return null
   }
 
@@ -393,6 +496,9 @@ export async function getSession(): Promise<AuthSession | null> {
     // Try HMAC-signed format first
     const payload = verifySignedCookie(sessionCookie.value)
     if (!payload) {
+      logAuthDebug('getSession invalid signed cookie', {
+        cookieLength: sessionCookie.value.length,
+      })
       await clearSession()
       return null
     }
@@ -400,12 +506,51 @@ export async function getSession(): Promise<AuthSession | null> {
     const session: AuthSession = JSON.parse(
       Buffer.from(payload, 'base64').toString('utf-8')
     )
+    logAuthDebug('getSession parsed session', summarizeSessionForLog(session))
     if (session.expiresAt < Date.now()) {
+      logAuthDebug('getSession expired session', summarizeSessionForLog(session))
       await clearSession()
       return null
     }
+
+    const needsJwtRefresh = shouldRefreshAccessToken(session.accessToken)
+    const cookieExpiringSoon = session.expiresAt <= Date.now() + COOKIE_REFRESH_WITHIN_MS
+    logAuthDebug('getSession refresh evaluation', {
+      needsJwtRefresh,
+      cookieExpiringSoon,
+      accessToken: summarizeJwtForLog(session.accessToken),
+      session: summarizeSessionForLog(session),
+    })
+
+    if (needsJwtRefresh || cookieExpiringSoon) {
+      if (!workosApiKey || !clientId) {
+        logAuthDebug('getSession cannot refresh due to missing WorkOS config', {
+          needsJwtRefresh,
+          cookieExpiringSoon,
+          env: summarizeEnvResolutionForLog(),
+        })
+        if (needsJwtRefresh) {
+          await clearSession()
+          return null
+        }
+        return session
+      }
+      const refreshed = await refreshAccessTokenDeduped(session)
+      if (!refreshed) {
+        logAuthDebug('getSession refresh failed', summarizeSessionForLog(session))
+        await clearSession()
+        return null
+      }
+      logAuthDebug('getSession returning refreshed session', summarizeSessionForLog(refreshed))
+      return refreshed
+    }
+
+    logAuthDebug('getSession returning existing session', summarizeSessionForLog(session))
     return session
-  } catch {
+  } catch (error) {
+    logAuthDebug('getSession error', {
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 }
@@ -415,43 +560,26 @@ export async function clearSession(): Promise<void> {
   cookieStore.delete(SESSION_COOKIE_NAME)
 }
 
-// Refresh session token if needed
+/**
+ * Returns a session, rotating the WorkOS access token when it is expired/near expiry
+ * or when the cookie session is within 24h of expiry (see getSession).
+ */
 export async function refreshSessionIfNeeded(): Promise<AuthSession | null> {
-  const session = await getSession()
-  if (!session) {
+  return getSession()
+}
+
+export async function refreshSessionFromStoredSession(
+  session: AuthSession,
+): Promise<AuthSession | null> {
+  logAuthDebug('refreshSessionFromStoredSession start', summarizeSessionForLog(session))
+  const refreshed = await refreshSessionFromRefreshToken(session.refreshToken, session.user.id)
+  if (!refreshed) {
+    logAuthDebug('refreshSessionFromStoredSession failed', summarizeSessionForLog(session))
     return null
   }
-
-  // Refresh if less than 1 day until expiration
-  const oneDayFromNow = Date.now() + 24 * 60 * 60 * 1000
-  if (session.expiresAt > oneDayFromNow) {
-    return session
-  }
-
-  if (!workosApiKey) {
-    return session
-  }
-
-  try {
-    const workos = getWorkOS(true)
-    const response = await workos.userManagement.authenticateWithRefreshToken({
-      clientId,
-      refreshToken: session.refreshToken,
-    })
-
-    const newSession: AuthSession = {
-      accessToken: response.accessToken,
-      refreshToken: response.refreshToken,
-      user: session.user,
-      expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
-    }
-
-    await createSession(newSession)
-    return newSession
-  } catch {
-    await clearSession()
-    return null
-  }
+  await createSession(refreshed)
+  logAuthDebug('refreshSessionFromStoredSession success', summarizeSessionForLog(refreshed))
+  return refreshed
 }
 
 export async function refreshSessionFromRefreshToken(
@@ -459,17 +587,36 @@ export async function refreshSessionFromRefreshToken(
   expectedUserId?: string
 ): Promise<AuthSession | null> {
   if (!refreshToken) {
+    logAuthDebug('refreshSessionFromRefreshToken missing refresh token', {
+      expectedUserId: expectedUserId ?? null,
+    })
     return null
   }
 
   try {
+    logAuthDebug('refreshSessionFromRefreshToken start', {
+      expectedUserId: expectedUserId ?? null,
+      refreshToken: summarizeOpaqueTokenForLog(refreshToken),
+      env: summarizeEnvResolutionForLog(),
+    })
     const workos = getWorkOS(true)
     const response = await workos.userManagement.authenticateWithRefreshToken({
       clientId,
       refreshToken,
     })
 
+    logAuthDebug('refreshSessionFromRefreshToken response', {
+      expectedUserId: expectedUserId ?? null,
+      responseUserId: response.user.id,
+      accessToken: summarizeJwtForLog(response.accessToken),
+      refreshToken: summarizeOpaqueTokenForLog(response.refreshToken),
+    })
+
     if (expectedUserId && response.user.id !== expectedUserId) {
+      logAuthDebug('refreshSessionFromRefreshToken user mismatch', {
+        expectedUserId,
+        responseUserId: response.user.id,
+      })
       return null
     }
 
@@ -479,7 +626,12 @@ export async function refreshSessionFromRefreshToken(
       user: toAuthUser(response.user),
       expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
     }
-  } catch {
+  } catch (error) {
+    logAuthDebug('refreshSessionFromRefreshToken error', {
+      expectedUserId: expectedUserId ?? null,
+      refreshToken: summarizeOpaqueTokenForLog(refreshToken),
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 }

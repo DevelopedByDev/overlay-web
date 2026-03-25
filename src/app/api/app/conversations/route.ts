@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -7,6 +8,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     const { searchParams } = request.nextUrl
     const conversationId = searchParams.get('conversationId')
@@ -25,7 +27,7 @@ export async function GET(request: NextRequest) {
       } | null>('conversations:get', {
         conversationId: conversationId as Id<'conversations'>,
         userId: session.user.id,
-        accessToken: session.accessToken,
+        serverSecret,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(conv)
@@ -55,7 +57,7 @@ export async function GET(request: NextRequest) {
       >('conversations:getMessages', {
         conversationId: conversationId as Id<'conversations'>,
         userId: session.user.id,
-        accessToken: session.accessToken,
+        serverSecret,
       })
 
       return NextResponse.json({
@@ -103,7 +105,7 @@ export async function GET(request: NextRequest) {
       >('conversations:listByProject', {
         projectId,
         userId: session.user.id,
-        accessToken: session.accessToken,
+        serverSecret,
       })
       return NextResponse.json(list || [])
     }
@@ -119,7 +121,7 @@ export async function GET(request: NextRequest) {
       }>
     >('conversations:list', {
       userId: session.user.id,
-      accessToken: session.accessToken,
+      serverSecret,
     })
 
     return NextResponse.json(list || [])
@@ -132,6 +134,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
     const body = await request.json() as {
       title?: string
       projectId?: string
@@ -141,7 +144,7 @@ export async function POST(request: NextRequest) {
     }
     const id = await convex.mutation<Id<'conversations'>>('conversations:create', {
       userId: session.user.id,
-      accessToken: session.accessToken,
+      serverSecret,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
       askModelIds: body.askModelIds,
@@ -158,6 +161,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     const body = await request.json() as {
       conversationId?: string
@@ -173,7 +177,7 @@ export async function PATCH(request: NextRequest) {
     await convex.mutation('conversations:update', {
       conversationId: body.conversationId as Id<'conversations'>,
       userId: session.user.id,
-      accessToken: session.accessToken,
+      serverSecret,
       title: body.title,
       askModelIds: body.askModelIds,
       actModelId: body.actModelId,
@@ -190,6 +194,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     const conversationId = request.nextUrl.searchParams.get('conversationId')
     if (!conversationId) return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
@@ -197,7 +202,7 @@ export async function DELETE(request: NextRequest) {
     await convex.mutation('conversations:remove', {
       conversationId: conversationId as Id<'conversations'>,
       userId: session.user.id,
-      accessToken: session.accessToken,
+      serverSecret,
     })
     return NextResponse.json({ success: true })
   } catch {

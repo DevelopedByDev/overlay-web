@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { addMemory, listMemories, removeMemory } from '@/lib/app-store'
@@ -9,10 +10,11 @@ export async function GET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     const fromConvex = await convex.query('memories:list', {
       userId: session.user.id,
-      accessToken: session.accessToken,
+      serverSecret,
     })
     const raw = Array.isArray(fromConvex) ? fromConvex : listMemories(session.user.id)
     return NextResponse.json(expandMemoriesForSidebarList(raw))
@@ -33,6 +35,7 @@ export async function POST(request: NextRequest) {
 
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     if (!body.content) return NextResponse.json({ error: 'content required' }, { status: 400 })
 
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const memoryId = await convex.mutation<string>('memories:add', {
       userId: auth.userId,
-      accessToken: auth.accessToken,
+      serverSecret,
       content: body.content,
       source,
     })
@@ -66,6 +69,7 @@ export async function PATCH(request: NextRequest) {
 
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     if (!body.memoryId?.trim() || body.content === undefined || body.content === '') {
       return NextResponse.json({ error: 'memoryId and content required' }, { status: 400 })
@@ -73,7 +77,7 @@ export async function PATCH(request: NextRequest) {
 
     await convex.mutation('memories:update', {
       userId: auth.userId,
-      accessToken: auth.accessToken,
+      serverSecret,
       memoryId: body.memoryId.trim(),
       content: body.content,
     })
@@ -95,6 +99,7 @@ export async function DELETE(request: NextRequest) {
 
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     const memoryId = body.memoryId ?? request.nextUrl.searchParams.get('memoryId')
     if (!memoryId) return NextResponse.json({ error: 'memoryId required' }, { status: 400 })
@@ -102,7 +107,7 @@ export async function DELETE(request: NextRequest) {
     await convex.mutation('memories:remove', {
       memoryId,
       userId: auth.userId,
-      accessToken: auth.accessToken,
+      serverSecret,
     })
     removeMemory(memoryId)
     return NextResponse.json({ success: true })

@@ -1,12 +1,23 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
-import { requireAccessToken } from './lib/auth'
+import { requireAccessToken, validateServerSecret } from './lib/auth'
+
+async function authorizeUserAccess(params: {
+  accessToken?: string
+  serverSecret?: string
+  userId: string
+}) {
+  if (validateServerSecret(params.serverSecret)) {
+    return
+  }
+  await requireAccessToken(params.accessToken ?? '', params.userId)
+}
 
 export const list = query({
-  args: { userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { userId, accessToken }) => {
+  args: { userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
@@ -19,10 +30,10 @@ export const list = query({
 })
 
 export const get = query({
-  args: { projectId: v.id('projects'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { projectId, userId, accessToken }) => {
+  args: { projectId: v.id('projects'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { projectId, userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
@@ -34,12 +45,13 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     name: v.string(),
     parentId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, name, parentId }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { userId, accessToken, serverSecret, name, parentId }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const now = Date.now()
     return await ctx.db.insert('projects', { userId, name, parentId, createdAt: now, updatedAt: now })
   },
@@ -49,11 +61,12 @@ export const update = mutation({
   args: {
     projectId: v.id('projects'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
   },
-  handler: async (ctx, { projectId, userId, accessToken, name }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { projectId, userId, accessToken, serverSecret, name }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const project = await ctx.db.get(projectId)
     if (!project || project.userId !== userId) {
       throw new Error('Unauthorized')
@@ -66,9 +79,9 @@ export const update = mutation({
 
 // Removes a single project and all its conversations/notes (no child-project cascade — handle that in the API layer).
 export const remove = mutation({
-  args: { projectId: v.id('projects'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { projectId, userId, accessToken }) => {
-    await requireAccessToken(accessToken, userId)
+  args: { projectId: v.id('projects'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { projectId, userId, accessToken, serverSecret }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const project = await ctx.db.get(projectId)
     if (!project || project.userId !== userId) {
       throw new Error('Unauthorized')

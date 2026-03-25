@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ConvexHttpClient } from 'convex/browser'
-import { api } from '../../../../convex/_generated/api'
+import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL
-if (!CONVEX_URL) {
-  throw new Error('NEXT_PUBLIC_CONVEX_URL environment variable is required')
+type ConvexEntitlements = {
+  tier: 'free' | 'pro' | 'max'
+  creditsUsed: number
+  creditsTotal: number
+  billingPeriodEnd: string
 }
-const convex = new ConvexHttpClient(CONVEX_URL)
 
 export async function GET(request: NextRequest) {
   const session = await getSession()
@@ -26,25 +27,32 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  const fetchConvexEntitlements = async (nextUserId: string) =>
+    await convex.query<ConvexEntitlements>(
+      'usage:getEntitlementsByServer',
+      {
+        userId: nextUserId,
+        serverSecret: getInternalApiSecret(),
+      },
+      { throwOnError: true },
+    )
+
   try {
-    const entitlements = await convex.query(api.usage.getEntitlements, {
-      userId,
-      accessToken: session.accessToken,
-    })
+    const entitlements = await fetchConvexEntitlements(userId)
 
     if (!entitlements) {
-      return NextResponse.json({ tier: 'free', status: 'active' })
+      return NextResponse.json({ error: 'Failed to load subscription' }, { status: 502 })
     }
 
     return NextResponse.json({
-      tier: entitlements.tier || 'free',
-      status: 'active',
-      creditsUsed: entitlements.creditsUsed || 0,
-      creditsTotal: entitlements.creditsTotal || 0,
-      billingPeriodEnd: entitlements.billingPeriodEnd || null
+      tier: entitlements.tier,
+      status: 'active' as const,
+      creditsUsed: entitlements.creditsUsed,
+      creditsTotal: entitlements.creditsTotal,
+      billingPeriodEnd: entitlements.billingPeriodEnd || null,
     })
   } catch (error) {
     console.error('[Subscription API] Error fetching subscription:', error)
-    return NextResponse.json({ tier: 'free', status: 'active' })
+    return NextResponse.json({ error: 'Failed to fetch subscription' }, { status: 500 })
   }
 }

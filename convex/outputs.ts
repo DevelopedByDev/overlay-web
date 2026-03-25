@@ -1,12 +1,23 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import { Id } from './_generated/dataModel'
-import { requireAccessToken } from './lib/auth'
+import { requireAccessToken, validateServerSecret } from './lib/auth'
+
+async function authorizeUserAccess(params: {
+  accessToken?: string
+  serverSecret?: string
+  userId: string
+}) {
+  if (validateServerSecret(params.serverSecret)) {
+    return
+  }
+  await requireAccessToken(params.accessToken ?? '', params.userId)
+}
 
 export const generateUploadUrl = mutation({
-  args: { userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { userId, accessToken }) => {
-    await requireAccessToken(accessToken, userId)
+  args: { userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { userId, accessToken, serverSecret }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     return await ctx.storage.generateUploadUrl()
   },
 })
@@ -14,7 +25,8 @@ export const generateUploadUrl = mutation({
 export const create = mutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     type: v.union(v.literal('image'), v.literal('video')),
     status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
     prompt: v.string(),
@@ -26,7 +38,11 @@ export const create = mutation({
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAccessToken(args.accessToken, args.userId)
+    await authorizeUserAccess({
+      userId: args.userId,
+      accessToken: args.accessToken,
+      serverSecret: args.serverSecret,
+    })
     return await ctx.db.insert('outputs', {
       userId: args.userId,
       type: args.type,
@@ -48,15 +64,16 @@ export const update = mutation({
   args: {
     outputId: v.id('outputs'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     status: v.optional(v.union(v.literal('pending'), v.literal('completed'), v.literal('failed'))),
     storageId: v.optional(v.id('_storage')),
     url: v.optional(v.string()),
     modelId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
   },
-  handler: async (ctx, { outputId, userId, accessToken, status, storageId, url, modelId, errorMessage }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { outputId, userId, accessToken, serverSecret, status, storageId, url, modelId, errorMessage }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const output = await ctx.db.get(outputId)
     if (!output || output.userId !== userId) {
       throw new Error('Unauthorized')
@@ -81,10 +98,10 @@ async function resolveUrl(ctx: { storage: { getUrl: (id: Id<'_storage'>) => Prom
 }
 
 export const get = query({
-  args: { outputId: v.id('outputs'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { outputId, userId, accessToken }) => {
+  args: { outputId: v.id('outputs'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { outputId, userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
@@ -96,13 +113,14 @@ export const get = query({
 export const list = query({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     type: v.optional(v.union(v.literal('image'), v.literal('video'))),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, accessToken, type, limit }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, type, limit }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
@@ -120,10 +138,10 @@ export const list = query({
 })
 
 export const listByConversationId = query({
-  args: { conversationId: v.string(), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { conversationId, userId, accessToken }) => {
+  args: { conversationId: v.string(), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }

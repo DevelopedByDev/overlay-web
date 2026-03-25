@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server'
-import { convex } from '@/lib/convex'
+import { getVerifiedAccessTokenClaims } from '../../convex/lib/auth'
 import { getSession } from '@/lib/workos-auth'
 
 /**
@@ -27,11 +27,8 @@ export async function resolveAuthenticatedAppUser(
       : queryUserId
   if (!token || !uid) return null
 
-  const ent = await convex.query('usage:getEntitlements', {
-    accessToken: token,
-    userId: uid,
-  })
-  if (!ent) return null
+  const claims = await getVerifiedAccessTokenClaims(token)
+  if (!claims || claims.sub !== uid) return null
 
   return { userId: uid, accessToken: token }
 }

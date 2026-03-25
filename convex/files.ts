@@ -2,19 +2,31 @@ import { v } from 'convex/values'
 import { Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 import { mutation, query } from './_generated/server'
-import { requireAccessToken } from './lib/auth'
+import { requireAccessToken, validateServerSecret } from './lib/auth'
+
+async function authorizeUserAccess(params: {
+  accessToken?: string
+  serverSecret?: string
+  userId: string
+}) {
+  if (validateServerSecret(params.serverSecret)) {
+    return
+  }
+  await requireAccessToken(params.accessToken ?? '', params.userId)
+}
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 export const list = query({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, projectId }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, projectId }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
@@ -51,10 +63,10 @@ export const list = query({
 })
 
 export const get = query({
-  args: { fileId: v.id('files'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { fileId, userId, accessToken }) => {
+  args: { fileId: v.id('files'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { fileId, userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
@@ -82,15 +94,16 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     name: v.string(),
     type: v.union(v.literal('file'), v.literal('folder')),
     parentId: v.optional(v.string()),
     content: v.optional(v.string()),
     projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, name, type, parentId, content, projectId }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { userId, accessToken, serverSecret, name, type, parentId, content, projectId }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (parentId) {
       const parent = await ctx.db.get(parentId as Id<'files'>)
       if (!parent || parent.userId !== userId) {
@@ -124,14 +137,15 @@ export const create = mutation({
 export const createWithStorage = mutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     name: v.string(),
     parentId: v.optional(v.string()),
     storageId: v.id('_storage'),
     projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, name, parentId, storageId, projectId }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { userId, accessToken, serverSecret, name, parentId, storageId, projectId }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (parentId) {
       const parent = await ctx.db.get(parentId as Id<'files'>)
       if (!parent || parent.userId !== userId) {
@@ -162,13 +176,14 @@ export const createWithStorage = mutation({
 export const update = mutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     fileId: v.id('files'),
     name: v.optional(v.string()),
     content: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, fileId, name, content }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { userId, accessToken, serverSecret, fileId, name, content }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
     if (!existing || existing.userId !== userId) {
       throw new Error('Unauthorized')
@@ -185,9 +200,9 @@ export const update = mutation({
 })
 
 export const remove = mutation({
-  args: { fileId: v.id('files'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { fileId, userId, accessToken }) => {
-    await requireAccessToken(accessToken, userId)
+  args: { fileId: v.id('files'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { fileId, userId, accessToken, serverSecret }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const root = await ctx.db.get(fileId)
     if (!root || root.userId !== userId) {
       throw new Error('Unauthorized')
@@ -220,9 +235,9 @@ export const remove = mutation({
 })
 
 export const generateUploadUrl = mutation({
-  args: { userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { userId, accessToken }) => {
-    await requireAccessToken(accessToken, userId)
+  args: { userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { userId, accessToken, serverSecret }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     return await ctx.storage.generateUploadUrl()
   },
 })

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import {
@@ -46,13 +47,14 @@ export async function POST(request: NextRequest) {
     const mode = body.mode ?? 'ask'
     const contentType = body.contentType ?? 'text'
     const modelId = body.modelId ?? body.model
+    const serverSecret = getInternalApiSecret()
 
     await convex.mutation(
       'conversations:addMessage',
       {
         conversationId: body.conversationId as Id<'conversations'>,
         userId: session.user.id,
-        accessToken: session.accessToken,
+        serverSecret,
         turnId,
         role: body.role,
         mode,
@@ -89,12 +91,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
+      const serverSecret = getInternalApiSecret()
       await convex.mutation(
         'conversations:deleteTurn',
         {
           conversationId: conversationId as Id<'conversations'>,
           userId: session.user.id,
-          accessToken: session.accessToken,
+          serverSecret,
           turnId,
         },
         { throwOnError: true },

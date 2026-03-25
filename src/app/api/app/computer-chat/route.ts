@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from 'ai'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { getSession } from '@/lib/workos-auth'
 import { DEFAULT_MODEL_ID, getModel } from '@/lib/models'
@@ -141,7 +142,7 @@ interface SessionHistoryResponse {
 }
 
 interface AuthenticatedComputerContext {
-  accessToken: string
+  serverSecret: string
   computerId: string
   connection: ComputerConnectionInfo
   persistedRequestedModelId?: string
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
     }
 
-    const { accessToken, connection, persistedRequestedModelId, persistedSessionKey, userId } =
+    const { serverSecret, connection, persistedRequestedModelId, persistedSessionKey, userId } =
       await getAuthenticatedComputerContext(computerId)
 
     const sessionKey =
@@ -185,30 +186,35 @@ export async function POST(request: NextRequest) {
     }).catch(() => null)
 
     // ── Subscription enforcement ──────────────────────────────────────────────────
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlements', {
-      accessToken,
+    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+      serverSecret,
       userId,
     })
 
-    if (entitlements) {
-      const { tier, creditsUsed, creditsTotal } = entitlements
-      const creditsTotalCents = creditsTotal * 100
-      const remainingCents = creditsTotalCents - creditsUsed
-      const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-      console.log(`[Computer Chat] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | model=${selectedModelId} | userId=${userId}`)
-      if (tier === 'free') {
-        return NextResponse.json(
-          { error: 'subscription_required', message: 'Computer chat requires a Pro or Max subscription.' },
-          { status: 403 }
-        )
-      }
-      if (remainingCents <= 0 && isPremiumModel(selectedModelId)) {
-        console.log(`[Computer Chat] ⛔ Blocked: no credits remaining (${creditsUsed}¢ / ${creditsTotalCents}¢) | model=${selectedModelId}`)
-        return NextResponse.json(
-          { error: 'insufficient_credits', message: 'No credits remaining. Please check your subscription.' },
-          { status: 402 }
-        )
-      }
+    if (!entitlements) {
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Could not verify subscription. Try signing out and back in.' },
+        { status: 401 },
+      )
+    }
+
+    const { tier, creditsUsed, creditsTotal } = entitlements
+    const creditsTotalCents = creditsTotal * 100
+    const remainingCents = creditsTotalCents - creditsUsed
+    const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
+    console.log(`[Computer Chat] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | model=${selectedModelId} | userId=${userId}`)
+    if (tier === 'free') {
+      return NextResponse.json(
+        { error: 'subscription_required', message: 'Computer chat requires a Pro or Max subscription.' },
+        { status: 403 }
+      )
+    }
+    if (remainingCents <= 0 && isPremiumModel(selectedModelId)) {
+      console.log(`[Computer Chat] ⛔ Blocked: no credits remaining (${creditsUsed}¢ / ${creditsTotalCents}¢) | model=${selectedModelId}`)
+      return NextResponse.json(
+        { error: 'insufficient_credits', message: 'No credits remaining. Please check your subscription.' },
+        { status: 402 }
+      )
     }
 
     console.log('[Computer Chat API][Debug] POST start', {
@@ -249,7 +255,7 @@ export async function POST(request: NextRequest) {
       {
         computerId,
         userId,
-        accessToken,
+        serverSecret,
         role: 'user',
         content: latestUserText,
       },
@@ -318,7 +324,7 @@ export async function POST(request: NextRequest) {
             {
               computerId,
               userId,
-              accessToken,
+              serverSecret,
               role: 'assistant',
               content: finalText,
             },
@@ -408,7 +414,7 @@ export async function POST(request: NextRequest) {
           if (costCents > 0) {
             try {
               await convex.mutation('usage:recordBatch', {
-                accessToken,
+                serverSecret,
                 userId,
                 events: [{
                   type: 'ask',
@@ -421,8 +427,8 @@ export async function POST(request: NextRequest) {
                 }],
               })
               console.log(`[Computer Chat] ✅ Usage recorded: ${costCents}¢ for model=${selectedModelId}`)
-              const afterEntitlements = await convex.query<Entitlements>('usage:getEntitlements', {
-                accessToken,
+              const afterEntitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+                serverSecret,
                 userId,
               })
               if (afterEntitlements) {
@@ -448,7 +454,7 @@ export async function POST(request: NextRequest) {
             {
               computerId,
               userId,
-              accessToken,
+              serverSecret,
               sessionKey: latestSessionModel?.sessionKey ?? sessionKey,
               requestedModelId: selectedModelId,
               requestedModelRef: requestedModelRef ?? undefined,
@@ -464,7 +470,7 @@ export async function POST(request: NextRequest) {
             {
               computerId,
               userId,
-              accessToken,
+              serverSecret,
               message: `Error: ${message}`,
             },
             { throwOnError: true, timeoutMs: 30_000 }
@@ -506,7 +512,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Unknown model selection' }, { status: 400 })
     }
 
-    const { accessToken, connection, persistedSessionKey, userId } =
+    const { serverSecret, connection, persistedSessionKey, userId } =
       await getAuthenticatedComputerContext(computerId)
     const sessionKey =
       requestedSessionKey?.trim() ||
@@ -561,7 +567,7 @@ export async function PATCH(request: NextRequest) {
       {
         computerId,
         userId,
-        accessToken,
+        serverSecret,
         sessionKey: latestSessionModel?.sessionKey ?? sessionKey,
         requestedModelId: selectedModelId,
         requestedModelRef: requestedModelRef ?? undefined,
@@ -594,14 +600,14 @@ async function getAuthenticatedComputerContext(
   }
 
   const userId = session.user.id
-  const accessToken = session.accessToken
+  const serverSecret = getInternalApiSecret()
 
   const connection = await convex.query<ComputerConnectionInfo>(
     'computers:getChatConnection',
     {
       computerId,
       userId,
-      accessToken,
+      serverSecret,
     },
     { throwOnError: true, timeoutMs: 30_000 }
   )
@@ -618,13 +624,13 @@ async function getAuthenticatedComputerContext(
     {
       computerId,
       userId,
-      accessToken,
+      serverSecret,
     },
     { throwOnError: true, timeoutMs: 30_000 }
   )
 
   return {
-    accessToken,
+    serverSecret,
     computerId,
     connection,
     persistedRequestedModelId: computer?.chatRequestedModelId,
@@ -711,7 +717,6 @@ async function streamAssistantReplyFromGateway(params: {
   onText: (delta: string) => void
 }): Promise<StreamResult> {
   const ws = await openGatewaySocket(params.ip)
-  let assistantText = ''
 
   try {
     await connectGatewaySocket(ws, params.gatewayToken)
@@ -721,7 +726,6 @@ async function streamAssistantReplyFromGateway(params: {
       sessionKey: params.sessionKey,
       onText: (delta) => {
         if (!delta) return
-        assistantText += delta
         params.onText(delta)
       },
     })

@@ -2,7 +2,8 @@ import { convex } from '@/lib/convex'
 import { shouldPersistToolInvocation, toolCostBucketForId } from './tool-buckets'
 
 export function fireAndForgetRecordToolInvocation(args: {
-  accessToken: string
+  accessToken?: string
+  serverSecret?: string
   userId: string
   toolName: string
   mode: 'ask' | 'act'
@@ -25,6 +26,7 @@ export function fireAndForgetRecordToolInvocation(args: {
     'usage:recordToolInvocation',
     {
       accessToken: args.accessToken,
+      serverSecret: args.serverSecret,
       userId: args.userId,
       toolId: args.toolName,
       mode: args.mode,

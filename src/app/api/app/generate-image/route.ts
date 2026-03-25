@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateImage } from 'ai'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { getGatewayImageModel } from '@/lib/ai-gateway'
@@ -35,31 +36,37 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = session.user.id
+    const serverSecret = getInternalApiSecret()
 
     // ── Subscription enforcement ──────────────────────────────────────────────
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlements', {
-      accessToken: session.accessToken,
+    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+      serverSecret,
       userId,
     })
 
-    if (entitlements) {
-      const { tier, creditsUsed, creditsTotal } = entitlements
-      const creditsTotalCents = creditsTotal * 100
-      const remainingCents = creditsTotalCents - creditsUsed
-      const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-      console.log(`[GenerateImage] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${userId}`)
-      if (tier === 'free') {
-        return NextResponse.json(
-          { error: 'generation_not_allowed', message: 'Image generation requires a Pro subscription.' },
-          { status: 403 }
-        )
-      }
-      if (remainingCents <= 0) {
-        return NextResponse.json(
-          { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
-          { status: 402 }
-        )
-      }
+    if (!entitlements) {
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Could not verify subscription. Try signing out and back in.' },
+        { status: 401 },
+      )
+    }
+
+    const { tier, creditsUsed, creditsTotal } = entitlements
+    const creditsTotalCents = creditsTotal * 100
+    const remainingCents = creditsTotalCents - creditsUsed
+    const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
+    console.log(`[GenerateImage] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${userId}`)
+    if (tier === 'free') {
+      return NextResponse.json(
+        { error: 'generation_not_allowed', message: 'Image generation requires a Pro subscription.' },
+        { status: 403 }
+      )
+    }
+    if (remainingCents <= 0) {
+      return NextResponse.json(
+        { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
+        { status: 402 }
+      )
     }
 
     // ── Build provider-specific options (image editing support) ─────────────
@@ -136,7 +143,7 @@ export async function POST(request: NextRequest) {
       // 1. Get a signed upload URL from Convex
       const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {
         userId,
-        accessToken: session.accessToken,
+        serverSecret,
       })
       let storageId: string | null = null
 
@@ -157,7 +164,7 @@ export async function POST(request: NextRequest) {
       // 3. Create the output record (with storageId, no large data URL)
       outputId = await convex.mutation<string>('outputs:create', {
         userId,
-        accessToken: session.accessToken,
+        serverSecret,
         type: 'image',
         status: 'completed',
         prompt: prompt.trim(),
@@ -176,7 +183,7 @@ export async function POST(request: NextRequest) {
     console.log(`[GenerateImage] 💰 Cost: model=${usedModelId} | $${costDollars.toFixed(4)} = ${costCents}¢`)
     if (costCents > 0) {
       const recordResult = await convex.mutation('usage:recordBatch', {
-        accessToken: session.accessToken,
+        serverSecret,
         userId,
         events: [{
           type: 'generation',
@@ -189,7 +196,7 @@ export async function POST(request: NextRequest) {
         }],
       })
       if (recordResult) {
-        const updated = await convex.query<Entitlements>('usage:getEntitlements', { accessToken: session.accessToken, userId })
+        const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', { serverSecret, userId })
         if (updated) {
           const totalCents = updated.creditsTotal * 100
           const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'

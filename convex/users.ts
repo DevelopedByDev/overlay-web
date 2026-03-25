@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
-import { requireAccessToken } from './lib/auth'
+import { requireAccessToken, requireServerSecret } from './lib/auth'
+import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
 
 // Sync user profile from auth system (called after login).
 // For new users, always sets currentPeriodStart/End so the billingPeriodStart
@@ -15,7 +16,13 @@ export const syncUserProfile = mutation({
     profilePictureUrl: v.optional(v.string()),
   },
   handler: async (ctx, { accessToken, userId, email, firstName, lastName, profilePictureUrl }) => {
+    logAuthDebug('users:syncUserProfile start', {
+      userId,
+      email,
+      accessToken: summarizeJwtForLog(accessToken),
+    })
     await requireAccessToken(accessToken, userId)
+    logAuthDebug('users:syncUserProfile access token verified', { userId })
 
     const existing = await ctx.db
       .query('subscriptions')
@@ -42,6 +49,7 @@ export const syncUserProfile = mutation({
       }
 
       await ctx.db.patch(existing._id, patch)
+      logAuthDebug('users:syncUserProfile updated existing subscription', { userId })
       return { success: true, isNewUser: false }
     } else {
       const now = Date.now()
@@ -59,8 +67,73 @@ export const syncUserProfile = mutation({
         creditsUsed: 0,
         lastLoginAt: now,
       })
+      logAuthDebug('users:syncUserProfile created subscription', { userId })
       return { success: true, isNewUser: true }
     }
+  },
+})
+
+export const syncUserProfileByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    email: v.string(),
+    firstName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
+    profilePictureUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, { serverSecret, userId, email, firstName, lastName, profilePictureUrl }) => {
+    requireServerSecret(serverSecret)
+    logAuthDebug('users:syncUserProfileByServer start', {
+      userId,
+      email,
+    })
+
+    const existing = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+
+    if (existing) {
+      const patch: Record<string, unknown> = {
+        email,
+        firstName,
+        lastName,
+        profilePictureUrl,
+        lastLoginAt: Date.now(),
+      }
+
+      if (!existing.currentPeriodStart || existing.currentPeriodStart === 0) {
+        const now = Date.now()
+        patch.currentPeriodStart = now
+        patch.currentPeriodEnd = now + 30 * 24 * 60 * 60 * 1000
+      }
+      if (existing.creditsUsed === undefined || existing.creditsUsed === null) {
+        patch.creditsUsed = 0
+      }
+
+      await ctx.db.patch(existing._id, patch)
+      logAuthDebug('users:syncUserProfileByServer updated existing subscription', { userId })
+      return { success: true, isNewUser: false }
+    }
+
+    const now = Date.now()
+    await ctx.db.insert('subscriptions', {
+      userId,
+      email,
+      name: firstName && lastName ? `${firstName} ${lastName}` : firstName || email,
+      firstName,
+      lastName,
+      profilePictureUrl,
+      tier: 'free',
+      status: 'active',
+      currentPeriodStart: now,
+      currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
+      creditsUsed: 0,
+      lastLoginAt: now,
+    })
+    logAuthDebug('users:syncUserProfileByServer created subscription', { userId })
+    return { success: true, isNewUser: true }
   },
 })
 

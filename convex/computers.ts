@@ -4,7 +4,7 @@ import {
 } from './_generated/server'
 import { api, internal, components } from './_generated/api'
 import { StripeSubscriptions } from '@convex-dev/stripe'
-import { requireAccessToken } from './lib/auth'
+import { requireAccessToken, validateServerSecret } from './lib/auth'
 import {
   redactIdentifierForLog,
   redactIpForLog,
@@ -17,6 +17,17 @@ import type { Id } from './_generated/dataModel'
 
 const TAG = '[Computer]'
 const stripeClient = new StripeSubscriptions(components.stripe, {})
+
+async function authorizeUserAccess(params: {
+  accessToken?: string
+  serverSecret?: string
+  userId: string
+}) {
+  if (validateServerSecret(params.serverSecret)) {
+    return
+  }
+  await requireAccessToken(params.accessToken ?? '', params.userId)
+}
 
 function summarizeUrlForLog(value: string): string {
   try {
@@ -267,11 +278,12 @@ export const get = query({
   args: {
     computerId: v.id('computers'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     try {
-      await requireAccessToken(args.accessToken, args.userId)
+      await authorizeUserAccess(args)
     } catch {
       return null
     }
@@ -427,7 +439,8 @@ export const getChatConnection = query({
   args: {
     computerId: v.id('computers'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
   },
   returns: v.object({
     gatewayToken: v.string(),
@@ -438,7 +451,7 @@ export const getChatConnection = query({
     ctx,
     args
   ): Promise<{ gatewayToken: string; hooksToken: string; hetznerServerIp: string }> => {
-    await requireAccessToken(args.accessToken, args.userId)
+    await authorizeUserAccess(args)
 
     const computer = await ctx.runQuery(internal.computers.getInternal, {
       computerId: args.computerId,
@@ -464,12 +477,13 @@ export const addChatMessage = mutation({
   args: {
     computerId: v.id('computers'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     role: v.union(v.literal('user'), v.literal('assistant')),
     content: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireAccessToken(args.accessToken, args.userId)
+    await authorizeUserAccess(args)
 
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) {
@@ -496,11 +510,12 @@ export const addChatError = mutation({
   args: {
     computerId: v.id('computers'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     message: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireAccessToken(args.accessToken, args.userId)
+    await authorizeUserAccess(args)
 
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) {
@@ -522,7 +537,8 @@ export const setChatRuntimeState = mutation({
   args: {
     computerId: v.id('computers'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     sessionKey: v.string(),
     requestedModelId: v.string(),
     requestedModelRef: v.optional(v.string()),
@@ -530,7 +546,7 @@ export const setChatRuntimeState = mutation({
     effectiveModel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAccessToken(args.accessToken, args.userId)
+    await authorizeUserAccess(args)
 
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) {

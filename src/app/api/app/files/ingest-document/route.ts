@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import mammoth from 'mammoth'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
@@ -97,6 +98,11 @@ export async function POST(request: NextRequest) {
     const parentId =
       typeof parentIdRaw === 'string' && parentIdRaw.trim() ? parentIdRaw.trim() : undefined
 
+    if (!projectId && parentId === undefined) {
+      return NextResponse.json({ error: 'projectId is required' }, { status: 400 })
+    }
+    const serverSecret = getInternalApiSecret()
+
     if (!(raw instanceof File) || !raw.name?.trim()) {
       return NextResponse.json({ error: 'file required' }, { status: 400 })
     }
@@ -141,7 +147,7 @@ export async function POST(request: NextRequest) {
       const partName = partedFileName(safeName, p + 1, total)
       const fid = await convex.mutation<Id<'files'>>('files:create', {
         userId: session.user.id,
-        accessToken: session.accessToken,
+        serverSecret,
         name: partName,
         type: 'file',
         content: parts[p],

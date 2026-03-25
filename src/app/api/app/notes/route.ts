@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 
@@ -16,13 +17,14 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await resolveAuthenticatedAppUser(request, {})
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     const noteId = request.nextUrl.searchParams.get('noteId')
     if (noteId) {
       const note = await convex.query<NoteDoc | null>('notes:get', {
         noteId,
         userId: auth.userId,
-        accessToken: auth.accessToken,
+        serverSecret,
       })
       if (!note || note.userId !== auth.userId) {
         return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -35,14 +37,14 @@ export async function GET(request: NextRequest) {
       const notes = await convex.query('notes:listByProject', {
         projectId,
         userId: auth.userId,
-        accessToken: auth.accessToken,
+        serverSecret,
       })
       return NextResponse.json(notes || [])
     }
 
     const notes = await convex.query('notes:list', {
       userId: auth.userId,
-      accessToken: auth.accessToken,
+      serverSecret,
     })
     return NextResponse.json(notes || [])
   } catch (error) {
@@ -63,10 +65,11 @@ export async function POST(request: NextRequest) {
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     const noteId = await convex.mutation<string>('notes:create', {
       userId: auth.userId,
-      accessToken: auth.accessToken,
+      serverSecret,
       title: body.title || 'Untitled',
       content: body.content || '',
       tags: body.tags || [],
@@ -91,13 +94,14 @@ export async function PATCH(request: NextRequest) {
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     if (!body.noteId) return NextResponse.json({ error: 'noteId required' }, { status: 400 })
 
     const existing = await convex.query<NoteDoc | null>('notes:get', {
       noteId: body.noteId,
       userId: auth.userId,
-      accessToken: auth.accessToken,
+      serverSecret,
     })
     if (!existing || existing.userId !== auth.userId) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -105,7 +109,7 @@ export async function PATCH(request: NextRequest) {
 
     await convex.mutation('notes:update', {
       userId: auth.userId,
-      accessToken: auth.accessToken,
+      serverSecret,
       noteId: body.noteId,
       title: body.title,
       content: body.content,
@@ -131,6 +135,7 @@ export async function DELETE(request: NextRequest) {
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
 
     const noteId = request.nextUrl.searchParams.get('noteId')
     if (!noteId) return NextResponse.json({ error: 'noteId required' }, { status: 400 })
@@ -138,7 +143,7 @@ export async function DELETE(request: NextRequest) {
     const existing = await convex.query<NoteDoc | null>('notes:get', {
       noteId,
       userId: auth.userId,
-      accessToken: auth.accessToken,
+      serverSecret,
     })
     if (!existing || existing.userId !== auth.userId) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -147,7 +152,7 @@ export async function DELETE(request: NextRequest) {
     await convex.mutation('notes:remove', {
       noteId,
       userId: auth.userId,
-      accessToken: auth.accessToken,
+      serverSecret,
     })
     return NextResponse.json({ success: true })
   } catch (error) {

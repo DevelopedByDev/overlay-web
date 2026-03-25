@@ -6,6 +6,8 @@ import {
   MOBILE_AUTH_REDIRECT_PATH,
   normalizeAuthRedirect,
 } from '@/lib/workos-auth'
+import { logAuthDebug, summarizeSessionForLog } from '@/lib/auth-debug'
+import { convex as serverConvex } from '@/lib/convex'
 import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../../../convex/_generated/api'
 import { randomBytes } from 'crypto'
@@ -38,6 +40,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    logAuthDebug('/api/auth/callback start', {
+      hasCode: Boolean(code),
+      hasState: Boolean(state),
+    })
     const result = await handleCallback(code)
 
     if (!result.success || !result.user) {
@@ -47,19 +53,74 @@ export async function GET(request: NextRequest) {
 
     // Sync user profile to Convex (creates subscription record if it doesn't exist)
     const session = await getSession()
+    logAuthDebug('/api/auth/callback post-handleCallback session', summarizeSessionForLog(session))
+
+    const inspectAccessToken = async (accessToken: string, userId: string) => {
+      try {
+        const response = await fetch(`${CONVEX_URL}/api/query`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            path: 'authDebug:inspectAccessToken',
+            format: 'json',
+            args: {
+              serverSecret: getInternalApiSecret(),
+              accessToken,
+              userId,
+            },
+          }),
+        })
+        const body = await response.json() as {
+          status?: string
+          value?: Record<string, unknown>
+          errorMessage?: string
+        }
+        if (!response.ok || body.status === 'error') {
+          return {
+            inspectionFailed: true,
+            error: body.errorMessage || `HTTP ${response.status}`,
+          }
+        }
+        return body.value ?? null
+      } catch (inspectionError) {
+        return {
+          inspectionFailed: true,
+          error: inspectionError instanceof Error ? inspectionError.message : String(inspectionError),
+        }
+      }
+    }
+
     try {
       if (session?.accessToken) {
-        await convex.mutation(api.users.syncUserProfile, {
-          accessToken: session.accessToken,
+        logAuthDebug('/api/auth/callback syncUserProfile start', {
+          callbackUserId: result.user.id,
+          session: summarizeSessionForLog(session),
+          convexInspection: await inspectAccessToken(session.accessToken, result.user.id),
+        })
+        await serverConvex.mutation('users:syncUserProfileByServer', {
+          serverSecret: getInternalApiSecret(),
           userId: result.user.id,
           email: result.user.email,
           firstName: result.user.firstName,
           lastName: result.user.lastName,
           profilePictureUrl: result.user.profilePictureUrl,
+        }, { throwOnError: true })
+        logAuthDebug('/api/auth/callback syncUserProfile success', {
+          callbackUserId: result.user.id,
         })
         console.log('[Auth] User profile synced to Convex:', result.user.id)
       }
     } catch (syncError) {
+      logAuthDebug('/api/auth/callback syncUserProfile error', {
+        callbackUserId: result.user.id,
+        error: syncError instanceof Error ? syncError.message : String(syncError),
+        session: summarizeSessionForLog(session),
+        convexInspection: session?.accessToken
+          ? await inspectAccessToken(session.accessToken, result.user.id)
+          : null,
+      })
       console.error('[Auth] Failed to sync user profile:', syncError)
       // Continue anyway - user can still use the app
     }

@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query, internalMutation, internalQuery } from './_generated/server'
-import { requireAccessToken } from './lib/auth'
+import { requireAccessToken, requireServerSecret, validateServerSecret } from './lib/auth'
+import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []
@@ -13,16 +14,28 @@ function getPastWeekDates(): string[] {
   return dates
 }
 
+async function authorizeUserAccess(params: {
+  accessToken?: string
+  serverSecret?: string
+  userId: string
+}) {
+  if (validateServerSecret(params.serverSecret)) {
+    return
+  }
+  await requireAccessToken(params.accessToken ?? '', params.userId)
+}
+
 // creditsUsed is now read directly from subscriptions (single source of truth).
 // tokenUsage is queried only for the audit-log token counts shown on the account page.
 export const getEntitlements = query({
   args: { accessToken: v.string(), userId: v.string() },
   handler: async (ctx, { accessToken, userId }) => {
-    try {
-      await requireAccessToken(accessToken, userId)
-    } catch {
-      return null
-    }
+    logAuthDebug('usage:getEntitlements start', {
+      userId,
+      accessToken: summarizeJwtForLog(accessToken),
+    })
+    await requireAccessToken(accessToken, userId)
+    logAuthDebug('usage:getEntitlements access token verified', { userId })
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -90,7 +103,7 @@ export const getEntitlements = query({
       )
     }
 
-    return {
+    const result = {
       tier,
       creditsUsed: credits,
       creditsTotal: defaults.creditsTotal,
@@ -109,6 +122,107 @@ export const getEntitlements = query({
         : '',
       lastSyncedAt: Date.now()
     }
+    logAuthDebug('usage:getEntitlements success', {
+      userId,
+      tier: result.tier,
+    })
+    return result
+  }
+})
+
+export const getEntitlementsByServer = query({
+  args: { serverSecret: v.string(), userId: v.string() },
+  handler: async (ctx, { serverSecret, userId }) => {
+    requireServerSecret(serverSecret)
+    logAuthDebug('usage:getEntitlementsByServer start', { userId })
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+
+    const today = new Date().toISOString().split('T')[0]
+    const dailyUsage = await ctx.db
+      .query('dailyUsage')
+      .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
+      .first()
+
+    const tier = subscription?.tier || 'free'
+
+    const tierDefaults = {
+      free: {
+        creditsTotal: 0,
+        dailyLimits: { ask: 15, write: 15, agent: 15 },
+        transcriptionSecondsLimit: 600,
+        localTranscriptionEnabled: false
+      },
+      pro: {
+        creditsTotal: 15,
+        dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
+        transcriptionSecondsLimit: Infinity,
+        localTranscriptionEnabled: true
+      },
+      max: {
+        creditsTotal: 90,
+        dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
+        transcriptionSecondsLimit: Infinity,
+        localTranscriptionEnabled: true
+      }
+    }
+
+    const defaults = tierDefaults[tier]
+    const credits = subscription?.creditsUsed ?? 0
+
+    let weeklyTranscriptionSeconds = 0
+    let weeklyUsage = { ask: 0, write: 0, agent: 0 }
+
+    if (tier === 'free') {
+      const pastWeekDates = getPastWeekDates()
+      const weeklyUsageRecords = await Promise.all(
+        pastWeekDates.map(date =>
+          ctx.db
+            .query('dailyUsage')
+            .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
+            .first()
+        )
+      )
+      weeklyTranscriptionSeconds = weeklyUsageRecords.reduce(
+        (sum, record) => sum + (record?.transcriptionSeconds ?? 0),
+        0
+      )
+      weeklyUsage = weeklyUsageRecords.reduce(
+        (acc, record) => ({
+          ask: acc.ask + (record?.askCount ?? 0),
+          write: acc.write + (record?.writeCount ?? 0),
+          agent: acc.agent + (record?.agentCount ?? 0)
+        }),
+        { ask: 0, write: 0, agent: 0 }
+      )
+    }
+
+    const result = {
+      tier,
+      creditsUsed: credits,
+      creditsTotal: defaults.creditsTotal,
+      dailyUsage: tier === 'free' ? weeklyUsage : {
+        ask: dailyUsage?.askCount || 0,
+        write: dailyUsage?.writeCount || 0,
+        agent: dailyUsage?.agentCount || 0
+      },
+      dailyLimits: defaults.dailyLimits,
+      transcriptionSecondsUsed: tier === 'free' ? weeklyTranscriptionSeconds : 0,
+      transcriptionSecondsLimit: defaults.transcriptionSecondsLimit,
+      localTranscriptionEnabled: defaults.localTranscriptionEnabled,
+      resetAt: getNextWeeklyReset(),
+      billingPeriodEnd: subscription?.currentPeriodEnd
+        ? new Date(subscription.currentPeriodEnd).toISOString()
+        : '',
+      lastSyncedAt: Date.now()
+    }
+    logAuthDebug('usage:getEntitlementsByServer success', {
+      userId,
+      tier: result.tier,
+    })
+    return result
   }
 })
 
@@ -135,7 +249,8 @@ export const getEntitlementsInternal = internalQuery({
 // subscriptions.creditsUsed (enforcement) and tokenUsage (audit log).
 export const recordBatch = mutation({
   args: {
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     userId: v.string(),
     events: v.array(
       v.object({
@@ -156,8 +271,8 @@ export const recordBatch = mutation({
       })
     )
   },
-  handler: async (ctx, { accessToken, userId, events }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { accessToken, serverSecret, userId, events }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
 
     const today = new Date().toISOString().split('T')[0]
 
@@ -396,7 +511,8 @@ function getNextWeeklyReset(): string {
 /** Audit log for individual chat tool calls (Perplexity, generation, Composio, etc.). */
 export const recordToolInvocation = mutation({
   args: {
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     userId: v.string(),
     toolId: v.string(),
     mode: v.union(v.literal('ask'), v.literal('act')),
@@ -414,7 +530,11 @@ export const recordToolInvocation = mutation({
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAccessToken(args.accessToken, args.userId)
+    await authorizeUserAccess({
+      userId: args.userId,
+      accessToken: args.accessToken,
+      serverSecret: args.serverSecret,
+    })
     await ctx.db.insert('toolInvocations', {
       userId: args.userId,
       toolId: args.toolId.slice(0, 256),

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { experimental_generateVideo as generateVideo } from 'ai'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { getGatewayVideoModel } from '@/lib/ai-gateway'
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = session.user.id
+  const serverSecret = getInternalApiSecret()
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -45,27 +47,39 @@ export async function POST(request: NextRequest) {
 
       try {
         // ── Subscription enforcement ────────────────────────────────────────
-        const entitlements = await convex.query<Entitlements>('usage:getEntitlements', {
-          accessToken: session.accessToken,
+        const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+          serverSecret,
           userId,
         })
 
-        if (entitlements) {
-          const { tier, creditsUsed, creditsTotal } = entitlements
-          const creditsTotalCents = creditsTotal * 100
-          const remainingCents = creditsTotalCents - creditsUsed
-          const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-          console.log(`[GenerateVideo] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${userId}`)
-          if (tier === 'free') {
-            controller.enqueue(encode(sseChunk({ type: 'error', error: 'generation_not_allowed', message: 'Video generation requires a Pro subscription.' })))
-            controller.close()
-            return
-          }
-          if (remainingCents <= 0) {
-            controller.enqueue(encode(sseChunk({ type: 'error', error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' })))
-            controller.close()
-            return
-          }
+        if (!entitlements) {
+          controller.enqueue(
+            encode(
+              sseChunk({
+                type: 'error',
+                error: 'unauthorized',
+                message: 'Could not verify subscription. Try signing out and back in.',
+              }),
+            ),
+          )
+          controller.close()
+          return
+        }
+
+        const { tier, creditsUsed, creditsTotal } = entitlements
+        const creditsTotalCents = creditsTotal * 100
+        const remainingCents = creditsTotalCents - creditsUsed
+        const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
+        console.log(`[GenerateVideo] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${userId}`)
+        if (tier === 'free') {
+          controller.enqueue(encode(sseChunk({ type: 'error', error: 'generation_not_allowed', message: 'Video generation requires a Pro subscription.' })))
+          controller.close()
+          return
+        }
+        if (remainingCents <= 0) {
+          controller.enqueue(encode(sseChunk({ type: 'error', error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' })))
+          controller.close()
+          return
         }
 
         // ── Create pending output record ────────────────────────────────────
@@ -73,7 +87,7 @@ export async function POST(request: NextRequest) {
         try {
           outputId = await convex.mutation('outputs:create', {
             userId,
-            accessToken: session.accessToken,
+            serverSecret,
             type: 'video',
             status: 'pending',
             prompt: prompt.trim(),
@@ -123,7 +137,7 @@ export async function POST(request: NextRequest) {
             await convex.mutation('outputs:update', {
               outputId,
               userId,
-              accessToken: session.accessToken,
+              serverSecret,
               status: 'failed',
               errorMessage: lastError?.message ?? 'All models failed',
             }).catch(() => {})
@@ -140,7 +154,7 @@ export async function POST(request: NextRequest) {
         try {
           const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {
             userId,
-            accessToken: session.accessToken,
+            serverSecret,
           })
           if (uploadUrl) {
             const videoBuffer = Buffer.from(videoBase64!, 'base64')
@@ -163,7 +177,7 @@ export async function POST(request: NextRequest) {
           await convex.mutation('outputs:update', {
             outputId,
             userId,
-            accessToken: session.accessToken,
+            serverSecret,
             status: 'completed',
             modelId: usedModelId,
             ...(storageId ? { storageId } : {}),
@@ -178,7 +192,7 @@ export async function POST(request: NextRequest) {
         console.log(`[GenerateVideo] 💰 Cost: model=${usedModelId} | duration=${effectiveDuration}s | $${costDollars.toFixed(4)} = ${costCents}¢`)
         if (costCents > 0) {
           const recordResult = await convex.mutation('usage:recordBatch', {
-            accessToken: session.accessToken,
+            serverSecret,
             userId,
             events: [{
               type: 'generation',
@@ -191,7 +205,7 @@ export async function POST(request: NextRequest) {
             }],
           })
           if (recordResult) {
-            const updated = await convex.query<Entitlements>('usage:getEntitlements', { accessToken: session.accessToken, userId })
+            const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', { serverSecret, userId })
             if (updated) {
               const totalCents = updated.creditsTotal * 100
               const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'

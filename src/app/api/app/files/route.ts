@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
@@ -7,13 +8,14 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
     const { searchParams } = request.nextUrl
     const fileId = searchParams.get('fileId')
     if (fileId) {
       const file = await convex.query('files:get', {
         fileId,
         userId: session.user.id,
-        accessToken: session.accessToken,
+        serverSecret,
       })
       if (!file || (file as { userId: string }).userId !== session.user.id) {
         return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
     const projectId = searchParams.get('projectId')
     const args: Record<string, unknown> = {
       userId: session.user.id,
-      accessToken: session.accessToken,
+      serverSecret,
     }
     if (projectId !== null) args.projectId = projectId
     const files = await convex.query('files:list', args)
@@ -37,12 +39,13 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
     const { name, type, parentId, content, storageId, projectId } = await request.json()
     if (!name || !type) return NextResponse.json({ error: 'name and type required' }, { status: 400 })
 
     const args: Record<string, unknown> = {
       userId: session.user.id,
-      accessToken: session.accessToken,
+      serverSecret,
       name,
       type,
     }
@@ -88,12 +91,13 @@ export async function PATCH(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
     const { fileId, name, content } = await request.json()
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
     const args: Record<string, unknown> = {
       fileId,
       userId: session.user.id,
-      accessToken: session.accessToken,
+      serverSecret,
     }
     if (name !== undefined) args.name = name
     if (content !== undefined) args.content = content
@@ -108,12 +112,13 @@ export async function DELETE(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
     const fileId = request.nextUrl.searchParams.get('fileId')
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
     await convex.mutation('files:remove', {
       fileId,
       userId: session.user.id,
-      accessToken: session.accessToken,
+      serverSecret,
     })
     return NextResponse.json({ success: true })
   } catch {

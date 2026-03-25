@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 
 export async function GET() {
   const session = await getSession()
@@ -8,22 +9,21 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const entitlements = await convex.query('usage:getEntitlements', {
-    accessToken: session.accessToken,
-    userId: session.user.id,
-  })
-
-  if (!entitlements) {
-    return NextResponse.json({
-      tier: 'free',
-      creditsUsed: 0,
-      creditsTotal: 0,
-      dailyUsage: { ask: 0, write: 0, agent: 0 },
-      dailyLimits: { ask: 15, write: 15, agent: 15 },
-      transcriptionSecondsUsed: 0,
-      transcriptionSecondsLimit: 600,
-    })
+  try {
+    const entitlements = await convex.query(
+      'usage:getEntitlementsByServer',
+      {
+        userId: session.user.id,
+        serverSecret: getInternalApiSecret(),
+      },
+      { throwOnError: true },
+    )
+    if (!entitlements) {
+      return NextResponse.json({ error: 'Failed to load subscription' }, { status: 502 })
+    }
+    return NextResponse.json(entitlements)
+  } catch (error) {
+    console.error('[app/subscription]', error)
+    return NextResponse.json({ error: 'Failed to fetch subscription' }, { status: 500 })
   }
-
-  return NextResponse.json(entitlements)
 }

@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server'
+import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
-import { ConvexHttpClient } from 'convex/browser'
-import { api } from '../../../../../convex/_generated/api'
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!)
 
 export async function POST() {
   try {
@@ -16,22 +14,21 @@ export async function POST() {
       )
     }
 
-    if (!session.accessToken) {
-      return NextResponse.json(
-        { error: 'Missing access token' },
-        { status: 401 }
-      )
-    }
-
-    // Sync user profile to Convex
-    const result = await convex.mutation(api.users.syncUserProfile, {
-      accessToken: session.accessToken,
+    const result = await convex.mutation<{ success: boolean; isNewUser: boolean }>('users:syncUserProfileByServer', {
+      serverSecret: getInternalApiSecret(),
       userId: session.user.id,
       email: session.user.email,
       firstName: session.user.firstName,
       lastName: session.user.lastName,
       profilePictureUrl: session.user.profilePictureUrl,
-    })
+    }, { throwOnError: true })
+
+    if (!result) {
+      return NextResponse.json(
+        { error: 'Failed to sync profile' },
+        { status: 502 }
+      )
+    }
 
     return NextResponse.json({
       success: true,

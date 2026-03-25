@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const maxDuration = 120
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from 'ai'
 import { convex } from '@/lib/convex'
@@ -103,38 +104,44 @@ export async function POST(request: NextRequest) {
     } = await request.json()
     const userId = session.user.id
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
+    const serverSecret = getInternalApiSecret()
 
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlements', {
-      accessToken: session.accessToken,
+    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+      serverSecret,
       userId,
     })
 
-    if (entitlements) {
-      const { tier, dailyUsage, creditsUsed, creditsTotal } = entitlements
-      const creditsTotalCents = creditsTotal * 100
-      const remainingCents = creditsTotalCents - creditsUsed
+    if (!entitlements) {
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Could not verify subscription. Try signing out and back in.' },
+        { status: 401 },
+      )
+    }
 
-      if (tier === 'free') {
-        if (isPremiumModel(effectiveModelId)) {
-          return NextResponse.json(
-            { error: 'premium_model_not_allowed', message: 'Upgrade to Pro to use premium models' },
-            { status: 403 },
-          )
-        }
-        const totalWeekly = dailyUsage.ask + dailyUsage.write + dailyUsage.agent
-        if (totalWeekly >= 15) {
-          return NextResponse.json(
-            { error: 'weekly_limit_exceeded', message: 'Weekly message limit reached. Upgrade to Pro for unlimited messages.' },
-            { status: 429 },
-          )
-        }
-      } else {
-        if (remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
-          return NextResponse.json(
-            { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
-            { status: 402 },
-          )
-        }
+    const { tier, dailyUsage, creditsUsed, creditsTotal } = entitlements
+    const creditsTotalCents = creditsTotal * 100
+    const remainingCents = creditsTotalCents - creditsUsed
+
+    if (tier === 'free') {
+      if (isPremiumModel(effectiveModelId)) {
+        return NextResponse.json(
+          { error: 'premium_model_not_allowed', message: 'Upgrade to Pro to use premium models' },
+          { status: 403 },
+        )
+      }
+      const totalWeekly = dailyUsage.ask + dailyUsage.write + dailyUsage.agent
+      if (totalWeekly >= 15) {
+        return NextResponse.json(
+          { error: 'weekly_limit_exceeded', message: 'Weekly message limit reached. Upgrade to Pro for unlimited messages.' },
+          { status: 429 },
+        )
+      }
+    } else {
+      if (remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
+        return NextResponse.json(
+          { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
+          { status: 402 },
+        )
       }
     }
 
@@ -169,9 +176,9 @@ export async function POST(request: NextRequest) {
     if (cid) {
       try {
         const conv = await convex.query<{ projectId?: string } | null>('conversations:get', {
+          serverSecret,
           conversationId: cid,
           userId,
-          accessToken: session.accessToken,
         })
         conversationProjectId = conv?.projectId
       } catch {
@@ -182,8 +189,8 @@ export async function POST(request: NextRequest) {
     let memoryContext = ''
     try {
       const memories = await convex.query<Array<{ content: string }>>('memories:list', {
+        serverSecret,
         userId,
-        accessToken: session.accessToken,
       })
       const effectiveMemories = memories || listMemories(userId)
       if (effectiveMemories.length > 0) {
@@ -231,9 +238,9 @@ export async function POST(request: NextRequest) {
 
     if (cid && tid && latestUserContent && !skipUserMessage) {
       await convex.mutation('conversations:addMessage', {
+        serverSecret,
         conversationId: cid,
         userId,
-        accessToken: session.accessToken,
         turnId: tid,
         role: 'user',
         mode: 'ask',
@@ -266,7 +273,7 @@ export async function POST(request: NextRequest) {
       if (costCents > 0 || usage.inputTokens > 0 || usage.outputTokens > 0) {
         try {
           await convex.mutation('usage:recordBatch', {
-            accessToken: session.accessToken,
+            serverSecret,
             userId,
             events: [{
               type: 'ask',
@@ -286,9 +293,9 @@ export async function POST(request: NextRequest) {
       if (cid && tid && persistContent) {
         try {
           await convex.mutation('conversations:addMessage', {
+            serverSecret,
             conversationId: cid,
             userId,
-            accessToken: session.accessToken,
             turnId: tid,
             role: 'assistant',
             mode: 'ask',
@@ -386,7 +393,7 @@ export async function POST(request: NextRequest) {
             }
           }
           fireAndForgetRecordToolInvocation({
-            accessToken: session.accessToken,
+            serverSecret,
             userId,
             toolName: toolCall.toolName,
             mode: 'ask',

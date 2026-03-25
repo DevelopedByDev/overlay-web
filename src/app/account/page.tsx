@@ -87,6 +87,8 @@ function AccountPageContent() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  /** Set when /api/entitlements fails (e.g. Convex cannot verify WorkOS JWT) — avoids showing fake "free" defaults. */
+  const [entitlementsError, setEntitlementsError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -162,12 +164,11 @@ function AccountPageContent() {
             const data = await response.json()
             setMessage({ type: 'success', text: `Subscription to ${data.tier} plan activated successfully!` })
             // Refresh entitlements after verification
-            if (currentUserId) {
-              const entResponse = await fetch(`/api/entitlements?userId=${currentUserId}`)
-              if (entResponse.ok) {
-                const entData = await entResponse.json()
-                setEntitlements(entData)
-              }
+            const entResponse = await fetch('/api/entitlements')
+            if (entResponse.ok) {
+              const entData = await entResponse.json()
+              setEntitlements(entData)
+              setEntitlementsError(null)
             }
             // Show "Open in Overlay" prompt for subscription update
             setShowSubscriptionUpdatedPrompt(true)
@@ -251,14 +252,26 @@ function AccountPageContent() {
 
     async function fetchEntitlements() {
       try {
-        const response = await fetch(`/api/entitlements?userId=${currentUserId}`)
+        setEntitlementsError(null)
+        const response = await fetch('/api/entitlements')
         if (response.ok) {
           const data = await response.json()
           console.log('[Account] Received entitlements:', data)
           setEntitlements(data)
+        } else {
+          const errBody = await response.json().catch(() => ({})) as { error?: string }
+          setEntitlements(null)
+          setEntitlementsError(
+            errBody.error ||
+              (response.status === 401
+                ? 'We could not verify your session with the server. Sign out and sign in again, and ensure Convex has the same WorkOS client IDs as this app.'
+                : 'Could not load your plan. Try again in a moment.'),
+          )
         }
       } catch (error) {
         console.error('Failed to fetch entitlements:', error)
+        setEntitlements(null)
+        setEntitlementsError('Could not load your plan. Check your connection and try again.')
       } finally {
         setLoading(false)
       }
@@ -291,36 +304,6 @@ function AccountPageContent() {
       setActionLoading(null)
     }
   }
-
-  // Demo data for when not connected
-  const demoEntitlements: Entitlements = {
-    tier: 'pro',
-    status: 'active',
-    limits: {
-      askPerDay: Infinity,
-      agentPerDay: Infinity,
-      writePerDay: Infinity,
-      tokenBudget: 10,
-      transcriptionSecondsPerWeek: Infinity
-    },
-    usage: {
-      ask: 12,
-      agent: 5,
-      write: 8,
-      tokenCostAccrued: 3.45,
-      transcriptionSeconds: 0
-    },
-    remaining: {
-      ask: Infinity,
-      agent: Infinity,
-      write: Infinity,
-      tokenBudget: 6.55,
-      transcriptionSeconds: Infinity
-    },
-    billingPeriodEnd: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
-  }
-
-  const data = entitlements || demoEntitlements
 
   return (
     <div className="min-h-screen gradient-bg flex flex-col">
@@ -457,6 +440,40 @@ function AccountPageContent() {
             </div>
           ) : (
             <div className="space-y-6">
+              {entitlementsError && (
+                <div className="p-4 rounded-xl flex items-start gap-3 bg-amber-50 text-amber-900 border border-amber-200">
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div className="text-sm space-y-2">
+                    <p className="font-medium">Plan information unavailable</p>
+                    <p className="text-amber-800/90">{entitlementsError}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoading(true)
+                        void fetch('/api/entitlements')
+                          .then(async (res) => {
+                            if (res.ok) {
+                              setEntitlements(await res.json())
+                              setEntitlementsError(null)
+                            } else {
+                              const body = await res.json().catch(() => ({})) as { error?: string }
+                              setEntitlements(null)
+                              setEntitlementsError(body.error || 'Still could not load your plan.')
+                            }
+                          })
+                          .catch(() => {
+                            setEntitlementsError('Could not load your plan.')
+                          })
+                          .finally(() => setLoading(false))
+                      }}
+                      className="text-sm font-medium text-amber-950 underline hover:no-underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* User Profile Card */}
               <div className="glass-dark rounded-2xl p-6">
                 <div className="flex items-center justify-between">
@@ -483,130 +500,136 @@ function AccountPageContent() {
                 </div>
               </div>
 
-              {/* Subscription Card */}
               <div className="glass-dark rounded-2xl p-6">
-                <div className="flex items-start justify-between mb-6">
-                  <div>
-                    <h2 className="text-lg font-medium mb-1">
-                      {data.tier.charAt(0).toUpperCase() + data.tier.slice(1)} Plan
-                    </h2>
-                    <p className="text-sm text-(--muted)">
-                      {data.status === 'active' && data.billingPeriodEnd
-                        ? `Renews ${formatDate(data.billingPeriodEnd)}`
-                        : data.status === 'canceled'
-                          ? 'Subscription canceled'
-                          : data.status === 'past_due'
-                            ? 'Payment past due'
-                            : 'Active'}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        data.status === 'active'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : data.status === 'past_due'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-zinc-100 text-zinc-800'
-                      }`}
-                    >
-                      {data.status}
-                    </span>
-                  </div>
-                </div>
-
-
-                <div className="flex items-center gap-3 flex-wrap">
-                  {data.tier === 'free' && (
-                    <Link
-                      href="/pricing"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-[var(--background)] rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-                    >
-                      Upgrade to Pro
+                <p className="text-sm text-zinc-500 mb-3">Desktop app</p>
+                <button
+                  onClick={handleOpenInApp}
+                  disabled={actionLoading === 'openApp'}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-zinc-300 text-zinc-700 rounded-lg text-sm font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
+                >
+                  {actionLoading === 'openApp' ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Opening...
+                    </>
+                  ) : (
+                    <>
+                      Open in Overlay
                       <ArrowRight className="w-4 h-4" />
-                    </Link>
+                    </>
                   )}
-                  
-                  {/* Open in Overlay button - always visible */}
-                  <button
-                    onClick={handleOpenInApp}
-                    disabled={actionLoading === 'openApp'}
-                    className="inline-flex items-center gap-2 px-4 py-2 border border-zinc-300 text-zinc-700 rounded-lg text-sm font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
-                  >
-                    {actionLoading === 'openApp' ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Opening...
-                      </>
-                    ) : (
-                      <>
-                        Open in Overlay
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                </div>
+                </button>
               </div>
 
-              {/* Usage Card (Pro/Max only) */}
-              {data.tier !== 'free' && (
-                <div className="glass-dark rounded-2xl p-6">
-                  <h2 className="text-lg font-medium mb-4">Usage This Period</h2>
+              {entitlements && (
+                <>
+                  {/* Subscription Card */}
+                  <div className="glass-dark rounded-2xl p-6">
+                    <div className="flex items-start justify-between mb-6">
+                      <div>
+                        <h2 className="text-lg font-medium mb-1">
+                          {entitlements.tier.charAt(0).toUpperCase() + entitlements.tier.slice(1)} Plan
+                        </h2>
+                        <p className="text-sm text-(--muted)">
+                          {entitlements.status === 'active' && entitlements.billingPeriodEnd
+                            ? `Renews ${formatDate(entitlements.billingPeriodEnd)}`
+                            : entitlements.status === 'canceled'
+                              ? 'Subscription canceled'
+                              : entitlements.status === 'past_due'
+                                ? 'Payment past due'
+                                : 'Active'}
+                        </p>
+                      </div>
 
-                  <ProgressBar
-                    used={data.usage.tokenCostAccrued}
-                    total={data.limits.tokenBudget}
-                    label="Subscription"
-                    showAsPercentage={true}
-                  />
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            entitlements.status === 'active'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : entitlements.status === 'past_due'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-zinc-100 text-zinc-800'
+                          }`}
+                        >
+                          {entitlements.status}
+                        </span>
+                      </div>
+                    </div>
 
-                  {/* Manage Subscription */}
-                  <div className="mt-6 pt-4 border-t border-zinc-200">
-                    <button
-                      onClick={handleManageBilling}
-                      disabled={actionLoading === 'billing'}
-                      className="px-4 py-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
-                    >
-                      {actionLoading === 'billing' ? 'Opening...' : 'Manage Subscription'}
-                    </button>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {entitlements.tier === 'free' && (
+                        <Link
+                          href="/pricing"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-[var(--background)] rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                        >
+                          Upgrade to Pro
+                          <ArrowRight className="w-4 h-4" />
+                        </Link>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
 
-              {/* Weekly Usage (Free tier) */}
-              {data.tier === 'free' && (
-                <div className="glass-dark rounded-2xl p-6">
-                  <h2 className="text-lg font-medium mb-4">Weekly Usage</h2>
+                  {/* Usage Card (Pro/Max only) */}
+                  {entitlements.tier !== 'free' && (
+                    <div className="glass-dark rounded-2xl p-6">
+                      <h2 className="text-lg font-medium mb-4">Usage This Period</h2>
 
-                  <div className="space-y-4">
-                    {/* Weekly Requests */}
-                    {(() => {
-                      const totalUsed = data.usage.ask + data.usage.agent + data.usage.write
-                      const totalLimit = data.limits.askPerDay + data.limits.agentPerDay + data.limits.writePerDay
-                      return (
+                      <ProgressBar
+                        used={entitlements.usage.tokenCostAccrued}
+                        total={entitlements.limits.tokenBudget}
+                        label="Subscription"
+                        showAsPercentage={true}
+                      />
+
+                      <div className="mt-6 pt-4 border-t border-zinc-200">
+                        <button
+                          onClick={handleManageBilling}
+                          disabled={actionLoading === 'billing'}
+                          className="px-4 py-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+                        >
+                          {actionLoading === 'billing' ? 'Opening...' : 'Manage Subscription'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Weekly Usage (Free tier) */}
+                  {entitlements.tier === 'free' && (
+                    <div className="glass-dark rounded-2xl p-6">
+                      <h2 className="text-lg font-medium mb-4">Weekly Usage</h2>
+
+                      <div className="space-y-4">
+                        {(() => {
+                          const totalUsed =
+                            entitlements.usage.ask + entitlements.usage.agent + entitlements.usage.write
+                          const totalLimit =
+                            entitlements.limits.askPerDay +
+                            entitlements.limits.agentPerDay +
+                            entitlements.limits.writePerDay
+                          return (
+                            <ProgressBar
+                              used={totalUsed}
+                              total={totalLimit}
+                              label="Weekly Requests"
+                              showAsPercentage={true}
+                            />
+                          )
+                        })()}
+
                         <ProgressBar
-                          used={totalUsed}
-                          total={totalLimit}
-                          label="Weekly Requests"
+                          used={entitlements.usage.transcriptionSeconds}
+                          total={entitlements.limits.transcriptionSecondsPerWeek}
+                          label="Transcription"
                           showAsPercentage={true}
                         />
-                      )
-                    })()}
+                      </div>
 
-                    {/* Transcription */}
-                    <ProgressBar
-                      used={data.usage.transcriptionSeconds}
-                      total={data.limits.transcriptionSecondsPerWeek}
-                      label="Transcription"
-                      showAsPercentage={true}
-                    />
-                  </div>
-
-                  <p className="mt-4 text-xs text-[var(--muted)]">
-                    Usage resets weekly. Upgrade for unlimited usage.
-                  </p>
-                </div>
+                      <p className="mt-4 text-xs text-[var(--muted)]">
+                        Usage resets weekly. Upgrade for unlimited usage.
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

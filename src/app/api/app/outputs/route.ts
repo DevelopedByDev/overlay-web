@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 
@@ -8,6 +9,7 @@ export async function GET(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const serverSecret = getInternalApiSecret()
 
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') as 'image' | 'video' | null
@@ -18,11 +20,11 @@ export async function GET(request: NextRequest) {
       ? await convex.query('outputs:listByConversationId', {
           conversationId,
           userId: session.user.id,
-          accessToken: session.accessToken,
+          serverSecret,
         })
       : await convex.query('outputs:list', {
           userId: session.user.id,
-          accessToken: session.accessToken,
+          serverSecret,
           type: type ?? undefined,
           limit,
         })

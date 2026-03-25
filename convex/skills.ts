@@ -1,13 +1,24 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
-import { requireAccessToken } from './lib/auth'
+import { requireAccessToken, validateServerSecret } from './lib/auth'
 import type { Id } from './_generated/dataModel'
 
+async function authorizeUserAccess(params: {
+  accessToken?: string
+  serverSecret?: string
+  userId: string
+}) {
+  if (validateServerSecret(params.serverSecret)) {
+    return
+  }
+  await requireAccessToken(params.accessToken ?? '', params.userId)
+}
+
 export const list = query({
-  args: { userId: v.string(), accessToken: v.string(), projectId: v.optional(v.string()) },
-  handler: async (ctx, { userId, accessToken, projectId }) => {
+  args: { userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()), projectId: v.optional(v.string()) },
+  handler: async (ctx, { userId, accessToken, serverSecret, projectId }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
@@ -25,10 +36,10 @@ export const list = query({
 })
 
 export const get = query({
-  args: { skillId: v.id('skills'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { skillId, userId, accessToken }) => {
+  args: { skillId: v.id('skills'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { skillId, userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
@@ -40,14 +51,15 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     name: v.string(),
     description: v.string(),
     instructions: v.string(),
     projectId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAccessToken(args.accessToken, args.userId)
+    await authorizeUserAccess(args)
     if (args.projectId) {
       const project = await ctx.db.get(args.projectId as Id<'projects'>)
       if (!project || project.userId !== args.userId) {
@@ -71,13 +83,14 @@ export const update = mutation({
   args: {
     skillId: v.id('skills'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
     instructions: v.optional(v.string()),
   },
-  handler: async (ctx, { skillId, userId, accessToken, ...updates }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { skillId, userId, accessToken, serverSecret, ...updates }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const skill = await ctx.db.get(skillId)
     if (!skill || skill.userId !== userId) {
       throw new Error('Unauthorized')
@@ -91,9 +104,9 @@ export const update = mutation({
 })
 
 export const remove = mutation({
-  args: { skillId: v.id('skills'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { skillId, userId, accessToken }) => {
-    await requireAccessToken(accessToken, userId)
+  args: { skillId: v.id('skills'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { skillId, userId, accessToken, serverSecret }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const skill = await ctx.db.get(skillId)
     if (!skill || skill.userId !== userId) {
       throw new Error('Unauthorized')

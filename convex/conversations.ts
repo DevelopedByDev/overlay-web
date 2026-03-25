@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import { Id } from './_generated/dataModel'
-import { requireAccessToken } from './lib/auth'
+import { requireAccessToken, validateServerSecret } from './lib/auth'
 
 /** Matches AI SDK UI parts we persist; `tool-invocation` restores tool chips after reload. */
 const messagePart = v.union(
@@ -29,11 +29,22 @@ function clampAskModels(ids: string[]): string[] {
   return uniq.slice(0, 4)
 }
 
+async function authorizeUserAccess(params: {
+  accessToken?: string
+  serverSecret?: string
+  userId: string
+}) {
+  if (validateServerSecret(params.serverSecret)) {
+    return
+  }
+  await requireAccessToken(params.accessToken ?? '', params.userId)
+}
+
 export const list = query({
-  args: { userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { userId, accessToken }) => {
+  args: { userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
@@ -47,10 +58,10 @@ export const list = query({
 })
 
 export const listByProject = query({
-  args: { projectId: v.string(), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { projectId, userId, accessToken }) => {
+  args: { projectId: v.string(), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { projectId, userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
@@ -64,10 +75,10 @@ export const listByProject = query({
 })
 
 export const get = query({
-  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { conversationId, userId, accessToken }) => {
+  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
@@ -79,15 +90,16 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     title: v.string(),
     projectId: v.optional(v.string()),
     askModelIds: v.optional(v.array(v.string())),
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
   },
-  handler: async (ctx, { userId, accessToken, title, projectId, askModelIds, actModelId, lastMode }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { userId, accessToken, serverSecret, title, projectId, askModelIds, actModelId, lastMode }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (projectId) {
       const project = await ctx.db.get(projectId as Id<'projects'>)
       if (!project || project.userId !== userId) {
@@ -113,15 +125,16 @@ export const create = mutation({
 export const update = mutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     conversationId: v.id('conversations'),
     title: v.optional(v.string()),
     askModelIds: v.optional(v.array(v.string())),
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
   },
-  handler: async (ctx, { userId, accessToken, conversationId, title, askModelIds, actModelId, lastMode }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { userId, accessToken, serverSecret, conversationId, title, askModelIds, actModelId, lastMode }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const conversation = await ctx.db.get(conversationId)
     if (!conversation || conversation.userId !== userId) {
       throw new Error('Unauthorized')
@@ -136,9 +149,9 @@ export const update = mutation({
 })
 
 export const remove = mutation({
-  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { conversationId, userId, accessToken }) => {
-    await requireAccessToken(accessToken, userId)
+  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, userId, accessToken, serverSecret }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const conversation = await ctx.db.get(conversationId)
     if (!conversation || conversation.userId !== userId) {
       throw new Error('Unauthorized')
@@ -163,10 +176,10 @@ export const remove = mutation({
 })
 
 export const getMessages = query({
-  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.string() },
-  handler: async (ctx, { conversationId, userId, accessToken }) => {
+  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, userId, accessToken, serverSecret }) => {
     try {
-      await requireAccessToken(accessToken, userId)
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
@@ -186,7 +199,8 @@ export const addMessage = mutation({
   args: {
     conversationId: v.id('conversations'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     turnId: v.string(),
     role: v.union(v.literal('user'), v.literal('assistant')),
     mode: v.union(v.literal('ask'), v.literal('act')),
@@ -200,7 +214,11 @@ export const addMessage = mutation({
     replySnippet: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAccessToken(args.accessToken, args.userId)
+    await authorizeUserAccess({
+      userId: args.userId,
+      accessToken: args.accessToken,
+      serverSecret: args.serverSecret,
+    })
     const conversation = await ctx.db.get(args.conversationId)
     if (!conversation || conversation.userId !== args.userId) {
       throw new Error('Unauthorized')
@@ -232,11 +250,12 @@ export const deleteTurn = mutation({
   args: {
     conversationId: v.id('conversations'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     turnId: v.string(),
   },
-  handler: async (ctx, { conversationId, userId, accessToken, turnId }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { conversationId, userId, accessToken, serverSecret, turnId }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const conv = await ctx.db.get(conversationId)
     if (!conv || conv.userId !== userId) {
       throw new Error('Unauthorized')
@@ -287,7 +306,8 @@ export const addMessages = mutation({
   args: {
     conversationId: v.id('conversations'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
     rows: v.array(v.object({
       turnId: v.string(),
       role: v.union(v.literal('user'), v.literal('assistant')),
@@ -300,8 +320,8 @@ export const addMessages = mutation({
       tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
     })),
   },
-  handler: async (ctx, { conversationId, userId, accessToken, rows }) => {
-    await requireAccessToken(accessToken, userId)
+  handler: async (ctx, { conversationId, userId, accessToken, serverSecret, rows }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const conversation = await ctx.db.get(conversationId)
     if (!conversation || conversation.userId !== userId) {
       throw new Error('Unauthorized')
