@@ -191,7 +191,6 @@ export const COMPUTER_COMMANDS: ComputerCommandDescriptor[] = [
   { name: 'vc', args: 'join|leave|status', description: 'Discord voice control', category: 'media', executionMode: 'disabled', disabledReason: 'Discord native voice commands are not available in the browser computer surface.' },
   { name: 'dock-telegram', aliases: ['dock_telegram'], description: 'Switch replies to Telegram', category: 'media', executionMode: 'disabled', disabledReason: 'Docking commands are channel-specific and not available in the browser computer surface.' },
   { name: 'dock-discord', aliases: ['dock_discord'], description: 'Switch replies to Discord', category: 'media', executionMode: 'disabled', disabledReason: 'Docking commands are channel-specific and not available in the browser computer surface.' },
-  { name: 'dock-slack', aliases: ['dock_slack'], description: 'Switch replies to Slack', category: 'media', executionMode: 'disabled', disabledReason: 'Docking commands are channel-specific and not available in the browser computer surface.' },
 ]
 
 const CATEGORY_ORDER: ComputerCommandCategory[] = ['session', 'inspect', 'settings', 'tools', 'agents', 'admin', 'media']

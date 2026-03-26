@@ -215,34 +215,6 @@ export default defineSchema({
       filterFields: ['userId', 'sourceKind'],
     }),
 
-  slackInstallations: defineTable({
-    teamId: v.string(),
-    teamName: v.string(),
-    botToken: v.string(),
-    botUserId: v.string(),
-    installedBy: v.string(),
-    installedAt: v.number(),
-  }).index('by_teamId', ['teamId']),
-
-  slackUserLinks: defineTable({
-    slackUserId: v.string(),
-    teamId: v.string(),
-    overlayUserId: v.string(),
-    linkedAt: v.number(),
-  }).index('by_slack', ['slackUserId', 'teamId']).index('by_overlayUserId', ['overlayUserId']),
-
-  slackConversations: defineTable({
-    slackChannelId: v.string(),
-    slackThreadTs: v.optional(v.string()),
-    overlayUserId: v.string(),
-    messages: v.array(v.object({
-      role: v.union(v.literal('user'), v.literal('assistant')),
-      content: v.string(),
-      ts: v.string(),
-    })),
-    updatedAt: v.number(),
-  }).index('by_channel_thread', ['slackChannelId', 'slackThreadTs']).index('by_overlayUserId', ['overlayUserId']),
-
   computers: defineTable({
     userId: v.string(),
     name: v.string(),

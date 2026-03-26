@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Instrument_Serif } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthProvider } from "@/contexts/AuthContext";
+import ObservabilityClient from "@/components/ObservabilityClient";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -51,6 +52,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${instrumentSerif.variable} antialiased`}>
         <AuthProvider>
+          <ObservabilityClient />
           {children}
         </AuthProvider>
         <SpeedInsights />

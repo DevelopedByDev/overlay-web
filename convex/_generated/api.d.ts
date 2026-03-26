@@ -25,7 +25,6 @@ import type * as outputs from "../outputs.js";
 import type * as projects from "../projects.js";
 import type * as sessionTransfer from "../sessionTransfer.js";
 import type * as skills from "../skills.js";
-import type * as slack from "../slack.js";
 import type * as stripe from "../stripe.js";
 import type * as stripeSync from "../stripeSync.js";
 import type * as subscriptions from "../subscriptions.js";
@@ -56,7 +55,6 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   sessionTransfer: typeof sessionTransfer;
   skills: typeof skills;
-  slack: typeof slack;
   stripe: typeof stripe;
   stripeSync: typeof stripeSync;
   subscriptions: typeof subscriptions;

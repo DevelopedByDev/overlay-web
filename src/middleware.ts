@@ -11,7 +11,6 @@ const PUBLIC_ROUTES = [
   '/api/auth',
   '/api/webhooks',
   '/api/checkout/verify',
-  '/api/slack', // Slack uses its own HMAC signature verification
 ]
 
 function isPublicRoute(pathname: string): boolean {

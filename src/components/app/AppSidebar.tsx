@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   MessageSquare, BookOpen, Brain, Wrench, LogOut, User,
-  Smartphone, Puzzle, MessageCircle, Monitor, ChevronUp, AlertCircle,
+  Smartphone, Puzzle, Monitor, ChevronUp, AlertCircle,
   FolderOpen, Cpu, Images, Loader2,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
@@ -28,7 +28,6 @@ const NAV_ITEMS = [
 const APP_LINKS = [
   { label: 'Mobile App', icon: Smartphone },
   { label: 'Chrome Extension', icon: Puzzle },
-  { label: 'Slack App', icon: MessageCircle },
   { label: 'Desktop App', icon: Monitor, href: 'https://getoverlay.io' },
 ]
 

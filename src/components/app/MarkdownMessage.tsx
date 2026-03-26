@@ -90,7 +90,6 @@ const CONNECT_SERVICE_DESCRIPTIONS: Record<string, string> = {
   'google sheets': 'Read, update, and create spreadsheets',
   'google drive': 'Search and manage Drive files',
   'notion': 'Create pages and manage workspace',
-  'slack': 'Send messages and manage channels',
   'outlook': 'Send emails and manage calendar',
   'x (twitter)': 'Post tweets and manage your account',
   'twitter': 'Post tweets and manage your account',

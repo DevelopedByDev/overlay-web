@@ -2,13 +2,13 @@
 
 Overlay is a Next.js + Convex application that combines a public marketing site with a
 signed-in AI workspace. The product is centered around chat, notes, memories, knowledge,
-projects, media generation, Slack integrations, and a hosted "computer" workflow.
+projects, media generation, and a hosted "computer" workflow.
 
 This repository contains the web surface for Overlay:
 
 - The landing site and pricing/legal pages.
 - The authenticated `/app/*` product experience.
-- Next.js API routes for auth, Stripe, Slack, file/media flows, and AI interactions.
+- Next.js API routes for auth, Stripe, file/media flows, and AI interactions.
 - The Convex backend schema and functions that power app data, usage tracking, and
   server-side integrations.
 
@@ -19,7 +19,6 @@ This repository contains the web surface for Overlay:
 - Run "Ask" and "Act" flows with tool calling.
 - Generate images and videos.
 - Connect external tools through Composio.
-- Use Slack slash commands and Slack linking.
 - Manage subscriptions and entitlements with Stripe.
 - Provision and interact with hosted computer sessions.
 
@@ -29,7 +28,6 @@ This repository contains the web surface for Overlay:
 - `Convex` for backend functions, data, and realtime state.
 - `WorkOS` for authentication.
 - `Stripe` for billing and subscription events.
-- `Slack Bolt` and `@slack/web-api` for Slack integration.
 - `Vercel AI SDK` plus provider SDKs for OpenAI, Anthropic, Google, Groq, xAI, and OpenRouter.
 - `TipTap`, `react-markdown`, and KaTeX for rich editing and rendering.
 
@@ -40,7 +38,7 @@ This repository contains the web surface for Overlay:
 ├── convex/                  # Backend schema, queries, mutations, actions, HTTP routes
 ├── src/app/                 # Next.js pages, layouts, and API route handlers
 ├── src/components/          # Marketing and app UI components
-├── src/lib/                 # Shared auth, model, tools, Stripe, Slack, and helper code
+├── src/lib/                 # Shared auth, model, tools, Stripe, and helper code
 ├── scripts/                 # Sanity scripts and one-off checks
 ├── docs/                    # Product and implementation docs
 ├── ENV_SETUP.md             # Environment setup guide
@@ -64,7 +62,6 @@ This repository contains the web surface for Overlay:
 - `/app/projects`
 - `/app/outputs`
 - `/app/integrations`
-- `/app/slack-connect`
 - `/app/voice`
 - `/app/computer`
 
@@ -74,7 +71,6 @@ This repository contains the web surface for Overlay:
 - `src/app/api/app/conversations/*` for Ask/Act chat flows.
 - `src/app/api/app/files/*`, `memory`, `notes`, `projects`, `skills`, and `outputs`.
 - `src/app/api/webhooks/stripe/route.ts` for Stripe webhooks.
-- `src/app/api/slack/*` for Slack OAuth, events, and slash commands.
 
 ## Local Development
 
@@ -174,7 +170,6 @@ Overlay currently includes integration surfaces for:
 
 - WorkOS auth
 - Stripe billing
-- Slack app flows
 - Composio-connected tools
 - OpenRouter
 - Vercel AI Gateway

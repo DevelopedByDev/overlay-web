@@ -11,7 +11,6 @@ const KNOWN_NAMES: Record<string, string> = {
   googlesheets: 'Google Sheets',
   googledrive: 'Google Drive',
   notion: 'Notion',
-  slack: 'Slack',
   outlook: 'Outlook',
   twitter: 'X (Twitter)',
   asana: 'Asana',
