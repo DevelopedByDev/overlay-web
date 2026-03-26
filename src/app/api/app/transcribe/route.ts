@@ -15,7 +15,6 @@ export async function POST(request: NextRequest) {
     }
 
     const groqApiKey = process.env.GROQ_API_KEY
-    const openAiApiKey = process.env.OPENAI_API_KEY
 
     if (groqApiKey) {
       const groqFormData = new FormData()
@@ -42,33 +41,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ text: data.text })
     }
 
-    if (openAiApiKey) {
-      const openAiFormData = new FormData()
-      openAiFormData.append('file', audioFile, 'audio.webm')
-      openAiFormData.append('model', 'whisper-1')
-      openAiFormData.append('response_format', 'json')
-
-      const openAiResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${openAiApiKey}` },
-        body: openAiFormData,
-      })
-
-      if (!openAiResponse.ok) {
-        const err = await openAiResponse.text()
-        console.error('[Transcribe] OpenAI error:', err)
-        return NextResponse.json(
-          { error: 'OpenAI transcription failed. Check OPENAI_API_KEY and audio codec support.' },
-          { status: 500 }
-        )
-      }
-
-      const data = await openAiResponse.json()
-      return NextResponse.json({ text: data.text })
-    }
-
     return NextResponse.json(
-      { error: 'No transcription provider configured. Set GROQ_API_KEY or OPENAI_API_KEY.' },
+      { error: 'No transcription provider configured. Set GROQ_API_KEY.' },
       { status: 500 }
     )
   } catch (error) {

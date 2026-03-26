@@ -234,10 +234,6 @@ Check browser console and terminal for:
 
 ---
 
-## After Testing: Restore Production Keys
+## After Testing
 
-```bash
-# In overlay-landing/.env.local, swap back:
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_... (production webhook secret)
-```
+Restore your normal local environment values before shipping or deploying.

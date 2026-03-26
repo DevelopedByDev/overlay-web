@@ -51,9 +51,9 @@ function truncateSearchQuery(q: string, maxTerms = 16): string {
 }
 
 async function embedViaGateway(texts: string[]): Promise<{ vectors: number[][]; promptTokens: number }> {
-  const key = process.env.AI_GATEWAY_API_KEY || process.env.OPENAI_API_KEY
+  const key = process.env.AI_GATEWAY_API_KEY
   if (!key) {
-    throw new Error('Missing AI_GATEWAY_API_KEY or OPENAI_API_KEY in Convex environment')
+    throw new Error('Missing AI_GATEWAY_API_KEY in Convex environment')
   }
   const res = await fetch(GATEWAY_EMBED_URL, {
     method: 'POST',
