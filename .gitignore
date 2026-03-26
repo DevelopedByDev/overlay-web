@@ -46,3 +46,4 @@ openclaw/
 .env*.local
 .cursor/hooks/state/*.json
 .gstack/
+transcripts/
