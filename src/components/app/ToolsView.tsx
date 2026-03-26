@@ -29,14 +29,14 @@ export default function ToolsView({ userId }: { userId: string }) {
     return <SkillsPlaceholder />
   }
 
-  if (view === 'connectors') {
-    return <IntegrationsView userId={userId} />
+  if (view && view !== 'connectors') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-[#888]">
+        <Wrench size={40} strokeWidth={1} className="opacity-30" />
+        <p className="text-sm">Unknown tools view</p>
+      </div>
+    )
   }
 
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-[#888]">
-      <Wrench size={40} strokeWidth={1} className="opacity-30" />
-      <p className="text-sm">Select Connectors or Skills to get started</p>
-    </div>
-  )
+  return <IntegrationsView userId={userId} />
 }

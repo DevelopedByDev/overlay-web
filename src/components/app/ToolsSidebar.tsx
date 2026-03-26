@@ -67,8 +67,10 @@ export default function ToolsSidebar() {
         fetch('/api/app/integrations?action=search&limit=50'),
       ])
       if (!statusRes.ok || !searchRes.ok) return
-      const { connected } = await statusRes.json() as { connected: string[] }
-      const { items } = await searchRes.json() as { items: Array<{ slug: string; name: string; logoUrl: string | null }> }
+      const statusData = await statusRes.json() as { connected?: string[] }
+      const searchData = await searchRes.json() as { items?: Array<{ slug: string; name: string; logoUrl: string | null }> }
+      const connected = Array.isArray(statusData.connected) ? statusData.connected : []
+      const items = Array.isArray(searchData.items) ? searchData.items : []
 
       // Build a lookup from search results for names + logos
       const searchMap = new Map(items.map((i) => [i.slug, i]))

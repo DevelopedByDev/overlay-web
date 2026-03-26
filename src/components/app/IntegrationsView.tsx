@@ -143,12 +143,13 @@ function IntegrationsDialog({
       if (reqId !== requestSeqRef.current) return
       if (!res.ok) throw new Error('Failed to load integrations')
       const data = await res.json()
+      const pageItems = Array.isArray(data?.items) ? data.items as PickerItem[] : []
 
       const resolve = (items: PickerItem[]) =>
         items.map((item) => ({ ...item, name: resolvedName(item.slug, item.name) }))
 
       setItems((prev) => {
-        const merged = append ? [...prev, ...resolve(data.items)] : resolve(data.items)
+        const merged = append ? [...prev, ...resolve(pageItems)] : resolve(pageItems)
         const map = new Map<string, PickerItem>()
         for (const item of merged) map.set(item.slug, item)
         return [...map.values()]
@@ -156,7 +157,9 @@ function IntegrationsDialog({
       setNextCursor(data.nextCursor ?? null)
 
       if (!fetchQuery) {
-        const merged = append ? [...(defaultCacheRef.current?.items || []), ...resolve(data.items)] : resolve(data.items)
+        const merged = append
+          ? [...(defaultCacheRef.current?.items || []), ...resolve(pageItems)]
+          : resolve(pageItems)
         const map = new Map<string, PickerItem>()
         for (const item of merged) map.set(item.slug, item)
         defaultCacheRef.current = { items: [...map.values()], nextCursor: data.nextCursor ?? null }
@@ -365,8 +368,9 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
       const res = await fetch('/api/app/integrations?action=search&limit=50')
       if (!res.ok) return
       const data = await res.json()
+      const items = Array.isArray(data?.items) ? data.items : []
       const logoMap: Record<string, string | null> = {}
-      for (const item of (data.items || [])) {
+      for (const item of items) {
         logoMap[item.slug] = item.logoUrl ?? null
       }
       setLogos(logoMap)
