@@ -53,7 +53,7 @@ function ConnectorLogo({ logoUrl, name }: { logoUrl: string | null; name: string
 export default function ToolsSidebar() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const currentView = searchParams.get('view') as Tab | null
+  const currentView = searchParams?.get('view') as Tab | null
 
   const [tab, setTab] = useState<Tab>(currentView === 'skills' ? 'skills' : 'connectors')
   const [connectors, setConnectors] = useState<ConnectorItem[]>([])

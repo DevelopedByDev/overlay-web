@@ -88,9 +88,9 @@ function ProjectFileView({ fileId }: { fileId: string }) {
 
 export default function ProjectsView({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
-  const view = searchParams.get('view')
-  const id = searchParams.get('id')
-  const projectName = searchParams.get('projectName') ?? undefined
+  const view = searchParams?.get('view') ?? null
+  const id = searchParams?.get('id') ?? null
+  const projectName = searchParams?.get('projectName') ?? undefined
 
   if (view === 'chat' && id) {
     return <ChatInterface userId={userId} hideSidebar projectName={projectName} />

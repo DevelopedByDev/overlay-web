@@ -94,7 +94,7 @@ function UserIdExtractor() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    const userId = searchParams.get('userId')
+    const userId = searchParams?.get('userId')
     if (userId) {
       localStorage.setItem('userId', userId)
     }

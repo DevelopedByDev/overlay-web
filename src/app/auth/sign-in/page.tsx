@@ -18,13 +18,13 @@ function SignInContent() {
   const [clearingSession, setClearingSession] = useState(false)
 
   // Get redirect URL from params (for desktop app auth)
-  const redirectUrl = searchParams.get('redirect') || '/account'
-  const forceLogin = searchParams.get('force') === 'true'
+  const redirectUrl = searchParams?.get('redirect') || '/account'
+  const forceLogin = searchParams?.get('force') === 'true'
   const isDesktopAuth = redirectUrl.startsWith('overlay://')
 
   // Check for error in URL params
   useEffect(() => {
-    const errorParam = searchParams.get('error')
+    const errorParam = searchParams?.get('error')
     if (errorParam) {
       setError(decodeURIComponent(errorParam))
     }

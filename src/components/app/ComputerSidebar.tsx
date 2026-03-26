@@ -148,9 +148,9 @@ function ComputerNode({
   const [sessionsOpen, setSessionsOpen] = useState(true)
 
   const isComputerRoute = pathname === `/app/computer/${computer._id}`
-  const currentView = searchParams.get('view')
-  const currentFile = searchParams.get('file')
-  const currentSessionKey = searchParams.get('sessionKey')
+  const currentView = searchParams?.get('view') ?? null
+  const currentFile = searchParams?.get('file') ?? null
+  const currentSessionKey = searchParams?.get('sessionKey') ?? null
   const activeSessionKey = currentSessionKey || details.activeSessionKey || null
   const computerRowActive = isComputerRoute && !currentView && !activeSessionKey
   const visibleWorkspaceWarning = shouldSuppressWorkspaceWarning(details.workspaceUnavailableReason)
@@ -463,7 +463,7 @@ function ComputerNode({
 
 export default function ComputerSidebar({ userId, accessToken }: { userId: string; accessToken: string }) {
   const router = useRouter()
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const [computers, setComputers] = useState<ComputerItem[]>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)

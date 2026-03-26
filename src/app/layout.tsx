@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Instrument_Serif } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -52,7 +53,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${instrumentSerif.variable} antialiased`}>
         <AuthProvider>
-          <ObservabilityClient />
+          <Suspense fallback={null}>
+            <ObservabilityClient />
+          </Suspense>
           {children}
         </AuthProvider>
         <SpeedInsights />

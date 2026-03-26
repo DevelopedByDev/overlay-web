@@ -23,7 +23,7 @@ function SignUpContent() {
   const [verified, setVerified] = useState(false)
 
   // Get redirect URL from params (for desktop app auth)
-  const redirectUrl = searchParams.get('redirect') || '/account'
+  const redirectUrl = searchParams?.get('redirect') || '/account'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

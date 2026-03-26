@@ -256,12 +256,12 @@ export default function ComputerDetailClient({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const currentView = searchParams.get('view')
-  const requestedFileName = searchParams.get('file')?.trim() || ''
-  const requestedSessionKey = searchParams.get('sessionKey')?.trim() || null
+  const currentView = searchParams?.get('view') ?? null
+  const requestedFileName = searchParams?.get('file')?.trim() || ''
+  const requestedSessionKey = searchParams?.get('sessionKey')?.trim() || null
   const isWorkspaceFileView = currentView === 'file' && Boolean(requestedFileName)
-  const justPaid = searchParams.get('paid') === '1'
-  const checkoutSessionId = searchParams.get('session_id')?.trim() || null
+  const justPaid = searchParams?.get('paid') === '1'
+  const checkoutSessionId = searchParams?.get('session_id')?.trim() || null
   const [now] = useState(Date.now)
   const [computer, setComputer] = useState<Computer | null | undefined>(undefined)
   const [logs, setLogs] = useState<LogEvent[]>([])

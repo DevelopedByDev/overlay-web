@@ -12,9 +12,9 @@ function AuthCallbackContent() {
   const searchParams = useSearchParams();
   const [hasRedirected, setHasRedirected] = useState(false);
 
-  const code = searchParams.get("code");
-  const error = searchParams.get("error");
-  const errorDescription = searchParams.get("error_description");
+  const code = searchParams?.get("code") ?? null;
+  const error = searchParams?.get("error") ?? null;
+  const errorDescription = searchParams?.get("error_description") ?? null;
 
   const status = useMemo(() => {
     if (error) return "error" as const;
@@ -101,7 +101,7 @@ function AuthCallbackContent() {
             <p className="text-sm text-[#52525b]">
               If the app didn&apos;t open automatically,{" "}
               <a
-                href={`${APP_PROTOCOL}://auth/callback?code=${searchParams.get("code")}`}
+                href={`${APP_PROTOCOL}://auth/callback?code=${code}`}
                 className="text-[#3b82f6] hover:underline"
               >
                 click here

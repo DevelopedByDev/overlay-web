@@ -85,6 +85,10 @@ function ProgressBar({
 
 function AccountPageContent() {
   const searchParams = useSearchParams()
+  const sessionId = searchParams?.get('session_id') ?? null
+  const successParam = searchParams?.get('success')
+  const canceledParam = searchParams?.get('canceled')
+  const desktopCodeChallenge = searchParams?.get('desktop_code_challenge')?.trim() || ''
   const [loading, setLoading] = useState(true)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   /** Set when /api/entitlements fails (e.g. Convex cannot verify WorkOS JWT) — avoids showing fake "free" defaults. */
@@ -148,9 +152,7 @@ function AccountPageContent() {
 
   // Check for success/error params, verify checkout, and auto-trigger deep link
   useEffect(() => {
-    const sessionId = searchParams.get('session_id')
-    
-    if (searchParams.get('success') && sessionId) {
+    if (successParam && sessionId) {
       // Verify the checkout session and update subscription in Convex
       async function verifyCheckout() {
         try {
@@ -184,17 +186,16 @@ function AccountPageContent() {
       }
       
       verifyCheckout()
-    } else if (searchParams.get('canceled')) {
+    } else if (canceledParam) {
       setMessage({ type: 'error', text: 'Checkout was canceled.' })
     }
-  }, [searchParams, currentUserId])
+  }, [canceledParam, currentUserId, sessionId, successParam])
 
   // Handler for manual "Open in App" button
   // This generates a deep link with auth tokens so the desktop app signs in with the current account
   const handleOpenInApp = async () => {
     setActionLoading('openApp')
     try {
-      const desktopCodeChallenge = searchParams.get('desktop_code_challenge')?.trim() || ''
       const response = await fetch('/api/auth/desktop-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -290,8 +291,6 @@ function AccountPageContent() {
   const handleManageBilling = async () => {
     setActionLoading('billing')
     try {
-      const sessionId = searchParams.get('session_id')
-
       const response = await fetch('/api/portal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -94,7 +94,7 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
 }
 
 export default function AppSidebar({ user, accessToken }: { user: AuthUser; accessToken: string }) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const router = useRouter()
   const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
   const { totalUnread } = useAsyncSessions()

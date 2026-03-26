@@ -99,8 +99,8 @@ function FileTreeNode({
 export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   void _userId
   const searchParams = useSearchParams()
-  const fileOpenParam = searchParams.get('file')
-  const memoryOpenParam = searchParams.get('memory')
+  const fileOpenParam = searchParams?.get('file') ?? null
+  const memoryOpenParam = searchParams?.get('memory') ?? null
 
   const [activeTab, setActiveTab] = useState<Tab>('memories')
 

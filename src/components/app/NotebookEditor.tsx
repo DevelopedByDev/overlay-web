@@ -343,7 +343,7 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
   }, [loadNotes])
 
   // Auto-open a specific note when embedded in project view
-  const idParam = hideSidebar ? searchParams.get('id') : null
+  const idParam = hideSidebar ? searchParams?.get('id') ?? null : null
   useEffect(() => {
     if (!idParam || notes.length === 0) return
     const note = notes.find((n) => n._id === idParam)

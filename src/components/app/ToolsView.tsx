@@ -23,7 +23,7 @@ function SkillsPlaceholder() {
 
 export default function ToolsView({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
-  const view = searchParams.get('view')
+  const view = searchParams?.get('view') ?? null
 
   if (view === 'skills') {
     return <SkillsPlaceholder />

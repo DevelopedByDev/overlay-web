@@ -5,8 +5,8 @@ import { useSearchParams } from 'next/navigation'
 
 function CallbackContent() {
   const searchParams = useSearchParams()
-  const status = searchParams.get('status')
-  const error = searchParams.get('error')
+  const status = searchParams?.get('status')
+  const error = searchParams?.get('error')
   const [countdown, setCountdown] = useState(3)
 
   const isSuccess = status === 'success' && !error
