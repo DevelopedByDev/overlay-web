@@ -46,7 +46,13 @@ export async function GET(request: NextRequest) {
             | { type: string; text?: string; url?: string; mediaType?: string }
             | {
                 type: 'tool-invocation'
-                toolInvocation: { toolCallId?: string; toolName: string; state?: string }
+                toolInvocation: {
+                  toolCallId?: string
+                  toolName: string
+                  state?: string
+                  toolInput?: Record<string, unknown>
+                  toolOutput?: unknown
+                }
               }
           >
           modelId?: string

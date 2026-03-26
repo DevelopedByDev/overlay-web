@@ -238,7 +238,9 @@ export async function POST(request: NextRequest) {
       indexedNote,
     ].filter(Boolean).join('\n\n')
 
-    const knowledgeToolNote = '\n\n' + ASK_KNOWLEDGE_TOOLS_NOTE + '\n\n' + MEMORY_SAVE_PROTOCOL
+    const browserToolNote =
+      '\n\nYou have a browser_run_task tool to browse the web with a real browser. Use it when you need fresh live data or need to interact with a website.'
+    const knowledgeToolNote = '\n\n' + ASK_KNOWLEDGE_TOOLS_NOTE + browserToolNote + '\n\n' + MEMORY_SAVE_PROTOCOL
 
     if (cid && tid && latestUserContent && !skipUserMessage) {
       await convex.mutation('conversations:addMessage', {

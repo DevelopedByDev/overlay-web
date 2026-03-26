@@ -11,6 +11,8 @@ const messagePart = v.union(
       toolCallId: v.optional(v.string()),
       toolName: v.string(),
       state: v.optional(v.string()),
+      toolInput: v.optional(v.any()),
+      toolOutput: v.optional(v.any()),
     }),
   }),
   v.object({

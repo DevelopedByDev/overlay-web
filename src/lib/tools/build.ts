@@ -21,6 +21,7 @@ import {
   executeListNotes,
   executeUpdateNote,
 } from './notes-executes'
+import { executeBrowserRunTask } from './browser-executes'
 import {
   executeDeleteMemory,
   executeGenerateImage,
@@ -199,6 +200,22 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     execute: async (input) => {
       assertOverlayToolAllowedForMode(mode, 'delete_memory')
       return executeDeleteMemory(options, input)
+    },
+  })
+
+  tools.browser_run_task = tool({
+    description:
+      'Browse the web using a remote AI-controlled browser. Use this when you need fresh live data, need to inspect a website directly, or must interact with a real web page.',
+    inputSchema: z.object({
+      task: z.string().describe('What to do in the browser — natural language'),
+      model: z.enum(['bu-mini', 'bu-max']).optional(),
+      sessionId: z.string().optional().describe('Reuse an existing browser session'),
+      keepAlive: z.boolean().optional().describe('Keep session alive after task for follow-ups'),
+      proxyCountryCode: z.string().optional().describe('2-letter country code for residential proxy'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'browser_run_task')
+      return executeBrowserRunTask(options, input)
     },
   })
 

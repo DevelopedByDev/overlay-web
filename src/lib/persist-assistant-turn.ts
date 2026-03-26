@@ -18,14 +18,20 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
 
   const parts: Array<Record<string, unknown>> = []
   for (const step of list) {
+    const toolResultsById = new Map(
+      (step.toolResults ?? []).map((result) => [result.toolCallId, result] as const),
+    )
     const calls = step.toolCalls ?? []
     for (const tc of calls) {
+      const result = toolResultsById.get(tc.toolCallId)
       parts.push({
         type: 'tool-invocation',
         toolInvocation: {
           toolCallId: tc.toolCallId,
           toolName: tc.toolName,
-          state: 'output-available',
+          state: result ? 'output-available' : 'input-available',
+          toolInput: tc.input,
+          toolOutput: result?.output,
         },
       })
     }

@@ -1,4 +1,4 @@
-export type ToolCostBucket = 'perplexity' | 'image' | 'video' | 'composio' | 'internal'
+export type ToolCostBucket = 'perplexity' | 'image' | 'video' | 'browser' | 'composio' | 'internal'
 
 const INTERNAL_TOOL_IDS = new Set<string>([
   'search_knowledge',
@@ -28,11 +28,18 @@ export function toolCostBucketForId(toolId: string): ToolCostBucket {
   if (toolId === 'perplexity_search') return 'perplexity'
   if (toolId === 'generate_image') return 'image'
   if (toolId === 'generate_video') return 'video'
+  if (toolId === 'browser_run_task') return 'browser'
   if (INTERNAL_TOOL_IDS.has(toolId)) return 'internal'
   return 'composio'
 }
 
 /** Avoid writing a row for every cheap internal read (knowledge, notes, computer listings). */
 export function shouldPersistToolInvocation(bucket: ToolCostBucket): boolean {
-  return bucket === 'perplexity' || bucket === 'image' || bucket === 'video' || bucket === 'composio'
+  return (
+    bucket === 'perplexity' ||
+    bucket === 'image' ||
+    bucket === 'video' ||
+    bucket === 'browser' ||
+    bucket === 'composio'
+  )
 }

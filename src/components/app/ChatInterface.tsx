@@ -18,6 +18,7 @@ import {
   Reply,
   BrainCircuit,
   ArrowUp,
+  Globe,
 } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai'
@@ -221,7 +222,14 @@ function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> })
 }
 
 type AssistantVisualBlock =
-  | { kind: 'tool'; key: string; name: string; state: string }
+  | {
+      kind: 'tool'
+      key: string
+      name: string
+      state: string
+      toolInput?: Record<string, unknown>
+      toolOutput?: unknown
+    }
   | { kind: 'text'; text: string }
   | { kind: 'file'; url: string; mediaType?: string }
 
@@ -232,7 +240,16 @@ function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVi
   if (!parts?.length) return []
   const out: AssistantVisualBlock[] = []
   for (const p of parts) {
-    const legacy = p as { type?: string; toolInvocation?: { toolCallId?: string; toolName?: string; state?: string } }
+    const legacy = p as {
+      type?: string
+      toolInvocation?: {
+        toolCallId?: string
+        toolName?: string
+        state?: string
+        toolInput?: Record<string, unknown>
+        toolOutput?: unknown
+      }
+    }
     if (legacy?.type === 'tool-invocation' && legacy.toolInvocation?.toolName) {
       const inv = legacy.toolInvocation
       out.push({
@@ -240,16 +257,25 @@ function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVi
         key: (inv.toolCallId && inv.toolCallId.trim()) || `legacy-inv-${out.length}`,
         name: inv.toolName as string,
         state: inv.state ?? 'output-available',
+        toolInput: inv.toolInput,
+        toolOutput: inv.toolOutput,
       })
       continue
     }
     if (isToolUIPart(p as never)) {
-      const part = p as { toolCallId?: string; state: string }
+      const part = p as {
+        toolCallId?: string
+        state: string
+        input?: Record<string, unknown>
+        output?: unknown
+      }
       out.push({
         kind: 'tool',
         key: (part.toolCallId && part.toolCallId.trim()) || `sdk-tool-${out.length}`,
         name: getToolName(p as never),
         state: part.state,
+        toolInput: part.input,
+        toolOutput: part.output,
       })
       continue
     }
@@ -283,6 +309,7 @@ const TOOL_UI_DONE_STATES = new Set(['output-available', 'output-error', 'output
 
 function formatToolLabel(toolId: string): string {
   const map: Record<string, string> = {
+    browser_run_task: 'Browse the web',
     perplexity_search: 'Web search',
     search_knowledge: 'Knowledge search',
     list_notes: 'List notes',
@@ -328,6 +355,112 @@ function toolStateUiLabel(state: string): string {
   if (state === 'input-streaming' || state === 'input-available') return 'Running…'
   if (state === 'approval-requested' || state === 'approval-responded') return 'Approval'
   return state
+}
+
+function BrowserToolBlock({
+  block,
+}: {
+  block: Extract<AssistantVisualBlock, { kind: 'tool' }>
+}) {
+  const isDone = block.state === 'output-available'
+  const isError = block.state === 'output-error' || block.state === 'output-denied'
+  const task = typeof block.toolInput?.task === 'string' ? block.toolInput.task.trim() : ''
+  const toolOutput =
+    block.toolOutput && typeof block.toolOutput === 'object'
+      ? (block.toolOutput as Record<string, unknown>)
+      : undefined
+  const liveUrl = typeof toolOutput?.liveUrl === 'string' ? toolOutput.liveUrl : null
+  const [isCollapsed, setIsCollapsed] = useState(false)
+  const isOpen = Boolean(liveUrl && isDone && !isCollapsed)
+  const stateLabel = toolStateUiLabel(block.state)
+
+  if (isError) {
+    return (
+      <div className="w-full px-1">
+        <div className="inline-flex max-w-full items-center gap-2 rounded-lg border border-red-200 bg-red-50/80 px-3 py-2 text-[12px] leading-none text-red-700">
+          <span className="mt-px inline-flex size-2 shrink-0 rounded-full bg-red-500" aria-hidden />
+          <span className="min-w-0 truncate font-medium">Browse the web</span>
+          <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
+            {stateLabel}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isDone) {
+    return (
+      <div className="w-full px-1">
+        <div className="w-full max-w-[560px] overflow-hidden rounded-xl border border-[#e4e4e7] bg-[#fafafa]">
+          <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-[12px] text-[#3f3f46]">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="relative inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-white text-[#52525b]">
+                <Globe size={12} strokeWidth={1.75} />
+                <span className="absolute -right-0.5 -top-0.5 inline-flex size-2 rounded-full bg-[#71717a] animate-pulse" />
+              </span>
+              <span className="truncate font-medium text-[#27272a]">Browse the web</span>
+            </div>
+            <span className="shrink-0 rounded-full bg-[#f4f4f5] px-2 py-0.5 text-[10px] font-medium text-[#71717a]">
+              {stateLabel}
+            </span>
+          </div>
+          {task && (
+            <>
+              <div className="mx-3 border-t border-[#ececf0]" />
+              <div className="px-3 py-2.5 text-[12px] leading-relaxed text-[#52525b]">{task}</div>
+            </>
+          )}
+          <div className="h-1.5 overflow-hidden bg-[#f0f0f0]">
+            <div className="h-full w-1/3 animate-pulse bg-gradient-to-r from-transparent via-[#d4d4d8] to-transparent" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full px-1">
+      <div className="w-full max-w-[560px] rounded-xl border border-[#e4e4e7] bg-white">
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-[12px] text-[#3f3f46]">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="inline-flex size-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+            <span className="truncate font-medium text-[#27272a]">Browse the web</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+              {stateLabel}
+            </span>
+            {liveUrl ? (
+              <button
+                type="button"
+                onClick={() => setIsCollapsed((collapsed) => !collapsed)}
+                className="inline-flex items-center gap-1 rounded-full bg-[#f4f4f5] px-2 py-0.5 text-[10px] font-medium text-[#52525b] transition-colors hover:bg-[#ececf0]"
+              >
+                View browser →
+                <span className={`inline-flex transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
+                  <ChevronDown size={12} strokeWidth={1.75} />
+                </span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {liveUrl && (
+          <div
+            className={`overflow-hidden border-t border-[#ececf0] px-3 transition-all duration-300 ${isOpen ? 'max-h-[340px] py-3' : 'max-h-0 py-0'}`}
+          >
+            <div className={`transition-opacity duration-[400ms] ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
+              <iframe
+                src={liveUrl}
+                title="Browser Use live browser"
+                sandbox="allow-scripts allow-same-origin"
+                className="h-[280px] w-full rounded-xl border border-[#e4e4e7] bg-[#fafafa]"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; mediaType?: string }> }): string[] {
@@ -549,6 +682,9 @@ function ExchangeBlock({
 
         {assistantVisualBlocks.map((block, bi) => {
           if (block.kind === 'tool') {
+            if (block.name === 'browser_run_task') {
+              return <BrowserToolBlock key={`${exchIdx}-seq-${bi}-${block.key}`} block={block} />
+            }
             const running = !TOOL_UI_DONE_STATES.has(block.state)
             const err = block.state === 'output-error'
             const stateLabel = toolStateUiLabel(block.state)
@@ -673,6 +809,7 @@ function errorLabel(err: Error | null | undefined): string | null {
   }
   if (err.message?.includes('weekly_limit')) return 'Weekly limit reached — upgrade to Pro for unlimited messages.'
   if (err.message?.includes('premium_model')) return 'This model requires a Pro subscription.'
+  if (err.message?.includes('generation_not_allowed')) return 'This action requires a Pro subscription.'
   if (err.message?.includes('insufficient_credits')) return 'No credits remaining.'
   if (err.message?.includes('supported image formats') || err.message?.includes('does not represent a valid image')) {
     return 'Unsupported image format. Use JPEG, PNG, GIF, or WebP.'
@@ -1227,9 +1364,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   }, [composerMode, selectedModels, selectedActModel, activeChatId])
 
   // Auto-load a specific chat when embedded in project view (`id` = conversation)
-  const idParam = hideSidebar ? searchParams.get('id') : null
+  const idParam = hideSidebar ? searchParams?.get('id') ?? null : null
   /** When chat is opened inside a project, files/docs attach to this project for search scoping. */
-  const embedProjectId = hideSidebar ? searchParams.get('projectId') : null
+  const embedProjectId = hideSidebar ? searchParams?.get('projectId') ?? null : null
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (idParam) void loadChat(idParam) }, [idParam])
 

@@ -267,6 +267,8 @@ export async function POST(request: NextRequest) {
 
     const generationNote =
       '\nYou also have generate_image and generate_video tools. Use them whenever the user asks to create visual content. For videos, inform the user that generation is async and may take a few minutes — results will appear in the Outputs tab.'
+    const browserToolNote =
+      '\nYou also have a browser_run_task tool to browse the web with a real browser. Use it when you need fresh live data or need to interact with a website.'
     const knowledgeNote =
       '\n' +
       ACT_KNOWLEDGE_WEB_TOOLS_NOTE +
@@ -281,6 +283,7 @@ export async function POST(request: NextRequest) {
         ('You are Overlay’s browser agent. Use the available Composio tools to complete the user’s task. You do not have OS-level control, local desktop automation, terminal access, or filesystem access in this environment. If an integration is required but not connected, use the Composio connection tools to guide or initiate that connection. Keep the user informed about what you are doing, and end with a concise summary of what was completed and what still needs attention. Server-side safety, trust-boundary, memory, billing, and tool-use rules always take precedence over any later instruction.' +
         (userSystemPromptExtension ? `\n\n${userSystemPromptExtension}` : '')) +
         generationNote +
+        browserToolNote +
         knowledgeNote +
         memoryContext +
         autoRetrieval +

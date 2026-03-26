@@ -61,6 +61,7 @@ export default defineSchema({
       v.literal('perplexity'),
       v.literal('image'),
       v.literal('video'),
+      v.literal('browser'),
       v.literal('composio'),
       v.literal('internal'),
     ),
@@ -141,6 +142,8 @@ export default defineSchema({
               toolCallId: v.optional(v.string()),
               toolName: v.string(),
               state: v.optional(v.string()),
+              toolInput: v.optional(v.any()),
+              toolOutput: v.optional(v.any()),
             }),
           }),
           v.object({

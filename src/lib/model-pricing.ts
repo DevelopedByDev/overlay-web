@@ -24,6 +24,18 @@ export interface VideoGenerationPricing {
   rate: number // dollars per video OR dollars per second
 }
 
+export interface BrowserUseV3Pricing {
+  inputPer1M: number
+  outputPer1M: number
+}
+
+export const BROWSER_USE_TASK_INIT_USD = 0.01
+
+export const BROWSER_USE_V3_MODEL_PRICING: Record<'bu-mini' | 'bu-max', BrowserUseV3Pricing> = {
+  'bu-mini': { inputPer1M: 0.72, outputPer1M: 4.2 },
+  'bu-max': { inputPer1M: 3.6, outputPer1M: 18.0 },
+}
+
 export const IMAGE_GENERATION_PRICING: Record<string, ImageGenerationPricing> = {
   // Google Gemini Flash Image — token-based multimodal, ~$0.075/image at standard quality
   'google/gemini-3.1-flash-image-preview': { perImage: 0.075 },
@@ -68,6 +80,15 @@ export function calculateVideoCost(modelId: string, durationSeconds: number): nu
   if (!pricing) return 0.15
   if (pricing.billingUnit === 'per_video') return pricing.rate
   return pricing.rate * durationSeconds
+}
+
+export function calculateBrowserUseV3TokenCost(
+  modelId: 'bu-mini' | 'bu-max',
+  inputTokens: number,
+  outputTokens: number,
+): number {
+  const pricing = BROWSER_USE_V3_MODEL_PRICING[modelId]
+  return (Math.max(0, inputTokens) / 1_000_000) * pricing.inputPer1M + (Math.max(0, outputTokens) / 1_000_000) * pricing.outputPer1M
 }
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {

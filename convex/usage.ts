@@ -524,6 +524,7 @@ export const recordToolInvocation = mutation({
       v.literal('perplexity'),
       v.literal('image'),
       v.literal('video'),
+      v.literal('browser'),
       v.literal('composio'),
       v.literal('internal'),
     ),
