@@ -20,6 +20,7 @@ import {
   ArrowUp,
   Globe,
   Play,
+  MessageSquare,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai'
@@ -612,8 +613,8 @@ function ExchangeBlock({
         data-exchange-turn={turnIdForActions ?? undefined}
       >
         {/* User message */}
-        <div className="flex justify-end">
-          <div className="max-w-[75%] space-y-2">
+        <div className="flex min-w-0 justify-end">
+          <div className="min-w-0 max-w-[min(92%,36rem)] space-y-2 sm:max-w-[75%]">
             {replyThreadMeta && (
               <div className="flex justify-end">
                 <button
@@ -651,7 +652,7 @@ function ExchangeBlock({
               </div>
             )}
             {showTextBubble && (
-              <div className="chat-user-bubble select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm leading-relaxed text-[#fafafa]">
+              <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:max-w-[75%] sm:px-4">
                 <span className="whitespace-pre-wrap">{userBodyText}</span>
               </div>
             )}
@@ -1319,10 +1320,21 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   /** User turn ids currently playing the delete (fade-out) animation */
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
+  /** Mobile: chat history opens from bottom sheet (primary sidebar is desktop-only). */
+  const [mobileChatListOpen, setMobileChatListOpen] = useState(false)
 
   useEffect(() => {
     setExitingTurnIds([])
   }, [activeChatId])
+
+  useEffect(() => {
+    if (!mobileChatListOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [mobileChatListOpen])
 
   useEffect(() => {
     prevActBusyRef.current = false
@@ -2775,58 +2787,142 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-w-0 overflow-x-hidden">
       {/* Sidebar — hidden when embedded in a project */}
       {!hideSidebar && (
-        <div className="w-52 h-full flex flex-col border-r border-[#e5e5e5] bg-[#f5f5f5]">
-          <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3">
-            <button
-              onClick={createNewChat}
-              className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
-            >
-              <Plus size={13} />
-              New chat
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-            {chats.map((chat) => {
-              const isStreaming = sessions[chat._id]?.status === 'streaming'
-              const unread = getUnread(chat._id)
-              return (
-                <div
-                  key={chat._id}
-                  onClick={() => loadChat(chat._id)}
-                  className={`group flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer text-xs transition-colors ${
-                    activeChatId === chat._id
-                      ? 'bg-[#e8e8e8] text-[#0a0a0a]'
-                      : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
-                  }`}
-                >
-                  <span className="truncate flex-1">{chat.title}</span>
-                  {isStreaming && !unread && (
-                    <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#525252] animate-pulse ml-1" />
-                  )}
-                  {unread > 0 && (
-                    <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#0a0a0a] text-[#fafafa] text-[9px] font-medium ml-1">
-                      {unread}
-                    </span>
-                  )}
-                  <button
-                    onClick={(e) => deleteChat(chat._id, e)}
-                    className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
+        <>
+          <div className="hidden h-full w-52 flex-col border-r border-[#e5e5e5] bg-[#f5f5f5] md:flex">
+            <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3">
+              <button
+                onClick={createNewChat}
+                className="flex w-full items-center gap-1.5 rounded-md bg-[#0a0a0a] px-3 py-1.5 text-sm text-[#fafafa] transition-colors hover:bg-[#222]"
+              >
+                <Plus size={13} />
+                New chat
+              </button>
+            </div>
+            <div className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
+              {chats.map((chat) => {
+                const isStreaming = sessions[chat._id]?.status === 'streaming'
+                const unread = getUnread(chat._id)
+                return (
+                  <div
+                    key={chat._id}
+                    onClick={() => loadChat(chat._id)}
+                    className={`group flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+                      activeChatId === chat._id
+                        ? 'bg-[#e8e8e8] text-[#0a0a0a]'
+                        : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
+                    }`}
                   >
-                    <Trash2 size={11} />
+                    <span className="flex-1 truncate">{chat.title}</span>
+                    {isStreaming && !unread && (
+                      <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#525252]" />
+                    )}
+                    {unread > 0 && (
+                      <span className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#0a0a0a] text-[9px] font-medium text-[#fafafa]">
+                        {unread}
+                      </span>
+                    )}
+                    <button
+                      onClick={(e) => deleteChat(chat._id, e)}
+                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[#d8d8d8] group-hover:opacity-100"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {mobileChatListOpen && (
+            <div className="fixed inset-0 z-50 md:hidden">
+              <button
+                type="button"
+                aria-label="Close chat list"
+                className="absolute inset-0 bg-black/40"
+                onClick={() => setMobileChatListOpen(false)}
+              />
+              <div
+                className="absolute bottom-0 left-0 right-0 flex max-h-[min(78vh,560px)] flex-col rounded-t-2xl border border-[#e5e5e5] border-b-0 bg-[#f5f5f5] shadow-[0_-8px_40px_rgba(0,0,0,0.12)]"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Chat history"
+              >
+                <div className="flex shrink-0 items-center justify-center pb-1 pt-2">
+                  <span className="h-1 w-12 rounded-full bg-[#d4d4d4]" aria-hidden />
+                </div>
+                <div className="flex items-center justify-between border-b border-[#e5e5e5] px-4 py-2.5">
+                  <span className="text-sm font-medium text-[#0a0a0a]">Chats</span>
+                  <button
+                    type="button"
+                    onClick={() => setMobileChatListOpen(false)}
+                    aria-label="Close"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
+                  >
+                    <X size={16} />
                   </button>
                 </div>
-              )
-            })}
-          </div>
-        </div>
+                <div className="border-b border-[#e5e5e5] px-3 py-2">
+                  <button
+                    onClick={() => {
+                      void createNewChat().then(() => setMobileChatListOpen(false))
+                    }}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#0a0a0a] px-3 py-2 text-sm text-[#fafafa] transition-colors hover:bg-[#222]"
+                  >
+                    <Plus size={13} />
+                    New chat
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                  <div className="space-y-0.5">
+                    {chats.map((chat) => {
+                      const isStreaming = sessions[chat._id]?.status === 'streaming'
+                      const unread = getUnread(chat._id)
+                      return (
+                        <div
+                          key={chat._id}
+                          onClick={() => {
+                            void loadChat(chat._id)
+                            setMobileChatListOpen(false)
+                          }}
+                          className={`group flex items-center justify-between rounded-md px-2.5 py-2 text-xs transition-colors ${
+                            activeChatId === chat._id
+                              ? 'bg-[#e8e8e8] text-[#0a0a0a]'
+                              : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
+                          }`}
+                        >
+                          <span className="flex-1 truncate">{chat.title}</span>
+                          {isStreaming && !unread && (
+                            <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#525252]" />
+                          )}
+                          {unread > 0 && (
+                            <span className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#0a0a0a] text-[9px] font-medium text-[#fafafa]">
+                              {unread}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => deleteChat(chat._id, e)}
+                            className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[#d8d8d8] group-hover:opacity-100"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Main area */}
       <div
-        className="flex-1 flex flex-col h-full min-h-0 relative"
+        className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden"
         onDragEnter={(e) => {
           e.preventDefault()
           dragCounterRef.current++
@@ -2866,41 +2962,47 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             </div>
           </div>
         )}
-        {/* Sticky header */}
-        <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-4 shrink-0">
-          <div className="flex items-center gap-2 min-w-0 max-w-[40%]">
-            <h2 className="text-sm font-medium text-[#0a0a0a] truncate">
-              {activeChatTitle ?? activeChat?.title ?? 'New conversation'}
-            </h2>
-            {isSwitchingChat && (
-              <div className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
-            )}
-            {projectName && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-[#f0f0f0] text-[#525252] border border-[#e8e8e8] shrink-0 whitespace-nowrap">
-                <FolderOpen size={9} />
-                {projectName}
-              </span>
-            )}
-          </div>
+        {/* Sticky header — stacked on small screens to avoid horizontal scroll */}
+        <div className="shrink-0 border-b border-[#e5e5e5] px-3 md:px-4">
+          <div className="flex h-auto min-h-0 flex-col gap-2 py-2 md:h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="min-w-0 flex-1 text-sm font-medium leading-snug text-[#0a0a0a] md:max-w-[min(100%,20rem)] md:truncate lg:max-w-[24rem]">
+                <span className="line-clamp-2 md:line-clamp-1 md:truncate">
+                  {activeChatTitle ?? activeChat?.title ?? 'New conversation'}
+                </span>
+              </h2>
+              {isSwitchingChat && (
+                <div className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
+              )}
+              {projectName && (
+                <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[#e8e8e8] bg-[#f0f0f0] px-2 py-0.5 text-[10px] text-[#525252]">
+                  <FolderOpen size={9} />
+                  <span className="max-w-[6rem] truncate sm:max-w-none">{projectName}</span>
+                </span>
+              )}
+            </div>
 
-          {/* Model picker + Generation mode toggle */}
-          <div className="flex items-center gap-2">
-            <div ref={modelPickerRef} className="relative">
-              <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
-                <button
-                  type="button"
-                  onClick={() => !isActiveLoading && setShowModelPicker((v) => !v)}
-                  disabled={isActiveLoading}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-[#f0f0f0] transition-colors ${
-                    isActiveLoading ? 'text-[#aaa] cursor-not-allowed' : 'text-[#525252] hover:bg-[#e8e8e8]'
-                  }`}
-                >
-                  {modelPickerLabel}
-                  <ChevronDown size={11} />
-                </button>
-              </DelayedTooltip>
-              {showModelPicker && (
-                <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1 max-h-72 overflow-y-auto" onMouseLeave={() => setHoveredModelId(null)}>
+            {/* Model picker + Generation mode */}
+            <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-none md:flex-row md:items-center md:gap-2">
+              <div ref={modelPickerRef} className="relative w-full min-w-0 md:w-auto">
+                <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
+                  <button
+                    type="button"
+                    onClick={() => !isActiveLoading && setShowModelPicker((v) => !v)}
+                    disabled={isActiveLoading}
+                    className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[#f0f0f0] px-2.5 py-1.5 text-left text-xs md:w-auto md:max-w-[13rem] md:py-1 ${
+                      isActiveLoading ? 'cursor-not-allowed text-[#aaa]' : 'text-[#525252] hover:bg-[#e8e8e8]'
+                    }`}
+                  >
+                    <span className="min-w-0 truncate">{modelPickerLabel}</span>
+                    <ChevronDown size={11} className="shrink-0" />
+                  </button>
+                </DelayedTooltip>
+                {showModelPicker && (
+                  <div
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg md:left-auto md:right-0 md:w-64"
+                    onMouseLeave={() => setHoveredModelId(null)}
+                  >
                   {generationMode === 'image' ? (
                     IMAGE_MODELS.map((m) => {
                         const isSel = selectedImageModels.includes(m.id)
@@ -2988,31 +3090,43 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               )}
             </div>
             <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
-              <span className="inline-flex">
-                <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
+              <span className="block w-full md:inline-flex md:w-auto">
+                <span className="block w-full md:hidden">
+                  <GenerationModeToggle
+                    mode={generationMode}
+                    onChange={handleModeChange}
+                    disabled={isActiveLoading}
+                    layout="stretch"
+                  />
+                </span>
+                <span className="hidden md:inline-flex">
+                  <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
+                </span>
               </span>
             </DelayedTooltip>
+          </div>
           </div>
         </div>
 
         {/* Messages */}
         <div
           ref={messagesScrollRef}
-          className="flex-1 min-h-0 overflow-y-auto px-4 py-4"
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
         >
-          <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col gap-6">
+          <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
             {!hasHistory && (
-              <div className="flex flex-1 items-center justify-center">
-                <div className="text-center max-w-xl">
-                  <p className="text-3xl mb-3" style={{ fontFamily: 'var(--font-instrument-serif)' }}>
+              <div className="flex flex-1 items-center justify-center px-1 sm:px-0">
+                <div className="w-full max-w-xl text-center">
+                  <p className="mb-3 text-3xl" style={{ fontFamily: 'var(--font-instrument-serif)' }}>
                     chat
                   </p>
-                  <p className="text-sm text-[#888] mb-6">Start a conversation with any AI model</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs text-[#525252]">
+                  <p className="mb-6 text-sm text-[#888]">Start a conversation with any AI model</p>
+                  <div className="grid grid-cols-1 gap-2 text-xs text-[#525252] sm:grid-cols-2">
                     {CHAT_SUGGESTIONS.map((prompt) => (
                       <button
                         key={prompt}
-                        className="text-left p-2.5 rounded-lg border border-[#e5e5e5] hover:bg-[#f5f5f5] transition-colors"
+                        type="button"
+                        className="rounded-lg border border-[#e5e5e5] p-2.5 text-left leading-snug hover:bg-[#f5f5f5] transition-colors"
                         onClick={() => setInput(prompt)}
                       >
                         {prompt}
@@ -3091,7 +3205,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         </div>
                       )}
                       <div className="flex justify-end">
-                        <div className="chat-user-bubble select-text max-w-[75%] rounded-2xl rounded-br-sm bg-[#0a0a0a] px-4 py-2.5 text-sm leading-relaxed text-[#fafafa]">
+                        <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:max-w-[75%] sm:px-4">
                           <span className="whitespace-pre-wrap">{promptText}</span>
                         </div>
                       </div>
@@ -3269,7 +3383,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
         </div>
 
         {/* Input */}
-        <div className="px-4 pb-4">
+        <div className="px-3 pb-3 sm:px-4 sm:pb-4">
           {(attachedImages.length > 0 || pendingChatDocuments.length > 0) && (
             <div className="mx-auto w-full max-w-4xl mb-2 flex flex-wrap gap-2">
               {attachedImages.map((img, i) => (
@@ -3355,7 +3469,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     </button>
                   </div>
                 )}
-                <div className="p-3">
+                <div className="p-2.5 sm:p-3">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -3508,6 +3622,20 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             )}
           </div>
         </div>
+
+        {!hideSidebar && (
+          <div className="shrink-0 border-t border-[#e5e5e5] bg-[#fafafa]/95 backdrop-blur md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileChatListOpen(true)}
+              className="flex w-full items-center justify-center gap-2 py-2.5 text-xs font-medium text-[#525252] active:bg-[#f0f0f0]"
+              style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+            >
+              <MessageSquare size={15} strokeWidth={1.75} />
+              Chats
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

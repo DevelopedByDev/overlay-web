@@ -62,21 +62,21 @@ export default function OutputsView() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-6 shrink-0">
-        <div className="flex items-center gap-3">
-          <h1 className="text-sm font-medium text-[#0a0a0a]">Outputs</h1>
-          <span className="text-xs text-[#aaa]">{filtered.length} items</span>
+      <div className="flex min-h-16 shrink-0 flex-col gap-3 border-b border-[#e5e5e5] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-0">
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="text-base font-medium text-[#0a0a0a] sm:text-sm">Outputs</h1>
+          <span className="shrink-0 text-xs text-[#aaa]">{filtered.length} items</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 sm:justify-end">
           {/* Filter tabs */}
-          <div className="flex items-center bg-[#f0f0f0] rounded-lg p-0.5">
+          <div className="flex min-w-0 flex-1 items-center justify-center rounded-lg bg-[#f0f0f0] p-0.5 sm:flex-initial sm:justify-start">
             {(['all', 'image', 'video'] as FilterType[]).map((f) => (
               <button
                 key={f}
                 onClick={() => handleFilterChange(f)}
-                className={`px-3 py-1 rounded-md text-xs transition-colors capitalize ${
+                className={`flex-1 rounded-md px-3 py-1.5 text-xs capitalize transition-colors sm:flex-none sm:py-1 ${
                   filter === f
-                    ? 'bg-white text-[#0a0a0a] shadow-sm font-medium'
+                    ? 'bg-white font-medium text-[#0a0a0a] shadow-sm'
                     : 'text-[#888] hover:text-[#525252]'
                 }`}
               >
@@ -87,7 +87,7 @@ export default function OutputsView() {
           <button
             onClick={() => load()}
             disabled={loading}
-            className="p-1.5 rounded-md text-[#888] hover:text-[#525252] hover:bg-[#f0f0f0] transition-colors disabled:opacity-40"
+            className="shrink-0 rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f0f0f0] hover:text-[#525252] disabled:opacity-40"
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </button>
@@ -95,7 +95,7 @@ export default function OutputsView() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
         {loading && outputs.length === 0 && (
           <div className="flex items-center justify-center h-48 text-[#aaa] text-sm gap-2">
             <RefreshCw size={14} className="animate-spin" />
@@ -122,13 +122,7 @@ export default function OutputsView() {
 
         {/* Pinterest-style masonry grid */}
         {filtered.length > 0 && (
-          <div
-            className="mx-auto w-full max-w-[1440px]"
-            style={{
-              columnCount: 4,
-              columnGap: '16px',
-            }}
-          >
+          <div className="mx-auto w-full max-w-[1440px] columns-1 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
             {filtered.map((output) => (
               <OutputCard
                 key={output._id}

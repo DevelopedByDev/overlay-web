@@ -9,6 +9,8 @@ interface GenerationModeToggleProps {
   onChange: (mode: GenerationMode) => void
   disabled?: boolean
   className?: string
+  /** Equal-width segments for narrow layouts (no horizontal overflow). */
+  layout?: 'default' | 'stretch'
 }
 
 const MODES: { value: GenerationMode; label: string; Icon: ComponentType<{ size?: number; className?: string }> }[] = [
@@ -17,9 +19,18 @@ const MODES: { value: GenerationMode; label: string; Icon: ComponentType<{ size?
   { value: 'video', label: 'Video', Icon: Video },
 ]
 
-export function GenerationModeToggle({ mode, onChange, disabled, className = '' }: GenerationModeToggleProps) {
+export function GenerationModeToggle({
+  mode,
+  onChange,
+  disabled,
+  className = '',
+  layout = 'default',
+}: GenerationModeToggleProps) {
+  const stretch = layout === 'stretch'
   return (
-    <div className={`flex items-center bg-[#f0f0f0] rounded-lg p-0.5 shrink-0 ${className}`}>
+    <div
+      className={`flex items-center rounded-lg bg-[#f0f0f0] p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
+    >
       {MODES.map(({ value, label, Icon }) => {
         const active = mode === value
         return (
@@ -28,16 +39,21 @@ export function GenerationModeToggle({ mode, onChange, disabled, className = '' 
             onClick={() => !disabled && onChange(value)}
             disabled={disabled}
             title={label}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors ${
-              disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-            } ${
+            type="button"
+            className={`flex items-center justify-center rounded-md text-xs transition-colors ${
+              stretch
+                ? 'min-w-0 flex-1 flex-col gap-0.5 px-0.5 py-1.5 sm:flex-row sm:gap-1 sm:px-2 sm:py-1'
+                : 'gap-1 px-2.5 py-1'
+            } ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${
               active
-                ? 'bg-white text-[#0a0a0a] shadow-sm font-medium'
+                ? 'bg-white font-medium text-[#0a0a0a] shadow-sm'
                 : 'text-[#888] hover:text-[#525252]'
             }`}
           >
-            <Icon size={11} className="text-[#0a0a0a]" />
-            <span>{label}</span>
+            <Icon size={stretch ? 13 : 11} className="shrink-0 text-[#0a0a0a]" />
+            <span className={stretch ? 'max-w-full truncate text-center text-[10px] leading-none sm:text-xs' : ''}>
+              {label}
+            </span>
           </button>
         )
       })}

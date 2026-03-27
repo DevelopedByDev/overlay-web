@@ -7,7 +7,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   MessageSquare, BookOpen, Brain, Wrench, LogOut, User,
   Smartphone, Puzzle, Monitor, ChevronUp, AlertCircle,
-  FolderOpen, Cpu, Images, Loader2, Menu, X,
+  FolderOpen, Cpu, Images, Loader2, Menu, X, ArrowUp,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -85,14 +85,14 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const mobileAccountRef = useRef<HTMLDivElement>(null)
 
   const effectivePendingHref = pendingHref && !pathname.startsWith(pendingHref) ? pendingHref : null
   const projectsOpen = pathname.startsWith('/app/projects')
   const toolsOpen = pathname.startsWith('/app/tools')
   const computerOpen = pathname.startsWith('/app/computer')
-  const activeNavLabel = NAV_ITEMS.find((item) => pathname.startsWith(item.href))?.label ?? 'Overlay'
-
   const loadEntitlements = useCallback(async () => {
     try {
       const res = await fetch('/api/app/subscription')
@@ -103,14 +103,14 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
   }, [])
 
   useEffect(() => {
-    if (!accountMenuOpen) return
+    if (!accountMenuOpen && !mobileAccountOpen) return
     const initialId = window.setTimeout(() => { void loadEntitlements() }, 0)
     const intervalId = window.setInterval(() => { void loadEntitlements() }, 30_000)
     return () => {
       window.clearTimeout(initialId)
       window.clearInterval(intervalId)
     }
-  }, [accountMenuOpen, loadEntitlements])
+  }, [accountMenuOpen, mobileAccountOpen, loadEntitlements])
 
   useEffect(() => {
     function onSubscriptionRefresh() {
@@ -153,6 +153,17 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
   }, [accountMenuOpen])
 
   useEffect(() => {
+    if (!mobileAccountOpen) return
+    function handleClick(e: MouseEvent) {
+      if (mobileAccountRef.current && !mobileAccountRef.current.contains(e.target as Node)) {
+        setMobileAccountOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [mobileAccountOpen])
+
+  useEffect(() => {
     if (!mobileMenuOpen) return
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -166,18 +177,45 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
     window.location.href = '/'
   }
 
+  const brandLink = (
+    <Link
+      href="/app/chat"
+      className="flex min-w-0 items-center gap-2"
+      onClick={() => setMobileMenuOpen(false)}
+    >
+      <Image src="/assets/overlay-logo.png" alt="" width={24} height={24} className="shrink-0" />
+      <span
+        className="truncate text-xl font-medium tracking-tight"
+        style={{ fontFamily: 'var(--font-instrument-serif)' }}
+      >
+        overlay
+      </span>
+    </Link>
+  )
+
+  /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
+  const mobileBrandLink = (
+    <Link
+      href="/app/chat"
+      className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
+      onClick={() => setMobileMenuOpen(false)}
+    >
+      <Image src="/assets/overlay-logo.png" alt="" width={22} height={22} className="shrink-0" />
+      <span
+        className="truncate text-lg font-medium tracking-tight text-[#0a0a0a]"
+        style={{ fontFamily: 'var(--font-instrument-serif)' }}
+      >
+        overlay
+      </span>
+    </Link>
+  )
+
+  const showUpgradeCta = !entitlements || entitlements.tier === 'free'
+
   const sidebarContent = (
     <>
-      <div className="flex h-16 items-center border-b border-[#e5e5e5] px-5">
-        <Link href="/app/chat" className="flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
-          <Image src="/assets/overlay-logo.png" alt="Overlay" width={24} height={24} />
-          <span
-            className="text-xl font-medium tracking-tight"
-            style={{ fontFamily: 'var(--font-instrument-serif)' }}
-          >
-            overlay
-          </span>
-        </Link>
+      <div className="hidden h-16 items-center border-b border-[#e5e5e5] px-5 md:flex">
+        {brandLink}
       </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-3">
@@ -278,6 +316,19 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
                 <User size={13} />
                 Account
               </Link>
+              {showUpgradeCta && (
+                <Link
+                  href="/account"
+                  onClick={() => {
+                    setAccountMenuOpen(false)
+                    setMobileMenuOpen(false)
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]"
+                >
+                  <ArrowUp size={13} className="shrink-0" />
+                  Upgrade
+                </Link>
+              )}
               <div className="border-t border-[#f0f0f0] px-3 py-2">
                 <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
                 <UsageBar entitlements={entitlements} />
@@ -310,26 +361,66 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
   return (
     <>
       <div className="fixed inset-x-0 top-0 z-40 border-b border-[#e5e5e5] bg-[#fafafa]/95 backdrop-blur md:hidden">
-        <div className="flex h-14 items-center justify-between px-4">
+        <div className="flex h-14 items-center justify-between gap-2 px-3">
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Open app navigation"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
           >
             <Menu size={16} />
           </button>
-          <div className="min-w-0 text-center">
-            <p className="truncate text-[11px] uppercase tracking-[0.18em] text-[#9a9a9a]">overlay</p>
-            <p className="truncate text-sm font-medium text-[#0a0a0a]">{activeNavLabel}</p>
+          <div className="flex min-w-0 flex-1 justify-center px-1">{mobileBrandLink}</div>
+          <div className="relative shrink-0" ref={mobileAccountRef}>
+            <button
+              type="button"
+              onClick={() => setMobileAccountOpen((o) => !o)}
+              aria-label="Account menu"
+              aria-expanded={mobileAccountOpen}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+            >
+              <User size={16} />
+            </button>
+            {mobileAccountOpen && (
+              <div className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg">
+                <Link
+                  href="/account"
+                  onClick={() => setMobileAccountOpen(false)}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                >
+                  <User size={13} />
+                  Account
+                </Link>
+                {showUpgradeCta && (
+                  <Link
+                    href="/account"
+                    onClick={() => setMobileAccountOpen(false)}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]"
+                  >
+                    <ArrowUp size={13} className="shrink-0" />
+                    Upgrade
+                  </Link>
+                )}
+                <div className="border-t border-[#f0f0f0] px-3 py-2">
+                  <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
+                  <UsageBar entitlements={entitlements} />
+                </div>
+                <div className="border-t border-[#f0f0f0]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileAccountOpen(false)
+                      void handleSignOut()
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                  >
+                    <LogOut size={13} />
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-          <Link
-            href="/account"
-            aria-label="Open account"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
-          >
-            <User size={16} />
-          </Link>
         </div>
       </div>
 
@@ -349,12 +440,13 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
             mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <div className="flex h-14 items-center justify-end border-b border-[#e5e5e5] px-4">
+          <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[#e5e5e5] px-4">
+            <div className="min-w-0 flex-1">{brandLink}</div>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
               aria-label="Close app navigation"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
             >
               <X size={16} />
             </button>
