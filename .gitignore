@@ -47,3 +47,4 @@ openclaw/
 .cursor/hooks/state/*.json
 .gstack/
 transcripts/
+plans/*
