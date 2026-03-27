@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { PageNavbar } from '@/components/PageNavbar'
@@ -84,6 +84,7 @@ function ProgressBar({
 }
 
 function AccountPageContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const sessionId = searchParams?.get('session_id') ?? null
   const successParam = searchParams?.get('success')
@@ -101,8 +102,6 @@ function AccountPageContent() {
   const currentUserId = user?.id || null
   const [signingOut, setSigningOut] = useState(false)
   const [sessionCheckComplete, setSessionCheckComplete] = useState(false)
-  const [showOpenInOverlayPrompt, setShowOpenInOverlayPrompt] = useState(false)
-  const [showSubscriptionUpdatedPrompt, setShowSubscriptionUpdatedPrompt] = useState(false)
 
   // Refresh session on mount to ensure we have the latest session state
   // This fixes the race condition when redirecting from auth callback
@@ -113,13 +112,6 @@ function AccountPageContent() {
       if (isAuthenticated || authLoading) {
         if (mounted) {
           setSessionCheckComplete(true)
-          // Show "Open in Overlay" prompt after successful sign-in
-          // Check if this is a fresh sign-in using sessionStorage flag
-          const hasSeenPrompt = sessionStorage.getItem('overlay_open_prompt_shown')
-          if (isAuthenticated && !hasSeenPrompt) {
-            setShowOpenInOverlayPrompt(true)
-            sessionStorage.setItem('overlay_open_prompt_shown', 'true')
-          }
         }
         return
       }
@@ -128,12 +120,6 @@ function AccountPageContent() {
       await refreshSession()
       if (mounted) {
         setSessionCheckComplete(true)
-        // Show prompt if user just authenticated
-        const hasSeenPrompt = sessionStorage.getItem('overlay_open_prompt_shown')
-        if (isAuthenticated && !hasSeenPrompt) {
-          setShowOpenInOverlayPrompt(true)
-          sessionStorage.setItem('overlay_open_prompt_shown', 'true')
-        }
       }
     }
     checkSession()
@@ -172,16 +158,12 @@ function AccountPageContent() {
               setEntitlements(entData)
               setEntitlementsError(null)
             }
-            // Show "Open in Overlay" prompt for subscription update
-            setShowSubscriptionUpdatedPrompt(true)
           } else {
             setMessage({ type: 'success', text: 'Subscription activated successfully!' })
-            setShowSubscriptionUpdatedPrompt(true)
           }
         } catch (error) {
           console.error('[Account] Checkout verification error:', error)
           setMessage({ type: 'success', text: 'Subscription activated successfully!' })
-          setShowSubscriptionUpdatedPrompt(true)
         }
       }
       
@@ -315,77 +297,11 @@ function AccountPageContent() {
     <div className="min-h-screen gradient-bg flex flex-col">
       <div className="liquid-glass" />
 
-      {/* Open in Overlay Prompt Modal */}
-      {showOpenInOverlayPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center shadow-xl">
-            <div className="w-16 h-16 mx-auto mb-4 bg-emerald-100 rounded-full flex items-center justify-center">
-              <Check className="w-8 h-8 text-emerald-600" />
-            </div>
-            <h2 className="text-xl font-serif mb-2">Welcome to Overlay!</h2>
-            <p className="text-zinc-500 mb-6">
-              You&apos;re signed in. Open the desktop app to continue.
-            </p>
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  handleOpenInApp()
-                  setShowOpenInOverlayPrompt(false)
-                }}
-                className="w-full py-3 px-4 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2"
-              >
-                Open in Overlay
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setShowOpenInOverlayPrompt(false)}
-                className="w-full py-2 text-sm text-zinc-500 hover:text-zinc-700"
-              >
-                Stay on this page
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Subscription Updated Prompt Modal */}
-      {showSubscriptionUpdatedPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center shadow-xl">
-            <div className="w-16 h-16 mx-auto mb-4 bg-emerald-100 rounded-full flex items-center justify-center">
-              <Check className="w-8 h-8 text-emerald-600" />
-            </div>
-            <h2 className="text-xl font-serif mb-2">Subscription Activated!</h2>
-            <p className="text-zinc-500 mb-6">
-              Your subscription has been updated. Open the desktop app to start using your new features.
-            </p>
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  handleOpenInApp()
-                  setShowSubscriptionUpdatedPrompt(false)
-                }}
-                className="w-full py-3 px-4 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2"
-              >
-                Open in Overlay
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setShowSubscriptionUpdatedPrompt(false)}
-                className="w-full py-2 text-sm text-zinc-500 hover:text-zinc-700"
-              >
-                Stay on this page
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <PageNavbar />
 
       {/* Main Content */}
-      <main className="relative z-10 px-8 py-8 flex-1">
+      <main className="relative z-10 flex-1 px-4 py-6 md:px-8 md:py-8">
         <div className="max-w-4xl mx-auto">
           {/* Message Banner */}
           {message && (
@@ -402,14 +318,22 @@ function AccountPageContent() {
                 <AlertCircle className="w-5 h-5" />
               )}
               <p className="text-sm">{message.text}</p>
-              <div className="ml-auto flex items-center gap-3">
+              <div className="ml-auto flex flex-wrap items-center gap-3">
                 {message.type === 'success' && (
-                  <button
-                    onClick={handleOpenInApp}
-                    className="text-sm font-medium bg-emerald-600 text-white px-3 py-1 rounded-lg hover:bg-emerald-700 transition-colors"
-                  >
-                    Open in App
-                  </button>
+                  <>
+                    <button
+                      onClick={handleOpenInApp}
+                      className="rounded-lg bg-emerald-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+                    >
+                      Open in desktop app
+                    </button>
+                    <button
+                      onClick={() => router.push('/app/chat')}
+                      className="rounded-lg border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100/70"
+                    >
+                      Open web app
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => setMessage(null)}
@@ -482,7 +406,7 @@ function AccountPageContent() {
 
               {/* User Profile Card */}
               <div className="glass-dark rounded-2xl p-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-zinc-200 flex items-center justify-center text-lg font-medium">
                       {user?.firstName?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
@@ -499,7 +423,7 @@ function AccountPageContent() {
                   <button
                     onClick={handleSignOut}
                     disabled={signingOut}
-                    className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                    className="w-full rounded-lg px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50 sm:w-auto"
                   >
                     {signingOut ? 'Signing out...' : 'Sign out'}
                   </button>
@@ -507,24 +431,36 @@ function AccountPageContent() {
               </div>
 
               <div className="glass-dark rounded-2xl p-6">
-                <p className="text-sm text-zinc-500 mb-3">Desktop app</p>
-                <button
-                  onClick={handleOpenInApp}
-                  disabled={actionLoading === 'openApp'}
-                  className="inline-flex items-center gap-2 px-4 py-2 border border-zinc-300 text-zinc-700 rounded-lg text-sm font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
-                >
-                  {actionLoading === 'openApp' ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Opening...
-                    </>
-                  ) : (
-                    <>
-                      Open in Overlay
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
+                <p className="mb-1 text-sm text-zinc-500">Continue with Overlay</p>
+                <p className="mb-4 text-sm text-zinc-500">
+                  Open the desktop app for the native overlay workflow, or continue in the web app from here.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    onClick={handleOpenInApp}
+                    disabled={actionLoading === 'openApp'}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    {actionLoading === 'openApp' ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Opening...
+                      </>
+                    ) : (
+                      <>
+                        Open in desktop app
+                        <ArrowRight className="h-4 w-4" />
+                      </>
+                    )}
+                  </button>
+                  <Link
+                    href="/app/chat"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+                  >
+                    Open web app
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
               </div>
 
               {entitlements && (

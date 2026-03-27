@@ -7,7 +7,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   MessageSquare, BookOpen, Brain, Wrench, LogOut, User,
   Smartphone, Puzzle, Monitor, ChevronUp, AlertCircle,
-  FolderOpen, Cpu, Images, Loader2,
+  FolderOpen, Cpu, Images, Loader2, Menu, X,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -65,7 +65,7 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
         </span>
         {exhausted && <AlertCircle size={11} />}
       </div>
-      <div className="h-1 rounded-full bg-[#e5e5e5] overflow-hidden">
+      <div className="h-1 overflow-hidden rounded-full bg-[#e5e5e5]">
         <div
           className={`h-full rounded-full transition-all ${exhausted ? 'bg-red-400' : warning ? 'bg-amber-400' : 'bg-[#0a0a0a]'}`}
           style={{ width: `${remainingPctRaw}%` }}
@@ -82,14 +82,16 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
   const { totalUnread } = useAsyncSessions()
 
   const [pendingHref, setPendingHref] = useState<string | null>(null)
-  const effectivePendingHref = pendingHref && !pathname.startsWith(pendingHref) ? pendingHref : null
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
+  const effectivePendingHref = pendingHref && !pathname.startsWith(pendingHref) ? pendingHref : null
   const projectsOpen = pathname.startsWith('/app/projects')
   const toolsOpen = pathname.startsWith('/app/tools')
   const computerOpen = pathname.startsWith('/app/computer')
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
-  const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const activeNavLabel = NAV_ITEMS.find((item) => pathname.startsWith(item.href))?.label ?? 'Overlay'
 
   const loadEntitlements = useCallback(async () => {
     try {
@@ -118,7 +120,6 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
     return () => window.removeEventListener('overlay:subscription-refresh', onSubscriptionRefresh)
   }, [loadEntitlements])
 
-  /** ⌥1–⌥7 jump to main app nav when focus is outside text fields (macOS Option = altKey). */
   useEffect(() => {
     function onNavShortcut(e: KeyboardEvent) {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.repeat) return
@@ -140,7 +141,6 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
     return () => window.removeEventListener('keydown', onNavShortcut, true)
   }, [pathname, router])
 
-  // Close menu on outside click
   useEffect(() => {
     if (!accountMenuOpen) return
     function handleClick(e: MouseEvent) {
@@ -152,23 +152,25 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
     return () => document.removeEventListener('mousedown', handleClick)
   }, [accountMenuOpen])
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [mobileMenuOpen])
+
   async function handleSignOut() {
     await fetch('/api/auth/sign-out', { method: 'POST' })
     window.location.href = '/'
   }
 
-  return (
+  const sidebarContent = (
     <>
-    <aside className="w-56 h-full flex flex-col border-r border-[#e5e5e5] bg-[#fafafa]">
-      {/* Logo */}
       <div className="flex h-16 items-center border-b border-[#e5e5e5] px-5">
-        <Link href="/app/chat" className="flex items-center gap-2">
-          <Image
-            src="/assets/overlay-logo.png"
-            alt="Overlay"
-            width={24}
-            height={24}
-          />
+        <Link href="/app/chat" className="flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
+          <Image src="/assets/overlay-logo.png" alt="Overlay" width={24} height={24} />
           <span
             className="text-xl font-medium tracking-tight"
             style={{ fontFamily: 'var(--font-instrument-serif)' }}
@@ -178,8 +180,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
         </Link>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-2 py-3 space-y-0.5">
+      <nav className="flex-1 space-y-0.5 px-2 py-3">
         {NAV_ITEMS.map(({ href, label, icon: Icon }, navIdx) => {
           const active = effectivePendingHref ? effectivePendingHref === href : pathname.startsWith(href)
           const isPending = effectivePendingHref === href
@@ -190,11 +191,12 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
               type="button"
               onClick={() => {
                 if (pathname.startsWith(href)) return
+                setMobileMenuOpen(false)
                 setPendingHref(href)
                 router.push(href)
               }}
               title={`${label} · ⌥${navIdx + 1}`}
-              className={`group flex w-full items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+              className={`group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
                 active
                   ? 'bg-[#0a0a0a] text-[#fafafa]'
                   : 'text-[#525252] hover:bg-[#f0f0f0] hover:text-[#0a0a0a]'
@@ -219,7 +221,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
                   aria-hidden
                 />
               ) : unreadCount > 0 ? (
-                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-medium ${
+                <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-medium ${
                   active ? 'bg-[#fafafa] text-[#0a0a0a]' : 'bg-[#0a0a0a] text-[#fafafa]'
                 }`}>
                   {unreadCount > 9 ? '9+' : unreadCount}
@@ -230,8 +232,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="px-3 py-3 border-t border-[#e5e5e5] space-y-3">
+      <div className="space-y-3 border-t border-[#e5e5e5] px-3 py-3">
         <div className="space-y-1">
           <p className="px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[#888]">
             Apps
@@ -244,7 +245,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
                   href={href}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-[#525252] hover:bg-[#f0f0f0] hover:text-[#0a0a0a] transition-colors"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
                 >
                   <Icon size={13} />
                   {label}
@@ -253,37 +254,38 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
                 <button
                   key={label}
                   type="button"
-                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-[#a3a3a3] cursor-default"
+                  className="flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#a3a3a3]"
                 >
                   <Icon size={13} />
                   {label}
                 </button>
-              )
+              ),
             )}
           </div>
         </div>
 
-        {/* Account button with popover */}
-        <div ref={menuRef} className="relative pt-2 border-t border-[#e5e5e5]">
-          {/* Account menu popover */}
+        <div ref={menuRef} className="relative border-t border-[#e5e5e5] pt-2">
           {accountMenuOpen && (
-            <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg py-1 z-50">
+            <div className="absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg">
               <Link
                 href="/account"
-                onClick={() => setAccountMenuOpen(false)}
-                className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors"
+                onClick={() => {
+                  setAccountMenuOpen(false)
+                  setMobileMenuOpen(false)
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
               >
                 <User size={13} />
                 Account
               </Link>
-              <div className="px-3 py-2 border-t border-[#f0f0f0]">
-                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa] mb-2">Usage</p>
+              <div className="border-t border-[#f0f0f0] px-3 py-2">
+                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
                 <UsageBar entitlements={entitlements} />
               </div>
               <div className="border-t border-[#f0f0f0]">
                 <button
                   onClick={handleSignOut}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
                 >
                   <LogOut size={13} />
                   Sign out
@@ -293,8 +295,8 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
           )}
 
           <button
-            onClick={() => setAccountMenuOpen((v) => !v)}
-            className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-[#525252] hover:bg-[#f0f0f0] hover:text-[#0a0a0a] transition-colors"
+            onClick={() => setAccountMenuOpen((value) => !value)}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
           >
             <User size={13} />
             <span className="flex-1 truncate text-left">{displayName}</span>
@@ -302,10 +304,70 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
           </button>
         </div>
       </div>
-    </aside>
-    {projectsOpen && <ProjectsSidebar />}
-    {toolsOpen && <ToolsSidebar />}
-    {computerOpen && <ComputerSidebar userId={user.id} accessToken={accessToken} />}
+    </>
+  )
+
+  return (
+    <>
+      <div className="fixed inset-x-0 top-0 z-40 border-b border-[#e5e5e5] bg-[#fafafa]/95 backdrop-blur md:hidden">
+        <div className="flex h-14 items-center justify-between px-4">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open app navigation"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
+          >
+            <Menu size={16} />
+          </button>
+          <div className="min-w-0 text-center">
+            <p className="truncate text-[11px] uppercase tracking-[0.18em] text-[#9a9a9a]">overlay</p>
+            <p className="truncate text-sm font-medium text-[#0a0a0a]">{activeNavLabel}</p>
+          </div>
+          <Link
+            href="/account"
+            aria-label="Open account"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
+          >
+            <User size={16} />
+          </Link>
+        </div>
+      </div>
+
+      <aside className="hidden h-full w-56 shrink-0 flex-col border-r border-[#e5e5e5] bg-[#fafafa] md:flex">
+        {sidebarContent}
+      </aside>
+
+      <div className={`fixed inset-0 z-50 md:hidden ${mobileMenuOpen ? '' : 'pointer-events-none'}`}>
+        <button
+          type="button"
+          aria-label="Close app navigation"
+          onClick={() => setMobileMenuOpen(false)}
+          className={`absolute inset-0 bg-black/30 transition-opacity ${mobileMenuOpen ? 'opacity-100' : 'opacity-0'}`}
+        />
+        <aside
+          className={`absolute inset-y-0 left-0 flex w-[82vw] max-w-[320px] flex-col border-r border-[#e5e5e5] bg-[#fafafa] shadow-[0_20px_80px_rgba(10,10,10,0.18)] transition-transform ${
+            mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <div className="flex h-14 items-center justify-end border-b border-[#e5e5e5] px-4">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              aria-label="Close app navigation"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          {sidebarContent}
+        </aside>
+      </div>
+
+      <div className="hidden md:flex">
+        {projectsOpen && <ProjectsSidebar />}
+        {toolsOpen && <ToolsSidebar />}
+        {computerOpen && <ComputerSidebar userId={user.id} accessToken={accessToken} />}
+      </div>
     </>
   )
 }
