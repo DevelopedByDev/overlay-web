@@ -1495,14 +1495,19 @@ export const deleteComputerInstance = action({
   args: {
     computerId: v.id('computers'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, { computerId, userId, accessToken }) => {
+  handler: async (ctx, { computerId, userId, accessToken, serverSecret }) => {
     console.log(
       `${TAG} deleteComputerInstance — START computerId=${redactIdentifierForLog(computerId)}`
     )
 
-    await requireAccessToken(accessToken, userId)
+    await authorizeUserAccess({
+      accessToken,
+      serverSecret,
+      userId,
+    })
 
     const computer = await ctx.runQuery(internal.computers.getInternal, { computerId })
     if (!computer || computer.userId !== userId) {

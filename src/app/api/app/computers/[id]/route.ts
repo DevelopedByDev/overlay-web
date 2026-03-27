@@ -101,3 +101,33 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id } = await params
+    const serverSecret = getInternalApiSecret()
+
+    await convex.action('computers:deleteComputerInstance', {
+      computerId: id,
+      userId: session.user.id,
+      serverSecret,
+    })
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete computer'
+    const status =
+      message === 'Unauthorized'
+        ? 401
+        : message === 'Computer not found'
+          ? 404
+          : 500
+    return NextResponse.json({ error: message }, { status })
+  }
+}

@@ -75,7 +75,7 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
   )
 }
 
-export default function AppSidebar({ user, accessToken }: { user: AuthUser; accessToken: string }) {
+export default function AppSidebar({ user }: { user: AuthUser }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
   const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
@@ -458,7 +458,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
       <div className="hidden md:flex">
         {projectsOpen && <ProjectsSidebar />}
         {toolsOpen && <ToolsSidebar />}
-        {computerOpen && <ComputerSidebar userId={user.id} accessToken={accessToken} />}
+        {computerOpen && <ComputerSidebar />}
       </div>
     </>
   )

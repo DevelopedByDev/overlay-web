@@ -244,3 +244,70 @@ export async function executeGenerateVideo(
     }
   }
 }
+
+export async function executeRunDaytonaSandbox(
+  options: OverlayToolsOptions,
+  input: {
+    task: string
+    runtime: 'node' | 'python'
+    command: string
+    code?: string
+    inputFileIds?: string[]
+    expectedOutputs: string[]
+  },
+) {
+  const { task, runtime, command, code, inputFileIds, expectedOutputs } = input
+
+  try {
+    const res = await callInternalApi(
+      '/api/app/daytona/run',
+      {
+        task,
+        runtime,
+        command,
+        code,
+        inputFileIds,
+        expectedOutputs,
+        ...toolAuthBody(options),
+      },
+      options.accessToken,
+      options.baseUrl,
+      { forwardCookie: options.forwardCookie },
+    )
+
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    if (!res.ok) {
+      return {
+        success: false,
+        exitCode: data.exitCode,
+        stdout: data.stdout,
+        stderr: data.stderr,
+        artifacts: data.artifacts,
+        missingExpectedOutputs: data.missingExpectedOutputs,
+        error:
+          (typeof data.message === 'string' && data.message) ||
+          (typeof data.error === 'string' && data.error) ||
+          'Daytona sandbox run failed',
+      }
+    }
+
+    return {
+      success: Boolean(data.success),
+      exitCode: data.exitCode,
+      stdout: data.stdout,
+      stderr: data.stderr,
+      artifacts: data.artifacts,
+      missingExpectedOutputs: data.missingExpectedOutputs,
+      uploadedFiles: data.uploadedFiles,
+      message:
+        typeof data.message === 'string'
+          ? data.message
+          : 'Daytona sandbox run completed.',
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Daytona sandbox run failed',
+    }
+  }
+}

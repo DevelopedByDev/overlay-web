@@ -27,6 +27,8 @@ function isProtectedRoute(pathname: string): boolean {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const internalApiSecret = request.headers.get('x-internal-api-secret')?.trim()
+  const expectedInternalApiSecret = process.env.INTERNAL_API_SECRET?.trim()
 
   if (
     pathname.startsWith('/_next') ||
@@ -41,6 +43,15 @@ export function middleware(request: NextRequest) {
   }
 
   if (isProtectedRoute(pathname)) {
+    if (
+      pathname.startsWith('/api/') &&
+      internalApiSecret &&
+      expectedInternalApiSecret &&
+      internalApiSecret === expectedInternalApiSecret
+    ) {
+      return NextResponse.next()
+    }
+
     const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)
 
     if (!sessionCookie?.value) {

@@ -18,6 +18,7 @@ export type ToolCategory = 'knowledge' | 'memory' | 'media' | 'notes' | 'compute
 export interface OverlayToolsOptions {
   userId: string
   accessToken?: string
+  serverSecret?: string
   conversationId?: string
   projectId?: string
   baseUrl?: string

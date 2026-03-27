@@ -1,5 +1,6 @@
 import type { StepResult, ToolSet } from 'ai'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
+import { summarizeToolResultForTranscript } from '@/lib/tool-result-summary'
 
 /**
  * Persist multi-step assistant turns: `onFinish`'s top-level `text` is only the **last** step,
@@ -10,11 +11,29 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   fallbackText: string,
 ): { content: string; parts: Array<Record<string, unknown>> } {
   const list = steps ?? []
-  const textSegments = list
-    .map((step) => step.text?.trim())
-    .filter(Boolean)
-    .map((t) => normalizeAgentAssistantText(t!))
-  const content = textSegments.join('\n\n') || normalizeAgentAssistantText(fallbackText.trim())
+  const textSegments: string[] = []
+  const synthesizedToolSegments: string[] = []
+  for (const step of list) {
+    const trimmedText = step.text?.trim()
+    if (trimmedText) {
+      textSegments.push(normalizeAgentAssistantText(trimmedText))
+    }
+    const toolResultsById = new Map(
+      (step.toolResults ?? []).map((result) => [result.toolCallId, result] as const),
+    )
+    for (const tc of step.toolCalls ?? []) {
+      const result = toolResultsById.get(tc.toolCallId)
+      const summary = summarizeToolResultForTranscript({
+        toolName: tc.toolName,
+        toolInput: tc.input,
+        toolOutput: result?.output,
+        state: result ? 'output-available' : 'input-available',
+      })
+      if (summary) synthesizedToolSegments.push(summary)
+    }
+  }
+  const fallback = normalizeAgentAssistantText(fallbackText.trim())
+  const content = textSegments.join('\n\n') || synthesizedToolSegments.join('\n\n') || fallback
 
   const parts: Array<Record<string, unknown>> = []
   for (const step of list) {
@@ -38,6 +57,9 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
     if (step.text?.trim()) {
       parts.push({ type: 'text', text: normalizeAgentAssistantText(step.text.trim()) })
     }
+  }
+  if (!parts.some((part) => part.type === 'text') && content) {
+    parts.push({ type: 'text', text: content })
   }
   if (parts.length === 0 && content) {
     parts.push({ type: 'text', text: content })

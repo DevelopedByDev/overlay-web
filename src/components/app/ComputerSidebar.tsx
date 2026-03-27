@@ -13,7 +13,6 @@ import {
   FileText,
   MessageSquare,
 } from 'lucide-react'
-import { convex } from '@/lib/convex'
 
 type ComputerStatus = 'pending_payment' | 'provisioning' | 'ready' | 'past_due' | 'error' | 'deleted'
 
@@ -461,7 +460,7 @@ function ComputerNode({
   )
 }
 
-export default function ComputerSidebar({ userId, accessToken }: { userId: string; accessToken: string }) {
+export default function ComputerSidebar() {
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
@@ -505,11 +504,13 @@ export default function ComputerSidebar({ userId, accessToken }: { userId: strin
 
     setDeletingId(computerId)
     try {
-      await convex.action('computers:deleteComputerInstance', {
-        computerId,
-        userId,
-        accessToken,
+      const response = await fetch(`/api/app/computers/${computerId}`, {
+        method: 'DELETE',
       })
+      const payload = await response.json().catch(() => ({} as { error?: string }))
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to delete computer')
+      }
 
       setComputers((prev) => prev.filter((computer) => computer._id !== computerId))
       window.dispatchEvent(
@@ -545,7 +546,7 @@ export default function ComputerSidebar({ userId, accessToken }: { userId: strin
     } finally {
       setDeletingId((current) => (current === computerId ? null : current))
     }
-  }, [accessToken, deletingId, pathname, router, userId])
+  }, [deletingId, pathname, router])
 
   const handleToggleComputer = useCallback((computerId: string, event: React.MouseEvent) => {
     event.stopPropagation()

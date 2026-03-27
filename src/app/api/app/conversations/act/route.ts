@@ -237,6 +237,7 @@ export async function POST(request: NextRequest) {
         createWebTools({
           userId,
           accessToken: session.accessToken,
+          serverSecret,
           conversationId: conversationId ?? undefined,
           projectId: conversationProjectId,
           baseUrl: getInternalApiBaseUrl(request),
@@ -263,6 +264,8 @@ export async function POST(request: NextRequest) {
       '\nYou also have generate_image and generate_video tools. Use them whenever the user asks to create visual content. For videos, inform the user that generation is async and may take a few minutes — results will appear in the Outputs tab.'
     const browserToolNote =
       '\nYou also have a browser_run_task tool to browse the web with a real browser. Use it when you need fresh live data or need to interact with a website.'
+    const sandboxToolNote =
+      '\nYou also have a run_daytona_sandbox tool for CLI and code execution in an ephemeral sandbox. When you use it, never invent details about generated files that you did not actually inspect. Only claim filenames, artifact counts, runtime, exit status, or other facts that came directly from the tool result, your own generated code, or a follow-up inspection step.'
     const knowledgeNote =
       '\n' +
       ACT_KNOWLEDGE_WEB_TOOLS_NOTE +
@@ -278,6 +281,7 @@ export async function POST(request: NextRequest) {
         (userSystemPromptExtension ? `\n\n${userSystemPromptExtension}` : '')) +
         generationNote +
         browserToolNote +
+        sandboxToolNote +
         knowledgeNote +
         memoryContext +
         autoRetrieval +

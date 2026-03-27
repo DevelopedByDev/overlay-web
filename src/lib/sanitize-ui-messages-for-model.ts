@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import { summarizeToolResultForTranscript } from '@/lib/tool-result-summary'
 
 /**
  * `convertToModelMessages` treats any `type` starting with `tool-` as a live tool UI part.
@@ -9,7 +10,9 @@ import type { UIMessage } from 'ai'
  * already reflected in the assistant's written answer.
  */
 export function sanitizeUiMessagesForModelApi(messages: UIMessage[]): UIMessage[] {
-  return messages.map((msg) => {
+  const sanitized: UIMessage[] = []
+
+  for (const msg of messages) {
     if (msg.role === 'user') {
       const parts = (msg.parts ?? []).filter((p) => {
         if (p.type === 'text') return true
@@ -20,25 +23,49 @@ export function sanitizeUiMessagesForModelApi(messages: UIMessage[]): UIMessage[
         }
         return false
       })
-      return { ...msg, parts }
+      sanitized.push({ ...msg, parts })
+      continue
     }
 
     if (msg.role === 'assistant') {
       const texts: string[] = []
       for (const p of msg.parts ?? []) {
         if (p.type === 'text' && 'text' in p && typeof (p as { text?: string }).text === 'string') {
-          texts.push((p as { text: string }).text)
+          const text = (p as { text: string }).text.trim()
+          if (text) texts.push(text)
+        }
+        if (
+          p.type === 'tool-invocation' &&
+          'toolInvocation' in p &&
+          p.toolInvocation &&
+          typeof p.toolInvocation === 'object'
+        ) {
+          const invocation = p.toolInvocation as {
+            toolName?: string
+            state?: string
+            toolInput?: unknown
+            toolOutput?: unknown
+          }
+          const summary = summarizeToolResultForTranscript({
+            toolName: invocation.toolName,
+            state: invocation.state,
+            toolInput: invocation.toolInput,
+            toolOutput: invocation.toolOutput,
+          })
+          if (summary) texts.push(summary)
         }
       }
       const merged = texts.join('\n\n').trim()
-      return {
+      if (!merged) continue
+      sanitized.push({
         ...msg,
-        parts: merged
-          ? [{ type: 'text' as const, text: merged }]
-          : [{ type: 'text' as const, text: ' ' }],
-      }
+        parts: [{ type: 'text' as const, text: merged }],
+      })
+      continue
     }
 
-    return msg
-  })
+    sanitized.push(msg)
+  }
+
+  return sanitized
 }

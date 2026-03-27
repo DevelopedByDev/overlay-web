@@ -30,6 +30,7 @@ const OVERLAY_TOOL_IDS_ACT = new Set<string>([
   'browser_run_task',
   'generate_image',
   'generate_video',
+  'run_daytona_sandbox',
   'list_notes',
   'get_note',
   'create_note',

@@ -62,6 +62,7 @@ export default defineSchema({
       v.literal('image'),
       v.literal('video'),
       v.literal('browser'),
+      v.literal('daytona'),
       v.literal('composio'),
       v.literal('internal'),
     ),
@@ -242,6 +243,8 @@ export default defineSchema({
     // OpenClaw secrets — NEVER exposed outside owning userId
     gatewayToken: v.optional(v.string()),  // 64-char hex — sent to browser on status=ready
     readySecret: v.optional(v.string()),   // 32-char hex — baked into cloud-init, cleared after use
+    computerApiTokenHash: v.optional(v.string()),
+    computerApiTokenIssuedAt: v.optional(v.number()),
 
     // Billing timestamps
     pastDueAt: v.optional(v.number()),     // ms timestamp when past_due started (7-day calc)
@@ -276,12 +279,32 @@ export default defineSchema({
   // Generated images and videos from Chat and Agent sessions.
   outputs: defineTable({
     userId: v.string(),
-    type: v.union(v.literal('image'), v.literal('video')),
+    type: v.union(
+      v.literal('image'),
+      v.literal('video'),
+      v.literal('audio'),
+      v.literal('document'),
+      v.literal('archive'),
+      v.literal('code'),
+      v.literal('text'),
+      v.literal('other'),
+    ),
+    source: v.optional(
+      v.union(
+        v.literal('image_generation'),
+        v.literal('video_generation'),
+        v.literal('sandbox'),
+      ),
+    ),
     status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
     prompt: v.string(),
     modelId: v.string(),
     storageId: v.optional(v.id('_storage')),
     url: v.optional(v.string()),
+    fileName: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    metadata: v.optional(v.any()),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
