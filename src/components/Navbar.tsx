@@ -89,12 +89,12 @@ export function Navbar({ scrollYProgress }: NavbarProps) {
         manifesto
       </Link>
       <a
-        href="https://x.com/dsllwn/status/2015923879668044002"
+        href="https://github.com/DevelopedByDev/overlay-web"
         target="_blank"
         rel="noopener noreferrer"
         className={linkClass}
       >
-        demo
+        github
       </a>
       <Link href="/pricing" className={linkClass}>
         pricing
@@ -171,12 +171,12 @@ export function HeroLinks() {
         manifesto
       </Link>
       <a
-        href="https://x.com/dsllwn/status/2015923879668044002"
+        href="https://github.com/DevelopedByDev/overlay-web"
         target="_blank"
         rel="noopener noreferrer"
         className="hover:text-[#0a0a0a] transition-colors duration-300"
       >
-        demo
+        github
       </a>
       <Link
         href="/pricing"

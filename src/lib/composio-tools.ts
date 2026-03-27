@@ -89,30 +89,42 @@ function withConsistentComposioSession(
 }
 
 async function loadComposioModules(): Promise<{
-  Composio: new (args: { apiKey: string; provider: unknown }) => {
-    create: (entityId: string) => Promise<{ tools: () => Promise<ToolSet> }>
-  }
-  VercelProvider: new () => unknown
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Composio: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  VercelProvider: any
 }> {
-  const coreUrl = pathToFileURL(
-    path.resolve(process.cwd(), '../overlay/node_modules/@composio/core/dist/index.mjs')
-  ).href
-  const vercelUrl = pathToFileURL(
-    path.resolve(process.cwd(), '../overlay/node_modules/@composio/vercel/dist/index.mjs')
-  ).href
-
   try {
-    const coreModule = await import(/* webpackIgnore: true */ coreUrl)
-    const vercelModule = await import(/* webpackIgnore: true */ vercelUrl)
+    const [coreModule, vercelModule] = await Promise.all([
+      import('@composio/core'),
+      import('@composio/vercel'),
+    ])
 
     return {
       Composio: coreModule.Composio,
       VercelProvider: vercelModule.VercelProvider,
     }
-  } catch (error) {
-    throw new Error(
-      `Composio packages are unavailable for overlay-landing: ${error instanceof Error ? error.message : String(error)}`
-    )
+  } catch {
+    const coreUrl = pathToFileURL(
+      path.resolve(process.cwd(), '../overlay/node_modules/@composio/core/dist/index.mjs')
+    ).href
+    const vercelUrl = pathToFileURL(
+      path.resolve(process.cwd(), '../overlay/node_modules/@composio/vercel/dist/index.mjs')
+    ).href
+
+    try {
+      const coreModule = await import(/* webpackIgnore: true */ coreUrl)
+      const vercelModule = await import(/* webpackIgnore: true */ vercelUrl)
+
+      return {
+        Composio: coreModule.Composio,
+        VercelProvider: vercelModule.VercelProvider,
+      }
+    } catch (error) {
+      throw new Error(
+        `Composio packages are unavailable for overlay-landing: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
   }
 }
 

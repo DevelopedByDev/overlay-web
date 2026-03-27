@@ -6,10 +6,18 @@ import { getServerProviderKey } from '@/lib/server-provider-keys'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadComposioSDK(apiKey: string): Promise<any> {
-  const coreUrl = pathToFileURL(
-    path.resolve(process.cwd(), '../overlay/node_modules/@composio/core/dist/index.mjs')
-  ).href
-  const { Composio } = await import(/* webpackIgnore: true */ coreUrl)
+  let ComposioModule: { Composio: new (args: { apiKey: string }) => unknown }
+
+  try {
+    ComposioModule = await import('@composio/core')
+  } catch {
+    const coreUrl = pathToFileURL(
+      path.resolve(process.cwd(), '../overlay/node_modules/@composio/core/dist/index.mjs')
+    ).href
+    ComposioModule = await import(/* webpackIgnore: true */ coreUrl)
+  }
+
+  const { Composio } = ComposioModule
   return new Composio({ apiKey })
 }
 

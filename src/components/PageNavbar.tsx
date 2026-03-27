@@ -32,12 +32,12 @@ export function PageNavbar() {
             manifesto
           </Link>
           <a
-            href="https://x.com/dsllwn/status/2015923879668044002"
+            href="https://github.com/DevelopedByDev/overlay-web"
             target="_blank"
             rel="noopener noreferrer"
             className={linkClass}
           >
-            demo
+            github
           </a>
           <Link href="/pricing" className={linkClass}>
             pricing
