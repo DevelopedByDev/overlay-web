@@ -1346,6 +1346,21 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const fileInputRef = useRef<HTMLInputElement>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    function onInsertBrowserContext(event: Event) {
+      const customEvent = event as CustomEvent<{ text?: string }>
+      const text = customEvent.detail?.text?.trim()
+      if (!text) return
+      setInput((prev) => (prev.trim() ? `${prev.trim()}\n\n${text}` : text))
+      setComposerNotice('Inserted browser context from the Overlay Chrome extension.')
+      textareaRef.current?.focus()
+      window.setTimeout(() => setComposerNotice(null), 5000)
+    }
+
+    window.addEventListener('overlay:insert-browser-context', onInsertBrowserContext)
+    return () => window.removeEventListener('overlay:insert-browser-context', onInsertBrowserContext)
+  }, [])
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
   const wasStreamingRef = useRef(false)

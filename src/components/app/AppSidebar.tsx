@@ -458,7 +458,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
       <div className="hidden md:flex">
         {projectsOpen && <ProjectsSidebar />}
         {toolsOpen && <ToolsSidebar />}
-        {computerOpen && <ComputerSidebar userId={user.id} accessToken={accessToken} />}
+        {computerOpen && <ComputerSidebar />}
       </div>
     </>
   )

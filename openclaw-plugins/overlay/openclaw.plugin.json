@@ -1,0 +1,55 @@
+{
+  "id": "overlay",
+  "name": "Overlay",
+  "description": "Expose Overlay notes, memories, files, outputs, search, and integrations as native OpenClaw tools.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "overlayApiBaseUrl": {
+        "type": "string",
+        "description": "Public base URL for the Overlay web app that serves the computer API routes."
+      },
+      "computerApiToken": {
+        "type": "string",
+        "description": "Scoped Overlay computer API token."
+      },
+      "enabledToolGroups": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "notes",
+            "knowledge",
+            "files",
+            "memories",
+            "outputs",
+            "integrations"
+          ]
+        }
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 120000,
+        "description": "Per-request timeout for Overlay API calls."
+      }
+    }
+  },
+  "uiHints": {
+    "overlayApiBaseUrl": {
+      "label": "Overlay API Base URL",
+      "placeholder": "https://www.getoverlay.io"
+    },
+    "computerApiToken": {
+      "label": "Computer API Token",
+      "sensitive": true
+    },
+    "enabledToolGroups": {
+      "label": "Enabled Tool Groups"
+    },
+    "timeoutMs": {
+      "label": "Request Timeout (ms)"
+    }
+  }
+}

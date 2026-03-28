@@ -27,8 +27,12 @@ const COMPUTER_WORKSPACE_FALLBACK_FILE_NAMES = [
   COMPUTER_WORKSPACE_PRIMARY_MEMORY_FILE_NAME,
 ] as const
 
-/** Bearer + userId from chat tool execution (no browser cookie on internal fetch). */
-export type ComputerToolAuth = { userId: string; accessToken: string }
+/** Auth override for non-browser execution paths. */
+export type ComputerToolAuth = {
+  userId: string
+  accessToken?: string
+  serverSecret?: string
+}
 
 export interface ComputerConnectionInfo {
   gatewayToken: string
@@ -164,7 +168,7 @@ export interface ComputerWorkspaceFileItem {
 }
 
 export interface AuthenticatedComputerContext {
-  accessToken: string
+  accessToken?: string
   serverSecret?: string
   computerId: string
   connection: ComputerConnectionInfo
@@ -193,6 +197,17 @@ export function isComputerOwnedSessionKey(
     sessionKey.startsWith(getComputerSessionKeyPrefix(params.computerId)) ||
     sessionKey === buildLegacyComputerSessionKey(params.userId, params.computerId)
   )
+}
+
+function requireComputerOwnedSessionKey(
+  sessionKey: string | undefined,
+  params: { computerId: string; userId: string },
+): string {
+  const normalized = sessionKey?.trim()
+  if (!normalized || !isComputerOwnedSessionKey(normalized, params)) {
+    throw new Error('Session does not belong to this computer')
+  }
+  return normalized
 }
 
 export function extractTranscriptMessageText(message: OpenClawTranscriptMessage): string {
@@ -257,15 +272,17 @@ export function resolveOverlayModelIdFromGatewayModel(
 export async function getAuthenticatedComputerContextWithToken(params: {
   computerId: string
   userId: string
-  accessToken: string
+  accessToken?: string
+  serverSecret?: string
 }): Promise<AuthenticatedComputerContext> {
-  const { computerId, userId, accessToken } = params
+  const { computerId, userId, accessToken, serverSecret } = params
   const baseConnection = await convex.query<ComputerConnectionInfo | null>(
     'computers:getChatConnection',
     {
       computerId: computerId as Id<'computers'>,
       userId,
       accessToken,
+      serverSecret,
     },
     { throwOnError: true, timeoutMs: 30_000 },
   )
@@ -284,6 +301,7 @@ export async function getAuthenticatedComputerContextWithToken(params: {
       computerId: computerId as Id<'computers'>,
       userId,
       accessToken,
+      serverSecret,
     },
     { throwOnError: true, timeoutMs: 30_000 },
   )
@@ -293,6 +311,7 @@ export async function getAuthenticatedComputerContextWithToken(params: {
     computerId,
     connection,
     computer: computer ?? {},
+    serverSecret,
     userId,
   }
 }
@@ -451,6 +470,10 @@ export async function getComputerSessionMessages(
   const context = toolAuth
     ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
     : await getAuthenticatedComputerContext(params.computerId)
+  const sessionKey = requireComputerOwnedSessionKey(params.sessionKey, {
+    computerId: params.computerId,
+    userId: context.userId,
+  })
   let payload: GatewaySessionGetPayload | null = null
 
   try {
@@ -460,7 +483,7 @@ export async function getComputerSessionMessages(
       gatewayDeviceIdentity: context.connection.gatewayDeviceIdentity,
       method: 'sessions.get',
       params: {
-        key: params.sessionKey,
+        key: sessionKey,
         limit: 400,
       },
     })
@@ -470,7 +493,7 @@ export async function getComputerSessionMessages(
     }
 
     return {
-      sessionKey: params.sessionKey,
+      sessionKey,
       messages: [],
     }
   }
@@ -482,7 +505,7 @@ export async function getComputerSessionMessages(
       : []
 
   return {
-    sessionKey: params.sessionKey,
+    sessionKey,
     messages,
   }
 }
@@ -592,6 +615,10 @@ export async function updateComputerSession(
   const context = toolAuth
     ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
     : await getAuthenticatedComputerContext(params.computerId)
+  const sessionKey = requireComputerOwnedSessionKey(params.sessionKey, {
+    computerId: params.computerId,
+    userId: context.userId,
+  })
   const selectedModelId =
     params.modelId?.trim() ||
     context.computer.chatRequestedModelId?.trim() ||
@@ -607,7 +634,7 @@ export async function updateComputerSession(
         gatewayDeviceIdentity: context.connection.gatewayDeviceIdentity,
         method: 'sessions.patch',
         params: {
-          key: params.sessionKey,
+          key: sessionKey,
           label: params.label.trim() || null,
         },
       })
@@ -623,7 +650,7 @@ export async function updateComputerSession(
         ip: context.connection.hetznerServerIp,
         gatewayToken: context.connection.gatewayToken,
         gatewayDeviceIdentity: context.connection.gatewayDeviceIdentity,
-        sessionKey: params.sessionKey,
+        sessionKey,
         modelId: selectedModelId,
         modelRef: requestedModelRef,
       }).catch(() => null)
@@ -635,7 +662,7 @@ export async function updateComputerSession(
       ip: context.connection.hetznerServerIp,
       gatewayToken: context.connection.gatewayToken,
       gatewayDeviceIdentity: context.connection.gatewayDeviceIdentity,
-      sessionKey: params.sessionKey,
+      sessionKey,
     }).catch(() => null))
 
   const resolvedModelId =
@@ -659,7 +686,7 @@ export async function updateComputerSession(
       userId: context.userId,
       accessToken: context.accessToken,
       serverSecret: context.serverSecret,
-      sessionKey: latestSessionModel?.sessionKey ?? params.sessionKey,
+      sessionKey: latestSessionModel?.sessionKey ?? sessionKey,
       requestedModelId: resolvedModelId,
       requestedModelRef: resolvedModelRef ?? undefined,
       effectiveProvider: latestSessionModel?.provider,
@@ -669,7 +696,7 @@ export async function updateComputerSession(
   )
 
   return {
-    sessionKey: latestSessionModel?.sessionKey ?? params.sessionKey,
+    sessionKey: latestSessionModel?.sessionKey ?? sessionKey,
     requestedModelId: resolvedModelId,
     requestedModelRef: resolvedModelRef,
     effectiveProvider: latestSessionModel?.provider ?? null,
@@ -695,7 +722,10 @@ export async function deleteComputerSession(
   const context = toolAuth
     ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
     : await getAuthenticatedComputerContext(params.computerId)
-  const deletedSessionKey = params.sessionKey.trim()
+  const deletedSessionKey = requireComputerOwnedSessionKey(params.sessionKey, {
+    computerId: params.computerId,
+    userId: context.userId,
+  })
 
   const deleted = await callGatewayRequest<GatewaySessionsDeletePayload>({
     ip: context.connection.hetznerServerIp,
@@ -1036,6 +1066,10 @@ export async function runComputerGatewayCommand(
   const context = toolAuth
     ? await getAuthenticatedComputerContextWithToken({ computerId: params.computerId, ...toolAuth })
     : await getAuthenticatedComputerContext(params.computerId)
+  const sessionKey = requireComputerOwnedSessionKey(params.sessionKey, {
+    computerId: params.computerId,
+    userId: context.userId,
+  })
   const ws = await openGatewaySocket(context.connection.hetznerServerIp)
 
   try {
@@ -1046,7 +1080,7 @@ export async function runComputerGatewayCommand(
     )
     return await runGatewayChatStream(ws, {
       message: params.message,
-      sessionKey: params.sessionKey,
+      sessionKey,
     })
   } finally {
     ws.close()

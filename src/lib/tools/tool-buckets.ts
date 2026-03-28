@@ -1,4 +1,11 @@
-export type ToolCostBucket = 'perplexity' | 'image' | 'video' | 'browser' | 'composio' | 'internal'
+export type ToolCostBucket =
+  | 'perplexity'
+  | 'image'
+  | 'video'
+  | 'browser'
+  | 'daytona'
+  | 'composio'
+  | 'internal'
 
 const INTERNAL_TOOL_IDS = new Set<string>([
   'search_knowledge',
@@ -29,6 +36,7 @@ export function toolCostBucketForId(toolId: string): ToolCostBucket {
   if (toolId === 'generate_image') return 'image'
   if (toolId === 'generate_video') return 'video'
   if (toolId === 'browser_run_task') return 'browser'
+  if (toolId === 'run_daytona_sandbox') return 'daytona'
   if (INTERNAL_TOOL_IDS.has(toolId)) return 'internal'
   return 'composio'
 }
@@ -40,6 +48,7 @@ export function shouldPersistToolInvocation(bucket: ToolCostBucket): boolean {
     bucket === 'image' ||
     bucket === 'video' ||
     bucket === 'browser' ||
+    bucket === 'daytona' ||
     bucket === 'composio'
   )
 }

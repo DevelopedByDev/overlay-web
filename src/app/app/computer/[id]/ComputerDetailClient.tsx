@@ -32,6 +32,30 @@ interface Computer {
   _id: string
   name: string
   status: ComputerStatus
+  updateChannel?: 'stable' | 'canary'
+  desiredReleaseVersion?: string
+  desiredOverlayPluginVersion?: string
+  appliedReleaseVersion?: string
+  previousReleaseVersion?: string
+  updateStatus?:
+    | 'idle'
+    | 'checking'
+    | 'downloading'
+    | 'applying'
+    | 'restarting'
+    | 'verifying'
+    | 'ready'
+    | 'reprovision_required'
+    | 'error'
+  lastUpdateCheckAt?: number
+  lastUpdateStartedAt?: number
+  lastUpdateCompletedAt?: number
+  lastUpdateError?: string
+  reprovisionRequired?: boolean
+  overlayPluginInstalledVersion?: string
+  overlayPluginHealthStatus?: 'unknown' | 'installing' | 'installed' | 'missing' | 'error'
+  overlayPluginLastHealthCheckAt?: number
+  overlayPluginLastError?: string
   provisioningStep?: string
   errorMessage?: string
   hetznerServerIp?: string
@@ -97,6 +121,43 @@ function stepIndex(step?: string): number {
     openclaw_starting: 3,
   }
   return map[step] ?? 0
+}
+
+function isUpdateInProgress(status?: Computer['updateStatus']) {
+  return (
+    status === 'checking' ||
+    status === 'downloading' ||
+    status === 'applying' ||
+    status === 'restarting' ||
+    status === 'verifying'
+  )
+}
+
+function getUpdateStateLabel(computer: Computer | null | undefined): string | null {
+  if (!computer) return null
+  if (computer.reprovisionRequired || computer.updateStatus === 'reprovision_required') {
+    return 'Needs reprovision'
+  }
+  if (computer.updateStatus === 'error') {
+    return 'Update failed'
+  }
+  if (isUpdateInProgress(computer.updateStatus)) {
+    return 'Updating'
+  }
+  if (
+    computer.desiredReleaseVersion &&
+    computer.appliedReleaseVersion &&
+    computer.desiredReleaseVersion !== computer.appliedReleaseVersion
+  ) {
+    return 'Update available'
+  }
+  if (computer.appliedReleaseVersion) {
+    return 'Up to date'
+  }
+  if (computer.desiredReleaseVersion) {
+    return 'Pending first update'
+  }
+  return null
 }
 
 function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> }): string {
@@ -274,6 +335,9 @@ export default function ComputerDetailClient({
   const [hydratedTranscriptKey, setHydratedTranscriptKey] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
   const [isEditingMarkdownFile, setIsEditingMarkdownFile] = useState(false)
+  const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null)
+  const [maintenanceError, setMaintenanceError] = useState<string | null>(null)
+  const [maintenanceAction, setMaintenanceAction] = useState<'check' | 'apply' | 'reprovision' | null>(null)
   const [input, setInput] = useState('')
   const [activeSlashIndex, setActiveSlashIndex] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -409,6 +473,50 @@ export default function ComputerDetailClient({
   const fetchLogsInBackground = useCallback(async () => {
     await fetchComputerPayload({ includeLogs: true, background: true })
   }, [fetchComputerPayload])
+
+  const triggerMaintenanceAction = useCallback(async (
+    action: 'check' | 'apply' | 'reprovision',
+  ) => {
+    setMaintenanceAction(action)
+    setMaintenanceError(null)
+    setMaintenanceMessage(null)
+
+    try {
+      const response = await fetch(`/api/app/computers/${computerId}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; message?: string }
+        | null
+
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to update computer')
+      }
+
+      if (payload?.message) {
+        setMaintenanceMessage(payload.message)
+      } else if (action === 'check') {
+        setMaintenanceMessage('Checked for updates.')
+      } else if (action === 'apply') {
+        setMaintenanceMessage('Software update queued.')
+      } else {
+        setMaintenanceMessage('Reprovision queued.')
+      }
+
+      await fetchComputer()
+      await fetchLogsInBackground()
+    } catch (error) {
+      setMaintenanceError(
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : 'Failed to update computer',
+      )
+    } finally {
+      setMaintenanceAction(null)
+    }
+  }, [computerId, fetchComputer, fetchLogsInBackground])
 
   const loadSessions = useCallback(async () => {
     const response = await fetch(`/api/app/computer-sessions?computerId=${computerId}`)
@@ -624,7 +732,11 @@ export default function ComputerDetailClient({
     if (computer === undefined) return
 
     const intervalMs =
-      computer?.status === 'provisioning' || computer?.status === 'pending_payment' ? 4000 : 20000
+      computer?.status === 'provisioning' ||
+      computer?.status === 'pending_payment' ||
+      isUpdateInProgress(computer?.updateStatus)
+        ? 4000
+        : 20000
 
     const intervalId = window.setInterval(() => {
       void fetchComputerInBackground()
@@ -818,6 +930,14 @@ export default function ComputerDetailClient({
   }, [computer?.pastDueAt, now])
 
   const errorMessage = error ? error.message : null
+  const updateStateLabel = getUpdateStateLabel(computer)
+  const updateAvailable =
+    Boolean(computer?.desiredReleaseVersion) &&
+    Boolean(computer?.appliedReleaseVersion) &&
+    computer?.desiredReleaseVersion !== computer?.appliedReleaseVersion
+  const needsReprovision =
+    Boolean(computer?.reprovisionRequired) || computer?.updateStatus === 'reprovision_required'
+  const updateBusy = isUpdateInProgress(computer?.updateStatus) || maintenanceAction !== null
   const currentModel = AVAILABLE_MODELS.find((model) => model.id === selectedModel)
   const effectiveModelLabel =
     computer?.chatEffectiveProvider && computer?.chatEffectiveModel
@@ -1153,7 +1273,16 @@ export default function ComputerDetailClient({
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#e5e5e5] px-4">
-        <h2 className="min-w-0 truncate text-sm font-medium text-[#0a0a0a]">{headerTitle}</h2>
+        <div className="min-w-0">
+          <h2 className="min-w-0 truncate text-sm font-medium text-[#0a0a0a]">{headerTitle}</h2>
+          {updateStateLabel && (
+            <p className="mt-0.5 text-[11px] text-[#7a7a7a]">
+              {updateStateLabel}
+              {computer.desiredReleaseVersion ? ` · target ${computer.desiredReleaseVersion}` : ''}
+              {computer.appliedReleaseVersion ? ` · current ${computer.appliedReleaseVersion}` : ''}
+            </p>
+          )}
+        </div>
 
         {computer.status === 'ready' && !isWorkspaceFileView && (
           <div className="flex items-center gap-2">
@@ -1227,6 +1356,52 @@ export default function ComputerDetailClient({
           </div>
         )}
       </div>
+
+      {(computer.status === 'ready' || computer.status === 'error') && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#efefef] bg-[#fafafa] px-4 py-2">
+          <button
+            type="button"
+            onClick={() => void triggerMaintenanceAction('check')}
+            disabled={updateBusy}
+            className="rounded-md border border-[#e0e0e0] bg-white px-3 py-1.5 text-xs text-[#333] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+          >
+            {maintenanceAction === 'check' ? 'Checking…' : 'Check for updates'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void triggerMaintenanceAction('apply')}
+            disabled={updateBusy || needsReprovision || (!updateAvailable && !computer.desiredReleaseVersion)}
+            className="rounded-md border border-[#e0e0e0] bg-white px-3 py-1.5 text-xs text-[#333] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+          >
+            {maintenanceAction === 'apply' ? 'Applying…' : 'Apply software update'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void triggerMaintenanceAction('reprovision')}
+            disabled={updateBusy}
+            className="rounded-md border border-[#e0e0e0] bg-white px-3 py-1.5 text-xs text-[#333] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+          >
+            {maintenanceAction === 'reprovision' ? 'Reprovisioning…' : 'Reprovision computer'}
+          </button>
+          {maintenanceMessage && (
+            <span className="text-xs text-[#666]">{maintenanceMessage}</span>
+          )}
+          {maintenanceError && (
+            <span className="text-xs text-[#c0392b]">{maintenanceError}</span>
+          )}
+          {computer.lastUpdateError && !maintenanceError && computer.updateStatus === 'error' && (
+            <span className="text-xs text-[#c0392b]">{computer.lastUpdateError}</span>
+          )}
+          <span className="text-xs text-[#666]">
+            Overlay plugin {computer.overlayPluginHealthStatus ?? 'unknown'}
+            {computer.desiredOverlayPluginVersion ? ` · target ${computer.desiredOverlayPluginVersion}` : ''}
+            {computer.overlayPluginInstalledVersion ? ` · current ${computer.overlayPluginInstalledVersion}` : ''}
+          </span>
+          {computer.overlayPluginLastError && computer.overlayPluginHealthStatus === 'error' && (
+            <span className="text-xs text-[#c0392b]">{computer.overlayPluginLastError}</span>
+          )}
+        </div>
+      )}
 
       {(computer.status === 'pending_payment' || computer.status === 'provisioning') &&
         (computer.status === 'pending_payment' ? (

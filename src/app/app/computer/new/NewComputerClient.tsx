@@ -24,6 +24,7 @@ export default function NewComputerClient({ userId, email, accessToken }: Props)
     if (!name.trim() || isLoading || selected !== 'managed') return
     setIsLoading(true)
     setError(null)
+    let createdComputerId: string | null = null
     try {
       // 1. Create pending computer record in Convex
       const createResponse = await fetch('/api/app/computers', {
@@ -44,6 +45,7 @@ export default function NewComputerClient({ userId, email, accessToken }: Props)
       const computerId = createPayload.id
 
       if (!computerId) throw new Error('Failed to create computer record')
+      createdComputerId = computerId
 
       // 2. Create Stripe Checkout Session
       const checkout = await convex.action<{ sessionId: string; url: string | null }>(
@@ -63,7 +65,28 @@ export default function NewComputerClient({ userId, email, accessToken }: Props)
       // 3. Redirect to Stripe
       window.location.href = checkout.url
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      if (createdComputerId) {
+        try {
+          await fetch(`/api/app/computers/${createdComputerId}`, {
+            method: 'DELETE',
+          })
+        } catch {
+          // Best-effort cleanup for abandoned pending-payment computers.
+        }
+      }
+
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+      if (message.includes('STRIPE_COMPUTER_PRICE_ID')) {
+        setError('Computer checkout is not configured yet. Add STRIPE_COMPUTER_PRICE_ID to the Convex environment and try again.')
+      } else if (
+        message.includes('connection to Stripe') ||
+        message.includes('Request was retried') ||
+        message.includes('Stripe')
+      ) {
+        setError('Stripe is temporarily unavailable. Please try again in a minute.')
+      } else {
+        setError(message)
+      }
       setIsLoading(false)
     }
   }

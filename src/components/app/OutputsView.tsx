@@ -1,21 +1,34 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ImageIcon, Video, Download, RefreshCw, AlertCircle, Clock, Info, X } from 'lucide-react'
+import {
+  AlertCircle,
+  Clock,
+  Download,
+  FileText,
+  ImageIcon,
+  Info,
+  RefreshCw,
+  Video,
+  X,
+} from 'lucide-react'
 
 interface Output {
   _id: string
-  type: 'image' | 'video'
+  type: 'image' | 'video' | 'audio' | 'document' | 'archive' | 'code' | 'text' | 'other'
   status: 'pending' | 'completed' | 'failed'
   prompt: string
   modelId: string
   url?: string
+  fileName?: string
+  mimeType?: string
+  sizeBytes?: number
   errorMessage?: string
   createdAt: number
   completedAt?: number
 }
 
-type FilterType = 'all' | 'image' | 'video'
+type FilterType = 'all' | 'image' | 'video' | 'files'
 
 function timeAgo(ts: number): string {
   const diff = Math.floor((Date.now() - ts) / 1000)
@@ -23,6 +36,17 @@ function timeAgo(ts: number): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   return `${Math.floor(diff / 86400)}d ago`
+}
+
+function formatBytes(value?: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 'Unknown'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function isMedia(output: Output): boolean {
+  return output.type === 'image' || output.type === 'video'
 }
 
 export default function OutputsView() {
@@ -38,10 +62,12 @@ export default function OutputsView() {
     setError(null)
     try {
       const params = new URLSearchParams({ limit: '100' })
-      const t = type ?? filter
-      if (t !== 'all') params.set('type', t)
+      const nextType = type ?? filter
+      if (nextType === 'image' || nextType === 'video') {
+        params.set('type', nextType)
+      }
       const res = await fetch(`/api/app/outputs?${params}`)
-      if (!res.ok) throw new Error('Failed to load')
+      if (!res.ok) throw new Error('Failed to load outputs')
       setOutputs(await res.json())
     } catch {
       setError('Failed to load outputs.')
@@ -50,42 +76,46 @@ export default function OutputsView() {
     }
   }, [filter])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+  }, [load])
 
-  function handleFilterChange(f: FilterType) {
-    setFilter(f)
-    void load(f)
+  function handleFilterChange(nextFilter: FilterType) {
+    setFilter(nextFilter)
+    void load(nextFilter)
   }
 
-  const filtered = outputs.filter((o) => filter === 'all' || o.type === filter)
+  const filtered = outputs.filter((output) => {
+    if (filter === 'all') return true
+    if (filter === 'files') return !isMedia(output)
+    return output.type === filter
+  })
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
+    <div className="flex h-full flex-col">
       <div className="flex min-h-16 shrink-0 flex-col gap-3 border-b border-[#e5e5e5] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-0">
         <div className="flex min-w-0 items-center gap-3">
           <h1 className="text-base font-medium text-[#0a0a0a] sm:text-sm">Outputs</h1>
           <span className="shrink-0 text-xs text-[#aaa]">{filtered.length} items</span>
         </div>
         <div className="flex items-center justify-between gap-2 sm:justify-end">
-          {/* Filter tabs */}
           <div className="flex min-w-0 flex-1 items-center justify-center rounded-lg bg-[#f0f0f0] p-0.5 sm:flex-initial sm:justify-start">
-            {(['all', 'image', 'video'] as FilterType[]).map((f) => (
+            {(['all', 'image', 'video', 'files'] as FilterType[]).map((value) => (
               <button
-                key={f}
-                onClick={() => handleFilterChange(f)}
+                key={value}
+                onClick={() => handleFilterChange(value)}
                 className={`flex-1 rounded-md px-3 py-1.5 text-xs capitalize transition-colors sm:flex-none sm:py-1 ${
-                  filter === f
+                  filter === value
                     ? 'bg-white font-medium text-[#0a0a0a] shadow-sm'
                     : 'text-[#888] hover:text-[#525252]'
                 }`}
               >
-                {f}
+                {value}
               </button>
             ))}
           </div>
           <button
-            onClick={() => load()}
+            onClick={() => void load()}
             disabled={loading}
             className="shrink-0 rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f0f0f0] hover:text-[#525252] disabled:opacity-40"
           >
@@ -94,33 +124,35 @@ export default function OutputsView() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
         {loading && outputs.length === 0 && (
-          <div className="flex items-center justify-center h-48 text-[#aaa] text-sm gap-2">
+          <div className="flex h-48 items-center justify-center gap-2 text-sm text-[#aaa]">
             <RefreshCw size={14} className="animate-spin" />
             Loading outputs…
           </div>
         )}
 
         {error && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 text-red-600 text-sm">
+          <div className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
             <AlertCircle size={14} />
             {error}
           </div>
         )}
 
         {!loading && !error && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
-            {filter === 'video'
-              ? <Video size={32} className="text-[#d0d0d0]" />
-              : <ImageIcon size={32} className="text-[#d0d0d0]" />}
-            <p className="text-sm text-[#888]">No {filter === 'all' ? '' : filter + ' '}outputs yet</p>
-            <p className="text-xs text-[#aaa]">Use the Image or Video mode in chat to generate content</p>
+          <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+            {filter === 'video' ? (
+              <Video size={32} className="text-[#d0d0d0]" />
+            ) : filter === 'files' ? (
+              <FileText size={32} className="text-[#d0d0d0]" />
+            ) : (
+              <ImageIcon size={32} className="text-[#d0d0d0]" />
+            )}
+            <p className="text-sm text-[#888]">No {filter === 'all' ? '' : `${filter} `}outputs yet</p>
+            <p className="text-xs text-[#aaa]">Generated media and computer-created files will appear here.</p>
           </div>
         )}
 
-        {/* Pinterest-style masonry grid */}
         {filtered.length > 0 && (
           <div className="mx-auto w-full max-w-[1440px] columns-1 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
             {filtered.map((output) => (
@@ -135,15 +167,14 @@ export default function OutputsView() {
         )}
       </div>
 
-      {/* Lightbox */}
       {lightbox && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
           onClick={() => setLightbox(null)}
         >
           <div
-            className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            className="relative max-h-[90vh] max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
           >
             {lightbox.type === 'image' && lightbox.url && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -152,7 +183,15 @@ export default function OutputsView() {
             {lightbox.type === 'video' && lightbox.url && (
               <video src={lightbox.url} controls className="max-h-[80vh] max-w-full" />
             )}
-            <div className="p-4 space-y-1">
+            {!isMedia(lightbox) && (
+              <div className="flex h-80 w-[28rem] max-w-full items-center justify-center bg-[#fafafa] px-8 text-center">
+                <div>
+                  <p className="text-sm font-medium text-[#0a0a0a]">{lightbox.fileName || 'Generated file'}</p>
+                  <p className="mt-2 text-xs text-[#888]">{lightbox.mimeType || lightbox.type}</p>
+                </div>
+              </div>
+            )}
+            <div className="space-y-1 p-4">
               <div className="flex items-start gap-3">
                 <p className="min-w-0 flex-1 text-sm text-[#0a0a0a] line-clamp-2">{lightbox.prompt}</p>
                 <button
@@ -166,12 +205,12 @@ export default function OutputsView() {
               </div>
               <div className="flex items-center gap-3 text-xs text-[#888]">
                 <span>{lightbox.modelId}</span>
-                <span><Clock size={10} className="inline mr-0.5" />{timeAgo(lightbox.createdAt)}</span>
+                <span><Clock size={10} className="mr-0.5 inline" />{timeAgo(lightbox.createdAt)}</span>
                 {lightbox.url && (
                   <a
                     href={lightbox.url}
-                    download={lightbox.type === 'image' ? 'generated.png' : 'generated.mp4'}
-                    className="flex items-center gap-1 hover:text-[#525252] transition-colors"
+                    download={lightbox.fileName || (lightbox.type === 'image' ? 'generated.png' : lightbox.type === 'video' ? 'generated.mp4' : 'generated-file')}
+                    className="flex items-center gap-1 transition-colors hover:text-[#525252]"
                   >
                     <Download size={10} /> Download
                   </a>
@@ -186,12 +225,12 @@ export default function OutputsView() {
         <div className="fixed inset-0 z-[60] flex justify-end bg-black/25" onClick={() => setDetailsOutput(null)}>
           <div
             className="h-full w-full max-w-md overflow-y-auto border-l border-[#e5e5e5] bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[#e5e5e5] px-5 py-4">
               <div>
                 <h2 className="text-sm font-medium text-[#0a0a0a]">Output details</h2>
-                <p className="mt-0.5 text-xs text-[#888]">{detailsOutput.type} generation</p>
+                <p className="mt-0.5 text-xs text-[#888]">{detailsOutput.type} output</p>
               </div>
               <button
                 type="button"
@@ -212,6 +251,9 @@ export default function OutputsView() {
                 <DetailItem label="Model" value={detailsOutput.modelId} />
                 <DetailItem label="Status" value={detailsOutput.status} />
                 <DetailItem label="Type" value={detailsOutput.type} />
+                <DetailItem label="File name" value={detailsOutput.fileName || 'N/A'} />
+                <DetailItem label="MIME type" value={detailsOutput.mimeType || 'N/A'} />
+                <DetailItem label="Size" value={formatBytes(detailsOutput.sizeBytes)} />
                 <DetailItem label="Created" value={new Date(detailsOutput.createdAt).toLocaleString()} />
                 <DetailItem label="Completed" value={detailsOutput.completedAt ? new Date(detailsOutput.completedAt).toLocaleString() : 'Not completed'} />
                 <DetailItem label="Output ID" value={detailsOutput._id} />
@@ -228,7 +270,7 @@ export default function OutputsView() {
                 <div className="flex items-center justify-end">
                   <a
                     href={detailsOutput.url}
-                    download={detailsOutput.type === 'image' ? 'generated.png' : 'generated.mp4'}
+                    download={detailsOutput.fileName || (detailsOutput.type === 'image' ? 'generated.png' : detailsOutput.type === 'video' ? 'generated.mp4' : 'generated-file')}
                     className="inline-flex items-center gap-1.5 rounded-md bg-[#0a0a0a] px-3 py-2 text-xs font-medium text-[#fafafa] transition-colors hover:bg-[#222]"
                   >
                     <Download size={12} />
@@ -253,70 +295,89 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   )
 }
 
-function OutputCard({ output, onExpand, onDetails }: { output: Output; onExpand: () => void; onDetails: () => void }) {
-  const isCompleted = output.status === 'completed'
-  const isFailed = output.status === 'failed'
-  const isPending = output.status === 'pending'
+function OutputCard({
+  output,
+  onExpand,
+  onDetails,
+}: {
+  output: Output
+  onExpand: () => void
+  onDetails: () => void
+}) {
+  const completed = output.status === 'completed'
+  const failed = output.status === 'failed'
+  const pending = output.status === 'pending'
+  const media = isMedia(output)
 
   return (
     <div
-      className="mb-4 block w-full break-inside-avoid rounded-xl overflow-hidden border border-[#e5e5e5] bg-white group cursor-pointer hover:shadow-md transition-shadow"
+      className="group mb-4 block w-full cursor-pointer break-inside-avoid overflow-hidden rounded-xl border border-[#e5e5e5] bg-white transition-shadow hover:shadow-md"
       style={{ breakInside: 'avoid' }}
-      onClick={isCompleted ? onExpand : undefined}>
-      {/* Media area */}
+      onClick={completed && media ? onExpand : undefined}
+    >
       <div className="relative bg-[#f5f5f5]">
-        {isCompleted && output.url && output.type === 'image' && (
+        {completed && output.url && output.type === 'image' && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={output.url} alt={output.prompt} className="block w-full h-auto max-h-[22rem] rounded-t-xl object-cover" />
+          <img src={output.url} alt={output.prompt} className="block h-auto max-h-[22rem] w-full rounded-t-xl object-cover" />
         )}
-        {isCompleted && output.url && output.type === 'video' && (
-          <video src={output.url} className="block w-full h-auto max-h-[22rem] rounded-t-xl object-cover" muted playsInline preload="metadata" />
+        {completed && output.url && output.type === 'video' && (
+          <video src={output.url} className="block h-auto max-h-[22rem] w-full rounded-t-xl object-cover" muted playsInline preload="metadata" />
         )}
-        {isPending && (
-          <div className="flex items-center justify-center h-32">
-            <div className="w-6 h-6 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
+        {completed && !media && (
+          <div className="flex h-32 items-center justify-center">
+            <div className="px-5 text-center">
+              <FileText size={28} className="mx-auto text-[#b0b0b0]" />
+              <p className="mt-2 truncate text-xs text-[#666]">{output.fileName || 'Generated file'}</p>
+            </div>
           </div>
         )}
-        {isFailed && (
-          <div className="flex flex-col items-center justify-center h-32 gap-1.5 text-red-400">
+        {pending && (
+          <div className="flex h-32 items-center justify-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#e0e0e0] border-t-[#525252]" />
+          </div>
+        )}
+        {failed && (
+          <div className="flex h-32 flex-col items-center justify-center gap-1.5 text-red-400">
             <AlertCircle size={20} />
             <span className="text-xs">Failed</span>
           </div>
         )}
-        {/* Hover overlay */}
-        {isCompleted && output.url && (
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+        {completed && output.url && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
             <a
               href={output.url}
-              download={output.type === 'image' ? 'generated.png' : 'generated.mp4'}
-              onClick={(e) => e.stopPropagation()}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-white/90 rounded-full hover:bg-white"
+              download={output.fileName || (output.type === 'image' ? 'generated.png' : output.type === 'video' ? 'generated.mp4' : 'generated-file')}
+              onClick={(event) => event.stopPropagation()}
+              className="rounded-full bg-white/90 p-2 opacity-0 transition-opacity hover:bg-white group-hover:opacity-100"
             >
               <Download size={14} className="text-[#0a0a0a]" />
             </a>
           </div>
         )}
-        {/* Type badge */}
-        <div className="absolute top-2 left-2">
-          <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-            output.type === 'image' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
+        <div className="absolute left-2 top-2">
+          <span className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+            output.type === 'image'
+              ? 'bg-purple-100 text-purple-600'
+              : output.type === 'video'
+                ? 'bg-blue-100 text-blue-600'
+                : 'bg-[#eaeaea] text-[#666]'
           }`}>
-            {output.type === 'image' ? <ImageIcon size={9} /> : <Video size={9} />}
+            {output.type === 'image' ? <ImageIcon size={9} /> : output.type === 'video' ? <Video size={9} /> : <FileText size={9} />}
             {output.type}
           </span>
         </div>
       </div>
-      {/* Caption */}
       <div className="px-3 py-2">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-[#525252] line-clamp-2 leading-relaxed">{output.prompt}</p>
+            <p className="line-clamp-2 text-xs leading-relaxed text-[#525252]">{output.prompt}</p>
+            {output.fileName && <p className="mt-1 truncate text-[10px] text-[#888]">{output.fileName}</p>}
             <p className="mt-1 text-[10px] text-[#aaa]">{timeAgo(output.createdAt)}</p>
           </div>
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation()
+            onClick={(event) => {
+              event.stopPropagation()
               onDetails()
             }}
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#e5e5e5] px-2 py-1 text-[11px] font-medium text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
@@ -329,3 +390,4 @@ function OutputCard({ output, onExpand, onDetails }: { output: Output; onExpand:
     </div>
   )
 }
+

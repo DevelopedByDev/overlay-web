@@ -62,6 +62,7 @@ export default defineSchema({
       v.literal('image'),
       v.literal('video'),
       v.literal('browser'),
+      v.literal('daytona'),
       v.literal('composio'),
       v.literal('internal'),
     ),
@@ -220,6 +221,37 @@ export default defineSchema({
     name: v.string(),
     setupType: v.literal('managed'),
     region: v.union(v.literal('eu-central'), v.literal('us-east')),
+    updateChannel: v.optional(v.union(v.literal('stable'), v.literal('canary'))),
+    desiredReleaseVersion: v.optional(v.string()),
+    desiredOverlayPluginVersion: v.optional(v.string()),
+    appliedReleaseVersion: v.optional(v.string()),
+    previousReleaseVersion: v.optional(v.string()),
+    updateStatus: v.optional(v.union(
+      v.literal('idle'),
+      v.literal('checking'),
+      v.literal('downloading'),
+      v.literal('applying'),
+      v.literal('restarting'),
+      v.literal('verifying'),
+      v.literal('ready'),
+      v.literal('reprovision_required'),
+      v.literal('error'),
+    )),
+    lastUpdateCheckAt: v.optional(v.number()),
+    lastUpdateStartedAt: v.optional(v.number()),
+    lastUpdateCompletedAt: v.optional(v.number()),
+    lastUpdateError: v.optional(v.string()),
+    reprovisionRequired: v.optional(v.boolean()),
+    overlayPluginInstalledVersion: v.optional(v.string()),
+    overlayPluginHealthStatus: v.optional(v.union(
+      v.literal('unknown'),
+      v.literal('installing'),
+      v.literal('installed'),
+      v.literal('missing'),
+      v.literal('error'),
+    )),
+    overlayPluginLastHealthCheckAt: v.optional(v.number()),
+    overlayPluginLastError: v.optional(v.string()),
 
     // FSM status
     status: v.union(
@@ -242,6 +274,11 @@ export default defineSchema({
     // OpenClaw secrets — NEVER exposed outside owning userId
     gatewayToken: v.optional(v.string()),  // 64-char hex — sent to browser on status=ready
     readySecret: v.optional(v.string()),   // 32-char hex — baked into cloud-init, cleared after use
+    computerApiToken: v.optional(v.string()),
+    computerApiTokenHash: v.optional(v.string()),
+    computerApiTokenIssuedAt: v.optional(v.number()),
+    computerApiTokenLastUsedAt: v.optional(v.number()),
+    computerApiTokenVersion: v.optional(v.number()),
 
     // Billing timestamps
     pastDueAt: v.optional(v.number()),     // ms timestamp when past_due started (7-day calc)
@@ -262,7 +299,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_stripeSubscriptionId', ['stripeSubscriptionId']),
+    .index('by_stripeSubscriptionId', ['stripeSubscriptionId'])
+    .index('by_computerApiTokenHash', ['computerApiTokenHash']),
 
   computerEvents: defineTable({
     computerId: v.id('computers'),
@@ -273,15 +311,45 @@ export default defineSchema({
     createdAt: v.number(),
   }).index('by_computerId_createdAt', ['computerId', 'createdAt']),
 
+  computerReleases: defineTable({
+    version: v.string(),
+    channel: v.union(v.literal('stable'), v.literal('canary')),
+    openclawImage: v.string(),
+    toolBundleVersion: v.string(),
+    overlayPluginVersion: v.optional(v.string()),
+    configVersion: v.string(),
+    updateStrategy: v.union(v.literal('in_place'), v.literal('reprovision_required')),
+    minUpdaterVersion: v.string(),
+    manifestJson: v.string(),
+    createdAt: v.number(),
+    rolledBackFromVersion: v.optional(v.string()),
+  })
+    .index('by_version', ['version'])
+    .index('by_createdAt', ['createdAt']),
+
   // Generated images and videos from Chat and Agent sessions.
   outputs: defineTable({
     userId: v.string(),
-    type: v.union(v.literal('image'), v.literal('video')),
+    type: v.union(
+      v.literal('image'),
+      v.literal('video'),
+      v.literal('audio'),
+      v.literal('document'),
+      v.literal('archive'),
+      v.literal('code'),
+      v.literal('text'),
+      v.literal('other'),
+    ),
     status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
     prompt: v.string(),
     modelId: v.string(),
+    source: v.optional(v.union(v.literal('image_generation'), v.literal('video_generation'), v.literal('sandbox'), v.literal('computer'))),
     storageId: v.optional(v.id('_storage')),
     url: v.optional(v.string()),
+    fileName: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    metadata: v.optional(v.any()),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),

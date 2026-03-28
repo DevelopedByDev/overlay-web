@@ -4,13 +4,23 @@ import {
 } from './_generated/server'
 import { api, internal, components } from './_generated/api'
 import { StripeSubscriptions } from '@convex-dev/stripe'
-import { requireAccessToken, validateServerSecret } from './lib/auth'
+import { requireAccessToken, sha256Hex, validateServerSecret } from './lib/auth'
 import {
   redactIdentifierForLog,
   redactIpForLog,
   summarizeErrorForLog,
   summarizeTextForLog,
 } from './lib/logging'
+import {
+  buildComputerReleaseManifest,
+  DEFAULT_COMPUTER_UPDATER_POLL_SECONDS,
+  DEFAULT_COMPUTER_UPDATE_CHANNEL,
+  DEFAULT_COMPUTER_UPDATER_VERSION,
+  parseComputerReleaseManifest,
+} from '../src/lib/computer-release'
+import {
+  OPENCLAW_OVERLAY_PLUGIN_ID,
+} from '../src/lib/openclaw-overlay-plugin-bundle'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getModel } from '../src/lib/models'
 import { calculateTokenCost } from '../src/lib/model-pricing'
 import type { Id } from './_generated/dataModel'
@@ -25,6 +35,10 @@ function generateGatewayToken(): string {
 
 function generateReadySecret(): string {
   return crypto.randomUUID().replace(/-/g, '')
+}
+
+function generateComputerApiToken(): string {
+  return `ocpt_${crypto.randomUUID().replace(/-/g, '')}${crypto.randomUUID().replace(/-/g, '')}`
 }
 
 function getRequiredHetznerSshKeyId(): number {
@@ -70,6 +84,28 @@ async function authorizeUserAccess(params: {
   await requireAccessToken(params.accessToken ?? '', params.userId)
 }
 
+async function assertComputerPublicApiSupportsPluginBundle(baseUrl: string) {
+  const url = `${baseUrl.replace(/\/+$/, '')}/api/computer/v1/plugin/bundle`
+  let response: Response
+
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch (error) {
+    throw new Error(
+      `COMPUTER_PUBLIC_API_BASE_URL is unreachable for managed computer bootstrap: ${summarizeUrlForLog(url)} (${summarizeErrorForLog(error)}).`,
+    )
+  }
+
+  if (response.status === 404) {
+    throw new Error(
+      `COMPUTER_PUBLIC_API_BASE_URL does not serve /api/computer/v1/plugin/bundle: ${summarizeUrlForLog(url)}. Deploy the current web app or point the env var at a reachable deployment that includes the machine plugin routes.`,
+    )
+  }
+}
+
 function summarizeUrlForLog(value: string): string {
   try {
     const url = new URL(value)
@@ -99,6 +135,171 @@ function summarizeToolOutputForLog(output: unknown): string {
   }
 
   return typeof output
+}
+
+type ComputerUpdateChannel = 'stable' | 'canary'
+type ComputerReleaseUpdateStrategy = 'in_place' | 'reprovision_required'
+type ComputerUpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'applying'
+  | 'restarting'
+  | 'verifying'
+  | 'ready'
+  | 'reprovision_required'
+  | 'error'
+
+type ComputerReleaseRecord = {
+  _id: Id<'computerReleases'>
+  version: string
+  channel: ComputerUpdateChannel
+  openclawImage: string
+  toolBundleVersion: string
+  overlayPluginVersion?: string
+  configVersion: string
+  updateStrategy: ComputerReleaseUpdateStrategy
+  minUpdaterVersion: string
+  manifestJson: string
+  createdAt: number
+  rolledBackFromVersion?: string
+}
+
+type ReleaseVersionIndexQuery = {
+  eq: (field: 'version', value: string) => unknown
+}
+
+type ReleaseDbAccessor = {
+  query: (table: 'computerReleases') => {
+    withIndex: {
+      (
+        index: 'by_version',
+        builder: (query: ReleaseVersionIndexQuery) => unknown,
+      ): {
+        first: () => Promise<ComputerReleaseRecord | null>
+      }
+      (
+        index: 'by_createdAt',
+      ): {
+        order: (direction: 'asc' | 'desc') => {
+          collect: () => Promise<ComputerReleaseRecord[]>
+        }
+      }
+    }
+  }
+  insert: (
+    table: 'computerReleases',
+    value: Omit<ComputerReleaseRecord, '_id'>,
+  ) => Promise<Id<'computerReleases'>>
+}
+
+function isReleaseAvailableToChannel(
+  releaseChannel: ComputerUpdateChannel,
+  computerChannel: ComputerUpdateChannel,
+): boolean {
+  if (computerChannel === 'canary') {
+    return releaseChannel === 'canary' || releaseChannel === 'stable'
+  }
+  return releaseChannel === 'stable'
+}
+
+function withNormalizedRelease<T extends Omit<ComputerReleaseRecord, 'overlayPluginVersion'> & { overlayPluginVersion?: string }>(
+  release: T,
+): T & { overlayPluginVersion: string } {
+  const manifest = parseComputerReleaseManifest(release.manifestJson)
+  return {
+    ...release,
+    overlayPluginVersion: release.overlayPluginVersion?.trim() || manifest.overlayPluginVersion,
+  }
+}
+
+function resolveOverlayPluginVersion(release: { overlayPluginVersion?: string; manifestJson: string }): string {
+  return release.overlayPluginVersion?.trim() || parseComputerReleaseManifest(release.manifestJson).overlayPluginVersion
+}
+
+function sanitizeComputerRecord<T extends Record<string, unknown>>(computer: T): T {
+  return {
+    ...computer,
+    gatewayToken: undefined,
+    readySecret: undefined,
+    computerApiToken: undefined,
+    computerApiTokenHash: undefined,
+  }
+}
+
+async function ensureDefaultStableReleaseInDb(ctx: { db: unknown }) {
+  const db = ctx.db as ReleaseDbAccessor
+  const existing = await db
+    .query('computerReleases')
+    .withIndex('by_version', (q) => q.eq('version', buildComputerReleaseManifest().version))
+    .first()
+
+  if (existing) {
+    return withNormalizedRelease(existing as ComputerReleaseRecord)
+  }
+
+  const manifest = buildComputerReleaseManifest()
+  const createdAt = Date.now()
+  const releaseId = await db.insert('computerReleases', {
+    version: manifest.version,
+    channel: manifest.channel,
+    openclawImage: manifest.openclawImage,
+    toolBundleVersion: manifest.toolBundleVersion,
+    overlayPluginVersion: manifest.overlayPluginVersion,
+    configVersion: manifest.configVersion,
+    updateStrategy: manifest.updateStrategy,
+    minUpdaterVersion: manifest.minUpdaterVersion,
+    manifestJson: JSON.stringify(manifest),
+    createdAt,
+  })
+
+  return withNormalizedRelease({
+    _id: releaseId,
+    version: manifest.version,
+    channel: manifest.channel,
+    openclawImage: manifest.openclawImage,
+    toolBundleVersion: manifest.toolBundleVersion,
+    overlayPluginVersion: manifest.overlayPluginVersion,
+    configVersion: manifest.configVersion,
+    updateStrategy: manifest.updateStrategy,
+    minUpdaterVersion: manifest.minUpdaterVersion,
+    manifestJson: JSON.stringify(manifest),
+    createdAt,
+  } satisfies ComputerReleaseRecord)
+}
+
+function buildDefaultReleaseRecord(): Omit<ComputerReleaseRecord, '_id'> {
+  const manifest = buildComputerReleaseManifest()
+  return {
+    version: manifest.version,
+    channel: manifest.channel,
+    openclawImage: manifest.openclawImage,
+    toolBundleVersion: manifest.toolBundleVersion,
+    overlayPluginVersion: manifest.overlayPluginVersion,
+    configVersion: manifest.configVersion,
+    updateStrategy: manifest.updateStrategy,
+    minUpdaterVersion: manifest.minUpdaterVersion,
+    manifestJson: JSON.stringify(manifest),
+    createdAt: Date.now(),
+  }
+}
+
+async function getLatestReleaseForChannelFromDb(
+  ctx: { db: unknown },
+  channel: ComputerUpdateChannel,
+) {
+  const db = ctx.db as ReleaseDbAccessor
+  const releases = await db
+    .query('computerReleases')
+    .withIndex('by_createdAt')
+    .order('desc')
+    .collect()
+
+  const available = releases.find((release: ComputerReleaseRecord) =>
+    isReleaseAvailableToChannel(release.channel, channel),
+  )
+
+  return available ? withNormalizedRelease(available as ComputerReleaseRecord) : null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,16 +341,30 @@ export const create = mutation({
     }
     const gatewayToken = generateGatewayToken()
     const readySecret = generateReadySecret()
+    const computerApiToken = generateComputerApiToken()
+    const computerApiTokenHash = await sha256Hex(computerApiToken)
+    const defaultRelease = await ensureDefaultStableReleaseInDb(ctx)
+    const now = Date.now()
     const id = await ctx.db.insert('computers', {
       userId: args.userId,
       name: trimmedName,
       setupType: 'managed',
       region: args.region,
+      updateChannel: DEFAULT_COMPUTER_UPDATE_CHANNEL,
+      desiredReleaseVersion: defaultRelease.version,
+      desiredOverlayPluginVersion: resolveOverlayPluginVersion(defaultRelease),
+      updateStatus: 'idle',
+      reprovisionRequired: false,
+      overlayPluginHealthStatus: 'unknown',
       status: 'pending_payment',
       gatewayToken,
       readySecret,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      computerApiToken,
+      computerApiTokenHash,
+      computerApiTokenIssuedAt: now,
+      computerApiTokenVersion: 1,
+      createdAt: now,
+      updatedAt: now,
     })
     console.log(`${TAG} create — SUCCESS: computerId=${redactIdentifierForLog(id)} status=pending_payment`)
     return id
@@ -210,7 +425,9 @@ export const beginProvisioning: ReturnType<typeof internalMutation> = internalMu
     if (!computer) {
       throw new Error('Computer not found')
     }
-    if (computer.status !== 'pending_payment') {
+    const isBootstrapReprovision =
+      computer.status === 'provisioning' && computer.provisioningStep === 'creating_server'
+    if (computer.status !== 'pending_payment' && !isBootstrapReprovision) {
       console.log(`${TAG} beginProvisioning — SKIP status=${computer.status}`)
       return false
     }
@@ -258,8 +475,10 @@ export const setReady = internalMutation({
     }
     await ctx.db.patch(args.computerId, {
       status: 'ready',
+      updateStatus: computer.appliedReleaseVersion ? 'ready' : computer.updateStatus ?? 'idle',
       readySecret: undefined,
       provisioningStep: undefined,
+      errorMessage: undefined,
       updatedAt: Date.now(),
     })
     console.log(
@@ -276,7 +495,9 @@ export const setError = internalMutation({
     )
     await ctx.db.patch(args.computerId, {
       status: 'error',
+      updateStatus: 'error',
       errorMessage: args.message,
+      lastUpdateError: args.message,
       updatedAt: Date.now(),
     })
   },
@@ -298,6 +519,15 @@ export const resetForRepair = internalMutation({
     const oldHetznerServerId = computer.hetznerServerId
     const oldHetznerFirewallId = computer.hetznerFirewallId
 
+    const nextComputerApiToken = generateComputerApiToken()
+    const nextComputerApiTokenHash = await sha256Hex(nextComputerApiToken)
+    const nextDesiredRelease =
+      (await getLatestReleaseForChannelFromDb(
+        ctx,
+        (computer.updateChannel as ComputerUpdateChannel | undefined) ?? DEFAULT_COMPUTER_UPDATE_CHANNEL,
+      )) ??
+      (await ensureDefaultStableReleaseInDb(ctx))
+
     await ctx.db.patch(args.computerId, {
       status: 'provisioning',
       provisioningStep: 'creating_server',
@@ -307,6 +537,25 @@ export const resetForRepair = internalMutation({
       hetznerFirewallId: undefined,
       gatewayToken: generateGatewayToken(),
       readySecret: generateReadySecret(),
+      computerApiToken: nextComputerApiToken,
+      computerApiTokenHash: nextComputerApiTokenHash,
+      computerApiTokenIssuedAt: Date.now(),
+      computerApiTokenLastUsedAt: undefined,
+      computerApiTokenVersion: (computer.computerApiTokenVersion ?? 1) + 1,
+      desiredReleaseVersion: nextDesiredRelease.version,
+      desiredOverlayPluginVersion: resolveOverlayPluginVersion(nextDesiredRelease),
+      previousReleaseVersion: computer.appliedReleaseVersion,
+      appliedReleaseVersion: undefined,
+      updateStatus: 'idle',
+      lastUpdateError: undefined,
+      overlayPluginInstalledVersion: undefined,
+      overlayPluginHealthStatus: 'unknown',
+      overlayPluginLastHealthCheckAt: undefined,
+      overlayPluginLastError: undefined,
+      lastUpdateCheckAt: undefined,
+      lastUpdateStartedAt: undefined,
+      lastUpdateCompletedAt: undefined,
+      reprovisionRequired: false,
       chatSessionKey: undefined,
       chatRequestedModelRef: undefined,
       chatEffectiveModel: undefined,
@@ -348,6 +597,12 @@ export const markDeleted = internalMutation({
       status: 'deleted',
       gatewayToken: undefined,
       readySecret: undefined,
+      computerApiToken: undefined,
+      computerApiTokenHash: undefined,
+      computerApiTokenIssuedAt: undefined,
+      computerApiTokenLastUsedAt: undefined,
+      computerApiTokenVersion: undefined,
+      reprovisionRequired: false,
       updatedAt: Date.now(),
     })
     console.log(`${TAG} markDeleted — DONE secrets cleared`)
@@ -377,6 +632,38 @@ export const logEvent = internalMutation({
   },
 })
 
+export const patchUpdateTargetState = internalMutation({
+  args: {
+    computerId: v.id('computers'),
+    desiredReleaseVersion: v.string(),
+    desiredOverlayPluginVersion: v.string(),
+    updateStatus: v.union(
+      v.literal('idle'),
+      v.literal('checking'),
+      v.literal('downloading'),
+      v.literal('applying'),
+      v.literal('restarting'),
+      v.literal('verifying'),
+      v.literal('ready'),
+      v.literal('reprovision_required'),
+      v.literal('error'),
+    ),
+    reprovisionRequired: v.boolean(),
+    lastUpdateError: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.computerId, {
+      desiredReleaseVersion: args.desiredReleaseVersion,
+      desiredOverlayPluginVersion: args.desiredOverlayPluginVersion,
+      updateStatus: args.updateStatus,
+      reprovisionRequired: args.reprovisionRequired,
+      lastUpdateError: args.lastUpdateError,
+      lastUpdateCheckAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+  },
+})
+
 // ─────────────────────────────────────────────────────────────────────────────
 // QUERIES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -396,7 +683,7 @@ export const get = query({
     }
     const computer = await ctx.db.get(args.computerId)
     if (!computer || computer.userId !== args.userId) return null
-    return { ...computer, gatewayToken: undefined, readySecret: undefined }
+    return sanitizeComputerRecord(computer)
   },
 })
 
@@ -449,18 +736,23 @@ export const repairComputerInstance = action({
   args: {
     computerId: v.id('computers'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
   },
   returns: v.object({
     queued: v.boolean(),
     status: v.string(),
   }),
-  handler: async (ctx, { computerId, userId, accessToken }) => {
+  handler: async (ctx, { computerId, userId, accessToken, serverSecret }) => {
     console.warn(
       `${TAG} repairComputerInstance — START computerId=${redactIdentifierForLog(computerId)}`
     )
 
-    await requireAccessToken(accessToken, userId)
+    await authorizeUserAccess({
+      accessToken,
+      serverSecret,
+      userId,
+    })
 
     const computer = await ctx.runQuery(internal.computers.getInternal, { computerId })
     if (!computer || computer.userId !== userId) {
@@ -478,7 +770,7 @@ export const repairComputerInstance = action({
     await ctx.runMutation(internal.computers.logEvent, {
       computerId,
       type: 'status_change',
-      message: 'Gateway was unreachable. Reprovisioning this computer now.',
+      message: 'Reprovisioning this computer now.',
     })
 
     if (reset.oldHetznerServerId || reset.oldHetznerFirewallId) {
@@ -590,7 +882,553 @@ export const list = query({
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .filter((q) => q.neq(q.field('status'), 'deleted'))
       .collect()
-    return computers.map((c) => ({ ...c, gatewayToken: undefined, readySecret: undefined }))
+    return computers.map((c) => sanitizeComputerRecord(c))
+  },
+})
+
+export const listForServer = query({
+  args: {
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) {
+      throw new Error('Unauthorized')
+    }
+
+    const computers = await ctx.db
+      .query('computers')
+      .filter((q) => q.neq(q.field('status'), 'deleted'))
+      .collect()
+
+    return computers.map((computer) => sanitizeComputerRecord(computer))
+  },
+})
+
+export const getReleaseByVersionInternal = internalQuery({
+  args: { version: v.string() },
+  handler: async (ctx, args) => {
+    const release = await ctx.db
+      .query('computerReleases')
+      .withIndex('by_version', (q) => q.eq('version', args.version))
+      .first()
+    return release ? withNormalizedRelease(release as ComputerReleaseRecord) : null
+  },
+})
+
+export const getLatestReleaseForChannelInternal = internalQuery({
+  args: {
+    channel: v.union(v.literal('stable'), v.literal('canary')),
+  },
+  handler: async (ctx, args) => {
+    const latest = await getLatestReleaseForChannelFromDb(ctx, args.channel)
+    if (latest) {
+      return withNormalizedRelease(latest)
+    }
+    return buildDefaultReleaseRecord()
+  },
+})
+
+export const getResolvedComputerRelease = query({
+  args: {
+    computerId: v.id('computers'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+
+    const computer = await ctx.db.get(args.computerId)
+    if (!computer || computer.userId !== args.userId) {
+      throw new Error('Computer not found')
+    }
+
+    const latestRelease =
+      (await getLatestReleaseForChannelFromDb(
+        ctx,
+        (computer.updateChannel as ComputerUpdateChannel | undefined) ?? DEFAULT_COMPUTER_UPDATE_CHANNEL,
+      )) ?? buildDefaultReleaseRecord()
+    const desiredVersion = computer.desiredReleaseVersion?.trim() || null
+    const desiredRelease =
+      (desiredVersion
+        ? await ctx.db
+            .query('computerReleases')
+            .withIndex('by_version', (q) => q.eq('version', desiredVersion))
+            .first()
+        : null) ?? latestRelease
+    const parsedManifest = parseComputerReleaseManifest(desiredRelease?.manifestJson)
+
+    return {
+      computerId: computer._id,
+      update: {
+        updateChannel: computer.updateChannel ?? DEFAULT_COMPUTER_UPDATE_CHANNEL,
+        desiredReleaseVersion: computer.desiredReleaseVersion ?? desiredRelease.version,
+        appliedReleaseVersion: computer.appliedReleaseVersion ?? null,
+        previousReleaseVersion: computer.previousReleaseVersion ?? null,
+        updateStatus: (computer.updateStatus ?? 'idle') as ComputerUpdateStatus,
+        reprovisionRequired: Boolean(computer.reprovisionRequired),
+        lastUpdateCheckAt: computer.lastUpdateCheckAt ?? null,
+        lastUpdateStartedAt: computer.lastUpdateStartedAt ?? null,
+        lastUpdateCompletedAt: computer.lastUpdateCompletedAt ?? null,
+        lastUpdateError: computer.lastUpdateError ?? null,
+        pollIntervalSeconds: DEFAULT_COMPUTER_UPDATER_POLL_SECONDS,
+      },
+      desiredRelease: desiredRelease
+        ? {
+            version: desiredRelease.version,
+            channel: desiredRelease.channel,
+            openclawImage: desiredRelease.openclawImage,
+            toolBundleVersion: desiredRelease.toolBundleVersion,
+            overlayPluginVersion: resolveOverlayPluginVersion(desiredRelease),
+            configVersion: desiredRelease.configVersion,
+            updateStrategy: desiredRelease.updateStrategy,
+            minUpdaterVersion: desiredRelease.minUpdaterVersion,
+            manifest: parsedManifest,
+          }
+        : null,
+      latestRelease: latestRelease
+        ? {
+            version: latestRelease.version,
+            channel: latestRelease.channel,
+          }
+        : null,
+    }
+  },
+})
+
+export const markComputerUpdateCheck = mutation({
+  args: {
+    computerId: v.id('computers'),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) {
+      throw new Error('Unauthorized')
+    }
+
+    await ctx.db.patch(args.computerId, {
+      lastUpdateCheckAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+  },
+})
+
+export const reportOverlayPluginHealth = mutation({
+  args: {
+    computerId: v.id('computers'),
+    serverSecret: v.string(),
+    status: v.union(
+      v.literal('unknown'),
+      v.literal('installing'),
+      v.literal('installed'),
+      v.literal('missing'),
+      v.literal('error'),
+    ),
+    installedVersion: v.optional(v.string()),
+    message: v.optional(v.string()),
+  },
+  returns: v.object({ ok: v.boolean() }),
+  handler: async (ctx, args): Promise<{ ok: boolean }> => {
+    if (!validateServerSecret(args.serverSecret)) {
+      throw new Error('Unauthorized')
+    }
+
+    const computer = await ctx.db.get(args.computerId)
+    if (!computer || computer.status === 'deleted') {
+      throw new Error('Computer not found')
+    }
+
+    const now = Date.now()
+    const message = args.message?.trim() || undefined
+
+    await ctx.db.patch(args.computerId, {
+      overlayPluginInstalledVersion: args.installedVersion?.trim() || computer.overlayPluginInstalledVersion,
+      overlayPluginHealthStatus: args.status,
+      overlayPluginLastHealthCheckAt: now,
+      overlayPluginLastError:
+        args.status === 'error' || args.status === 'missing'
+          ? (message ?? 'Overlay plugin is unavailable.')
+          : undefined,
+      updatedAt: now,
+    })
+
+    await ctx.db.insert('computerEvents', {
+      computerId: args.computerId,
+      type: 'status_change',
+      message:
+        message ??
+        `Overlay plugin status updated to ${args.status}${args.installedVersion ? ` (${args.installedVersion})` : ''}.`,
+      createdAt: now,
+    })
+
+    return { ok: true }
+  },
+})
+
+export const reportComputerUpdate = mutation({
+  args: {
+    computerId: v.id('computers'),
+    serverSecret: v.string(),
+    status: v.union(
+      v.literal('checking'),
+      v.literal('downloading'),
+      v.literal('applying'),
+      v.literal('restarting'),
+      v.literal('verifying'),
+      v.literal('ready'),
+      v.literal('reprovision_required'),
+      v.literal('error'),
+    ),
+    targetVersion: v.string(),
+    message: v.optional(v.string()),
+    step: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  },
+  returns: v.object({
+    ok: v.boolean(),
+    nextAction: v.union(v.literal('none'), v.literal('retry_later'), v.literal('reprovision')),
+  }),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ ok: boolean; nextAction: 'none' | 'retry_later' | 'reprovision' }> => {
+    if (!validateServerSecret(args.serverSecret)) {
+      throw new Error('Unauthorized')
+    }
+
+    const computer = await ctx.db.get(args.computerId)
+    if (!computer || computer.status === 'deleted') {
+      throw new Error('Computer not found')
+    }
+
+    const now = Date.now()
+    const message = args.message?.trim() || null
+    const currentApplied = computer.appliedReleaseVersion
+    const nextPatch: Record<string, unknown> = {
+      updateStatus: args.status,
+      updatedAt: now,
+      lastUpdateCheckAt: now,
+    }
+
+    if (args.startedAt) {
+      nextPatch.lastUpdateStartedAt = args.startedAt
+    } else if (args.status !== 'ready' && args.status !== 'error' && args.status !== 'reprovision_required') {
+      nextPatch.lastUpdateStartedAt = computer.lastUpdateStartedAt ?? now
+    }
+
+    if (args.status === 'ready') {
+      nextPatch.status = 'ready'
+      nextPatch.errorMessage = undefined
+      nextPatch.reprovisionRequired = false
+      nextPatch.previousReleaseVersion =
+        currentApplied && currentApplied !== args.targetVersion ? currentApplied : computer.previousReleaseVersion
+      nextPatch.appliedReleaseVersion = args.targetVersion
+      nextPatch.lastUpdateCompletedAt = args.completedAt ?? now
+      nextPatch.lastUpdateError = undefined
+    } else if (args.status === 'reprovision_required') {
+      nextPatch.reprovisionRequired = true
+      nextPatch.lastUpdateCompletedAt = args.completedAt ?? now
+      nextPatch.lastUpdateError = message ?? 'This release requires reprovisioning.'
+    } else if (args.status === 'error') {
+      nextPatch.status = 'error'
+      nextPatch.errorMessage = message ?? 'Computer update failed.'
+      nextPatch.lastUpdateError = message ?? 'Computer update failed.'
+      nextPatch.lastUpdateCompletedAt = args.completedAt ?? now
+    } else {
+      nextPatch.lastUpdateError = undefined
+    }
+
+    await ctx.db.patch(args.computerId, nextPatch)
+    await ctx.db.insert('computerEvents', {
+      computerId: args.computerId,
+      type: 'status_change',
+      message:
+        message ??
+        `Computer update ${args.status.replaceAll('_', ' ')} for release ${args.targetVersion}.`,
+      createdAt: now,
+    })
+
+    return {
+      ok: true,
+      nextAction:
+        args.status === 'reprovision_required'
+          ? 'reprovision'
+          : args.status === 'error'
+            ? 'retry_later'
+            : 'none',
+    }
+  },
+})
+
+export const upsertComputerRelease = mutation({
+  args: {
+    serverSecret: v.string(),
+    version: v.string(),
+    channel: v.union(v.literal('stable'), v.literal('canary')),
+    openclawImage: v.string(),
+    toolBundleVersion: v.string(),
+    overlayPluginVersion: v.string(),
+    configVersion: v.string(),
+    updateStrategy: v.union(v.literal('in_place'), v.literal('reprovision_required')),
+    minUpdaterVersion: v.string(),
+    manifestJson: v.optional(v.string()),
+    rolledBackFromVersion: v.optional(v.string()),
+    assignToChannel: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) {
+      throw new Error('Unauthorized')
+    }
+
+    const manifest = buildComputerReleaseManifest({
+      version: args.version,
+      channel: args.channel,
+      openclawImage: args.openclawImage,
+      toolBundleVersion: args.toolBundleVersion,
+      overlayPluginVersion: args.overlayPluginVersion,
+      configVersion: args.configVersion,
+      updateStrategy: args.updateStrategy,
+      minUpdaterVersion: args.minUpdaterVersion,
+    })
+    const manifestJson = args.manifestJson?.trim() || JSON.stringify(manifest)
+    const existing = await ctx.db
+      .query('computerReleases')
+      .withIndex('by_version', (q) => q.eq('version', args.version))
+      .first()
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        channel: args.channel,
+        openclawImage: args.openclawImage,
+        toolBundleVersion: args.toolBundleVersion,
+        overlayPluginVersion: args.overlayPluginVersion,
+        configVersion: args.configVersion,
+        updateStrategy: args.updateStrategy,
+        minUpdaterVersion: args.minUpdaterVersion,
+        manifestJson,
+        rolledBackFromVersion: args.rolledBackFromVersion,
+      })
+    } else {
+      await ctx.db.insert('computerReleases', {
+        version: args.version,
+        channel: args.channel,
+        openclawImage: args.openclawImage,
+        toolBundleVersion: args.toolBundleVersion,
+        overlayPluginVersion: args.overlayPluginVersion,
+        configVersion: args.configVersion,
+        updateStrategy: args.updateStrategy,
+        minUpdaterVersion: args.minUpdaterVersion,
+        manifestJson,
+        rolledBackFromVersion: args.rolledBackFromVersion,
+        createdAt: Date.now(),
+      })
+    }
+
+    if (args.assignToChannel !== false) {
+      const computers = await ctx.db.query('computers').collect()
+      const targetChannel = args.channel
+      const now = Date.now()
+      for (const computer of computers) {
+        if (computer.status === 'deleted') continue
+        if (computer.updateChannel !== targetChannel) continue
+        await ctx.db.patch(computer._id, {
+          desiredReleaseVersion: args.version,
+          desiredOverlayPluginVersion: args.overlayPluginVersion,
+          reprovisionRequired: args.updateStrategy === 'reprovision_required',
+          updateStatus:
+            args.updateStrategy === 'reprovision_required'
+              ? 'reprovision_required'
+              : computer.updateStatus === 'error'
+                ? 'error'
+                : 'idle',
+          lastUpdateError:
+            args.updateStrategy === 'reprovision_required'
+              ? `Release ${args.version} requires reprovisioning.`
+              : undefined,
+          updatedAt: now,
+        })
+      }
+    }
+
+    return { ok: true }
+  },
+})
+
+export const promoteComputerRelease = mutation({
+  args: {
+    serverSecret: v.string(),
+    version: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) {
+      throw new Error('Unauthorized')
+    }
+
+    const release = await ctx.db
+      .query('computerReleases')
+      .withIndex('by_version', (q) => q.eq('version', args.version))
+      .first()
+    if (!release) {
+      throw new Error('Release not found')
+    }
+
+    await ctx.db.patch(release._id, {
+      channel: 'stable',
+    })
+
+    const computers = await ctx.db.query('computers').collect()
+    const now = Date.now()
+    for (const computer of computers) {
+      if (computer.status === 'deleted') continue
+      if (computer.updateChannel !== 'stable') continue
+      await ctx.db.patch(computer._id, {
+        desiredReleaseVersion: release.version,
+        desiredOverlayPluginVersion: resolveOverlayPluginVersion(release),
+        reprovisionRequired: release.updateStrategy === 'reprovision_required',
+        updateStatus:
+          release.updateStrategy === 'reprovision_required' ? 'reprovision_required' : computer.updateStatus,
+        updatedAt: now,
+      })
+    }
+
+    return { ok: true }
+  },
+})
+
+export const assignComputerReleaseOverride = mutation({
+  args: {
+    serverSecret: v.string(),
+    computerId: v.id('computers'),
+    version: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) {
+      throw new Error('Unauthorized')
+    }
+
+    const release = await ctx.db
+      .query('computerReleases')
+      .withIndex('by_version', (q) => q.eq('version', args.version))
+      .first()
+    if (!release) {
+      throw new Error('Release not found')
+    }
+
+    await ctx.db.patch(args.computerId, {
+      desiredReleaseVersion: release.version,
+      desiredOverlayPluginVersion: resolveOverlayPluginVersion(release),
+      reprovisionRequired: release.updateStrategy === 'reprovision_required',
+      updateStatus: release.updateStrategy === 'reprovision_required' ? 'reprovision_required' : 'idle',
+      lastUpdateError:
+        release.updateStrategy === 'reprovision_required'
+          ? `Release ${release.version} requires reprovisioning.`
+          : undefined,
+      updatedAt: Date.now(),
+    })
+
+    return { ok: true }
+  },
+})
+
+export const updateComputerSoftware = action({
+  args: {
+    computerId: v.id('computers'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    targetVersion: v.optional(v.string()),
+    checkOnly: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    queued: v.boolean(),
+    desiredReleaseVersion: v.string(),
+    appliedReleaseVersion: v.optional(v.string()),
+    updateStatus: v.string(),
+    reprovisionRequired: v.boolean(),
+    message: v.string(),
+  }),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    queued: boolean
+    desiredReleaseVersion: string
+    appliedReleaseVersion?: string
+    updateStatus: string
+    reprovisionRequired: boolean
+    message: string
+  }> => {
+    await authorizeUserAccess(args)
+
+    const computer = await ctx.runQuery(internal.computers.getInternal, {
+      computerId: args.computerId,
+    })
+    if (!computer || computer.userId !== args.userId) {
+      throw new Error('Computer not found')
+    }
+    if (computer.status === 'deleted') {
+      throw new Error('Computer has been deleted')
+    }
+
+    const targetRelease: ComputerReleaseRecord | Omit<ComputerReleaseRecord, '_id'> =
+      (args.targetVersion
+        ? await ctx.runQuery(internal.computers.getReleaseByVersionInternal, {
+            version: args.targetVersion,
+          })
+        : await ctx.runQuery(internal.computers.getLatestReleaseForChannelInternal, {
+            channel:
+              (computer.updateChannel as ComputerUpdateChannel | undefined) ??
+              DEFAULT_COMPUTER_UPDATE_CHANNEL,
+          })) ??
+      buildDefaultReleaseRecord()
+
+    const targetVersion = targetRelease.version
+    const updateStrategy = targetRelease.updateStrategy
+    const nextStatus: ComputerUpdateStatus =
+      updateStrategy === 'reprovision_required'
+        ? 'reprovision_required'
+        : args.checkOnly
+          ? ((computer.updateStatus as ComputerUpdateStatus | undefined) ?? 'idle')
+          : 'checking'
+    const nextError =
+      updateStrategy === 'reprovision_required'
+        ? `Release ${targetVersion} requires reprovisioning.`
+        : undefined
+
+    await ctx.runMutation(internal.computers.patchUpdateTargetState, {
+      computerId: args.computerId,
+      desiredReleaseVersion: targetVersion,
+      desiredOverlayPluginVersion: resolveOverlayPluginVersion(targetRelease),
+      updateStatus: nextStatus,
+      reprovisionRequired: updateStrategy === 'reprovision_required',
+      lastUpdateError: nextError,
+    })
+
+    await ctx.runMutation(internal.computers.logEvent, {
+      computerId: args.computerId,
+      type: 'status_change',
+      message:
+        updateStrategy === 'reprovision_required'
+          ? `Release ${targetVersion} requires reprovisioning.`
+          : args.checkOnly
+            ? `Checked for software updates. Desired release is ${targetVersion}.`
+            : `Software update to release ${targetVersion} queued. The updater will apply it on the next poll.`,
+    })
+
+    return {
+      queued: !args.checkOnly,
+      desiredReleaseVersion: targetVersion,
+      appliedReleaseVersion: computer.appliedReleaseVersion,
+      updateStatus: nextStatus,
+      reprovisionRequired: updateStrategy === 'reprovision_required',
+      message:
+        updateStrategy === 'reprovision_required'
+          ? `Release ${targetVersion} requires reprovisioning.`
+          : args.checkOnly
+            ? `Desired release is ${targetVersion}.`
+            : `Release ${targetVersion} has been queued and will apply within ${Math.floor(DEFAULT_COMPUTER_UPDATER_POLL_SECONDS / 60)} minutes or after the next boot.`,
+    }
   },
 })
 
@@ -1175,6 +2013,52 @@ export const getInternal = internalQuery({
   handler: async (ctx, args) => ctx.db.get(args.computerId),
 })
 
+export const resolveComputerApiToken = query({
+  args: {
+    tokenHash: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) {
+      throw new Error('Unauthorized')
+    }
+    const computer = await ctx.db
+      .query('computers')
+      .withIndex('by_computerApiTokenHash', (q) => q.eq('computerApiTokenHash', args.tokenHash))
+      .first()
+
+    if (!computer || computer.status === 'deleted') {
+      return null
+    }
+
+    return {
+      computerId: computer._id,
+      userId: computer.userId,
+      tokenVersion: computer.computerApiTokenVersion ?? 1,
+      status: computer.status,
+      name: computer.name,
+      region: computer.region,
+      provisioningStep: computer.provisioningStep ?? null,
+    }
+  },
+})
+
+export const touchComputerApiTokenUse = mutation({
+  args: {
+    computerId: v.id('computers'),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) {
+      throw new Error('Unauthorized')
+    }
+    await ctx.db.patch(args.computerId, {
+      computerApiTokenLastUsedAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+  },
+})
+
 // ─────────────────────────────────────────────────────────────────────────────
 // INTERNAL ACTIONS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1193,7 +2077,9 @@ export const provisionComputer = internalAction({
       `${TAG} provisionComputer — loaded computer region=${computer.region} status=${computer.status} name=${summarizeTextForLog(computer.name)}`
     )
 
-    if (computer.status !== 'pending_payment') {
+    const isBootstrapReprovision =
+      computer.status === 'provisioning' && computer.provisioningStep === 'creating_server'
+    if (computer.status !== 'pending_payment' && !isBootstrapReprovision) {
       console.log(`${TAG} provisionComputer — SKIP status=${computer.status}`)
       return
     }
@@ -1209,6 +2095,12 @@ export const provisionComputer = internalAction({
       const CONVEX_HTTP_URL = process.env.CONVEX_HTTP_URL!
       const AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY!
       const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+      const OVERLAY_API_BASE_URL = (
+        process.env.COMPUTER_PUBLIC_API_BASE_URL?.trim() ||
+        process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+        process.env.DEV_NEXT_PUBLIC_APP_URL?.trim() ||
+        'https://www.getoverlay.io'
+      ).replace(/\/+$/, '')
 
       if (!HETZNER_TOKEN) console.error(`${TAG} provisionComputer — WARNING: HETZNER_API_TOKEN is not set`)
       if (!CONVEX_HTTP_URL) console.error(`${TAG} provisionComputer — WARNING: CONVEX_HTTP_URL is not set`)
@@ -1218,14 +2110,37 @@ export const provisionComputer = internalAction({
       const location = 'ash'
       const sshKeyId = getRequiredHetznerSshKeyId()
       const sshSourceIps = getRequiredHetznerSshSourceIps()
+      const resourceSuffix = Date.now().toString(36)
+      const desiredRelease =
+        (computer.desiredReleaseVersion
+          ? await ctx.runQuery(internal.computers.getReleaseByVersionInternal, {
+              version: computer.desiredReleaseVersion,
+            })
+          : await ctx.runQuery(internal.computers.getLatestReleaseForChannelInternal, {
+              channel:
+                (computer.updateChannel as ComputerUpdateChannel | undefined) ??
+                DEFAULT_COMPUTER_UPDATE_CHANNEL,
+            })) ?? buildDefaultReleaseRecord()
       console.log(`${TAG} provisionComputer — using Hetzner location=${location} for region=${computer.region}`)
+      await assertComputerPublicApiSupportsPluginBundle(OVERLAY_API_BASE_URL)
 
       const userdata = buildCloudInit({
         gatewayToken: computer.gatewayToken!,
         hooksToken: await deriveHooksToken(computer.gatewayToken!),
         readySecret: computer.readySecret!,
+        computerApiToken: computer.computerApiToken!,
         computerId: computerId,
+        updateChannel:
+          (computer.updateChannel as ComputerUpdateChannel | undefined) ??
+          DEFAULT_COMPUTER_UPDATE_CHANNEL,
+        desiredReleaseVersion:
+          computer.desiredReleaseVersion || desiredRelease.version,
+        openclawImage: desiredRelease.openclawImage,
+        toolBundleVersion: desiredRelease.toolBundleVersion,
+        overlayPluginVersion: resolveOverlayPluginVersion(desiredRelease),
+        configVersion: desiredRelease.configVersion,
         convexHttpUrl: CONVEX_HTTP_URL,
+        overlayApiBaseUrl: OVERLAY_API_BASE_URL,
         aiGatewayApiKey: AI_GATEWAY_API_KEY,
         openrouterApiKey: OPENROUTER_API_KEY,
       })
@@ -1242,7 +2157,7 @@ export const provisionComputer = internalAction({
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            name: `overlay-fw-${computerId}`.slice(0, 63),
+            name: `overlay-fw-${computerId}-${resourceSuffix}`.slice(0, 63),
             rules: [
               { direction: 'in', protocol: 'tcp', port: '22',    source_ips: sshSourceIps },
               { direction: 'in', protocol: 'tcp', port: '18789', source_ips: ['0.0.0.0/0', '::/0'] },
@@ -1266,7 +2181,7 @@ export const provisionComputer = internalAction({
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            name: `overlay-computer-${computerId}`.slice(0, 63),
+            name: `overlay-computer-${computerId}-${resourceSuffix}`.slice(0, 63),
             server_type: 'cpx21',
             image: 'ubuntu-24.04',
             location,
@@ -1495,14 +2410,19 @@ export const deleteComputerInstance = action({
   args: {
     computerId: v.id('computers'),
     userId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, { computerId, userId, accessToken }) => {
+  handler: async (ctx, { computerId, userId, accessToken, serverSecret }) => {
     console.log(
       `${TAG} deleteComputerInstance — START computerId=${redactIdentifierForLog(computerId)}`
     )
 
-    await requireAccessToken(accessToken, userId)
+    await authorizeUserAccess({
+      accessToken,
+      serverSecret,
+      userId,
+    })
 
     const computer = await ctx.runQuery(internal.computers.getInternal, { computerId })
     if (!computer || computer.userId !== userId) {
@@ -1927,8 +2847,16 @@ interface CloudInitParams {
   gatewayToken: string
   hooksToken: string
   readySecret: string
+  computerApiToken: string
   computerId: string
+  updateChannel: ComputerUpdateChannel
+  desiredReleaseVersion: string
+  openclawImage: string
+  toolBundleVersion: string
+  overlayPluginVersion: string
+  configVersion: string
   convexHttpUrl: string
+  overlayApiBaseUrl: string
   aiGatewayApiKey: string
   openrouterApiKey?: string
 }
@@ -1938,8 +2866,19 @@ function buildCloudInit(p: CloudInitParams): string {
     .replaceAll('{{GATEWAY_TOKEN}}',    p.gatewayToken)
     .replaceAll('{{HOOKS_TOKEN}}',      p.hooksToken)
     .replaceAll('{{READY_SECRET}}',     p.readySecret)
+    .replaceAll('{{COMPUTER_API_TOKEN}}', p.computerApiToken)
     .replaceAll('{{COMPUTER_ID}}',      p.computerId)
+    .replaceAll('{{UPDATE_CHANNEL}}',   p.updateChannel)
+    .replaceAll('{{DESIRED_RELEASE_VERSION}}', p.desiredReleaseVersion)
+    .replaceAll('{{OPENCLAW_IMAGE}}',   p.openclawImage)
+    .replaceAll('{{TOOL_BUNDLE_VERSION}}', p.toolBundleVersion)
+    .replaceAll('{{OVERLAY_PLUGIN_VERSION}}', p.overlayPluginVersion)
+    .replaceAll('{{CONFIG_VERSION}}',   p.configVersion)
+    .replaceAll('{{PLUGIN_ID}}', OPENCLAW_OVERLAY_PLUGIN_ID)
+    .replaceAll('{{UPDATER_VERSION}}',  DEFAULT_COMPUTER_UPDATER_VERSION)
+    .replaceAll('{{UPDATER_POLL_SECONDS}}', String(DEFAULT_COMPUTER_UPDATER_POLL_SECONDS))
     .replaceAll('{{CONVEX_HTTP_URL}}',  p.convexHttpUrl)
+    .replaceAll('{{OVERLAY_API_BASE_URL}}', p.overlayApiBaseUrl)
     .replaceAll('{{AI_GATEWAY_API_KEY}}', p.aiGatewayApiKey)
     .replaceAll('{{OPENROUTER_API_KEY}}', p.openrouterApiKey ?? '')
     .replaceAll('{{MODEL_ALLOWLIST_JSON}}', buildComputerModelsAllowlistJson())
@@ -1959,8 +2898,18 @@ write_files:
     content: |
       AI_GATEWAY_API_KEY={{AI_GATEWAY_API_KEY}}
       OPENROUTER_API_KEY={{OPENROUTER_API_KEY}}
+      OPENCLAW_IMAGE={{OPENCLAW_IMAGE}}
       OPENCLAW_GATEWAY_TOKEN={{GATEWAY_TOKEN}}
       OPENCLAW_HOOKS_TOKEN={{HOOKS_TOKEN}}
+      OVERLAY_API_BASE_URL={{OVERLAY_API_BASE_URL}}
+      OVERLAY_COMPUTER_API_TOKEN={{COMPUTER_API_TOKEN}}
+      OVERLAY_UPDATER_VERSION={{UPDATER_VERSION}}
+      OVERLAY_UPDATE_CHANNEL={{UPDATE_CHANNEL}}
+      OVERLAY_UPDATE_POLL_SECONDS={{UPDATER_POLL_SECONDS}}
+      OVERLAY_DESIRED_RELEASE_VERSION={{DESIRED_RELEASE_VERSION}}
+      OVERLAY_TOOL_BUNDLE_VERSION={{TOOL_BUNDLE_VERSION}}
+      OVERLAY_DESIRED_PLUGIN_VERSION={{OVERLAY_PLUGIN_VERSION}}
+      OVERLAY_CONFIG_VERSION={{CONFIG_VERSION}}
 
   - path: /etc/ssh/sshd_config.d/99-overlay-hardening.conf
     permissions: '0644'
@@ -1975,7 +2924,7 @@ write_files:
     content: |
       services:
         openclaw-gateway:
-          image: ghcr.io/openclaw/openclaw:main
+          image: \${OPENCLAW_IMAGE}
           restart: unless-stopped
           env_file: /root/openclaw-deploy/.env
           environment:
@@ -1996,6 +2945,20 @@ write_files:
             - "0.0.0.0:18789:18789"
           command:
             ["openclaw", "gateway", "run"]
+
+  - path: /etc/overlay-release.json
+    permissions: '0644'
+    content: |
+      {
+        "updaterVersion": "{{UPDATER_VERSION}}",
+        "updateChannel": "{{UPDATE_CHANNEL}}",
+        "lastAppliedRelease": null,
+        "lastAttemptedRelease": "{{DESIRED_RELEASE_VERSION}}",
+        "lastSuccessAt": null,
+        "toolBundleVersion": "{{TOOL_BUNDLE_VERSION}}",
+        "overlayPluginVersion": "{{OVERLAY_PLUGIN_VERSION}}",
+        "configVersion": "{{CONFIG_VERSION}}"
+      }
 
   - path: /etc/systemd/system/ttyd.service
     permissions: '0644'
@@ -2031,6 +2994,402 @@ write_files:
         exec docker compose exec openclaw-gateway openclaw "$@"
       fi
       exec docker compose exec -T openclaw-gateway openclaw "$@"
+
+  - path: /usr/local/bin/docker-openclaw
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      cd /root/openclaw-deploy
+      exec docker run --rm \\
+        --env-file /root/openclaw-deploy/.env \\
+        -e HOME=/home/node \\
+        -e NODE_ENV=production \\
+        -e TERM=xterm-256color \\
+        -e OPENCLAW_GATEWAY_TOKEN="$OPENCLAW_GATEWAY_TOKEN" \\
+        -e AI_GATEWAY_API_KEY="$AI_GATEWAY_API_KEY" \\
+        -e OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \\
+        -e OPENCLAW_SKIP_CHANNELS=1 \\
+        -e OPENCLAW_SKIP_CRON=1 \\
+        -e OPENCLAW_SKIP_GMAIL_WATCHER=1 \\
+        -e OPENCLAW_SKIP_CANVAS_HOST=1 \\
+        -v /root/.openclaw:/home/node/.openclaw \\
+        "$OPENCLAW_IMAGE" \\
+        "$@"
+
+  - path: /usr/local/bin/overlay-sync-plugin
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env python3
+      import json
+      import os
+      import subprocess
+      import urllib.error
+      import urllib.parse
+      import urllib.request
+
+      BASE_URL = os.environ.get('OVERLAY_API_BASE_URL', '').rstrip('/')
+      TOKEN = os.environ.get('OVERLAY_COMPUTER_API_TOKEN', '').strip()
+      PLUGIN_DIR = '/root/.openclaw/extensions/{{PLUGIN_ID}}'
+
+      def api_request(path: str):
+        if not BASE_URL or not TOKEN:
+          raise RuntimeError('Overlay plugin sync is missing API configuration.')
+        request = urllib.request.Request(
+          f'{BASE_URL}{path}',
+          headers={'Authorization': f'Bearer {TOKEN}'},
+          method='GET',
+        )
+        try:
+          with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read().decode('utf-8')
+            return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as exc:
+          body = exc.read().decode('utf-8', errors='ignore')
+          raise RuntimeError(f'Overlay plugin bundle request failed: HTTP {exc.code} {body[:240]}') from exc
+
+      def post_json(path: str, payload):
+        if not BASE_URL or not TOKEN:
+          return
+        data = json.dumps(payload).encode('utf-8')
+        request = urllib.request.Request(
+          f'{BASE_URL}{path}',
+          data=data,
+          headers={
+            'Authorization': f'Bearer {TOKEN}',
+            'Content-Type': 'application/json',
+          },
+          method='POST',
+        )
+        try:
+          with urllib.request.urlopen(request, timeout=30):
+            return
+        except Exception:
+          return
+
+      def write_bundle(bundle):
+        os.makedirs(PLUGIN_DIR, exist_ok=True)
+        files = bundle.get('files') or {}
+        if not isinstance(files, dict) or not files:
+          raise RuntimeError('Overlay plugin bundle did not include any files.')
+        for relative_path, content in files.items():
+          target_path = os.path.join(PLUGIN_DIR, relative_path)
+          os.makedirs(os.path.dirname(target_path), exist_ok=True)
+          with open(target_path, 'w', encoding='utf-8') as handle:
+            handle.write(content if isinstance(content, str) else '')
+
+      def run(command):
+        subprocess.run(command, check=True)
+
+      def main():
+        desired_version = os.environ.get('OVERLAY_DESIRED_PLUGIN_VERSION', '').strip()
+        query = ''
+        if desired_version:
+          query = f'?version={urllib.parse.quote(desired_version)}'
+        bundle = api_request(f'/api/computer/v1/plugin/bundle{query}')
+        bundle_version = (bundle.get('version') or '').strip()
+        write_bundle(bundle)
+        post_json('/api/computer/v1/plugin/health', {
+          'status': 'installing',
+          'installedVersion': bundle_version or None,
+          'message': f'Installing Overlay plugin {bundle_version or "unknown"}.',
+        })
+        run(['docker-openclaw', 'sh', '-lc', 'cd /home/node/.openclaw/extensions/{{PLUGIN_ID}} && npm install --omit=dev --ignore-scripts'])
+        run(['docker-openclaw', 'openclaw', 'config', 'set', 'plugins.entries.{{PLUGIN_ID}}.enabled', 'true', '--strict-json'])
+        run(['docker-openclaw', 'openclaw', 'config', 'set', 'plugins.entries.{{PLUGIN_ID}}.hooks.allowPromptInjection', 'true', '--strict-json'])
+        run([
+          'docker-openclaw',
+          'openclaw',
+          'config',
+          'set',
+          'plugins.entries.{{PLUGIN_ID}}.config',
+          json.dumps({
+            'overlayApiBaseUrl': BASE_URL,
+            'computerApiToken': TOKEN,
+            'enabledToolGroups': ['notes', 'knowledge', 'files', 'memories', 'outputs', 'integrations'],
+            'timeoutMs': 15000,
+          }),
+          '--strict-json',
+        ])
+        run(['docker-openclaw', 'openclaw', 'plugins', 'info', '{{PLUGIN_ID}}'])
+        post_json('/api/computer/v1/plugin/health', {
+          'status': 'installed',
+          'installedVersion': bundle_version or None,
+          'message': f'Overlay plugin {bundle_version or "unknown"} installed.',
+        })
+
+      try:
+        main()
+      except Exception as exc:
+        post_json('/api/computer/v1/plugin/health', {
+          'status': 'error',
+          'installedVersion': None,
+          'message': str(exc),
+        })
+        raise
+
+  - path: /usr/local/bin/overlay-updater
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env python3
+      import json
+      import os
+      import subprocess
+      import sys
+      import time
+      import urllib.error
+      import urllib.request
+
+      BASE_URL = os.environ.get('OVERLAY_API_BASE_URL', '').rstrip('/')
+      TOKEN = os.environ.get('OVERLAY_COMPUTER_API_TOKEN', '').strip()
+      RELEASE_FILE = '/etc/overlay-release.json'
+      ENV_FILE = '/root/openclaw-deploy/.env'
+      COMPOSE_DIR = '/root/openclaw-deploy'
+      WORKSPACE_DIR = '/root/.openclaw/workspace'
+      UPDATER_VERSION = os.environ.get('OVERLAY_UPDATER_VERSION', '{{UPDATER_VERSION}}')
+
+      def api_request(method: str, path: str, payload=None):
+        if not BASE_URL or not TOKEN:
+          raise RuntimeError('Overlay updater is missing required API configuration.')
+
+        data = None
+        headers = {
+          'Authorization': f'Bearer {TOKEN}',
+        }
+
+        if payload is not None:
+          data = json.dumps(payload).encode('utf-8')
+          headers['Content-Type'] = 'application/json'
+
+        request = urllib.request.Request(f'{BASE_URL}{path}', data=data, method=method, headers=headers)
+        try:
+          with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read().decode('utf-8')
+            return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as exc:
+          body = exc.read().decode('utf-8', errors='ignore')
+          raise RuntimeError(f'Overlay API {path} failed: HTTP {exc.code} {body[:240]}') from exc
+
+      def read_release_file():
+        try:
+          with open(RELEASE_FILE, 'r', encoding='utf-8') as handle:
+            return json.load(handle)
+        except Exception:
+          return {
+            'updaterVersion': UPDATER_VERSION,
+            'lastAppliedRelease': None,
+            'lastAttemptedRelease': None,
+            'lastSuccessAt': None,
+          }
+
+      def write_release_file(payload):
+        with open(RELEASE_FILE, 'w', encoding='utf-8') as handle:
+          json.dump(payload, handle, indent=2)
+          handle.write('\\n')
+
+      def update_env_file(updates):
+        lines = []
+        if os.path.exists(ENV_FILE):
+          with open(ENV_FILE, 'r', encoding='utf-8') as handle:
+            lines = handle.read().splitlines()
+
+        env_map = {}
+        order = []
+        for line in lines:
+          if '=' not in line:
+            continue
+          key, value = line.split('=', 1)
+          env_map[key] = value
+          order.append(key)
+
+        for key, value in updates.items():
+          env_map[key] = value
+          if key not in order:
+            order.append(key)
+
+        with open(ENV_FILE, 'w', encoding='utf-8') as handle:
+          for key in order:
+            handle.write(f'{key}={env_map[key]}\\n')
+
+      def run_command(command, *, cwd=None):
+        subprocess.run(command, cwd=cwd, check=True)
+
+      def report(status, target_version, *, message=None, step=None, started_at=None, completed_at=None):
+        body = {
+          'status': status,
+          'targetVersion': target_version,
+        }
+        if message:
+          body['message'] = message
+        if step:
+          body['step'] = step
+        if started_at:
+          body['startedAt'] = started_at
+        if completed_at:
+          body['completedAt'] = completed_at
+        return api_request('POST', '/api/computer/v1/update/report', body)
+
+      def wait_for_health(timeout_seconds=450):
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+          try:
+            with urllib.request.urlopen('http://127.0.0.1:18789/healthz', timeout=5) as response:
+              if response.status == 200:
+                return
+          except Exception:
+            time.sleep(5)
+        raise RuntimeError('OpenClaw health check timed out after restart.')
+
+      def main():
+        started_at = int(time.time() * 1000)
+        target_version = os.environ.get('OVERLAY_DESIRED_RELEASE_VERSION', '').strip() or 'unknown'
+
+        try:
+          try:
+            check = api_request('POST', '/api/computer/v1/update/check', {})
+          except Exception as exc:
+            message = str(exc)
+            if 'HTTP 307' in message or 'HTTP 308' in message or 'HTTP 404' in message:
+              print(f'Overlay update API unavailable at {BASE_URL}; skipping updater run.', file=sys.stderr)
+              return 0
+            raise
+          update = check.get('update') or {}
+          desired_release = check.get('desiredRelease') or {}
+          manifest = desired_release.get('manifest') or {}
+
+          target_version = update.get('desiredReleaseVersion') or desired_release.get('version') or target_version
+          applied_release = update.get('appliedReleaseVersion')
+          strategy = desired_release.get('updateStrategy') or manifest.get('updateStrategy') or 'in_place'
+          image = manifest.get('openclawImage') or desired_release.get('openclawImage')
+          tool_bundle_version = manifest.get('toolBundleVersion') or desired_release.get('toolBundleVersion')
+          overlay_plugin_version = manifest.get('overlayPluginVersion') or desired_release.get('overlayPluginVersion')
+          config_version = manifest.get('configVersion') or desired_release.get('configVersion')
+          update_channel = update.get('updateChannel') or desired_release.get('channel') or os.environ.get('OVERLAY_UPDATE_CHANNEL', 'stable')
+
+          if not desired_release:
+            return 0
+
+          release_state = read_release_file()
+          release_state['updaterVersion'] = UPDATER_VERSION
+          release_state['lastAttemptedRelease'] = target_version
+          release_state['updateChannel'] = update_channel
+          write_release_file(release_state)
+
+          if applied_release == target_version and update.get('updateStatus') == 'ready':
+            release_state['lastAppliedRelease'] = target_version
+            release_state['lastSuccessAt'] = int(time.time() * 1000)
+            write_release_file(release_state)
+            report(
+              'ready',
+              target_version,
+              message=f'Release {target_version} already applied.',
+              started_at=started_at,
+              completed_at=int(time.time() * 1000),
+            )
+            return 0
+
+          if strategy == 'reprovision_required':
+            report(
+              'reprovision_required',
+              target_version,
+              message=f'Release {target_version} requires reprovisioning.',
+              started_at=started_at,
+              completed_at=int(time.time() * 1000),
+            )
+            return 0
+
+          report('checking', target_version, message=f'Checking release {target_version}.', started_at=started_at)
+
+          update_env_file({
+            'OPENCLAW_IMAGE': image or os.environ.get('OPENCLAW_IMAGE', '{{OPENCLAW_IMAGE}}'),
+            'OVERLAY_TOOL_BUNDLE_VERSION': tool_bundle_version or os.environ.get('OVERLAY_TOOL_BUNDLE_VERSION', '{{TOOL_BUNDLE_VERSION}}'),
+            'OVERLAY_DESIRED_PLUGIN_VERSION': overlay_plugin_version or os.environ.get('OVERLAY_DESIRED_PLUGIN_VERSION', '{{OVERLAY_PLUGIN_VERSION}}'),
+            'OVERLAY_CONFIG_VERSION': config_version or os.environ.get('OVERLAY_CONFIG_VERSION', '{{CONFIG_VERSION}}'),
+            'OVERLAY_DESIRED_RELEASE_VERSION': target_version,
+            'OVERLAY_UPDATE_CHANNEL': str(update_channel),
+            'OVERLAY_UPDATER_VERSION': UPDATER_VERSION,
+          })
+
+          report('downloading', target_version, message=f'Pulling image for release {target_version}.', started_at=started_at)
+          run_command(['docker', 'compose', 'pull', 'openclaw-gateway'], cwd=COMPOSE_DIR)
+
+          report('applying', target_version, message='Applying updated Overlay computer configuration.', started_at=started_at)
+          run_command(['/usr/local/bin/overlay-sync-plugin'])
+          run_command(['docker', 'compose', 'up', '-d', '--force-recreate', 'openclaw-gateway'], cwd=COMPOSE_DIR)
+
+          report('restarting', target_version, message='Restarting OpenClaw gateway.', started_at=started_at)
+          wait_for_health()
+
+          report('verifying', target_version, message='Verifying gateway and workspace health.', started_at=started_at)
+          api_request('GET', '/api/computer/v1/context')
+          run_command(['/usr/local/bin/openclaw', 'plugins', 'info', '{{PLUGIN_ID}}'])
+          if not os.path.isdir(WORKSPACE_DIR):
+            raise RuntimeError(f'Workspace path is missing: {WORKSPACE_DIR}')
+
+          completed_at = int(time.time() * 1000)
+          release_state = read_release_file()
+          release_state['updaterVersion'] = UPDATER_VERSION
+          release_state['lastAttemptedRelease'] = target_version
+          release_state['lastAppliedRelease'] = target_version
+          release_state['lastSuccessAt'] = completed_at
+          release_state['toolBundleVersion'] = tool_bundle_version
+          release_state['overlayPluginVersion'] = overlay_plugin_version
+          release_state['configVersion'] = config_version
+          release_state['updateChannel'] = update_channel
+          write_release_file(release_state)
+
+          report(
+            'ready',
+            target_version,
+            message=f'Release {target_version} applied successfully.',
+            started_at=started_at,
+            completed_at=completed_at,
+          )
+          return 0
+        except Exception as exc:
+          completed_at = int(time.time() * 1000)
+          try:
+            report(
+              'error',
+              target_version,
+              message=str(exc),
+              started_at=started_at,
+              completed_at=completed_at,
+            )
+          except Exception:
+            pass
+          print(str(exc), file=sys.stderr)
+          return 1
+
+      raise SystemExit(main())
+
+  - path: /etc/systemd/system/overlay-updater.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Overlay computer updater
+      Wants=network-online.target docker.service
+      After=network-online.target docker.service
+
+      [Service]
+      Type=oneshot
+      EnvironmentFile=/root/openclaw-deploy/.env
+      WorkingDirectory=/root/openclaw-deploy
+      ExecStart=/usr/local/bin/overlay-updater
+
+  - path: /etc/systemd/system/overlay-updater.timer
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Run Overlay computer updater every {{UPDATER_POLL_SECONDS}} seconds
+
+      [Timer]
+      OnBootSec=120
+      OnUnitActiveSec={{UPDATER_POLL_SECONDS}}
+      Unit=overlay-updater.service
+
+      [Install]
+      WantedBy=timers.target
 
   - path: /root/provision.sh
     permissions: '0755'
@@ -2071,21 +3430,6 @@ write_files:
           -d "{\\"computerId\\":\\"$COMPUTER_ID\\",\\"readySecret\\":\\"$READY_SECRET\\",\\"message\\":\\"$1\\"}" > /dev/null 2>&1 || true
       }
 
-      docker_openclaw() {
-        docker run --rm \\
-          --env-file /root/openclaw-deploy/.env \\
-          -e HOME=/home/node \\
-          -e NODE_ENV=production \\
-          -e TERM=xterm-256color \\
-          -e OPENCLAW_SKIP_CHANNELS=1 \\
-          -e OPENCLAW_SKIP_CRON=1 \\
-          -e OPENCLAW_SKIP_GMAIL_WATCHER=1 \\
-          -e OPENCLAW_SKIP_CANVAS_HOST=1 \\
-          -v /root/.openclaw:/home/node/.openclaw \\
-          ghcr.io/openclaw/openclaw:main \\
-          "$@"
-      }
-
       clog "VPS setup started"
 
       # Step 1: Install Docker CE
@@ -2115,7 +3459,7 @@ write_files:
       docker compose pull
       clog "OpenClaw image pulled. Running CLI onboarding..."
 
-      docker_openclaw openclaw onboard --non-interactive \\
+      docker-openclaw openclaw onboard --non-interactive \\
         --accept-risk \\
         --mode local \\
         --auth-choice ai-gateway-api-key \\
@@ -2131,22 +3475,25 @@ write_files:
 
       clog "OpenClaw onboarding complete. Applying computer config..."
 
-      docker_openclaw openclaw config set agents.defaults.models '{{MODEL_ALLOWLIST_JSON}}' --strict-json
-      docker_openclaw openclaw models set vercel-ai-gateway/anthropic/claude-sonnet-4.6
+      docker-openclaw openclaw config set agents.defaults.models '{{MODEL_ALLOWLIST_JSON}}' --strict-json
+      docker-openclaw openclaw models set vercel-ai-gateway/anthropic/claude-sonnet-4.6
 
-      docker_openclaw openclaw config set gateway.http.endpoints.chatCompletions.enabled true --strict-json
-      docker_openclaw openclaw config set gateway.controlUi.enabled true --strict-json
-      docker_openclaw openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true --strict-json
-      docker_openclaw openclaw config set hooks.enabled true --strict-json
-      docker_openclaw openclaw config set hooks.path /hooks
-      docker_openclaw openclaw config set hooks.token "$OPENCLAW_HOOKS_TOKEN"
-      docker_openclaw openclaw config set hooks.defaultSessionKey hook:computer:default
-      docker_openclaw openclaw config set hooks.allowRequestSessionKey true --strict-json
-      docker_openclaw openclaw config set hooks.allowedSessionKeyPrefixes '["hook:computer:"]' --strict-json
-      docker_openclaw openclaw config set hooks.allowedAgentIds '["default"]' --strict-json
-      docker_openclaw openclaw config set cron.enabled false --strict-json
+      docker-openclaw openclaw config set gateway.http.endpoints.chatCompletions.enabled true --strict-json
+      docker-openclaw openclaw config set gateway.controlUi.enabled true --strict-json
+      docker-openclaw openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true --strict-json
+      docker-openclaw openclaw config set hooks.enabled true --strict-json
+      docker-openclaw openclaw config set hooks.path /hooks
+      docker-openclaw openclaw config set hooks.token "$OPENCLAW_HOOKS_TOKEN"
+      docker-openclaw openclaw config set hooks.defaultSessionKey hook:computer:default
+      docker-openclaw openclaw config set hooks.allowRequestSessionKey true --strict-json
+      docker-openclaw openclaw config set hooks.allowedSessionKeyPrefixes '["hook:computer:"]' --strict-json
+      docker-openclaw openclaw config set hooks.allowedAgentIds '["default"]' --strict-json
+      docker-openclaw openclaw config set cron.enabled false --strict-json
 
-      docker_openclaw openclaw config validate
+      clog "Installing Overlay OpenClaw plugin..."
+      /usr/local/bin/overlay-sync-plugin
+
+      docker-openclaw openclaw config validate
 
       clog "OpenClaw config validated. Starting container..."
 
@@ -2156,9 +3503,12 @@ write_files:
       # Step 5: Wait for OpenClaw to be healthy (90 x 5s = 7.5 min)
       for i in $(seq 1 90); do
         if curl -sf --max-time 5 http://localhost:18789/healthz > /dev/null 2>&1; then
+          /usr/local/bin/openclaw plugins info {{PLUGIN_ID}} > /dev/null
           curl -s -X POST "$CONVEX_URL/computer/ready" \\
             -H "Content-Type: application/json" \\
             -d "{\\"computerId\\":\\"$COMPUTER_ID\\",\\"readySecret\\":\\"{{READY_SECRET}}\\"}"
+          systemctl enable --now overlay-updater.timer || true
+          systemctl start overlay-updater.service || true
           exit 0
         fi
         if (( i % 6 == 0 )); then
