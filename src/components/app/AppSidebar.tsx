@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   MessageSquare, BookOpen, Brain, Wrench, LogOut, User,
-  Smartphone, Puzzle, Monitor, ChevronUp, AlertCircle,
+  Smartphone, Monitor, ChevronUp, AlertCircle,
   FolderOpen, Cpu, Images, Loader2, Menu, X, ArrowUp,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
@@ -14,6 +14,7 @@ import { useAsyncSessions } from '@/lib/async-sessions-store'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
 import ComputerSidebar from './ComputerSidebar'
+import ExtensionBridgePanel from './ExtensionBridgePanel'
 
 const NAV_ITEMS = [
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
@@ -27,7 +28,6 @@ const NAV_ITEMS = [
 
 const APP_LINKS = [
   { label: 'Mobile App', icon: Smartphone },
-  { label: 'Chrome Extension', icon: Puzzle },
   { label: 'Desktop App', icon: Monitor, href: 'https://getoverlay.io' },
 ]
 
@@ -75,7 +75,7 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
   )
 }
 
-export default function AppSidebar({ user, accessToken }: { user: AuthUser; accessToken: string }) {
+export default function AppSidebar({ user, accessToken: _accessToken }: { user: AuthUser; accessToken: string }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
   const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
@@ -276,6 +276,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
             Apps
           </p>
           <div className="space-y-1">
+            <ExtensionBridgePanel />
             {APP_LINKS.map(({ label, icon: Icon, href }) =>
               href ? (
                 <a

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Puzzle, RefreshCw, Globe } from 'lucide-react'
+import { ChevronDown, Globe, Puzzle, RefreshCw } from 'lucide-react'
 
 type BridgeResponse =
   | { source: 'overlay-extension'; type: 'overlay.bridge.pong'; timestamp: number }
@@ -86,12 +86,32 @@ function formatBrowserContext(context: Extract<BridgeResponse, { type: 'overlay.
   return lines.join('\n\n')
 }
 
+const STORAGE_KEY = 'overlay:chrome-extension-panel-collapsed'
+
 export default function ExtensionBridgePanel() {
   const [installed, setInstalled] = useState(false)
   const [version, setVersion] = useState<string | null>(null)
   const [scopes, setScopes] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState(true)
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY)
+      if (stored === 'false') setCollapsed(false)
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, String(collapsed))
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [collapsed])
 
   async function refreshBridge() {
     setLoading(true)
@@ -103,6 +123,7 @@ export default function ExtensionBridgePanel() {
       setInstalled(true)
       setVersion(response.capabilities.version)
       setScopes(response.capabilities.scopes)
+      setCollapsed(false)
     } catch (bridgeError) {
       setInstalled(false)
       setVersion(null)
@@ -143,43 +164,60 @@ export default function ExtensionBridgePanel() {
   }, [scopes])
 
   return (
-    <div className="pointer-events-none fixed bottom-24 right-4 z-40 hidden md:block">
-      <div className="pointer-events-auto w-72 rounded-2xl border border-[#e5e5e5] bg-white/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)] backdrop-blur">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#e5e5e5] bg-[#fafafa] text-[#0a0a0a]">
-            <Puzzle size={15} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-[#0a0a0a]">Chrome Extension</p>
-            <p className="mt-0.5 text-xs text-[#888]">
-              {installed
-                ? `Connected · ${scopeLabel}${version ? ` · v${version}` : ''}`
-                : 'Install or enable Overlay Chrome to pull local browser context into chat.'}
-            </p>
+    <div className="rounded-lg border border-[#e5e5e5] bg-white">
+      <button
+        type="button"
+        onClick={() => setCollapsed((value) => !value)}
+        className="flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-[#f7f7f7]"
+        aria-expanded={!collapsed}
+      >
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#e5e5e5] bg-[#fafafa] text-[#0a0a0a]">
+          <Puzzle size={13} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-[#0a0a0a]">Overlay Chrome</p>
+          <p className="mt-0.5 text-[11px] text-[#888]">
+            {installed
+              ? `Connected · ${scopeLabel}${version ? ` · v${version}` : ''}`
+              : 'Install or enable the extension to pull local browser context.'}
+          </p>
+        </div>
+        <ChevronDown size={13} className={`shrink-0 text-[#888] transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+      </button>
+
+      {!collapsed ? (
+        <div className="border-t border-[#f0f0f0] px-2.5 py-2.5">
+          <p className="text-[11px] leading-5 text-[#666]">
+            Use Overlay Chrome to bring your active tab and current window into chat without leaving the app.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void refreshBridge()}
+              disabled={loading}
+              className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2.5 py-1.5 text-[11px] text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a] disabled:opacity-50"
+            >
+              <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => void insertBrowserContext()}
+              disabled={!installed || loading}
+              className="inline-flex items-center gap-1 rounded-md bg-[#0a0a0a] px-2.5 py-1.5 text-[11px] text-[#fafafa] transition-colors hover:bg-[#222] disabled:opacity-50"
+            >
+              <Globe size={11} />
+              Add browser context
+            </button>
           </div>
+          {!installed ? (
+            <p className="mt-2 text-[10px] leading-4 text-[#888]">
+              Load the built extension from `overlay-chrome/dist` in Chrome, then refresh here.
+            </p>
+          ) : null}
+          {error ? <p className="mt-2 text-[10px] leading-4 text-red-500">{error}</p> : null}
         </div>
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void refreshBridge()}
-            disabled={loading}
-            className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2.5 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a] disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-          <button
-            type="button"
-            onClick={() => void insertBrowserContext()}
-            disabled={!installed || loading}
-            className="inline-flex items-center gap-1 rounded-md bg-[#0a0a0a] px-2.5 py-1.5 text-xs text-[#fafafa] transition-colors hover:bg-[#222] disabled:opacity-50"
-          >
-            <Globe size={12} />
-            Insert browser context
-          </button>
-        </div>
-        {error ? <p className="mt-2 text-xs text-red-500">{error}</p> : null}
-      </div>
+      ) : null}
     </div>
   )
 }

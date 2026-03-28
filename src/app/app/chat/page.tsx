@@ -1,5 +1,4 @@
 import ChatInterface from '@/components/app/ChatInterface'
-import ExtensionBridgePanel from '@/components/app/ExtensionBridgePanel'
 import { getSession } from '@/lib/workos-auth'
 import { redirect } from 'next/navigation'
 
@@ -8,10 +7,5 @@ export default async function ChatPage() {
   if (!session) {
     redirect('/auth/sign-in?redirect=%2Fapp%2Fchat')
   }
-  return (
-    <>
-      <ChatInterface userId={session.user.id} />
-      <ExtensionBridgePanel />
-    </>
-  )
+  return <ChatInterface userId={session.user.id} />
 }

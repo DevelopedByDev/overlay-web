@@ -614,7 +614,7 @@ function ExchangeBlock({
       >
         {/* User message */}
         <div className="flex min-w-0 justify-end">
-          <div className="min-w-0 max-w-[min(92%,36rem)] space-y-2 sm:max-w-[75%]">
+          <div className="flex w-full min-w-0 flex-col items-end space-y-2">
             {replyThreadMeta && (
               <div className="flex justify-end">
                 <button
@@ -652,7 +652,7 @@ function ExchangeBlock({
               </div>
             )}
             {showTextBubble && (
-              <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:max-w-[75%] sm:px-4">
+              <div className="chat-user-bubble w-fit min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:px-4">
                 <span className="whitespace-pre-wrap">{userBodyText}</span>
               </div>
             )}
@@ -3220,7 +3220,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         </div>
                       )}
                       <div className="flex justify-end">
-                        <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:max-w-[75%] sm:px-4">
+                        <div className="chat-user-bubble w-fit min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:px-4">
                           <span className="whitespace-pre-wrap">{promptText}</span>
                         </div>
                       </div>
