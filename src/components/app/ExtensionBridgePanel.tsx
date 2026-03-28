@@ -125,10 +125,26 @@ export default function ExtensionBridgePanel() {
       setScopes(response.capabilities.scopes)
       setCollapsed(false)
     } catch (bridgeError) {
+      const message = bridgeError instanceof Error ? bridgeError.message : 'Extension not available'
+      if (/Extension context invalidated/i.test(message)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500))
+        try {
+          const retryPromise = waitForBridgeResponse('overlay.bridge.capabilities')
+          window.postMessage({ source: 'overlay-web-app', type: 'overlay.bridge.get-capabilities' }, window.location.origin)
+          const retry = await retryPromise
+          setInstalled(true)
+          setVersion(retry.capabilities.version)
+          setScopes(retry.capabilities.scopes)
+          setCollapsed(false)
+          return
+        } catch {
+          // fall through to user-facing error
+        }
+      }
       setInstalled(false)
       setVersion(null)
       setScopes([])
-      setError(bridgeError instanceof Error ? bridgeError.message : 'Extension not available')
+      setError(message)
     } finally {
       setLoading(false)
     }
