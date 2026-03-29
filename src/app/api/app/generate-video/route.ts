@@ -96,9 +96,12 @@ export async function POST(request: NextRequest) {
             userId,
             serverSecret,
             type: 'video',
+            source: 'video_generation',
             status: 'pending',
             prompt: prompt.trim(),
             modelId: modelId ?? VIDEO_MODELS[0].id,
+            fileName: `overlay-video-${Date.now()}.mp4`,
+            mimeType: 'video/mp4',
             ...(conversationId ? { conversationId } : {}),
             ...(turnId ? { turnId } : {}),
           })
@@ -195,6 +198,7 @@ export async function POST(request: NextRequest) {
             modelId: usedModelId,
             sizeBytes: videoBuffer.length,
             ...(storageId ? { storageId } : {}),
+            sizeBytes: Buffer.from(videoBase64!, 'base64').byteLength,
           })
         } catch (err) {
           console.error('[GenerateVideo] Failed to update output:', err)

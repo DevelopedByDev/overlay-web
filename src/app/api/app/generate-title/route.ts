@@ -101,42 +101,47 @@ export async function POST(request: NextRequest) {
     const groq = new Groq({ apiKey })
     const userPrompt = `Generate a concise 3-6 word title for a conversation that starts with this message:\n\n${text.slice(0, 500)}`
 
-    const structuredCompletion = await groq.chat.completions.create({
-      model: 'openai/gpt-oss-20b',
-      user: session.user.id,
-      temperature: 0,
-      max_completion_tokens: 64,
-      reasoning_effort: 'low',
-      reasoning_format: 'hidden',
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'chat_title',
-          description: 'A concise 3-6 word title for a conversation.',
-          strict: true,
-          schema: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              title: {
-                type: 'string',
-                description: 'A concise 3-6 word title with no trailing punctuation.',
+    let structuredCompletion: Awaited<ReturnType<typeof groq.chat.completions.create>> | null = null
+    let structuredContent = ''
+    try {
+      structuredCompletion = await groq.chat.completions.create({
+        model: 'openai/gpt-oss-20b',
+        user: session.user.id,
+        temperature: 0,
+        max_completion_tokens: 64,
+        reasoning_effort: 'low',
+        reasoning_format: 'hidden',
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'chat_title',
+            description: 'A concise 3-6 word title for a conversation.',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                title: {
+                  type: 'string',
+                  description: 'A concise 3-6 word title with no trailing punctuation.',
+                },
               },
+              required: ['title'],
             },
-            required: ['title'],
           },
         },
-      },
-      messages: [
-        {
-          role: 'system',
-          content: 'You write short, precise chat titles. Return valid JSON with a single "title" field. The title must be 3 to 6 words, with no quotes or trailing punctuation.',
-        },
-        { role: 'user', content: userPrompt },
-      ],
-    })
-
-    const structuredContent = getCompletionContent(structuredCompletion.choices[0]?.message?.content)
+        messages: [
+          {
+            role: 'system',
+            content: 'You write short, precise chat titles. Return valid JSON with a single "title" field. The title must be 3 to 6 words, with no quotes or trailing punctuation.',
+          },
+          { role: 'user', content: userPrompt },
+        ],
+      })
+      structuredContent = getCompletionContent(structuredCompletion.choices[0]?.message?.content)
+    } catch (error) {
+      console.warn('[ChatTitle][server] Structured Groq title generation failed, falling back to plain text', error)
+    }
     let structuredTitle = ''
     try {
       const parsed = JSON.parse(structuredContent) as { title?: string }
@@ -150,29 +155,33 @@ export async function POST(request: NextRequest) {
 
     let plainTextTitle = ''
     if (!structuredTitle.trim()) {
-      const plainTextCompletion = await groq.chat.completions.create({
-        model: 'openai/gpt-oss-20b',
-        user: session.user.id,
-        temperature: 0.1,
-        max_completion_tokens: 64,
-        reasoning_effort: 'low',
-        reasoning_format: 'hidden',
-        messages: [
-          {
-            role: 'system',
-            content: 'You write short, precise chat titles. Reply with only the title in plain text. The title must be 3 to 6 words, with no quotes or trailing punctuation.',
-          },
-          { role: 'user', content: userPrompt },
-        ],
-      })
+      try {
+        const plainTextCompletion = await groq.chat.completions.create({
+          model: 'openai/gpt-oss-20b',
+          user: session.user.id,
+          temperature: 0.1,
+          max_completion_tokens: 64,
+          reasoning_effort: 'low',
+          reasoning_format: 'hidden',
+          messages: [
+            {
+              role: 'system',
+              content: 'You write short, precise chat titles. Reply with only the title in plain text. The title must be 3 to 6 words, with no quotes or trailing punctuation.',
+            },
+            { role: 'user', content: userPrompt },
+          ],
+        })
 
-      plainTextTitle = getCompletionContent(plainTextCompletion.choices[0]?.message?.content)
-      console.log('[ChatTitle][server] Plain-text Groq retry completed', {
-        plainTextTitle,
-        finishReason: plainTextCompletion.choices[0]?.finish_reason,
-        usage: plainTextCompletion.usage,
-        xGroq: plainTextCompletion.x_groq,
-      })
+        plainTextTitle = getCompletionContent(plainTextCompletion.choices[0]?.message?.content)
+        console.log('[ChatTitle][server] Plain-text Groq retry completed', {
+          plainTextTitle,
+          finishReason: plainTextCompletion.choices[0]?.finish_reason,
+          usage: plainTextCompletion.usage,
+          xGroq: plainTextCompletion.x_groq,
+        })
+      } catch (error) {
+        console.warn('[ChatTitle][server] Plain-text Groq retry failed, using fallback title', error)
+      }
     }
 
     const rawTitle = structuredTitle || plainTextTitle
@@ -188,9 +197,9 @@ export async function POST(request: NextRequest) {
       sanitizedTitle,
       fallbackTitle,
       usedFallback,
-      finishReason: structuredCompletion.choices[0]?.finish_reason,
-      usage: structuredCompletion.usage,
-      xGroq: structuredCompletion.x_groq,
+      finishReason: structuredCompletion?.choices[0]?.finish_reason,
+      usage: structuredCompletion?.usage,
+      xGroq: structuredCompletion?.x_groq,
     })
 
     return NextResponse.json({ title: sanitizedTitle })

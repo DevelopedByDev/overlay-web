@@ -330,6 +330,7 @@ export async function POST(request: NextRequest) {
         buildOverlayToolSet('ask', {
           userId,
           accessToken: session.accessToken,
+          serverSecret,
           conversationId: conversationId ?? undefined,
           projectId: conversationProjectId,
           baseUrl: getInternalApiBaseUrl(request),

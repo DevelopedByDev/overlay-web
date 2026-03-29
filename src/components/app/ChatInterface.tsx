@@ -48,6 +48,7 @@ import { useNavigationProgress } from '@/lib/navigation-progress'
 import { MarkdownMessage } from './MarkdownMessage'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
+import type { OutputType } from '@/lib/output-types'
 
 function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: boolean; isFreeTier: boolean }) {
   const router = useRouter()
@@ -201,7 +202,7 @@ interface PendingChatDocument {
 
 interface ChatOutput {
   _id: string
-  type: 'image' | 'video'
+  type: OutputType
   status: 'pending' | 'completed' | 'failed'
   prompt: string
   modelId: string
@@ -1183,7 +1184,12 @@ interface RestoredOutputGroup {
 }
 
 function groupOutputsIntoExchanges(outputs: ChatOutput[]): RestoredOutputGroup[] {
-  const sorted = outputs.slice().sort((a, b) => a.createdAt - b.createdAt)
+  const isMediaOutput = (output: ChatOutput): output is ChatOutput & { type: 'image' | 'video' } =>
+    output.type === 'image' || output.type === 'video'
+
+  const sorted = outputs
+    .filter(isMediaOutput)
+    .sort((a, b) => a.createdAt - b.createdAt)
   const groups: RestoredOutputGroup[] = []
 
   for (const output of sorted) {
@@ -1327,10 +1333,6 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     }
   }, [mobileChatListOpen])
 
-  useEffect(() => {
-    prevActBusyRef.current = false
-  }, [activeChatId])
-
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const shouldScrollRef = useRef(false)
@@ -1340,8 +1342,6 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
   const wasStreamingRef = useRef(false)
-  /** After an Act stream ends, mirror `actChat.messages` into `chat0` so the primary transcript stays aligned for the next send. */
-  const prevActBusyRef = useRef(false)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
@@ -1433,19 +1433,6 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const chat2 = useChat({ chat: activeRuntime.askChats[2] })
   const chat3 = useChat({ chat: activeRuntime.askChats[3] })
   const actChat = useChat({ chat: activeRuntime.actChat })
-
-  useEffect(() => {
-    if (composerMode !== 'act') {
-      prevActBusyRef.current = false
-      return
-    }
-    const busy = actChat.status === 'streaming' || actChat.status === 'submitted'
-    const wasBusy = prevActBusyRef.current
-    prevActBusyRef.current = busy
-    if (wasBusy && !busy && actChat.messages.length > 0) {
-      chat0.setMessages([...actChat.messages])
-    }
-  }, [composerMode, actChat.status, actChat.messages, chat0])
 
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
   const activeAskChats = activeRuntime.askChats
@@ -2548,15 +2535,14 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
       startSession(chatId, 'act', activeChatTitleSnapshot ?? '', msgCountBeforeSend)
 
-      // Assistant replies stream only into actChat; chat0 would still be user-only without this.
-      // Base the next transcript on actChat so prior act assistant messages are not dropped.
-      const actThreadBase: UIMessage[] =
-        targetRuntime.actChat.messages.length > 0
-          ? targetRuntime.actChat.messages
-          : targetRuntime.askChats[0].messages
-      const nextTranscript = [...actThreadBase, userUIMessage as UIMessage]
-      targetRuntime.askChats[0].messages = nextTranscript
-      targetRuntime.actChat.messages = nextTranscript
+      targetRuntime.askChats[0].messages = [
+        ...targetRuntime.askChats[0].messages,
+        userUIMessage as UIMessage,
+      ]
+      targetRuntime.actChat.messages = [
+        ...targetRuntime.actChat.messages,
+        userUIMessage as UIMessage,
+      ]
 
       setInput('')
       setAttachedImages([])

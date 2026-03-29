@@ -1,7 +1,15 @@
 import type { OverlayToolsOptions } from './types'
 
-export function toolAuthBody(options: OverlayToolsOptions): { userId: string; accessToken?: string } {
-  return { userId: options.userId, accessToken: options.accessToken }
+export function toolAuthBody(options: OverlayToolsOptions): {
+  userId: string
+  accessToken?: string
+  serverSecret?: string
+} {
+  return {
+    userId: options.userId,
+    accessToken: options.accessToken,
+    serverSecret: options.serverSecret,
+  }
 }
 
 export type InternalApiFetchOpts = {
@@ -24,6 +32,9 @@ export async function callInternalApi(
     headers: {
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(typeof body.serverSecret === 'string' && body.serverSecret
+        ? { 'x-internal-api-secret': body.serverSecret }
+        : {}),
       ...(forwardCookie ? { Cookie: forwardCookie } : {}),
     },
     body: JSON.stringify(body),

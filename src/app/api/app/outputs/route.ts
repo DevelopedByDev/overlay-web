@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
+import { isKnownOutputType } from '@/lib/output-types'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,7 +13,8 @@ export async function GET(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
 
     const { searchParams } = new URL(request.url)
-    const type = searchParams.get('type') as 'image' | 'video' | null
+    const rawType = searchParams.get('type')
+    const type = rawType && isKnownOutputType(rawType) ? rawType : null
     const limit = parseInt(searchParams.get('limit') ?? '50', 10)
     const conversationId = searchParams.get('conversationId')
 

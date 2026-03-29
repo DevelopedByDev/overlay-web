@@ -222,9 +222,23 @@ export default defineSchema({
   // Generated images and videos from Chat and Agent sessions.
   outputs: defineTable({
     userId: v.string(),
-    // Legacy deployments may still contain older non-media output rows.
-    // Keep them schema-compatible, but runtime output surfaces only use image/video.
-    type: v.string(),
+    type: v.union(
+      v.literal('image'),
+      v.literal('video'),
+      v.literal('audio'),
+      v.literal('document'),
+      v.literal('archive'),
+      v.literal('code'),
+      v.literal('text'),
+      v.literal('other'),
+    ),
+    source: v.optional(
+      v.union(
+        v.literal('image_generation'),
+        v.literal('video_generation'),
+        v.literal('sandbox'),
+      ),
+    ),
     status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
     prompt: v.string(),
     modelId: v.string(),
@@ -232,7 +246,7 @@ export default defineSchema({
     url: v.optional(v.string()),
     fileName: v.optional(v.string()),
     mimeType: v.optional(v.string()),
-    source: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
     metadata: v.optional(v.any()),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),

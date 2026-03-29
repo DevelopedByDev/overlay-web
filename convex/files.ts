@@ -96,6 +96,7 @@ export const get = query({
       type: file.type,
       parentId: file.parentId ?? null,
       content: file.storageId ? buildProxyUrl(file._id) : (file.content ?? ''),
+      storageId: file.storageId ?? null,
       sizeBytes: file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0),
       isStorageBacked: Boolean(file.storageId),
       projectId: file.projectId,

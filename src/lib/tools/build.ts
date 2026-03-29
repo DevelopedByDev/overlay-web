@@ -13,6 +13,7 @@ import {
   executeDeleteMemory,
   executeGenerateImage,
   executeGenerateVideo,
+  executeRunDaytonaSandbox,
   executeSaveMemory,
   executeSearchKnowledge,
   executeUpdateMemory,
@@ -175,6 +176,31 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       execute: async (input) => {
         assertOverlayToolAllowedForMode(mode, 'generate_video')
         return executeGenerateVideo(options, input)
+      },
+    })
+
+    tools.run_daytona_sandbox = tool({
+      description:
+        'Run a CLI or script task inside an ephemeral Daytona sandbox. ' +
+        'Use this for programmatic workflows like app building, code generation, file transforms, slideshow generation, or media pipelines that should run through command-line tooling rather than browser automation. ' +
+        'Selected Overlay files are uploaded into the sandbox, declared output files are imported back into the Outputs tab, and the sandbox is deleted after the run.',
+      inputSchema: z.object({
+        task: z.string().describe('Short summary of what the sandbox should do'),
+        runtime: z.enum(['node', 'python']).describe('Sandbox runtime: node for JavaScript tooling, python for Python tooling'),
+        command: z.string().describe('Shell command to execute inside the sandbox workspace'),
+        code: z.string().optional().describe('Optional inline source code to write into the sandbox before execution'),
+        inputFileIds: z
+          .array(z.string())
+          .optional()
+          .describe('Optional existing Overlay file ids to upload into the sandbox input directory'),
+        expectedOutputs: z
+          .array(z.string())
+          .min(1)
+          .describe('File paths relative to the sandbox workspace that should be imported back into Outputs after execution'),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowedForMode(mode, 'run_daytona_sandbox')
+        return executeRunDaytonaSandbox(options, input)
       },
     })
 
