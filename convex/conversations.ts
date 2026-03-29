@@ -3,6 +3,7 @@ import { DEFAULT_MODEL_ID } from '../src/lib/models'
 import { mutation, query } from './_generated/server'
 import { Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
+import { applyStorageUsageDelta } from './lib/storageQuota'
 
 /** Matches AI SDK UI parts we persist; `tool-invocation` restores tool chips after reload. */
 const messagePart = v.union(
@@ -294,6 +295,9 @@ export const deleteTurn = mutation({
           } catch {
             // best-effort
           }
+        }
+        if (o.sizeBytes) {
+          await applyStorageUsageDelta(ctx as never, userId, -o.sizeBytes)
         }
         await ctx.db.delete(o._id)
         deletedOutputs++

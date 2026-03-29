@@ -65,8 +65,8 @@ export default defineSchema({
       v.literal('image'),
       v.literal('video'),
       v.literal('browser'),
-      v.literal('composio'),
       v.literal('daytona'),
+      v.literal('composio'),
       v.literal('internal'),
     ),
     errorMessage: v.optional(v.string()),
@@ -222,9 +222,9 @@ export default defineSchema({
   // Generated images and videos from Chat and Agent sessions.
   outputs: defineTable({
     userId: v.string(),
-    // Legacy deployments may still contain older text/document output rows.
+    // Legacy deployments may still contain older non-media output rows.
     // Keep them schema-compatible, but runtime output surfaces only use image/video.
-    type: v.union(v.literal('text'), v.literal('document'), v.literal('image'), v.literal('video')),
+    type: v.string(),
     status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
     prompt: v.string(),
     modelId: v.string(),
@@ -232,12 +232,12 @@ export default defineSchema({
     url: v.optional(v.string()),
     fileName: v.optional(v.string()),
     mimeType: v.optional(v.string()),
-    sizeBytes: v.optional(v.number()),
     source: v.optional(v.string()),
     metadata: v.optional(v.any()),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
@@ -254,10 +254,15 @@ export default defineSchema({
     parentId: v.optional(v.string()),
     content: v.optional(v.string()),
     storageId: v.optional(v.id('_storage')),
+    sizeBytes: v.optional(v.number()),
+    contentHash: v.optional(v.string()),
+    duplicateOfFileId: v.optional(v.id('files')),
     projectId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId'])
+    .index('by_userId_contentHash', ['userId', 'contentHash'])
+    .index('by_duplicateOfFileId', ['duplicateOfFileId'])
     .index('by_projectId', ['projectId'])
     .index('by_parentId', ['parentId']),
 })

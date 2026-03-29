@@ -1,8 +1,19 @@
 import { v } from 'convex/values'
-import { Id } from './_generated/dataModel'
+import { Doc, Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 import { mutation, query } from './_generated/server'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
+import { applyStorageUsageDelta, ensureStorageAvailable } from './lib/storageQuota'
+
+const utf8Encoder = new TextEncoder()
+
+function utf8ByteLength(value: string): number {
+  return utf8Encoder.encode(value).length
+}
+
+function buildProxyUrl(fileId: Id<'files'>): string {
+  return `/api/app/files/${fileId}/content`
+}
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -13,6 +24,17 @@ async function authorizeUserAccess(params: {
     return
   }
   await requireAccessToken(params.accessToken ?? '', params.userId)
+}
+
+type FilesCtxLike = {
+  db: {
+    query: (table: 'files') => {
+      withIndex: (index: string, cb: (q: { eq: (field: string, value: unknown) => { eq: (field: string, value: unknown) => unknown } }) => unknown) => {
+        collect: () => Promise<Doc<'files'>[]>
+      }
+    }
+    patch: (id: Id<'files'>, value: Partial<Doc<'files'>>) => Promise<void>
+  }
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -41,24 +63,19 @@ export const list = query({
         ? allFiles.filter((f) => f.projectId === projectId)
         : allFiles
 
-    return Promise.all(
-      filtered.map(async (file) => {
-        const content = file.storageId
-          ? (await ctx.storage.getUrl(file.storageId)) ?? ''
-          : (file.content ?? '')
-        return {
-          _id: file._id,
-          userId: file.userId,
-          name: file.name,
-          type: file.type,
-          parentId: file.parentId ?? null,
-          content,
-          projectId: file.projectId,
-          createdAt: file.createdAt,
-          updatedAt: file.updatedAt,
-        }
-      })
-    )
+    return filtered.map((file) => ({
+      _id: file._id,
+      userId: file.userId,
+      name: file.name,
+      type: file.type,
+      parentId: file.parentId ?? null,
+      sizeBytes: file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0),
+      isStorageBacked: Boolean(file.storageId),
+      downloadUrl: file.storageId ? buildProxyUrl(file._id) : undefined,
+      projectId: file.projectId,
+      createdAt: file.createdAt,
+      updatedAt: file.updatedAt,
+    }))
   },
 })
 
@@ -72,16 +89,15 @@ export const get = query({
     }
     const file = await ctx.db.get(fileId)
     if (!file || file.userId !== userId) return null
-    const content = file.storageId
-      ? (await ctx.storage.getUrl(file.storageId)) ?? ''
-      : (file.content ?? '')
     return {
       _id: file._id,
       userId: file.userId,
       name: file.name,
       type: file.type,
       parentId: file.parentId ?? null,
-      content,
+      content: file.storageId ? buildProxyUrl(file._id) : (file.content ?? ''),
+      sizeBytes: file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0),
+      isStorageBacked: Boolean(file.storageId),
       projectId: file.projectId,
       createdAt: file.createdAt,
       updatedAt: file.updatedAt,
@@ -89,7 +105,70 @@ export const get = query({
   },
 })
 
+export const getStorageUrlForProxy = query({
+  args: {
+    fileId: v.id('files'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, { fileId, userId, accessToken, serverSecret }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return null
+    }
+    const file = await ctx.db.get(fileId)
+    if (!file || file.userId !== userId || !file.storageId) return null
+    const url = await ctx.storage.getUrl(file.storageId)
+    if (!url) return null
+    return {
+      url,
+      name: file.name,
+      sizeBytes: file.sizeBytes ?? 0,
+    }
+  },
+})
+
 // ─── Mutations ────────────────────────────────────────────────────────────────
+
+async function findCanonicalDuplicate(
+  ctx: FilesCtxLike,
+  userId: string,
+  contentHash: string | undefined,
+  ignoreFileId?: Id<'files'>,
+): Promise<Doc<'files'> | null> {
+  if (!contentHash) return null
+  const matches = await ctx.db
+    .query('files')
+    .withIndex('by_userId_contentHash', (q) => q.eq('userId', userId).eq('contentHash', contentHash))
+    .collect()
+
+  for (const match of matches) {
+    if (ignoreFileId && match._id === ignoreFileId) continue
+    if (match.duplicateOfFileId) continue
+    return match
+  }
+
+  return null
+}
+
+async function maybePromoteDuplicate(
+  ctx: FilesCtxLike,
+  userId: string,
+  canonicalFileId: Id<'files'>,
+): Promise<Id<'files'> | null> {
+  const duplicates = await ctx.db
+    .query('files')
+    .withIndex('by_duplicateOfFileId', (q) => q.eq('duplicateOfFileId', canonicalFileId))
+    .collect()
+  const promoted = duplicates.find((candidate) => candidate.userId === userId)
+  if (!promoted) return null
+  await ctx.db.patch(promoted._id, {
+    duplicateOfFileId: undefined,
+  })
+  return promoted._id
+}
 
 export const create = mutation({
   args: {
@@ -100,9 +179,10 @@ export const create = mutation({
     type: v.union(v.literal('file'), v.literal('folder')),
     parentId: v.optional(v.string()),
     content: v.optional(v.string()),
+    contentHash: v.optional(v.string()),
     projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, name, type, parentId, content, projectId }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, name, type, parentId, content, contentHash, projectId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (parentId) {
       const parent = await ctx.db.get(parentId as Id<'files'>)
@@ -117,17 +197,32 @@ export const create = mutation({
       }
     }
     const now = Date.now()
+    const inlineContent = content ?? ''
+    const sizeBytes = type === 'file' ? utf8ByteLength(inlineContent) : 0
+    if (type === 'file' && sizeBytes > 0) {
+      await ensureStorageAvailable(ctx as never, userId, sizeBytes)
+    }
+    const canonicalDuplicate =
+      type === 'file' && inlineContent.trim() && contentHash
+        ? await findCanonicalDuplicate(ctx as never, userId, contentHash)
+        : null
     const id = await ctx.db.insert('files', {
       userId,
       name,
       type,
       parentId,
-      content: content ?? '',
+      content: inlineContent,
+      sizeBytes,
+      contentHash,
+      duplicateOfFileId: canonicalDuplicate?._id,
       projectId,
       createdAt: now,
       updatedAt: now,
     })
-    if (type === 'file' && (content ?? '').trim()) {
+    if (type === 'file' && sizeBytes > 0) {
+      await applyStorageUsageDelta(ctx as never, userId, sizeBytes)
+    }
+    if (type === 'file' && inlineContent.trim() && !canonicalDuplicate) {
       await ctx.scheduler.runAfter(0, internal.knowledge.reindexFileInternal, { fileId: id })
     }
     return id
@@ -142,9 +237,10 @@ export const createWithStorage = mutation({
     name: v.string(),
     parentId: v.optional(v.string()),
     storageId: v.id('_storage'),
+    sizeBytes: v.number(),
     projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, name, parentId, storageId, projectId }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, name, parentId, storageId, sizeBytes, projectId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (parentId) {
       const parent = await ctx.db.get(parentId as Id<'files'>)
@@ -158,6 +254,7 @@ export const createWithStorage = mutation({
         throw new Error('Unauthorized')
       }
     }
+    await ensureStorageAvailable(ctx as never, userId, sizeBytes)
     const now = Date.now()
     const id = await ctx.db.insert('files', {
       userId,
@@ -165,10 +262,12 @@ export const createWithStorage = mutation({
       type: 'file',
       parentId,
       storageId,
+      sizeBytes,
       projectId,
       createdAt: now,
       updatedAt: now,
     })
+    await applyStorageUsageDelta(ctx as never, userId, sizeBytes)
     return id
   },
 })
@@ -181,19 +280,51 @@ export const update = mutation({
     fileId: v.id('files'),
     name: v.optional(v.string()),
     content: v.optional(v.string()),
+    contentHash: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, fileId, name, content }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, fileId, name, content, contentHash }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
     if (!existing || existing.userId !== userId) {
       throw new Error('Unauthorized')
     }
+    if (existing.storageId && content !== undefined) {
+      throw new Error('Storage-backed files cannot be edited inline.')
+    }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (name !== undefined) patch.name = name
-    if (content !== undefined) patch.content = content
+    let shouldReindex = false
+    let shouldPurge = false
+    let storageDelta = 0
+    if (content !== undefined) {
+      const nextSizeBytes = utf8ByteLength(content)
+      const previousSizeBytes = existing.sizeBytes ?? utf8ByteLength(existing.content ?? '')
+      storageDelta = nextSizeBytes - previousSizeBytes
+      if (storageDelta > 0) {
+        await ensureStorageAvailable(ctx as never, userId, storageDelta)
+      }
+      const canonicalDuplicate =
+        content.trim() && contentHash
+          ? await findCanonicalDuplicate(ctx as never, userId, contentHash, fileId)
+          : null
+      patch.content = content
+      patch.sizeBytes = nextSizeBytes
+      patch.contentHash = contentHash
+      patch.duplicateOfFileId = canonicalDuplicate?._id
+      shouldPurge = true
+      shouldReindex = content.trim().length > 0 && !canonicalDuplicate
+    }
     await ctx.db.patch(fileId, patch)
-    const after = await ctx.db.get(fileId)
-    if (after?.type === 'file' && !after.storageId) {
+    if (storageDelta !== 0) {
+      await applyStorageUsageDelta(ctx as never, userId, storageDelta)
+    }
+    if (existing.type === 'file' && !existing.storageId && shouldPurge) {
+      await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
+        sourceKind: 'file',
+        sourceId: fileId,
+      })
+    }
+    if (shouldReindex) {
       await ctx.scheduler.runAfter(0, internal.knowledge.reindexFileInternal, { fileId })
     }
   },
@@ -219,6 +350,11 @@ export const remove = mutation({
         await deleteSubtree(child._id)
       }
       const file = (await ctx.db.get(id)) as { type?: string; storageId?: Id<'_storage'> } | null
+      const fullFile = await ctx.db.get(id)
+      let promotedDuplicateId: Id<'files'> | null = null
+      if (fullFile?.type === 'file' && !fullFile.duplicateOfFileId) {
+        promotedDuplicateId = await maybePromoteDuplicate(ctx as never, userId, id)
+      }
       if (file?.type === 'file') {
         await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
           sourceKind: 'file',
@@ -228,16 +364,42 @@ export const remove = mutation({
       if (file?.storageId) {
         await ctx.storage.delete(file.storageId)
       }
+      if (fullFile?.sizeBytes) {
+        await applyStorageUsageDelta(ctx as never, userId, -fullFile.sizeBytes)
+      }
       await ctx.db.delete(id)
+      if (promotedDuplicateId) {
+        await ctx.scheduler.runAfter(0, internal.knowledge.reindexFileInternal, { fileId: promotedDuplicateId })
+      }
     }
     await deleteSubtree(fileId)
   },
 })
 
 export const generateUploadUrl = mutation({
-  args: { userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { userId, accessToken, serverSecret }) => {
+  args: {
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    sizeBytes: v.number(),
+  },
+  handler: async (ctx, { userId, accessToken, serverSecret, sizeBytes }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    await ensureStorageAvailable(ctx as never, userId, sizeBytes)
     return await ctx.storage.generateUploadUrl()
+  },
+})
+
+export const deleteStorageObject = mutation({
+  args: {
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    storageId: v.id('_storage'),
+  },
+  handler: async (ctx, { userId, accessToken, serverSecret, storageId }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    await ctx.storage.delete(storageId)
+    return { success: true }
   },
 })

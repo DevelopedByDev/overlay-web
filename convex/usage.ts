@@ -3,6 +3,7 @@ import { mutation, query, internalMutation, internalQuery } from './_generated/s
 import { requireAccessToken, requireServerSecret, validateServerSecret } from './lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../src/lib/models'
+import { applyBandwidthUsage, getBandwidthBytesUsed, getBandwidthLimitForSubscription, getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from './lib/storageQuota'
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []
@@ -116,6 +117,10 @@ export const getEntitlements = query({
       tier,
       creditsUsed: credits,
       creditsTotal: defaults.creditsTotal,
+      overlayStorageBytesUsed: getStorageBytesUsed(subscription),
+      overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
+      fileBandwidthBytesUsed: getBandwidthBytesUsed(subscription),
+      fileBandwidthBytesLimit: getBandwidthLimitForSubscription(subscription),
       dailyUsage: tier === 'free' ? weeklyUsage : {
         ask: dailyUsage?.askCount || 0,
         write: dailyUsage?.writeCount || 0,
@@ -212,6 +217,10 @@ export const getEntitlementsByServer = query({
       tier,
       creditsUsed: credits,
       creditsTotal: defaults.creditsTotal,
+      overlayStorageBytesUsed: getStorageBytesUsed(subscription),
+      overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
+      fileBandwidthBytesUsed: getBandwidthBytesUsed(subscription),
+      fileBandwidthBytesLimit: getBandwidthLimitForSubscription(subscription),
       dailyUsage: tier === 'free' ? weeklyUsage : {
         ask: dailyUsage?.askCount || 0,
         write: dailyUsage?.writeCount || 0,
@@ -249,8 +258,45 @@ export const getEntitlementsInternal = internalQuery({
       tier,
       creditsUsed: subscription?.creditsUsed ?? 0,
       creditsTotal: creditsTotalByTier[tier] ?? 0,
+      overlayStorageBytesUsed: getStorageBytesUsed(subscription),
+      overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
+      fileBandwidthBytesUsed: getBandwidthBytesUsed(subscription),
+      fileBandwidthBytesLimit: getBandwidthLimitForSubscription(subscription),
     }
   }
+})
+
+export const recordFileBandwidthUsageByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    bytesServed: v.number(),
+  },
+  handler: async (ctx, { serverSecret, userId, bytesServed }) => {
+    requireServerSecret(serverSecret)
+    if (!Number.isFinite(bytesServed) || bytesServed <= 0) {
+      return { success: true, bytesServed: 0 }
+    }
+    await applyBandwidthUsage(ctx, userId, Math.round(bytesServed))
+    return { success: true, bytesServed: Math.round(bytesServed) }
+  },
+})
+
+export const initializeSubscriptionUsageByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, { serverSecret, userId }) => {
+    requireServerSecret(serverSecret)
+    const subscription = await getOrCreateSubscription(ctx, userId)
+    return {
+      success: true,
+      tier: subscription.tier,
+      overlayStorageBytesUsed: getStorageBytesUsed(subscription),
+      fileBandwidthBytesUsed: getBandwidthBytesUsed(subscription),
+    }
+  },
 })
 
 // Record a batch of usage events — requires valid access token.

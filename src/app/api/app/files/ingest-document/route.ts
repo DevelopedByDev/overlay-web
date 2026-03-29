@@ -3,7 +3,7 @@ import mammoth from 'mammoth'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
-import { partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
+import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export const runtime = 'nodejs'
@@ -151,6 +151,7 @@ export async function POST(request: NextRequest) {
         name: partName,
         type: 'file',
         content: parts[p],
+        contentHash: hashTextContent(parts[p]!),
         projectId,
         parentId,
       })
@@ -162,6 +163,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ id: ids[0], ids, name: safeName, parts: total })
   } catch (error) {
+    if (error instanceof Error && error.message.includes('storage_limit_exceeded')) {
+      return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
+    }
     console.error('[ingest-document]', error)
     return NextResponse.json({ error: 'Failed to ingest document' }, { status: 500 })
   }

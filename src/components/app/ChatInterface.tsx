@@ -803,6 +803,8 @@ function errorLabel(err: Error | null | undefined): string | null {
   if (err.message?.includes('premium_model')) return 'This model requires a Pro subscription.'
   if (err.message?.includes('generation_not_allowed')) return 'This action requires a Pro subscription.'
   if (err.message?.includes('insufficient_credits')) return 'No credits remaining.'
+  if (err.message?.includes('storage_limit_exceeded')) return 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.'
+  if (err.message?.includes('bandwidth_limit_exceeded')) return 'File bandwidth limit reached for this billing period.'
   if (err.message?.includes('supported image formats') || err.message?.includes('does not represent a valid image')) {
     return 'Unsupported image format. Use JPEG, PNG, GIF, or WebP.'
   }

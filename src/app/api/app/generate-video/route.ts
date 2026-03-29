@@ -13,6 +13,8 @@ interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   creditsUsed: number
   creditsTotal: number
+  overlayStorageBytesUsed: number
+  overlayStorageBytesLimit: number
 }
 
 function sseChunk(data: Record<string, unknown>): string {
@@ -78,6 +80,11 @@ export async function POST(request: NextRequest) {
         }
         if (remainingCents <= 0) {
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' })))
+          controller.close()
+          return
+        }
+        if (entitlements.overlayStorageBytesUsed >= entitlements.overlayStorageBytesLimit) {
+          controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.' })))
           controller.close()
           return
         }
@@ -148,6 +155,12 @@ export async function POST(request: NextRequest) {
         }
 
         const dataUrl = `data:video/mp4;base64,${videoBase64}`
+        const videoBuffer = Buffer.from(videoBase64!, 'base64')
+        if (entitlements.overlayStorageBytesUsed + videoBuffer.length > entitlements.overlayStorageBytesLimit) {
+          controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
+          controller.close()
+          return
+        }
 
         // ── Upload to Convex file storage ─────────────────────────────────────
         let storageId: string | null = null
@@ -155,9 +168,9 @@ export async function POST(request: NextRequest) {
           const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {
             userId,
             serverSecret,
+            sizeBytes: videoBuffer.length,
           })
           if (uploadUrl) {
-            const videoBuffer = Buffer.from(videoBase64!, 'base64')
             const uploadRes = await fetch(uploadUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'video/mp4' },
@@ -180,10 +193,23 @@ export async function POST(request: NextRequest) {
             serverSecret,
             status: 'completed',
             modelId: usedModelId,
+            sizeBytes: videoBuffer.length,
             ...(storageId ? { storageId } : {}),
           })
         } catch (err) {
           console.error('[GenerateVideo] Failed to update output:', err)
+          if (storageId) {
+            await convex.mutation('outputs:deleteStorageObject', {
+              userId,
+              serverSecret,
+              storageId,
+            }).catch(() => {})
+          }
+          if (err instanceof Error && err.message.includes('storage_limit_exceeded')) {
+            controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
+            controller.close()
+            return
+          }
         }
 
         // ── Usage tracking ────────────────────────────────────────────────────────

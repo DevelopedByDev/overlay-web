@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
-import { partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
+import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
+
+function storageErrorResponse(error: unknown, fallback = 'Failed to save file') {
+  const message = error instanceof Error ? error.message : String(error)
+  if (message.includes('storage_limit_exceeded')) {
+    return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
+  }
+  return NextResponse.json({ error: fallback }, { status: 500 })
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,7 +48,7 @@ export async function POST(request: NextRequest) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { name, type, parentId, content, storageId, projectId } = await request.json()
+    const { name, type, parentId, content, storageId, sizeBytes, projectId } = await request.json()
     if (!name || !type) return NextResponse.json({ error: 'name and type required' }, { status: 400 })
 
     const args: Record<string, unknown> = {
@@ -59,16 +67,22 @@ export async function POST(request: NextRequest) {
       // Binary file uploaded directly to Convex storage (type is always 'file')
       const { type: _type, ...storageArgs } = args
       void _type
-      id = await convex.mutation('files:createWithStorage', { ...storageArgs, storageId })
+      id = await convex.mutation('files:createWithStorage', {
+        ...storageArgs,
+        storageId,
+        sizeBytes: typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0,
+      })
     } else if (type === 'file' && typeof content === 'string' && content.length > 0) {
       const parts = splitTextForConvexDocuments(content)
       const total = parts.length
       for (let p = 0; p < parts.length; p++) {
+        const part = parts[p]!
         const partName = partedFileName(name, p + 1, total)
         const partId = await convex.mutation<string>('files:create', {
           ...args,
           name: partName,
-          content: parts[p],
+          content: part,
+          contentHash: hashTextContent(part),
         })
         if (!partId) {
           return NextResponse.json({ error: 'Failed to create file part' }, { status: 500 })
@@ -77,13 +91,16 @@ export async function POST(request: NextRequest) {
       }
       id = ids[0]
     } else {
-      if (content) args.content = content
+      if (content) {
+        args.content = content
+        args.contentHash = hashTextContent(content)
+      }
       id = await convex.mutation('files:create', args)
     }
 
     return NextResponse.json({ id, ids: ids.length ? ids : undefined, parts: ids.length || undefined })
-  } catch {
-    return NextResponse.json({ error: 'Failed to create file' }, { status: 500 })
+  } catch (error) {
+    return storageErrorResponse(error, 'Failed to create file')
   }
 }
 
@@ -100,11 +117,14 @@ export async function PATCH(request: NextRequest) {
       serverSecret,
     }
     if (name !== undefined) args.name = name
-    if (content !== undefined) args.content = content
+    if (content !== undefined) {
+      args.content = content
+      args.contentHash = hashTextContent(content)
+    }
     await convex.mutation('files:update', args)
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Failed to update file' }, { status: 500 })
+  } catch (error) {
+    return storageErrorResponse(error, 'Failed to update file')
   }
 }
 

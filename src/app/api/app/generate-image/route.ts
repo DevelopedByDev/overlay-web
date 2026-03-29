@@ -13,6 +13,8 @@ interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   creditsUsed: number
   creditsTotal: number
+  overlayStorageBytesUsed: number
+  overlayStorageBytesLimit: number
 }
 
 export async function POST(request: NextRequest) {
@@ -66,6 +68,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
         { status: 402 }
+      )
+    }
+    if (entitlements.overlayStorageBytesUsed >= entitlements.overlayStorageBytesLimit) {
+      return NextResponse.json(
+        { error: 'storage_limit_exceeded', message: 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.' },
+        { status: 403 },
       )
     }
 
@@ -139,17 +147,25 @@ export async function POST(request: NextRequest) {
     // Base64 data URLs can be 1-5MB, exceeding Convex's 1MB document limit.
     // We upload the binary to Convex storage and store only the storageId.
     let outputId: string | null = null
+    let uploadedStorageId: string | null = null
     try {
+      const imageBuffer = Buffer.from(imageBase64!, 'base64')
+      if (entitlements.overlayStorageBytesUsed + imageBuffer.length > entitlements.overlayStorageBytesLimit) {
+        return NextResponse.json(
+          { error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this image.' },
+          { status: 403 },
+        )
+      }
       // 1. Get a signed upload URL from Convex
       const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {
         userId,
         serverSecret,
+        sizeBytes: imageBuffer.length,
       })
       let storageId: string | null = null
 
       if (uploadUrl) {
         // 2. Upload the image binary
-        const imageBuffer = Buffer.from(imageBase64!, 'base64')
         const uploadRes = await fetch(uploadUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'image/png' },
@@ -158,6 +174,7 @@ export async function POST(request: NextRequest) {
         if (uploadRes.ok) {
           const { storageId: sid } = await uploadRes.json() as { storageId: string }
           storageId = sid
+          uploadedStorageId = sid
         }
       }
 
@@ -169,12 +186,26 @@ export async function POST(request: NextRequest) {
         status: 'completed',
         prompt: prompt.trim(),
         modelId: usedModelId,
+        sizeBytes: imageBuffer.length,
         ...(storageId ? { storageId } : {}),
         ...(conversationId ? { conversationId } : {}),
         ...(turnId ? { turnId } : {}),
       })
     } catch (err) {
       console.error('[GenerateImage] Failed to save output:', err)
+      if (uploadedStorageId) {
+        await convex.mutation('outputs:deleteStorageObject', {
+          userId,
+          serverSecret,
+          storageId: uploadedStorageId,
+        }).catch(() => {})
+      }
+      if (err instanceof Error && err.message.includes('storage_limit_exceeded')) {
+        return NextResponse.json(
+          { error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this image.' },
+          { status: 403 },
+        )
+      }
     }
 
     // ── Usage tracking ────────────────────────────────────────────────────────

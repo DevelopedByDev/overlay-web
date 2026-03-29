@@ -26,7 +26,10 @@ interface FileNode {
   name: string
   type: 'file' | 'folder'
   parentId: string | null
-  content: string
+  content?: string
+  sizeBytes?: number
+  isStorageBacked?: boolean
+  downloadUrl?: string
   createdAt: number
   updatedAt: number
 }
@@ -130,6 +133,14 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   const [fileSearchOpen, setFileSearchOpen] = useState(false)
   const [fileSearchQuery, setFileSearchQuery] = useState('')
 
+  const loadFile = useCallback(async (fileId: string) => {
+    const res = await fetch(`/api/app/files?fileId=${fileId}`)
+    if (!res.ok) return
+    const file = (await res.json()) as FileNode
+    setSelectedFile(file)
+    setFileContent(file.content ?? '')
+  }, [])
+
   // ── Load memories ──
   const loadMemories = useCallback(async () => {
     try {
@@ -164,9 +175,8 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     const node = files.find((f) => f._id === fileOpenParam && f.type === 'file')
     if (!node) return
     setActiveTab('filesystem')
-    setSelectedFile(node)
-    setFileContent(node.content)
-  }, [fileOpenParam, files, filesLoading])
+    void loadFile(node._id)
+  }, [fileOpenParam, files, filesLoading, loadFile])
 
   useEffect(() => {
     if (!memoryOpenParam || memoriesLoading || memories.length === 0) return
@@ -216,8 +226,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   }
 
   function handleSelectFile(node: FileNode) {
-    setSelectedFile(node)
-    setFileContent(node.content)
+    void loadFile(node._id)
   }
 
   async function handleDeleteNode(id: string, e: React.MouseEvent) {
@@ -238,7 +247,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileId: selectedFile._id, content: val }),
       })
-      setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f, content: val } : f))
+      setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f } : f))
       setIsSavingFile(false)
     }, 800)
   }
@@ -255,7 +264,11 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       })
     } else {
       // Binary file: upload directly to Convex storage
-      const urlRes = await fetch('/api/app/files/upload-url', { method: 'POST' })
+      const urlRes = await fetch('/api/app/files/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sizeBytes: file.size, mimeType: file.type || undefined }),
+      })
       if (!urlRes.ok) return
       const { uploadUrl } = await urlRes.json()
       const uploadRes = await fetch(uploadUrl, {
@@ -268,7 +281,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       await fetch('/api/app/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, type: 'file', parentId, storageId }),
+        body: JSON.stringify({ name: file.name, type: 'file', parentId, storageId, sizeBytes: file.size }),
       })
     }
   }
