@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { action, internalMutation, internalQuery, query } from './_generated/server'
+import { action, internalMutation, internalQuery, mutation, query } from './_generated/server'
 import { internal } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
 import { requireServerSecret } from './lib/auth'
@@ -64,6 +64,27 @@ type BackfillSubscriptionRow = Pick<
   Doc<'subscriptions'>,
   '_id' | '_creationTime' | 'userId' | 'currentPeriodStart' | 'fileBandwidthBytesUsed' | 'fileBandwidthPeriodStart'
 >
+
+const DEFAULT_LEGACY_TABLES = [
+  'agentMessages',
+  'agents',
+  'chats',
+  'computerEvents',
+  'computers',
+  'featureUsage',
+  'messages',
+  'refillCredits',
+  'slackConversations',
+  'slackInstallations',
+  'slackUserLinks',
+  'usageEvents',
+  'workosJwksCache',
+] as const
+
+function uniqueLegacyTableNames(tableNames?: string[]): string[] {
+  const source = tableNames && tableNames.length > 0 ? tableNames : [...DEFAULT_LEGACY_TABLES]
+  return [...new Set(source.map((value) => value.trim()).filter(Boolean))]
+}
 
 export const auditByServer = query({
   args: { serverSecret: v.string() },
@@ -214,6 +235,82 @@ export const auditByServer = query({
       topStorageUsers,
       topChunkFiles,
       duplicateHashes,
+    }
+  },
+})
+
+export const inspectLegacyTablesByServer = query({
+  args: {
+    serverSecret: v.string(),
+    tableNames: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, { serverSecret, tableNames }) => {
+    requireServerSecret(serverSecret)
+    const db = ctx.db as any
+    const results: Array<{ tableName: string; exists: boolean; count: number; error?: string }> = []
+
+    for (const tableName of uniqueLegacyTableNames(tableNames)) {
+      try {
+        const rows = await db.query(tableName).collect()
+        results.push({
+          tableName,
+          exists: true,
+          count: Array.isArray(rows) ? rows.length : 0,
+        })
+      } catch (error) {
+        results.push({
+          tableName,
+          exists: false,
+          count: 0,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    return {
+      inspected: results.length,
+      results,
+    }
+  },
+})
+
+export const purgeLegacyTablesByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    tableNames: v.optional(v.array(v.string())),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, { serverSecret, tableNames, batchSize }) => {
+    requireServerSecret(serverSecret)
+    const db = ctx.db as any
+    const size = Math.max(1, Math.min(batchSize ?? 500, 5000))
+    const results: Array<{ tableName: string; deleted: number; error?: string }> = []
+
+    for (const tableName of uniqueLegacyTableNames(tableNames)) {
+      let deleted = 0
+      try {
+        while (true) {
+          const rows = await db.query(tableName).take(size)
+          if (!Array.isArray(rows) || rows.length === 0) break
+          for (const row of rows) {
+            await db.delete(row._id)
+            deleted += 1
+          }
+          if (rows.length < size) break
+        }
+        results.push({ tableName, deleted })
+      } catch (error) {
+        results.push({
+          tableName,
+          deleted,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    return {
+      purged: results.length,
+      results,
     }
   },
 })
