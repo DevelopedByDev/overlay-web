@@ -84,8 +84,6 @@ export const auditByServer = query({
       memories,
       knowledgeChunks,
       sampledKnowledgeChunkEmbeddings,
-      computers,
-      computerEvents,
       outputs,
       files,
     ] = await Promise.all([
@@ -102,8 +100,6 @@ export const auditByServer = query({
       ctx.db.query('memories').collect(),
       ctx.db.query('knowledgeChunks').collect(),
       ctx.db.query('knowledgeChunkEmbeddings').take(1),
-      ctx.db.query('computers').collect(),
-      ctx.db.query('computerEvents').collect(),
       ctx.db.query('outputs').collect(),
       ctx.db.query('files').collect(),
     ])
@@ -122,8 +118,6 @@ export const auditByServer = query({
       memories: memories.length,
       knowledgeChunks: knowledgeChunks.length,
       knowledgeChunkEmbeddings: knowledgeChunks.length,
-      computers: computers.length,
-      computerEvents: computerEvents.length,
       outputs: outputs.length,
       files: files.length,
     }
