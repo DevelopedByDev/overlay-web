@@ -17,7 +17,6 @@
     "test:auth:convex": "node --experimental-strip-types scripts/auth-convex-debug.ts",
     "test:auth:cookie": "node --experimental-strip-types scripts/auth-cookie-inspect.ts",
     "test:auth:refresh": "node --experimental-strip-types scripts/auth-refresh-check.ts",
-    "test:model-routing": "node --experimental-strip-types scripts/model-routing-test.ts",
     "test:unified-tools": "node --experimental-strip-types scripts/unified-tools-sanity.ts"
   },
   "dependencies": {

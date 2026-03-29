@@ -9,7 +9,6 @@
  */
 
 import type * as authDebug from "../authDebug.js";
-import type * as computers from "../computers.js";
 import type * as conversations from "../conversations.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
@@ -39,7 +38,6 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   authDebug: typeof authDebug;
-  computers: typeof computers;
   conversations: typeof conversations;
   files: typeof files;
   http: typeof http;

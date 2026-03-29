@@ -10,17 +10,6 @@ const INTERNAL_TOOL_IDS = new Set<string>([
   'create_note',
   'update_note',
   'delete_note',
-  'list_computer_instances',
-  'get_computer_by_name',
-  'list_computer_sessions',
-  'get_computer_session_messages',
-  'list_computer_workspace_files',
-  'read_computer_workspace_file',
-  'create_computer_session',
-  'update_computer_session',
-  'delete_computer_session',
-  'write_computer_workspace_file',
-  'run_computer_gateway_command',
 ])
 
 /** Maps tool name → Convex toolInvocations.costBucket. */
@@ -33,7 +22,7 @@ export function toolCostBucketForId(toolId: string): ToolCostBucket {
   return 'composio'
 }
 
-/** Avoid writing a row for every cheap internal read (knowledge, notes, computer listings). */
+/** Avoid writing a row for every cheap internal read (knowledge and notes). */
 export function shouldPersistToolInvocation(bucket: ToolCostBucket): boolean {
   return (
     bucket === 'perplexity' ||

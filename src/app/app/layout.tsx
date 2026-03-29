@@ -17,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <NavigationProgressProvider>
           <NavigationProgressBar />
           <BackgroundPollManager />
-          <AppSidebar user={session.user} accessToken={session.accessToken} />
+          <AppSidebar user={session.user} />
           <main className="flex-1 overflow-auto pt-14 md:pt-0">{children}</main>
         </NavigationProgressProvider>
       </AsyncSessionsProvider>

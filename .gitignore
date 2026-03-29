@@ -42,7 +42,6 @@ yarn-error.log*
 next-env.d.ts
 
 archives/*
-openclaw/
 .env*.local
 .cursor/hooks/state/*.json
 .gstack/

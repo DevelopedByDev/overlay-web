@@ -39,7 +39,7 @@ High-priority areas for this repository include:
 - Server-to-server secrets and provider credentials.
 - Slack, Stripe, and WorkOS integrations.
 - Desktop/mobile session transfer flows.
-- Hosted computer / tool execution surfaces.
+- AI interaction and tool execution surfaces.
 
 ## Secret Handling Expectations
 

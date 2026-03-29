@@ -130,7 +130,8 @@ export const list = query({
       .order('desc')
       .take(limit ?? 100)
 
-    const filtered = type ? all.filter((o) => o.type === type) : all
+    const mediaOnly = all.filter((o) => o.type === 'image' || o.type === 'video')
+    const filtered = type ? mediaOnly.filter((o) => o.type === type) : mediaOnly
     return await Promise.all(
       filtered.map(async (o) => ({ ...o, url: await resolveUrl(ctx, o) }))
     )
@@ -152,7 +153,7 @@ export const listByConversationId = query({
       .collect()
     return await Promise.all(
       all
-        .filter((output) => output.userId === userId)
+        .filter((output) => output.userId === userId && (output.type === 'image' || output.type === 'video'))
         .map(async (o) => ({ ...o, url: await resolveUrl(ctx, o) }))
     )
   },

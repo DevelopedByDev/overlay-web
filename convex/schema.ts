@@ -29,8 +29,11 @@ export default defineSchema({
     lastName: v.optional(v.string()),
     profilePictureUrl: v.optional(v.string()),
     lastLoginAt: v.optional(v.number()),
-    // Legacy field - kept for backward compatibility with existing data
+    // Legacy fields kept only so older rows continue to validate during deploys.
     autoRefillEnabled: v.optional(v.boolean()),
+    overlayStorageBytesUsed: v.optional(v.number()),
+    fileBandwidthBytesUsed: v.optional(v.number()),
+    fileBandwidthPeriodStart: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_email', ['email']),
 
@@ -63,6 +66,7 @@ export default defineSchema({
       v.literal('video'),
       v.literal('browser'),
       v.literal('composio'),
+      v.literal('daytona'),
       v.literal('internal'),
     ),
     errorMessage: v.optional(v.string()),
@@ -215,73 +219,22 @@ export default defineSchema({
       filterFields: ['userId', 'sourceKind'],
     }),
 
-  computers: defineTable({
-    userId: v.string(),
-    name: v.string(),
-    setupType: v.literal('managed'),
-    region: v.union(v.literal('eu-central'), v.literal('us-east')),
-
-    // FSM status
-    status: v.union(
-      v.literal('pending_payment'),
-      v.literal('provisioning'),
-      v.literal('ready'),
-      v.literal('error'),
-      v.literal('past_due'),
-      v.literal('deleted'),
-    ),
-    provisioningStep: v.optional(v.string()),
-    // "creating_server" | "server_created" | "openclaw_starting"
-    errorMessage: v.optional(v.string()),
-
-    // Hetzner resources
-    hetznerServerId: v.optional(v.number()),
-    hetznerServerIp: v.optional(v.string()),
-    hetznerFirewallId: v.optional(v.number()),
-
-    // OpenClaw secrets — NEVER exposed outside owning userId
-    gatewayToken: v.optional(v.string()),  // 64-char hex — sent to browser on status=ready
-    readySecret: v.optional(v.string()),   // 32-char hex — baked into cloud-init, cleared after use
-
-    // Billing timestamps
-    pastDueAt: v.optional(v.number()),     // ms timestamp when past_due started (7-day calc)
-
-    // Stripe — one subscription per computer
-    stripeSubscriptionId: v.optional(v.string()),
-    stripeCustomerId: v.optional(v.string()),
-
-    // Latest known OpenClaw chat session state for the in-page computer chat.
-    chatSessionKey: v.optional(v.string()),
-    chatRequestedModelId: v.optional(v.string()),
-    chatRequestedModelRef: v.optional(v.string()),
-    chatEffectiveModel: v.optional(v.string()),
-    chatEffectiveProvider: v.optional(v.string()),
-    chatModelResolvedAt: v.optional(v.number()),
-
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_userId', ['userId'])
-    .index('by_stripeSubscriptionId', ['stripeSubscriptionId']),
-
-  computerEvents: defineTable({
-    computerId: v.id('computers'),
-    type: v.string(),    // "status_change" | "provision_log" | "error" | "payment_event"
-    message: v.string(),
-    sessionKey: v.optional(v.string()),
-    sessionTitle: v.optional(v.string()),
-    createdAt: v.number(),
-  }).index('by_computerId_createdAt', ['computerId', 'createdAt']),
-
   // Generated images and videos from Chat and Agent sessions.
   outputs: defineTable({
     userId: v.string(),
-    type: v.union(v.literal('image'), v.literal('video')),
+    // Legacy deployments may still contain older text/document output rows.
+    // Keep them schema-compatible, but runtime output surfaces only use image/video.
+    type: v.union(v.literal('text'), v.literal('document'), v.literal('image'), v.literal('video')),
     status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
     prompt: v.string(),
     modelId: v.string(),
     storageId: v.optional(v.id('_storage')),
     url: v.optional(v.string()),
+    fileName: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    source: v.optional(v.string()),
+    metadata: v.optional(v.any()),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),

@@ -1,22 +1,15 @@
 import { httpRouter } from 'convex/server'
 import { components, internal } from './_generated/api'
-import { httpAction } from './_generated/server'
 import { registerRoutes } from '@convex-dev/stripe'
 import type Stripe from 'stripe'
-import type { Id } from './_generated/dataModel'
 import {
   extractCustomerInfo,
   getSubscriptionPeriodMs,
   mapPriceToTier,
   mapSubscriptionStatus,
 } from './lib/stripeOverlaySubscription'
-import { constantTimeEqualStrings } from './lib/auth'
 
 const http = httpRouter()
-
-function hasMatchingSecret(provided: string | undefined, expected: string | undefined): boolean {
-  return constantTimeEqualStrings(provided, expected)
-}
 
 // Register Stripe webhook handler using @convex-dev/stripe component
 registerRoutes(http, components.stripe, {
@@ -25,31 +18,6 @@ registerRoutes(http, components.stripe, {
     // Sync subscription changes to our custom subscriptions table
     'customer.subscription.created': async (ctx, event: Stripe.CustomerSubscriptionCreatedEvent) => {
       const subscription = event.data.object
-      const computerId = subscription.metadata?.computerId
-
-      console.log(`[HTTP] customer.subscription.created: subId=${subscription.id}, computerId=${computerId ?? 'none'}, userId=${subscription.metadata?.userId ?? 'none'}`)
-
-      // ── Computer subscription branch ──────────────────────────────────────
-      if (computerId) {
-        const customerId =
-          typeof subscription.customer === 'string'
-            ? subscription.customer
-            : subscription.customer.id
-
-        console.log(`[HTTP] Computer branch: setting stripe info for computerId=${computerId}, subId=${subscription.id}, customerId=${customerId}`)
-        await ctx.runMutation(internal.computers.setStripeInfo, {
-          computerId: computerId as Id<'computers'>,
-          stripeSubscriptionId: subscription.id,
-          stripeCustomerId: customerId,
-        })
-        console.log(`[HTTP] Stripe info saved. Triggering provisionComputer for computerId=${computerId}`)
-        await ctx.runAction(internal.computers.provisionComputer, {
-          computerId: computerId as Id<'computers'>,
-        })
-        console.log(`[HTTP] provisionComputer action returned for computerId=${computerId}`)
-        return  // do NOT fall through to subscriptions table logic
-      }
-      // ── Existing Overlay subscription logic ───────────────────────────────
 
       const userId = subscription.metadata?.userId
 
@@ -117,20 +85,6 @@ registerRoutes(http, components.stripe, {
 
     'customer.subscription.deleted': async (ctx, event: Stripe.CustomerSubscriptionDeletedEvent) => {
       const subscription = event.data.object
-      const computerId = subscription.metadata?.computerId
-
-      console.log(`[HTTP] customer.subscription.deleted: subId=${subscription.id}, computerId=${computerId ?? 'none'}, userId=${subscription.metadata?.userId ?? 'none'}`)
-
-      // ── Computer subscription branch ──────────────────────────────────────
-      if (computerId) {
-        console.log(`[HTTP] Computer branch: triggering teardown for computerId=${computerId}`)
-        await ctx.runAction(internal.computers.teardownComputer, {
-          computerId: computerId as Id<'computers'>,
-        })
-        console.log(`[HTTP] teardownComputer action returned for computerId=${computerId}`)
-        return
-      }
-      // ── Existing Overlay subscription logic ───────────────────────────────
 
       const userId = subscription.metadata?.userId
 
@@ -147,35 +101,6 @@ registerRoutes(http, components.stripe, {
       const invoice = event.data.object
 
       console.log(`[HTTP] invoice.payment_failed: invoiceId=${invoice.id}`)
-
-      // ── Computer subscription branch ──────────────────────────────────────
-      const rawSub = invoice.parent?.subscription_details?.subscription
-      const subId = typeof rawSub === 'string' ? rawSub : rawSub?.id
-
-      console.log(`[HTTP] invoice.payment_failed: resolved subId=${subId ?? 'none'}`)
-
-      if (subId) {
-        const computer = await ctx.runQuery(
-          internal.computers.getByStripeSubscription,
-          { stripeSubscriptionId: subId }
-        )
-        if (computer) {
-          console.log(`[HTTP] Computer found for failed payment: computerId=${computer._id}, marking past_due`)
-          await ctx.runMutation(internal.computers.setPastDue, {
-            computerId: computer._id,
-          })
-          await ctx.runMutation(internal.computers.logEvent, {
-            computerId: computer._id,
-            type: 'payment_event',
-            message: 'Payment failed. Computer will be deleted in 7 days.',
-          })
-          console.log(`[HTTP] Computer marked past_due for ${computer._id}`)
-          return
-        } else {
-          console.log(`[HTTP] No computer found for subId=${subId}, falling through to user subscription logic`)
-        }
-      }
-      // ── Existing Overlay subscription logic ───────────────────────────────
 
       const userId =
         invoice.parent?.subscription_details?.metadata?.userId ??
@@ -198,86 +123,6 @@ registerRoutes(http, components.stripe, {
   onEvent: async (_ctx, event: Stripe.Event) => {
     console.log(`[Stripe Webhook] Received event: ${event.type}`)
   }
-})
-
-// VPS calls this once OpenClaw gateway is healthy — validates readySecret and flips status to ready
-http.route({
-  path: '/computer/ready',
-  method: 'POST',
-  handler: httpAction(async (ctx, req) => {
-    console.log('[HTTP] POST /computer/ready received')
-
-    let body: { computerId?: string; readySecret?: string }
-    try {
-      body = await req.json()
-    } catch {
-      console.warn('[HTTP] /computer/ready: failed to parse JSON body')
-      return new Response('Bad Request', { status: 400 })
-    }
-
-    const { computerId, readySecret } = body
-    console.log(`[HTTP] /computer/ready: computerId=${computerId ?? 'missing'}, readySecret=${readySecret ? '[present]' : 'missing'}`)
-
-    if (!computerId || !readySecret) {
-      console.warn('[HTTP] /computer/ready: missing computerId or readySecret')
-      return new Response('Missing computerId or readySecret', { status: 400 })
-    }
-
-    try {
-      console.log(`[HTTP] /computer/ready: calling confirmGatewayReadyExternally for computerId=${computerId}`)
-      const result = await ctx.runAction(internal.computers.confirmGatewayReadyExternally, {
-        computerId: computerId as Id<'computers'>,
-        readySecret,
-      })
-      console.log(
-        `[HTTP] /computer/ready: result for computerId=${computerId} ok=${result?.ok === true ? 'yes' : 'no'}`
-      )
-      return new Response('OK', { status: 200 })
-    } catch (err) {
-      // Wrong secret or already deleted — reject
-      console.error(`[HTTP] /computer/ready: readiness confirmation failed for computerId=${computerId}:`, err)
-      return new Response('Unauthorized', { status: 401 })
-    }
-  }),
-})
-
-// VPS calls this to push installation progress logs to Convex (visible in dashboard)
-http.route({
-  path: '/computer/log',
-  method: 'POST',
-  handler: httpAction(async (ctx, req) => {
-    let body: { computerId?: string; message?: string; readySecret?: string }
-    try {
-      body = await req.json()
-    } catch {
-      return new Response('Bad Request', { status: 400 })
-    }
-
-    const { computerId, message, readySecret } = body
-    if (!computerId || !message || !readySecret) {
-      return new Response('Missing computerId, message, or readySecret', { status: 400 })
-    }
-
-    try {
-      const computer = await ctx.runQuery(internal.computers.getInternal, {
-        computerId: computerId as Id<'computers'>,
-      })
-      if (!computer || !hasMatchingSecret(readySecret, computer.readySecret)) {
-        return new Response('Unauthorized', { status: 401 })
-      }
-
-      await ctx.runMutation(internal.computers.logEvent, {
-        computerId: computerId as Id<'computers'>,
-        type: 'provisioning_log',
-        message,
-      })
-      console.log(`[HTTP] /computer/log: computerId=${computerId} — ${message}`)
-      return new Response('OK', { status: 200 })
-    } catch (err) {
-      console.error(`[HTTP] /computer/log: failed for computerId=${computerId}:`, err)
-      return new Response('Error', { status: 500 })
-    }
-  }),
 })
 
 export default http

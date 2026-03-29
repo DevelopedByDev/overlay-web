@@ -28,10 +28,6 @@ SESSION_COOKIE_ENCRYPTION_KEY=replace-with-a-fourth-random-secret
 PROVIDER_KEYS_SECRET=replace-with-a-fifth-random-secret
 HOOKS_TOKEN_SALT=replace-with-a-sixth-random-secret
 
-# Computer provisioning hardening
-HETZNER_SSH_KEY_ID=123456
-HETZNER_SSH_ALLOWED_CIDRS=203.0.113.10/32,2001:db8::/64
-
 # Optional integrations
 AI_GATEWAY_API_KEY=vgw_...
 WORKOS_CLIENT_ID=client_...
@@ -117,7 +113,7 @@ VAULT_OPENROUTER_KEY_ID=api-key-openrouter
 - [ ] Copy `.env.example` into your local env files
 - [ ] Create separate Convex prod and dev deployments
 - [ ] Set `SESSION_SECRET`, `INTERNAL_API_SECRET`, `SESSION_TRANSFER_KEY`, and `SESSION_COOKIE_ENCRYPTION_KEY`
-- [ ] Set `PROVIDER_KEYS_SECRET`, `HOOKS_TOKEN_SALT`, `HETZNER_SSH_KEY_ID`, and `HETZNER_SSH_ALLOWED_CIDRS`
+- [ ] Set `PROVIDER_KEYS_SECRET` and `HOOKS_TOKEN_SALT`
 - [ ] Configure Stripe products and the Stripe webhook
 - [ ] Configure WorkOS auth and any Vault-backed provider keys
 - [ ] Run `npm run dev`

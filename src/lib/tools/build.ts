@@ -2,19 +2,6 @@ import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/models'
 import {
-  executeCreateComputerSession,
-  executeDeleteComputerSession,
-  executeGetComputerByName,
-  executeGetComputerSessionMessages,
-  executeListComputerInstances,
-  executeListComputerSessions,
-  executeListComputerWorkspaceFiles,
-  executeReadComputerWorkspaceFile,
-  executeRunComputerGatewayCommand,
-  executeUpdateComputerSession,
-  executeWriteComputerWorkspaceFile,
-} from './computer-executes'
-import {
   executeCreateNote,
   executeDeleteNote,
   executeGetNote,
@@ -33,23 +20,9 @@ import {
 import { assertOverlayToolAllowedForMode } from './policy'
 import type { OverlayToolsOptions, ToolMode } from './types'
 
-/** Resolve hosted computer by user-chosen name, optional Convex id, or default when only one exists. */
-const computerTargetSchema = {
-  computerName: z
-    .string()
-    .optional()
-    .describe(
-      "The user's Overlay computer name (the label they chose). If they have several, use the name they mention. Omit when they only have one ready computer.",
-    ),
-  computerId: z
-    .string()
-    .optional()
-    .describe('Internal Convex id — optional fallback; prefer computerName when the user names their machine.'),
-}
-
 /**
  * Overlay-defined tools only (no Composio, no Gateway perplexity).
- * Ask: knowledge + memory writes + notes read + computer read. Act: full mutations + media.
+ * Ask: knowledge + memory writes + notes read. Act: full mutations + media.
  */
 export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
@@ -91,74 +64,6 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     execute: async (input) => {
       assertOverlayToolAllowedForMode(mode, 'get_note')
       return executeGetNote(options, input)
-    },
-  })
-
-  tools.list_computer_instances = tool({
-    description:
-      'List the user\'s Overlay hosted computer instances (display name, status, internal id, region). ' +
-      'Call this when they have multiple machines or before other computer tools so you know which `computerName` to pass. ' +
-      'Instance names are unique per account; users refer to them by name, not id.',
-    inputSchema: z.object({}),
-    execute: async () => {
-      assertOverlayToolAllowedForMode(mode, 'list_computer_instances')
-      return executeListComputerInstances(options)
-    },
-  })
-
-  tools.get_computer_by_name = tool({
-    description:
-      'Look up one hosted computer by its display name (case-insensitive). Returns `computerId` and status — use `computerName` in other computer tools. ' +
-      'If unsure of names, call list_computer_instances first.',
-    inputSchema: z.object({
-      name: z.string().describe('The computer instance name as shown in Overlay (e.g. "Work VM")'),
-    }),
-    execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'get_computer_by_name')
-      return executeGetComputerByName(options, input)
-    },
-  })
-
-  tools.list_computer_sessions = tool({
-    description:
-      'List chat sessions on the user\'s Overlay hosted computer (OpenClaw). Use computerName (their instance name) or omit if they only have one ready computer.',
-    inputSchema: z.object({ ...computerTargetSchema }),
-    execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'list_computer_sessions')
-      return executeListComputerSessions(options, input)
-    },
-  })
-
-  tools.get_computer_session_messages = tool({
-    description: 'Read transcript messages for one computer chat session (sessionKey from list_computer_sessions).',
-    inputSchema: z.object({
-      ...computerTargetSchema,
-      sessionKey: z.string(),
-    }),
-    execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'get_computer_session_messages')
-      return executeGetComputerSessionMessages(options, input)
-    },
-  })
-
-  tools.list_computer_workspace_files = tool({
-    description: 'List files in the OpenClaw workspace on the user\'s hosted computer.',
-    inputSchema: z.object({ ...computerTargetSchema }),
-    execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'list_computer_workspace_files')
-      return executeListComputerWorkspaceFiles(options, input)
-    },
-  })
-
-  tools.read_computer_workspace_file = tool({
-    description: 'Read a workspace file by name from the user\'s hosted computer.',
-    inputSchema: z.object({
-      ...computerTargetSchema,
-      name: z.string().describe('File name/path as returned by list_computer_workspace_files'),
-    }),
-    execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'read_computer_workspace_file')
-      return executeReadComputerWorkspaceFile(options, input)
     },
   })
 
@@ -309,72 +214,6 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       execute: async (input) => {
         assertOverlayToolAllowedForMode(mode, 'delete_note')
         return executeDeleteNote(options, input)
-      },
-    })
-
-    tools.create_computer_session = tool({
-      description: 'Create a new OpenClaw chat session on the hosted computer.',
-      inputSchema: z.object({
-        ...computerTargetSchema,
-        modelId: z.string().optional().describe('Overlay chat model id to map into OpenClaw'),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'create_computer_session')
-        return executeCreateComputerSession(options, input)
-      },
-    })
-
-    tools.update_computer_session = tool({
-      description: 'Update session label or model on the hosted computer.',
-      inputSchema: z.object({
-        ...computerTargetSchema,
-        sessionKey: z.string(),
-        modelId: z.string().optional(),
-        label: z.string().optional(),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'update_computer_session')
-        return executeUpdateComputerSession(options, input)
-      },
-    })
-
-    tools.delete_computer_session = tool({
-      description: 'Delete a computer chat session and its transcript.',
-      inputSchema: z.object({
-        ...computerTargetSchema,
-        sessionKey: z.string(),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'delete_computer_session')
-        return executeDeleteComputerSession(options, input)
-      },
-    })
-
-    tools.write_computer_workspace_file = tool({
-      description: 'Write or overwrite a file in the OpenClaw workspace on the hosted computer.',
-      inputSchema: z.object({
-        ...computerTargetSchema,
-        name: z.string(),
-        content: z.string(),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'write_computer_workspace_file')
-        return executeWriteComputerWorkspaceFile(options, input)
-      },
-    })
-
-    tools.run_computer_gateway_command = tool({
-      description:
-        'Send a natural-language instruction to the OpenClaw agent on the hosted computer for the given session. ' +
-        'Use only when the user wants work done on their Overlay computer.',
-      inputSchema: z.object({
-        ...computerTargetSchema,
-        sessionKey: z.string(),
-        message: z.string(),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'run_computer_gateway_command')
-        return executeRunComputerGatewayCommand(options, input)
       },
     })
   }

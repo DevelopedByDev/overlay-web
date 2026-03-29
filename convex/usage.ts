@@ -538,6 +538,7 @@ export const recordToolInvocation = mutation({
       v.literal('video'),
       v.literal('browser'),
       v.literal('composio'),
+      v.literal('daytona'),
       v.literal('internal'),
     ),
     errorMessage: v.optional(v.string()),

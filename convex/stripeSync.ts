@@ -36,13 +36,13 @@ async function listAllSubscriptions(
 }
 
 /**
- * One-off / ops: pull Overlay (non-computer) subscriptions from Stripe and
- * upsert into `subscriptions` — same fields as the Stripe webhook path.
+ * One-off / ops: pull Overlay subscriptions from Stripe and upsert into
+ * `subscriptions` — same fields as the Stripe webhook path.
  *
  * Run on prod: `npx convex run stripeSync:syncPaidSubscriptionsFromStripe --prod`
  *
  * Requires `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID`, `STRIPE_MAX_PRICE_ID` in Convex env.
- * Skips subscriptions without `metadata.userId` (set in Checkout); skips computer subs (`metadata.computerId`).
+ * Skips subscriptions without `metadata.userId` (set in Checkout).
  */
 export const syncPaidSubscriptionsFromStripe = internalAction({
   args: {},
@@ -85,17 +85,6 @@ export const syncPaidSubscriptionsFromStripe = internalAction({
           typeof subscription.customer === 'string'
             ? subscription.customer
             : subscription.customer?.id
-
-        if (subscription.metadata?.computerId) {
-          skipped++
-          results.push({
-            subscriptionId,
-            customerId,
-            outcome: 'skipped',
-            reason: 'computer subscription (metadata.computerId)',
-          })
-          continue
-        }
 
         const userId = subscription.metadata?.userId?.trim()
         if (!userId) {

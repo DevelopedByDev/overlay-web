@@ -2,7 +2,7 @@
 
 Overlay is a Next.js + Convex application that combines a public marketing site with a
 signed-in AI workspace. The product is centered around chat, notes, memories, knowledge,
-projects, media generation, and a hosted "computer" workflow.
+projects, and media generation.
 
 This repository contains the web surface for Overlay:
 
@@ -20,7 +20,6 @@ This repository contains the web surface for Overlay:
 - Generate images and videos.
 - Connect external tools through Composio.
 - Manage subscriptions and entitlements with Stripe.
-- Provision and interact with hosted computer sessions.
 
 ## Tech Stack
 
@@ -63,7 +62,6 @@ This repository contains the web surface for Overlay:
 - `/app/outputs`
 - `/app/integrations`
 - `/app/voice`
-- `/app/computer`
 
 ### Key API surfaces
 
@@ -128,7 +126,6 @@ stay aligned.
 | `npm run build` | Create a production build |
 | `npm run start` | Serve the production build |
 | `npm run lint` | Run ESLint |
-| `npm run test:model-routing` | Run the model routing sanity script |
 | `npm run test:unified-tools` | Run the unified tools sanity script |
 | `npm run convex:push:prod` | Push Convex changes to production |
 | `npm run convex:push:dev` | Push Convex changes to dev |
@@ -181,9 +178,8 @@ Overlay currently includes integration surfaces for:
 - Session cookies are encrypted and signed before storage.
 - Transfer tokens are short-lived, encrypted before storage, hashed for lookup, and can be bound to a client-provided verifier.
 - Provider key export is isolated behind a dedicated `PROVIDER_KEYS_SECRET`; the Next.js server reads provider env vars directly.
-- Computer provisioning requires explicit SSH key and allowed-CIDR configuration, and cloud-init disables password SSH.
 - Client-supplied `systemPrompt` values are treated as lower-priority extensions and cannot override operator instructions.
-- Sensitive logs are redacted in the higher-risk chat and computer surfaces.
+- Sensitive logs are redacted in higher-risk chat and billing flows.
 - See `SECURITY.md` for reporting guidance and secure contribution expectations.
 
 ## CI / Repository Safeguards
@@ -207,7 +203,6 @@ If you plan to contribute:
 - `ENV_SETUP.md`
 - `SECURITY.md`
 - `TESTING_CHECKLIST.md`
-- `COMPUTER_PLAN.md`
 
 ## Status
 

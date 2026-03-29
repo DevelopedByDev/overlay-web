@@ -14,12 +14,6 @@ const OVERLAY_TOOL_IDS_ASK = new Set<string>([
   'browser_run_task',
   'list_notes',
   'get_note',
-  'list_computer_instances',
-  'get_computer_by_name',
-  'list_computer_sessions',
-  'get_computer_session_messages',
-  'list_computer_workspace_files',
-  'read_computer_workspace_file',
 ])
 
 const OVERLAY_TOOL_IDS_ACT = new Set<string>([
@@ -35,17 +29,6 @@ const OVERLAY_TOOL_IDS_ACT = new Set<string>([
   'create_note',
   'update_note',
   'delete_note',
-  'list_computer_instances',
-  'get_computer_by_name',
-  'list_computer_sessions',
-  'get_computer_session_messages',
-  'list_computer_workspace_files',
-  'read_computer_workspace_file',
-  'create_computer_session',
-  'update_computer_session',
-  'delete_computer_session',
-  'write_computer_workspace_file',
-  'run_computer_gateway_command',
 ])
 
 export function overlayToolIdsForMode(mode: ToolMode): ReadonlySet<string> {

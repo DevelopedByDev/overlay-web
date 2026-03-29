@@ -7,13 +7,12 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   MessageSquare, BookOpen, Brain, Wrench, LogOut, User,
   Smartphone, Puzzle, Monitor, ChevronUp, AlertCircle,
-  FolderOpen, Cpu, Images, Loader2, Menu, X, ArrowUp,
+  FolderOpen, Images, Loader2, Menu, X, ArrowUp,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
-import ComputerSidebar from './ComputerSidebar'
 
 const NAV_ITEMS = [
   { href: '/app/projects', label: 'projects', icon: FolderOpen },
@@ -22,7 +21,6 @@ const NAV_ITEMS = [
   { href: '/app/notes', label: 'notes', icon: BookOpen },
   { href: '/app/knowledge', label: 'knowledge', icon: Brain },
   { href: '/app/tools', label: 'tools', icon: Wrench },
-  { href: '/app/computer', label: 'computer', icon: Cpu },
 ]
 
 const APP_LINKS = [
@@ -75,7 +73,7 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
   )
 }
 
-export default function AppSidebar({ user, accessToken }: { user: AuthUser; accessToken: string }) {
+export default function AppSidebar({ user }: { user: AuthUser }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
   const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
@@ -92,7 +90,6 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
   const effectivePendingHref = pendingHref && !pathname.startsWith(pendingHref) ? pendingHref : null
   const projectsOpen = pathname.startsWith('/app/projects')
   const toolsOpen = pathname.startsWith('/app/tools')
-  const computerOpen = pathname.startsWith('/app/computer')
   const loadEntitlements = useCallback(async () => {
     try {
       const res = await fetch('/api/app/subscription')
@@ -123,7 +120,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
   useEffect(() => {
     function onNavShortcut(e: KeyboardEvent) {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.repeat) return
-      const m = /^Digit([1-7])$/.exec(e.code)
+      const m = /^Digit([1-6])$/.exec(e.code)
       if (!m) return
       const idx = parseInt(m[1]!, 10) - 1
       const item = NAV_ITEMS[idx]
@@ -473,7 +470,6 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
       <div className="hidden md:flex">
         {projectsOpen && <ProjectsSidebar />}
         {toolsOpen && <ToolsSidebar />}
-        {computerOpen && <ComputerSidebar userId={user.id} accessToken={accessToken} />}
       </div>
     </>
   )
