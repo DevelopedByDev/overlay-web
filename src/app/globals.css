@@ -1,5 +1,37 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Libre Baskerville';
+  src: url('/assets/fonts/Libre_Baskerville/static/LibreBaskerville-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Libre Baskerville';
+  src: url('/assets/fonts/Libre_Baskerville/static/LibreBaskerville-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Libre Baskerville';
+  src: url('/assets/fonts/Libre_Baskerville/static/LibreBaskerville-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Libre Baskerville';
+  src: url('/assets/fonts/Libre_Baskerville/static/LibreBaskerville-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
   --background: #fafafa;
   --foreground: #0a0a0a;
@@ -8,13 +40,14 @@
   --border: #e4e4e7;
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.5);
+  --font-serif-family: 'Libre Baskerville';
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-serif: var(--font-instrument-serif);
+  --font-serif: var(--font-serif-family);
 }
 
 body {
@@ -68,7 +101,7 @@ html {
 
 /* Typography */
 .font-serif {
-  font-family: var(--font-instrument-serif), Georgia, 'Times New Roman', serif;
+  font-family: var(--font-serif-family), Georgia, 'Times New Roman', serif;
 }
 
 /* Markdown streaming animations */

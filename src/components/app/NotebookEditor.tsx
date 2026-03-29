@@ -534,7 +534,7 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
                 onChange={handleTitleChange}
                 placeholder="Note title..."
                 className="text-xl font-medium text-[#0a0a0a] bg-transparent outline-none placeholder-[#ccc] flex-1"
-                style={{ fontFamily: 'var(--font-instrument-serif)' }}
+                style={{ fontFamily: 'var(--font-serif)' }}
               />
               <div className="flex items-center gap-2 ml-3 shrink-0">
                 {projectName && (
@@ -568,7 +568,7 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
             <div className="text-center">
               <p
                 className="text-3xl mb-2"
-                style={{ fontFamily: 'var(--font-instrument-serif)' }}
+                style={{ fontFamily: 'var(--font-serif)' }}
               >
                 notes
               </p>

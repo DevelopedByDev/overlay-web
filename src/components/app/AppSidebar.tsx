@@ -16,13 +16,13 @@ import ToolsSidebar from './ToolsSidebar'
 import ComputerSidebar from './ComputerSidebar'
 
 const NAV_ITEMS = [
-  { href: '/app/projects', label: 'Projects', icon: FolderOpen },
-  { href: '/app/chat', label: 'Chat', icon: MessageSquare },
-  { href: '/app/outputs', label: 'Outputs', icon: Images },
-  { href: '/app/notes', label: 'Notes', icon: BookOpen },
-  { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
-  { href: '/app/tools', label: 'Tools', icon: Wrench },
-  { href: '/app/computer', label: 'Computer', icon: Cpu },
+  { href: '/app/projects', label: 'projects', icon: FolderOpen },
+  { href: '/app/chat', label: 'chat', icon: MessageSquare },
+  { href: '/app/outputs', label: 'outputs', icon: Images },
+  { href: '/app/notes', label: 'notes', icon: BookOpen },
+  { href: '/app/knowledge', label: 'knowledge', icon: Brain },
+  { href: '/app/tools', label: 'tools', icon: Wrench },
+  { href: '/app/computer', label: 'computer', icon: Cpu },
 ]
 
 const APP_LINKS = [
@@ -186,7 +186,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
       <Image src="/assets/overlay-logo.png" alt="" width={24} height={24} className="shrink-0" />
       <span
         className="truncate text-xl font-medium tracking-tight"
-        style={{ fontFamily: 'var(--font-instrument-serif)' }}
+        style={{ fontFamily: 'var(--font-serif)' }}
       >
         overlay
       </span>
@@ -203,7 +203,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
       <Image src="/assets/overlay-logo.png" alt="" width={22} height={22} className="shrink-0" />
       <span
         className="truncate text-lg font-medium tracking-tight text-[#0a0a0a]"
-        style={{ fontFamily: 'var(--font-instrument-serif)' }}
+        style={{ fontFamily: 'var(--font-serif)' }}
       >
         overlay
       </span>
@@ -304,38 +304,47 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
 
         <div ref={menuRef} className="relative border-t border-[#e5e5e5] pt-2">
           {accountMenuOpen && (
-            <div className="absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg">
-              <Link
-                href="/account"
-                onClick={() => {
-                  setAccountMenuOpen(false)
-                  setMobileMenuOpen(false)
-                }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
-              >
-                <User size={13} />
-                Account
-              </Link>
-              {showUpgradeCta && (
+            <div
+              className="absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="px-3 py-2">
+                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
+                <UsageBar entitlements={entitlements} />
+              </div>
+              <div className="border-t border-[#f0f0f0]">
                 <Link
                   href="/account"
                   onClick={() => {
                     setAccountMenuOpen(false)
                     setMobileMenuOpen(false)
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
                 >
-                  <ArrowUp size={13} className="shrink-0" />
-                  Upgrade
+                  <User size={13} />
+                  Account
                 </Link>
-              )}
-              <div className="border-t border-[#f0f0f0] px-3 py-2">
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
-                <UsageBar entitlements={entitlements} />
+                {showUpgradeCta && (
+                  <Link
+                    href="/account"
+                    onClick={() => {
+                      setAccountMenuOpen(false)
+                      setMobileMenuOpen(false)
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]"
+                  >
+                    <ArrowUp size={13} className="shrink-0" />
+                    Upgrade
+                  </Link>
+                )}
               </div>
               <div className="border-t border-[#f0f0f0]">
                 <button
-                  onClick={handleSignOut}
+                  type="button"
+                  onClick={() => {
+                    setAccountMenuOpen(false)
+                    void handleSignOut()
+                  }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
                 >
                   <LogOut size={13} />
@@ -346,6 +355,7 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
           )}
 
           <button
+            type="button"
             onClick={() => setAccountMenuOpen((value) => !value)}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
           >
@@ -382,28 +392,33 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
               <User size={16} />
             </button>
             {mobileAccountOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg">
-                <Link
-                  href="/account"
-                  onClick={() => setMobileAccountOpen(false)}
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
-                >
-                  <User size={13} />
-                  Account
-                </Link>
-                {showUpgradeCta && (
+              <div
+                className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="px-3 py-2">
+                  <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
+                  <UsageBar entitlements={entitlements} />
+                </div>
+                <div className="border-t border-[#f0f0f0]">
                   <Link
                     href="/account"
                     onClick={() => setMobileAccountOpen(false)}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
                   >
-                    <ArrowUp size={13} className="shrink-0" />
-                    Upgrade
+                    <User size={13} />
+                    Account
                   </Link>
-                )}
-                <div className="border-t border-[#f0f0f0] px-3 py-2">
-                  <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
-                  <UsageBar entitlements={entitlements} />
+                  {showUpgradeCta && (
+                    <Link
+                      href="/account"
+                      onClick={() => setMobileAccountOpen(false)}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]"
+                    >
+                      <ArrowUp size={13} className="shrink-0" />
+                      Upgrade
+                    </Link>
+                  )}
                 </div>
                 <div className="border-t border-[#f0f0f0]">
                   <button

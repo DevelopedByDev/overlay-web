@@ -3117,7 +3117,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             {!hasHistory && (
               <div className="flex flex-1 items-center justify-center px-1 sm:px-0">
                 <div className="w-full max-w-xl text-center">
-                  <p className="mb-3 text-3xl" style={{ fontFamily: 'var(--font-instrument-serif)' }}>
+                  <p className="mb-3 text-3xl" style={{ fontFamily: 'var(--font-serif)' }}>
                     chat
                   </p>
                   <p className="mb-6 text-sm text-[#888]">Start a conversation with any AI model</p>

@@ -552,17 +552,12 @@ export async function getSession(): Promise<AuthSession | null> {
           cookieExpiringSoon,
           env: summarizeEnvResolutionForLog(),
         })
-        if (needsJwtRefresh) {
-          await clearSession()
-          return null
-        }
         return session
       }
       const refreshed = await refreshAccessTokenDeduped(session)
       if (!refreshed) {
         logAuthDebug('getSession refresh failed', summarizeSessionForLog(session))
-        await clearSession()
-        return null
+        return session
       }
       logAuthDebug('getSession returning refreshed session', summarizeSessionForLog(refreshed))
       return refreshed

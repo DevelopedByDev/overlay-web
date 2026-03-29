@@ -116,7 +116,7 @@ export default function VoiceRecorder({ userId: _userId }: { userId: string }) {
         <div className="text-center">
           <h1
             className="text-3xl mb-2"
-            style={{ fontFamily: 'var(--font-instrument-serif)' }}
+            style={{ fontFamily: 'var(--font-serif)' }}
           >
             Voice
           </h1>

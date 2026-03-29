@@ -1,18 +1,11 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { Instrument_Serif } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ObservabilityClient from "@/components/ObservabilityClient";
 import "katex/dist/katex.min.css";
 import "./globals.css";
-
-const instrumentSerif = Instrument_Serif({
-  variable: "--font-instrument-serif",
-  subsets: ["latin"],
-  weight: "400",
-});
 
 export const metadata: Metadata = {
   title: "overlay",
@@ -52,7 +45,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${instrumentSerif.variable} antialiased`}>
+      <body className="antialiased">
         <AuthProvider>
           <Suspense fallback={null}>
             <ObservabilityClient />
