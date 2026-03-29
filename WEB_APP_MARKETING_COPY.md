@@ -2,7 +2,7 @@
 
 ## Overlay, for people who want one workspace that can think, remember, create, and act
 
-Overlay is an AI workspace built for real work, not one-off prompts. Inside the web app, chat, notes, memories, files, projects, outputs, integrations, voice, and hosted computers all live in one connected system. Instead of scattering context across tabs, tools, and disconnected assistants, Overlay gives you a single environment where every conversation can draw on your knowledge, every project can keep its own context, every generated asset has a home, and every action can move from idea to execution without switching platforms.
+Overlay is an AI workspace built for real work, not one-off prompts. Inside the web app, chat, notes, memories, files, projects, outputs, integrations, and voice all live in one connected system. Instead of scattering context across tabs, tools, and disconnected assistants, Overlay gives you a single environment where every conversation can draw on your knowledge, every project can keep its own context, every generated asset has a home, and every action can move from idea to execution without switching platforms.
 
 It is a web product designed to feel like an operating layer for modern work: part copilot, part knowledge system, part creative studio, part automation surface, part remote execution environment.
 
@@ -16,7 +16,6 @@ Overlay turns a browser tab into a persistent AI workspace that can:
 - organize conversations, notes, files, and memories around projects
 - capture voice and turn speech into usable work
 - connect to external apps
-- provision and control hosted cloud computers for longer-running tasks
 
 ## A unified AI workspace, not a collection of isolated features
 
@@ -24,7 +23,7 @@ Most AI products force a tradeoff: chat is separate from documents, documents ar
 
 Overlay’s web app is built the opposite way.
 
-Your chats can pull from memories and indexed knowledge. Your notes and files can be attached to conversations. Your projects can scope conversations, notes, and knowledge to a specific initiative. Your generated images and videos are stored as outputs instead of disappearing into chat history. Your integrations are available when action is needed. And your hosted computer can serve as an always-on execution surface when the task needs more than a single response.
+Your chats can pull from memories and indexed knowledge. Your notes and files can be attached to conversations. Your projects can scope conversations, notes, and knowledge to a specific initiative. Your generated images and videos are stored as outputs instead of disappearing into chat history. Your integrations are available when action is needed.
 
 The result is a product that behaves less like “chat with AI” and more like “operate from one intelligent workspace.”
 
@@ -218,56 +217,9 @@ That includes workflows such as:
 
 This expands Overlay beyond retrieval and into real web execution.
 
-### 14. Provision a hosted computer in the cloud
+### 14. Maintain long-running context across devices and sessions
 
-Overlay includes a distinctive hosted computer product inside the web app. Users can create a managed cloud computer instance, complete billing, wait through provisioning, and then use that machine as a persistent remote execution environment.
-
-The managed setup flow includes:
-
-- one-click computer creation
-- cloud provisioning
-- persistent hosted runtime
-- private instance ownership
-- ongoing access from inside Overlay
-
-This is not just “run a tool.” It is a dedicated compute surface for longer-lived agentic work.
-
-### 15. Chat with your hosted computer
-
-Once provisioned, a hosted computer becomes interactive inside the app. Users can open sessions, converse with the computer, choose models, and run remote actions through a chat-style interface.
-
-This gives Overlay a powerful positioning advantage: the AI does not just respond in the browser tab, it can operate through a persistent hosted environment.
-
-The hosted computer experience supports:
-
-- multiple sessions per computer
-- model selection
-- session history
-- streamed responses
-- persistent session titles
-- command-style control surfaces
-
-### 16. Read and edit the hosted computer’s workspace files
-
-Overlay exposes a remote workspace file layer for hosted computers, including named workspace files that can be listed, read, and updated from the web app.
-
-That means users can manage the computer’s instruction and runtime files directly from the product, giving them a controllable execution environment instead of a black box.
-
-### 17. Run computer-specific commands and inspect results
-
-Overlay includes a dedicated command layer for hosted computers. That allows the product to expose operational controls and settings-oriented actions, not just generic freeform chat.
-
-This makes the hosted computer feel like a real managed environment:
-
-- command catalog interactions
-- settings-style results
-- transcript export patterns
-- session inspection
-- usage visibility
-
-### 18. Maintain long-running context across devices and sessions
-
-Because Overlay’s web app combines conversations, notes, memories, outputs, and hosted computers in one account-based system, users get continuity over time. A conversation does not need to start from zero. A generated asset can remain attached to the broader workspace. A note can later become knowledge. A memory can later shape a future answer. A remote computer can continue beyond a single browser session.
+Because Overlay’s web app combines conversations, notes, memories, outputs, and project context in one account-based system, users get continuity over time. A conversation does not need to start from zero. A generated asset can remain attached to the broader workspace. A note can later become knowledge. A memory can later shape a future answer.
 
 That continuity is a major product differentiator.
 
@@ -286,7 +238,6 @@ In Overlay, chat sits alongside:
 - outputs
 - integrations
 - voice
-- computers
 
 That gives the product a broader value story than “ask a model a question.”
 
@@ -296,7 +247,7 @@ Overlay is built so that useful information can be stored, organized, retrieved,
 
 ### Action is built in
 
-With Ask and Act modes, browser tasks, integrations, and hosted computers, Overlay is designed for execution as much as ideation.
+With Ask and Act modes, browser tasks, and integrations, Overlay is designed for execution as much as ideation.
 
 ### Creative production is native
 
@@ -371,28 +322,19 @@ A user can start with one quick transcription, move into a note, ask a model to 
 - live browser tasks
 - action-oriented AI workflows
 
-### Hosted Computers
-
-- managed cloud computer provisioning
-- persistent hosted runtime
-- in-app remote chat sessions
-- model-controlled computer sessions
-- workspace file access
-- command execution and session management
-
 ## Positioning language you can reuse
 
 ### Short product description
 
-Overlay is an AI workspace that combines chat, notes, memory, knowledge, media generation, integrations, voice, and hosted computers in one connected web app.
+Overlay is an AI workspace that combines chat, notes, memory, knowledge, media generation, integrations, and voice in one connected web app.
 
 ### Mid-length product description
 
-Overlay is a full-stack AI workspace for thinking, creating, and acting. Users can chat with top models, write in a built-in notebook, store long-term memory, search their own knowledge base, organize work by project, generate images and videos, connect external apps, transcribe voice, browse the live web with AI, and provision hosted cloud computers for persistent execution.
+Overlay is a full-stack AI workspace for thinking, creating, and acting. Users can chat with top models, write in a built-in notebook, store long-term memory, search their own knowledge base, organize work by project, generate images and videos, connect external apps, transcribe voice, and browse the live web with AI.
 
 ### Long-form product description
 
-Overlay turns AI from a single prompt box into a connected operating environment for real work. The web app combines multi-model chat, Ask and Act workflows, rich notes, persistent memories, searchable files, project-based organization, image and video generation, voice transcription, external integrations, browser automation, and hosted cloud computers. Every part of the product is designed to share context, so users can move from idea to execution inside one workspace instead of stitching together separate tools.
+Overlay turns AI from a single prompt box into a connected operating environment for real work. The web app combines multi-model chat, Ask and Act workflows, rich notes, persistent memories, searchable files, project-based organization, image and video generation, voice transcription, external integrations, and browser automation. Every part of the product is designed to share context, so users can move from idea to execution inside one workspace instead of stitching together separate tools.
 
 ## Category framing
 
@@ -402,7 +344,7 @@ Overlay can credibly be positioned as:
 - an AI operating layer for knowledge work
 - a context-aware productivity platform
 - a multimodal creation and automation environment
-- a persistent assistant workspace with hosted execution
+- a persistent assistant workspace for real work
 
 ## Closing copy
 
