@@ -48,3 +48,6 @@ openclaw/
 .gstack/
 transcripts/
 plans/*
+
+src/remotion/*
+renders/*

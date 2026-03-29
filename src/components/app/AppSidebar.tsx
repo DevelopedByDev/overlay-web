@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
+import { formatBytes } from '@/lib/storage-limits'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
 import ComputerSidebar from './ComputerSidebar'
@@ -36,6 +37,10 @@ interface Entitlements {
   creditsUsed: number
   creditsTotal: number
   dailyUsage: { ask: number; write: number; agent: number }
+  overlayStorageBytesUsed: number
+  overlayStorageBytesLimit: number
+  fileBandwidthBytesUsed: number
+  fileBandwidthBytesLimit: number
 }
 
 function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
@@ -71,6 +76,19 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
           style={{ width: `${remainingPctRaw}%` }}
         />
       </div>
+    </div>
+  )
+}
+
+function StorageUsageCaption({ entitlements, active }: { entitlements: Entitlements | null; active: boolean }) {
+  if (!entitlements) return null
+  const used = Math.max(0, entitlements.overlayStorageBytesUsed ?? 0)
+  const limit = Math.max(0, entitlements.overlayStorageBytesLimit ?? 0)
+  if (limit <= 0) return null
+  const nearLimit = used / limit >= 0.85
+  return (
+    <div className={`mt-0.5 text-[10px] leading-none ${active ? 'text-[#fafafa]/70' : nearLimit ? 'text-[#b45309]' : 'text-[#9a9a9a]'}`}>
+      Overlay storage {formatBytes(used)} / {formatBytes(limit)}
     </div>
   )
 }
@@ -241,7 +259,10 @@ export default function AppSidebar({ user, accessToken }: { user: AuthUser; acce
               }`}
             >
               <Icon size={15} />
-              <span className="flex-1 text-left">{label}</span>
+              <div className="min-w-0 flex-1 text-left">
+                <div>{label}</div>
+                {href === '/app/knowledge' ? <StorageUsageCaption entitlements={entitlements} active={active} /> : null}
+              </div>
               <span
                 className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
                   active

@@ -586,8 +586,15 @@ export default function ProjectsSidebar() {
       }
 
       if (kind === 'image' || kind === 'video' || kind === 'audio') {
-        const urlRes = await fetch('/api/app/files/upload-url', { method: 'POST' })
-        if (!urlRes.ok) return { ok: false, error: 'Could not get upload URL' }
+        const urlRes = await fetch('/api/app/files/upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sizeBytes: file.size, mimeType: file.type || undefined }),
+        })
+        if (!urlRes.ok) {
+          const err = (await urlRes.json().catch(() => ({}))) as { error?: string }
+          return { ok: false, error: err.error ?? 'Could not get upload URL' }
+        }
         const { uploadUrl } = (await urlRes.json()) as { uploadUrl: string }
         const uploadRes = await fetch(uploadUrl, {
           method: 'POST',
@@ -604,6 +611,7 @@ export default function ProjectsSidebar() {
             type: 'file',
             parentId,
             storageId,
+            sizeBytes: file.size,
             projectId: pid,
           }),
         })

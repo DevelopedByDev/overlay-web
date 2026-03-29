@@ -18,9 +18,9 @@ export type HybridSearchChunk = {
   score: number
 }
 
-/** ~250–300 tokens; overlap preserves boundary context */
-export const CHUNK_CHARS = 1000
-export const CHUNK_OVERLAP = 120
+/** Larger chunks reduce embedding/storage row counts while preserving retrieval context. */
+export const CHUNK_CHARS = 1800
+export const CHUNK_OVERLAP = 80
 const RRF_K = 60
 const EMBEDDING_MODEL = 'openai/text-embedding-3-small'
 const EMBEDDING_DIM = 1536
@@ -167,6 +167,7 @@ export const getFileForReindex = internalQuery({
     const f = await ctx.db.get(fileId)
     if (!f || f.type !== 'file') return null
     if (f.storageId) return { kind: 'skip' as const, reason: 'binary' as const }
+    if (f.duplicateOfFileId) return { kind: 'skip' as const, reason: 'duplicate' as const }
     const content = f.content ?? ''
     return {
       kind: 'ok' as const,

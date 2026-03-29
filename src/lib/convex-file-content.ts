@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 /**
  * Convex document size limit is 1 MiB; stay under with UTF-8 byte budget.
  * @see https://docs.convex.dev/database/limits
@@ -6,6 +8,10 @@ export const MAX_FILE_CONTENT_UTF8_BYTES = 950_000
 
 export function utf8ByteLength(s: string): number {
   return Buffer.byteLength(s, 'utf8')
+}
+
+export function hashTextContent(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex')
 }
 
 /**

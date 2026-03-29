@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ImageIcon, Video, Download, RefreshCw, AlertCircle, Clock, Info, X } from 'lucide-react'
 
 interface Output {
@@ -37,7 +37,7 @@ export default function OutputsView() {
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams({ limit: '100' })
+      const params = new URLSearchParams({ limit: '24' })
       const t = type ?? filter
       if (t !== 'all') params.set('type', t)
       const res = await fetch(`/api/app/outputs?${params}`)
@@ -257,22 +257,41 @@ function OutputCard({ output, onExpand, onDetails }: { output: Output; onExpand:
   const isCompleted = output.status === 'completed'
   const isFailed = output.status === 'failed'
   const isPending = output.status === 'pending'
+  const [shouldLoadMedia, setShouldLoadMedia] = useState(false)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const node = cardRef.current
+    if (!node || shouldLoadMedia || !isCompleted || !output.url) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting || entry.intersectionRatio > 0)) {
+          setShouldLoadMedia(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '240px 0px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [isCompleted, output.url, shouldLoadMedia])
 
   return (
     <div
+      ref={cardRef}
       className="mb-4 block w-full break-inside-avoid rounded-xl overflow-hidden border border-[#e5e5e5] bg-white group cursor-pointer hover:shadow-md transition-shadow"
       style={{ breakInside: 'avoid' }}
       onClick={isCompleted ? onExpand : undefined}>
       {/* Media area */}
       <div className="relative bg-[#f5f5f5]">
-        {isCompleted && output.url && output.type === 'image' && (
+        {isCompleted && output.url && output.type === 'image' && shouldLoadMedia && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={output.url} alt={output.prompt} className="block w-full h-auto max-h-[22rem] rounded-t-xl object-cover" />
+          <img src={output.url} alt={output.prompt} loading="lazy" className="block w-full h-auto max-h-[22rem] rounded-t-xl object-cover" />
         )}
-        {isCompleted && output.url && output.type === 'video' && (
-          <video src={output.url} className="block w-full h-auto max-h-[22rem] rounded-t-xl object-cover" muted playsInline preload="metadata" />
+        {isCompleted && output.url && output.type === 'video' && shouldLoadMedia && (
+          <video src={output.url} className="block w-full h-auto max-h-[22rem] rounded-t-xl object-cover" muted playsInline preload="none" />
         )}
-        {isPending && (
+        {(isPending || (isCompleted && output.url && !shouldLoadMedia)) && (
           <div className="flex items-center justify-center h-32">
             <div className="w-6 h-6 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
           </div>

@@ -31,6 +31,9 @@ export default defineSchema({
     lastLoginAt: v.optional(v.number()),
     // Legacy field - kept for backward compatibility with existing data
     autoRefillEnabled: v.optional(v.boolean()),
+    overlayStorageBytesUsed: v.optional(v.number()),
+    fileBandwidthBytesUsed: v.optional(v.number()),
+    fileBandwidthPeriodStart: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_email', ['email']),
 
@@ -62,6 +65,7 @@ export default defineSchema({
       v.literal('image'),
       v.literal('video'),
       v.literal('browser'),
+      v.literal('daytona'),
       v.literal('composio'),
       v.literal('internal'),
     ),
@@ -242,6 +246,18 @@ export default defineSchema({
     // OpenClaw secrets — NEVER exposed outside owning userId
     gatewayToken: v.optional(v.string()),  // 64-char hex — sent to browser on status=ready
     readySecret: v.optional(v.string()),   // 32-char hex — baked into cloud-init, cleared after use
+    computerApiToken: v.optional(v.string()),
+    computerApiTokenHash: v.optional(v.string()),
+    computerApiTokenIssuedAt: v.optional(v.number()),
+    computerApiTokenVersion: v.optional(v.number()),
+    desiredOverlayPluginVersion: v.optional(v.string()),
+    desiredReleaseVersion: v.optional(v.string()),
+    lastUpdateCheckAt: v.optional(v.number()),
+    lastUpdateError: v.optional(v.string()),
+    overlayPluginHealthStatus: v.optional(v.string()),
+    reprovisionRequired: v.optional(v.boolean()),
+    updateChannel: v.optional(v.string()),
+    updateStatus: v.optional(v.string()),
 
     // Billing timestamps
     pastDueAt: v.optional(v.number()),     // ms timestamp when past_due started (7-day calc)
@@ -276,15 +292,20 @@ export default defineSchema({
   // Generated images and videos from Chat and Agent sessions.
   outputs: defineTable({
     userId: v.string(),
-    type: v.union(v.literal('image'), v.literal('video')),
+    type: v.string(),
     status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
     prompt: v.string(),
     modelId: v.string(),
     storageId: v.optional(v.id('_storage')),
     url: v.optional(v.string()),
+    fileName: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
+    source: v.optional(v.string()),
+    metadata: v.optional(v.any()),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
@@ -301,10 +322,15 @@ export default defineSchema({
     parentId: v.optional(v.string()),
     content: v.optional(v.string()),
     storageId: v.optional(v.id('_storage')),
+    sizeBytes: v.optional(v.number()),
+    contentHash: v.optional(v.string()),
+    duplicateOfFileId: v.optional(v.id('files')),
     projectId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId'])
+    .index('by_userId_contentHash', ['userId', 'contentHash'])
+    .index('by_duplicateOfFileId', ['duplicateOfFileId'])
     .index('by_projectId', ['projectId'])
     .index('by_parentId', ['parentId']),
 })
