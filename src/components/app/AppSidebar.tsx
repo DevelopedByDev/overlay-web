@@ -37,8 +37,6 @@ interface Entitlements {
   dailyUsage: { ask: number; write: number; agent: number }
   overlayStorageBytesUsed: number
   overlayStorageBytesLimit: number
-  fileBandwidthBytesUsed: number
-  fileBandwidthBytesLimit: number
 }
 
 function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {

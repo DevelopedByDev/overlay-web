@@ -6,6 +6,9 @@ import { convex } from '@/lib/convex'
 import { getGatewayImageModel } from '@/lib/ai-gateway'
 import { IMAGE_MODELS } from '@/lib/models'
 import { calculateImageCost } from '@/lib/model-pricing'
+import { uploadBuffer, keyForOutput } from '@/lib/r2'
+import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
+import { deleteObject } from '@/lib/r2'
 
 export const maxDuration = 120
 
@@ -143,11 +146,9 @@ export async function POST(request: NextRequest) {
 
     const dataUrl = `data:image/png;base64,${imageBase64}`
 
-    // ── Upload to Convex file storage & save output record ────────────────────
-    // Base64 data URLs can be 1-5MB, exceeding Convex's 1MB document limit.
-    // We upload the binary to Convex storage and store only the storageId.
+    // ── Upload to R2 & save output record ────────────────────────────────────
     let outputId: string | null = null
-    let uploadedStorageId: string | null = null
+    let uploadedR2Key: string | null = null
     try {
       const imageBuffer = Buffer.from(imageBase64!, 'base64')
       if (entitlements.overlayStorageBytesUsed + imageBuffer.length > entitlements.overlayStorageBytesLimit) {
@@ -156,29 +157,13 @@ export async function POST(request: NextRequest) {
           { status: 403 },
         )
       }
-      // 1. Get a signed upload URL from Convex
-      const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {
-        userId,
-        serverSecret,
-        sizeBytes: imageBuffer.length,
-      })
-      let storageId: string | null = null
+      const fileName = `overlay-image-${Date.now()}.png`
+      const r2Key = keyForOutput(userId, `tmp-${Date.now()}`, fileName)
+      await checkGlobalR2Budget(imageBuffer.length)
+      await uploadBuffer(r2Key, imageBuffer, 'image/png')
+      uploadedR2Key = r2Key
+      console.log(`[GenerateImage] ✅ Uploaded ${imageBuffer.length}B to R2 key=${r2Key}`)
 
-      if (uploadUrl) {
-        // 2. Upload the image binary
-        const uploadRes = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'image/png' },
-          body: imageBuffer,
-        })
-        if (uploadRes.ok) {
-          const { storageId: sid } = await uploadRes.json() as { storageId: string }
-          storageId = sid
-          uploadedStorageId = sid
-        }
-      }
-
-      // 3. Create the output record (with storageId, no large data URL)
       outputId = await convex.mutation<string>('outputs:create', {
         userId,
         serverSecret,
@@ -187,22 +172,23 @@ export async function POST(request: NextRequest) {
         status: 'completed',
         prompt: prompt.trim(),
         modelId: usedModelId,
-        sizeBytes: imageBuffer.length,
-        ...(storageId ? { storageId } : {}),
-        fileName: `overlay-image-${Date.now()}.png`,
+        r2Key,
+        fileName,
         mimeType: 'image/png',
-        sizeBytes: Buffer.from(imageBase64!, 'base64').byteLength,
+        sizeBytes: imageBuffer.length,
         ...(conversationId ? { conversationId } : {}),
         ...(turnId ? { turnId } : {}),
       })
     } catch (err) {
       console.error('[GenerateImage] Failed to save output:', err)
-      if (uploadedStorageId) {
-        await convex.mutation('outputs:deleteStorageObject', {
-          userId,
-          serverSecret,
-          storageId: uploadedStorageId,
-        }).catch(() => {})
+      if (uploadedR2Key) {
+        await deleteObject(uploadedR2Key).catch(() => {})
+      }
+      if (err instanceof R2GlobalBudgetError) {
+        return NextResponse.json(
+          { error: 'storage_limit_exceeded', message: 'Global R2 storage cap reached. Contact support.' },
+          { status: 403 },
+        )
       }
       if (err instanceof Error && err.message.includes('storage_limit_exceeded')) {
         return NextResponse.json(

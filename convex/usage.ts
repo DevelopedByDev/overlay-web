@@ -3,7 +3,7 @@ import { mutation, query, internalMutation, internalQuery } from './_generated/s
 import { requireAccessToken, requireServerSecret, validateServerSecret } from './lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../src/lib/models'
-import { applyBandwidthUsage, getBandwidthBytesUsed, getBandwidthLimitForSubscription, getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from './lib/storageQuota'
+import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from './lib/storageQuota'
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []
@@ -119,8 +119,6 @@ export const getEntitlements = query({
       creditsTotal: defaults.creditsTotal,
       overlayStorageBytesUsed: getStorageBytesUsed(subscription),
       overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
-      fileBandwidthBytesUsed: getBandwidthBytesUsed(subscription),
-      fileBandwidthBytesLimit: getBandwidthLimitForSubscription(subscription),
       dailyUsage: tier === 'free' ? weeklyUsage : {
         ask: dailyUsage?.askCount || 0,
         write: dailyUsage?.writeCount || 0,
@@ -219,8 +217,6 @@ export const getEntitlementsByServer = query({
       creditsTotal: defaults.creditsTotal,
       overlayStorageBytesUsed: getStorageBytesUsed(subscription),
       overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
-      fileBandwidthBytesUsed: getBandwidthBytesUsed(subscription),
-      fileBandwidthBytesLimit: getBandwidthLimitForSubscription(subscription),
       dailyUsage: tier === 'free' ? weeklyUsage : {
         ask: dailyUsage?.askCount || 0,
         write: dailyUsage?.writeCount || 0,
@@ -260,26 +256,8 @@ export const getEntitlementsInternal = internalQuery({
       creditsTotal: creditsTotalByTier[tier] ?? 0,
       overlayStorageBytesUsed: getStorageBytesUsed(subscription),
       overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
-      fileBandwidthBytesUsed: getBandwidthBytesUsed(subscription),
-      fileBandwidthBytesLimit: getBandwidthLimitForSubscription(subscription),
     }
   }
-})
-
-export const recordFileBandwidthUsageByServer = mutation({
-  args: {
-    serverSecret: v.string(),
-    userId: v.string(),
-    bytesServed: v.number(),
-  },
-  handler: async (ctx, { serverSecret, userId, bytesServed }) => {
-    requireServerSecret(serverSecret)
-    if (!Number.isFinite(bytesServed) || bytesServed <= 0) {
-      return { success: true, bytesServed: 0 }
-    }
-    await applyBandwidthUsage(ctx, userId, Math.round(bytesServed))
-    return { success: true, bytesServed: Math.round(bytesServed) }
-  },
 })
 
 export const initializeSubscriptionUsageByServer = mutation({
@@ -294,7 +272,6 @@ export const initializeSubscriptionUsageByServer = mutation({
       success: true,
       tier: subscription.tier,
       overlayStorageBytesUsed: getStorageBytesUsed(subscription),
-      fileBandwidthBytesUsed: getBandwidthBytesUsed(subscription),
     }
   },
 })

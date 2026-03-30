@@ -3,7 +3,7 @@ import { action, internalMutation, internalQuery, query } from './_generated/ser
 import { internal } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
 import { requireServerSecret } from './lib/auth'
-import { getCurrentBillingPeriodStart, getOrCreateSubscription } from './lib/storageQuota'
+import { getOrCreateSubscription } from './lib/storageQuota'
 
 const utf8Encoder = new TextEncoder()
 
@@ -62,7 +62,7 @@ type BackfillOutputRow = Pick<
 
 type BackfillSubscriptionRow = Pick<
   Doc<'subscriptions'>,
-  '_id' | '_creationTime' | 'userId' | 'currentPeriodStart' | 'fileBandwidthBytesUsed' | 'fileBandwidthPeriodStart'
+  '_id' | '_creationTime' | 'userId' | 'currentPeriodStart'
 >
 
 export const auditByServer = query({
@@ -252,8 +252,6 @@ export const getBackfillSnapshotInternal = internalQuery({
         _creationTime: subscription._creationTime,
         userId: subscription.userId,
         currentPeriodStart: subscription.currentPeriodStart,
-        fileBandwidthBytesUsed: subscription.fileBandwidthBytesUsed,
-        fileBandwidthPeriodStart: subscription.fileBandwidthPeriodStart,
       })),
     }
   },
@@ -309,14 +307,8 @@ export const applyBackfillBatchInternal = internalMutation({
 
     for (const usage of userStorageTotals) {
       const subscription = await getOrCreateSubscription(ctx, usage.userId)
-      const currentPeriodStart = getCurrentBillingPeriodStart(subscription)
       await ctx.db.patch(subscription._id, {
         overlayStorageBytesUsed: Math.max(0, usage.bytesUsed),
-        fileBandwidthBytesUsed:
-          subscription.fileBandwidthPeriodStart === currentPeriodStart
-            ? Math.max(0, subscription.fileBandwidthBytesUsed ?? 0)
-            : 0,
-        fileBandwidthPeriodStart: currentPeriodStart,
       })
     }
 
@@ -480,6 +472,17 @@ export const backfillStorageUsageByServer = action({
       subscriptionsUpdated,
       measurementFailures,
     }
+  },
+})
+
+export const getTotalStorageBytesUsedByServer = query({
+  args: { serverSecret: v.string() },
+  handler: async (ctx, { serverSecret }) => {
+    requireServerSecret(serverSecret)
+    const subscriptions = await ctx.db.query('subscriptions').collect()
+    const total = subscriptions.reduce((sum, sub) => sum + Math.max(0, sub.overlayStorageBytesUsed ?? 0), 0)
+    console.log(`[R2-Budget] getTotalStorageBytesUsedByServer: total=${total} across ${subscriptions.length} subscriptions`)
+    return total
   },
 })
 

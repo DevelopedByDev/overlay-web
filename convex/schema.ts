@@ -243,6 +243,7 @@ export default defineSchema({
     prompt: v.string(),
     modelId: v.string(),
     storageId: v.optional(v.id('_storage')),
+    r2Key: v.optional(v.string()),
     url: v.optional(v.string()),
     fileName: v.optional(v.string()),
     mimeType: v.optional(v.string()),
@@ -251,7 +252,6 @@ export default defineSchema({
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
-    sizeBytes: v.optional(v.number()),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
@@ -268,6 +268,7 @@ export default defineSchema({
     parentId: v.optional(v.string()),
     content: v.optional(v.string()),
     storageId: v.optional(v.id('_storage')),
+    r2Key: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
     contentHash: v.optional(v.string()),
     duplicateOfFileId: v.optional(v.id('files')),

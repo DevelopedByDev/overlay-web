@@ -595,14 +595,13 @@ export default function ProjectsSidebar() {
           const err = (await urlRes.json().catch(() => ({}))) as { error?: string }
           return { ok: false, error: err.error ?? 'Could not get upload URL' }
         }
-        const { uploadUrl } = (await urlRes.json()) as { uploadUrl: string }
+        const { uploadUrl, r2Key } = (await urlRes.json()) as { uploadUrl: string; r2Key: string }
         const uploadRes = await fetch(uploadUrl, {
-          method: 'POST',
+          method: 'PUT',
           headers: { 'Content-Type': file.type || 'application/octet-stream' },
           body: file,
         })
         if (!uploadRes.ok) return { ok: false, error: 'Storage upload failed' }
-        const { storageId } = (await uploadRes.json()) as { storageId: string }
         const res = await fetch('/api/app/files', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -610,7 +609,7 @@ export default function ProjectsSidebar() {
             name: file.name,
             type: 'file',
             parentId,
-            storageId,
+            r2Key,
             sizeBytes: file.size,
             projectId: pid,
           }),

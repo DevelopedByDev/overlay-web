@@ -14,7 +14,6 @@ interface Entitlements {
     tokenBudget: number
     transcriptionSecondsPerWeek: number
     overlayStorageBytes: number
-    fileBandwidthBytes: number
   }
   usage: {
     ask: number
@@ -23,7 +22,6 @@ interface Entitlements {
     tokenCostAccrued: number
     transcriptionSeconds: number
     overlayStorageBytes: number
-    fileBandwidthBytes: number
   }
   remaining: {
     ask: number
@@ -32,7 +30,6 @@ interface Entitlements {
     tokenBudget: number
     transcriptionSeconds: number
     overlayStorageBytes: number
-    fileBandwidthBytes: number
   }
   resetAt: number
   billingPeriodEnd?: number
@@ -70,8 +67,6 @@ export async function GET() {
       localTranscriptionEnabled: boolean
       overlayStorageBytesUsed: number
       overlayStorageBytesLimit: number
-      fileBandwidthBytesUsed: number
-      fileBandwidthBytesLimit: number
       resetAt: number
       billingPeriodEnd: string
       lastSyncedAt: number
@@ -122,8 +117,6 @@ export async function GET() {
     const transcriptionSecondsLimit = convexData.transcriptionSecondsLimit
     const overlayStorageBytesUsed = convexData.overlayStorageBytesUsed
     const overlayStorageBytesLimit = convexData.overlayStorageBytesLimit
-    const fileBandwidthBytesUsed = convexData.fileBandwidthBytesUsed
-    const fileBandwidthBytesLimit = convexData.fileBandwidthBytesLimit
     const askPerDay = normalizeLimitValue(dailyLimits.ask)
     const agentPerDay = normalizeLimitValue(dailyLimits.agent)
     const writePerDay = normalizeLimitValue(dailyLimits.write)
@@ -139,7 +132,6 @@ export async function GET() {
         tokenBudget: creditsTotal,
         transcriptionSecondsPerWeek,
         overlayStorageBytes: overlayStorageBytesLimit,
-        fileBandwidthBytes: fileBandwidthBytesLimit,
       },
       usage: {
         ask: dailyUsage.ask,
@@ -148,7 +140,6 @@ export async function GET() {
         tokenCostAccrued: creditsUsed,
         transcriptionSeconds: transcriptionSecondsUsed,
         overlayStorageBytes: overlayStorageBytesUsed,
-        fileBandwidthBytes: fileBandwidthBytesUsed,
       },
       remaining: {
         ask: Math.max(0, askPerDay - dailyUsage.ask),
@@ -157,7 +148,6 @@ export async function GET() {
         tokenBudget: Math.max(0, creditsTotal - creditsUsed),
         transcriptionSeconds: Math.max(0, transcriptionSecondsPerWeek - transcriptionSecondsUsed),
         overlayStorageBytes: Math.max(0, overlayStorageBytesLimit - overlayStorageBytesUsed),
-        fileBandwidthBytes: Math.max(0, fileBandwidthBytesLimit - fileBandwidthBytesUsed),
       },
       resetAt: convexData.resetAt,
       billingPeriodEnd: convexData.billingPeriodEnd

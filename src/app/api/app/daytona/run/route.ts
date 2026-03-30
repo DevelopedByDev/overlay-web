@@ -16,6 +16,7 @@ import { classifyOutputType } from '@/lib/output-types'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getSession } from '@/lib/workos-auth'
 import { validateServerSecret } from '../../../../../../convex/lib/auth'
+import { uploadBuffer as uploadBufferToR2, keyForOutput } from '@/lib/r2'
 
 export const maxDuration = 300
 
@@ -295,28 +296,11 @@ export async function POST(request: NextRequest) {
       const fileName = sanitizeFileName(pathPosix.basename(remotePath), `artifact-${artifacts.length + 1}`)
       const mimeType = guessMimeType(fileName, artifactBuffer)
 
-      const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {
-        userId,
-        serverSecret,
-      })
-
-      let storageId: string | null = null
-      if (uploadUrl) {
-        const uploadResponse = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: mimeType ? { 'Content-Type': mimeType } : undefined,
-          body: new Uint8Array(artifactBuffer),
-        })
-
-        if (!uploadResponse.ok) {
-          throw new Error(`Failed to upload sandbox artifact "${fileName}" to Convex storage.`)
-        }
-
-        const payload = (await uploadResponse.json()) as { storageId: string }
-        storageId = payload.storageId
-      }
-
       const type = classifyOutputType(fileName, mimeType)
+      const r2Key = keyForOutput(userId, `tmp-${Date.now()}`, fileName)
+      await uploadBufferToR2(r2Key, new Uint8Array(artifactBuffer), mimeType ?? 'application/octet-stream')
+      console.log(`[Daytona] Uploaded artifact "${fileName}" (${artifactBuffer.byteLength}B) to R2 key=${r2Key}`)
+
       const createdOutputId = await convex.mutation<string | null>('outputs:create', {
         userId,
         serverSecret,
@@ -325,7 +309,7 @@ export async function POST(request: NextRequest) {
         status: 'completed',
         prompt: normalizedTask,
         modelId: 'daytona/default',
-        storageId: storageId ?? undefined,
+        r2Key,
         fileName,
         mimeType,
         sizeBytes: artifactBuffer.byteLength,

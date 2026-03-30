@@ -6,19 +6,8 @@ export const OVERLAY_STORAGE_BYTES_LIMITS: Record<OverlayTier, number> = {
   max: 10 * 1024 * 1024 * 1024,
 }
 
-// Keep bandwidth configurable independently even though it currently matches storage.
-export const FILE_BANDWIDTH_BYTES_LIMITS: Record<OverlayTier, number> = {
-  free: OVERLAY_STORAGE_BYTES_LIMITS.free,
-  pro: OVERLAY_STORAGE_BYTES_LIMITS.pro,
-  max: OVERLAY_STORAGE_BYTES_LIMITS.max,
-}
-
 export function getOverlayStorageBytesLimit(tier: OverlayTier): number {
   return OVERLAY_STORAGE_BYTES_LIMITS[tier]
-}
-
-export function getFileBandwidthBytesLimit(tier: OverlayTier): number {
-  return FILE_BANDWIDTH_BYTES_LIMITS[tier]
 }
 
 export function formatBytes(bytes: number): string {

@@ -15,6 +15,7 @@ import {
   Code2,
   Music2,
   FileIcon,
+  Trash2,
 } from 'lucide-react'
 import {
   defaultDownloadName,
@@ -87,6 +88,19 @@ export default function OutputsView() {
   const [error, setError] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState<Output | null>(null)
   const [detailsOutput, setDetailsOutput] = useState<Output | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  async function handleDelete(outputId: string) {
+    setDeletingId(outputId)
+    try {
+      await fetch(`/api/app/outputs?outputId=${encodeURIComponent(outputId)}`, { method: 'DELETE' })
+      setOutputs((prev) => prev.filter((o) => o._id !== outputId))
+      if (lightbox?._id === outputId) setLightbox(null)
+      if (detailsOutput?._id === outputId) setDetailsOutput(null)
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const load = useCallback(async (type?: FilterType) => {
     setLoading(true)
@@ -192,6 +206,8 @@ export default function OutputsView() {
                 output={output}
                 onExpand={() => setLightbox(output)}
                 onDetails={() => setDetailsOutput(output)}
+                onDelete={() => handleDelete(output._id)}
+                isDeleting={deletingId === output._id}
               />
             ))}
           </div>
@@ -323,7 +339,7 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   )
 }
 
-function OutputCard({ output, onExpand, onDetails }: { output: Output; onExpand: () => void; onDetails: () => void }) {
+function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { output: Output; onExpand: () => void; onDetails: () => void; onDelete: () => void; isDeleting: boolean }) {
   const isCompleted = output.status === 'completed'
   const isFailed = output.status === 'failed'
   const isPending = output.status === 'pending'
@@ -360,7 +376,7 @@ function OutputCard({ output, onExpand, onDetails }: { output: Output; onExpand:
           <img src={output.url} alt={outputLabel(output)} loading="lazy" className="block h-auto max-h-[22rem] w-full rounded-t-xl object-cover" />
         )}
         {isCompleted && output.url && output.type === 'video' && shouldLoadMedia && (
-          <video src={output.url} className="block h-auto max-h-[22rem] w-full rounded-t-xl object-cover" muted playsInline preload="none" />
+          <video src={output.url} className="block h-auto max-h-[22rem] w-full rounded-t-xl object-cover" muted playsInline preload="metadata" />
         )}
         {isCompleted && !isMedia && (
           <div className="flex h-36 flex-col items-center justify-center gap-3">
@@ -414,17 +430,24 @@ function OutputCard({ output, onExpand, onDetails }: { output: Output; onExpand:
               {output.sizeBytes ? ` • ${formatBytes(output.sizeBytes)}` : ''}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDetails()
-            }}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#e5e5e5] px-2 py-1 text-[11px] font-medium text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
-          >
-            <Info size={12} />
-            Details
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDetails() }}
+              className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2 py-1 text-[11px] font-medium text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+            >
+              <Info size={12} />
+              Details
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={(e) => { e.stopPropagation(); onDelete() }}
+              className="inline-flex items-center justify-center rounded-md border border-[#e5e5e5] p-1 text-[#888] transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+            >
+              {isDeleting ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

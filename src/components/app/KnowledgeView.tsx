@@ -263,25 +263,24 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         body: JSON.stringify({ name: file.name, type: 'file', parentId, content }),
       })
     } else {
-      // Binary file: upload directly to Convex storage
+      // Binary file: get R2 presigned PUT URL, upload directly to R2, then register in Convex
       const urlRes = await fetch('/api/app/files/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sizeBytes: file.size, mimeType: file.type || undefined }),
+        body: JSON.stringify({ sizeBytes: file.size, name: file.name, mimeType: file.type || undefined }),
       })
       if (!urlRes.ok) return
-      const { uploadUrl } = await urlRes.json()
+      const { uploadUrl, r2Key } = await urlRes.json() as { uploadUrl: string; r2Key: string }
       const uploadRes = await fetch(uploadUrl, {
-        method: 'POST',
+        method: 'PUT',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
       })
       if (!uploadRes.ok) return
-      const { storageId } = await uploadRes.json()
       await fetch('/api/app/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, type: 'file', parentId, storageId, sizeBytes: file.size }),
+        body: JSON.stringify({ name: file.name, type: 'file', parentId, r2Key, sizeBytes: file.size }),
       })
     }
   }

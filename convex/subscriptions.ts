@@ -151,8 +151,6 @@ export const upsertSubscription = mutation({
         isPeriodRollover(existing.currentPeriodStart, args.currentPeriodStart)
       ) {
         updateData.creditsUsed = 0
-        updateData.fileBandwidthBytesUsed = 0
-        updateData.fileBandwidthPeriodStart = args.currentPeriodStart
       }
 
       await ctx.db.patch(existing._id, updateData)
@@ -170,8 +168,6 @@ export const upsertSubscription = mutation({
         currentPeriodEnd: args.currentPeriodEnd || now + thirtyDays,
         creditsUsed: 0,
         overlayStorageBytesUsed: 0,
-        fileBandwidthBytesUsed: 0,
-        fileBandwidthPeriodStart: args.currentPeriodStart || now,
       })
     }
   }
@@ -227,8 +223,6 @@ export const downgradeToFree = mutation({
         tier: 'free',
         status: 'canceled',
         creditsUsed: 0,
-        fileBandwidthBytesUsed: 0,
-        fileBandwidthPeriodStart: now,
         currentPeriodStart: now,
         currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000
       })
@@ -298,8 +292,6 @@ export const upsertFromStripeInternal = internalMutation({
         currentPeriodEnd: args.currentPeriodEnd,
         // Reset credit counter on period rollover (monthly renewal or plan change)
         creditsUsed: periodRolled ? 0 : (existing.creditsUsed ?? 0),
-        fileBandwidthBytesUsed: periodRolled ? 0 : (existing.fileBandwidthBytesUsed ?? 0),
-        fileBandwidthPeriodStart: args.currentPeriodStart,
       })
       return existing._id
     } else {
@@ -315,8 +307,6 @@ export const upsertFromStripeInternal = internalMutation({
         currentPeriodEnd: args.currentPeriodEnd,
         creditsUsed: 0,
         overlayStorageBytesUsed: 0,
-        fileBandwidthBytesUsed: 0,
-        fileBandwidthPeriodStart: args.currentPeriodStart,
       })
     }
   }
@@ -366,13 +356,6 @@ export const migrateToCreditsOnSubscription = internalMutation({
       if (sub.overlayStorageBytesUsed === undefined || sub.overlayStorageBytesUsed === null) {
         updates.overlayStorageBytesUsed = 0
       }
-      if (sub.fileBandwidthBytesUsed === undefined || sub.fileBandwidthBytesUsed === null) {
-        updates.fileBandwidthBytesUsed = 0
-      }
-      if (sub.fileBandwidthPeriodStart === undefined || sub.fileBandwidthPeriodStart === null) {
-        updates.fileBandwidthPeriodStart = periodStart
-      }
-
       if (Object.keys(updates).length > 0) {
         await ctx.db.patch(sub._id, updates)
         migrated++

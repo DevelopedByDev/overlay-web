@@ -6,6 +6,8 @@ import { convex } from '@/lib/convex'
 import { getGatewayVideoModel } from '@/lib/ai-gateway'
 import { VIDEO_MODELS } from '@/lib/models'
 import { calculateVideoCost } from '@/lib/model-pricing'
+import { uploadBuffer, keyForOutput, deleteObject } from '@/lib/r2'
+import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
 
 export const maxDuration = 300
 
@@ -159,36 +161,33 @@ export async function POST(request: NextRequest) {
 
         const dataUrl = `data:video/mp4;base64,${videoBase64}`
         const videoBuffer = Buffer.from(videoBase64!, 'base64')
+
+        // ── Check per-user storage quota ────────────────────────────────────────
         if (entitlements.overlayStorageBytesUsed + videoBuffer.length > entitlements.overlayStorageBytesLimit) {
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
           controller.close()
           return
         }
 
-        // ── Upload to Convex file storage ─────────────────────────────────────
-        let storageId: string | null = null
+        // ── Upload to R2 ─────────────────────────────────────────────────────────
+        let r2Key: string | null = null
         try {
-          const uploadUrl = await convex.mutation<string>('outputs:generateUploadUrl', {
-            userId,
-            serverSecret,
-            sizeBytes: videoBuffer.length,
-          })
-          if (uploadUrl) {
-            const uploadRes = await fetch(uploadUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'video/mp4' },
-              body: videoBuffer,
-            })
-            if (uploadRes.ok) {
-              const { storageId: sid } = await uploadRes.json() as { storageId: string }
-              storageId = sid
-            }
-          }
+          const fileName = `overlay-video-${Date.now()}.mp4`
+          const key = keyForOutput(userId, outputId ?? `tmp-${Date.now()}`, fileName)
+          await checkGlobalR2Budget(videoBuffer.length)
+          await uploadBuffer(key, videoBuffer, 'video/mp4')
+          r2Key = key
+          console.log(`[GenerateVideo] ✅ Uploaded ${videoBuffer.length}B to R2 key=${key}`)
         } catch (err) {
-          console.error('[GenerateVideo] Failed to upload to storage:', err)
+          console.error('[GenerateVideo] Failed to upload to R2:', err)
+          if (err instanceof R2GlobalBudgetError) {
+            controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Global R2 storage cap reached. Contact support.' })))
+            controller.close()
+            return
+          }
         }
 
-        // ── Update Convex record to completed ─────────────────────────────────────
+        // ── Update Convex record to completed ───────────────────────────────────────
         try {
           await convex.mutation('outputs:update', {
             outputId,
@@ -197,17 +196,12 @@ export async function POST(request: NextRequest) {
             status: 'completed',
             modelId: usedModelId,
             sizeBytes: videoBuffer.length,
-            ...(storageId ? { storageId } : {}),
-            sizeBytes: Buffer.from(videoBase64!, 'base64').byteLength,
+            ...(r2Key ? { r2Key } : {}),
           })
         } catch (err) {
           console.error('[GenerateVideo] Failed to update output:', err)
-          if (storageId) {
-            await convex.mutation('outputs:deleteStorageObject', {
-              userId,
-              serverSecret,
-              storageId,
-            }).catch(() => {})
+          if (r2Key) {
+            await deleteObject(r2Key).catch(() => {})
           }
           if (err instanceof Error && err.message.includes('storage_limit_exceeded')) {
             controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))

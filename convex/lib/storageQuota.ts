@@ -1,5 +1,5 @@
 import type { Doc } from '../_generated/dataModel'
-import { getFileBandwidthBytesLimit, getOverlayStorageBytesLimit, type OverlayTier } from '../../src/lib/storage-limits'
+import { getOverlayStorageBytesLimit, type OverlayTier } from '../../src/lib/storage-limits'
 
 type MutationCtxLike = any
 
@@ -31,8 +31,6 @@ export async function getOrCreateSubscription(ctx: MutationCtxLike, userId: stri
     status: 'active',
     creditsUsed: 0,
     overlayStorageBytesUsed: 0,
-    fileBandwidthBytesUsed: 0,
-    fileBandwidthPeriodStart: now,
     ...defaultBillingWindow(now),
   })
   const created = await ctx.db
@@ -53,23 +51,8 @@ export function getStorageBytesUsed(subscription: Doc<'subscriptions'> | null | 
   return Math.max(0, subscription?.overlayStorageBytesUsed ?? 0)
 }
 
-export function getCurrentBillingPeriodStart(subscription: Doc<'subscriptions'> | null | undefined): number {
-  return subscription?.currentPeriodStart ?? Date.now()
-}
-
-export function getBandwidthBytesUsed(subscription: Doc<'subscriptions'> | null | undefined): number {
-  if (!subscription) return 0
-  const periodStart = getCurrentBillingPeriodStart(subscription)
-  if ((subscription.fileBandwidthPeriodStart ?? 0) !== periodStart) return 0
-  return Math.max(0, subscription.fileBandwidthBytesUsed ?? 0)
-}
-
 export function getStorageLimitForSubscription(subscription: Doc<'subscriptions'> | null | undefined): number {
   return getOverlayStorageBytesLimit(getSubscriptionTier(subscription))
-}
-
-export function getBandwidthLimitForSubscription(subscription: Doc<'subscriptions'> | null | undefined): number {
-  return getFileBandwidthBytesLimit(getSubscriptionTier(subscription))
 }
 
 export async function applyStorageUsageDelta(ctx: MutationCtxLike, userId: string, deltaBytes: number): Promise<Doc<'subscriptions'>> {
@@ -99,17 +82,3 @@ export async function ensureStorageAvailable(
   return subscription
 }
 
-export async function applyBandwidthUsage(ctx: MutationCtxLike, userId: string, bytesServed: number): Promise<Doc<'subscriptions'>> {
-  const subscription = await getOrCreateSubscription(ctx, userId)
-  const currentPeriodStart = getCurrentBillingPeriodStart(subscription)
-  const nextValue = Math.max(0, getBandwidthBytesUsed(subscription) + bytesServed)
-  await ctx.db.patch(subscription._id, {
-    fileBandwidthBytesUsed: nextValue,
-    fileBandwidthPeriodStart: currentPeriodStart,
-  })
-  return {
-    ...subscription,
-    fileBandwidthBytesUsed: nextValue,
-    fileBandwidthPeriodStart: currentPeriodStart,
-  }
-}

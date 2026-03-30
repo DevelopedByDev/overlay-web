@@ -30,20 +30,6 @@ function resolveStoredType(output: {
     : output.type
 }
 
-export const generateUploadUrl = mutation({
-  args: {
-    userId: v.string(),
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
-    sizeBytes: v.number(),
-  },
-  handler: async (ctx, { userId, accessToken, serverSecret, sizeBytes }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
-    await ensureStorageAvailable(ctx as never, userId, sizeBytes)
-    return await ctx.storage.generateUploadUrl()
-  },
-})
-
 export const create = mutation({
   args: {
     userId: v.string(),
@@ -70,6 +56,7 @@ export const create = mutation({
     prompt: v.string(),
     modelId: v.string(),
     storageId: v.optional(v.id('_storage')),
+    r2Key: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
     url: v.optional(v.string()),
     fileName: v.optional(v.string()),
@@ -103,6 +90,7 @@ export const create = mutation({
       prompt: args.prompt,
       modelId: args.modelId,
       storageId: args.storageId,
+      r2Key: args.r2Key,
       sizeBytes: sizeBytes || undefined,
       url: args.url,
       fileName: args.fileName,
@@ -129,6 +117,7 @@ export const update = mutation({
     serverSecret: v.optional(v.string()),
     status: v.optional(v.union(v.literal('pending'), v.literal('completed'), v.literal('failed'))),
     storageId: v.optional(v.id('_storage')),
+    r2Key: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
     url: v.optional(v.string()),
     modelId: v.optional(v.string()),
@@ -158,7 +147,7 @@ export const update = mutation({
   },
   handler: async (
     ctx,
-    { outputId, userId, accessToken, serverSecret, status, storageId, sizeBytes, url, modelId, source, type, fileName, mimeType, metadata, errorMessage },
+    { outputId, userId, accessToken, serverSecret, status, storageId, r2Key, sizeBytes, url, modelId, source, type, fileName, mimeType, metadata, errorMessage },
   ) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const output = await ctx.db.get(outputId)
@@ -174,6 +163,7 @@ export const update = mutation({
     }
     if (status !== undefined) updates.status = status
     if (storageId !== undefined) updates.storageId = storageId
+    if (r2Key !== undefined) updates.r2Key = r2Key
     if (sizeBytes !== undefined) updates.sizeBytes = sizeBytes
     if (url !== undefined) updates.url = url
     if (modelId !== undefined) updates.modelId = modelId
@@ -204,7 +194,7 @@ export const get = query({
     return {
       ...output,
       type: resolveStoredType(output),
-      url: output.storageId ? buildProxyUrl(output._id) : output.url,
+      url: (output.storageId ?? output.r2Key) ? buildProxyUrl(output._id) : output.url,
     }
   },
 })
@@ -243,7 +233,7 @@ export const list = query({
     const normalized = all.map((output) => ({
       ...output,
       type: resolveStoredType(output),
-      url: output.storageId ? buildProxyUrl(output._id) : output.url,
+      url: (output.storageId ?? output.r2Key) ? buildProxyUrl(output._id) : output.url,
     }))
 
     return type ? normalized.filter((output) => output.type === type) : normalized
@@ -268,7 +258,7 @@ export const listByConversationId = query({
       .map((output) => ({
         ...output,
         type: resolveStoredType(output),
-        url: output.storageId ? buildProxyUrl(output._id) : output.url,
+        url: (output.storageId ?? output.r2Key) ? buildProxyUrl(output._id) : output.url,
       }))
   },
 })
@@ -287,29 +277,49 @@ export const getStorageUrlForProxy = query({
       return null
     }
     const output = await ctx.db.get(outputId)
-    if (!output || output.userId !== userId || !output.storageId) return null
-    const url = await ctx.storage.getUrl(output.storageId)
-    if (!url) return null
-    return {
-      url,
-      sizeBytes: output.sizeBytes ?? 0,
-      type: resolveStoredType(output),
-      fileName: output.fileName,
-      mimeType: output.mimeType,
+    if (!output || output.userId !== userId) return null
+    if (output.r2Key) {
+      return {
+        r2Key: output.r2Key,
+        sizeBytes: output.sizeBytes ?? 0,
+        type: resolveStoredType(output),
+        fileName: output.fileName,
+        mimeType: output.mimeType,
+      }
     }
+    if (output.storageId) {
+      const url = await ctx.storage.getUrl(output.storageId)
+      if (!url) return null
+      return {
+        url,
+        sizeBytes: output.sizeBytes ?? 0,
+        type: resolveStoredType(output),
+        fileName: output.fileName,
+        mimeType: output.mimeType,
+      }
+    }
+    return null
   },
 })
 
-export const deleteStorageObject = mutation({
+export const remove = mutation({
   args: {
+    outputId: v.id('outputs'),
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
-    storageId: v.id('_storage'),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, storageId }) => {
+  handler: async (ctx, { outputId, userId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
-    await ctx.storage.delete(storageId)
+    const output = await ctx.db.get(outputId)
+    if (!output || output.userId !== userId) throw new Error('Unauthorized')
+    if (output.storageId) {
+      await ctx.storage.delete(output.storageId)
+    }
+    if (output.sizeBytes) {
+      await applyStorageUsageDelta(ctx as never, userId, -output.sizeBytes)
+    }
+    await ctx.db.delete(outputId)
     return { success: true }
   },
 })

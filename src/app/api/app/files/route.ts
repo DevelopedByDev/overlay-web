@@ -3,6 +3,7 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
+import { deleteObjects } from '@/lib/r2'
 
 function storageErrorResponse(error: unknown, fallback = 'Failed to save file') {
   const message = error instanceof Error ? error.message : String(error)
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { name, type, parentId, content, storageId, sizeBytes, projectId } = await request.json()
+    const { name, type, parentId, content, storageId, r2Key, sizeBytes, projectId } = await request.json()
     if (!name || !type) return NextResponse.json({ error: 'name and type required' }, { status: 400 })
 
     const args: Record<string, unknown> = {
@@ -63,13 +64,14 @@ export async function POST(request: NextRequest) {
     let id: unknown
     const ids: string[] = []
 
-    if (storageId) {
-      // Binary file uploaded directly to Convex storage (type is always 'file')
+    if (r2Key || storageId) {
+      // Binary file already uploaded to R2 (r2Key) or legacy Convex storage (storageId)
       const { type: _type, ...storageArgs } = args
       void _type
       id = await convex.mutation('files:createWithStorage', {
         ...storageArgs,
-        storageId,
+        ...(r2Key ? { r2Key } : {}),
+        ...(storageId ? { storageId } : {}),
         sizeBytes: typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0,
       })
     } else if (type === 'file' && typeof content === 'string' && content.length > 0) {
@@ -135,6 +137,17 @@ export async function DELETE(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
     const fileId = request.nextUrl.searchParams.get('fileId')
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
+
+    const r2Entries = await convex.query<Array<{ fileId: string; r2Key?: string; storageId?: string }>>(
+      'files:getR2KeysForSubtree',
+      { fileId, userId: session.user.id, serverSecret },
+    )
+    const r2Keys = (r2Entries ?? []).map((e) => e.r2Key).filter((k): k is string => Boolean(k))
+    if (r2Keys.length > 0) {
+      await deleteObjects(r2Keys)
+      console.log(`[FilesDelete] Deleted ${r2Keys.length} R2 objects for fileId=${fileId}`)
+    }
+
     await convex.mutation('files:remove', {
       fileId,
       userId: session.user.id,

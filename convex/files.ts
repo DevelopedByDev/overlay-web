@@ -70,8 +70,8 @@ export const list = query({
       type: file.type,
       parentId: file.parentId ?? null,
       sizeBytes: file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0),
-      isStorageBacked: Boolean(file.storageId),
-      downloadUrl: file.storageId ? buildProxyUrl(file._id) : undefined,
+      isStorageBacked: Boolean(file.storageId ?? file.r2Key),
+      downloadUrl: (file.storageId ?? file.r2Key) ? buildProxyUrl(file._id) : undefined,
       projectId: file.projectId,
       createdAt: file.createdAt,
       updatedAt: file.updatedAt,
@@ -95,10 +95,11 @@ export const get = query({
       name: file.name,
       type: file.type,
       parentId: file.parentId ?? null,
-      content: file.storageId ? buildProxyUrl(file._id) : (file.content ?? ''),
+      content: (file.storageId ?? file.r2Key) ? buildProxyUrl(file._id) : (file.content ?? ''),
       storageId: file.storageId ?? null,
+      r2Key: file.r2Key ?? null,
       sizeBytes: file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0),
-      isStorageBacked: Boolean(file.storageId),
+      isStorageBacked: Boolean(file.storageId ?? file.r2Key),
       projectId: file.projectId,
       createdAt: file.createdAt,
       updatedAt: file.updatedAt,
@@ -120,14 +121,65 @@ export const getStorageUrlForProxy = query({
       return null
     }
     const file = await ctx.db.get(fileId)
-    if (!file || file.userId !== userId || !file.storageId) return null
-    const url = await ctx.storage.getUrl(file.storageId)
-    if (!url) return null
-    return {
-      url,
-      name: file.name,
-      sizeBytes: file.sizeBytes ?? 0,
+    if (!file || file.userId !== userId) return null
+    if (file.r2Key) {
+      return {
+        r2Key: file.r2Key,
+        name: file.name,
+        mimeType: undefined as string | undefined,
+        sizeBytes: file.sizeBytes ?? 0,
+      }
     }
+    if (file.storageId) {
+      const url = await ctx.storage.getUrl(file.storageId)
+      if (!url) return null
+      return {
+        url,
+        name: file.name,
+        mimeType: undefined as string | undefined,
+        sizeBytes: file.sizeBytes ?? 0,
+      }
+    }
+    return null
+  },
+})
+
+export const getR2KeysForSubtree = query({
+  args: {
+    fileId: v.id('files'),
+    userId: v.string(),
+    serverSecret: v.optional(v.string()),
+    accessToken: v.optional(v.string()),
+  },
+  handler: async (ctx, { fileId, userId, serverSecret, accessToken }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return []
+    }
+    const root = await ctx.db.get(fileId)
+    if (!root || root.userId !== userId) return []
+    const results: Array<{ fileId: Id<'files'>; r2Key?: string; storageId?: string }> = []
+    async function collectSubtree(id: Id<'files'>) {
+      const children = await ctx.db
+        .query('files')
+        .withIndex('by_parentId', (q) => q.eq('parentId', id as string))
+        .collect()
+      for (const child of children) {
+        if (child.userId !== userId) continue
+        await collectSubtree(child._id)
+      }
+      const file = await ctx.db.get(id)
+      if (file) {
+        results.push({
+          fileId: id,
+          r2Key: file.r2Key,
+          storageId: file.storageId as string | undefined,
+        })
+      }
+    }
+    await collectSubtree(fileId)
+    return results
   },
 })
 
@@ -237,12 +289,16 @@ export const createWithStorage = mutation({
     serverSecret: v.optional(v.string()),
     name: v.string(),
     parentId: v.optional(v.string()),
-    storageId: v.id('_storage'),
+    storageId: v.optional(v.id('_storage')),
+    r2Key: v.optional(v.string()),
     sizeBytes: v.number(),
     projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, name, parentId, storageId, sizeBytes, projectId }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, name, parentId, storageId, r2Key, sizeBytes, projectId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    if (!storageId && !r2Key) {
+      throw new Error('createWithStorage requires either storageId or r2Key')
+    }
     if (parentId) {
       const parent = await ctx.db.get(parentId as Id<'files'>)
       if (!parent || parent.userId !== userId) {
@@ -263,6 +319,7 @@ export const createWithStorage = mutation({
       type: 'file',
       parentId,
       storageId,
+      r2Key,
       sizeBytes,
       projectId,
       createdAt: now,
@@ -289,7 +346,7 @@ export const update = mutation({
     if (!existing || existing.userId !== userId) {
       throw new Error('Unauthorized')
     }
-    if (existing.storageId && content !== undefined) {
+    if ((existing.storageId || existing.r2Key) && content !== undefined) {
       throw new Error('Storage-backed files cannot be edited inline.')
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
@@ -377,30 +434,3 @@ export const remove = mutation({
   },
 })
 
-export const generateUploadUrl = mutation({
-  args: {
-    userId: v.string(),
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
-    sizeBytes: v.number(),
-  },
-  handler: async (ctx, { userId, accessToken, serverSecret, sizeBytes }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
-    await ensureStorageAvailable(ctx as never, userId, sizeBytes)
-    return await ctx.storage.generateUploadUrl()
-  },
-})
-
-export const deleteStorageObject = mutation({
-  args: {
-    userId: v.string(),
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
-    storageId: v.id('_storage'),
-  },
-  handler: async (ctx, { userId, accessToken, serverSecret, storageId }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
-    await ctx.storage.delete(storageId)
-    return { success: true }
-  },
-})
