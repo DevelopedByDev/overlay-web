@@ -138,10 +138,36 @@ async function phase2(token: string, jwksByClient: Record<string, Array<Record<s
   info(`alg : ${alg ?? '(missing)'}`)
   info(`kid : ${kid ?? '(missing)'}`)
 
+  // Extract client ID from iss claim (https://api.workos.com/user_management/{clientId})
+  const issClientId = iss?.match(/\/user_management\/(client_\S+)/)?.[1] ?? null
+  if (issClientId) {
+    info(`Client ID from iss: ${issClientId}`)
+  }
+
+  // Build the full list of client IDs to try: configured + iss-derived
+  const allClientIds = [...new Set([...Object.keys(jwksByClient), ...(issClientId ? [issClientId] : [])])]
+  info(`All candidate client IDs: ${JSON.stringify(allClientIds)}`)
+
+  // Fetch JWKS for any new client IDs discovered from iss
+  const apiKey = process.env.WORKOS_API_KEY || process.env.DEV_WORKOS_API_KEY
+  for (const id of allClientIds) {
+    if (!jwksByClient[id]) {
+      info(`Fetching JWKS for iss-derived client: ${id}`)
+      try {
+        const keys = await fetchJwks(id, apiKey)
+        jwksByClient[id] = keys
+        ok(`JWKS for ${id}: ${keys.length} key(s) — kids: ${keys.map(k => k.kid).join(', ')}`)
+      } catch (e) {
+        fail(`JWKS fetch for ${id} failed: ${e}`)
+        jwksByClient[id] = []
+      }
+    }
+  }
+
   // Issuer check
   const TRUSTED = new Set([
     'https://api.workos.com',
-    ...Object.keys(jwksByClient).map(id => `https://api.workos.com/user_management/${id}`),
+    ...allClientIds.map(id => `https://api.workos.com/user_management/${id}`),
   ])
   const normalizedIss = iss?.trim().replace(/\/+$/, '') ?? ''
   if (!TRUSTED.has(normalizedIss)) {
@@ -150,25 +176,35 @@ async function phase2(token: string, jwksByClient: Record<string, Array<Record<s
   }
   ok(`Issuer trusted`)
 
-  // Audience check — must contain at least one configured client ID
-  const configuredIds = Object.keys(jwksByClient)
-  const matchingClientId = configuredIds.find(id => audArr.includes(id))
-  if (!matchingClientId) {
-    fail(`Audience mismatch — token aud=${JSON.stringify(audArr)} but configured IDs=${JSON.stringify(configuredIds)}`)
-    info('→ Add the token\'s aud value as WORKOS_CLIENT_ID or DEV_WORKOS_CLIENT_ID in Vercel env vars')
-    return
+  // Audience / client selection
+  if (audArr.length === 0) {
+    info('Token has no aud claim — will try all candidate client IDs for JWKS')
+  } else {
+    const matchingConfigured = Object.keys(jwksByClient).find(id => audArr.includes(id))
+    if (!matchingConfigured) {
+      fail(`Audience mismatch — token aud=${JSON.stringify(audArr)} but configured IDs=${JSON.stringify(Object.keys(jwksByClient))}`)
+      info('→ Add the token\'s aud value as WORKOS_CLIENT_ID or DEV_WORKOS_CLIENT_ID in Vercel env vars')
+      return
+    }
+    ok(`Audience matched client: ${matchingConfigured}`)
   }
-  ok(`Audience matched client: ${matchingClientId}`)
 
-  // kid lookup in JWKS
+  // kid lookup — try all candidate clients
   if (!kid) { fail('No kid in token header'); return }
-  const jwks = jwksByClient[matchingClientId] ?? []
-  const jwk = jwks.find(k => k.kid === kid)
+  let jwk: Record<string, unknown> | undefined
+  let jwkClientId: string | undefined
+  for (const id of allClientIds) {
+    const match = (jwksByClient[id] ?? []).find(k => k.kid === kid)
+    if (match) { jwk = match; jwkClientId = id; break }
+  }
   if (!jwk) {
-    fail(`kid "${kid}" not found in JWKS for ${matchingClientId}. Available kids: ${jwks.map(k => k.kid).join(', ') || '(none)'}`)
+    fail(`kid "${kid}" not found in any JWKS. Available kids per client:`)
+    for (const [id, keys] of Object.entries(jwksByClient)) {
+      info(`  ${id}: ${keys.map(k => k.kid).join(', ') || '(none)'}`)
+    }
     return
   }
-  ok(`JWK found for kid=${kid}`)
+  ok(`JWK found for kid=${kid} in client ${jwkClientId}`)
 
   // Signature verification
   const signingInput = `${headerSeg}.${payloadSeg}`
@@ -201,12 +237,18 @@ async function main() {
 
   const jwksByClient = await phase1()
 
-  const token = process.env.WORKOS_ACCESS_TOKEN?.trim()
+  let token = process.env.WORKOS_ACCESS_TOKEN?.trim()
+  if (!token) {
+    try {
+      token = (await import('fs')).readFileSync('/tmp/overlay_token.txt', 'utf-8').trim()
+      console.log('\n(Using token from /tmp/overlay_token.txt)')
+    } catch { /* file not found */ }
+  }
   if (token) {
     await phase2(token, jwksByClient)
   } else {
-    console.log('\n(Set WORKOS_ACCESS_TOKEN=<jwt> to run Phase 2 — full JWT verification)')
-    console.log('Get the token from the FULL_TOKEN line in the desktop logs after running npm run dev')
+    console.log('\n(No token found — set WORKOS_ACCESS_TOKEN=<jwt> or let the desktop write to /tmp/overlay_token.txt)')
+    console.log('Restart npm run dev in the overlay directory, then immediately re-run this test.')
   }
 
   console.log('\nDone.')
