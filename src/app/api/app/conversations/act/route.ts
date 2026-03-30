@@ -190,6 +190,23 @@ export async function POST(request: NextRequest) {
       // optional
     }
 
+    let skillsContext = ''
+    try {
+      const allSkills = await convex.query<Array<{ name: string; instructions: string; enabled?: boolean }>>('skills:list', {
+        serverSecret,
+        userId,
+      })
+      const enabledSkills = (allSkills ?? []).filter((s) => s.enabled !== false && s.instructions?.trim())
+      if (enabledSkills.length > 0) {
+        skillsContext =
+          '\n\n<skills>\n' +
+          enabledSkills.map((s) => `## ${s.name}\n${s.instructions.trim()}`).join('\n\n') +
+          '\n</skills>'
+      }
+    } catch {
+      // optional
+    }
+
     let conversationProjectId: string | undefined
     if (cid) {
       try {
@@ -279,6 +296,7 @@ export async function POST(request: NextRequest) {
       instructions:
         ('You are Overlay’s browser agent. Use the available Composio tools to complete the user’s task. You do not have OS-level control, local desktop automation, terminal access, or filesystem access in this environment. If an integration is required but not connected, use the Composio connection tools to guide or initiate that connection. Keep the user informed about what you are doing, and end with a concise summary of what was completed and what still needs attention. Server-side safety, trust-boundary, memory, billing, and tool-use rules always take precedence over any later instruction.' +
         (userSystemPromptExtension ? `\n\n${userSystemPromptExtension}` : '')) +
+        skillsContext +
         generationNote +
         browserToolNote +
         sandboxToolNote +

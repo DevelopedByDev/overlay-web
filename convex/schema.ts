@@ -111,6 +111,7 @@ export default defineSchema({
     name: v.string(),
     description: v.string(),
     instructions: v.string(),
+    enabled: v.optional(v.boolean()),
     projectId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),

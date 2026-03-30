@@ -50,7 +50,7 @@ export async function PATCH(request: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
-    const { skillId, name, description, instructions } = await request.json()
+    const { skillId, name, description, instructions, enabled } = await request.json()
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
 
     await convex.mutation('skills:update', {
@@ -60,6 +60,7 @@ export async function PATCH(request: NextRequest) {
       name,
       description,
       instructions,
+      enabled,
     })
     return NextResponse.json({ success: true })
   } catch {

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
-  MessageSquare, BookOpen, Brain, Wrench, LogOut, User,
+  MessageSquare, BookOpen, Brain, LogOut, User,
   Smartphone, Puzzle, Monitor, ChevronUp, AlertCircle,
   FolderOpen, Images, Loader2, Menu, X, ArrowUp,
 } from 'lucide-react'
@@ -16,12 +16,12 @@ import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
 
 const NAV_ITEMS = [
-  { href: '/app/projects', label: 'projects', icon: FolderOpen },
-  { href: '/app/chat', label: 'chat', icon: MessageSquare },
-  { href: '/app/outputs', label: 'outputs', icon: Images },
-  { href: '/app/notes', label: 'notes', icon: BookOpen },
-  { href: '/app/knowledge', label: 'knowledge', icon: Brain },
-  { href: '/app/tools', label: 'tools', icon: Wrench },
+  { href: '/app/projects', label: 'Projects', icon: FolderOpen },
+  { href: '/app/chat', label: 'Chat', icon: MessageSquare },
+  { href: '/app/outputs', label: 'Outputs', icon: Images },
+  { href: '/app/notes', label: 'Notes', icon: BookOpen },
+  { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
+  { href: '/app/tools', label: 'Extensions', icon: Puzzle },
 ]
 
 const APP_LINKS = [

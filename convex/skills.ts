@@ -56,6 +56,7 @@ export const create = mutation({
     name: v.string(),
     description: v.string(),
     instructions: v.string(),
+    enabled: v.optional(v.boolean()),
     projectId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -72,6 +73,7 @@ export const create = mutation({
       name: args.name,
       description: args.description,
       instructions: args.instructions,
+      ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
       projectId: args.projectId,
       createdAt: now,
       updatedAt: now,
@@ -88,6 +90,7 @@ export const update = mutation({
     name: v.optional(v.string()),
     description: v.optional(v.string()),
     instructions: v.optional(v.string()),
+    enabled: v.optional(v.boolean()),
   },
   handler: async (ctx, { skillId, userId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -99,6 +102,7 @@ export const update = mutation({
     if (updates.name !== undefined) patch.name = updates.name
     if (updates.description !== undefined) patch.description = updates.description
     if (updates.instructions !== undefined) patch.instructions = updates.instructions
+    if (updates.enabled !== undefined) patch.enabled = updates.enabled
     await ctx.db.patch(skillId, patch)
   },
 })

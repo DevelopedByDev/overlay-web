@@ -1,20 +1,24 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { Wrench, Sparkles } from 'lucide-react'
+import { Plug, Lock, LayoutGrid, CheckSquare } from 'lucide-react'
 import IntegrationsView from './IntegrationsView'
+import SkillsView from './SkillsView'
 
-function SkillsPlaceholder() {
+function ComingSoonView({ title, icon: Icon }: {
+  title: string
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
+}) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-16 items-center border-b border-[#e5e5e5] px-6">
-        <h2 className="text-sm font-medium text-[#0a0a0a]">Skills</h2>
+        <h2 className="text-sm font-medium text-[#0a0a0a]">{title}</h2>
       </div>
-      <div className="flex flex-col items-center justify-center flex-1 gap-4 text-[#888]">
-        <Sparkles size={40} strokeWidth={1} className="opacity-30" />
-        <div className="text-center space-y-1">
-          <p className="text-sm font-medium text-[#525252]">Skills coming soon</p>
-          <p className="text-xs text-[#aaa]">Create reusable AI skills to use across your workspace</p>
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-[#888]">
+        <Icon size={40} strokeWidth={1} className="opacity-30" />
+        <div className="space-y-1 text-center">
+          <p className="text-sm font-medium text-[#525252]">{title} coming soon</p>
+          <p className="text-xs text-[#aaa]">This feature is under development</p>
         </div>
       </div>
     </div>
@@ -25,18 +29,11 @@ export default function ToolsView({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
   const view = searchParams?.get('view') ?? null
 
-  if (view === 'skills') {
-    return <SkillsPlaceholder />
-  }
-
-  if (view && view !== 'connectors') {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-[#888]">
-        <Wrench size={40} strokeWidth={1} className="opacity-30" />
-        <p className="text-sm">Unknown tools view</p>
-      </div>
-    )
-  }
+  if (view === 'skills') return <SkillsView userId={userId} />
+  if (view === 'mcps') return <ComingSoonView title="MCP Servers" icon={Plug} />
+  if (view === 'apps') return <ComingSoonView title="Apps" icon={Lock} />
+  if (view === 'all') return <ComingSoonView title="All Extensions" icon={LayoutGrid} />
+  if (view === 'installed') return <ComingSoonView title="Installed" icon={CheckSquare} />
 
   return <IntegrationsView userId={userId} />
 }
