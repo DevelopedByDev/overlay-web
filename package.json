@@ -25,6 +25,7 @@
     "convex:audit:storage": "node --experimental-strip-types scripts/convex-storage-audit.ts",
     "convex:backfill:storage": "node --experimental-strip-types scripts/convex-storage-backfill.ts",
     "convex:reindex:knowledge": "node --experimental-strip-types scripts/convex-knowledge-reindex.ts",
+    "test:jwt": "node --env-file=../overlay/.env.local --experimental-strip-types scripts/smoke-jwt.ts",
     "test:r2:connectivity": "node --env-file=.env.local --experimental-strip-types scripts/smoke-r2-connectivity.ts",
     "test:r2:presign": "node --env-file=.env.local --experimental-strip-types scripts/smoke-r2-presign.ts",
     "test:r2:budget": "node --env-file=.env.local --experimental-strip-types scripts/smoke-r2-budget.ts",
