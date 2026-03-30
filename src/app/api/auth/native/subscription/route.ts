@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getVerifiedAccessTokenClaims } from '../../../../../../convex/lib/auth'
+import { getVerifiedAccessTokenClaims, debugAccessTokenVerification } from '../../../../../../convex/lib/auth'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -32,7 +32,12 @@ async function getAuthenticatedUserId(request: NextRequest): Promise<string | nu
   }
 
   const claims = await getVerifiedAccessTokenClaims(bearer)
-  return typeof claims?.sub === 'string' && claims.sub.trim().length > 0 ? claims.sub : null
+  if (typeof claims?.sub !== 'string' || !claims.sub.trim()) {
+    const debug = await debugAccessTokenVerification(bearer)
+    console.error('[NativeSubscription] Token verification failed:', JSON.stringify(debug))
+    return null
+  }
+  return claims.sub
 }
 
 export async function GET(request: NextRequest) {

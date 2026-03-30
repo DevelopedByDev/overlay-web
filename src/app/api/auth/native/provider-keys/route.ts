@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
-import { getVerifiedAccessTokenClaims } from '../../../../../../convex/lib/auth'
+import { getVerifiedAccessTokenClaims, debugAccessTokenVerification } from '../../../../../../convex/lib/auth'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -17,7 +17,12 @@ async function isAuthenticatedRequest(request: NextRequest): Promise<boolean> {
   }
 
   const claims = await getVerifiedAccessTokenClaims(bearer)
-  return Boolean(claims?.sub)
+  if (!claims?.sub) {
+    const debug = await debugAccessTokenVerification(bearer)
+    console.error('[NativeProviderKeys] Token verification failed:', JSON.stringify(debug))
+    return false
+  }
+  return true
 }
 
 export async function POST(request: NextRequest) {
