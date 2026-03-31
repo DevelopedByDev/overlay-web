@@ -4,7 +4,8 @@
 
 /** Ask mode: retrieval + memory writes; note/file mutations stay in Act mode. */
 export const ASK_KNOWLEDGE_TOOLS_NOTE = [
-  'Tools in Ask mode (when available): search_knowledge (notebook files and memories), save_memory / update_memory / delete_memory when the user shares or corrects durable facts, list_notes / get_note (read-only), perplexity_search (live web when AI Gateway is configured), and filtered Composio integrations.',
+  'Tools in Ask mode (when available): list_skills (user-configured task instructions), search_knowledge (notebook files and memories), save_memory / update_memory / delete_memory when the user shares or corrects durable facts, list_notes / get_note (read-only), perplexity_search (live web when AI Gateway is configured), and filtered Composio integrations.',
+  'IMPORTANT: Call list_skills at the start of any task to discover whether a relevant skill applies — especially for writing, coding, workflows, or domain-specific requests. If a matching skill is found, follow its instructions for this task.',
   'Use search_knowledge for facts beyond AUTO_RETRIEVED_KNOWLEDGE or the memory list above; use perplexity_search for current events, news, or anything requiring the public web.',
   'You cannot create, update, or delete notebook notes in Ask mode — use Act mode for note CRUD. You CAN save, update, or delete memories in Ask mode when the user states preferences or facts worth recalling later.',
   'When your answer uses AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end with **Sources:** (and include URLs/snippets from web search where relevant).',

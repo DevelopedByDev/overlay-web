@@ -14,6 +14,7 @@ const OVERLAY_TOOL_IDS_ASK = new Set<string>([
   'browser_run_task',
   'list_notes',
   'get_note',
+  'list_skills',
 ])
 
 const OVERLAY_TOOL_IDS_ACT = new Set<string>([
@@ -30,6 +31,7 @@ const OVERLAY_TOOL_IDS_ACT = new Set<string>([
   'create_note',
   'update_note',
   'delete_note',
+  'list_skills',
 ])
 
 export function overlayToolIdsForMode(mode: ToolMode): ReadonlySet<string> {

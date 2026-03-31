@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   ImageIcon,
   Video,
@@ -82,8 +83,11 @@ function OutputTypeIcon({
 }
 
 export default function OutputsView() {
+  const searchParams = useSearchParams()
+  const v = searchParams?.get('view')
+  const filter: FilterType = v === 'image' || v === 'video' || v === 'files' ? v : 'all'
+
   const [outputs, setOutputs] = useState<Output[]>([])
-  const [filter, setFilter] = useState<FilterType>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState<Output | null>(null)
@@ -102,14 +106,13 @@ export default function OutputsView() {
     }
   }
 
-  const load = useCallback(async (type?: FilterType) => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams({ limit: '100' })
-      const nextFilter = type ?? filter
-      if (nextFilter === 'image' || nextFilter === 'video') {
-        params.set('type', nextFilter)
+      if (filter === 'image' || filter === 'video') {
+        params.set('type', filter)
       }
       const res = await fetch(`/api/app/outputs?${params}`)
       if (!res.ok) throw new Error('Failed to load')
@@ -125,11 +128,6 @@ export default function OutputsView() {
     void load()
   }, [load])
 
-  function handleFilterChange(nextFilter: FilterType) {
-    setFilter(nextFilter)
-    void load(nextFilter)
-  }
-
   const filtered = outputs.filter((output) => {
     if (filter === 'all') return true
     if (filter === 'files') return !isMediaOutputType(output.type)
@@ -138,35 +136,18 @@ export default function OutputsView() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex min-h-16 shrink-0 flex-col gap-3 border-b border-[#e5e5e5] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-0">
-        <div className="flex min-w-0 items-center gap-3">
-          <h1 className="text-base font-medium text-[#0a0a0a] sm:text-sm">Outputs</h1>
-          <span className="shrink-0 text-xs text-[#aaa]">{filtered.length} items</span>
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#e5e5e5] px-6">
+        <div className="flex items-center gap-3">
+          <h1 className="text-sm font-medium text-[#0a0a0a]">Outputs</h1>
+          <span className="text-xs text-[#aaa]">{filtered.length} items</span>
         </div>
-        <div className="flex items-center justify-between gap-2 sm:justify-end">
-          <div className="flex min-w-0 flex-1 items-center justify-center rounded-lg bg-[#f0f0f0] p-0.5 sm:flex-initial sm:justify-start">
-            {(['all', 'image', 'video', 'files'] as FilterType[]).map((entry) => (
-              <button
-                key={entry}
-                onClick={() => handleFilterChange(entry)}
-                className={`flex-1 rounded-md px-3 py-1.5 text-xs capitalize transition-colors sm:flex-none sm:py-1 ${
-                  filter === entry
-                    ? 'bg-white font-medium text-[#0a0a0a] shadow-sm'
-                    : 'text-[#888] hover:text-[#525252]'
-                }`}
-              >
-                {entry}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => load()}
-            disabled={loading}
-            className="shrink-0 rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f0f0f0] hover:text-[#525252] disabled:opacity-40"
-          >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
+        <button
+          onClick={() => load()}
+          disabled={loading}
+          className="shrink-0 rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f0f0f0] hover:text-[#525252] disabled:opacity-40"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">

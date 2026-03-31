@@ -113,7 +113,7 @@ export async function getGatewayVideoModel(modelId: string, accessToken?: string
 }
 
 /** Cheap Gateway model to force a real provider `perplexity_search` round-trip (OpenRouter cannot send provider tools). */
-const PERPLEXITY_PROXY_LANGUAGE_MODEL_ID = 'openai/gpt-5-nano-2025-08-07'
+const PERPLEXITY_PROXY_LANGUAGE_MODEL_ID = 'openai/gpt-oss-20b'
 
 function isPerplexityErrorOutput(
   out: unknown,
@@ -128,7 +128,7 @@ function isPerplexityErrorOutput(
 
 /**
  * Perplexity as a normal function `tool()` whose `execute` runs the real Gateway provider tool via a tiny
- * `generateText` pass on `openai/gpt-5-nano`.
+ * `generateText` pass on `openai/gpt-oss-20b`.
  *
  * We always use this wrapper (not `gateway.tools.perplexitySearch()` directly on the chat model) because:
  * 1. OpenRouter's adapter only sends `type: "function"` tools — provider tools are dropped.

@@ -10,7 +10,6 @@ import { FileViewerPanel, getFileType, isEditableType } from './FileViewer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/** Virtual row: one Convex memory may appear as several sidebar entries. */
 interface MemoryListItem {
   key: string
   memoryId: string
@@ -34,7 +33,7 @@ interface FileNode {
   updatedAt: number
 }
 
-type Tab = 'memories' | 'filesystem'
+type Tab = 'memories' | 'files'
 
 // ─── File tree node ───────────────────────────────────────────────────────────
 
@@ -104,8 +103,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   const searchParams = useSearchParams()
   const fileOpenParam = searchParams?.get('file') ?? null
   const memoryOpenParam = searchParams?.get('memory') ?? null
-
-  const [activeTab, setActiveTab] = useState<Tab>('memories')
+  const activeTab: Tab = searchParams?.get('view') === 'files' ? 'files' : 'memories'
 
   // ── Memories state ──
   const [memories, setMemories] = useState<MemoryListItem[]>([])
@@ -141,7 +139,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     setFileContent(file.content ?? '')
   }, [])
 
-  // ── Load memories ──
   const loadMemories = useCallback(async () => {
     try {
       const res = await fetch('/api/app/memory')
@@ -149,7 +146,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     } catch { /* ignore */ } finally { setMemoriesLoading(false) }
   }, [])
 
-  // ── Load files ──
   const loadFiles = useCallback(async () => {
     try {
       const res = await fetch('/api/app/files')
@@ -162,9 +158,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
 
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === 'visible') {
-        void loadMemories()
-      }
+      if (document.visibilityState === 'visible') void loadMemories()
     }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
@@ -174,7 +168,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     if (!fileOpenParam || filesLoading || files.length === 0) return
     const node = files.find((f) => f._id === fileOpenParam && f.type === 'file')
     if (!node) return
-    setActiveTab('filesystem')
     void loadFile(node._id)
   }, [fileOpenParam, files, filesLoading, loadFile])
 
@@ -182,7 +175,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     if (!memoryOpenParam || memoriesLoading || memories.length === 0) return
     const mem = memories.find((m) => m.memoryId === memoryOpenParam)
     if (!mem) return
-    setActiveTab('memories')
     setSelectedMemory(mem)
   }, [memoryOpenParam, memories, memoriesLoading])
 
@@ -263,7 +255,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         body: JSON.stringify({ name: file.name, type: 'file', parentId, content }),
       })
     } else {
-      // Binary file: get R2 presigned PUT URL, upload directly to R2, then register in Convex
       const urlRes = await fetch('/api/app/files/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -294,10 +285,10 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   }
 
   async function handleUploadFolder(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files
-    if (!files) return
+    const uploadedFiles = e.target.files
+    if (!uploadedFiles) return
     const folders = new Map<string, string>()
-    for (const file of Array.from(files)) {
+    for (const file of Array.from(uploadedFiles)) {
       const parts = file.webkitRelativePath.split('/')
       for (let i = 0; i < parts.length - 1; i++) {
         const folderPath = parts.slice(0, i + 1).join('/')
@@ -341,16 +332,14 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     const q = memorySearchQuery.trim().toLowerCase()
     if (!q) return memories
     return memories.filter(
-      (m) =>
-        m.fullContent.toLowerCase().includes(q) ||
-        m.content.toLowerCase().includes(q),
+      (m) => m.fullContent.toLowerCase().includes(q) || m.content.toLowerCase().includes(q),
     )
   }, [memories, memorySearchQuery])
 
   const rootNodes = filesFiltered.filter((f) => f.parentId === null)
 
   return (
-    <div className="flex h-full flex-col min-h-0">
+    <div className="flex flex-col h-full">
       {/* ── Add memory modal ── */}
       {showAddMemory && (
         <div
@@ -374,7 +363,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               className="w-full text-sm text-[#0a0a0a] border border-[#e5e5e5] rounded-lg px-3 py-2.5 resize-none outline-none placeholder-[#aaa] focus:border-[#0a0a0a] transition-colors"
             />
             <p className="mt-2 text-[11px] text-[#888] leading-snug">
-              Long memories stay as one saved item; the sidebar shows short previews so you can scan them quickly.
+              Long memories stay as one saved item; the list shows short previews so you can scan them quickly.
             </p>
             <div className="flex gap-2 mt-3 justify-end">
               <button
@@ -429,125 +418,123 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0 w-full">
-      {/* ── Secondary sidebar ── */}
-      <div className="w-52 h-full flex flex-col border-r border-[#e5e5e5] bg-[#f5f5f5] shrink-0">
-        {/* Action buttons */}
-        <div className="flex flex-col border-b border-[#e5e5e5] px-3 py-2 gap-1.5 shrink-0">
+      {/* Hidden file inputs */}
+      <input ref={fileUploadRef} type="file" className="hidden" onChange={handleUploadFile} />
+      <input
+        ref={folderUploadRef}
+        type="file"
+        className="hidden"
+        onChange={handleUploadFolder}
+        // @ts-expect-error webkitdirectory is non-standard
+        webkitdirectory=""
+      />
+
+      {/* ── Header ── */}
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#e5e5e5] px-6">
+        <div className="flex items-center gap-3">
+          <h1 className="text-sm font-medium text-[#0a0a0a]">
+            {activeTab === 'memories' ? 'Memories' : 'Files'}
+          </h1>
+          <span className="text-xs text-[#aaa]">
+            {activeTab === 'memories' ? memoriesFiltered.length : filesFiltered.length} items
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
           {activeTab === 'memories' ? (
             <>
-              <div className="flex items-center gap-1.5 w-full min-w-0">
-                <button
-                  type="button"
-                  title="Search memories"
-                  aria-label="Search memories"
-                  aria-pressed={memorySearchOpen}
-                  onClick={() => setMemorySearchOpen((v) => !v)}
-                  className={`shrink-0 flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#ebebeb] ${
-                    memorySearchOpen ? 'border-[#0a0a0a] bg-[#ebebeb]' : ''
-                  }`}
-                >
-                  <Search size={14} strokeWidth={1.75} />
-                </button>
-                <button
-                  onClick={() => setShowAddMemory(true)}
-                  className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-sm bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
-                >
-                  <Plus size={13} />
-                  New Memory
-                </button>
-              </div>
-              {memorySearchOpen && (
-                <input
-                  value={memorySearchQuery}
-                  onChange={(e) => setMemorySearchQuery(e.target.value)}
-                  placeholder="Search memories…"
-                  className="w-full rounded-md border border-[#e5e5e5] bg-white px-2 py-1.5 text-xs text-[#0a0a0a] outline-none placeholder-[#aaa] focus:border-[#0a0a0a]"
-                />
-              )}
+              <button
+                type="button"
+                title="Search memories"
+                onClick={() => setMemorySearchOpen((v) => !v)}
+                className={`flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#ebebeb] ${
+                  memorySearchOpen ? 'border-[#0a0a0a] bg-[#ebebeb]' : ''
+                }`}
+              >
+                <Search size={14} strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={() => setShowAddMemory(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
+              >
+                <Plus size={13} />
+                New Memory
+              </button>
             </>
           ) : (
             <>
-              <div className="flex items-center gap-1.5 w-full">
-                <button
-                  type="button"
-                  title="Search files"
-                  aria-label="Search files"
-                  aria-pressed={fileSearchOpen}
-                  onClick={() => setFileSearchOpen((v) => !v)}
-                  className={`shrink-0 flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#ebebeb] ${
-                    fileSearchOpen ? 'border-[#0a0a0a] bg-[#ebebeb]' : ''
-                  }`}
-                >
-                  <Search size={14} strokeWidth={1.75} />
-                </button>
-                <div className="flex min-w-0 flex-1 gap-1.5">
-                  <input ref={fileUploadRef} type="file" className="hidden" onChange={handleUploadFile} />
-                  <input
-                    ref={folderUploadRef}
-                    type="file"
-                    className="hidden"
-                    onChange={handleUploadFolder}
-                    // @ts-expect-error webkitdirectory is non-standard
-                    webkitdirectory=""
-                  />
-                  <button
-                    onClick={() => fileUploadRef.current?.click()}
-                    className="flex items-center gap-1 flex-1 px-2 py-1.5 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors justify-center"
-                  >
-                    <FilePlus size={12} />
-                    File
-                  </button>
-                  <button
-                    onClick={() => folderUploadRef.current?.click()}
-                    className="flex items-center gap-1 flex-1 px-2 py-1.5 rounded-md text-xs bg-[#f0f0f0] text-[#525252] hover:bg-[#e8e8e8] transition-colors justify-center"
-                  >
-                    <FolderPlus size={12} />
-                    Folder
-                  </button>
-                </div>
-              </div>
-              {fileSearchOpen && (
-                <input
-                  value={fileSearchQuery}
-                  onChange={(e) => setFileSearchQuery(e.target.value)}
-                  placeholder="Search file names…"
-                  className="w-full rounded-md border border-[#e5e5e5] bg-white px-2 py-1.5 text-xs text-[#0a0a0a] outline-none placeholder-[#aaa] focus:border-[#0a0a0a]"
-                />
-              )}
+              <button
+                type="button"
+                title="Search files"
+                onClick={() => setFileSearchOpen((v) => !v)}
+                className={`flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#ebebeb] ${
+                  fileSearchOpen ? 'border-[#0a0a0a] bg-[#ebebeb]' : ''
+                }`}
+              >
+                <Search size={14} strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={() => fileUploadRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
+              >
+                <FilePlus size={13} />
+                Upload File
+              </button>
+              <button
+                onClick={() => folderUploadRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-[#f0f0f0] text-[#525252] hover:bg-[#e8e8e8] transition-colors"
+              >
+                <FolderPlus size={13} />
+                Upload Folder
+              </button>
             </>
           )}
         </div>
+      </div>
 
-        {/* Tab toggle */}
-        <div className="flex gap-0.5 p-2 border-b border-[#e5e5e5] shrink-0">
-          {(['memories', 'filesystem'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-1 rounded text-xs transition-colors ${
-                activeTab === tab
-                  ? 'bg-[#0a0a0a] text-[#fafafa]'
-                  : 'text-[#525252] hover:bg-[#e8e8e8]'
-              }`}
-            >
-              {tab === 'memories' ? 'Memories' : 'Files'}
-            </button>
-          ))}
+      {/* ── Search bar (toggled) ── */}
+      {activeTab === 'memories' && memorySearchOpen && (
+        <div className="border-b border-[#e5e5e5] px-6 py-2 shrink-0">
+          <input
+            value={memorySearchQuery}
+            onChange={(e) => setMemorySearchQuery(e.target.value)}
+            placeholder="Search memories…"
+            autoFocus
+            className="w-full max-w-sm rounded-md border border-[#e5e5e5] bg-white px-3 py-1.5 text-xs text-[#0a0a0a] outline-none placeholder-[#aaa] focus:border-[#0a0a0a]"
+          />
         </div>
+      )}
+      {activeTab === 'files' && fileSearchOpen && (
+        <div className="border-b border-[#e5e5e5] px-6 py-2 shrink-0">
+          <input
+            value={fileSearchQuery}
+            onChange={(e) => setFileSearchQuery(e.target.value)}
+            placeholder="Search file names…"
+            autoFocus
+            className="w-full max-w-sm rounded-md border border-[#e5e5e5] bg-white px-3 py-1.5 text-xs text-[#0a0a0a] outline-none placeholder-[#aaa] focus:border-[#0a0a0a]"
+          />
+        </div>
+      )}
 
-        {/* List */}
-        <div className="flex-1 overflow-y-auto py-1.5 px-1.5">
+      {/* ── Body: list panel + detail panel ── */}
+      <div className="flex flex-1 min-h-0">
+        {/* List panel */}
+        <div className="w-72 shrink-0 border-r border-[#e5e5e5] overflow-y-auto py-2 px-2 bg-[#fafafa]">
           {activeTab === 'memories' ? (
             memoriesLoading ? (
               <div className="flex justify-center pt-8 text-[#888]"><Loader2 size={14} className="animate-spin" /></div>
             ) : memories.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-2 text-[#aaa] px-4 text-center py-8">
+              <div className="flex flex-col items-center justify-center gap-2 text-[#aaa] px-4 text-center py-12">
                 <Brain size={28} strokeWidth={1} className="opacity-40" />
                 <p className="text-xs">No memories yet</p>
+                <button
+                  onClick={() => setShowAddMemory(true)}
+                  className="text-xs text-[#525252] underline underline-offset-2 hover:text-[#0a0a0a] transition-colors"
+                >
+                  Add your first memory
+                </button>
               </div>
             ) : memoriesFiltered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-2 text-[#aaa] px-4 text-center py-8">
+              <div className="flex flex-col items-center justify-center gap-2 text-[#aaa] px-4 text-center py-12">
                 <Search size={28} strokeWidth={1} className="opacity-40" />
                 <p className="text-xs">No memories match your search</p>
               </div>
@@ -578,12 +565,12 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
             filesLoading ? (
               <div className="flex justify-center pt-8 text-[#888]"><Loader2 size={14} className="animate-spin" /></div>
             ) : files.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-2 text-[#aaa] px-4 text-center py-8">
+              <div className="flex flex-col items-center justify-center gap-2 text-[#aaa] px-4 text-center py-12">
                 <FileText size={28} strokeWidth={1} className="opacity-40" />
                 <p className="text-xs">No files yet</p>
               </div>
             ) : rootNodes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-2 text-[#aaa] px-4 text-center py-8">
+              <div className="flex flex-col items-center justify-center gap-2 text-[#aaa] px-4 text-center py-12">
                 <Search size={28} strokeWidth={1} className="opacity-40" />
                 <p className="text-xs">No files match your search</p>
               </div>
@@ -604,63 +591,56 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
             )
           )}
         </div>
-      </div>
 
-      {/* ── Main content area ── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {activeTab === 'memories' ? (
-          selectedMemory ? (
-            <>
-              <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-6 shrink-0">
-                <span className="text-sm font-medium text-[#0a0a0a]">Memory</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#aaa]">
-                    {new Date(selectedMemory.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                  </span>
-                  <button
-                    onClick={() => handleDeleteMemory(selectedMemory.memoryId)}
-                    className="p-1.5 rounded-md text-[#aaa] hover:bg-red-50 hover:text-red-400 transition-colors"
-                  >
-                    <Trash2 size={13} />
-                  </button>
+        {/* Detail panel */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {activeTab === 'memories' ? (
+            selectedMemory ? (
+              <>
+                <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-6 shrink-0">
+                  <span className="text-sm font-medium text-[#0a0a0a]">Memory</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#aaa]">
+                      {new Date(selectedMemory.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteMemory(selectedMemory.memoryId)}
+                      className="p-1.5 rounded-md text-[#aaa] hover:bg-red-50 hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
+                <div className="flex-1 overflow-y-auto px-8 py-8">
+                  <p className="text-sm text-[#0a0a0a] leading-relaxed whitespace-pre-wrap max-w-2xl">{selectedMemory.fullContent}</p>
+                  {selectedMemory.source && (
+                    <p className="text-xs text-[#aaa] mt-4">Source: {selectedMemory.source}</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-[#888]">
+                <Brain size={40} strokeWidth={1} className="opacity-30" />
+                <p className="text-sm">Select a memory to view</p>
               </div>
-              <div className="flex-1 overflow-y-auto px-8 py-8">
-                <p className="text-sm text-[#0a0a0a] leading-relaxed whitespace-pre-wrap max-w-2xl">{selectedMemory.fullContent}</p>
-                {selectedMemory.source && (
-                  <p className="text-xs text-[#aaa] mt-4">Source: {selectedMemory.source}</p>
-                )}
+            )
+          ) : (
+            selectedFile ? (
+              <FileViewerPanel
+                name={selectedFile.name}
+                content={fileContent}
+                isSaving={isSavingFile}
+                isEditable={isEditableType(selectedFile.name)}
+                onContentChange={handleFileContentChange}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-[#888]">
+                <FileText size={40} strokeWidth={1} className="opacity-30" />
+                <p className="text-sm">Select a file to view</p>
               </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-[#888]">
-              <Brain size={40} strokeWidth={1} className="opacity-30" />
-              <p className="text-sm">Select a memory to view</p>
-              <button
-                onClick={() => setShowAddMemory(true)}
-                className="text-xs text-[#525252] underline underline-offset-2 hover:text-[#0a0a0a] transition-colors"
-              >
-                Add your first memory
-              </button>
-            </div>
-          )
-        ) : (
-          selectedFile ? (
-            <FileViewerPanel
-              name={selectedFile.name}
-              content={fileContent}
-              isSaving={isSavingFile}
-              isEditable={isEditableType(selectedFile.name)}
-              onContentChange={handleFileContentChange}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-[#888]">
-              <FileText size={40} strokeWidth={1} className="opacity-30" />
-              <p className="text-sm">Select a file to view</p>
-            </div>
-          )
-        )}
-      </div>
+            )
+          )}
+        </div>
       </div>
     </div>
   )

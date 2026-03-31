@@ -14,6 +14,8 @@ import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { formatBytes } from '@/lib/storage-limits'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
+import KnowledgeSidebar from './KnowledgeSidebar'
+import OutputsSidebar from './OutputsSidebar'
 
 const NAV_ITEMS = [
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
@@ -106,6 +108,8 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   const effectivePendingHref = pendingHref && !pathname.startsWith(pendingHref) ? pendingHref : null
   const projectsOpen = pathname.startsWith('/app/projects')
   const toolsOpen = pathname.startsWith('/app/tools')
+  const knowledgeOpen = pathname.startsWith('/app/knowledge')
+  const outputsOpen = pathname.startsWith('/app/outputs')
   const loadEntitlements = useCallback(async () => {
     try {
       const res = await fetch('/api/app/subscription')
@@ -489,6 +493,8 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       <div className="hidden md:flex">
         {projectsOpen && <ProjectsSidebar />}
         {toolsOpen && <ToolsSidebar />}
+        {knowledgeOpen && <KnowledgeSidebar />}
+        {outputsOpen && <OutputsSidebar />}
       </div>
     </>
   )

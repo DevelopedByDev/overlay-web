@@ -203,6 +203,7 @@ export async function POST(request: NextRequest) {
       const enabledSkills = (allSkills ?? []).filter((s) => s.enabled !== false && s.instructions?.trim())
       if (enabledSkills.length > 0) {
         skillsContext =
+          'IMPORTANT — User-configured skills below. Before responding, check whether any skill is relevant to this request and follow its instructions if so. You can also call list_skills to search them at runtime.\n' +
           '<skills>\n' +
           enabledSkills.map((s) => `## ${s.name}\n${s.instructions.trim()}`).join('\n\n') +
           '\n</skills>'

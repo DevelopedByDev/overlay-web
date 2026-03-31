@@ -1,4 +1,4 @@
-import { callInternalApi, toolAuthBody } from './internal-api'
+import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 
 export async function executeSearchKnowledge(
@@ -109,6 +109,47 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Failed to delete memory',
+    }
+  }
+}
+
+export async function executeListSkills(
+  options: OverlayToolsOptions,
+  input: { query?: string },
+) {
+  try {
+    const res = await callInternalApiGet(
+      '/api/app/skills',
+      options.accessToken,
+      options.baseUrl,
+      options.forwardCookie,
+    )
+    if (!res.ok) {
+      return { success: false, error: 'Failed to fetch skills' }
+    }
+    const skills = (await res.json()) as Array<{
+      _id: string
+      name: string
+      description?: string
+      instructions: string
+      enabled?: boolean
+    }>
+    const enabledSkills = skills.filter((s) => s.enabled !== false)
+    if (input.query) {
+      const q = input.query.toLowerCase()
+      const filtered = enabledSkills.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.description ?? '').toLowerCase().includes(q) ||
+          s.instructions.toLowerCase().includes(q),
+      )
+      return { success: true, skills: filtered }
+    }
+    return { success: true, skills: enabledSkills }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to list skills',
     }
   }
 }

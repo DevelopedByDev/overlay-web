@@ -13,6 +13,7 @@ import {
   executeDeleteMemory,
   executeGenerateImage,
   executeGenerateVideo,
+  executeListSkills,
   executeRunDaytonaSandbox,
   executeSaveMemory,
   executeSearchKnowledge,
@@ -27,6 +28,20 @@ import type { OverlayToolsOptions, ToolMode } from './types'
  */
 export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
+
+  tools.list_skills = tool({
+    description:
+      'List all active skills configured by the user. Skills are custom instructions the user has set up for specific task types. ' +
+      'IMPORTANT: Call this before taking action on any task to discover whether a relevant skill applies — especially when the request touches a domain the user may have customized (writing style, workflows, personas, integrations, etc.). ' +
+      'Use the optional query parameter to filter skills by keyword.',
+    inputSchema: z.object({
+      query: z.string().optional().describe('Optional keyword to filter skills by name, description, or instructions'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'list_skills')
+      return executeListSkills(options, input)
+    },
+  })
 
   tools.search_knowledge = tool({
     description:
