@@ -208,6 +208,7 @@ interface ChatOutput {
   modelId: string
   url?: string
   createdAt: number
+  turnId?: string
 }
 
 interface Entitlements {
@@ -604,24 +605,22 @@ function ExchangeBlock({
       >
         {/* User message */}
         <div className="flex min-w-0 justify-end">
-          <div className="min-w-0 max-w-[min(92%,36rem)] space-y-2 sm:max-w-[75%]">
+          <div className="flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-2 sm:max-w-[75%]">
             {replyThreadMeta && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => onJumpToReply(replyThreadMeta.replyToTurnId)}
-                  className="mb-1 max-w-full rounded-lg border border-[#e5e5e5] bg-[#f0f0f0] px-2.5 py-1.5 text-left text-[11px] text-[#525252] transition-colors hover:bg-[#e8e8e8] hover:text-[#0a0a0a]"
-                >
-                  <span className="flex items-center gap-1.5 font-medium text-[#0a0a0a]">
-                    <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[#71717a]" />
-                    Replying to
-                  </span>
-                  <span className="mt-0.5 line-clamp-2 block text-[#71717a]">{replyThreadMeta.replySnippet}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => onJumpToReply(replyThreadMeta.replyToTurnId)}
+                className="mb-1 max-w-full rounded-lg border border-[#e5e5e5] bg-[#f0f0f0] px-2.5 py-1.5 text-left text-[11px] text-[#525252] transition-colors hover:bg-[#e8e8e8] hover:text-[#0a0a0a]"
+              >
+                <span className="flex items-center gap-1.5 font-medium text-[#0a0a0a]">
+                  <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[#71717a]" />
+                  Replying to
+                </span>
+                <span className="mt-0.5 line-clamp-2 block text-[#71717a]">{replyThreadMeta.replySnippet}</span>
+              </button>
             )}
             {userImages.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 justify-end">
+              <div className="flex w-full flex-wrap justify-end gap-1.5">
                 {userImages.map((src, i) => (
                   <img key={i} src={src} alt="attached"
                     className="max-w-[200px] max-h-[200px] rounded-xl object-cover" />
@@ -629,7 +628,7 @@ function ExchangeBlock({
               </div>
             )}
             {userDocumentNames.length > 0 && (
-              <div className="flex flex-wrap justify-end gap-1.5">
+              <div className="flex w-full flex-wrap justify-end gap-1.5">
                 {userDocumentNames.map((name) => (
                   <div
                     key={name}
@@ -642,7 +641,7 @@ function ExchangeBlock({
               </div>
             )}
             {showTextBubble && (
-              <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:max-w-[75%] sm:px-4">
+              <div className="chat-user-bubble ml-auto min-w-0 max-w-full break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:px-4">
                 <span className="whitespace-pre-wrap">{userBodyText}</span>
               </div>
             )}
@@ -716,14 +715,25 @@ function ExchangeBlock({
           }
           if (block.kind === 'file') {
             const isImg = (block.mediaType?.startsWith('image/') ?? true)
-            if (!isImg) return null
+            const isVideo = block.mediaType?.startsWith('video/') ?? false
+            if (!isImg && !isVideo) return null
             return (
               <div key={`${exchIdx}-seq-${bi}-file`} className="w-full px-1 py-1">
-                <img
-                  src={block.url}
-                  alt="Generated"
-                  className="max-w-full max-h-[320px] rounded-xl border border-[#e8e8e8] object-contain"
-                />
+                {isImg ? (
+                  <img
+                    src={block.url}
+                    alt="Generated"
+                    className="max-w-full max-h-[320px] rounded-xl border border-[#e8e8e8] object-contain"
+                  />
+                ) : (
+                  <video
+                    src={block.url}
+                    controls
+                    preload="metadata"
+                    playsInline
+                    className="max-w-full max-h-[320px] rounded-xl border border-[#e8e8e8] object-contain"
+                  />
+                )}
               </div>
             )
           }
@@ -1181,6 +1191,7 @@ interface RestoredOutputGroup {
   modelIds: string[]
   results: GenerationResult[]
   createdAt: number
+  turnId?: string | null
 }
 
 function groupOutputsIntoExchanges(outputs: ChatOutput[]): RestoredOutputGroup[] {
@@ -1194,11 +1205,19 @@ function groupOutputsIntoExchanges(outputs: ChatOutput[]): RestoredOutputGroup[]
 
   for (const output of sorted) {
     const prev = groups[groups.length - 1]
+    const normalizedTurnId = output.turnId?.trim() || null
     const shouldMerge =
       prev &&
-      prev.prompt === output.prompt &&
       prev.type === output.type &&
-      Math.abs(output.createdAt - prev.createdAt) < 60_000
+      (
+        (normalizedTurnId && prev.turnId === normalizedTurnId) ||
+        (
+          !normalizedTurnId &&
+          !prev.turnId &&
+          prev.prompt === output.prompt &&
+          Math.abs(output.createdAt - prev.createdAt) < 60_000
+        )
+      )
 
     const result: GenerationResult = {
       type: output.type,
@@ -1226,6 +1245,7 @@ function groupOutputsIntoExchanges(outputs: ChatOutput[]): RestoredOutputGroup[]
       modelIds: [output.modelId],
       results: [result],
       createdAt: output.createdAt,
+      turnId: normalizedTurnId,
     })
   }
 
@@ -1996,9 +2016,14 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
       let nextOutputGroupIdx = 0
       for (let idx = 0; idx < exchanges.length; idx++) {
+        const exchangeTurnId = exchanges[idx].userMsg.turnId?.trim() || null
         const userPrompt = getMessageText(exchanges[idx].userMsg).trim()
         const matchIdx = outputGroups.findIndex((group, groupIdx) => (
-          groupIdx >= nextOutputGroupIdx && group.prompt.trim() === userPrompt
+          groupIdx >= nextOutputGroupIdx &&
+          (
+            (exchangeTurnId && group.turnId === exchangeTurnId) ||
+            (!group.turnId && group.prompt.trim() === userPrompt)
+          )
         ))
         if (matchIdx === -1) continue
 

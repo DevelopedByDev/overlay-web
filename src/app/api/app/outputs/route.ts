@@ -24,13 +24,13 @@ export async function GET(request: NextRequest) {
           conversationId,
           userId: session.user.id,
           serverSecret,
-        })
+        }, { throwOnError: true })
       : await convex.query('outputs:list', {
           userId: session.user.id,
           serverSecret,
           type: type ?? undefined,
           limit,
-        })
+        }, { throwOnError: true })
 
     return NextResponse.json(outputs ?? [])
   } catch (error) {
@@ -51,7 +51,7 @@ export async function DELETE(request: NextRequest) {
       outputId,
       userId: session.user.id,
       serverSecret,
-    })
+    }, { throwOnError: true })
 
     if (output?.r2Key) {
       await deleteObject(output.r2Key)
@@ -62,9 +62,10 @@ export async function DELETE(request: NextRequest) {
       outputId,
       userId: session.user.id,
       serverSecret,
-    })
+    }, { throwOnError: true })
     return NextResponse.json({ success: true })
-  } catch {
+  } catch (error) {
+    console.error('[Outputs API] Delete error:', error)
     return NextResponse.json({ error: 'Failed to delete output' }, { status: 500 })
   }
 }

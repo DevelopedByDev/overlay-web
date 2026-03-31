@@ -48,6 +48,23 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const encode = (s: string) => new TextEncoder().encode(s)
+      let outputId: string | null = null
+      let uploadedR2Key: string | null = null
+
+      const markOutputFailed = async (errorMessage: string) => {
+        if (!outputId) return
+        await convex.mutation(
+          'outputs:update',
+          {
+            outputId,
+            userId,
+            serverSecret,
+            status: 'failed',
+            errorMessage,
+          },
+          { throwOnError: true },
+        ).catch(() => {})
+      }
 
       try {
         // ── Subscription enforcement ────────────────────────────────────────
@@ -92,27 +109,39 @@ export async function POST(request: NextRequest) {
         }
 
         // ── Create pending output record ────────────────────────────────────
-        let outputId: string | null = null
         try {
-          outputId = await convex.mutation('outputs:create', {
-            userId,
-            serverSecret,
-            type: 'video',
-            source: 'video_generation',
-            status: 'pending',
-            prompt: prompt.trim(),
-            modelId: modelId ?? VIDEO_MODELS[0].id,
-            fileName: `overlay-video-${Date.now()}.mp4`,
-            mimeType: 'video/mp4',
-            ...(conversationId ? { conversationId } : {}),
-            ...(turnId ? { turnId } : {}),
-          })
+          outputId = await convex.mutation<string>(
+            'outputs:create',
+            {
+              userId,
+              serverSecret,
+              type: 'video',
+              source: 'video_generation',
+              status: 'pending',
+              prompt: prompt.trim(),
+              modelId: modelId ?? VIDEO_MODELS[0].id,
+              fileName: `overlay-video-${Date.now()}.mp4`,
+              mimeType: 'video/mp4',
+              ...(conversationId ? { conversationId } : {}),
+              ...(turnId ? { turnId } : {}),
+            },
+            { throwOnError: true },
+          )
         } catch (err) {
           console.error('[GenerateVideo] Failed to create output record:', err)
+          controller.enqueue(encode(sseChunk({ type: 'error', error: 'save_failed', message: 'Could not create the output record.' })))
+          controller.close()
+          return
         }
+        if (!outputId) {
+          controller.enqueue(encode(sseChunk({ type: 'error', error: 'save_failed', message: 'Could not create the output record.' })))
+          controller.close()
+          return
+        }
+        const persistedOutputId = outputId
 
         // ── Signal to client that we started ─────────────────────────────────
-        controller.enqueue(encode(sseChunk({ type: 'started', outputId })))
+        controller.enqueue(encode(sseChunk({ type: 'started', outputId: persistedOutputId })))
 
         // ── Model fallback chain ────────────────────────────────────────────
         const priorityList = modelId
@@ -145,15 +174,7 @@ export async function POST(request: NextRequest) {
 
         if (!videoBase64 || !usedModelId) {
           // Update Convex record to failed
-          if (outputId) {
-            await convex.mutation('outputs:update', {
-              outputId,
-              userId,
-              serverSecret,
-              status: 'failed',
-              errorMessage: lastError?.message ?? 'All models failed',
-            }).catch(() => {})
-          }
+          await markOutputFailed(lastError?.message ?? 'All models failed')
           controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'All video models failed. Please try again.' })))
           controller.close()
           return
@@ -164,6 +185,7 @@ export async function POST(request: NextRequest) {
 
         // ── Check per-user storage quota ────────────────────────────────────────
         if (entitlements.overlayStorageBytesUsed + videoBuffer.length > entitlements.overlayStorageBytesLimit) {
+          await markOutputFailed('Not enough Overlay storage remaining for this video.')
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
           controller.close()
           return
@@ -173,41 +195,54 @@ export async function POST(request: NextRequest) {
         let r2Key: string | null = null
         try {
           const fileName = `overlay-video-${Date.now()}.mp4`
-          const key = keyForOutput(userId, outputId ?? `tmp-${Date.now()}`, fileName)
+          const key = keyForOutput(userId, persistedOutputId, fileName)
           await checkGlobalR2Budget(videoBuffer.length)
           await uploadBuffer(key, videoBuffer, 'video/mp4')
           r2Key = key
+          uploadedR2Key = key
           console.log(`[GenerateVideo] ✅ Uploaded ${videoBuffer.length}B to R2 key=${key}`)
         } catch (err) {
           console.error('[GenerateVideo] Failed to upload to R2:', err)
+          await markOutputFailed(err instanceof Error ? err.message : 'Failed to upload video')
           if (err instanceof R2GlobalBudgetError) {
             controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Global R2 storage cap reached. Contact support.' })))
             controller.close()
             return
           }
+          controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'Failed to save generated video.' })))
+          controller.close()
+          return
         }
 
         // ── Update Convex record to completed ───────────────────────────────────────
         try {
-          await convex.mutation('outputs:update', {
-            outputId,
-            userId,
-            serverSecret,
-            status: 'completed',
-            modelId: usedModelId,
-            sizeBytes: videoBuffer.length,
-            ...(r2Key ? { r2Key } : {}),
-          })
+          await convex.mutation(
+            'outputs:update',
+            {
+              outputId: persistedOutputId,
+              userId,
+              serverSecret,
+              status: 'completed',
+              modelId: usedModelId,
+              sizeBytes: videoBuffer.length,
+              ...(r2Key ? { r2Key } : {}),
+            },
+            { throwOnError: true },
+          )
         } catch (err) {
           console.error('[GenerateVideo] Failed to update output:', err)
-          if (r2Key) {
-            await deleteObject(r2Key).catch(() => {})
+          if (uploadedR2Key) {
+            await deleteObject(uploadedR2Key).catch(() => {})
           }
+          await markOutputFailed(err instanceof Error ? err.message : 'Failed to finalize output record')
           if (err instanceof Error && err.message.includes('storage_limit_exceeded')) {
             controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
             controller.close()
             return
           }
+          controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'Failed to save generated video.' })))
+          controller.close()
+          return
         }
 
         // ── Usage tracking ────────────────────────────────────────────────────────
@@ -246,6 +281,7 @@ export async function POST(request: NextRequest) {
         controller.close()
       } catch (error) {
         console.error('[GenerateVideo] Unexpected error:', error)
+        await markOutputFailed(error instanceof Error ? error.message : 'Unexpected error during video generation.')
         controller.enqueue(encode(sseChunk({ type: 'failed', error: 'Unexpected error during video generation.' })))
         controller.close()
       }

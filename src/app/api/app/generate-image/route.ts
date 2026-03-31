@@ -158,31 +158,67 @@ export async function POST(request: NextRequest) {
         )
       }
       const fileName = `overlay-image-${Date.now()}.png`
-      const r2Key = keyForOutput(userId, `tmp-${Date.now()}`, fileName)
+      outputId = await convex.mutation<string>(
+        'outputs:create',
+        {
+          userId,
+          serverSecret,
+          type: 'image',
+          source: 'image_generation',
+          status: 'pending',
+          prompt: prompt.trim(),
+          modelId: usedModelId,
+          fileName,
+          mimeType: 'image/png',
+          ...(conversationId ? { conversationId } : {}),
+          ...(turnId ? { turnId } : {}),
+        },
+        { throwOnError: true },
+      )
+
+      if (!outputId) {
+        throw new Error('Output record was not created.')
+      }
+      const persistedOutputId = outputId
+      const r2Key = keyForOutput(userId, persistedOutputId, fileName)
       await checkGlobalR2Budget(imageBuffer.length)
       await uploadBuffer(r2Key, imageBuffer, 'image/png')
       uploadedR2Key = r2Key
       console.log(`[GenerateImage] ✅ Uploaded ${imageBuffer.length}B to R2 key=${r2Key}`)
 
-      outputId = await convex.mutation<string>('outputs:create', {
-        userId,
-        serverSecret,
-        type: 'image',
-        source: 'image_generation',
-        status: 'completed',
-        prompt: prompt.trim(),
-        modelId: usedModelId,
-        r2Key,
-        fileName,
-        mimeType: 'image/png',
-        sizeBytes: imageBuffer.length,
-        ...(conversationId ? { conversationId } : {}),
-        ...(turnId ? { turnId } : {}),
-      })
+      await convex.mutation(
+        'outputs:update',
+        {
+          outputId: persistedOutputId,
+          userId,
+          serverSecret,
+          status: 'completed',
+          modelId: usedModelId,
+          r2Key,
+          fileName,
+          mimeType: 'image/png',
+          sizeBytes: imageBuffer.length,
+        },
+        { throwOnError: true },
+      )
     } catch (err) {
       console.error('[GenerateImage] Failed to save output:', err)
       if (uploadedR2Key) {
         await deleteObject(uploadedR2Key).catch(() => {})
+      }
+      if (outputId) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to save generated image'
+        await convex.mutation(
+          'outputs:update',
+          {
+            outputId,
+            userId,
+            serverSecret,
+            status: 'failed',
+            errorMessage,
+          },
+          { throwOnError: true },
+        ).catch(() => {})
       }
       if (err instanceof R2GlobalBudgetError) {
         return NextResponse.json(
@@ -196,6 +232,10 @@ export async function POST(request: NextRequest) {
           { status: 403 },
         )
       }
+      return NextResponse.json(
+        { error: 'save_failed', message: err instanceof Error ? err.message : 'Failed to save generated image.' },
+        { status: 500 },
+      )
     }
 
     // ── Usage tracking ────────────────────────────────────────────────────────
