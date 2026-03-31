@@ -3,6 +3,31 @@ import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import { summarizeToolResultForTranscript } from '@/lib/tool-result-summary'
 
 /**
+ * Convex documents may not exceed 16 levels of nesting. Tool outputs (e.g. Notion API
+ * responses) can easily exceed this. This helper truncates any object/array that is
+ * deeper than `maxDepth` levels, replacing it with a sentinel string so the content
+ * is still readable but safe to store.
+ */
+function clampNestingDepth(value: unknown, maxDepth = 10, currentDepth = 0): unknown {
+  if (currentDepth >= maxDepth) {
+    if (value === null || value === undefined) return value
+    if (typeof value !== 'object') return value
+    return '[truncated: too deeply nested]'
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => clampNestingDepth(item, maxDepth, currentDepth + 1))
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const key of Object.keys(value as object)) {
+      result[key] = clampNestingDepth((value as Record<string, unknown>)[key], maxDepth, currentDepth + 1)
+    }
+    return result
+  }
+  return value
+}
+
+/**
  * Persist multi-step assistant turns: `onFinish`'s top-level `text` is only the **last** step,
  * so we merge every step's text and synthesize legacy `tool-invocation` parts for the transcript UI.
  */
@@ -49,8 +74,8 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
           toolCallId: tc.toolCallId,
           toolName: tc.toolName,
           state: result ? 'output-available' : 'input-available',
-          toolInput: tc.input,
-          toolOutput: result?.output,
+          toolInput: clampNestingDepth(tc.input),
+          toolOutput: clampNestingDepth(result?.output),
         },
       })
     }

@@ -373,13 +373,13 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const { content: persistContent, parts: persistParts } = buildAssistantPersistenceFromSteps(
-          event.steps,
-          event.text,
-        )
+        try {
+          const { content: persistContent, parts: persistParts } = buildAssistantPersistenceFromSteps(
+            event.steps,
+            event.text,
+          )
 
-        if (cid && persistContent) {
-          try {
+          if (cid && persistContent) {
             await convex.mutation('conversations:addMessage', {
               conversationId: cid,
               userId,
@@ -393,9 +393,9 @@ export async function POST(request: NextRequest) {
               modelId: effectiveModelId,
               tokens: { input: totalInputTokens, output: totalOutputTokens },
             })
-          } catch (err) {
-            console.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
           }
+        } catch (err) {
+          console.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
         }
       },
     })
