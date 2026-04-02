@@ -1,23 +1,85 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { addMemory, listMemories, removeMemory } from '@/lib/app-store'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { expandMemoriesForSidebarList } from '@/lib/memory-display-segments'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 
-export async function GET() {
+type MemoryDoc = {
+  _id: string
+  userId: string
+  clientId?: string
+  content: string
+  source: 'chat' | 'note' | 'manual'
+  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+  importance?: number
+  projectId?: string
+  conversationId?: string
+  noteId?: string
+  messageId?: string
+  turnId?: string
+  tags?: string[]
+  actor?: 'user' | 'agent'
+  status?: 'candidate' | 'approved' | 'rejected'
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+}
+
+function readBooleanParam(value: string | null): boolean | undefined {
+  if (value == null) return undefined
+  if (value === 'true' || value === '1') return true
+  if (value === 'false' || value === '0') return false
+  return undefined
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
+    const memoryId = request.nextUrl.searchParams.get('memoryId')
+    const raw = readBooleanParam(request.nextUrl.searchParams.get('raw')) === true
+    const updatedSinceParam = request.nextUrl.searchParams.get('updatedSince')
+    const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
+    const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
+    const projectId = request.nextUrl.searchParams.get('projectId') ?? undefined
+    const conversationId = request.nextUrl.searchParams.get('conversationId') ?? undefined
+    const noteId = request.nextUrl.searchParams.get('noteId') ?? undefined
 
-    const fromConvex = await convex.query('memories:list', {
-      userId: session.user.id,
+    if (memoryId) {
+      const memory = await convex.query<MemoryDoc[]>('memories:list', {
+        userId: auth.userId,
+        serverSecret,
+        includeDeleted: true,
+      })
+      const match = (memory || []).find((item) => item._id === memoryId)
+      if (!match || (!raw && match.deletedAt)) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      }
+      return NextResponse.json(match)
+    }
+
+    const fromConvex = await convex.query<MemoryDoc[]>('memories:list', {
+      userId: auth.userId,
       serverSecret,
+      ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
+      ...(includeDeleted !== undefined ? { includeDeleted } : {}),
+      ...(projectId ? { projectId } : {}),
+      ...(conversationId ? { conversationId } : {}),
+      ...(noteId ? { noteId } : {}),
     })
-    const raw = Array.isArray(fromConvex) ? fromConvex : listMemories(session.user.id)
-    return NextResponse.json(expandMemoriesForSidebarList(raw))
+    const fallback = listMemories(auth.userId).map((memory) => ({
+      _id: memory._id,
+      userId: auth.userId,
+      content: memory.content,
+      source: memory.source,
+      createdAt: memory.createdAt,
+      updatedAt: memory.createdAt,
+    }))
+    const rows = Array.isArray(fromConvex) ? fromConvex : fallback
+    return NextResponse.json(raw ? rows : expandMemoriesForSidebarList(rows))
   } catch (error) {
     console.error('[Memory API] GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch memories' }, { status: 500 })
@@ -29,6 +91,17 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       content?: string
       source?: string
+      clientId?: string
+      type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+      importance?: number
+      projectId?: string
+      conversationId?: string
+      noteId?: string
+      messageId?: string
+      turnId?: string
+      tags?: string[]
+      actor?: 'user' | 'agent'
+      status?: 'candidate' | 'approved' | 'rejected'
       accessToken?: string
       userId?: string
     }
@@ -46,12 +119,32 @@ export async function POST(request: NextRequest) {
     const memoryId = await convex.mutation<string>('memories:add', {
       userId: auth.userId,
       serverSecret,
+      clientId: body.clientId?.trim() || undefined,
       content: body.content,
       source,
+      type: body.type,
+      importance: body.importance,
+      projectId: body.projectId ?? undefined,
+      conversationId: body.conversationId ?? undefined,
+      noteId: body.noteId ?? undefined,
+      messageId: body.messageId ?? undefined,
+      turnId: body.turnId ?? undefined,
+      tags: body.tags,
+      actor: body.actor,
+      status: body.status,
     })
     const id = memoryId || addMemory(auth.userId, body.content, source)
-
-    return NextResponse.json({ id, ids: [id], count: 1 })
+    const memory = await convex.query<MemoryDoc[]>('memories:list', {
+      userId: auth.userId,
+      serverSecret,
+      includeDeleted: true,
+    })
+    return NextResponse.json({
+      id,
+      ids: [id],
+      count: 1,
+      memory: (memory || []).find((item) => item._id === id),
+    })
   } catch (error) {
     console.error('[Memory API] POST error:', error)
     return NextResponse.json({ error: 'Failed to add memory' }, { status: 500 })
@@ -63,6 +156,17 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json()) as {
       memoryId?: string
       content?: string
+      source?: 'chat' | 'note' | 'manual'
+      type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+      importance?: number
+      projectId?: string
+      conversationId?: string
+      noteId?: string
+      messageId?: string
+      turnId?: string
+      tags?: string[]
+      actor?: 'user' | 'agent'
+      status?: 'candidate' | 'approved' | 'rejected'
       accessToken?: string
       userId?: string
     }
@@ -78,10 +182,29 @@ export async function PATCH(request: NextRequest) {
     await convex.mutation('memories:update', {
       userId: auth.userId,
       serverSecret,
-      memoryId: body.memoryId.trim(),
+      memoryId: body.memoryId.trim() as Id<'memories'>,
       content: body.content,
+      source: body.source,
+      type: body.type,
+      importance: body.importance,
+      projectId: body.projectId,
+      conversationId: body.conversationId,
+      noteId: body.noteId,
+      messageId: body.messageId,
+      turnId: body.turnId,
+      tags: body.tags,
+      actor: body.actor,
+      status: body.status,
     })
-    return NextResponse.json({ success: true })
+    const memory = await convex.query<MemoryDoc[]>('memories:list', {
+      userId: auth.userId,
+      serverSecret,
+      includeDeleted: true,
+    })
+    return NextResponse.json({
+      success: true,
+      memory: (memory || []).find((item) => item._id === body.memoryId?.trim()),
+    })
   } catch (error) {
     console.error('[Memory API] PATCH error:', error)
     return NextResponse.json({ error: 'Failed to update memory' }, { status: 500 })
@@ -105,12 +228,12 @@ export async function DELETE(request: NextRequest) {
     if (!memoryId) return NextResponse.json({ error: 'memoryId required' }, { status: 400 })
 
     await convex.mutation('memories:remove', {
-      memoryId,
+      memoryId: memoryId as Id<'memories'>,
       userId: auth.userId,
       serverSecret,
     })
     removeMemory(memoryId)
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, memoryId, deletedAt: Date.now() })
   } catch (error) {
     console.error('[Memory API] DELETE error:', error)
     return NextResponse.json({ error: 'Failed to delete memory' }, { status: 500 })

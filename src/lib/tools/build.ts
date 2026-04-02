@@ -196,9 +196,9 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
 
     tools.run_daytona_sandbox = tool({
       description:
-        'Run a CLI or script task inside an ephemeral Daytona sandbox. ' +
+        'Run a CLI or script task inside the user’s persistent paid Daytona workspace. ' +
         'Use this for programmatic workflows like app building, code generation, file transforms, slideshow generation, or media pipelines that should run through command-line tooling rather than browser automation. ' +
-        'Selected Overlay files are uploaded into the sandbox, declared output files are imported back into the Outputs tab, and the sandbox is deleted after the run.',
+        'Selected Overlay files are uploaded into the workspace, declared output files are imported back into the Outputs tab, and the workspace persists across runs.',
       inputSchema: z.object({
         task: z.string().describe('Short summary of what the sandbox should do'),
         runtime: z.enum(['node', 'python']).describe('Sandbox runtime: node for JavaScript tooling, python for Python tooling'),

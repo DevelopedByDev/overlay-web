@@ -21,6 +21,7 @@ import {
   Globe,
   Play,
   MessageSquare,
+  Terminal,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai'
@@ -218,6 +219,35 @@ interface Entitlements {
   dailyUsage: { ask: number; write: number; agent: number }
   dailyLimits: { ask: number; write: number; agent: number }
 }
+
+interface WorkspaceResourceProfile {
+  id: 'pro' | 'max'
+  cpu: number
+  memoryGiB: number
+  diskGiB: number
+  autoStopMinutes: number
+  autoArchiveMinutes: number
+}
+
+interface WorkspaceStatus {
+  hasAccess: boolean
+  tier: 'free' | 'pro' | 'max'
+  state: 'provisioning' | 'started' | 'stopped' | 'archived' | 'error' | 'missing'
+  sandboxId?: string
+  canStart: boolean
+  canSsh: boolean
+  resourceProfile?: WorkspaceResourceProfile
+}
+
+interface WorkspaceSshAccess {
+  sandboxId: string
+  state: 'started' | 'provisioning'
+  expiresAt: string
+  sshCommand: string
+  resourceProfile: WorkspaceResourceProfile
+}
+
+type TerminalModalState = 'upgrade' | 'loading' | 'stopped' | 'starting' | 'ready' | 'blocked' | 'error'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -822,6 +852,26 @@ function errorLabel(err: Error | null | undefined): string | null {
   return 'Something went wrong. Please try again.'
 }
 
+function terminalErrorLabel(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  if (!message) return 'Failed to load terminal access.'
+  if (message.includes('terminal_not_allowed')) return 'Terminal access requires a Pro or Max subscription.'
+  if (message.includes('insufficient_credits')) return 'No credits remaining. Please top up your account.'
+  return message
+}
+
+function formatWorkspaceStateLabel(state: WorkspaceStatus['state'] | WorkspaceSshAccess['state']): string {
+  const labels: Record<WorkspaceStatus['state'], string> = {
+    provisioning: 'Starting',
+    started: 'Running',
+    stopped: 'Stopped',
+    archived: 'Archived',
+    error: 'Error',
+    missing: 'Not created',
+  }
+  return labels[state]
+}
+
 function FlashCopyIconButton({
   copyText,
   disabled,
@@ -1263,6 +1313,7 @@ function buildMediaSummary(type: 'image' | 'video', prompt: string, modelIds: st
 
 export default function ChatInterface({ userId: _userId, hideSidebar, projectName }: { userId: string; hideSidebar?: boolean; projectName?: string }) {
   void _userId
+  const router = useRouter()
   const searchParams = useSearchParams()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
   const { begin, done } = useNavigationProgress()
@@ -1335,6 +1386,12 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     replyToTurnId?: string
   } | null>(null)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false)
+  const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatus | null>(null)
+  const [sshAccess, setSshAccess] = useState<WorkspaceSshAccess | null>(null)
+  const [isTerminalLoading, setIsTerminalLoading] = useState(false)
+  const [terminalRequestKind, setTerminalRequestKind] = useState<'status' | 'start' | 'regenerate' | null>(null)
+  const [terminalError, setTerminalError] = useState<string | null>(null)
   /** User turn ids currently playing the delete (fade-out) animation */
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
   /** Mobile: chat history opens from bottom sheet (primary sidebar is desktop-only). */
@@ -1352,6 +1409,15 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       document.body.style.overflow = prev
     }
   }, [mobileChatListOpen])
+
+  useEffect(() => {
+    if (!isTerminalOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [isTerminalOpen])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
@@ -1522,6 +1588,27 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     entitlements.creditsTotal > 0 &&
     entitlements.creditsUsed >= entitlements.creditsTotal * 100
   const isSendBlocked = premiumModelBlocked || creditsExhausted
+  const terminalButtonLabel = isFreeTier ? 'Upgrade' : 'Terminal'
+  const terminalModalState: TerminalModalState =
+    isFreeTier
+      ? 'upgrade'
+      : sshAccess
+        ? 'ready'
+        : creditsExhausted
+          ? 'blocked'
+          : isTerminalLoading && terminalRequestKind !== 'status'
+            ? 'starting'
+            : isTerminalLoading
+              ? 'loading'
+              : terminalError && !workspaceStatus
+                ? 'error'
+                : 'stopped'
+  const terminalProfile = sshAccess?.resourceProfile ?? workspaceStatus?.resourceProfile
+  const terminalPrimaryActionLabel =
+    workspaceStatus?.state === 'started' ? 'Generate SSH Command' : 'Start Terminal'
+  const terminalExpiryLabel = sshAccess
+    ? new Date(sshAccess.expiresAt).toLocaleString()
+    : ''
 
   useEffect(() => {
     persistActiveRuntimeUiState()
@@ -1548,6 +1635,74 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       if (res.ok) setEntitlements(await res.json())
     } catch { /* ignore */ }
   }, [])
+
+  const closeTerminalModal = useCallback(() => {
+    setIsTerminalOpen(false)
+    setIsTerminalLoading(false)
+    setTerminalRequestKind(null)
+    setTerminalError(null)
+    setWorkspaceStatus(null)
+    setSshAccess(null)
+  }, [])
+
+  const loadWorkspaceStatus = useCallback(async () => {
+    setIsTerminalLoading(true)
+    setTerminalRequestKind('status')
+    setTerminalError(null)
+    setSshAccess(null)
+
+    try {
+      const res = await fetch('/api/app/daytona/workspace')
+      const data = (await res.json().catch(() => ({}))) as Partial<WorkspaceStatus> & { error?: string; message?: string }
+
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Failed to load terminal status.')
+      }
+
+      setWorkspaceStatus(data as WorkspaceStatus)
+    } catch (error) {
+      setWorkspaceStatus(null)
+      setTerminalError(terminalErrorLabel(error))
+    } finally {
+      setIsTerminalLoading(false)
+      setTerminalRequestKind(null)
+    }
+  }, [])
+
+  const requestWorkspaceSshAccess = useCallback(async (kind: 'start' | 'regenerate') => {
+    setIsTerminalLoading(true)
+    setTerminalRequestKind(kind)
+    setTerminalError(null)
+
+    try {
+      const res = await fetch('/api/app/daytona/workspace/ssh', {
+        method: 'POST',
+      })
+      const data = (await res.json().catch(() => ({}))) as Partial<WorkspaceSshAccess> & { error?: string; message?: string }
+
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Failed to issue SSH access.')
+      }
+
+      const nextAccess = data as WorkspaceSshAccess
+      setSshAccess(nextAccess)
+      setWorkspaceStatus((prev) => ({
+        hasAccess: true,
+        tier: (entitlements?.tier === 'max' ? 'max' : 'pro'),
+        state: nextAccess.state,
+        sandboxId: nextAccess.sandboxId,
+        canStart: !creditsExhausted,
+        canSsh: true,
+        resourceProfile: nextAccess.resourceProfile ?? prev?.resourceProfile,
+      }))
+      void loadSubscription()
+    } catch (error) {
+      setTerminalError(terminalErrorLabel(error))
+    } finally {
+      setIsTerminalLoading(false)
+      setTerminalRequestKind(null)
+    }
+  }, [creditsExhausted, entitlements?.tier, loadSubscription])
 
   // Snapshot pendingTitleRef before the async fetch so a concurrent PATCH completing mid-flight
   // can't clear the ref before we've applied the override to the incoming server chats.
@@ -1609,6 +1764,17 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   }, [applyChatTitleUpdate, loadChats])
 
   useEffect(() => { loadChats(); loadSubscription() }, [loadChats, loadSubscription])
+
+  useEffect(() => {
+    if (!isTerminalOpen) return
+    if (isFreeTier) {
+      setWorkspaceStatus(null)
+      setSshAccess(null)
+      setTerminalError(null)
+      return
+    }
+    void loadWorkspaceStatus()
+  }, [isFreeTier, isTerminalOpen, loadWorkspaceStatus])
 
   useEffect(() => {
     if (!activeChatId) return
@@ -3091,6 +3257,25 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 </div>
               )}
             </div>
+            {entitlements && (
+              <DelayedTooltip
+                label={isFreeTier ? 'Upgrade to unlock terminal access' : 'Open terminal access'}
+                side="bottom"
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsTerminalOpen(true)}
+                  className={`flex w-full items-center justify-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors md:w-auto md:py-1 ${
+                    isFreeTier
+                      ? 'bg-[#fef9ec] text-[#b45309] hover:bg-[#fde68a]'
+                      : 'bg-[#f0f0f0] text-[#525252] hover:bg-[#e8e8e8] hover:text-[#0a0a0a]'
+                  }`}
+                >
+                  <Terminal size={12} strokeWidth={1.75} />
+                  <span>{terminalButtonLabel}</span>
+                </button>
+              </DelayedTooltip>
+            )}
             <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
               <span className="block w-full md:inline-flex md:w-auto">
                 <span className="block w-full md:hidden">
@@ -3624,6 +3809,183 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             )}
           </div>
         </div>
+
+        {isTerminalOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 sm:items-center sm:p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) closeTerminalModal() }}
+          >
+            <div className="w-full max-w-lg rounded-t-2xl border border-[#e5e5e5] bg-white shadow-xl sm:rounded-2xl">
+              <div className="flex items-center justify-between border-b border-[#e5e5e5] px-4 py-3">
+                <div>
+                  <h3 className="text-sm font-medium text-[#0a0a0a]">Terminal Access</h3>
+                  <p className="mt-0.5 text-[11px] text-[#888]">
+                    {isFreeTier
+                      ? 'SSH access for your Daytona workspace'
+                      : 'SSH into your persistent Daytona workspace'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeTerminalModal}
+                  className="rounded p-1 text-[#888] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+                  aria-label="Close terminal dialog"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-4 px-4 py-4">
+                {!isFreeTier && terminalProfile && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-[#f4f4f5] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[#525252]">
+                      {entitlements?.tier}
+                    </span>
+                    <span className="rounded-full bg-[#f4f4f5] px-2 py-1 text-[10px] text-[#525252]">
+                      {formatWorkspaceStateLabel(sshAccess?.state ?? workspaceStatus?.state ?? 'missing')}
+                    </span>
+                  </div>
+                )}
+
+                {!isFreeTier && terminalProfile && (
+                  <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-xs text-[#525252]">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#888]">Workspace</p>
+                    <p className="mt-1 leading-relaxed">
+                      {terminalProfile.cpu} CPU, {terminalProfile.memoryGiB} GiB RAM, {terminalProfile.diskGiB} GiB disk, auto-stop after {terminalProfile.autoStopMinutes} minutes.
+                    </p>
+                  </div>
+                )}
+
+                {terminalError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {terminalError}
+                  </div>
+                )}
+
+                {terminalModalState === 'upgrade' && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-[#f6d78b] bg-[#fef9ec] px-3 py-3 text-sm leading-relaxed text-[#8a5a00]">
+                      Terminal access is included with paid Daytona workspaces. Upgrade to Pro or Max to open your workspace over SSH from your local terminal or VS Code.
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          closeTerminalModal()
+                          router.push('/pricing')
+                        }}
+                        className="rounded-md bg-[#0a0a0a] px-3 py-2 text-xs text-[#fafafa] transition-colors hover:bg-[#222]"
+                      >
+                        View Plans
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {terminalModalState === 'loading' && (
+                  <div className="flex items-center gap-2 rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm text-[#525252]">
+                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
+                    Loading workspace status…
+                  </div>
+                )}
+
+                {terminalModalState === 'starting' && (
+                  <div className="flex items-center gap-2 rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm text-[#525252]">
+                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
+                    Starting your workspace and issuing SSH access…
+                  </div>
+                )}
+
+                {terminalModalState === 'blocked' && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm leading-relaxed text-[#525252]">
+                      No credits remain on this account, so new terminal sessions are blocked until credits are available again.
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          closeTerminalModal()
+                          router.push('/account')
+                        }}
+                        className="rounded-md bg-[#0a0a0a] px-3 py-2 text-xs text-[#fafafa] transition-colors hover:bg-[#222]"
+                      >
+                        Open Account
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {terminalModalState === 'error' && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm leading-relaxed text-[#525252]">
+                      The terminal status could not be loaded. Retry to fetch the current workspace state.
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void loadWorkspaceStatus()}
+                        className="rounded-md bg-[#0a0a0a] px-3 py-2 text-xs text-[#fafafa] transition-colors hover:bg-[#222]"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {terminalModalState === 'stopped' && !isFreeTier && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm leading-relaxed text-[#525252]">
+                      {workspaceStatus?.state === 'started'
+                        ? 'Your workspace is already running. Generate a fresh SSH command to connect from your local terminal.'
+                        : 'Start your persistent Daytona workspace and generate a short-lived SSH command for local terminal access.'}
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void requestWorkspaceSshAccess('start')}
+                        disabled={isTerminalLoading || !!workspaceStatus && !workspaceStatus.canStart && workspaceStatus.state !== 'started'}
+                        className="rounded-md bg-[#0a0a0a] px-3 py-2 text-xs text-[#fafafa] transition-colors hover:bg-[#222] disabled:opacity-50"
+                      >
+                        {terminalPrimaryActionLabel}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {terminalModalState === 'ready' && sshAccess && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm leading-relaxed text-[#525252]">
+                      Terminal access is available over SSH. Paste this command into your local terminal or VS Code Remote SSH.
+                    </div>
+
+                    <div className="rounded-xl border border-[#e5e5e5] bg-white px-3 py-3">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#888]">SSH Command</p>
+                      <div className="mt-2 flex items-start gap-2">
+                        <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-[#fafafa] px-3 py-2 font-mono text-[11px] leading-relaxed text-[#0a0a0a]">
+                          {sshAccess.sshCommand}
+                        </code>
+                        <FlashCopyIconButton copyText={sshAccess.sshCommand} ariaLabel="Copy SSH command" />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 text-xs text-[#666]">
+                      <span className="min-w-0 truncate">Expires {terminalExpiryLabel}</span>
+                      <button
+                        type="button"
+                        onClick={() => void requestWorkspaceSshAccess('regenerate')}
+                        disabled={isTerminalLoading}
+                        className="shrink-0 rounded-md border border-[#e5e5e5] px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+                      >
+                        Regenerate
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {!hideSidebar && (
           <div className="shrink-0 border-t border-[#e5e5e5] bg-[#fafafa]/95 backdrop-blur md:hidden">

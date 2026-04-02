@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 import {
   buildPersistedMessageContent,
@@ -10,9 +10,6 @@ import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
     const body = await request.json() as {
       conversationId?: string
       turnId?: string
@@ -27,7 +24,11 @@ export async function POST(request: NextRequest) {
       variantIndex?: number
       replyToTurnId?: string
       replySnippet?: string
+      accessToken?: string
+      userId?: string
     }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const normalizedParts = sanitizeMessagePartsForPersistence(body.parts, {
       attachmentNames: body.attachmentNames,
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
       'conversations:addMessage',
       {
         conversationId: body.conversationId as Id<'conversations'>,
-        userId: session.user.id,
+        userId: auth.userId,
         serverSecret,
         turnId,
         role: body.role,
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
       { throwOnError: true },
     )
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, conversationId: body.conversationId, turnId })
   } catch (e) {
     console.error('[conversations/message POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to save message'
@@ -80,10 +81,14 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const body = await request.json() as { conversationId?: string; turnId?: string }
+    const body = await request.json() as {
+      conversationId?: string
+      turnId?: string
+      accessToken?: string
+      userId?: string
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const conversationId = body.conversationId?.trim()
     const turnId = body.turnId?.trim()
     if (!conversationId || !turnId) {
@@ -96,7 +101,7 @@ export async function DELETE(request: NextRequest) {
         'conversations:deleteTurn',
         {
           conversationId: conversationId as Id<'conversations'>,
-          userId: session.user.id,
+          userId: auth.userId,
           serverSecret,
           turnId,
         },
@@ -120,7 +125,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: msg || 'Failed to delete turn' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, conversationId, turnId })
   } catch (e) {
     console.error('[conversations/message DELETE]', e)
     return NextResponse.json({ error: 'Failed to delete turn' }, { status: 500 })

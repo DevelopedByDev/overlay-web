@@ -113,7 +113,6 @@ function normalizeSandboxState(state: Sandbox['state'] | undefined): DaytonaWork
       return 'missing'
     case 'starting':
     case 'stopping':
-    case 'pending':
     case 'creating':
     case 'restoring':
     case 'resizing':

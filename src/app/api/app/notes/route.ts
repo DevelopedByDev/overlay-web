@@ -6,11 +6,21 @@ import { convex } from '@/lib/convex'
 type NoteDoc = {
   _id: string
   userId: string
+  clientId?: string
   title: string
   content: string
   tags: string[]
   projectId?: string
+  createdAt: number
   updatedAt: number
+  deletedAt?: number
+}
+
+function readBooleanParam(value: string | null): boolean | undefined {
+  if (value == null) return undefined
+  if (value === 'true' || value === '1') return true
+  if (value === 'false' || value === '0') return false
+  return undefined
 }
 
 export async function GET(request: NextRequest) {
@@ -18,6 +28,9 @@ export async function GET(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, {})
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
+    const updatedSinceParam = request.nextUrl.searchParams.get('updatedSince')
+    const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
+    const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
 
     const noteId = request.nextUrl.searchParams.get('noteId')
     if (noteId) {
@@ -38,6 +51,8 @@ export async function GET(request: NextRequest) {
         projectId,
         userId: auth.userId,
         serverSecret,
+        ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
+        ...(includeDeleted !== undefined ? { includeDeleted } : {}),
       })
       return NextResponse.json(notes || [])
     }
@@ -45,6 +60,8 @@ export async function GET(request: NextRequest) {
     const notes = await convex.query('notes:list', {
       userId: auth.userId,
       serverSecret,
+      ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
+      ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
     return NextResponse.json(notes || [])
   } catch (error) {
@@ -60,6 +77,7 @@ export async function POST(request: NextRequest) {
       content?: string
       tags?: string[]
       projectId?: string
+      clientId?: string
       accessToken?: string
       userId?: string
     }
@@ -70,12 +88,18 @@ export async function POST(request: NextRequest) {
     const noteId = await convex.mutation<string>('notes:create', {
       userId: auth.userId,
       serverSecret,
+      clientId: body.clientId?.trim() || undefined,
       title: body.title || 'Untitled',
       content: body.content || '',
       tags: body.tags || [],
       projectId: body.projectId ?? undefined,
     })
-    return NextResponse.json({ id: noteId })
+    const note = await convex.query<NoteDoc | null>('notes:get', {
+      noteId,
+      userId: auth.userId,
+      serverSecret,
+    })
+    return NextResponse.json({ id: noteId, note })
   } catch (error) {
     console.error('[Notes API] POST error:', error)
     return NextResponse.json({ error: 'Failed to create note' }, { status: 500 })
@@ -89,6 +113,7 @@ export async function PATCH(request: NextRequest) {
       title?: string
       content?: string
       tags?: string[]
+      projectId?: string
       accessToken?: string
       userId?: string
     }
@@ -114,8 +139,14 @@ export async function PATCH(request: NextRequest) {
       title: body.title,
       content: body.content,
       tags: body.tags,
+      projectId: body.projectId,
     })
-    return NextResponse.json({ success: true })
+    const note = await convex.query<NoteDoc | null>('notes:get', {
+      noteId: body.noteId,
+      userId: auth.userId,
+      serverSecret,
+    })
+    return NextResponse.json({ success: true, note })
   } catch (error) {
     console.error('[Notes API] PATCH error:', error)
     return NextResponse.json({ error: 'Failed to update note' }, { status: 500 })
@@ -154,7 +185,7 @@ export async function DELETE(request: NextRequest) {
       userId: auth.userId,
       serverSecret,
     })
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, noteId, deletedAt: Date.now() })
   } catch (error) {
     console.error('[Notes API] DELETE error:', error)
     return NextResponse.json({ error: 'Failed to delete note' }, { status: 500 })

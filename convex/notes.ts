@@ -20,8 +20,10 @@ export const list = query({
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
+    updatedSince: v.optional(v.number()),
+    includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -32,7 +34,11 @@ export const list = query({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .order('desc')
       .take(300)
-    return all.filter((n) => !n.projectId).slice(0, 200)
+    return all
+      .filter((n) => !n.projectId)
+      .filter((n) => (updatedSince !== undefined ? n.updatedAt > updatedSince : true))
+      .filter((n) => (includeDeleted ? true : !n.deletedAt))
+      .slice(0, 200)
   },
 })
 
@@ -43,8 +49,10 @@ export const listByProject = query({
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
+    updatedSince: v.optional(v.number()),
+    includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { projectId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { projectId, userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -55,7 +63,10 @@ export const listByProject = query({
       .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
       .order('desc')
       .collect()
-    return notes.filter((note) => note.userId === userId)
+    return notes
+      .filter((note) => note.userId === userId)
+      .filter((note) => (updatedSince !== undefined ? note.updatedAt > updatedSince : true))
+      .filter((note) => (includeDeleted ? true : !note.deletedAt))
   },
 })
 
@@ -73,7 +84,7 @@ export const get = query({
       return null
     }
     const note = await ctx.db.get(noteId)
-    return note?.userId === userId ? note : null
+    return note?.userId === userId && !note.deletedAt ? note : null
   },
 })
 
@@ -82,6 +93,7 @@ export const create = mutation({
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
+    clientId: v.optional(v.string()),
     title: v.string(),
     content: v.string(),
     tags: v.array(v.string()),
@@ -89,19 +101,31 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    if (args.clientId?.trim()) {
+      const existing = await ctx.db
+        .query('notes')
+        .withIndex('by_userId_clientId', (q) => q.eq('userId', args.userId).eq('clientId', args.clientId!.trim()))
+        .first()
+      if (existing) {
+        return existing._id
+      }
+    }
     if (args.projectId) {
       const project = await ctx.db.get(args.projectId as Id<'projects'>)
-      if (!project || project.userId !== args.userId) {
+      if (!project || project.userId !== args.userId || project.deletedAt) {
         throw new Error('Unauthorized')
       }
     }
+    const now = Date.now()
     return await ctx.db.insert('notes', {
       userId: args.userId,
+      clientId: args.clientId?.trim() || undefined,
       title: args.title,
       content: args.content,
       tags: args.tags,
       projectId: args.projectId,
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     })
   },
 })
@@ -115,17 +139,25 @@ export const update = mutation({
     title: v.optional(v.string()),
     content: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
+    projectId: v.optional(v.string()),
   },
   handler: async (ctx, { userId, accessToken, serverSecret, noteId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(noteId)
-    if (!existing || existing.userId !== userId) {
+    if (!existing || existing.userId !== userId || existing.deletedAt) {
       throw new Error('Unauthorized')
+    }
+    if (updates.projectId !== undefined && updates.projectId !== null) {
+      const project = await ctx.db.get(updates.projectId as Id<'projects'>)
+      if (!project || project.userId !== userId || project.deletedAt) {
+        throw new Error('Unauthorized')
+      }
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (updates.title !== undefined) patch.title = updates.title
     if (updates.content !== undefined) patch.content = updates.content
     if (updates.tags !== undefined) patch.tags = updates.tags
+    if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     await ctx.db.patch(noteId, patch)
   },
 })
@@ -140,9 +172,12 @@ export const remove = mutation({
   handler: async (ctx, { noteId, userId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(noteId)
-    if (!existing || existing.userId !== userId) {
+    if (!existing || existing.userId !== userId || existing.deletedAt) {
       throw new Error('Unauthorized')
     }
-    await ctx.db.delete(noteId)
+    await ctx.db.patch(noteId, {
+      deletedAt: Date.now(),
+      updatedAt: Date.now(),
+    })
   },
 })

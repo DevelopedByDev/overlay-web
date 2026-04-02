@@ -19,6 +19,7 @@ const TREE_ICON_COL = 'w-[14px] shrink-0 flex items-center justify-center text-[
 interface Project {
   _id: string
   name: string
+  instructions?: string
   parentId: string | null
   createdAt: number
   updatedAt: number
@@ -357,6 +358,9 @@ export default function ProjectsSidebar() {
   const [loading, setLoading] = useState(true)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [projectDraftName, setProjectDraftName] = useState('')
+  const [projectDraftInstructions, setProjectDraftInstructions] = useState('')
+  const [isSavingProjectMeta, setIsSavingProjectMeta] = useState(false)
 
   // New project inline form
   const [showNewProject, setShowNewProject] = useState(false)
@@ -421,6 +425,29 @@ export default function ProjectsSidebar() {
   }, [selectedProject, loadProjectItems])
 
   useEffect(() => {
+    if (!selectedProject) {
+      setProjectDraftName('')
+      setProjectDraftInstructions('')
+      return
+    }
+    setProjectDraftName(selectedProject.name)
+    setProjectDraftInstructions(selectedProject.instructions ?? '')
+  }, [selectedProject])
+
+  useEffect(() => {
+    if (!selectedProject) return
+    const latest = projects.find((project) => project._id === selectedProject._id)
+    if (!latest) return
+    if (
+      latest.name !== selectedProject.name ||
+      (latest.instructions ?? '') !== (selectedProject.instructions ?? '') ||
+      latest.parentId !== selectedProject.parentId
+    ) {
+      setSelectedProject(latest)
+    }
+  }, [projects, selectedProject])
+
+  useEffect(() => {
     function handleChatTitleUpdated(event: Event) {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
@@ -467,6 +494,34 @@ export default function ProjectsSidebar() {
     await fetch(`/api/app/projects?projectId=${id}`, { method: 'DELETE' })
     if (selectedProject?._id === id) setSelectedProject(null)
     setProjects((prev) => prev.filter((p) => p._id !== id))
+  }
+
+  async function handleSaveProjectMeta() {
+    if (!selectedProject || isSavingProjectMeta) return
+    const name = projectDraftName.trim()
+    if (!name) return
+    setIsSavingProjectMeta(true)
+    try {
+      const res = await fetch('/api/app/projects', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: selectedProject._id,
+          name,
+          instructions: projectDraftInstructions.trim() || undefined,
+        }),
+      })
+      if (!res.ok) return
+      const data = (await res.json()) as { project?: Project }
+      if (data.project) {
+        setProjects((prev) => prev.map((project) => (project._id === data.project!._id ? data.project! : project)))
+        setSelectedProject(data.project)
+      } else {
+        await loadProjects()
+      }
+    } finally {
+      setIsSavingProjectMeta(false)
+    }
   }
 
   function toggleExpanded(id: string, e: React.MouseEvent) {
@@ -819,6 +874,47 @@ export default function ProjectsSidebar() {
             <div className="flex justify-center pt-8 text-[#888]"><Loader2 size={14} className="animate-spin" /></div>
           ) : (
             <div className="space-y-0.5">
+              <div className="mx-1 mb-3 rounded-xl border border-[#e8e8e8] bg-white px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#a1a1aa]">
+                      Project
+                    </p>
+                    <input
+                      value={projectDraftName}
+                      onChange={(e) => setProjectDraftName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          void handleSaveProjectMeta()
+                        }
+                      }}
+                      className="mt-1 w-full bg-transparent text-sm font-medium text-[#0a0a0a] outline-none placeholder-[#bbb]"
+                      placeholder="Project name"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveProjectMeta()}
+                    disabled={isSavingProjectMeta || !projectDraftName.trim()}
+                    className="shrink-0 rounded-md bg-[#0a0a0a] px-2.5 py-1 text-[11px] text-white transition-colors hover:bg-[#222] disabled:opacity-40"
+                  >
+                    {isSavingProjectMeta ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+                <div className="mt-3">
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[#a1a1aa]">
+                    Instructions
+                  </p>
+                  <textarea
+                    value={projectDraftInstructions}
+                    onChange={(e) => setProjectDraftInstructions(e.target.value)}
+                    className="min-h-[92px] w-full resize-y rounded-lg border border-[#ececec] bg-[#fafafa] px-2.5 py-2 text-xs text-[#303030] outline-none transition-colors placeholder-[#b2b2b2] focus:border-[#0a0a0a]"
+                    placeholder="Guidance that should apply to chats and notes in this project."
+                  />
+                </div>
+              </div>
+
               {/* Subprojects */}
               {subprojects.map((sub) => (
                 <div

@@ -1,33 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/lib/models'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
+type ConversationDoc = {
+  _id: string
+  userId: string
+  clientId?: string
+  title: string
+  lastModified: number
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+  lastMode: 'ask' | 'act'
+  askModelIds: string[]
+  actModelId: string
+  projectId?: string
+}
+
+function readBooleanParam(value: string | null): boolean | undefined {
+  if (value == null) return undefined
+  if (value === 'true' || value === '1') return true
+  if (value === 'false' || value === '0') return false
+  return undefined
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
     const { searchParams } = request.nextUrl
     const conversationId = searchParams.get('conversationId')
     const includeMessages = searchParams.get('messages') === 'true'
     const projectId = searchParams.get('projectId')
+    const updatedSinceParam = searchParams.get('updatedSince')
+    const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
+    const includeDeleted = readBooleanParam(searchParams.get('includeDeleted'))
 
     if (conversationId && !includeMessages) {
-      const conv = await convex.query<{
-        _id: string
-        title: string
-        lastModified: number
-        lastMode: 'ask' | 'act'
-        askModelIds: string[]
-        actModelId: string
-        projectId?: string
-      } | null>('conversations:get', {
+      const conv = await convex.query<ConversationDoc | null>('conversations:get', {
         conversationId: conversationId as Id<'conversations'>,
-        userId: session.user.id,
+        userId: auth.userId,
         serverSecret,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -63,7 +80,7 @@ export async function GET(request: NextRequest) {
         }>
       >('conversations:getMessages', {
         conversationId: conversationId as Id<'conversations'>,
-        userId: session.user.id,
+        userId: auth.userId,
         serverSecret,
       })
 
@@ -100,35 +117,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (projectId) {
-      const list = await convex.query<
-        Array<{
-          _id: string
-          title: string
-          lastModified: number
-          lastMode: 'ask' | 'act'
-          askModelIds: string[]
-          actModelId: string
-        }>
-      >('conversations:listByProject', {
+      const list = await convex.query<ConversationDoc[]>('conversations:listByProject', {
         projectId,
-        userId: session.user.id,
+        userId: auth.userId,
         serverSecret,
+        ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
+        ...(includeDeleted !== undefined ? { includeDeleted } : {}),
       })
       return NextResponse.json(list || [])
     }
 
-    const list = await convex.query<
-      Array<{
-        _id: string
-        title: string
-        lastModified: number
-        lastMode: 'ask' | 'act'
-        askModelIds: string[]
-        actModelId: string
-      }>
-    >('conversations:list', {
-      userId: session.user.id,
+    const list = await convex.query<ConversationDoc[]>('conversations:list', {
+      userId: auth.userId,
       serverSecret,
+      ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
+      ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
 
     return NextResponse.json(list || [])
@@ -139,35 +142,44 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<{ tier: 'free' | 'pro' | 'max' } | null>(
-      'usage:getEntitlementsByServer',
-      {
-        userId: session.user.id,
-        serverSecret,
-      },
-      { throwOnError: true },
-    )
-    const isFreeTier = entitlements?.tier === 'free'
     const body = await request.json() as {
       title?: string
       projectId?: string
       askModelIds?: string[]
       actModelId?: string
       lastMode?: 'ask' | 'act'
+      clientId?: string
+      accessToken?: string
+      userId?: string
     }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
+    const entitlements = await convex.query<{ tier: 'free' | 'pro' | 'max' } | null>(
+      'usage:getEntitlementsByServer',
+      {
+        userId: auth.userId,
+        serverSecret,
+      },
+      { throwOnError: true },
+    )
+    const isFreeTier = entitlements?.tier === 'free'
     const id = await convex.mutation<Id<'conversations'>>('conversations:create', {
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
+      clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
       askModelIds: isFreeTier ? [FREE_TIER_AUTO_MODEL_ID] : body.askModelIds,
       actModelId: isFreeTier ? FREE_TIER_AUTO_MODEL_ID : (body.actModelId ?? body.askModelIds?.[0] ?? DEFAULT_MODEL_ID),
       lastMode: body.lastMode,
     })
-    return NextResponse.json({ id })
+    const conversation = await convex.query<ConversationDoc | null>('conversations:get', {
+      conversationId: id,
+      userId: auth.userId,
+      serverSecret,
+    })
+    return NextResponse.json({ id, conversation })
   } catch {
     return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 })
   }
@@ -175,31 +187,39 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const serverSecret = getInternalApiSecret()
-
     const body = await request.json() as {
       conversationId?: string
       title?: string
+      projectId?: string
       askModelIds?: string[]
       actModelId?: string
       lastMode?: 'ask' | 'act'
+      accessToken?: string
+      userId?: string
     }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const serverSecret = getInternalApiSecret()
     if (!body.conversationId) {
       return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
     }
 
     await convex.mutation('conversations:update', {
       conversationId: body.conversationId as Id<'conversations'>,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
       title: body.title,
+      projectId: body.projectId,
       askModelIds: body.askModelIds,
       actModelId: body.actModelId,
       lastMode: body.lastMode,
     })
-    return NextResponse.json({ success: true })
+    const conversation = await convex.query<ConversationDoc | null>('conversations:get', {
+      conversationId: body.conversationId as Id<'conversations'>,
+      userId: auth.userId,
+      serverSecret,
+    })
+    return NextResponse.json({ success: true, conversation })
   } catch (error) {
     console.error('[conversations PATCH]', error)
     return NextResponse.json({ error: 'Failed to update conversation' }, { status: 500 })
@@ -208,8 +228,17 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let body: { accessToken?: string; userId?: string } = {}
+    const contentType = request.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      try {
+        body = await request.json()
+      } catch {
+        body = {}
+      }
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
     const conversationId = request.nextUrl.searchParams.get('conversationId')
@@ -217,10 +246,10 @@ export async function DELETE(request: NextRequest) {
 
     await convex.mutation('conversations:remove', {
       conversationId: conversationId as Id<'conversations'>,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
     })
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, conversationId, deletedAt: Date.now() })
   } catch {
     return NextResponse.json({ error: 'Failed to delete conversation' }, { status: 500 })
   }

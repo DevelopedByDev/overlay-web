@@ -154,11 +154,17 @@ export default defineSchema({
 
   projects: defineTable({
     userId: v.string(),
+    clientId: v.optional(v.string()),
     name: v.string(),
+    instructions: v.optional(v.string()),
     parentId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_userId', ['userId']),
+    deletedAt: v.optional(v.number()),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_clientId', ['userId', 'clientId'])
+    .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
   skills: defineTable({
     userId: v.string(),
@@ -173,15 +179,20 @@ export default defineSchema({
 
   conversations: defineTable({
     userId: v.string(),
+    clientId: v.optional(v.string()),
     title: v.string(),
     projectId: v.optional(v.string()),
     lastModified: v.number(),
+    updatedAt: v.number(),
     createdAt: v.number(),
     lastMode: v.union(v.literal('ask'), v.literal('act')),
     askModelIds: v.array(v.string()),
     actModelId: v.string(),
+    deletedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
+    .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
+    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId']),
 
   conversationMessages: defineTable({
@@ -226,21 +237,51 @@ export default defineSchema({
 
   notes: defineTable({
     userId: v.string(),
+    clientId: v.optional(v.string()),
     title: v.string(),
     content: v.string(),
     tags: v.array(v.string()),
     projectId: v.optional(v.string()),
+    createdAt: v.number(),
     updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
+    .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId']),
 
   memories: defineTable({
     userId: v.string(),
+    clientId: v.optional(v.string()),
     content: v.string(),
     source: v.union(v.literal('chat'), v.literal('note'), v.literal('manual')),
+    type: v.optional(
+      v.union(
+        v.literal('preference'),
+        v.literal('fact'),
+        v.literal('project'),
+        v.literal('decision'),
+        v.literal('agent'),
+      ),
+    ),
+    importance: v.optional(v.number()),
+    projectId: v.optional(v.string()),
+    conversationId: v.optional(v.string()),
+    noteId: v.optional(v.string()),
+    messageId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
+    status: v.optional(
+      v.union(v.literal('candidate'), v.literal('approved'), v.literal('rejected')),
+    ),
     createdAt: v.number(),
-  }).index('by_userId', ['userId']),
+    updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_clientId', ['userId', 'clientId'])
+    .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
   // Searchable chunks for hybrid vector + full-text retrieval (files + memories).
   knowledgeChunks: defineTable({

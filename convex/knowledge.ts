@@ -183,8 +183,8 @@ export const getMemoryForReindex = internalQuery({
   args: { memoryId: v.id('memories') },
   handler: async (ctx, { memoryId }) => {
     const m = await ctx.db.get(memoryId)
-    if (!m) return null
-    return { userId: m.userId, content: m.content }
+    if (!m || m.deletedAt) return null
+    return { userId: m.userId, projectId: m.projectId, content: m.content }
   },
 })
 
@@ -310,7 +310,7 @@ export const reindexMemoryInternal = internalAction({
     const { vectors } = await embedViaGateway(segments.map((s) => s.text))
     await ctx.runMutation(internal.knowledge.replaceKnowledgeSource, {
       userId: meta.userId,
-      projectId: undefined,
+      projectId: meta.projectId,
       sourceKind: 'memory',
       sourceId: memoryId,
       title: 'Memory',

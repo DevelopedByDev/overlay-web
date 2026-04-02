@@ -6,7 +6,7 @@ export interface SlashMenuItem {
   description: string
   icon: React.ReactNode
   command: () => void
-  category: 'nodes' | 'marks'
+  category: 'nodes' | 'marks' | 'table'
 }
 
 interface SlashMenuProps {
@@ -20,97 +20,11 @@ interface SlashMenuProps {
   onClose: () => void
 }
 
-// Render each item as a preview of what it produces — no icons, no descriptions
-function getStyledLabel(title: string): React.ReactNode {
-  switch (title) {
-    case 'Heading 1':
-      return (
-        <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.2, color: '#0a0a0a' }}>
-          Heading 1
-        </span>
-      )
-    case 'Heading 2':
-      return (
-        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, color: '#0a0a0a' }}>
-          Heading 2
-        </span>
-      )
-    case 'Bullet List':
-      return (
-        <span style={{ fontSize: 13, color: '#0a0a0a' }}>
-          &bull;&ensp;Bullet list
-        </span>
-      )
-    case 'Numbered List':
-      return (
-        <span style={{ fontSize: 13, color: '#0a0a0a' }}>
-          1.&ensp;Numbered list
-        </span>
-      )
-    case 'Blockquote':
-      return (
-        <span
-          style={{
-            fontSize: 13,
-            borderLeft: '2.5px solid #d4d4d8',
-            paddingLeft: 7,
-            color: '#71717a',
-            fontStyle: 'italic',
-          }}
-        >
-          Blockquote
-        </span>
-      )
-    case 'Code Block':
-      return (
-        <span
-          style={{
-            fontSize: 12,
-            fontFamily: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace",
-            background: '#f4f4f5',
-            padding: '1px 6px',
-            borderRadius: 4,
-            color: '#0a0a0a',
-          }}
-        >
-          Code block
-        </span>
-      )
-    case 'Divider':
-      return (
-        <span
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            width: '100%',
-            fontSize: 12,
-            color: '#a1a1aa',
-          }}
-        >
-          <span style={{ flex: 1, borderTop: '1px solid #d4d4d8', display: 'block' }} />
-          Divider
-          <span style={{ flex: 1, borderTop: '1px solid #d4d4d8', display: 'block' }} />
-        </span>
-      )
-    case 'Bold':
-      return (
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#0a0a0a' }}>Bold</span>
-      )
-    case 'Italic':
-      return (
-        <span style={{ fontSize: 13, fontStyle: 'italic', color: '#0a0a0a' }}>Italic</span>
-      )
-    case 'Strikethrough':
-      return (
-        <span style={{ fontSize: 13, textDecoration: 'line-through', color: '#0a0a0a' }}>
-          Strikethrough
-        </span>
-      )
-    default:
-      return <span style={{ fontSize: 13, color: '#0a0a0a' }}>{title}</span>
-  }
-}
+const SECTION_ORDER: Array<{ category: SlashMenuItem['category']; label: string }> = [
+  { category: 'nodes', label: 'Blocks' },
+  { category: 'table', label: 'Table' },
+  { category: 'marks', label: 'Formatting' },
+]
 
 export default function SlashMenu({
   showSlashMenu,
@@ -142,54 +56,115 @@ export default function SlashMenu({
       ref={slashMenuRef}
       style={{
         position: 'fixed',
-        top: Math.max(8, Math.min(slashMenuPosition.top, window.innerHeight - 280)),
-        left: Math.max(8, Math.min(slashMenuPosition.left, window.innerWidth - 200)),
-        width: 188,
-        maxHeight: 280,
-        background: 'rgba(255,255,255,0.97)',
+        top: Math.max(8, Math.min(slashMenuPosition.top, window.innerHeight - 340)),
+        left: Math.max(8, Math.min(slashMenuPosition.left, window.innerWidth - 296)),
+        width: 280,
+        maxHeight: 320,
+        background: 'rgba(255,255,255,0.98)',
         border: '1px solid #e5e5e5',
-        borderRadius: 10,
-        boxShadow: '0 12px 32px rgba(0,0,0,0.1)',
+        borderRadius: 12,
+        boxShadow: '0 16px 40px rgba(0,0,0,0.12)',
         overflow: 'hidden',
         zIndex: 100000,
       }}
     >
-      <div style={{ maxHeight: 280, overflowY: 'auto', padding: '4px 4px' }}>
+      <div
+        style={{
+          padding: '8px 12px',
+          borderBottom: '1px solid #f0f0f0',
+          fontSize: 11,
+          color: '#71717a',
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        }}
+      >
+        {slashMenuFilter ? `Searching "${slashMenuFilter}"` : 'Commands'}
+      </div>
+      <div style={{ maxHeight: 272, overflowY: 'auto', padding: '4px' }}>
         {filteredSlashItems.length === 0 ? (
           <div
             style={{
-              padding: '12px 10px',
+              padding: '16px',
               textAlign: 'center',
               color: '#71717a',
-              fontSize: 12,
-              fontFamily: 'system-ui, -apple-system, sans-serif',
+              fontSize: 13,
             }}
           >
-            No results
+            No matching commands
           </div>
         ) : (
-          filteredSlashItems.map((item, index) => (
-            <button
-              key={item.title}
-              onClick={() => executeSlashCommand(item)}
-              onMouseEnter={() => setSelectedSlashIndex(index)}
-              style={{
-                width: '100%',
-                padding: '7px 10px',
-                background: selectedSlashIndex === index ? '#f5f5f5' : 'transparent',
-                border: 'none',
-                borderRadius: 7,
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'background 0.08s ease',
-                fontFamily: 'system-ui, -apple-system, sans-serif',
-              }}
-            >
-              {getStyledLabel(item.title)}
-            </button>
-          ))
+          SECTION_ORDER.map(({ category, label }) => {
+            const sectionItems = filteredSlashItems.filter((item) => item.category === category)
+            if (sectionItems.length === 0) return null
+
+            return (
+              <div key={category}>
+                <div
+                  style={{
+                    padding: '6px 8px',
+                    fontSize: 10,
+                    color: '#a1a1aa',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    fontFamily: 'system-ui, -apple-system, sans-serif',
+                    marginTop: category === 'nodes' ? 0 : 4,
+                  }}
+                >
+                  {label}
+                </div>
+                {sectionItems.map((item) => {
+                  const globalIndex = filteredSlashItems.indexOf(item)
+                  return (
+                    <button
+                      key={item.title}
+                      onClick={() => executeSlashCommand(item)}
+                      onMouseEnter={() => setSelectedSlashIndex(globalIndex)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: selectedSlashIndex === globalIndex ? '#f5f5f5' : 'transparent',
+                        border: 'none',
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background 0.08s ease',
+                        fontFamily: 'system-ui, -apple-system, sans-serif',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 8,
+                          background: '#fafafa',
+                          border: '1px solid #ededed',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#525252',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {item.icon}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: '#0a0a0a', fontWeight: 500 }}>
+                          {item.title}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#71717a' }}>{item.description}</div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })
         )}
       </div>
     </div>

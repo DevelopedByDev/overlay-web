@@ -5,22 +5,58 @@ import { useSearchParams } from 'next/navigation'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import Highlight from '@tiptap/extension-highlight'
+import Image from '@tiptap/extension-image'
+import Link from '@tiptap/extension-link'
+import Mathematics from '@tiptap/extension-mathematics'
+import Subscript from '@tiptap/extension-subscript'
+import Superscript from '@tiptap/extension-superscript'
+import { Table } from '@tiptap/extension-table'
+import TableCell from '@tiptap/extension-table-cell'
+import TableHeader from '@tiptap/extension-table-header'
+import TableRow from '@tiptap/extension-table-row'
+import TaskItem from '@tiptap/extension-task-item'
+import TaskList from '@tiptap/extension-task-list'
+import TextAlign from '@tiptap/extension-text-align'
+import { TextStyle } from '@tiptap/extension-text-style'
+import Typography from '@tiptap/extension-typography'
+import Underline from '@tiptap/extension-underline'
+import Youtube from '@tiptap/extension-youtube'
+import Emoji from '@tiptap/extension-emoji'
 import {
-  Plus,
-  Trash2,
-  Loader2,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  BookImage,
+  Code,
   FolderOpen,
   Heading1,
   Heading2,
+  Heading3,
+  Highlighter,
+  Italic,
   List,
   ListOrdered,
-  Quote,
-  Code,
-  Bold,
-  Italic,
-  Strikethrough,
+  ListTodo,
+  Loader2,
   Minus,
+  Plus,
+  Quote,
+  SmilePlus,
+  Strikethrough,
+  Subscript as SubscriptIcon,
+  Superscript as SuperscriptIcon,
+  Table2,
+  TableCellsMerge,
+  TableColumnsSplit,
+  TableRowsSplit,
+  Trash2,
+  Underline as UnderlineIcon,
+  Youtube as YoutubeIcon,
 } from 'lucide-react'
+import { common, createLowlight } from 'lowlight'
 import SlashMenu, { type SlashMenuItem } from './SlashMenu'
 
 interface Note {
@@ -28,9 +64,12 @@ interface Note {
   title: string
   content: string
   tags: string[]
+  projectId?: string
+  createdAt: number
   updatedAt: number
 }
 
+const lowlight = createLowlight(common)
 const markdownLineBreak = /\r\n?/g
 const htmlTagPattern = /<\/?[a-z][\s\S]*>/i
 
@@ -121,7 +160,7 @@ function markdownToHtml(markdown: string): string {
       continue
     }
 
-    const headingMatch = line.match(/^(#{1,2})\s+(.+)$/)
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/)
     if (headingMatch) {
       flushParagraph()
       flushList()
@@ -181,7 +220,22 @@ function normalizeNoteContent(content: string): string {
   return markdownToHtml(content)
 }
 
-export default function NotebookEditor({ userId: _userId, hideSidebar, projectName }: { userId: string; hideSidebar?: boolean; projectName?: string }) {
+function promptForValue(message: string, defaultValue = ''): string | null {
+  if (typeof window === 'undefined') return null
+  const value = window.prompt(message, defaultValue)
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
+}
+
+export default function NotebookEditor({
+  userId: _userId,
+  hideSidebar,
+  projectName,
+}: {
+  userId: string
+  hideSidebar?: boolean
+  projectName?: string
+}) {
   void _userId
   const searchParams = useSearchParams()
   const [notes, setNotes] = useState<Note[]>([])
@@ -206,8 +260,61 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      Placeholder.configure({ placeholder: 'Start writing... (type / for commands)' }),
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] },
+        codeBlock: false,
+      }),
+      Placeholder.configure({
+        placeholder: 'Start writing... (type / for commands)',
+        showOnlyWhenEditable: true,
+        showOnlyCurrent: true,
+        includeChildren: true,
+      }),
+      CodeBlockLowlight.configure({
+        lowlight,
+        defaultLanguage: 'plaintext',
+      }),
+      Mathematics.configure({
+        katexOptions: { throwOnError: false },
+      }),
+      TextAlign.configure({
+        types: ['heading', 'paragraph'],
+      }),
+      TaskList,
+      TaskItem.configure({
+        nested: true,
+      }),
+      Typography,
+      Subscript,
+      Superscript,
+      Highlight.configure({
+        multicolor: true,
+      }),
+      Underline,
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        linkOnPaste: true,
+        protocols: ['http', 'https', 'mailto'],
+      }),
+      TextStyle,
+      Youtube.configure({
+        controls: true,
+        nocookie: true,
+      }),
+      Table.configure({
+        resizable: true,
+      }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      Image.configure({
+        inline: false,
+        allowBase64: true,
+      }),
+      Emoji.configure({
+        enableEmoticons: true,
+      }),
     ],
     content: '',
     immediatelyRender: false,
@@ -258,6 +365,13 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
         category: 'nodes',
       },
       {
+        title: 'Heading 3',
+        description: 'Small section heading',
+        icon: <Heading3 size={16} />,
+        command: () => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
+        category: 'nodes',
+      },
+      {
         title: 'Bullet List',
         description: 'Create a simple bullet list',
         icon: <List size={16} />,
@@ -272,6 +386,13 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
         category: 'nodes',
       },
       {
+        title: 'Task List',
+        description: 'Create a task list with checkboxes',
+        icon: <ListTodo size={16} />,
+        command: () => editor?.chain().focus().toggleTaskList().run(),
+        category: 'nodes',
+      },
+      {
         title: 'Blockquote',
         description: 'Pull text out as a quote',
         icon: <Quote size={16} />,
@@ -280,7 +401,7 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
       },
       {
         title: 'Code Block',
-        description: 'Insert a fenced code block',
+        description: 'Add a code block with syntax highlighting',
         icon: <Code size={16} />,
         command: () => editor?.chain().focus().toggleCodeBlock().run(),
         category: 'nodes',
@@ -293,6 +414,104 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
         category: 'nodes',
       },
       {
+        title: 'Inline Equation',
+        description: 'Insert inline math markup',
+        icon: <Code size={16} />,
+        command: () => editor?.chain().focus().insertContent('$E=mc^2$').run(),
+        category: 'nodes',
+      },
+      {
+        title: 'Table',
+        description: 'Insert a 3x3 table',
+        icon: <Table2 size={16} />,
+        command: () =>
+          editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+        category: 'nodes',
+      },
+      {
+        title: 'Image',
+        description: 'Embed an image from a URL',
+        icon: <BookImage size={16} />,
+        command: () => {
+          const src = promptForValue('Enter image URL:')
+          if (src) editor?.chain().focus().setImage({ src }).run()
+        },
+        category: 'nodes',
+      },
+      {
+        title: 'YouTube Video',
+        description: 'Embed a YouTube video',
+        icon: <YoutubeIcon size={16} />,
+        command: () => {
+          const src = promptForValue('Enter YouTube URL:')
+          if (src) editor?.chain().focus().setYoutubeVideo({ src }).run()
+        },
+        category: 'nodes',
+      },
+      {
+        title: 'Add Row Above',
+        description: 'Add a row above the current row',
+        icon: <TableRowsSplit size={16} />,
+        command: () => editor?.chain().focus().addRowBefore().run(),
+        category: 'table',
+      },
+      {
+        title: 'Add Row Below',
+        description: 'Add a row below the current row',
+        icon: <TableRowsSplit size={16} />,
+        command: () => editor?.chain().focus().addRowAfter().run(),
+        category: 'table',
+      },
+      {
+        title: 'Delete Row',
+        description: 'Delete the current row',
+        icon: <Trash2 size={16} />,
+        command: () => editor?.chain().focus().deleteRow().run(),
+        category: 'table',
+      },
+      {
+        title: 'Add Column Before',
+        description: 'Add a column before the current column',
+        icon: <TableColumnsSplit size={16} />,
+        command: () => editor?.chain().focus().addColumnBefore().run(),
+        category: 'table',
+      },
+      {
+        title: 'Add Column After',
+        description: 'Add a column after the current column',
+        icon: <TableColumnsSplit size={16} />,
+        command: () => editor?.chain().focus().addColumnAfter().run(),
+        category: 'table',
+      },
+      {
+        title: 'Delete Column',
+        description: 'Delete the current column',
+        icon: <Trash2 size={16} />,
+        command: () => editor?.chain().focus().deleteColumn().run(),
+        category: 'table',
+      },
+      {
+        title: 'Merge Cells',
+        description: 'Merge the current selection',
+        icon: <TableCellsMerge size={16} />,
+        command: () => editor?.chain().focus().mergeCells().run(),
+        category: 'table',
+      },
+      {
+        title: 'Split Cell',
+        description: 'Split the current cell',
+        icon: <TableColumnsSplit size={16} />,
+        command: () => editor?.chain().focus().splitCell().run(),
+        category: 'table',
+      },
+      {
+        title: 'Delete Table',
+        description: 'Delete the entire table',
+        icon: <TableRowsSplit size={16} />,
+        command: () => editor?.chain().focus().deleteTable().run(),
+        category: 'table',
+      },
+      {
         title: 'Bold',
         description: 'Make text bold',
         icon: <Bold size={16} />,
@@ -301,9 +520,16 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
       },
       {
         title: 'Italic',
-        description: 'Italicize text',
+        description: 'Make text italic',
         icon: <Italic size={16} />,
         command: () => editor?.chain().focus().toggleItalic().run(),
+        category: 'marks',
+      },
+      {
+        title: 'Underline',
+        description: 'Underline text',
+        icon: <UnderlineIcon size={16} />,
+        command: () => editor?.chain().focus().toggleUnderline().run(),
         category: 'marks',
       },
       {
@@ -313,43 +539,134 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
         command: () => editor?.chain().focus().toggleStrike().run(),
         category: 'marks',
       },
+      {
+        title: 'Inline Code',
+        description: 'Inline code formatting',
+        icon: <Code size={16} />,
+        command: () => editor?.chain().focus().toggleCode().run(),
+        category: 'marks',
+      },
+      {
+        title: 'Highlight',
+        description: 'Highlight text',
+        icon: <Highlighter size={16} />,
+        command: () => editor?.chain().focus().toggleHighlight().run(),
+        category: 'marks',
+      },
+      {
+        title: 'Align Left',
+        description: 'Align text to the left',
+        icon: <AlignLeft size={16} />,
+        command: () => editor?.chain().focus().setTextAlign('left').run(),
+        category: 'marks',
+      },
+      {
+        title: 'Align Center',
+        description: 'Center text',
+        icon: <AlignCenter size={16} />,
+        command: () => editor?.chain().focus().setTextAlign('center').run(),
+        category: 'marks',
+      },
+      {
+        title: 'Align Right',
+        description: 'Align text to the right',
+        icon: <AlignRight size={16} />,
+        command: () => editor?.chain().focus().setTextAlign('right').run(),
+        category: 'marks',
+      },
+      {
+        title: 'Subscript',
+        description: 'Make text subscript',
+        icon: <SubscriptIcon size={16} />,
+        command: () => editor?.chain().focus().toggleSubscript().run(),
+        category: 'marks',
+      },
+      {
+        title: 'Superscript',
+        description: 'Make text superscript',
+        icon: <SuperscriptIcon size={16} />,
+        command: () => editor?.chain().focus().toggleSuperscript().run(),
+        category: 'marks',
+      },
+      {
+        title: 'Emoji',
+        description: 'Insert an emoji',
+        icon: <SmilePlus size={16} />,
+        command: () => {
+          const emoji = promptForValue('Enter an emoji:', '🙂')
+          if (emoji) editor?.chain().focus().insertContent(emoji).run()
+        },
+        category: 'marks',
+      },
     ],
-    [editor]
+    [editor],
   )
 
   const filteredSlashItems = useMemo(() => {
     if (!slashMenuFilter) return slashMenuItems
+    const query = slashMenuFilter.toLowerCase()
     return slashMenuItems.filter(
       (item) =>
-        item.title.toLowerCase().includes(slashMenuFilter.toLowerCase()) ||
-        item.description.toLowerCase().includes(slashMenuFilter.toLowerCase())
+        item.title.toLowerCase().includes(query) ||
+        item.description.toLowerCase().includes(query),
     )
   }, [slashMenuFilter, slashMenuItems])
 
   const loadNotes = useCallback(async () => {
+    if (hideSidebar) return
     try {
       const res = await fetch('/api/app/notes')
       if (res.ok) {
-        const data = await res.json()
+        const data = (await res.json()) as Note[]
         setNotes(data)
       }
     } catch {
       // ignore
     }
+  }, [hideSidebar])
+
+  const openNote = useCallback((note: Note) => {
+    setActiveNote(note)
+    setTitle(note.title)
   }, [])
 
   useEffect(() => {
-    loadNotes()
+    void loadNotes()
   }, [loadNotes])
 
-  // Auto-open a specific note when embedded in project view
-  const idParam = hideSidebar ? searchParams?.get('id') ?? null : null
+  const idParam = searchParams?.get('id') ?? null
   useEffect(() => {
-    if (!idParam || notes.length === 0) return
-    const note = notes.find((n) => n._id === idParam)
-    if (note && activeNote?._id !== idParam) openNote(note)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idParam, notes])
+    if (!idParam) return
+    const noteId = idParam
+
+    if (!hideSidebar && notes.length > 0) {
+      const existing = notes.find((note) => note._id === noteId)
+      if (existing && activeNote?._id !== noteId) {
+        openNote(existing)
+        return
+      }
+    }
+
+    let cancelled = false
+    async function loadNoteById() {
+      try {
+        const res = await fetch(`/api/app/notes?noteId=${encodeURIComponent(noteId)}`)
+        if (!res.ok) return
+        const note = (await res.json()) as Note
+        if (!cancelled) {
+          if (hideSidebar) setNotes([note])
+          openNote(note)
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    void loadNoteById()
+    return () => {
+      cancelled = true
+    }
+  }, [activeNote?._id, hideSidebar, idParam, notes, openNote])
 
   useEffect(() => {
     if (!editor) return
@@ -383,7 +700,7 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
       setShowSlashMenu(false)
       setSlashMenuFilter('')
     },
-    [editor]
+    [editor],
   )
 
   useEffect(() => {
@@ -422,19 +739,32 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
 
   function scheduleSave(noteId: string, noteTitle: string, content: string) {
     if (saveTimer) clearTimeout(saveTimer)
-    const t = setTimeout(() => saveNote(noteId, noteTitle, content), 800)
-    setSaveTimer(t)
+    const timer = setTimeout(() => {
+      void saveNote(noteId, noteTitle, content)
+    }, 800)
+    setSaveTimer(timer)
   }
 
   async function saveNote(noteId: string, noteTitle: string, content: string) {
     setIsSaving(true)
     try {
-      await fetch('/api/app/notes', {
+      const res = await fetch('/api/app/notes', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ noteId, title: noteTitle, content }),
       })
-      await loadNotes()
+      if (res.ok) {
+        const data = (await res.json()) as { note?: Note }
+        if (data.note) {
+          setActiveNote(data.note)
+          setNotes((prev) => {
+            const next = prev.filter((note) => note._id !== data.note!._id)
+            return [data.note!, ...next]
+          })
+        } else {
+          await loadNotes()
+        }
+      }
     } finally {
       setIsSaving(false)
     }
@@ -447,38 +777,40 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
       body: JSON.stringify({ title: 'Untitled', content: '', tags: [] }),
     })
     if (res.ok) {
-      const data = await res.json()
+      const data = (await res.json()) as { id: string; note?: Note }
+      if (data.note) {
+        setNotes((prev) => [data.note!, ...prev])
+        openNote(data.note)
+        return
+      }
       await loadNotes()
-      // Select the new note
-      const newNote: Note = {
+      openNote({
         _id: data.id,
         title: 'Untitled',
         content: '',
         tags: [],
+        createdAt: Date.now(),
         updatedAt: Date.now(),
-      }
-      openNote(newNote)
+      })
     }
   }
 
-  function openNote(note: Note) {
-    setActiveNote(note)
-    setTitle(note.title)
-  }
-
-  async function deleteNote(noteId: string, e: React.MouseEvent) {
-    e.stopPropagation()
+  async function deleteNote(noteId: string, event: React.MouseEvent) {
+    event.stopPropagation()
     await fetch(`/api/app/notes?noteId=${noteId}`, { method: 'DELETE' })
     if (activeNote?._id === noteId) {
       setActiveNote(null)
       setTitle('')
       editor?.commands.clearContent()
     }
-    await loadNotes()
+    setNotes((prev) => prev.filter((note) => note._id !== noteId))
+    if (!hideSidebar) {
+      await loadNotes()
+    }
   }
 
-  function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const newTitle = e.target.value
+  function handleTitleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const newTitle = event.target.value
     setTitle(newTitle)
     if (activeNote) {
       scheduleSave(activeNote._id, newTitle, editor?.getHTML() || '')
@@ -487,7 +819,6 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
 
   return (
     <div className="flex h-full">
-      {/* Notes sidebar — hidden when embedded in a project */}
       {!hideSidebar && (
         <div className="w-52 h-full flex flex-col border-r border-[#e5e5e5] bg-[#f5f5f5]">
           <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3">
@@ -512,7 +843,7 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
               >
                 <span className="text-xs truncate">{note.title || 'Untitled'}</span>
                 <button
-                  onClick={(e) => deleteNote(note._id, e)}
+                  onClick={(event) => void deleteNote(note._id, event)}
                   className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity"
                 >
                   <Trash2 size={11} />
@@ -523,7 +854,6 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
         </div>
       )}
 
-      {/* Editor */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {activeNote ? (
           <>
@@ -566,10 +896,7 @@ export default function NotebookEditor({ userId: _userId, hideSidebar, projectNa
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <p
-                className="text-3xl mb-2"
-                style={{ fontFamily: 'var(--font-serif)' }}
-              >
+              <p className="text-3xl mb-2" style={{ fontFamily: 'var(--font-serif)' }}>
                 notes
               </p>
               <p className="text-sm text-[#888]">Select a note or create a new one</p>

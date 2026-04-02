@@ -375,6 +375,82 @@ html {
   height: 0;
 }
 
+.app-note-editor ul[data-type="taskList"] {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.app-note-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.app-note-editor ul[data-type="taskList"] li > label {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.app-note-editor ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-note-editor mark {
+  background: #fff3a3;
+  border-radius: 0.25rem;
+  padding: 0.05rem 0.2rem;
+}
+
+.app-note-editor u {
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.16em;
+}
+
+.app-note-editor sub,
+.app-note-editor sup {
+  font-size: 0.78em;
+}
+
+.app-note-editor .Tiptap-mathematics-editor {
+  background: #f5f5f5;
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 0.92em;
+}
+
+.app-note-editor .Tiptap-mathematics-render {
+  padding: 0.1rem 0.15rem;
+}
+
+.app-note-editor .Tiptap-mathematics-render--editable {
+  cursor: pointer;
+}
+
+.app-note-editor .katex-display {
+  margin: 0.45em 0 1em;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.1rem;
+}
+
+.app-note-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.85rem;
+  margin: 0.25rem 0 1rem;
+}
+
+.app-note-editor iframe {
+  width: 100%;
+  min-height: 22rem;
+  border: 0;
+  border-radius: 0.85rem;
+  margin: 0.25rem 0 1rem;
+}
+
 /* Typing dots for MarkdownMessage buffering state */
 @keyframes typingDot {
   0%, 60%, 100% { opacity: 0.2; transform: translateY(0); }

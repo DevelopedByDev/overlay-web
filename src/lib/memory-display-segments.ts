@@ -84,12 +84,39 @@ export type MemoryRowForSidebar = {
   content: string
   fullContent: string
   source: string
+  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+  importance?: number
+  projectId?: string
+  conversationId?: string
+  noteId?: string
+  messageId?: string
+  turnId?: string
+  tags?: string[]
+  actor?: 'user' | 'agent'
+  status?: 'candidate' | 'approved' | 'rejected'
   createdAt: number
+  updatedAt?: number
 }
 
 /** One Convex memory row → many sidebar rows (virtual segments). */
 export function expandMemoriesForSidebarList(
-  memories: Array<{ _id: string; content: string; source: string; createdAt: number }>,
+  memories: Array<{
+    _id: string
+    content: string
+    source: string
+    type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+    importance?: number
+    projectId?: string
+    conversationId?: string
+    noteId?: string
+    messageId?: string
+    turnId?: string
+    tags?: string[]
+    actor?: 'user' | 'agent'
+    status?: 'candidate' | 'approved' | 'rejected'
+    createdAt: number
+    updatedAt?: number
+  }>,
 ): MemoryRowForSidebar[] {
   const rows: MemoryRowForSidebar[] = []
   for (const m of memories) {
@@ -102,7 +129,18 @@ export function expandMemoriesForSidebarList(
         content: preview,
         fullContent: m.content,
         source: m.source,
+        type: m.type,
+        importance: m.importance,
+        projectId: m.projectId,
+        conversationId: m.conversationId,
+        noteId: m.noteId,
+        messageId: m.messageId,
+        turnId: m.turnId,
+        tags: m.tags,
+        actor: m.actor,
+        status: m.status,
         createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
       })
     })
   }

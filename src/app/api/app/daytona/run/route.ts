@@ -1,13 +1,16 @@
 import { posix as pathPosix } from 'node:path'
+import type { Sandbox } from '@daytonaio/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import {
-  createEphemeralSandbox,
-  deleteSandbox,
+  accrueWorkspaceSpend,
   downloadSandboxFile,
+  ensureWorkspaceSandbox,
   executeSandboxCommand,
   getSandboxPaths,
   prepareSandboxWorkspace,
+  refreshWorkspaceActivity,
+  startIfNeeded,
   uploadSandboxBuffer,
   type DaytonaRuntime,
 } from '@/lib/daytona'
@@ -117,7 +120,7 @@ async function readOverlayFileBuffer(file: OverlayFileRecord): Promise<Buffer> {
 }
 
 async function waitForSandboxFile(
-  sandbox: Awaited<ReturnType<typeof createEphemeralSandbox>>,
+  sandbox: Sandbox,
   remotePath: string,
   attempts = 5,
   delayMs = 300,
@@ -210,20 +213,32 @@ export async function POST(request: NextRequest) {
       { status: 403 },
     )
   }
+  const creditsTotalCents = entitlements.creditsTotal * 100
+  const remainingCents = creditsTotalCents - entitlements.creditsUsed
+  if (remainingCents <= 0) {
+    return NextResponse.json(
+      { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
+      { status: 402 },
+    )
+  }
 
-  let sandbox = null
+  let workspaceRun:
+    | Awaited<ReturnType<typeof ensureWorkspaceSandbox>>
+    | null = null
+  let meteringStartedAt: number | null = null
+  let meteringEndedAt: number | null = null
 
   try {
-    sandbox = await createEphemeralSandbox({
-      runtime,
-      labels: {
-        overlay: 'true',
-        feature: 'sandbox-tool',
-        userId,
-      },
+    workspaceRun = await ensureWorkspaceSandbox({
+      userId,
+      tier: entitlements.tier,
     })
+    workspaceRun = await startIfNeeded(workspaceRun)
+    await refreshWorkspaceActivity(workspaceRun)
 
+    const sandbox = workspaceRun.sandbox
     const paths = await getSandboxPaths(sandbox)
+    meteringStartedAt = workspaceRun.workspace.lastMeteredAt ?? Date.now()
     await prepareSandboxWorkspace(sandbox, paths)
 
     const uploadedFiles: Array<{ fileId: string; fileName: string; sandboxPath: string }> = []
@@ -261,20 +276,26 @@ export async function POST(request: NextRequest) {
 
     const normalizedCommand = command.trim()
     const normalizedTask = task.trim()
-    const execution = await executeSandboxCommand(sandbox, {
-      command: normalizedCommand,
-      cwd: paths.rootDir,
-      env: {
-        OVERLAY_TASK: normalizedTask,
-        OVERLAY_WORK_DIR: paths.rootDir,
-        OVERLAY_INPUT_DIR: paths.inputDir,
-        OVERLAY_RUN_DIR: paths.runDir,
-        OVERLAY_OUTPUT_DIR: paths.outputDir,
-        ...(inlineCodePath ? { OVERLAY_INLINE_CODE_PATH: inlineCodePath } : {}),
-      },
-      stdoutPath: paths.stdoutPath,
-      stderrPath: paths.stderrPath,
-    })
+    const execution = await (async () => {
+      try {
+        return await executeSandboxCommand(sandbox, {
+          command: normalizedCommand,
+          cwd: paths.rootDir,
+          env: {
+            OVERLAY_TASK: normalizedTask,
+            OVERLAY_WORK_DIR: paths.rootDir,
+            OVERLAY_INPUT_DIR: paths.inputDir,
+            OVERLAY_RUN_DIR: paths.runDir,
+            OVERLAY_OUTPUT_DIR: paths.outputDir,
+            ...(inlineCodePath ? { OVERLAY_INLINE_CODE_PATH: inlineCodePath } : {}),
+          },
+          stdoutPath: paths.stdoutPath,
+          stderrPath: paths.stderrPath,
+        })
+      } finally {
+        meteringEndedAt = Date.now()
+      }
+    })()
 
     const artifacts: SandboxArtifactResponse[] = []
     const missingExpectedOutputs: string[] = []
@@ -345,6 +366,8 @@ export async function POST(request: NextRequest) {
       artifacts,
       missingExpectedOutputs,
       uploadedFiles,
+      sandboxId: sandbox.id,
+      workspaceState: workspaceRun.workspace.state,
       message:
         execution.exitCode === 0
           ? missingExpectedOutputs.length === 0 && artifacts.length > 0
@@ -361,14 +384,23 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         message: error instanceof Error ? error.message : 'Daytona sandbox execution failed.',
+        ...(workspaceRun?.sandbox.id ? { sandboxId: workspaceRun.sandbox.id } : {}),
       },
       { status: 500 },
     )
   } finally {
-    try {
-      await deleteSandbox(sandbox)
-    } catch (cleanupError) {
-      console.error('[Daytona Sandbox] Cleanup failed:', cleanupError)
+    if (workspaceRun && meteringStartedAt != null && meteringEndedAt != null && meteringEndedAt > meteringStartedAt) {
+      try {
+        await accrueWorkspaceSpend({
+          workspace: workspaceRun.workspace,
+          sandbox: workspaceRun.sandbox,
+          startedAt: meteringStartedAt,
+          endedAt: meteringEndedAt,
+          reason: 'task',
+        })
+      } catch (meteringError) {
+        console.error('[Daytona Sandbox] Metering failed:', meteringError)
+      }
     }
   }
 }
