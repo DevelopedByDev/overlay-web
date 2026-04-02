@@ -3,7 +3,8 @@ import { v } from 'convex/values'
 
 export default defineSchema({
   // Single source of truth for a user's subscription, tier, and current-period credit spend.
-  // creditsUsed is the live accumulator (in cents) mutated on every usage event.
+  // creditsUsed is the live accumulator (in cents, may include fractional cents)
+  // mutated on every usage event.
   // currentPeriodStart/End are always set — on Stripe-backed subscriptions they come from
   // the webhook; on free tier they are set to now/+30d at account creation.
   subscriptions: defineTable({
@@ -21,7 +22,8 @@ export default defineSchema({
     ),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
-    // Live credit accumulator for the current billing period (in cents).
+    // Live credit accumulator for the current billing period (in cents, may
+    // include fractional cents for Daytona runtime accrual).
     // Reset to 0 whenever currentPeriodStart rolls over.
     creditsUsed: v.optional(v.number()),
     // User profile fields (synced from WorkOS)
@@ -44,12 +46,64 @@ export default defineSchema({
     userId: v.string(),
     email: v.string(), // denormalized from subscriptions for easy dashboard filtering
     billingPeriodStart: v.string(), // ISO date string
-    creditsUsed: v.optional(v.number()), // cents accumulated this period (audit copy)
+    creditsUsed: v.optional(v.number()), // cents accumulated this period (audit copy, may be fractional)
     costAccrued: v.optional(v.number()), // legacy alias for creditsUsed
     inputTokens: v.number(),
     cachedInputTokens: v.number(),
     outputTokens: v.number()
   }).index('by_userId_period', ['userId', 'billingPeriodStart']),
+
+  daytonaWorkspaces: defineTable({
+    userId: v.string(),
+    sandboxId: v.string(),
+    sandboxName: v.string(),
+    volumeId: v.string(),
+    volumeName: v.string(),
+    tier: v.union(v.literal('pro'), v.literal('max')),
+    state: v.union(
+      v.literal('provisioning'),
+      v.literal('started'),
+      v.literal('stopped'),
+      v.literal('archived'),
+      v.literal('error'),
+      v.literal('missing'),
+    ),
+    resourceProfile: v.union(v.literal('pro'), v.literal('max')),
+    mountPath: v.string(),
+    lastMeteredAt: v.optional(v.number()),
+    lastKnownStartedAt: v.optional(v.number()),
+    lastKnownStoppedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_sandboxId', ['sandboxId']),
+
+  daytonaUsageLedger: defineTable({
+    userId: v.string(),
+    sandboxId: v.string(),
+    tier: v.union(v.literal('pro'), v.literal('max')),
+    resourceProfile: v.union(v.literal('pro'), v.literal('max')),
+    startedAt: v.number(),
+    endedAt: v.number(),
+    durationSeconds: v.number(),
+    cpu: v.number(),
+    memoryGiB: v.number(),
+    diskGiB: v.number(),
+    costUsd: v.number(),
+    costCents: v.number(),
+    reason: v.union(
+      v.literal('start'),
+      v.literal('task'),
+      v.literal('stop'),
+      v.literal('archive'),
+      v.literal('resize'),
+      v.literal('reconcile'),
+    ),
+    createdAt: v.number(),
+  })
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_sandboxId_createdAt', ['sandboxId', 'createdAt']),
 
   /** One row per tool invocation (audit / cost-class tracking for chat tools). */
   toolInvocations: defineTable({

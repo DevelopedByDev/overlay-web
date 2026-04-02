@@ -1,9 +1,10 @@
 import { v } from 'convex/values'
-import { mutation, query, internalMutation, internalQuery } from './_generated/server'
+import { mutation, query, internalMutation, internalQuery, type MutationCtx } from './_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from './lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../src/lib/models'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from './lib/storageQuota'
+import { roundCurrencyAmount } from '../src/lib/daytona-pricing'
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []
@@ -17,11 +18,21 @@ function getPastWeekDates(): string[] {
 }
 
 function countsTowardFreeTierMessageLimit(event: {
-  type: 'ask' | 'write' | 'agent' | 'embedding' | 'transcription' | 'generation'
+  type: 'ask' | 'write' | 'agent' | 'embedding' | 'transcription' | 'generation' | 'sandbox'
   modelId?: string
 }): boolean {
   if (event.type !== 'ask' && event.type !== 'write' && event.type !== 'agent') return false
   return event.modelId !== FREE_TIER_AUTO_MODEL_ID
+}
+
+export type UsageEvent = {
+  type: 'ask' | 'write' | 'agent' | 'embedding' | 'transcription' | 'generation' | 'sandbox'
+  modelId?: string
+  inputTokens?: number
+  outputTokens?: number
+  cachedTokens?: number
+  cost: number
+  timestamp: number
 }
 
 async function authorizeUserAccess(params: {
@@ -33,6 +44,123 @@ async function authorizeUserAccess(params: {
     return
   }
   await requireAccessToken(params.accessToken ?? '', params.userId)
+}
+
+function roundCreditAmount(value: number): number {
+  return roundCurrencyAmount(value)
+}
+
+export async function applyUsageEvents(
+  ctx: MutationCtx,
+  userId: string,
+  events: UsageEvent[],
+): Promise<{ success: true; eventsProcessed: number }> {
+  const today = new Date().toISOString().split('T')[0]
+
+  let dailyUsage = await ctx.db
+    .query('dailyUsage')
+    .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
+    .first()
+
+  if (!dailyUsage) {
+    const id = await ctx.db.insert('dailyUsage', {
+      userId,
+      date: today,
+      askCount: 0,
+      agentCount: 0,
+      writeCount: 0,
+      transcriptionSeconds: 0,
+    })
+    dailyUsage = await ctx.db.get(id)
+  }
+
+  let askDelta = 0
+  let writeDelta = 0
+  let agentDelta = 0
+  let transcriptionSecondsDelta = 0
+
+  for (const event of events) {
+    if (countsTowardFreeTierMessageLimit(event)) {
+      if (event.type === 'ask') askDelta++
+      else if (event.type === 'write') writeDelta++
+      else if (event.type === 'agent') agentDelta++
+    } else if (event.type === 'transcription') {
+      transcriptionSecondsDelta += Math.max(0, Math.round(event.cost))
+    }
+  }
+
+  if (dailyUsage && (askDelta || writeDelta || agentDelta || transcriptionSecondsDelta)) {
+    await ctx.db.patch(dailyUsage._id, {
+      askCount: dailyUsage.askCount + askDelta,
+      writeCount: dailyUsage.writeCount + writeDelta,
+      agentCount: dailyUsage.agentCount + agentDelta,
+      transcriptionSeconds: (dailyUsage.transcriptionSeconds ?? 0) + transcriptionSecondsDelta,
+    })
+  }
+
+  let totalCost = 0
+  let totalInputTokens = 0
+  let totalCachedInputTokens = 0
+  let totalOutputTokens = 0
+
+  for (const event of events) {
+    if (event.type !== 'transcription' && event.cost > 0) {
+      totalCost = roundCreditAmount(totalCost + event.cost)
+      totalInputTokens += event.inputTokens || 0
+      totalCachedInputTokens += event.cachedTokens || 0
+      totalOutputTokens += event.outputTokens || 0
+    }
+  }
+
+  if (totalCost > 0) {
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+
+    if (subscription) {
+      await ctx.db.patch(subscription._id, {
+        creditsUsed: roundCreditAmount((subscription.creditsUsed ?? 0) + totalCost),
+      })
+    }
+
+    const billingPeriodStart = subscription?.currentPeriodStart
+      ? new Date(subscription.currentPeriodStart).toISOString().split('T')[0]
+      : today
+
+    let tokenUsage = await ctx.db
+      .query('tokenUsage')
+      .withIndex('by_userId_period', (q) =>
+        q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart)
+      )
+      .first()
+
+    if (!tokenUsage) {
+      const id = await ctx.db.insert('tokenUsage', {
+        userId,
+        email: subscription?.email ?? '',
+        billingPeriodStart,
+        creditsUsed: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+      })
+      tokenUsage = await ctx.db.get(id)
+    } else if (!tokenUsage.email && subscription?.email) {
+      await ctx.db.patch(tokenUsage._id, { email: subscription.email })
+    }
+
+    if (tokenUsage) {
+      await ctx.db.patch(tokenUsage._id, {
+        creditsUsed: roundCreditAmount((tokenUsage.creditsUsed ?? tokenUsage.costAccrued ?? 0) + totalCost),
+        inputTokens: tokenUsage.inputTokens + totalInputTokens,
+        cachedInputTokens: tokenUsage.cachedInputTokens + totalCachedInputTokens,
+        outputTokens: tokenUsage.outputTokens + totalOutputTokens,
+      })
+    }
+  }
+
+  return { success: true, eventsProcessed: events.length }
 }
 
 // creditsUsed is now read directly from subscriptions (single source of truth).
@@ -292,7 +420,8 @@ export const recordBatch = mutation({
           v.literal('agent'),
           v.literal('embedding'),
           v.literal('transcription'),
-          v.literal('generation')
+          v.literal('generation'),
+          v.literal('sandbox'),
         ),
         modelId: v.optional(v.string()),
         inputTokens: v.optional(v.number()),
@@ -305,120 +434,7 @@ export const recordBatch = mutation({
   },
   handler: async (ctx, { accessToken, serverSecret, userId, events }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
-
-    const today = new Date().toISOString().split('T')[0]
-
-    // ── daily usage (free-tier enforcement) ──────────────────────────────────
-    let dailyUsage = await ctx.db
-      .query('dailyUsage')
-      .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
-      .first()
-
-    if (!dailyUsage) {
-      const id = await ctx.db.insert('dailyUsage', {
-        userId,
-        date: today,
-        askCount: 0,
-        agentCount: 0,
-        writeCount: 0,
-        transcriptionSeconds: 0
-      })
-      dailyUsage = await ctx.db.get(id)
-    }
-
-    // Accumulate daily counters from events (single patch at end)
-    let askDelta = 0
-    let writeDelta = 0
-    let agentDelta = 0
-    let transcriptionSecondsDelta = 0
-
-    for (const event of events) {
-      if (countsTowardFreeTierMessageLimit(event)) {
-        if (event.type === 'ask') askDelta++
-        else if (event.type === 'write') writeDelta++
-        else if (event.type === 'agent') agentDelta++
-      } else if (event.type === 'transcription') {
-        transcriptionSecondsDelta += Math.max(0, Math.round(event.cost))
-      }
-    }
-
-    if (dailyUsage && (askDelta || writeDelta || agentDelta || transcriptionSecondsDelta)) {
-      await ctx.db.patch(dailyUsage._id, {
-        askCount: dailyUsage.askCount + askDelta,
-        writeCount: dailyUsage.writeCount + writeDelta,
-        agentCount: dailyUsage.agentCount + agentDelta,
-        transcriptionSeconds: (dailyUsage.transcriptionSeconds ?? 0) + transcriptionSecondsDelta
-      })
-    }
-
-    // ── credit accumulation ───────────────────────────────────────────────────
-    // Sum costs across all non-transcription events
-    let totalCost = 0
-    let totalInputTokens = 0
-    let totalCachedInputTokens = 0
-    let totalOutputTokens = 0
-
-    for (const event of events) {
-      if (event.type !== 'transcription' && event.cost > 0) {
-        totalCost += event.cost
-        totalInputTokens += event.inputTokens || 0
-        totalCachedInputTokens += event.cachedTokens || 0
-        totalOutputTokens += event.outputTokens || 0
-      }
-    }
-
-    if (totalCost > 0) {
-      // Update subscriptions.creditsUsed — the authoritative enforcement counter
-      const subscription = await ctx.db
-        .query('subscriptions')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .first()
-
-      if (subscription) {
-        await ctx.db.patch(subscription._id, {
-          creditsUsed: (subscription.creditsUsed ?? 0) + totalCost
-        })
-      }
-
-      // Update tokenUsage audit log (keyed by billing period for historical records)
-      const billingPeriodStart = subscription?.currentPeriodStart
-        ? new Date(subscription.currentPeriodStart).toISOString().split('T')[0]
-        : today
-
-      let tokenUsage = await ctx.db
-        .query('tokenUsage')
-        .withIndex('by_userId_period', (q) =>
-          q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart)
-        )
-        .first()
-
-      if (!tokenUsage) {
-        const id = await ctx.db.insert('tokenUsage', {
-          userId,
-          email: subscription?.email ?? '',
-          billingPeriodStart,
-          creditsUsed: 0,
-          inputTokens: 0,
-          cachedInputTokens: 0,
-          outputTokens: 0
-        })
-        tokenUsage = await ctx.db.get(id)
-      } else if (!tokenUsage.email && subscription?.email) {
-        // Backfill email on existing rows that were created before this field was added
-        await ctx.db.patch(tokenUsage._id, { email: subscription.email })
-      }
-
-      if (tokenUsage) {
-        await ctx.db.patch(tokenUsage._id, {
-          creditsUsed: (tokenUsage.creditsUsed ?? tokenUsage.costAccrued ?? 0) + totalCost,
-          inputTokens: tokenUsage.inputTokens + totalInputTokens,
-          cachedInputTokens: tokenUsage.cachedInputTokens + totalCachedInputTokens,
-          outputTokens: tokenUsage.outputTokens + totalOutputTokens
-        })
-      }
-    }
-
-    return { success: true, eventsProcessed: events.length }
+    return await applyUsageEvents(ctx, userId, events)
   }
 })
 
@@ -433,7 +449,8 @@ export const recordUsage = mutation({
       v.literal('agent'),
       v.literal('embedding'),
       v.literal('transcription'),
-      v.literal('generation')
+      v.literal('generation'),
+      v.literal('sandbox'),
     ),
     modelId: v.optional(v.string()),
     inputTokens: v.optional(v.number()),
@@ -443,58 +460,15 @@ export const recordUsage = mutation({
   },
   handler: async (ctx, args) => {
     await requireAccessToken(args.accessToken, args.userId)
-
-    const today = new Date().toISOString().split('T')[0]
-
-    // ── daily usage ───────────────────────────────────────────────────────────
-    let dailyUsage = await ctx.db
-      .query('dailyUsage')
-      .withIndex('by_userId_date', (q) => q.eq('userId', args.userId).eq('date', today))
-      .first()
-
-    if (!dailyUsage) {
-      const id = await ctx.db.insert('dailyUsage', {
-        userId: args.userId,
-        date: today,
-        askCount: 0,
-        agentCount: 0,
-        writeCount: 0,
-        transcriptionSeconds: 0
-      })
-      dailyUsage = await ctx.db.get(id)
-    }
-
-    if (dailyUsage) {
-      if (countsTowardFreeTierMessageLimit(args)) {
-        if (args.type === 'ask') {
-          await ctx.db.patch(dailyUsage._id, { askCount: dailyUsage.askCount + 1 })
-        } else if (args.type === 'write') {
-          await ctx.db.patch(dailyUsage._id, { writeCount: dailyUsage.writeCount + 1 })
-        } else if (args.type === 'agent') {
-          await ctx.db.patch(dailyUsage._id, { agentCount: dailyUsage.agentCount + 1 })
-        }
-      } else if (args.type === 'transcription') {
-        const additionalSeconds = Math.max(0, Math.round(args.cost))
-        await ctx.db.patch(dailyUsage._id, {
-          transcriptionSeconds: (dailyUsage.transcriptionSeconds ?? 0) + additionalSeconds
-        })
-      }
-    }
-
-    // ── credit accumulation ───────────────────────────────────────────────────
-    if (args.type !== 'transcription' && args.cost > 0) {
-      const subscription = await ctx.db
-        .query('subscriptions')
-        .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-        .first()
-
-      if (subscription) {
-        await ctx.db.patch(subscription._id, {
-          creditsUsed: (subscription.creditsUsed ?? 0) + args.cost
-        })
-      }
-    }
-
+    await applyUsageEvents(ctx, args.userId, [{
+      type: args.type,
+      modelId: args.modelId,
+      inputTokens: args.inputTokens,
+      outputTokens: args.outputTokens,
+      cachedTokens: args.cachedTokens,
+      cost: args.cost,
+      timestamp: Date.now(),
+    }])
     return { success: true }
   }
 })
@@ -562,7 +536,6 @@ export const recordToolInvocation = mutation({
       v.literal('browser'),
       v.literal('daytona'),
       v.literal('composio'),
-      v.literal('daytona'),
       v.literal('internal'),
     ),
     errorMessage: v.optional(v.string()),

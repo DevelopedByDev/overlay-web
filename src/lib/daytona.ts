@@ -1,9 +1,31 @@
 import 'server-only'
 
 import { posix as pathPosix } from 'node:path'
-import { CodeLanguage, Daytona, type Sandbox } from '@daytonaio/sdk'
+import {
+  CodeLanguage,
+  Daytona,
+  type Resources,
+  type Sandbox,
+  type VolumeMount,
+} from '@daytonaio/sdk'
+import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import {
+  detectDaytonaResourceProfileId,
+  getDaytonaResourceProfile,
+  type DaytonaResourceProfile,
+  type DaytonaUsageReason,
+  type DaytonaWorkspaceState,
+  type DaytonaWorkspaceTier,
+} from './daytona-pricing'
 
 export type DaytonaRuntime = 'node' | 'python'
+
+export const WORKSPACE_MOUNT_PATH = '/home/daytona/workspace'
+export const WORKSPACE_ROOT_DIR = '/home/daytona/workspace/overlay'
+export const WORKSPACE_INPUT_DIR = '/home/daytona/workspace/overlay/inputs'
+export const WORKSPACE_RUN_DIR = '/home/daytona/workspace/overlay/run'
+export const WORKSPACE_OUTPUT_DIR = '/home/daytona/workspace/overlay/outputs'
 
 export interface DaytonaPaths {
   workDir: string
@@ -15,10 +37,247 @@ export interface DaytonaPaths {
   stderrPath: string
 }
 
+export interface DaytonaWorkspaceRecord {
+  _id?: string
+  userId: string
+  sandboxId: string
+  sandboxName: string
+  volumeId: string
+  volumeName: string
+  tier: DaytonaWorkspaceTier
+  state: DaytonaWorkspaceState
+  resourceProfile: DaytonaWorkspaceTier
+  mountPath: string
+  lastMeteredAt?: number
+  lastKnownStartedAt?: number
+  lastKnownStoppedAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DaytonaVolumeRecord {
+  id: string
+  name: string
+  state?: string
+}
+
+export interface EnsuredDaytonaWorkspace {
+  workspace: DaytonaWorkspaceRecord
+  sandbox: Sandbox
+  volume: DaytonaVolumeRecord
+  profile: DaytonaResourceProfile
+}
+
+export type DaytonaSshAccess = Awaited<ReturnType<Sandbox['createSshAccess']>> & {
+  sshCommand: string
+}
+
 let daytonaClient: Daytona | null = null
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '')
+}
+
+function sanitizeDaytonaName(value: string, maxLength = 55): string {
+  const normalized = value
+    .trim()
+    .replace(/[^a-zA-Z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-')
+
+  return (normalized || 'overlay-workspace').slice(0, maxLength)
+}
+
+function buildWorkspaceLabels(userId: string, tier: DaytonaWorkspaceTier): Record<string, string> {
+  return {
+    overlay: 'true',
+    'overlay.kind': 'workspace',
+    'overlay.userId': userId,
+    'overlay.tier': tier,
+  }
+}
+
+function getSandboxLanguage(runtime: DaytonaRuntime): CodeLanguage {
+  return runtime === 'node' ? CodeLanguage.JAVASCRIPT : CodeLanguage.PYTHON
+}
+
+function normalizeSandboxState(state: Sandbox['state'] | undefined): DaytonaWorkspaceState {
+  switch (state) {
+    case 'started':
+      return 'started'
+    case 'stopped':
+      return 'stopped'
+    case 'archived':
+      return 'archived'
+    case 'destroyed':
+      return 'missing'
+    case 'starting':
+    case 'stopping':
+    case 'pending':
+    case 'creating':
+    case 'restoring':
+    case 'resizing':
+    case 'pending_build':
+      return 'provisioning'
+    case 'error':
+    case 'build_failed':
+      return 'error'
+    default:
+      return 'provisioning'
+  }
+}
+
+function canHotResizeUp(
+  sandbox: Sandbox,
+  profile: DaytonaResourceProfile,
+): boolean {
+  return (
+    sandbox.cpu <= profile.cpu &&
+    sandbox.memory <= profile.memoryGiB &&
+    sandbox.disk === profile.diskGiB
+  )
+}
+
+async function fetchWorkspaceByUserId(userId: string): Promise<DaytonaWorkspaceRecord | null> {
+  return await convex.query<DaytonaWorkspaceRecord | null>(
+    'daytona:getWorkspaceByUserId',
+    {
+      userId,
+      serverSecret: getInternalApiSecret(),
+    },
+    { throwOnError: true },
+  )
+}
+
+async function upsertWorkspaceRecord(input: {
+  userId: string
+  sandboxId: string
+  sandboxName: string
+  volumeId: string
+  volumeName: string
+  tier: DaytonaWorkspaceTier
+  state: DaytonaWorkspaceState
+  resourceProfile: DaytonaWorkspaceTier
+  mountPath: string
+  lastMeteredAt?: number
+  lastKnownStartedAt?: number
+  lastKnownStoppedAt?: number
+}): Promise<DaytonaWorkspaceRecord> {
+  const workspace = await convex.mutation<DaytonaWorkspaceRecord | null>(
+    'daytona:upsertWorkspace',
+    {
+      ...input,
+      serverSecret: getInternalApiSecret(),
+    },
+    { throwOnError: true },
+  )
+
+  if (!workspace) {
+    throw new Error('Failed to upsert Daytona workspace record.')
+  }
+
+  return workspace
+}
+
+function resolveActualResourceProfile(sandbox: Sandbox, fallback: DaytonaWorkspaceTier): DaytonaWorkspaceTier {
+  return detectDaytonaResourceProfileId({
+    cpu: sandbox.cpu,
+    memoryGiB: sandbox.memory,
+    diskGiB: sandbox.disk,
+  }) ?? fallback
+}
+
+async function syncWorkspaceRecordFromSandbox(params: {
+  userId: string
+  tier: DaytonaWorkspaceTier
+  sandbox: Sandbox
+  volume: DaytonaVolumeRecord
+  previousWorkspace?: DaytonaWorkspaceRecord | null
+  overrides?: {
+    state?: DaytonaWorkspaceState
+    lastMeteredAt?: number
+    lastKnownStartedAt?: number
+    lastKnownStoppedAt?: number
+  }
+}): Promise<DaytonaWorkspaceRecord> {
+  const state = params.overrides?.state ?? normalizeSandboxState(params.sandbox.state)
+
+  return await upsertWorkspaceRecord({
+    userId: params.userId,
+    sandboxId: params.sandbox.id,
+    sandboxName: params.sandbox.name,
+    volumeId: params.volume.id,
+    volumeName: params.volume.name,
+    tier: params.tier,
+    state,
+    resourceProfile: resolveActualResourceProfile(params.sandbox, params.tier),
+    mountPath: WORKSPACE_MOUNT_PATH,
+    lastMeteredAt: params.overrides?.lastMeteredAt ?? params.previousWorkspace?.lastMeteredAt,
+    lastKnownStartedAt:
+      params.overrides?.lastKnownStartedAt ??
+      params.previousWorkspace?.lastKnownStartedAt,
+    lastKnownStoppedAt:
+      params.overrides?.lastKnownStoppedAt ??
+      params.previousWorkspace?.lastKnownStoppedAt,
+  })
+}
+
+async function applyWorkspaceConfiguration(params: {
+  sandbox: Sandbox
+  userId: string
+  tier: DaytonaWorkspaceTier
+}): Promise<DaytonaWorkspaceTier> {
+  const desiredProfile = getDaytonaResourceProfile(params.tier)
+  const desiredLabels = buildWorkspaceLabels(params.userId, params.tier)
+
+  await params.sandbox.setLabels(desiredLabels)
+
+  if (params.sandbox.autoStopInterval !== desiredProfile.autoStopMinutes) {
+    await params.sandbox.setAutostopInterval(desiredProfile.autoStopMinutes)
+  }
+  if (params.sandbox.autoArchiveInterval !== desiredProfile.autoArchiveMinutes) {
+    await params.sandbox.setAutoArchiveInterval(desiredProfile.autoArchiveMinutes)
+  }
+  if (params.sandbox.autoDeleteInterval !== -1) {
+    await params.sandbox.setAutoDeleteInterval(-1)
+  }
+
+  const cpuDown = params.sandbox.cpu > desiredProfile.cpu
+  const memoryDown = params.sandbox.memory > desiredProfile.memoryGiB
+  const diskDown = params.sandbox.disk > desiredProfile.diskGiB
+  const needsResize =
+    params.sandbox.cpu !== desiredProfile.cpu ||
+    params.sandbox.memory !== desiredProfile.memoryGiB ||
+    params.sandbox.disk !== desiredProfile.diskGiB
+
+  if (!needsResize) {
+    await params.sandbox.refreshData()
+    return resolveActualResourceProfile(params.sandbox, params.tier)
+  }
+
+  if (cpuDown || memoryDown || diskDown) {
+    console.warn(
+      `[Daytona] Workspace ${params.sandbox.id} is larger than the ${params.tier} profile; ` +
+      'skipping downsize during phases 1-2.',
+    )
+    await params.sandbox.refreshData()
+    return resolveActualResourceProfile(params.sandbox, params.tier)
+  }
+
+  if (params.sandbox.state === 'started' && !canHotResizeUp(params.sandbox, desiredProfile)) {
+    await params.sandbox.stop(60)
+    await params.sandbox.refreshData()
+  }
+
+  const resources: Resources = {
+    cpu: desiredProfile.cpu,
+    memory: desiredProfile.memoryGiB,
+    disk: desiredProfile.diskGiB,
+  }
+  await params.sandbox.resize(resources, 60)
+  await params.sandbox.refreshData()
+
+  return resolveActualResourceProfile(params.sandbox, params.tier)
 }
 
 export function getDaytonaClient(): Daytona {
@@ -45,8 +304,12 @@ export function getDaytonaClient(): Daytona {
   return daytonaClient
 }
 
-function getSandboxLanguage(runtime: DaytonaRuntime): CodeLanguage {
-  return runtime === 'node' ? CodeLanguage.JAVASCRIPT : CodeLanguage.PYTHON
+export function getWorkspaceSandboxName(userId: string): string {
+  return sanitizeDaytonaName(`overlay-user-${userId}`)
+}
+
+export function getWorkspaceVolumeName(userId: string): string {
+  return sanitizeDaytonaName(`overlay-user-${userId}-workspace`)
 }
 
 export async function createEphemeralSandbox(params: {
@@ -67,19 +330,236 @@ export async function createEphemeralSandbox(params: {
   )
 }
 
+export async function ensureVolume(userId: string): Promise<DaytonaVolumeRecord> {
+  const volume = await getDaytonaClient().volume.get(getWorkspaceVolumeName(userId), true)
+  return {
+    id: volume.id,
+    name: volume.name,
+    state: volume.state,
+  }
+}
+
+export async function ensureWorkspaceSandbox(params: {
+  userId: string
+  tier: DaytonaWorkspaceTier
+}): Promise<EnsuredDaytonaWorkspace> {
+  const profile = getDaytonaResourceProfile(params.tier)
+  const volume = await ensureVolume(params.userId)
+  const existingWorkspace = await fetchWorkspaceByUserId(params.userId)
+  let sandbox: Sandbox | null = null
+
+  if (existingWorkspace?.sandboxId) {
+    try {
+      sandbox = await getDaytonaClient().get(existingWorkspace.sandboxId)
+      await sandbox.refreshData()
+    } catch (error) {
+      console.warn(`[Daytona] Failed to load existing workspace sandbox ${existingWorkspace.sandboxId}:`, error)
+      sandbox = null
+    }
+  }
+
+  if (!sandbox) {
+    const createParams = {
+      name: getWorkspaceSandboxName(params.userId),
+      language: CodeLanguage.JAVASCRIPT,
+      labels: buildWorkspaceLabels(params.userId, params.tier),
+      autoStopInterval: profile.autoStopMinutes,
+      autoArchiveInterval: profile.autoArchiveMinutes,
+      autoDeleteInterval: -1,
+      volumes: [{ volumeId: volume.id, mountPath: WORKSPACE_MOUNT_PATH }] satisfies VolumeMount[],
+      resources: {
+        cpu: profile.cpu,
+        memory: profile.memoryGiB,
+        disk: profile.diskGiB,
+      } satisfies Resources,
+    } as {
+      name: string
+      language: CodeLanguage
+      labels: Record<string, string>
+      autoStopInterval: number
+      autoArchiveInterval: number
+      autoDeleteInterval: number
+      volumes: VolumeMount[]
+      resources: Resources
+    }
+
+    sandbox = await getDaytonaClient().create(createParams, { timeout: 90 })
+    await sandbox.refreshData()
+    await sandbox.setAutoDeleteInterval(-1)
+    await sandbox.setAutostopInterval(profile.autoStopMinutes)
+    await sandbox.setAutoArchiveInterval(profile.autoArchiveMinutes)
+    await sandbox.refreshData()
+  }
+
+  const actualProfileId = await applyWorkspaceConfiguration({
+    sandbox,
+    userId: params.userId,
+    tier: params.tier,
+  })
+
+  const workspace = await syncWorkspaceRecordFromSandbox({
+    userId: params.userId,
+    tier: params.tier,
+    sandbox,
+    volume,
+    previousWorkspace: existingWorkspace,
+  })
+
+  return {
+    workspace,
+    sandbox,
+    volume,
+    profile: getDaytonaResourceProfile(actualProfileId),
+  }
+}
+
+export async function startIfNeeded(input: EnsuredDaytonaWorkspace): Promise<EnsuredDaytonaWorkspace> {
+  let overrides: Parameters<typeof syncWorkspaceRecordFromSandbox>[0]['overrides'] | undefined
+
+  if (input.sandbox.state !== 'started') {
+    await input.sandbox.start(60)
+    await input.sandbox.refreshData()
+    const now = Date.now()
+    overrides = {
+      state: 'started',
+      lastKnownStartedAt: now,
+      lastMeteredAt: now,
+    }
+  }
+
+  const workspace = await syncWorkspaceRecordFromSandbox({
+    userId: input.workspace.userId,
+    tier: input.workspace.tier,
+    sandbox: input.sandbox,
+    volume: input.volume,
+    previousWorkspace: input.workspace,
+    overrides,
+  })
+
+  return {
+    ...input,
+    workspace,
+    profile: getDaytonaResourceProfile(workspace.resourceProfile),
+  }
+}
+
+export async function stopIfNeeded(input: EnsuredDaytonaWorkspace): Promise<EnsuredDaytonaWorkspace> {
+  let overrides: Parameters<typeof syncWorkspaceRecordFromSandbox>[0]['overrides'] | undefined
+
+  if (input.sandbox.state === 'started') {
+    await input.sandbox.stop(60)
+    await input.sandbox.refreshData()
+    overrides = {
+      state: normalizeSandboxState(input.sandbox.state),
+      lastKnownStoppedAt: Date.now(),
+    }
+  }
+
+  const workspace = await syncWorkspaceRecordFromSandbox({
+    userId: input.workspace.userId,
+    tier: input.workspace.tier,
+    sandbox: input.sandbox,
+    volume: input.volume,
+    previousWorkspace: input.workspace,
+    overrides,
+  })
+
+  return {
+    ...input,
+    workspace,
+    profile: getDaytonaResourceProfile(workspace.resourceProfile),
+  }
+}
+
+export async function archiveIfNeeded(input: EnsuredDaytonaWorkspace): Promise<EnsuredDaytonaWorkspace> {
+  let current = input
+  let overrides: Parameters<typeof syncWorkspaceRecordFromSandbox>[0]['overrides'] | undefined
+
+  if (current.sandbox.state === 'started') {
+    current = await stopIfNeeded(current)
+  }
+
+  if (current.sandbox.state !== 'archived') {
+    await current.sandbox.archive()
+    await current.sandbox.refreshData()
+    overrides = {
+      state: 'archived',
+      lastKnownStoppedAt: Date.now(),
+    }
+  }
+
+  const workspace = await syncWorkspaceRecordFromSandbox({
+    userId: current.workspace.userId,
+    tier: current.workspace.tier,
+    sandbox: current.sandbox,
+    volume: current.volume,
+    previousWorkspace: current.workspace,
+    overrides,
+  })
+
+  return {
+    ...current,
+    workspace,
+    profile: getDaytonaResourceProfile(workspace.resourceProfile),
+  }
+}
+
+export async function refreshWorkspaceActivity(input: EnsuredDaytonaWorkspace): Promise<void> {
+  await input.sandbox.refreshActivity()
+}
+
+export async function issueSshAccess(
+  input: EnsuredDaytonaWorkspace,
+  expiresInMinutes = 30,
+): Promise<DaytonaSshAccess> {
+  if (input.sandbox.state !== 'started') {
+    throw new Error('Sandbox must be started before issuing SSH access.')
+  }
+
+  const access = await input.sandbox.createSshAccess(expiresInMinutes)
+  return {
+    ...access,
+    sshCommand: access.sshCommand || `ssh ${access.token}@ssh.app.daytona.io`,
+  }
+}
+
+export async function accrueWorkspaceSpend(params: {
+  workspace: DaytonaWorkspaceRecord
+  sandbox: Sandbox
+  startedAt: number
+  endedAt: number
+  reason: DaytonaUsageReason
+}): Promise<{ success: true; durationSeconds: number; costUsd: number; costCents: number } | null> {
+  return await convex.mutation(
+    'daytona:accrueUsageByServer',
+    {
+      serverSecret: getInternalApiSecret(),
+      userId: params.workspace.userId,
+      sandboxId: params.sandbox.id,
+      tier: params.workspace.tier,
+      resourceProfile: resolveActualResourceProfile(params.sandbox, params.workspace.resourceProfile),
+      startedAt: params.startedAt,
+      endedAt: params.endedAt,
+      cpu: params.sandbox.cpu,
+      memoryGiB: params.sandbox.memory,
+      diskGiB: params.sandbox.disk,
+      reason: params.reason,
+    },
+    { throwOnError: true },
+  )
+}
+
 export async function getSandboxPaths(sandbox: Sandbox): Promise<DaytonaPaths> {
   const workDir = trimTrailingSlash((await sandbox.getWorkDir()) || '/home/daytona')
-  const rootDir = pathPosix.join(workDir, 'overlay-sandbox')
-  const outputDir = pathPosix.join(rootDir, 'outputs')
 
   return {
     workDir,
-    rootDir,
-    inputDir: pathPosix.join(rootDir, 'inputs'),
-    runDir: pathPosix.join(rootDir, 'run'),
-    outputDir,
-    stdoutPath: pathPosix.join(outputDir, '.overlay-stdout.log'),
-    stderrPath: pathPosix.join(outputDir, '.overlay-stderr.log'),
+    rootDir: WORKSPACE_ROOT_DIR,
+    inputDir: WORKSPACE_INPUT_DIR,
+    runDir: WORKSPACE_RUN_DIR,
+    outputDir: WORKSPACE_OUTPUT_DIR,
+    stdoutPath: pathPosix.join(WORKSPACE_OUTPUT_DIR, '.overlay-stdout.log'),
+    stderrPath: pathPosix.join(WORKSPACE_OUTPUT_DIR, '.overlay-stderr.log'),
   }
 }
 
