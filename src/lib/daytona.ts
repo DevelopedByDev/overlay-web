@@ -528,7 +528,11 @@ export async function accrueWorkspaceSpend(params: {
   startedAt: number
   endedAt: number
   reason: DaytonaUsageReason
-}): Promise<{ success: true; durationSeconds: number; costUsd: number; costCents: number } | null> {
+}): Promise<
+  | { success: true; durationSeconds: number; costUsd: number; costCents: number }
+  | { success: false; skipped: 'missing_workspace' | 'stale_meter_window' }
+  | null
+> {
   return await convex.mutation(
     'daytona:accrueUsageByServer',
     {
@@ -542,6 +546,7 @@ export async function accrueWorkspaceSpend(params: {
       cpu: params.sandbox.cpu,
       memoryGiB: params.sandbox.memory,
       diskGiB: params.sandbox.disk,
+      expectedLastMeteredAt: params.workspace.lastMeteredAt,
       reason: params.reason,
     },
     { throwOnError: true },

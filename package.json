@@ -21,6 +21,7 @@
     "test:auth:cookie": "node --experimental-strip-types scripts/auth-cookie-inspect.ts",
     "test:auth:refresh": "node --experimental-strip-types scripts/auth-refresh-check.ts",
     "test:daytona:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-tool-smoke.ts",
+    "test:daytona:reconcile:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-reconcile-smoke.ts",
     "test:unified-tools": "node --experimental-strip-types scripts/unified-tools-sanity.ts",
     "convex:audit:storage": "node --experimental-strip-types scripts/convex-storage-audit.ts",
     "convex:backfill:storage": "node --experimental-strip-types scripts/convex-storage-backfill.ts",

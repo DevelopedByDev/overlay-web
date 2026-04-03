@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation, query } from './_generated/server'
+import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from './lib/auth'
 import {
   computeDaytonaRuntimeCost,
@@ -38,6 +38,13 @@ export const getWorkspaceByUserId = query({
   },
 })
 
+export const listAllWorkspacesInternal = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query('daytonaWorkspaces').collect()
+  },
+})
+
 export const getWorkspaceBySandboxId = query({
   args: {
     sandboxId: v.string(),
@@ -58,6 +65,89 @@ export const getWorkspaceBySandboxId = query({
       .first()
 
     return workspace?.userId === userId ? workspace : null
+  },
+})
+
+export const reconcileWorkspaceByServer = internalMutation({
+  args: {
+    userId: v.string(),
+    sandboxId: v.string(),
+    sandboxName: v.string(),
+    volumeId: v.string(),
+    volumeName: v.string(),
+    tier: v.union(v.literal('pro'), v.literal('max')),
+    state: v.union(
+      v.literal('provisioning'),
+      v.literal('started'),
+      v.literal('stopped'),
+      v.literal('archived'),
+      v.literal('error'),
+      v.literal('missing'),
+    ),
+    resourceProfile: v.union(v.literal('pro'), v.literal('max')),
+    mountPath: v.string(),
+    lastMeteredAt: v.optional(v.number()),
+    lastKnownStartedAt: v.optional(v.number()),
+    lastKnownStoppedAt: v.optional(v.number()),
+    expectedUpdatedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    let workspace = await ctx.db
+      .query('daytonaWorkspaces')
+      .withIndex('by_sandboxId', (q) => q.eq('sandboxId', args.sandboxId))
+      .first()
+
+    if (!workspace) {
+      workspace = await ctx.db
+        .query('daytonaWorkspaces')
+        .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+        .first()
+    }
+
+    if (workspace && args.expectedUpdatedAt !== undefined && workspace.updatedAt !== args.expectedUpdatedAt) {
+      return {
+        success: false as const,
+        skipped: 'stale_workspace' as const,
+      }
+    }
+
+    const now = Date.now()
+    const patch = {
+      sandboxId: args.sandboxId,
+      sandboxName: args.sandboxName,
+      volumeId: args.volumeId,
+      volumeName: args.volumeName,
+      tier: args.tier,
+      state: args.state,
+      resourceProfile: args.resourceProfile,
+      mountPath: args.mountPath,
+      lastMeteredAt: args.lastMeteredAt,
+      lastKnownStartedAt: args.lastKnownStartedAt,
+      lastKnownStoppedAt: args.lastKnownStoppedAt,
+      updatedAt: now,
+    }
+
+    if (workspace) {
+      await ctx.db.patch(workspace._id, patch)
+      return {
+        success: true as const,
+        workspace: {
+          ...workspace,
+          ...patch,
+        },
+      }
+    }
+
+    const id = await ctx.db.insert('daytonaWorkspaces', {
+      userId: args.userId,
+      ...patch,
+      createdAt: now,
+    })
+
+    return {
+      success: true as const,
+      workspace: await ctx.db.get(id),
+    }
   },
 })
 
@@ -212,6 +302,123 @@ export const recordUsageLedger = mutation({
   },
 })
 
+async function accrueUsage(
+  ctx: MutationCtx,
+  args: {
+    userId: string
+    sandboxId: string
+    tier: 'pro' | 'max'
+    resourceProfile: 'pro' | 'max'
+    startedAt: number
+    endedAt: number
+    cpu: number
+    memoryGiB: number
+    diskGiB: number
+    expectedLastMeteredAt?: number
+    reason: 'start' | 'task' | 'stop' | 'archive' | 'resize' | 'reconcile'
+  },
+) {
+  const workspace = await ctx.db
+    .query('daytonaWorkspaces')
+    .withIndex('by_sandboxId', (q) => q.eq('sandboxId', args.sandboxId))
+    .first()
+
+  if (!workspace) {
+    return {
+      success: false as const,
+      skipped: 'missing_workspace' as const,
+    }
+  }
+
+  if (workspace.lastMeteredAt !== args.expectedLastMeteredAt) {
+    return {
+      success: false as const,
+      skipped: 'stale_meter_window' as const,
+    }
+  }
+
+  const durationSeconds = Math.max(0, (args.endedAt - args.startedAt) / 1000)
+  const { costUsd, costCents } = computeDaytonaRuntimeCost({
+    cpu: args.cpu,
+    memoryGiB: args.memoryGiB,
+    diskGiB: args.diskGiB,
+    elapsedSeconds: durationSeconds,
+  })
+
+  if (durationSeconds > 0) {
+    await ctx.db.insert('daytonaUsageLedger', {
+      userId: args.userId,
+      sandboxId: args.sandboxId,
+      tier: args.tier,
+      resourceProfile: args.resourceProfile,
+      startedAt: args.startedAt,
+      endedAt: args.endedAt,
+      durationSeconds: roundCurrencyAmount(durationSeconds),
+      cpu: args.cpu,
+      memoryGiB: args.memoryGiB,
+      diskGiB: args.diskGiB,
+      costUsd,
+      costCents,
+      reason: args.reason,
+      createdAt: Date.now(),
+    })
+
+    await applyUsageEvents(ctx, args.userId, [{
+      type: 'sandbox',
+      cost: costCents,
+      timestamp: args.endedAt,
+    }])
+
+    const updatedAt = Date.now()
+    await ctx.db.patch(workspace._id, {
+      lastMeteredAt: args.endedAt,
+      updatedAt,
+    })
+
+    return {
+      success: true as const,
+      durationSeconds: roundCurrencyAmount(durationSeconds),
+      costUsd,
+      costCents,
+      updatedAt,
+    }
+  }
+
+  return {
+    success: true as const,
+    durationSeconds: roundCurrencyAmount(durationSeconds),
+    costUsd,
+    costCents,
+    updatedAt: workspace.updatedAt,
+  }
+}
+
+export const accrueUsageInternal = internalMutation({
+  args: {
+    userId: v.string(),
+    sandboxId: v.string(),
+    tier: v.union(v.literal('pro'), v.literal('max')),
+    resourceProfile: v.union(v.literal('pro'), v.literal('max')),
+    startedAt: v.number(),
+    endedAt: v.number(),
+    cpu: v.number(),
+    memoryGiB: v.number(),
+    diskGiB: v.number(),
+    expectedLastMeteredAt: v.optional(v.number()),
+    reason: v.union(
+      v.literal('start'),
+      v.literal('task'),
+      v.literal('stop'),
+      v.literal('archive'),
+      v.literal('resize'),
+      v.literal('reconcile'),
+    ),
+  },
+  handler: async (ctx, args) => {
+    return await accrueUsage(ctx, args)
+  },
+})
+
 export const accrueUsageByServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -224,6 +431,7 @@ export const accrueUsageByServer = mutation({
     cpu: v.number(),
     memoryGiB: v.number(),
     diskGiB: v.number(),
+    expectedLastMeteredAt: v.optional(v.number()),
     reason: v.union(
       v.literal('start'),
       v.literal('task'),
@@ -235,57 +443,6 @@ export const accrueUsageByServer = mutation({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-
-    const durationSeconds = Math.max(0, (args.endedAt - args.startedAt) / 1000)
-    const { costUsd, costCents } = computeDaytonaRuntimeCost({
-      cpu: args.cpu,
-      memoryGiB: args.memoryGiB,
-      diskGiB: args.diskGiB,
-      elapsedSeconds: durationSeconds,
-    })
-
-    if (durationSeconds > 0) {
-      await ctx.db.insert('daytonaUsageLedger', {
-        userId: args.userId,
-        sandboxId: args.sandboxId,
-        tier: args.tier,
-        resourceProfile: args.resourceProfile,
-        startedAt: args.startedAt,
-        endedAt: args.endedAt,
-        durationSeconds: roundCurrencyAmount(durationSeconds),
-        cpu: args.cpu,
-        memoryGiB: args.memoryGiB,
-        diskGiB: args.diskGiB,
-        costUsd,
-        costCents,
-        reason: args.reason,
-        createdAt: Date.now(),
-      })
-
-      await applyUsageEvents(ctx, args.userId, [{
-        type: 'sandbox',
-        cost: costCents,
-        timestamp: args.endedAt,
-      }])
-    }
-
-    const workspace = await ctx.db
-      .query('daytonaWorkspaces')
-      .withIndex('by_sandboxId', (q) => q.eq('sandboxId', args.sandboxId))
-      .first()
-
-    if (workspace) {
-      await ctx.db.patch(workspace._id, {
-        lastMeteredAt: args.endedAt,
-        updatedAt: Date.now(),
-      })
-    }
-
-    return {
-      success: true,
-      durationSeconds: roundCurrencyAmount(durationSeconds),
-      costUsd,
-      costCents,
-    }
+    return await accrueUsage(ctx, args)
   },
 })
