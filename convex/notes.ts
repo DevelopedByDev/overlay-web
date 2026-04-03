@@ -14,6 +14,17 @@ async function authorizeUserAccess(params: {
   await requireAccessToken(params.accessToken ?? '', params.userId)
 }
 
+function normalizeNoteDoc<T extends {
+  createdAt?: number
+  updatedAt: number
+}>(note: T): T & { createdAt: number; updatedAt: number } {
+  return {
+    ...note,
+    createdAt: note.createdAt ?? note.updatedAt,
+    updatedAt: note.updatedAt,
+  }
+}
+
 // Returns only notes NOT scoped to a project (for the main Notes tab).
 export const list = query({
   args: {
@@ -35,6 +46,7 @@ export const list = query({
       .order('desc')
       .take(300)
     return all
+      .map(normalizeNoteDoc)
       .filter((n) => !n.projectId)
       .filter((n) => (updatedSince !== undefined ? n.updatedAt > updatedSince : true))
       .filter((n) => (includeDeleted ? true : !n.deletedAt))
@@ -64,6 +76,7 @@ export const listByProject = query({
       .order('desc')
       .collect()
     return notes
+      .map(normalizeNoteDoc)
       .filter((note) => note.userId === userId)
       .filter((note) => (updatedSince !== undefined ? note.updatedAt > updatedSince : true))
       .filter((note) => (includeDeleted ? true : !note.deletedAt))
@@ -84,7 +97,7 @@ export const get = query({
       return null
     }
     const note = await ctx.db.get(noteId)
-    return note?.userId === userId && !note.deletedAt ? note : null
+    return note?.userId === userId && !note.deletedAt ? normalizeNoteDoc(note) : null
   },
 })
 

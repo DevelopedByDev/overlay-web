@@ -183,7 +183,7 @@ export default defineSchema({
     title: v.string(),
     projectId: v.optional(v.string()),
     lastModified: v.number(),
-    updatedAt: v.number(),
+    updatedAt: v.optional(v.number()),
     createdAt: v.number(),
     lastMode: v.union(v.literal('ask'), v.literal('act')),
     askModelIds: v.array(v.string()),
@@ -242,7 +242,7 @@ export default defineSchema({
     content: v.string(),
     tags: v.array(v.string()),
     projectId: v.optional(v.string()),
-    createdAt: v.number(),
+    createdAt: v.optional(v.number()),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
@@ -276,7 +276,7 @@ export default defineSchema({
       v.union(v.literal('candidate'), v.literal('approved'), v.literal('rejected')),
     ),
     createdAt: v.number(),
-    updatedAt: v.number(),
+    updatedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
   })
     .index('by_userId', ['userId'])

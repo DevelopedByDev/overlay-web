@@ -44,6 +44,17 @@ async function authorizeUserAccess(params: {
   await requireAccessToken(params.accessToken ?? '', params.userId)
 }
 
+function normalizeConversationDoc<T extends {
+  updatedAt?: number
+  lastModified: number
+  createdAt: number
+}>(conversation: T): T & { updatedAt: number } {
+  return {
+    ...conversation,
+    updatedAt: conversation.updatedAt ?? conversation.lastModified ?? conversation.createdAt,
+  }
+}
+
 export const list = query({
   args: {
     userId: v.string(),
@@ -64,6 +75,7 @@ export const list = query({
       .order('desc')
       .take(200)
     return all
+      .map(normalizeConversationDoc)
       .filter((c) => !c.projectId)
       .filter((c) => (updatedSince !== undefined ? c.updatedAt > updatedSince : true))
       .filter((c) => (includeDeleted ? true : !c.deletedAt))
@@ -92,6 +104,7 @@ export const listByProject = query({
       .order('desc')
       .collect()
     return conversations
+      .map(normalizeConversationDoc)
       .filter((conversation) => conversation.userId === userId)
       .filter((conversation) => (updatedSince !== undefined ? conversation.updatedAt > updatedSince : true))
       .filter((conversation) => (includeDeleted ? true : !conversation.deletedAt))
@@ -107,7 +120,9 @@ export const get = query({
       return null
     }
     const conversation = await ctx.db.get(conversationId)
-    return conversation?.userId === userId && !conversation.deletedAt ? conversation : null
+    return conversation?.userId === userId && !conversation.deletedAt
+      ? normalizeConversationDoc(conversation)
+      : null
   },
 })
 

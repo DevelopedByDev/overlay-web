@@ -14,6 +14,16 @@ async function authorizeUserAccess(params: {
   await requireAccessToken(params.accessToken ?? '', params.userId)
 }
 
+function normalizeMemoryDoc<T extends {
+  updatedAt?: number
+  createdAt: number
+}>(memory: T): T & { updatedAt: number } {
+  return {
+    ...memory,
+    updatedAt: memory.updatedAt ?? memory.createdAt,
+  }
+}
+
 export const list = query({
   args: {
     userId: v.string(),
@@ -37,6 +47,7 @@ export const list = query({
       .order('desc')
       .take(100)
     return memories
+      .map(normalizeMemoryDoc)
       .filter((memory) => (updatedSince !== undefined ? memory.updatedAt > updatedSince : true))
       .filter((memory) => (includeDeleted ? true : !memory.deletedAt))
       .filter((memory) => (projectId !== undefined ? memory.projectId === projectId : true))

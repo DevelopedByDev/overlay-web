@@ -10,6 +10,9 @@
 
 import type * as authDebug from "../authDebug.js";
 import type * as conversations from "../conversations.js";
+import type * as crons from "../crons.js";
+import type * as daytona from "../daytona.js";
+import type * as daytonaReconcile from "../daytonaReconcile.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as keys from "../keys.js";
@@ -41,6 +44,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   authDebug: typeof authDebug;
   conversations: typeof conversations;
+  crons: typeof crons;
+  daytona: typeof daytona;
+  daytonaReconcile: typeof daytonaReconcile;
   files: typeof files;
   http: typeof http;
   keys: typeof keys;
