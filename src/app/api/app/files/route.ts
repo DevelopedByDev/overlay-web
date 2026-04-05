@@ -51,6 +51,12 @@ export async function POST(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
     const { name, type, parentId, content, storageId, r2Key, sizeBytes, projectId } = await request.json()
     if (!name || !type) return NextResponse.json({ error: 'name and type required' }, { status: 400 })
+    if (storageId) {
+      return NextResponse.json(
+        { error: 'Convex file storage is no longer supported. Upload to R2 and pass r2Key from the upload-url flow.' },
+        { status: 400 },
+      )
+    }
 
     const args: Record<string, unknown> = {
       userId: session.user.id,
@@ -64,14 +70,12 @@ export async function POST(request: NextRequest) {
     let id: unknown
     const ids: string[] = []
 
-    if (r2Key || storageId) {
-      // Binary file already uploaded to R2 (r2Key) or legacy Convex storage (storageId)
+    if (r2Key) {
       const { type: _type, ...storageArgs } = args
       void _type
       id = await convex.mutation('files:createWithStorage', {
         ...storageArgs,
-        ...(r2Key ? { r2Key } : {}),
-        ...(storageId ? { storageId } : {}),
+        r2Key,
         sizeBytes: typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0,
       })
     } else if (type === 'file' && typeof content === 'string' && content.length > 0) {

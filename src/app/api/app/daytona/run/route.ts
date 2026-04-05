@@ -19,7 +19,7 @@ import { classifyOutputType } from '@/lib/output-types'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getSession } from '@/lib/workos-auth'
 import { validateServerSecret } from '../../../../../../convex/lib/auth'
-import { uploadBuffer as uploadBufferToR2, keyForOutput } from '@/lib/r2'
+import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl } from '@/lib/r2'
 
 export const maxDuration = 300
 
@@ -34,6 +34,7 @@ interface OverlayFileRecord {
   name: string
   content: string
   storageId?: string | null
+  r2Key?: string | null
 }
 
 interface SandboxArtifactResponse {
@@ -108,6 +109,14 @@ function guessMimeType(fileName: string, buffer: Buffer): string | undefined {
 }
 
 async function readOverlayFileBuffer(file: OverlayFileRecord): Promise<Buffer> {
+  if (file.r2Key) {
+    const url = await generatePresignedDownloadUrl(file.r2Key)
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Failed to download Overlay file "${file.name}" from R2.`)
+    }
+    return Buffer.from(await response.arrayBuffer())
+  }
   if (file.storageId) {
     const response = await fetch(file.content)
     if (!response.ok) {

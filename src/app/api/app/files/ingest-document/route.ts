@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import mammoth from 'mammoth'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
+import { keyForFile, uploadBuffer } from '@/lib/r2'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export const runtime = 'nodejs'
@@ -69,8 +71,7 @@ async function parsePdfBuffer(buf: Buffer): Promise<string> {
   return (data.text ?? '').trim()
 }
 
-async function extractText(file: File, ext: string): Promise<string> {
-  const buf = Buffer.from(await file.arrayBuffer())
+async function extractTextFromBuffer(buf: Buffer, file: File, ext: string): Promise<string> {
   if (buf.length > MAX_BYTES) {
     throw new Error('FILE_TOO_LARGE')
   }
@@ -98,9 +99,6 @@ export async function POST(request: NextRequest) {
     const parentId =
       typeof parentIdRaw === 'string' && parentIdRaw.trim() ? parentIdRaw.trim() : undefined
 
-    if (!projectId && parentId === undefined) {
-      return NextResponse.json({ error: 'projectId is required' }, { status: 400 })
-    }
     const serverSecret = getInternalApiSecret()
 
     if (!(raw instanceof File) || !raw.name?.trim()) {
@@ -124,9 +122,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const buf = Buffer.from(await raw.arrayBuffer())
+
     let text: string
     try {
-      text = await extractText(raw, ext)
+      text = await extractTextFromBuffer(buf, raw, ext)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       if (msg === 'FILE_TOO_LARGE') {
@@ -139,6 +139,11 @@ export async function POST(request: NextRequest) {
     if (!text.trim()) {
       return NextResponse.json({ error: 'No extractable text in file' }, { status: 400 })
     }
+
+    const uploadKeyId = randomUUID()
+    const r2Key = keyForFile(session.user.id, uploadKeyId, safeName)
+    const mimeType = raw.type?.trim() || 'application/octet-stream'
+    await uploadBuffer(r2Key, buf, mimeType)
 
     const parts = splitTextForConvexDocuments(text)
     const ids: string[] = []
@@ -154,6 +159,12 @@ export async function POST(request: NextRequest) {
         contentHash: hashTextContent(parts[p]!),
         projectId,
         parentId,
+        ...(p === 0
+          ? {
+              r2Key,
+              sizeBytesOverride: Math.max(0, Math.round(raw.size)),
+            }
+          : {}),
       })
       if (!fid) {
         return NextResponse.json({ error: 'Failed to save document part' }, { status: 500 })

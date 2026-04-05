@@ -1,4 +1,5 @@
 import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { HybridSearchChunk } from '../../convex/knowledge'
 
 /** Retrieval-only context for the model. Durable facts the user wants remembered are written via save_memory (Ask or Act), not here. */
@@ -33,6 +34,7 @@ export async function buildAutoRetrievalBundle(args: {
     const result = await convex.action<{ chunks: HybridSearchChunk[] } | null>('knowledge:hybridSearch', {
       accessToken: args.accessToken,
       userId: args.userId,
+      serverSecret: getInternalApiSecret(),
       query: q.slice(0, MAX_QUERY_CHARS),
       projectId: args.projectId,
       m: 10,

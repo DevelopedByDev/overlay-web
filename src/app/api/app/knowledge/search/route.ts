@@ -1,9 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { HybridSearchChunk } from '../../../../../../convex/knowledge'
 
 export const maxDuration = 60
+
+function isTrustedInternalToolRequest(
+  request: NextRequest,
+  body: { userId?: string },
+): boolean {
+  const h = request.headers.get('x-internal-api-secret')?.trim()
+  const expected = getInternalApiSecret()
+  return Boolean(
+    h &&
+      h === expected &&
+      typeof body.userId === 'string' &&
+      body.userId.trim().length > 0,
+  )
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,7 +34,10 @@ export async function POST(request: NextRequest) {
     }
 
     const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) {
+    const userId =
+      auth?.userId ??
+      (isTrustedInternalToolRequest(request, body) ? body.userId!.trim() : null)
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -28,9 +46,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'query is required' }, { status: 400 })
     }
 
+    const serverSecret = getInternalApiSecret()
     const result = await convex.action<{ chunks: HybridSearchChunk[] }>('knowledge:hybridSearch', {
-      accessToken: auth.accessToken,
-      userId: auth.userId,
+      accessToken: auth?.accessToken,
+      userId,
+      serverSecret,
       query,
       projectId: body.projectId,
       sourceKind: body.sourceKind,

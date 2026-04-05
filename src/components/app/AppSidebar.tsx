@@ -11,7 +11,6 @@ import {
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
-import { formatBytes } from '@/lib/storage-limits'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
 import KnowledgeSidebar from './KnowledgeSidebar'
@@ -78,19 +77,6 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
   )
 }
 
-function StorageUsageCaption({ entitlements, active }: { entitlements: Entitlements | null; active: boolean }) {
-  if (!entitlements) return null
-  const used = Math.max(0, entitlements.overlayStorageBytesUsed ?? 0)
-  const limit = Math.max(0, entitlements.overlayStorageBytesLimit ?? 0)
-  if (limit <= 0) return null
-  const nearLimit = used / limit >= 0.85
-  return (
-    <div className={`mt-0.5 text-[10px] leading-none ${active ? 'text-[#fafafa]/70' : nearLimit ? 'text-[#b45309]' : 'text-[#9a9a9a]'}`}>
-      Overlay storage {formatBytes(used)} / {formatBytes(limit)}
-    </div>
-  )
-}
-
 export default function AppSidebar({ user }: { user: AuthUser }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
@@ -120,14 +106,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   }, [])
 
   useEffect(() => {
-    if (!accountMenuOpen && !mobileAccountOpen) return
+    if (!accountMenuOpen && !mobileAccountOpen && !knowledgeOpen) return
     const initialId = window.setTimeout(() => { void loadEntitlements() }, 0)
     const intervalId = window.setInterval(() => { void loadEntitlements() }, 30_000)
     return () => {
       window.clearTimeout(initialId)
       window.clearInterval(intervalId)
     }
-  }, [accountMenuOpen, mobileAccountOpen, loadEntitlements])
+  }, [accountMenuOpen, mobileAccountOpen, knowledgeOpen, loadEntitlements])
 
   useEffect(() => {
     function onSubscriptionRefresh() {
@@ -260,7 +246,6 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               <Icon size={15} />
               <div className="min-w-0 flex-1 text-left">
                 <div>{label}</div>
-                {href === '/app/knowledge' ? <StorageUsageCaption entitlements={entitlements} active={active} /> : null}
               </div>
               <span
                 className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
@@ -493,7 +478,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       <div className="hidden md:flex">
         {projectsOpen && <ProjectsSidebar />}
         {toolsOpen && <ToolsSidebar />}
-        {knowledgeOpen && <KnowledgeSidebar />}
+        {knowledgeOpen && <KnowledgeSidebar entitlements={entitlements} />}
         {outputsOpen && <OutputsSidebar />}
       </div>
     </>

@@ -354,9 +354,9 @@ export default defineSchema({
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_conversationId', ['conversationId']),
 
-  // Knowledge base and project files. Text content is stored in `content`;
-  // binary files (images, PDFs, audio, video) are stored in Convex File Storage
-  // and referenced via `storageId` — the serving URL is resolved at query time.
+  // Knowledge base and project files. Text content is stored in `content`.
+  // Binary originals (images, PDFs, etc.) use Cloudflare R2 via `r2Key`; served via /api/app/files/[id]/content.
+  // `storageId` is legacy Convex File Storage only (no longer written by the app).
   files: defineTable({
     userId: v.string(),
     name: v.string(),

@@ -63,19 +63,24 @@ export const list = query({
         ? allFiles.filter((f) => f.projectId === projectId)
         : allFiles
 
-    return filtered.map((file) => ({
+    return filtered.map((file) => {
+      const hasInlineText = Boolean(file.content?.trim())
+      const blobBacked = Boolean(file.storageId ?? file.r2Key)
+      const storageBackedForDownload = blobBacked && !hasInlineText
+      return {
       _id: file._id,
       userId: file.userId,
       name: file.name,
       type: file.type,
       parentId: file.parentId ?? null,
       sizeBytes: file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0),
-      isStorageBacked: Boolean(file.storageId ?? file.r2Key),
-      downloadUrl: (file.storageId ?? file.r2Key) ? buildProxyUrl(file._id) : undefined,
+      isStorageBacked: storageBackedForDownload,
+      downloadUrl: storageBackedForDownload ? buildProxyUrl(file._id) : undefined,
       projectId: file.projectId,
       createdAt: file.createdAt,
       updatedAt: file.updatedAt,
-    }))
+    }
+    })
   },
 })
 
@@ -89,17 +94,20 @@ export const get = query({
     }
     const file = await ctx.db.get(fileId)
     if (!file || file.userId !== userId) return null
+    const hasInlineText = Boolean(file.content?.trim())
+    const blobBacked = Boolean(file.storageId ?? file.r2Key)
+    const useProxyForContent = blobBacked && !hasInlineText
     return {
       _id: file._id,
       userId: file.userId,
       name: file.name,
       type: file.type,
       parentId: file.parentId ?? null,
-      content: (file.storageId ?? file.r2Key) ? buildProxyUrl(file._id) : (file.content ?? ''),
+      content: useProxyForContent ? buildProxyUrl(file._id) : (file.content ?? ''),
       storageId: file.storageId ?? null,
       r2Key: file.r2Key ?? null,
       sizeBytes: file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0),
-      isStorageBacked: Boolean(file.storageId ?? file.r2Key),
+      isStorageBacked: useProxyForContent,
       projectId: file.projectId,
       createdAt: file.createdAt,
       updatedAt: file.updatedAt,
@@ -234,8 +242,12 @@ export const create = mutation({
     content: v.optional(v.string()),
     contentHash: v.optional(v.string()),
     projectId: v.optional(v.string()),
+    /** Original bytes on R2 (e.g. PDF) while `content` holds extracted text for search. */
+    r2Key: v.optional(v.string()),
+    /** Byte size for quota when using R2 (e.g. original file size). */
+    sizeBytesOverride: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, name, type, parentId, content, contentHash, projectId }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, name, type, parentId, content, contentHash, projectId, r2Key, sizeBytesOverride }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (parentId) {
       const parent = await ctx.db.get(parentId as Id<'files'>)
@@ -251,7 +263,11 @@ export const create = mutation({
     }
     const now = Date.now()
     const inlineContent = content ?? ''
-    const sizeBytes = type === 'file' ? utf8ByteLength(inlineContent) : 0
+    const textBytes = type === 'file' ? utf8ByteLength(inlineContent) : 0
+    const sizeBytes =
+      type === 'file'
+        ? Math.max(textBytes, typeof sizeBytesOverride === 'number' && sizeBytesOverride > 0 ? sizeBytesOverride : 0)
+        : 0
     if (type === 'file' && sizeBytes > 0) {
       await ensureStorageAvailable(ctx as never, userId, sizeBytes)
     }
@@ -269,6 +285,7 @@ export const create = mutation({
       contentHash,
       duplicateOfFileId: canonicalDuplicate?._id,
       projectId,
+      r2Key,
       createdAt: now,
       updatedAt: now,
     })
@@ -296,8 +313,11 @@ export const createWithStorage = mutation({
   },
   handler: async (ctx, { userId, accessToken, serverSecret, name, parentId, storageId, r2Key, sizeBytes, projectId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
-    if (!storageId && !r2Key) {
-      throw new Error('createWithStorage requires either storageId or r2Key')
+    if (storageId) {
+      throw new Error('Convex file storage is deprecated; upload to R2 and pass r2Key only')
+    }
+    if (!r2Key) {
+      throw new Error('createWithStorage requires r2Key')
     }
     if (parentId) {
       const parent = await ctx.db.get(parentId as Id<'files'>)
@@ -318,7 +338,6 @@ export const createWithStorage = mutation({
       name,
       type: 'file',
       parentId,
-      storageId,
       r2Key,
       sizeBytes,
       projectId,
@@ -346,7 +365,9 @@ export const update = mutation({
     if (!existing || existing.userId !== userId) {
       throw new Error('Unauthorized')
     }
-    if ((existing.storageId || existing.r2Key) && content !== undefined) {
+    const blobOnly =
+      (existing.storageId || existing.r2Key) && !(existing.content && existing.content.trim().length > 0)
+    if (blobOnly && content !== undefined) {
       throw new Error('Storage-backed files cannot be edited inline.')
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
@@ -376,7 +397,9 @@ export const update = mutation({
     if (storageDelta !== 0) {
       await applyStorageUsageDelta(ctx as never, userId, storageDelta)
     }
-    if (existing.type === 'file' && !existing.storageId && shouldPurge) {
+    const skipPurgeForBlobOnly =
+      (existing.storageId || existing.r2Key) && !(existing.content && existing.content.trim().length > 0)
+    if (existing.type === 'file' && shouldPurge && !skipPurgeForBlobOnly) {
       await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
         sourceKind: 'file',
         sourceId: fileId,

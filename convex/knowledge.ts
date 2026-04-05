@@ -7,7 +7,7 @@ import {
 } from './_generated/server'
 import { internal, api } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
-import { requireAccessToken } from './lib/auth'
+import { requireAccessToken, validateServerSecret } from './lib/auth'
 
 export type HybridSearchChunk = {
   text: string
@@ -166,7 +166,9 @@ export const getFileForReindex = internalQuery({
   handler: async (ctx, { fileId }) => {
     const f = await ctx.db.get(fileId)
     if (!f || f.type !== 'file') return null
-    if (f.storageId) return { kind: 'skip' as const, reason: 'binary' as const }
+    const binaryOnly =
+      (f.storageId || f.r2Key) && !(f.content && f.content.trim().length > 0)
+    if (binaryOnly) return { kind: 'skip' as const, reason: 'binary' as const }
     if (f.duplicateOfFileId) return { kind: 'skip' as const, reason: 'duplicate' as const }
     const content = f.content ?? ''
     return {
@@ -368,8 +370,10 @@ function packChunksForContext(
 
 export const hybridSearch = action({
   args: {
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
     userId: v.string(),
+    /** When set to INTERNAL_API_SECRET, caller is trusted (e.g. Next.js after session or tool middleware auth). */
+    serverSecret: v.optional(v.string()),
     query: v.string(),
     projectId: v.optional(v.string()),
     sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
@@ -379,7 +383,9 @@ export const hybridSearch = action({
     minVecScore: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<{ chunks: HybridSearchChunk[] }> => {
-    await requireAccessToken(args.accessToken, args.userId)
+    if (!validateServerSecret(args.serverSecret)) {
+      await requireAccessToken(args.accessToken ?? '', args.userId)
+    }
 
     const kVec = Math.min(256, Math.max(1, args.kVec ?? 48))
     const kLex = Math.min(1024, Math.max(1, args.kLex ?? 48))
