@@ -1,14 +1,15 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Brain, FileText } from 'lucide-react'
+import { Brain, FileText, Images } from 'lucide-react'
 import { formatBytes } from '@/lib/storage-limits'
 
-type KnowledgeView = 'memories' | 'files'
+type KnowledgeView = 'memories' | 'files' | 'outputs'
 
 const NAV_ITEMS: { id: KnowledgeView; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
   { id: 'memories', label: 'Memories', icon: Brain },
   { id: 'files', label: 'Files', icon: FileText },
+  { id: 'outputs', label: 'Outputs', icon: Images },
 ]
 
 type StorageEntitlements = {
@@ -38,11 +39,20 @@ export default function KnowledgeSidebar({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const activeView: KnowledgeView = searchParams?.get('view') === 'files' ? 'files' : 'memories'
+  const view = searchParams?.get('view') ?? 'memories'
+  const activeView: KnowledgeView =
+    view === 'files' ? 'files' : view === 'outputs' ? 'outputs' : 'memories'
+
+  function pushView(next: KnowledgeView) {
+    const p = new URLSearchParams(searchParams?.toString() ?? '')
+    p.set('view', next)
+    if (next !== 'outputs') p.delete('out')
+    router.push(`/app/knowledge?${p.toString()}`)
+  }
 
   return (
-    <div className="w-48 h-full flex flex-col border-r border-[#e5e5e5] bg-[#f5f5f5] shrink-0">
-      <div className="hidden min-h-16 flex-col justify-center gap-0 border-b border-[#e5e5e5] px-4 py-3 md:flex shrink-0">
+    <div className="flex h-full w-48 shrink-0 flex-col border-r border-[#e5e5e5] bg-[#f5f5f5]">
+      <div className="hidden min-h-16 shrink-0 flex-col justify-center gap-0 border-b border-[#e5e5e5] px-4 py-3 md:flex">
         <span className="text-sm font-medium text-[#0a0a0a]">Knowledge</span>
         <StorageUsageCaption entitlements={entitlements} />
       </div>
@@ -54,7 +64,7 @@ export default function KnowledgeSidebar({
             <button
               key={id}
               type="button"
-              onClick={() => router.push(`/app/knowledge?view=${id}`)}
+              onClick={() => pushView(id)}
               className={`group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
                 active
                   ? 'bg-[#0a0a0a] text-[#fafafa]'

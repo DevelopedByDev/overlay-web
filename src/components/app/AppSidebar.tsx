@@ -8,14 +8,13 @@ import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, LogOut, User,
   Puzzle, Monitor, ChevronUp, AlertCircle,
-  FolderOpen, Images, Loader2, Menu, X, ArrowUp, Workflow, Settings,
+  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
 import KnowledgeSidebar from './KnowledgeSidebar'
-import OutputsSidebar from './OutputsSidebar'
 
 const NAV_ITEMS: Array<{
   href?: string
@@ -25,7 +24,6 @@ const NAV_ITEMS: Array<{
 }> = [
   { href: '/app/chat', label: 'Chat', icon: MessageSquare },
   { href: '/app/notes', label: 'Notes', icon: BookOpen },
-  { href: '/app/outputs', label: 'Outputs', icon: Images },
   { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
   { href: '/app/tools', label: 'Extensions', icon: Puzzle },
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
@@ -100,7 +98,6 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   const projectsOpen = pathname.startsWith('/app/projects')
   const toolsOpen = pathname.startsWith('/app/tools')
   const knowledgeOpen = pathname.startsWith('/app/knowledge')
-  const outputsOpen = pathname.startsWith('/app/outputs')
   const loadEntitlements = useCallback(async () => {
     try {
       const res = await fetch('/api/app/subscription')
@@ -527,7 +524,6 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
         {projectsOpen && <ProjectsSidebar />}
         {toolsOpen && <ToolsSidebar />}
         {knowledgeOpen && <KnowledgeSidebar entitlements={entitlements} />}
-        {outputsOpen && <OutputsSidebar />}
       </div>
     </>
   )

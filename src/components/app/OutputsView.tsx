@@ -82,9 +82,105 @@ function OutputTypeIcon({
   return <FileIcon size={size} className={className} />
 }
 
-export default function OutputsView() {
+function OutputListRow({
+  output,
+  onExpand,
+  onDetails,
+  onDelete,
+  isDeleting,
+}: {
+  output: Output
+  onExpand: () => void
+  onDetails: () => void
+  onDelete: () => void
+  isDeleting: boolean
+}) {
+  const isCompleted = output.status === 'completed'
+  const isFailed = output.status === 'failed'
+  const isPending = output.status === 'pending'
+  const isMedia = isMediaOutputType(output.type)
+
+  return (
+    <div className="flex items-center gap-3 border-b border-[#f0f0f0] px-3 py-2.5 last:border-b-0 transition-colors hover:bg-[#fafafa]">
+      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-[#f5f5f5]">
+        {isCompleted && output.url && output.type === 'image' && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={output.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+        )}
+        {isCompleted && output.url && output.type === 'video' && (
+          <video src={output.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+        )}
+        {isCompleted && !isMedia && (
+          <div className="flex h-full w-full items-center justify-center">
+            <OutputTypeIcon type={output.type} size={20} className="text-[#b0b0b0]" />
+          </div>
+        )}
+        {(isPending || (isCompleted && isMedia && !output.url)) && (
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#e0e0e0] border-t-[#525252]" />
+          </div>
+        )}
+        {isFailed && (
+          <div className="flex h-full w-full items-center justify-center text-red-400">
+            <AlertCircle size={16} />
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={isCompleted && isMedia ? onExpand : undefined}
+        className="min-w-0 flex-1 text-left"
+      >
+        <p className="line-clamp-1 text-sm text-[#0a0a0a]">{outputLabel(output)}</p>
+        <p className="mt-0.5 text-[11px] text-[#aaa]">
+          <span className="inline-flex items-center gap-1">
+            <OutputTypeIcon type={output.type} size={10} />
+            {output.type}
+          </span>
+          <span className="mx-1.5">·</span>
+          {timeAgo(output.createdAt)}
+          {output.sizeBytes ? ` · ${formatBytes(output.sizeBytes)}` : ''}
+        </p>
+      </button>
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDetails()
+          }}
+          className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2 py-1 text-[11px] font-medium text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+        >
+          <Info size={12} />
+          Details
+        </button>
+        <button
+          type="button"
+          disabled={isDeleting}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          className="inline-flex items-center justify-center rounded-md border border-[#e5e5e5] p-1 text-[#888] transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+        >
+          {isDeleting ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export default function OutputsView({
+  embedded = false,
+  layout = 'cards',
+}: {
+  /** When true, hide the page title row (parent provides chrome). */
+  embedded?: boolean
+  /** List vs masonry cards — typically from URL `layout` on Knowledge. */
+  layout?: 'list' | 'cards'
+}) {
   const searchParams = useSearchParams()
-  const v = searchParams?.get('view')
+  const v = embedded ? searchParams?.get('out') : searchParams?.get('view')
   const filter: FilterType = v === 'image' || v === 'video' || v === 'files' ? v : 'all'
 
   const [outputs, setOutputs] = useState<Output[]>([])
@@ -135,22 +231,25 @@ export default function OutputsView() {
   })
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#e5e5e5] px-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-sm font-medium text-[#0a0a0a]">Outputs</h1>
-          <span className="text-xs text-[#aaa]">{filtered.length} items</span>
+    <div className={`flex flex-col min-h-0 flex-1 ${embedded ? '' : 'h-full'}`}>
+      {!embedded && (
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#e5e5e5] px-6">
+          <div className="flex items-center gap-3">
+            <h1 className="text-sm font-medium text-[#0a0a0a]">Outputs</h1>
+            <span className="text-xs text-[#aaa]">{filtered.length} items</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => load()}
+            disabled={loading}
+            className="shrink-0 rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f0f0f0] hover:text-[#525252] disabled:opacity-40"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
-        <button
-          onClick={() => load()}
-          disabled={loading}
-          className="shrink-0 rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f0f0f0] hover:text-[#525252] disabled:opacity-40"
-        >
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-        </button>
-      </div>
+      )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+      <div className={`flex-1 overflow-y-auto ${embedded ? 'px-0 py-0' : 'px-4 py-5 sm:px-6 sm:py-6'}`}>
         {loading && outputs.length === 0 && (
           <div className="flex items-center justify-center h-48 text-[#aaa] text-sm gap-2">
             <RefreshCw size={14} className="animate-spin" />
@@ -179,7 +278,22 @@ export default function OutputsView() {
           </div>
         )}
 
-        {filtered.length > 0 && (
+        {filtered.length > 0 && layout === 'list' && (
+          <div className="mx-auto w-full max-w-[1440px] overflow-hidden rounded-xl border border-[#e5e5e5] bg-white">
+            {filtered.map((output) => (
+              <OutputListRow
+                key={output._id}
+                output={output}
+                onExpand={() => setLightbox(output)}
+                onDetails={() => setDetailsOutput(output)}
+                onDelete={() => handleDelete(output._id)}
+                isDeleting={deletingId === output._id}
+              />
+            ))}
+          </div>
+        )}
+
+        {filtered.length > 0 && layout === 'cards' && (
           <div className="mx-auto w-full max-w-[1440px] columns-1 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
             {filtered.map((output) => (
               <OutputCard
