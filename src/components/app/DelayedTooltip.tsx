@@ -39,13 +39,11 @@ export function DelayedTooltip({
       timerRef.current = null
     }
     setOpen(false)
+    setCoords(null)
   }
 
   useLayoutEffect(() => {
-    if (!open) {
-      setCoords(null)
-      return
-    }
+    if (!open) return
 
     function updatePosition() {
       const el = anchorRef.current
