@@ -4,10 +4,11 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef } from 'react'
+import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, LogOut, User,
   Smartphone, Puzzle, Monitor, ChevronUp, AlertCircle,
-  FolderOpen, Images, Loader2, Menu, X, ArrowUp,
+  FolderOpen, Images, Loader2, Menu, X, ArrowUp, Workflow, Settings,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -16,13 +17,19 @@ import ToolsSidebar from './ToolsSidebar'
 import KnowledgeSidebar from './KnowledgeSidebar'
 import OutputsSidebar from './OutputsSidebar'
 
-const NAV_ITEMS = [
-  { href: '/app/projects', label: 'Projects', icon: FolderOpen },
+const NAV_ITEMS: Array<{
+  href?: string
+  label: string
+  icon: LucideIcon
+  disabled?: boolean
+}> = [
   { href: '/app/chat', label: 'Chat', icon: MessageSquare },
-  { href: '/app/outputs', label: 'Outputs', icon: Images },
   { href: '/app/notes', label: 'Notes', icon: BookOpen },
+  { href: '/app/outputs', label: 'Outputs', icon: Images },
   { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
   { href: '/app/tools', label: 'Extensions', icon: Puzzle },
+  { href: '/app/projects', label: 'Projects', icon: FolderOpen },
+  { label: 'Automations', icon: Workflow, disabled: true },
 ]
 
 const APP_LINKS = [
@@ -126,11 +133,11 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   useEffect(() => {
     function onNavShortcut(e: KeyboardEvent) {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.repeat) return
-      const m = /^Digit([1-6])$/.exec(e.code)
+      const m = /^Digit([1-9])$/.exec(e.code)
       if (!m) return
       const idx = parseInt(m[1]!, 10) - 1
       const item = NAV_ITEMS[idx]
-      if (!item) return
+      if (!item || item.disabled || !item.href) return
       const t = e.target
       if (t instanceof Node && (t as HTMLElement).closest?.('input, textarea, select, [contenteditable="true"]')) {
         return
@@ -151,8 +158,8 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
         setAccountMenuOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('click', handleClick, true)
+    return () => document.removeEventListener('click', handleClick, true)
   }, [accountMenuOpen])
 
   useEffect(() => {
@@ -162,8 +169,8 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
         setMobileAccountOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('click', handleClick, true)
+    return () => document.removeEventListener('click', handleClick, true)
   }, [mobileAccountOpen])
 
   useEffect(() => {
@@ -222,41 +229,65 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-3">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }, navIdx) => {
-          const active = effectivePendingHref ? effectivePendingHref === href : pathname.startsWith(href)
-          const isPending = effectivePendingHref === href
+        {NAV_ITEMS.map((item, navIdx) => {
+          const { href, label, icon: Icon, disabled } = item
+          const active =
+            href &&
+            (effectivePendingHref ? effectivePendingHref === href : pathname.startsWith(href))
+          const isPending = href && effectivePendingHref === href
           const unreadCount = href === '/app/chat' ? totalUnread : 0
+          const shortcut = navIdx < 9 ? navIdx + 1 : null
+          const commonClass = `group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
+            disabled
+              ? 'cursor-not-allowed text-[#a3a3a3]'
+              : active
+                ? 'bg-[#0a0a0a] text-[#fafafa]'
+                : 'text-[#525252] hover:bg-[#f0f0f0] hover:text-[#0a0a0a]'
+          }`
+          if (disabled) {
+            return (
+              <button
+                key={label}
+                type="button"
+                disabled
+                title="Coming soon"
+                aria-label="Automations (coming soon)"
+                className={commonClass}
+              >
+                <Icon size={15} />
+                <div className="min-w-0 flex-1 text-left">{label}</div>
+              </button>
+            )
+          }
           return (
             <button
               key={href}
               type="button"
               onClick={() => {
-                if (pathname.startsWith(href)) return
+                if (!href || pathname.startsWith(href)) return
                 setMobileMenuOpen(false)
                 setPendingHref(href)
                 router.push(href)
               }}
-              title={`${label} · ⌥${navIdx + 1}`}
-              className={`group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
-                active
-                  ? 'bg-[#0a0a0a] text-[#fafafa]'
-                  : 'text-[#525252] hover:bg-[#f0f0f0] hover:text-[#0a0a0a]'
-              }`}
+              title={shortcut ? `${label} · ⌥${shortcut}` : label}
+              className={commonClass}
             >
               <Icon size={15} />
               <div className="min-w-0 flex-1 text-left">
                 <div>{label}</div>
               </div>
-              <span
-                className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
-                  active
-                    ? 'text-[#fafafa]/70 opacity-0 group-hover:opacity-100'
-                    : 'text-[#a3a3a3] opacity-0 group-hover:opacity-100'
-                }`}
-                aria-hidden
-              >
-                ⌥{navIdx + 1}
-              </span>
+              {shortcut ? (
+                <span
+                  className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
+                    active
+                      ? 'text-[#fafafa]/70 opacity-0 group-hover:opacity-100'
+                      : 'text-[#a3a3a3] opacity-0 group-hover:opacity-100'
+                  }`}
+                  aria-hidden
+                >
+                  ⌥{shortcut}
+                </span>
+              ) : null}
               {isPending ? (
                 <Loader2
                   size={14}
@@ -319,6 +350,17 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               </div>
               <div className="border-t border-[#f0f0f0]">
                 <Link
+                  href="/app/settings"
+                  onClick={() => {
+                    setAccountMenuOpen(false)
+                    setMobileMenuOpen(false)
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                >
+                  <Settings size={13} />
+                  Settings
+                </Link>
+                <Link
                   href="/account"
                   onClick={() => {
                     setAccountMenuOpen(false)
@@ -361,7 +403,10 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
 
           <button
             type="button"
-            onClick={() => setAccountMenuOpen((value) => !value)}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAccountMenuOpen((value) => !value)
+            }}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
           >
             <User size={13} />
@@ -389,7 +434,10 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
           <div className="relative shrink-0" ref={mobileAccountRef}>
             <button
               type="button"
-              onClick={() => setMobileAccountOpen((o) => !o)}
+              onClick={(e) => {
+                e.stopPropagation()
+                setMobileAccountOpen((o) => !o)
+              }}
               aria-label="Account menu"
               aria-expanded={mobileAccountOpen}
               className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#f5f5f5]"
@@ -406,6 +454,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   <UsageBar entitlements={entitlements} />
                 </div>
                 <div className="border-t border-[#f0f0f0]">
+                  <Link
+                    href="/app/settings"
+                    onClick={() => setMobileAccountOpen(false)}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                  >
+                    <Settings size={13} />
+                    Settings
+                  </Link>
                   <Link
                     href="/account"
                     onClick={() => setMobileAccountOpen(false)}

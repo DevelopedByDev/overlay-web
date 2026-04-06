@@ -264,6 +264,10 @@ type AssistantVisualBlock =
       state: string
       toolInput?: Record<string, unknown>
       toolOutput?: unknown
+      /** Model reasoning folded from the following `reasoning` part (see `foldReasoningIntoPrecedingTools`) */
+      reasoningText?: string
+      reasoningState?: string
+      reasoningKey?: string
     }
   | { kind: 'text'; text: string }
   | { kind: 'file'; url: string; mediaType?: string }
@@ -347,6 +351,49 @@ function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVi
         out.push({ kind: 'text', text: merged })
       }
     }
+  }
+  return foldReasoningIntoPrecedingTools(out)
+}
+
+/**
+ * Fold a `reasoning` part that immediately follows one or more `tool` parts onto the last tool
+ * in that run so the UI can show it as collapsible “thinking” under that tool row.
+ */
+function foldReasoningIntoPrecedingTools(blocks: AssistantVisualBlock[]): AssistantVisualBlock[] {
+  const out: AssistantVisualBlock[] = []
+  let i = 0
+  while (i < blocks.length) {
+    const cur = blocks[i]!
+    if (cur.kind === 'tool') {
+      const run: AssistantVisualBlock[] = []
+      while (i < blocks.length && blocks[i]!.kind === 'tool') {
+        run.push(blocks[i]!)
+        i++
+      }
+      let folded: Extract<AssistantVisualBlock, { kind: 'reasoning' }> | null = null
+      if (i < blocks.length && blocks[i]!.kind === 'reasoning') {
+        folded = blocks[i]! as Extract<AssistantVisualBlock, { kind: 'reasoning' }>
+        i++
+      }
+      const tools = run.map((b) => {
+        const t = b as Extract<AssistantVisualBlock, { kind: 'tool' }>
+        return { ...t }
+      })
+      if (folded && tools.length > 0) {
+        const lastIdx = tools.length - 1
+        const last = tools[lastIdx]!
+        tools[lastIdx] = {
+          ...last,
+          reasoningText: folded.text,
+          reasoningState: folded.state,
+          reasoningKey: folded.key,
+        }
+      }
+      for (const t of tools) out.push(t)
+      continue
+    }
+    out.push(cur)
+    i++
   }
   return out
 }
@@ -548,7 +595,7 @@ type AssistantVisualSegment =
   | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
   | { kind: 'tools'; tools: ToolVisualBlock[]; originIndex: number }
 
-function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
+function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
   const out: AssistantVisualSegment[] = []
   let i = 0
   while (i < blocks.length) {
@@ -590,6 +637,57 @@ function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): Assistant
   return out
 }
 
+/**
+ * Merge consecutive `tools` segments when only standalone `reasoning` (thinking) appears between them,
+ * so a long run of tools without body text becomes one "N tools called" group.
+ */
+function mergeConsecutiveToolSegments(segments: AssistantVisualSegment[]): AssistantVisualSegment[] {
+  const out: AssistantVisualSegment[] = []
+  let i = 0
+  while (i < segments.length) {
+    const s = segments[i]!
+    if (s.kind !== 'tools') {
+      out.push(s)
+      i++
+      continue
+    }
+    const merged = [...s.tools]
+    const origin = s.originIndex
+    i++
+    while (i < segments.length) {
+      const next = segments[i]!
+      if (next.kind === 'reasoning') {
+        i++
+        continue
+      }
+      if (next.kind === 'tools') {
+        merged.push(...next.tools)
+        i++
+        continue
+      }
+      break
+    }
+    out.push({ kind: 'tools', tools: merged, originIndex: origin })
+  }
+  return out
+}
+
+function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
+  return mergeConsecutiveToolSegments(buildAssistantVisualSegmentsRaw(blocks))
+}
+
+function isToolChainSegment(seg: AssistantVisualSegment): boolean {
+  return seg.kind === 'browser' || seg.kind === 'tools'
+}
+
+function computeToolChainFlags(segments: AssistantVisualSegment[]): Array<{ chainTop: boolean; chainBottom: boolean }> {
+  return segments.map((seg, i) => ({
+    chainTop: i > 0 && isToolChainSegment(segments[i - 1]!) && isToolChainSegment(seg),
+    chainBottom:
+      i < segments.length - 1 && isToolChainSegment(seg) && isToolChainSegment(segments[i + 1]!),
+  }))
+}
+
 function ToolLineLogo() {
   return (
     <Image
@@ -603,51 +701,104 @@ function ToolLineLogo() {
   )
 }
 
-function ReasoningBlock({
-  text,
-  state,
-  isMessageStreaming,
-}: {
-  text: string
-  state?: string
-  isMessageStreaming: boolean
-}) {
-  const streaming = state === 'streaming' || (isMessageStreaming && state !== 'done')
+/** Vertical connector between consecutive tool rows (logo stays top-aligned; line in logo column). */
+function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; connectBottom: boolean }) {
+  const showLine = connectTop || connectBottom
+  const logoBottom = 'calc(0.125rem + 1rem)' /* mt-0.5 + size-4 */
   return (
-    <div className="w-full px-1 py-1.5">
-      <div className="flex items-start gap-2.5">
-        <BrainCircuit size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-[#a1a1aa]" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-[#a1a1aa]">Thinking</div>
-          <div className="mt-1 max-h-[min(40vh,320px)] overflow-y-auto text-[13px] leading-relaxed text-[#52525b] whitespace-pre-wrap select-text">
-            {text}
-            {streaming ? <span className="ml-0.5 inline-block w-1.5 animate-pulse align-middle text-[#71717a]">▍</span> : null}
-          </div>
-        </div>
+    <div className="relative flex w-4 shrink-0 flex-col items-center self-stretch">
+      {showLine && (
+        <div
+          className="absolute left-1/2 z-0 w-px -translate-x-1/2 bg-[#e8e8e8]"
+          aria-hidden
+          style={
+            connectTop && connectBottom
+              ? { top: 0, bottom: 0 }
+              : connectTop
+                ? { top: 0, height: logoBottom }
+                : { top: logoBottom, bottom: 0 }
+          }
+        />
+      )}
+      <div className="relative z-[1] shrink-0 rounded-full bg-[#fafafa] p-px">
+        <ToolLineLogo />
+      </div>
+      <div className="min-h-0 flex-1" />
+    </div>
+  )
+}
+
+/** Standalone model reasoning while streaming — no text; same chrome as a tool row with shimmer. */
+function ThinkingShimmerRow() {
+  return (
+    <div className="w-full px-1 py-0.5">
+      <div className="message-appear flex max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug">
+        <ToolLogoColumn connectTop={false} connectBottom={false} />
+        <span className="tool-line-shimmer min-w-0">Thinking</span>
       </div>
     </div>
   )
 }
 
-function SingleToolCallRow({ block }: { block: ToolVisualBlock }) {
-  const running = !TOOL_UI_DONE_STATES.has(block.state)
+function ToolCallRowWithReasoning({
+  block,
+  variant = 'default',
+  connectTop = false,
+  connectBottom = false,
+}: {
+  block: ToolVisualBlock
+  variant?: 'default' | 'nested'
+  connectTop?: boolean
+  connectBottom?: boolean
+}) {
+  const toolDone = TOOL_UI_DONE_STATES.has(block.state)
   const err = block.state === 'output-error' || block.state === 'output-denied'
+  const running = !toolDone && !err
   const label = getDescriptiveToolLabel(block.name, block.toolInput)
+
+  const pad = variant === 'nested' ? 'py-0.5' : 'py-1'
+
   return (
-    <div className="flex w-full max-w-[min(100%,36rem)] items-start gap-2.5 px-1 py-1 text-[13px] leading-snug">
-      <ToolLineLogo />
-      <span
-        className={`min-w-0 flex-1 ${
-          running && !err ? 'tool-line-shimmer' : err ? 'text-red-600' : 'text-[#52525b]'
-        }`}
-      >
-        {label}
-      </span>
+    <div className="w-full max-w-[min(100%,36rem)]">
+      <div className={`flex items-stretch gap-2.5 ${pad} text-[13px] leading-snug`}>
+        <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+        <span
+          className={`min-w-0 ${
+            running && !err ? 'tool-line-shimmer' : err ? 'text-red-600' : 'text-[#52525b]'
+          }`}
+        >
+          {label}
+        </span>
+      </div>
     </div>
   )
 }
 
-function ToolCallsCollapsedGroup({ tools }: { tools: ToolVisualBlock[] }) {
+function SingleToolCallRow({
+  block,
+  connectTop,
+  connectBottom,
+}: {
+  block: ToolVisualBlock
+  connectTop: boolean
+  connectBottom: boolean
+}) {
+  return (
+    <div className="w-full px-1 py-0.5">
+      <ToolCallRowWithReasoning block={block} connectTop={connectTop} connectBottom={connectBottom} />
+    </div>
+  )
+}
+
+function ToolCallsCollapsedGroup({
+  tools,
+  connectTop,
+  connectBottom,
+}: {
+  tools: ToolVisualBlock[]
+  connectTop: boolean
+  connectBottom: boolean
+}) {
   const [open, setOpen] = useState(false)
   const n = tools.length
   const anyRunning = tools.some((t) => !TOOL_UI_DONE_STATES.has(t.state))
@@ -664,23 +815,29 @@ function ToolCallsCollapsedGroup({ tools }: { tools: ToolVisualBlock[] }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full max-w-[min(100%,36rem)] items-start gap-2.5 rounded-md px-1 py-1 text-left text-[13px] leading-snug text-[#52525b] transition-colors hover:bg-[#f4f4f5]/80"
+        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-[#52525b] transition-colors hover:bg-[#f4f4f5]/80"
       >
-        <ToolLineLogo />
-        <span className={`min-w-0 flex-1 ${anyRunning && !anyErr ? 'tool-line-shimmer' : ''}`}>{summary}</span>
-        <ChevronDown
-          size={14}
-          strokeWidth={1.75}
-          className={`mt-0.5 shrink-0 text-[#a1a1aa] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-          aria-hidden
-        />
+        <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <span className={`min-w-0 ${anyRunning && !anyErr ? 'tool-line-shimmer' : ''}`}>{summary}</span>
+          <ChevronDown
+            size={14}
+            strokeWidth={1.75}
+            className={`shrink-0 text-[#a1a1aa] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </span>
       </button>
       {open && (
-        <div className="ml-[22px] mt-1 space-y-1 border-l border-[#e8e8e8] pl-3">
-          {tools.map((t) => (
-            <div key={t.key} className="text-[12px] leading-snug text-[#71717a]">
-              {getDescriptiveToolLabel(t.name, t.toolInput)}
-            </div>
+        <div className="mt-2 space-y-2">
+          {tools.map((t, idx) => (
+            <ToolCallRowWithReasoning
+              key={t.key}
+              block={t}
+              variant="nested"
+              connectTop={idx > 0}
+              connectBottom={idx < tools.length - 1}
+            />
           ))}
         </div>
       )}
@@ -690,8 +847,12 @@ function ToolCallsCollapsedGroup({ tools }: { tools: ToolVisualBlock[] }) {
 
 function BrowserToolBlock({
   block,
+  connectTop,
+  connectBottom,
 }: {
   block: ToolVisualBlock
+  connectTop: boolean
+  connectBottom: boolean
 }) {
   const isDone = block.state === 'output-available'
   const isError = block.state === 'output-error' || block.state === 'output-denied'
@@ -709,8 +870,8 @@ function BrowserToolBlock({
   if (isError) {
     return (
       <div className="w-full px-1 py-0.5">
-        <div className="flex max-w-[min(100%,36rem)] items-start gap-2.5 text-[13px] leading-snug">
-          <ToolLineLogo />
+        <div className="flex max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug">
+          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
           <span className="min-w-0 flex-1 text-red-600">{label} — couldn’t complete</span>
         </div>
       </div>
@@ -720,8 +881,8 @@ function BrowserToolBlock({
   return (
     <div className="w-full px-1 py-0.5">
       <div className="max-w-[min(100%,36rem)]">
-        <div className="flex items-start gap-2.5 text-[13px] leading-snug">
-          <ToolLineLogo />
+        <div className="flex items-stretch gap-2.5 text-[13px] leading-snug">
+          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className={running ? 'tool-line-shimmer' : 'text-[#52525b]'}>{label}</span>
@@ -745,7 +906,7 @@ function BrowserToolBlock({
         </div>
         {liveUrl && isDone ? (
           <div
-            className={`ml-7 overflow-hidden transition-all duration-300 ${isPreviewOpen ? 'max-h-[340px] pt-3' : 'max-h-0'}`}
+            className={`ml-[26px] overflow-hidden transition-all duration-300 ${isPreviewOpen ? 'max-h-[340px] pt-3' : 'max-h-0'}`}
           >
             <iframe
               src={liveUrl}
@@ -895,6 +1056,11 @@ function ExchangeBlock({
       }
       return idx
     })()
+    const assistantSegments = useMemo(
+      () => buildAssistantVisualSegments(assistantVisualBlocks),
+      [assistantVisualBlocks],
+    )
+    const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
     const responseSettled = !responseInProgress
     const showFooter =
       responseSettled && (assistantPlainText.length > 0 || !!errorMessage)
@@ -975,15 +1141,15 @@ function ExchangeBlock({
           </div>
         )}
 
-        {buildAssistantVisualSegments(assistantVisualBlocks).map((seg) => {
+        {assistantSegments.map((seg, segIdx) => {
+          const chain = toolChainFlags[segIdx]!
           if (seg.kind === 'reasoning') {
+            const active =
+              seg.block.state === 'streaming' ||
+              (isStreaming && seg.block.state !== 'done')
+            if (!active) return null
             return (
-              <ReasoningBlock
-                key={`${exchIdx}-seq-r-${seg.originIndex}-${seg.block.key}`}
-                text={seg.block.text}
-                state={seg.block.state}
-                isMessageStreaming={isStreaming}
-              />
+              <ThinkingShimmerRow key={`${exchIdx}-seq-r-${seg.originIndex}-${seg.block.key}`} />
             )
           }
           if (seg.kind === 'browser') {
@@ -991,6 +1157,8 @@ function ExchangeBlock({
               <BrowserToolBlock
                 key={`${exchIdx}-seq-${seg.originIndex}-${seg.block.key}`}
                 block={seg.block}
+                connectTop={chain.chainTop}
+                connectBottom={chain.chainBottom}
               />
             )
           }
@@ -998,10 +1166,22 @@ function ExchangeBlock({
             if (seg.tools.length === 1) {
               const t = seg.tools[0]!
               return (
-                <SingleToolCallRow key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`} block={t} />
+                <SingleToolCallRow
+                  key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
+                  block={t}
+                  connectTop={chain.chainTop}
+                  connectBottom={chain.chainBottom}
+                />
               )
             }
-            return <ToolCallsCollapsedGroup key={`${exchIdx}-seq-tools-${seg.originIndex}`} tools={seg.tools} />
+            return (
+              <ToolCallsCollapsedGroup
+                key={`${exchIdx}-seq-tools-${seg.originIndex}`}
+                tools={seg.tools}
+                connectTop={chain.chainTop}
+                connectBottom={chain.chainBottom}
+              />
+            )
           }
           if (seg.kind === 'file') {
             const block = seg.block
