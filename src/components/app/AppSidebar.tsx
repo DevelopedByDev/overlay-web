@@ -7,7 +7,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, LogOut, User,
-  Smartphone, Puzzle, Monitor, ChevronUp, AlertCircle,
+  Puzzle, Monitor, ChevronUp, AlertCircle,
   FolderOpen, Images, Loader2, Menu, X, ArrowUp, Workflow, Settings,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
@@ -32,11 +32,9 @@ const NAV_ITEMS: Array<{
   { label: 'Automations', icon: Workflow, disabled: true },
 ]
 
-const APP_LINKS = [
-  { label: 'Mobile App', icon: Smartphone },
-  { label: 'Chrome Extension', icon: Puzzle },
+const PROFILE_APP_LINKS = [
   { label: 'Desktop App', icon: Monitor, href: 'https://getoverlay.io' },
-]
+] as const
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
@@ -158,8 +156,8 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
         setAccountMenuOpen(false)
       }
     }
-    document.addEventListener('click', handleClick, true)
-    return () => document.removeEventListener('click', handleClick, true)
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
   }, [accountMenuOpen])
 
   useEffect(() => {
@@ -169,8 +167,8 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
         setMobileAccountOpen(false)
       }
     }
-    document.addEventListener('click', handleClick, true)
-    return () => document.removeEventListener('click', handleClick, true)
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
   }, [mobileAccountOpen])
 
   useEffect(() => {
@@ -307,38 +305,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       </nav>
 
       <div className="space-y-3 border-t border-[#e5e5e5] px-3 py-3">
-        <div className="space-y-1">
-          <p className="px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[#888]">
-            Apps
-          </p>
-          <div className="space-y-1">
-            {APP_LINKS.map(({ label, icon: Icon, href }) =>
-              href ? (
-                <a
-                  key={label}
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
-                >
-                  <Icon size={13} />
-                  {label}
-                </a>
-              ) : (
-                <button
-                  key={label}
-                  type="button"
-                  className="flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#a3a3a3]"
-                >
-                  <Icon size={13} />
-                  {label}
-                </button>
-              ),
-            )}
-          </div>
-        </div>
-
-        <div ref={menuRef} className="relative border-t border-[#e5e5e5] pt-2">
+        <div ref={menuRef} className="relative">
           {accountMenuOpen && (
             <div
               className="absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg"
@@ -347,6 +314,21 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               <div className="px-3 py-2">
                 <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
                 <UsageBar entitlements={entitlements} />
+              </div>
+              <div className="border-t border-[#f0f0f0]">
+                <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Apps</p>
+                {PROFILE_APP_LINKS.map(({ label, icon: Icon, href }) => (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                  >
+                    <Icon size={13} />
+                    {label}
+                  </a>
+                ))}
               </div>
               <div className="border-t border-[#f0f0f0]">
                 <Link
@@ -403,10 +385,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
 
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setAccountMenuOpen((value) => !value)
-            }}
+            onClick={() => setAccountMenuOpen((value) => !value)}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
           >
             <User size={13} />
@@ -434,10 +413,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
           <div className="relative shrink-0" ref={mobileAccountRef}>
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                setMobileAccountOpen((o) => !o)
-              }}
+              onClick={() => setMobileAccountOpen((o) => !o)}
               aria-label="Account menu"
               aria-expanded={mobileAccountOpen}
               className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#f5f5f5]"
@@ -452,6 +428,22 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                 <div className="px-3 py-2">
                   <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
                   <UsageBar entitlements={entitlements} />
+                </div>
+                <div className="border-t border-[#f0f0f0]">
+                  <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Apps</p>
+                  {PROFILE_APP_LINKS.map(({ label, icon: Icon, href }) => (
+                    <a
+                      key={label}
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => setMobileAccountOpen(false)}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                    >
+                      <Icon size={13} />
+                      {label}
+                    </a>
+                  ))}
                 </div>
                 <div className="border-t border-[#f0f0f0]">
                   <Link
