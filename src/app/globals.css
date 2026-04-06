@@ -498,6 +498,32 @@ html {
   animation: messageAppear 0.18s ease-out forwards;
 }
 
+/* Tool-call line: left-to-right shimmer while a tool is executing */
+@keyframes tool-line-shimmer {
+  0% {
+    background-position: 200% 50%;
+  }
+  100% {
+    background-position: -200% 50%;
+  }
+}
+
+.tool-line-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    #71717a 0%,
+    #71717a 40%,
+    #a1a1aa 50%,
+    #71717a 60%,
+    #71717a 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: tool-line-shimmer 1.35s linear infinite;
+}
+
 /* Gray shimmer skeleton for media generation */
 @keyframes media-shimmer-slide {
   0% {

@@ -62,6 +62,24 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
 
   const parts: Array<Record<string, unknown>> = []
   for (const step of list) {
+    let reasoningText = ''
+    if (step.reasoningText?.trim()) {
+      reasoningText = step.reasoningText.trim()
+    } else if (step.reasoning?.length) {
+      reasoningText = step.reasoning
+        .map((r) => (r && typeof r === 'object' && 'text' in r ? String((r as { text?: string }).text ?? '') : ''))
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join('\n\n')
+    }
+    if (reasoningText) {
+      parts.push({
+        type: 'reasoning',
+        text: normalizeAgentAssistantText(reasoningText),
+        state: 'done',
+      })
+    }
+
     const toolResultsById = new Map(
       (step.toolResults ?? []).map((result) => [result.toolCallId, result] as const),
     )

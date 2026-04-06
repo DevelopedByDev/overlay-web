@@ -18,14 +18,14 @@ import {
   Reply,
   BrainCircuit,
   ArrowUp,
-  Globe,
   Play,
   MessageSquare,
   Terminal,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
-import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai'
+import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
 import { useSearchParams, useRouter } from 'next/navigation'
+import Image from 'next/image'
 import {
   CHAT_MODEL_QUALITY_PRIORITY,
   DEFAULT_MODEL_ID,
@@ -267,6 +267,7 @@ type AssistantVisualBlock =
     }
   | { kind: 'text'; text: string }
   | { kind: 'file'; url: string; mediaType?: string }
+  | { kind: 'reasoning'; key: string; text: string; state?: string }
 
 /**
  * Preserve message `parts` order so tools and text interleave (matches stream / persisted transcript).
@@ -314,6 +315,23 @@ function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVi
       })
       continue
     }
+    if (isReasoningUIPart(p as never)) {
+      const part = p as { type: 'reasoning'; text?: string; state?: string }
+      const merged = normalizeAgentAssistantText(part.text?.trim() || '')
+      if (!merged) continue
+      const prev = out[out.length - 1]
+      if (prev?.kind === 'reasoning') {
+        prev.text = normalizeAgentAssistantText(`${prev.text}\n\n${merged}`)
+      } else {
+        out.push({
+          kind: 'reasoning',
+          key: `reasoning-${out.length}`,
+          text: merged,
+          state: part.state,
+        })
+      }
+      continue
+    }
     const pt = p as { type?: string; text?: string; url?: string; mediaType?: string }
     if (pt.type === 'file' && typeof pt.url === 'string' && pt.url) {
       out.push({ kind: 'file', url: pt.url, mediaType: pt.mediaType })
@@ -342,49 +360,338 @@ function assistantBlocksToPlainText(blocks: AssistantVisualBlock[]): string {
 
 const TOOL_UI_DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
 
-function formatToolLabel(toolId: string): string {
-  const map: Record<string, string> = {
-    browser_run_task: 'Browse the web',
-    perplexity_search: 'Web search',
-    search_knowledge: 'Knowledge search',
-    list_notes: 'List notes',
-    get_note: 'Open note',
-    create_note: 'Create note',
-    update_note: 'Update note',
-    delete_note: 'Delete note',
-    save_memory: 'Save memory',
-    update_memory: 'Update memory',
-    delete_memory: 'Delete memory',
-    generate_image: 'Generate image',
-    generate_video: 'Generate video',
+const OVERLAY_LOGO_SRC = '/assets/overlay-logo.png'
+
+function pickFirstStringFromInput(input: Record<string, unknown> | undefined, keys: string[]): string | null {
+  if (!input) return null
+  for (const k of keys) {
+    const v = input[k]
+    if (typeof v === 'string' && v.trim()) return v.trim()
   }
-  if (map[toolId]) return map[toolId]!
-  const id = toolId.trim()
-  if (/composio/i.test(id)) {
-    const rest = id.replace(/^composio_?/i, '')
-    const title = rest
-      .split(/_+/)
-      .filter(Boolean)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(' ')
-    return title ? `Integration · ${title}` : 'Integration'
-  }
-  return id.replace(/_/g, ' ')
+  return null
 }
 
-function toolStateUiLabel(state: string): string {
-  if (state === 'output-available') return 'Done'
-  if (state === 'output-error') return 'Error'
-  if (state === 'output-denied') return 'Denied'
-  if (state === 'input-streaming' || state === 'input-available') return 'Running…'
-  if (state === 'approval-requested' || state === 'approval-responded') return 'Approval'
-  return state
+function titleCaseUnderscore(id: string): string {
+  return id
+    .trim()
+    .split(/_+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+}
+
+function describeComposioSearchToolsInput(input?: Record<string, unknown>): string | null {
+  if (!input) return null
+  const hint =
+    pickFirstStringFromInput(input, ['use_case', 'intent', 'description', 'goal', 'task']) ??
+    (typeof input.query === 'string' ? input.query : null)
+  if (hint) {
+    const clipped = hint.length > 120 ? `${hint.slice(0, 120)}…` : hint
+    return `Finding the right tools — ${clipped}`
+  }
+  const qs = input.queries
+  if (Array.isArray(qs) && qs.length && typeof qs[0] === 'string' && qs[0].trim()) {
+    const q = qs[0]!.trim()
+    const clipped = q.length > 80 ? `${q.slice(0, 80)}…` : q
+    return `Searching apps for “${clipped}”`
+  }
+  return null
+}
+
+const INTEGRATION_SERVICE_NAMES: Record<string, string> = {
+  GMAIL: 'Gmail',
+  GOOGLE_CALENDAR: 'Google Calendar',
+  GOOGLE_DRIVE: 'Google Drive',
+  GOOGLE_SHEETS: 'Google Sheets',
+  GOOGLE_DOCS: 'Google Docs',
+  SLACK: 'Slack',
+  NOTION: 'Notion',
+  GITHUB: 'GitHub',
+  LINEAR: 'Linear',
+  DISCORD: 'Discord',
+  OUTLOOK: 'Outlook',
+  CAL_COM: 'Cal.com',
+  TWITTER: 'Twitter',
+  HUBSPOT: 'HubSpot',
+  SALESFORCE: 'Salesforce',
+  AIRTABLE: 'Airtable',
+  ZOOM: 'Zoom',
+  TRELLO: 'Trello',
+  JIRA: 'Jira',
+  DROPBOX: 'Dropbox',
+}
+
+function serviceNameFromComposioTool(toolName: string): string | null {
+  const u = toolName.toUpperCase()
+  const keys = Object.keys(INTEGRATION_SERVICE_NAMES).sort((a, b) => b.length - a.length)
+  for (const prefix of keys) {
+    if (u.startsWith(`${prefix}_`)) {
+      return INTEGRATION_SERVICE_NAMES[prefix] ?? null
+    }
+  }
+  return null
+}
+
+function describeComposioIntegrationTool(toolName: string, input?: Record<string, unknown>): string {
+  const service = serviceNameFromComposioTool(toolName)
+  const u = toolName.toUpperCase()
+  const q =
+    input &&
+    pickFirstStringFromInput(input, [
+      'query',
+      'search_query',
+      'q',
+      'search',
+      'prompt',
+      'message',
+      'subject',
+      'body',
+      'text',
+    ])
+
+  if (service) {
+    if (q && (u.includes('SEARCH') || u.includes('FIND') || u.includes('QUERY') || u.includes('LIST_MESSAGE'))) {
+      const clipped = q.length > 56 ? `${q.slice(0, 56)}…` : q
+      return `Searching ${service} for “${clipped}”`
+    }
+    if (/(SEND|POST|CREATE_MESSAGE|REPLY)/.test(u) && u.includes('MAIL')) {
+      return `Sending mail in ${service}`
+    }
+    if (/(SEND|POST|MESSAGE)/.test(u) && u.includes('SLACK')) {
+      return `Sending a message in ${service}`
+    }
+    if (/(CREATE_EVENT|ADD_EVENT|INSERT_EVENT|SCHEDULE)/.test(u)) {
+      return `Scheduling an event in ${service}`
+    }
+    if (/(LIST_MESSAGES|FETCH|INBOX|THREAD)/.test(u) && u.includes('GMAIL')) {
+      return `Reading mail in ${service}`
+    }
+    if (/(LIST_EVENT|GET_EVENT|SEARCH_EVENT|FIND_EVENT|FREE_BUSY|AVAILABILITY)/.test(u)) {
+      return `Looking at events in ${service}`
+    }
+    if (/(UPDATE_EVENT|PATCH_EVENT|EDIT_EVENT)/.test(u)) {
+      return `Updating an event in ${service}`
+    }
+    if (/(DELETE_EVENT|REMOVE_EVENT|CANCEL_EVENT)/.test(u)) {
+      return `Updating calendar in ${service}`
+    }
+    if (/(CREATE|ADD|NEW)/.test(u) && !/(CREATE_EVENT)/.test(u)) {
+      return `Creating in ${service}`
+    }
+    if (/(UPDATE|EDIT|PATCH)/.test(u)) {
+      return `Updating ${service}`
+    }
+    if (/(DELETE|REMOVE)/.test(u)) {
+      return `Deleting in ${service}`
+    }
+    if (/(LIST|SEARCH|FETCH|GET|FIND|QUERY|READ)/.test(u)) {
+      return `Searching ${service}`
+    }
+    return `Using ${service}`
+  }
+
+  if (u.includes('MULTI_EXECUTE')) {
+    return 'Running connected app actions'
+  }
+  if (u.includes('SEARCH_TOOLS')) {
+    return describeComposioSearchToolsInput(input) ?? 'Finding the right tools for your task'
+  }
+
+  return titleCaseUnderscore(toolName.replace(/^composio_/i, ''))
+}
+
+function getDescriptiveToolLabel(toolName: string, toolInput?: Record<string, unknown>): string {
+  const map: Record<string, string> = {
+    browser_run_task: 'Browsing the web',
+    perplexity_search: 'Searching the web',
+    search_knowledge: 'Searching your knowledge',
+    list_skills: 'Checking your skills',
+    list_notes: 'Listing your notes',
+    get_note: 'Opening a note',
+    create_note: 'Creating a note',
+    update_note: 'Updating a note',
+    delete_note: 'Deleting a note',
+    save_memory: 'Saving to memory',
+    update_memory: 'Updating memory',
+    delete_memory: 'Deleting memory',
+    generate_image: 'Generating an image',
+    generate_video: 'Generating a video',
+    run_daytona_sandbox: 'Running your workspace',
+  }
+  if (map[toolName]) return map[toolName]!
+
+  if (toolName === 'COMPOSIO_SEARCH_TOOLS') {
+    return describeComposioSearchToolsInput(toolInput) ?? 'Finding the right tools for your task'
+  }
+
+  if (/composio|GMAIL_|GOOGLE_|SLACK_|NOTION_|GITHUB_|LINEAR_|OUTLOOK_|CAL_COM/i.test(toolName)) {
+    return describeComposioIntegrationTool(toolName, toolInput)
+  }
+
+  if (toolName === 'perplexity_search' && toolInput) {
+    const q = pickFirstStringFromInput(toolInput, ['query', 'q'])
+    if (q) {
+      const clipped = q.length > 72 ? `${q.slice(0, 72)}…` : q
+      return `Searching the web for “${clipped}”`
+    }
+  }
+
+  return titleCaseUnderscore(toolName)
+}
+
+type ToolVisualBlock = Extract<AssistantVisualBlock, { kind: 'tool' }>
+
+type AssistantVisualSegment =
+  | { kind: 'reasoning'; block: Extract<AssistantVisualBlock, { kind: 'reasoning' }>; originIndex: number }
+  | { kind: 'text'; block: Extract<AssistantVisualBlock, { kind: 'text' }>; originIndex: number }
+  | { kind: 'file'; block: Extract<AssistantVisualBlock, { kind: 'file' }>; originIndex: number }
+  | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
+  | { kind: 'tools'; tools: ToolVisualBlock[]; originIndex: number }
+
+function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
+  const out: AssistantVisualSegment[] = []
+  let i = 0
+  while (i < blocks.length) {
+    const b = blocks[i]!
+    if (b.kind === 'reasoning') {
+      out.push({ kind: 'reasoning', block: b, originIndex: i })
+      i++
+      continue
+    }
+    if (b.kind === 'tool' && b.name === 'browser_run_task') {
+      out.push({ kind: 'browser', block: b, originIndex: i })
+      i++
+      continue
+    }
+    if (b.kind === 'tool') {
+      const start = i
+      const group: ToolVisualBlock[] = []
+      while (i < blocks.length) {
+        const t = blocks[i]!
+        if (t.kind !== 'tool' || t.name === 'browser_run_task') break
+        group.push(t)
+        i++
+      }
+      out.push({ kind: 'tools', tools: group, originIndex: start })
+      continue
+    }
+    if (b.kind === 'file') {
+      out.push({ kind: 'file', block: b, originIndex: i })
+      i++
+      continue
+    }
+    if (b.kind === 'text') {
+      out.push({ kind: 'text', block: b, originIndex: i })
+      i++
+      continue
+    }
+    i++
+  }
+  return out
+}
+
+function ToolLineLogo() {
+  return (
+    <Image
+      src={OVERLAY_LOGO_SRC}
+      alt=""
+      width={16}
+      height={16}
+      className="mt-0.5 size-4 shrink-0 select-none"
+      draggable={false}
+    />
+  )
+}
+
+function ReasoningBlock({
+  text,
+  state,
+  isMessageStreaming,
+}: {
+  text: string
+  state?: string
+  isMessageStreaming: boolean
+}) {
+  const streaming = state === 'streaming' || (isMessageStreaming && state !== 'done')
+  return (
+    <div className="w-full px-1 py-1.5">
+      <div className="flex items-start gap-2.5">
+        <BrainCircuit size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-[#a1a1aa]" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-[#a1a1aa]">Thinking</div>
+          <div className="mt-1 max-h-[min(40vh,320px)] overflow-y-auto text-[13px] leading-relaxed text-[#52525b] whitespace-pre-wrap select-text">
+            {text}
+            {streaming ? <span className="ml-0.5 inline-block w-1.5 animate-pulse align-middle text-[#71717a]">▍</span> : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SingleToolCallRow({ block }: { block: ToolVisualBlock }) {
+  const running = !TOOL_UI_DONE_STATES.has(block.state)
+  const err = block.state === 'output-error' || block.state === 'output-denied'
+  const label = getDescriptiveToolLabel(block.name, block.toolInput)
+  return (
+    <div className="flex w-full max-w-[min(100%,36rem)] items-start gap-2.5 px-1 py-1 text-[13px] leading-snug">
+      <ToolLineLogo />
+      <span
+        className={`min-w-0 flex-1 ${
+          running && !err ? 'tool-line-shimmer' : err ? 'text-red-600' : 'text-[#52525b]'
+        }`}
+      >
+        {label}
+      </span>
+    </div>
+  )
+}
+
+function ToolCallsCollapsedGroup({ tools }: { tools: ToolVisualBlock[] }) {
+  const [open, setOpen] = useState(false)
+  const n = tools.length
+  const anyRunning = tools.some((t) => !TOOL_UI_DONE_STATES.has(t.state))
+  const anyErr = tools.some((t) => t.state === 'output-error' || t.state === 'output-denied')
+  const summary =
+    anyErr
+      ? `${n} tools called`
+      : anyRunning
+        ? `${n} tools in progress`
+        : `${n} tools called`
+
+  return (
+    <div className="w-full px-1 py-0.5">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full max-w-[min(100%,36rem)] items-start gap-2.5 rounded-md px-1 py-1 text-left text-[13px] leading-snug text-[#52525b] transition-colors hover:bg-[#f4f4f5]/80"
+      >
+        <ToolLineLogo />
+        <span className={`min-w-0 flex-1 ${anyRunning && !anyErr ? 'tool-line-shimmer' : ''}`}>{summary}</span>
+        <ChevronDown
+          size={14}
+          strokeWidth={1.75}
+          className={`mt-0.5 shrink-0 text-[#a1a1aa] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+      {open && (
+        <div className="ml-[22px] mt-1 space-y-1 border-l border-[#e8e8e8] pl-3">
+          {tools.map((t) => (
+            <div key={t.key} className="text-[12px] leading-snug text-[#71717a]">
+              {getDescriptiveToolLabel(t.name, t.toolInput)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function BrowserToolBlock({
   block,
 }: {
-  block: Extract<AssistantVisualBlock, { kind: 'tool' }>
+  block: ToolVisualBlock
 }) {
   const isDone = block.state === 'output-available'
   const isError = block.state === 'output-error' || block.state === 'output-denied'
@@ -394,94 +701,60 @@ function BrowserToolBlock({
       ? (block.toolOutput as Record<string, unknown>)
       : undefined
   const liveUrl = typeof toolOutput?.liveUrl === 'string' ? toolOutput.liveUrl : null
-  const [isCollapsed, setIsCollapsed] = useState(false)
-  const isOpen = Boolean(liveUrl && isDone && !isCollapsed)
-  const stateLabel = toolStateUiLabel(block.state)
+  const [browserPreviewOpen, setBrowserPreviewOpen] = useState(false)
+  const isPreviewOpen = Boolean(liveUrl && isDone && browserPreviewOpen)
+  const label = getDescriptiveToolLabel('browser_run_task', block.toolInput)
+  const running = !isDone && !isError
 
   if (isError) {
     return (
-      <div className="w-full px-1">
-        <div className="inline-flex max-w-full items-center gap-2 rounded-lg border border-red-200 bg-red-50/80 px-3 py-2 text-[12px] leading-none text-red-700">
-          <span className="mt-px inline-flex size-2 shrink-0 rounded-full bg-red-500" aria-hidden />
-          <span className="min-w-0 truncate font-medium">Browse the web</span>
-          <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
-            {stateLabel}
-          </span>
-        </div>
-      </div>
-    )
-  }
-
-  if (!isDone) {
-    return (
-      <div className="w-full px-1">
-        <div className="w-full max-w-[560px] overflow-hidden rounded-xl border border-[#e4e4e7] bg-[#fafafa]">
-          <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-[12px] text-[#3f3f46]">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="relative inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-white text-[#52525b]">
-                <Globe size={12} strokeWidth={1.75} />
-                <span className="absolute -right-0.5 -top-0.5 inline-flex size-2 rounded-full bg-[#71717a] animate-pulse" />
-              </span>
-              <span className="truncate font-medium text-[#27272a]">Browse the web</span>
-            </div>
-            <span className="shrink-0 rounded-full bg-[#f4f4f5] px-2 py-0.5 text-[10px] font-medium text-[#71717a]">
-              {stateLabel}
-            </span>
-          </div>
-          {task && (
-            <>
-              <div className="mx-3 border-t border-[#ececf0]" />
-              <div className="px-3 py-2.5 text-[12px] leading-relaxed text-[#52525b]">{task}</div>
-            </>
-          )}
-          <div className="h-1.5 overflow-hidden bg-[#f0f0f0]">
-            <div className="h-full w-1/3 animate-pulse bg-gradient-to-r from-transparent via-[#d4d4d8] to-transparent" />
-          </div>
+      <div className="w-full px-1 py-0.5">
+        <div className="flex max-w-[min(100%,36rem)] items-start gap-2.5 text-[13px] leading-snug">
+          <ToolLineLogo />
+          <span className="min-w-0 flex-1 text-red-600">{label} — couldn’t complete</span>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="w-full px-1">
-      <div className="w-full max-w-[560px] rounded-xl border border-[#e4e4e7] bg-white">
-        <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-[12px] text-[#3f3f46]">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex size-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
-            <span className="truncate font-medium text-[#27272a]">Browse the web</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-              {stateLabel}
-            </span>
-            {liveUrl ? (
-              <button
-                type="button"
-                onClick={() => setIsCollapsed((collapsed) => !collapsed)}
-                className="inline-flex items-center gap-1 rounded-full bg-[#f4f4f5] px-2 py-0.5 text-[10px] font-medium text-[#52525b] transition-colors hover:bg-[#ececf0]"
-              >
-                View browser →
-                <span className={`inline-flex transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
-                  <ChevronDown size={12} strokeWidth={1.75} />
-                </span>
-              </button>
-            ) : null}
+    <div className="w-full px-1 py-0.5">
+      <div className="max-w-[min(100%,36rem)]">
+        <div className="flex items-start gap-2.5 text-[13px] leading-snug">
+          <ToolLineLogo />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className={running ? 'tool-line-shimmer' : 'text-[#52525b]'}>{label}</span>
+              {liveUrl && isDone ? (
+                <button
+                  type="button"
+                  onClick={() => setBrowserPreviewOpen((o) => !o)}
+                  className="inline-flex items-center gap-1 text-[12px] font-medium text-[#71717a] hover:text-[#0a0a0a]"
+                >
+                  Preview
+                  <ChevronDown
+                    size={14}
+                    strokeWidth={1.75}
+                    className={`transition-transform duration-200 ${isPreviewOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              ) : null}
+            </div>
+            {task ? <p className="mt-1 text-[12px] leading-relaxed text-[#71717a]">{task}</p> : null}
           </div>
         </div>
-        {liveUrl && (
+        {liveUrl && isDone ? (
           <div
-            className={`overflow-hidden border-t border-[#ececf0] px-3 transition-all duration-300 ${isOpen ? 'max-h-[340px] py-3' : 'max-h-0 py-0'}`}
+            className={`ml-7 overflow-hidden transition-all duration-300 ${isPreviewOpen ? 'max-h-[340px] pt-3' : 'max-h-0'}`}
           >
-            <div className={`transition-opacity duration-[400ms] ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
-              <iframe
-                src={liveUrl}
-                title="Browser Use live browser"
-                sandbox="allow-scripts allow-same-origin"
-                className="h-[280px] w-full rounded-xl border border-[#e4e4e7] bg-[#fafafa]"
-              />
-            </div>
+            <iframe
+              src={liveUrl}
+              title="Browser Use live browser"
+              sandbox="allow-scripts allow-same-origin"
+              className="h-[280px] w-full rounded-xl border border-[#e8e8e8] bg-[#fafafa]"
+            />
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )
@@ -702,53 +975,41 @@ function ExchangeBlock({
           </div>
         )}
 
-        {assistantVisualBlocks.map((block, bi) => {
-          if (block.kind === 'tool') {
-            if (block.name === 'browser_run_task') {
-              return <BrowserToolBlock key={`${exchIdx}-seq-${bi}-${block.key}`} block={block} />
-            }
-            const running = !TOOL_UI_DONE_STATES.has(block.state)
-            const err = block.state === 'output-error'
-            const stateLabel = toolStateUiLabel(block.state)
+        {buildAssistantVisualSegments(assistantVisualBlocks).map((seg) => {
+          if (seg.kind === 'reasoning') {
             return (
-              <div key={`${exchIdx}-seq-${bi}-${block.key}`} className="w-full px-1">
-                <div
-                  className={`inline-flex max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-[12px] leading-none ${
-                    err
-                      ? 'border-red-200 bg-red-50/80 text-red-700'
-                      : running
-                        ? 'border-[#e4e4e7] bg-[#fafafa] text-[#3f3f46]'
-                        : 'border-[#e4e4e7] bg-white text-[#3f3f46]'
-                  }`}
-                >
-                  <span
-                    className={`mt-px inline-flex size-2 shrink-0 rounded-full ${
-                      err ? 'bg-red-500' : running ? 'bg-[#71717a] animate-pulse' : 'bg-emerald-500'
-                    }`}
-                    aria-hidden
-                  />
-                  <span className="min-w-0 truncate font-medium text-[#27272a]">{formatToolLabel(block.name)}</span>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                      err
-                        ? 'bg-red-100 text-red-700'
-                        : running
-                          ? 'bg-[#f4f4f5] text-[#71717a]'
-                          : 'bg-emerald-50 text-emerald-700'
-                    }`}
-                  >
-                    {stateLabel}
-                  </span>
-                </div>
-              </div>
+              <ReasoningBlock
+                key={`${exchIdx}-seq-r-${seg.originIndex}-${seg.block.key}`}
+                text={seg.block.text}
+                state={seg.block.state}
+                isMessageStreaming={isStreaming}
+              />
             )
           }
-          if (block.kind === 'file') {
+          if (seg.kind === 'browser') {
+            return (
+              <BrowserToolBlock
+                key={`${exchIdx}-seq-${seg.originIndex}-${seg.block.key}`}
+                block={seg.block}
+              />
+            )
+          }
+          if (seg.kind === 'tools') {
+            if (seg.tools.length === 1) {
+              const t = seg.tools[0]!
+              return (
+                <SingleToolCallRow key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`} block={t} />
+              )
+            }
+            return <ToolCallsCollapsedGroup key={`${exchIdx}-seq-tools-${seg.originIndex}`} tools={seg.tools} />
+          }
+          if (seg.kind === 'file') {
+            const block = seg.block
             const isImg = (block.mediaType?.startsWith('image/') ?? true)
             const isVideo = block.mediaType?.startsWith('video/') ?? false
             if (!isImg && !isVideo) return null
             return (
-              <div key={`${exchIdx}-seq-${bi}-file`} className="w-full px-1 py-1">
+              <div key={`${exchIdx}-seq-${seg.originIndex}-file`} className="w-full px-1 py-1">
                 {isImg ? (
                   <img
                     src={block.url}
@@ -767,11 +1028,15 @@ function ExchangeBlock({
               </div>
             )
           }
-          const isLastText = bi === lastTextBlockIndex
+          const block = seg.block
+          const isLastText = seg.originIndex === lastTextBlockIndex
           return (
-            <div key={`${exchIdx}-seq-${bi}-text`} className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]">
+            <div
+              key={`${exchIdx}-seq-${seg.originIndex}-text`}
+              className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]"
+            >
               <MarkdownMessage
-                key={`md-${userMsgId}-${responseModelId}-${bi}`}
+                key={`md-${userMsgId}-${responseModelId}-${seg.originIndex}`}
                 text={block.text}
                 isStreaming={isStreaming && isLastText}
                 sourceCitations={isLastText ? sourceCitations : undefined}
