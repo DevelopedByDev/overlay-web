@@ -1,10 +1,10 @@
 export default function SettingsPage() {
   return (
-    <div className="mx-auto max-w-2xl p-6 md:p-8">
-      <h1 className="text-lg font-semibold tracking-tight text-[#0a0a0a]">Settings</h1>
-      <p className="mt-2 text-sm leading-relaxed text-[#71717a]">
-        Preferences and account options will appear here.
-      </p>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-16 shrink-0 items-center border-b border-[#e5e5e5] px-6">
+        <h1 className="text-sm font-medium text-[#0a0a0a]">Settings</h1>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto" />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 /**
- * Virtual segments for the Knowledge sidebar only.
- * One Convex `memories` row can produce many short rows in the UI (better scanability + search still uses full content via chunking).
+ * Paragraph/sentence-aware chunking (~300 chars) for memory ingestion and optional UI previews.
+ * Stored memories are one Convex row per chunk; list API returns one row per memory (no virtual segments).
  */
 const TARGET_CHARS = 300
 const HARD_CAP = 480
@@ -96,6 +96,56 @@ export type MemoryRowForSidebar = {
   status?: 'candidate' | 'approved' | 'rejected'
   createdAt: number
   updatedAt?: number
+}
+
+/**
+ * Split pasted text into multiple stored memories when over ~300 chars
+ * (paragraph/sentence aware). Used by POST /api/app/memory.
+ */
+export function segmentMemoryForIngestion(text: string): string[] {
+  return segmentMemoryForSidebarDisplay(text)
+}
+
+/** One row per Convex memory for Knowledge / Memories UI (no virtual segments). */
+export function memoriesToClientListRows(
+  memories: Array<{
+    _id: string
+    content: string
+    source: string
+    type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+    importance?: number
+    projectId?: string
+    conversationId?: string
+    noteId?: string
+    messageId?: string
+    turnId?: string
+    tags?: string[]
+    actor?: 'user' | 'agent'
+    status?: 'candidate' | 'approved' | 'rejected'
+    createdAt: number
+    updatedAt?: number
+  }>,
+): MemoryRowForSidebar[] {
+  return memories.map((m) => ({
+    key: m._id,
+    memoryId: m._id,
+    segmentIndex: 0,
+    content: m.content,
+    fullContent: m.content,
+    source: m.source,
+    type: m.type,
+    importance: m.importance,
+    projectId: m.projectId,
+    conversationId: m.conversationId,
+    noteId: m.noteId,
+    messageId: m.messageId,
+    turnId: m.turnId,
+    tags: m.tags,
+    actor: m.actor,
+    status: m.status,
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+  }))
 }
 
 /** One Convex memory row → many sidebar rows (virtual segments). */

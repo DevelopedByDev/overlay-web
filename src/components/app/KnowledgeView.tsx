@@ -266,7 +266,8 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   }
 
   async function handleDeleteMemory(memoryId: string) {
-    await fetch(`/api/app/memory?memoryId=${memoryId}`, { method: 'DELETE' })
+    const res = await fetch(`/api/app/memory?memoryId=${memoryId}`, { method: 'DELETE' })
+    if (!res.ok) return
     if (selectedMemory?.memoryId === memoryId) {
       setSelectedMemory(null)
       updateQuery({ memory: null })
@@ -832,7 +833,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 className="group mb-4 block w-full break-inside-avoid rounded-xl border border-[#e5e5e5] bg-white p-4 text-left transition-shadow hover:shadow-md"
                 style={{ breakInside: 'avoid' }}
               >
-                <p className="line-clamp-6 text-xs leading-relaxed text-[#525252]">{memory.fullContent}</p>
+                <p className="line-clamp-6 text-xs leading-relaxed text-[#525252]">{memory.content}</p>
                 <p className="mt-3 text-[10px] text-[#aaa]">
                   {new Date(memory.createdAt).toLocaleDateString()}
                 </p>

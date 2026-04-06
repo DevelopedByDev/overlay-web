@@ -3,7 +3,7 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { addMemory, listMemories, removeMemory } from '@/lib/app-store'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { expandMemoriesForSidebarList } from '@/lib/memory-display-segments'
+import { memoriesToClientListRows, segmentMemoryForIngestion } from '@/lib/memory-display-segments'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type MemoryDoc = {
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       updatedAt: memory.createdAt,
     }))
     const rows = Array.isArray(fromConvex) ? fromConvex : fallback
-    return NextResponse.json(raw ? rows : expandMemoriesForSidebarList(rows))
+    return NextResponse.json(raw ? rows : memoriesToClientListRows(rows))
   } catch (error) {
     console.error('[Memory API] GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch memories' }, { status: 500 })
@@ -110,40 +110,50 @@ export async function POST(request: NextRequest) {
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
-    if (!body.content) return NextResponse.json({ error: 'content required' }, { status: 400 })
+    const trimmed = (body.content ?? '').trim()
+    if (!trimmed) return NextResponse.json({ error: 'content required' }, { status: 400 })
 
     const raw = body.source ?? 'manual'
     const source =
       raw === 'chat' || raw === 'note' || raw === 'manual' ? raw : 'manual'
 
-    const memoryId = await convex.mutation<string>('memories:add', {
-      userId: auth.userId,
-      serverSecret,
-      clientId: body.clientId?.trim() || undefined,
-      content: body.content,
-      source,
-      type: body.type,
-      importance: body.importance,
-      projectId: body.projectId ?? undefined,
-      conversationId: body.conversationId ?? undefined,
-      noteId: body.noteId ?? undefined,
-      messageId: body.messageId ?? undefined,
-      turnId: body.turnId ?? undefined,
-      tags: body.tags,
-      actor: body.actor,
-      status: body.status,
-    })
-    const id = memoryId || addMemory(auth.userId, body.content, source)
+    const chunks = segmentMemoryForIngestion(trimmed)
+    const clientIdSingle = chunks.length === 1 ? body.clientId?.trim() || undefined : undefined
+
+    const ids: string[] = []
+    for (const chunk of chunks) {
+      const memoryId = await convex.mutation<string>('memories:add', {
+        userId: auth.userId,
+        serverSecret,
+        clientId: clientIdSingle,
+        content: chunk,
+        source,
+        type: body.type,
+        importance: body.importance,
+        projectId: body.projectId ?? undefined,
+        conversationId: body.conversationId ?? undefined,
+        noteId: body.noteId ?? undefined,
+        messageId: body.messageId ?? undefined,
+        turnId: body.turnId ?? undefined,
+        tags: body.tags,
+        actor: body.actor,
+        status: body.status,
+      })
+      const id = memoryId || addMemory(auth.userId, chunk, source)
+      ids.push(id)
+    }
+
     const memory = await convex.query<MemoryDoc[]>('memories:list', {
       userId: auth.userId,
       serverSecret,
       includeDeleted: true,
     })
+    const firstId = ids[0]!
     return NextResponse.json({
-      id,
-      ids: [id],
-      count: 1,
-      memory: (memory || []).find((item) => item._id === id),
+      id: firstId,
+      ids,
+      count: ids.length,
+      memory: (memory || []).find((item) => item._id === firstId),
     })
   } catch (error) {
     console.error('[Memory API] POST error:', error)
