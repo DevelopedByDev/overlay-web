@@ -2629,13 +2629,17 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       for (let idx = 0; idx < exchanges.length; idx++) {
         const exchangeTurnId = exchanges[idx].userMsg.turnId?.trim() || null
         const userPrompt = getMessageText(exchanges[idx].userMsg).trim()
-        const matchIdx = outputGroups.findIndex((group, groupIdx) => (
-          groupIdx >= nextOutputGroupIdx &&
-          (
-            (exchangeTurnId && group.turnId === exchangeTurnId) ||
-            (!group.turnId && group.prompt.trim() === userPrompt)
-          )
-        ))
+        const matchIdx = outputGroups.findIndex((group, groupIdx) => {
+          if (groupIdx < nextOutputGroupIdx) return false
+          // When the user turn has a turnId, only match outputs with the same turnId.
+          // Prompt-only matching caused false positives (e.g. image outputs without turnId
+          // matching unrelated text turns that shared the same prompt), which hid assistant text.
+          if (exchangeTurnId) {
+            const gt = group.turnId?.trim() || null
+            return gt === exchangeTurnId
+          }
+          return !group.turnId?.trim() && group.prompt.trim() === userPrompt
+        })
         if (matchIdx === -1) continue
 
         const group = outputGroups[matchIdx]
