@@ -47,6 +47,7 @@ import { dispatchChatTitleUpdated, sanitizeChatTitle } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { useNavigationProgress } from '@/lib/navigation-progress'
 import { MarkdownMessage } from './MarkdownMessage'
+import { GenUIBlock } from './GenUIBlock'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
@@ -357,6 +358,7 @@ function formatToolLabel(toolId: string): string {
     delete_memory: 'Delete memory',
     generate_image: 'Generate image',
     generate_video: 'Generate video',
+    render_ui: 'Render UI',
   }
   if (map[toolId]) return map[toolId]!
   const id = toolId.trim()
@@ -706,6 +708,22 @@ function ExchangeBlock({
           if (block.kind === 'tool') {
             if (block.name === 'browser_run_task') {
               return <BrowserToolBlock key={`${exchIdx}-seq-${bi}-${block.key}`} block={block} />
+            }
+            if (block.name === 'render_ui') {
+              const output = block.toolOutput as { ui?: string; title?: string } | undefined
+              const input = block.toolInput as { ui?: string; title?: string } | undefined
+              const uiCode = output?.ui ?? input?.ui ?? ''
+              const title = output?.title ?? input?.title
+              const uiStreaming = !TOOL_UI_DONE_STATES.has(block.state)
+              if (!uiCode) return null
+              return (
+                <div key={`${exchIdx}-seq-${bi}-${block.key}`} className="w-full">
+                  {title && (
+                    <div className="px-1 pb-1 text-xs font-medium text-[#71717a]">{title}</div>
+                  )}
+                  <GenUIBlock uiCode={uiCode} isStreaming={uiStreaming} />
+                </div>
+              )
             }
             const running = !TOOL_UI_DONE_STATES.has(block.state)
             const err = block.state === 'output-error'

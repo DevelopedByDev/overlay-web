@@ -5,6 +5,8 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ObservabilityClient from "@/components/ObservabilityClient";
 import "katex/dist/katex.min.css";
+import "@openuidev/react-ui/components.css";
+import "@openuidev/react-ui/defaults.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

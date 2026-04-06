@@ -140,6 +140,22 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     },
   })
 
+  tools.render_ui = tool({
+    description:
+      'Render a structured UI component to present information visually. ' +
+      'Use this instead of plain text when showing: metrics/stats, data tables, comparison lists, ' +
+      'step-by-step processes, key-value summaries, charts, or any data that benefits from visual structure. ' +
+      'Write valid OpenUI Lang code in the `ui` parameter.',
+    inputSchema: z.object({
+      ui: z.string().describe('OpenUI Lang code defining the component tree to render. Entry point must be `root = ComponentName(...)`.'),
+      title: z.string().optional().describe('Optional heading shown above the component'),
+    }),
+    execute: async ({ ui, title }) => {
+      assertOverlayToolAllowedForMode(mode, 'render_ui')
+      return { ui, title }
+    },
+  })
+
   if (mode === 'act') {
     tools.generate_image = tool({
       description:

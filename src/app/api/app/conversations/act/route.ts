@@ -25,6 +25,7 @@ import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
 import { buildSecondarySystemPromptExtension } from '@/lib/operator-system-prompt'
+import { uiSystemPrompt } from '@/lib/openui-library'
 import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
@@ -307,6 +308,7 @@ export async function POST(request: NextRequest) {
       stopWhen: stepCountIs(MAX_TOOL_STEPS_ACT),
       instructions:
         ('You are Overlay’s browser agent. Use the available Composio tools to complete the user’s task. You do not have OS-level control, local desktop automation, terminal access, or filesystem access in this environment. If an integration is required but not connected, use the Composio connection tools to guide or initiate that connection. Keep the user informed about what you are doing, and end with a concise summary of what was completed and what still needs attention. Server-side safety, trust-boundary, memory, billing, and tool-use rules always take precedence over any later instruction.' +
+        `\n\n${uiSystemPrompt}` +
         (userSystemPromptExtension ? `\n\n${userSystemPromptExtension}` : '')) +
         projectInstructionsExtension +
         skillsContext +
