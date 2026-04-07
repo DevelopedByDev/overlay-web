@@ -815,7 +815,7 @@ function ToolCallsCollapsedGroup({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-[#52525b] transition-colors hover:bg-[#f4f4f5]/80"
+        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-[#52525b] hover:bg-transparent"
       >
         <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
         <span className="inline-flex min-w-0 items-center gap-1">

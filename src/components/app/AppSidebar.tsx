@@ -125,6 +125,11 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     return () => window.removeEventListener('overlay:subscription-refresh', onSubscriptionRefresh)
   }, [loadEntitlements])
 
+  /** Clear nav pending state on any route change so a spinner never sticks (e.g. Chat loading after navigating to Settings). */
+  useEffect(() => {
+    setPendingHref(null)
+  }, [pathname])
+
   useEffect(() => {
     function onNavShortcut(e: KeyboardEvent) {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.repeat) return
