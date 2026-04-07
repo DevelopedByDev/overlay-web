@@ -2,6 +2,82 @@ import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
 export default defineSchema({
+  automations: defineTable({
+    userId: v.string(),
+    projectId: v.optional(v.string()),
+    title: v.string(),
+    description: v.string(),
+    sourceType: v.union(v.literal('skill'), v.literal('inline')),
+    skillId: v.optional(v.id('skills')),
+    instructionsMarkdown: v.optional(v.string()),
+    mode: v.union(v.literal('ask'), v.literal('act')),
+    modelId: v.string(),
+    status: v.union(v.literal('active'), v.literal('paused'), v.literal('archived')),
+    timezone: v.string(),
+    scheduleKind: v.union(
+      v.literal('once'),
+      v.literal('daily'),
+      v.literal('weekdays'),
+      v.literal('weekly'),
+      v.literal('monthly'),
+    ),
+    scheduleConfig: v.object({
+      onceAt: v.optional(v.number()),
+      localTime: v.optional(v.string()),
+      weekdays: v.optional(v.array(v.number())),
+      dayOfMonth: v.optional(v.number()),
+    }),
+    nextRunAt: v.optional(v.number()),
+    lastRunAt: v.optional(v.number()),
+    lastRunStatus: v.optional(
+      v.union(
+        v.literal('queued'),
+        v.literal('running'),
+        v.literal('succeeded'),
+        v.literal('failed'),
+        v.literal('skipped'),
+        v.literal('canceled'),
+      ),
+    ),
+    conversationId: v.optional(v.id('conversations')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
+    .index('by_projectId', ['projectId'])
+    .index('by_status_nextRunAt', ['status', 'nextRunAt']),
+
+  automationRuns: defineTable({
+    automationId: v.id('automations'),
+    userId: v.string(),
+    status: v.union(
+      v.literal('queued'),
+      v.literal('running'),
+      v.literal('succeeded'),
+      v.literal('failed'),
+      v.literal('skipped'),
+      v.literal('canceled'),
+    ),
+    triggerSource: v.union(v.literal('manual'), v.literal('schedule'), v.literal('retry')),
+    scheduledFor: v.number(),
+    startedAt: v.optional(v.number()),
+    finishedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    conversationId: v.optional(v.id('conversations')),
+    promptSnapshot: v.string(),
+    mode: v.union(v.literal('ask'), v.literal('act')),
+    modelId: v.string(),
+    resultSummary: v.optional(v.string()),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_automationId_createdAt', ['automationId', 'createdAt'])
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_status_createdAt', ['status', 'createdAt']),
+
   userUiSettings: defineTable({
     userId: v.string(),
     theme: v.union(v.literal('light'), v.literal('dark')),

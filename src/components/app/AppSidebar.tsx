@@ -37,7 +37,7 @@ const NAV_ITEMS: Array<{
   { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
   { href: '/app/tools', label: 'Extensions', icon: Puzzle },
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
-  { label: 'Automations', icon: Workflow, disabled: true },
+  { href: '/app/automations', label: 'Automations', icon: Workflow },
 ]
 
 const PROFILE_APP_LINKS = [
