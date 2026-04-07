@@ -31,6 +31,37 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
+const APP_SETTINGS_STORAGE_KEY = 'overlay.app.settings'
+
+function isAppSettings(value: unknown): value is AppSettings {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<AppSettings>
+  return (
+    (candidate.theme === 'light' || candidate.theme === 'dark') &&
+    typeof candidate.useSecondarySidebar === 'boolean'
+  )
+}
+
+function readStoredSettings(): AppSettings | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(APP_SETTINGS_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as unknown
+    return isAppSettings(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function persistSettings(settings: AppSettings) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(settings))
+  } catch {
+    // Ignore storage failures and keep in-memory settings.
+  }
+}
 
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
@@ -38,15 +69,24 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const [isSaving, setIsSaving] = useState(false)
 
   const refresh = useCallback(async () => {
+    const stored = readStoredSettings()
+    if (stored) {
+      setSettings(stored)
+    }
+
     try {
       const res = await fetch('/api/app/settings', { cache: 'no-store' })
       if (res.ok) {
-        setSettings(await res.json() as AppSettings)
+        const next = await res.json() as AppSettings
+        setSettings(next)
+        persistSettings(next)
       } else if (res.status === 401) {
-        setSettings(DEFAULT_APP_SETTINGS)
+        setSettings(stored ?? DEFAULT_APP_SETTINGS)
       }
     } catch {
-      // Keep defaults when settings are unavailable.
+      if (!stored) {
+        setSettings(DEFAULT_APP_SETTINGS)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -63,9 +103,9 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   }, [settings.theme])
 
   const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
-    const previous = settings
     const optimistic = { ...settings, ...patch }
     setSettings(optimistic)
+    persistSettings(optimistic)
     setIsSaving(true)
     try {
       const res = await fetch('/api/app/settings', {
@@ -74,14 +114,16 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         body: JSON.stringify(patch),
       })
       if (!res.ok) {
-        throw new Error('Failed to save settings')
+        console.warn('Failed to save settings to server; using local state')
+        return optimistic
       }
       const saved = await res.json() as AppSettings
       setSettings(saved)
+      persistSettings(saved)
       return saved
     } catch (error) {
-      setSettings(previous)
-      throw error
+      console.warn('Failed to save settings to server; using local state', error)
+      return optimistic
     } finally {
       setIsSaving(false)
     }

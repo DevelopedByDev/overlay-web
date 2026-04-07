@@ -67,7 +67,7 @@ function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: bo
           </span>
         )}
         <span className={`inline-flex items-center h-5 px-1.5 rounded-full text-[9px] font-semibold leading-none tracking-tight ${
-          m.cost === 0 ? 'bg-[#ecfdf5] text-[#065f46]' : 'bg-[#f0f0f0] text-[#525252]'
+          m.cost === 0 ? 'bg-[#ecfdf5] text-[#065f46]' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
         }`}>
           {m.cost === 0 ? 'Free' : '$'.repeat(m.cost)}
         </span>
@@ -83,12 +83,12 @@ function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: bo
         </span>
       )}
       {m.supportsVision && (
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[#f0f0f0] text-[#888]">
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
           <ImageIcon size={10} strokeWidth={1.75} />
         </span>
       )}
       {m.supportsReasoning && (
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[#f0f0f0] text-[#888]">
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
           <BrainCircuit size={10} strokeWidth={1.75} />
         </span>
       )}
@@ -709,7 +709,7 @@ function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; co
     <div className="relative flex w-4 shrink-0 flex-col items-center self-stretch">
       {showLine && (
         <div
-          className="absolute left-1/2 z-0 w-px -translate-x-1/2 bg-[#e8e8e8]"
+          className="absolute left-1/2 z-0 w-px -translate-x-1/2 bg-[var(--surface-subtle)]"
           aria-hidden
           style={
             connectTop && connectBottom
@@ -720,7 +720,7 @@ function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; co
           }
         />
       )}
-      <div className="relative z-[1] shrink-0 rounded-full bg-[#fafafa] p-px">
+      <div className="relative z-[1] shrink-0 rounded-full bg-[var(--background)] p-px">
         <ToolLineLogo />
       </div>
       <div className="min-h-0 flex-1" />
@@ -893,7 +893,7 @@ function BrowserToolBlock({
                 <button
                   type="button"
                   onClick={() => setUserExpanded((open) => !open)}
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[#71717a] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                   aria-label={userExpanded ? 'Collapse browser tool details' : 'Expand browser tool details'}
                 >
                   <ChevronDown
@@ -913,14 +913,14 @@ function BrowserToolBlock({
             {showDetails ? (
               <div key={userExpanded ? 'open' : running ? 'streaming' : 'closed'} className="space-y-3 message-appear">
                 {task ? (
-                  <p className="text-[12px] leading-relaxed text-[#71717a]">{task}</p>
+                  <p className="text-[12px] leading-relaxed text-[var(--muted)]">{task}</p>
                 ) : null}
                 {liveUrl && isDone ? (
                   <iframe
                     src={liveUrl}
                     title="Browser Use live browser"
                     sandbox="allow-scripts allow-same-origin"
-                    className="h-[280px] w-full rounded-xl border border-[#e8e8e8] bg-[#fafafa]"
+                    className="h-[280px] w-full rounded-xl border border-[var(--border)] bg-[var(--background)]"
                   />
                 ) : null}
               </div>
@@ -1098,13 +1098,13 @@ function ExchangeBlock({
               <button
                 type="button"
                 onClick={() => onJumpToReply(replyThreadMeta.replyToTurnId)}
-                className="mb-1 max-w-full rounded-lg border border-[#e5e5e5] bg-[#f0f0f0] px-2.5 py-1.5 text-left text-[11px] text-[#525252] transition-colors hover:bg-[#e8e8e8] hover:text-[#0a0a0a]"
+                className="mb-1 max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-[11px] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
               >
-                <span className="flex items-center gap-1.5 font-medium text-[#0a0a0a]">
-                  <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[#71717a]" />
+                <span className="flex items-center gap-1.5 font-medium text-[var(--foreground)]">
+                  <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
                   Replying to
                 </span>
-                <span className="mt-0.5 line-clamp-2 block text-[#71717a]">{replyThreadMeta.replySnippet}</span>
+                <span className="mt-0.5 line-clamp-2 block text-[var(--muted)]">{replyThreadMeta.replySnippet}</span>
               </button>
             )}
             {userImages.length > 0 && (
@@ -1120,16 +1120,16 @@ function ExchangeBlock({
                 {userDocumentNames.map((name) => (
                   <div
                     key={name}
-                    className="flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[#e5e5e5] bg-white px-2.5 py-1.5 text-xs text-[#525252] shadow-sm"
+                    className="flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm"
                   >
-                    <FileText size={13} className="shrink-0 text-[#71717a]" />
-                    <span className="truncate font-medium text-[#0a0a0a]">{name}</span>
+                    <FileText size={13} className="shrink-0 text-[var(--muted)]" />
+                    <span className="truncate font-medium text-[var(--foreground)]">{name}</span>
                   </div>
                 ))}
               </div>
             )}
             {showTextBubble && (
-              <div className="chat-user-bubble ml-auto min-w-0 max-w-full break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:px-4">
+              <div className="chat-user-bubble ml-auto min-w-0 max-w-full break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:px-4">
                 <span className="whitespace-pre-wrap">{userBodyText}</span>
               </div>
             )}
@@ -1150,7 +1150,7 @@ function ExchangeBlock({
                   className={`px-2.5 py-0.5 rounded-full text-xs transition-colors ${
                     isLoadingTabs ? 'cursor-not-allowed opacity-60' : ''
                   } ${
-                    isActive ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f0f0f0] text-[#525252] hover:bg-[#e8e8e8]'
+                    isActive ? 'bg-[var(--foreground)] text-[var(--background)]' : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)]'
                   }`}
                 >
                   {mName}
@@ -1213,7 +1213,7 @@ function ExchangeBlock({
                   <img
                     src={block.url}
                     alt="Generated"
-                    className="max-w-full max-h-[320px] rounded-xl border border-[#e8e8e8] object-contain"
+                    className="max-w-full max-h-[320px] rounded-xl border border-[var(--border)] object-contain"
                   />
                 ) : (
                   <video
@@ -1221,7 +1221,7 @@ function ExchangeBlock({
                     controls
                     preload="metadata"
                     playsInline
-                    className="max-w-full max-h-[320px] rounded-xl border border-[#e8e8e8] object-contain"
+                    className="max-w-full max-h-[320px] rounded-xl border border-[var(--border)] object-contain"
                   />
                 )}
               </div>
@@ -1232,7 +1232,7 @@ function ExchangeBlock({
           return (
             <div
               key={`${exchIdx}-seq-${seg.originIndex}-text`}
-              className="w-full px-1 py-1 text-sm leading-relaxed text-[#0a0a0a]"
+              className="w-full px-1 py-1 text-sm leading-relaxed text-[var(--foreground)]"
             >
               <MarkdownMessage
                 key={`md-${userMsgId}-${responseModelId}-${seg.originIndex}`}
@@ -1266,7 +1266,7 @@ function ExchangeBlock({
 
         {interrupted && responseSettled && !errorMessage && (
           <div className="flex justify-start px-1 py-1">
-            <p className="text-sm text-[#71717a]">Response was interrupted.</p>
+            <p className="text-sm text-[var(--muted)]">Response was interrupted.</p>
           </div>
         )}
 
@@ -1281,7 +1281,7 @@ function ExchangeBlock({
               type="button"
               onClick={onDeleteTurn}
               disabled={!turnIdForActions || actionsLocked || isExiting}
-              className="rounded-md p-1.5 text-[#71717a] transition-all hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 active:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-30"
+              className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
               aria-label="Delete this turn from history"
             >
               <Trash2 size={14} strokeWidth={1.75} />
@@ -1290,12 +1290,12 @@ function ExchangeBlock({
               type="button"
               onClick={onReply}
               disabled={isExiting}
-              className="rounded-md p-1.5 text-[#71717a] transition-all hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 active:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-30"
+              className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
               aria-label="Reply"
             >
               <Reply size={14} strokeWidth={1.75} />
             </button>
-            <span className="ml-2 min-w-0 text-left text-[11px] text-[#aaa]">{modelLabel}</span>
+            <span className="ml-2 min-w-0 text-left text-[11px] text-[var(--muted-light)]">{modelLabel}</span>
           </div>
         )}
       </div>
@@ -1378,7 +1378,7 @@ function FlashCopyIconButton({
       type="button"
       onClick={() => void handleClick()}
       disabled={disabled || !copyText}
-      className={`rounded-md p-1.5 text-[#71717a] transition-all duration-200 hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
+      className={`rounded-md p-1.5 text-[var(--muted)] transition-all duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
         showCheck ? 'text-emerald-600 hover:text-emerald-600 hover:bg-[#ecfdf5]' : ''
       }`}
       aria-label={ariaLabel}
@@ -1560,11 +1560,11 @@ function MediaSlotOutput({
   return (
     <div className={`flex min-w-0 flex-col ${isMulti ? 'w-full gap-1.5' : 'gap-2 self-start'}`}>
       {isMulti ? (
-        <div className="h-5 text-xs font-medium text-[#71717a]">
+        <div className="h-5 text-xs font-medium text-[var(--muted)]">
           {multiStatusLabel}
         </div>
       ) : (!result || result.status === 'generating') ? (
-        <p className="text-xs font-medium text-[#71717a]">
+        <p className="text-xs font-medium text-[var(--muted)]">
           {genType === 'image' ? 'Creating image' : 'Creating video'}
         </p>
       ) : null}
@@ -1584,7 +1584,7 @@ function MediaSlotOutput({
         >
           {isMulti ? (
             <div className="mx-auto flex max-w-[240px] flex-col items-center gap-2 px-5 text-center">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-red-500 shadow-sm">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-elevated)] text-red-500 shadow-sm">
                 <AlertCircle size={18} />
               </span>
               <div className="space-y-1">
@@ -1644,7 +1644,7 @@ function MediaCompletedReveal({
 
   return (
     <div
-      className={`relative group max-w-full shrink-0 overflow-hidden rounded-xl border border-[#e5e5e5] bg-[#f6f6f6] ${isMulti ? 'w-full' : ''} ${frameClass}`}
+      className={`relative group max-w-full shrink-0 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] ${isMulti ? 'w-full' : ''} ${frameClass}`}
       style={singleBoxStyle}
     >
       <div
@@ -1660,7 +1660,7 @@ function MediaCompletedReveal({
           onLoad={markReady}
           onError={markReady}
           className={`absolute inset-0 z-20 block h-full w-full rounded-xl transition-opacity duration-300 ease-out ${
-            isMulti ? 'object-contain object-center' : 'border border-[#e5e5e5] object-contain'
+            isMulti ? 'object-contain object-center' : 'border border-[var(--border)] object-contain'
           } ${ready ? 'opacity-100' : 'opacity-0'}`}
         />
       ) : (
@@ -1673,7 +1673,7 @@ function MediaCompletedReveal({
           onLoadedMetadata={markReady}
           onCanPlay={markReady}
           onError={markReady}
-          className={`absolute inset-0 z-20 block h-full w-full rounded-xl ${isMulti ? 'object-contain object-center' : 'border border-[#e5e5e5]'} transition-opacity duration-300 ease-out ${
+          className={`absolute inset-0 z-20 block h-full w-full rounded-xl ${isMulti ? 'object-contain object-center' : 'border border-[var(--border)]'} transition-opacity duration-300 ease-out ${
             ready ? 'opacity-100' : 'opacity-0'
           }`}
         />
@@ -1686,10 +1686,10 @@ function MediaCompletedReveal({
         <a
           href={url}
           download={genType === 'image' ? 'generated.png' : 'generated.mp4'}
-          className="pointer-events-auto shrink-0 rounded-full bg-white/92 p-1.5 shadow-sm transition-colors hover:bg-white"
+          className="pointer-events-auto shrink-0 rounded-full bg-[var(--glass-bg)] p-1.5 shadow-sm transition-colors hover:bg-[var(--surface-elevated)]"
           title="Download"
         >
-          <Download size={13} className="text-[#0a0a0a]" />
+          <Download size={13} className="text-[var(--foreground)]" />
         </a>
       </div>
       {genType === 'video' && (
@@ -1848,6 +1848,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const dragCounterRef = useRef(0)
   const [input, setInput] = useState('')
   const [isFirstMessage, setIsFirstMessage] = useState(true)
+  const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const [pendingChatDocuments, setPendingChatDocuments] = useState<PendingChatDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -2278,6 +2279,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       loadSubscription()
     }
     wasStreamingRef.current = isActiveLoading
+    if (isActiveLoading) setIsOptimisticLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActiveLoading, chat0.messages.length])
 
@@ -2852,6 +2854,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       setAttachmentError('Remove failed documents before sending.')
       return
     }
+
+    setIsOptimisticLoading(true)
 
     // ── Image / Video generation path ──────────────────────────────────────
     if (effectiveGenType === 'image' || effectiveGenType === 'video') {
@@ -3448,11 +3452,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       {/* Sidebar — hidden when embedded in a project */}
       {showOwnSidebar && (
         <>
-          <div className="hidden h-full w-52 flex-col border-r border-[#e5e5e5] bg-[#f5f5f5] md:flex">
-            <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3">
+          <div className="hidden h-full w-52 flex-col border-r border-[var(--border)] bg-[var(--surface-muted)] md:flex">
+            <div className="flex h-16 items-center border-b border-[var(--border)] px-3">
               <button
                 onClick={createNewChat}
-                className="flex w-full items-center gap-1.5 rounded-md bg-[#0a0a0a] px-3 py-1.5 text-sm text-[#fafafa] transition-colors hover:bg-[#222]"
+                className="flex w-full items-center gap-1.5 rounded-md bg-[var(--foreground)] px-3 py-1.5 text-sm text-[var(--background)] transition-colors hover:opacity-80"
               >
                 <Plus size={13} />
                 New chat
@@ -3468,22 +3472,22 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     onClick={() => loadChat(chat._id)}
                     className={`group flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors ${
                       activeChatId === chat._id
-                        ? 'bg-[#e8e8e8] text-[#0a0a0a]'
-                        : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
+                        ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                        : 'text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
                     }`}
                   >
                     <span className="flex-1 truncate">{chat.title}</span>
                     {isStreaming && !unread && (
-                      <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#525252]" />
+                      <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
                     )}
                     {unread > 0 && (
-                      <span className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#0a0a0a] text-[9px] font-medium text-[#fafafa]">
+                      <span className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[9px] font-medium text-[var(--background)]">
                         {unread}
                       </span>
                     )}
                     <button
                       onClick={(e) => deleteChat(chat._id, e)}
-                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[#d8d8d8] group-hover:opacity-100"
+                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
                     >
                       <Trash2 size={11} />
                     </button>
@@ -3502,31 +3506,31 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 onClick={() => setMobileChatListOpen(false)}
               />
               <div
-                className="absolute bottom-0 left-0 right-0 flex max-h-[min(78vh,560px)] flex-col rounded-t-2xl border border-[#e5e5e5] border-b-0 bg-[#f5f5f5] shadow-[0_-8px_40px_rgba(0,0,0,0.12)]"
+                className="absolute bottom-0 left-0 right-0 flex max-h-[min(78vh,560px)] flex-col rounded-t-2xl border border-[var(--border)] border-b-0 bg-[var(--surface-muted)] shadow-[0_-8px_40px_rgba(0,0,0,0.12)]"
                 role="dialog"
                 aria-modal="true"
                 aria-label="Chat history"
               >
                 <div className="flex shrink-0 items-center justify-center pb-1 pt-2">
-                  <span className="h-1 w-12 rounded-full bg-[#d4d4d4]" aria-hidden />
+                  <span className="h-1 w-12 rounded-full bg-[var(--border)]" aria-hidden />
                 </div>
-                <div className="flex items-center justify-between border-b border-[#e5e5e5] px-4 py-2.5">
-                  <span className="text-sm font-medium text-[#0a0a0a]">Chats</span>
+                <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-2.5">
+                  <span className="text-sm font-medium text-[var(--foreground)]">Chats</span>
                   <button
                     type="button"
                     onClick={() => setMobileChatListOpen(false)}
                     aria-label="Close"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
                   >
                     <X size={16} />
                   </button>
                 </div>
-                <div className="border-b border-[#e5e5e5] px-3 py-2">
+                <div className="border-b border-[var(--border)] px-3 py-2">
                   <button
                     onClick={() => {
                       void createNewChat().then(() => setMobileChatListOpen(false))
                     }}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#0a0a0a] px-3 py-2 text-sm text-[#fafafa] transition-colors hover:bg-[#222]"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--foreground)] px-3 py-2 text-sm text-[var(--background)] transition-colors hover:opacity-80"
                   >
                     <Plus size={13} />
                     New chat
@@ -3546,23 +3550,23 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                           }}
                           className={`group flex items-center justify-between rounded-md px-2.5 py-2 text-xs transition-colors ${
                             activeChatId === chat._id
-                              ? 'bg-[#e8e8e8] text-[#0a0a0a]'
-                              : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
+                              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                              : 'text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
                           }`}
                         >
                           <span className="flex-1 truncate">{chat.title}</span>
                           {isStreaming && !unread && (
-                            <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#525252]" />
+                            <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
                           )}
                           {unread > 0 && (
-                            <span className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#0a0a0a] text-[9px] font-medium text-[#fafafa]">
+                            <span className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[9px] font-medium text-[var(--background)]">
                               {unread}
                             </span>
                           )}
                           <button
                             type="button"
                             onClick={(e) => deleteChat(chat._id, e)}
-                            className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[#d8d8d8] group-hover:opacity-100"
+                            className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
                           >
                             <Trash2 size={11} />
                           </button>
@@ -3612,18 +3616,18 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
         }}
       >
         {isDragging && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#fafafa]/90 border-2 border-dashed border-[#0a0a0a] rounded-lg m-2 pointer-events-none">
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-[var(--background)]/90 border-2 border-dashed border-[#0a0a0a] rounded-lg m-2 pointer-events-none">
             <div className="text-center">
-              <ImageIcon size={28} className="mx-auto mb-2 text-[#525252]" />
-              <p className="text-sm font-medium text-[#0a0a0a]">Drop images or documents here</p>
+              <ImageIcon size={28} className="mx-auto mb-2 text-[var(--muted)]" />
+              <p className="text-sm font-medium text-[var(--foreground)]">Drop images or documents here</p>
             </div>
           </div>
         )}
         {/* Sticky header — stacked on small screens to avoid horizontal scroll */}
-        <div className="shrink-0 border-b border-[#e5e5e5] px-3 md:px-4">
+        <div className="shrink-0 border-b border-[var(--border)] px-3 md:px-4">
           <div className="flex h-auto min-h-0 flex-col gap-2 py-2 md:h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0">
             <div className="flex min-w-0 items-center gap-2">
-              <h2 className="min-w-0 flex-1 text-sm font-medium leading-snug text-[#0a0a0a] md:max-w-[min(100%,20rem)] md:truncate lg:max-w-[24rem]">
+              <h2 className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--foreground)] md:max-w-[min(100%,20rem)] md:truncate lg:max-w-[24rem]">
                 <span className="line-clamp-2 md:line-clamp-1 md:truncate">
                   {activeChatTitle ?? activeChat?.title ?? 'New conversation'}
                 </span>
@@ -3632,7 +3636,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 <div className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
               )}
               {projectName && (
-                <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[#e8e8e8] bg-[#f0f0f0] px-2 py-0.5 text-[10px] text-[#525252]">
+                <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
                   <FolderOpen size={9} />
                   <span className="max-w-[6rem] truncate sm:max-w-none">{projectName}</span>
                 </span>
@@ -3647,8 +3651,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     type="button"
                     onClick={() => !isActiveLoading && setShowModelPicker((v) => !v)}
                     disabled={isActiveLoading}
-                    className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[#f0f0f0] px-2.5 py-1.5 text-left text-xs md:w-auto md:max-w-[13rem] md:py-1 ${
-                      isActiveLoading ? 'cursor-not-allowed text-[#aaa]' : 'text-[#525252] hover:bg-[#e8e8e8]'
+                    className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs md:w-auto md:max-w-[13rem] md:py-1 ${
+                      isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
                     }`}
                   >
                     <span className="min-w-0 truncate">{modelPickerLabel}</span>
@@ -3657,7 +3661,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 </DelayedTooltip>
                 {showModelPicker && (
                   <div
-                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg md:left-auto md:right-0 md:w-64"
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64"
                     onMouseLeave={() => setHoveredModelId(null)}
                   >
                   {generationMode === 'image' ? (
@@ -3669,8 +3673,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                             disabled={isDisabled}
                             onClick={() => setSelectedImageModels((prev) => prev.includes(m.id) ? (prev.length > 1 ? prev.filter((x) => x !== m.id) : prev) : [...prev, m.id].slice(0, 4))}
                             className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                              isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#f5f5f5]'
-                            } ${isSel ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'}`}>
+                              isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
+                            } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}>
                             <span className="flex items-center gap-2">
                               {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
                               {m.name}
@@ -3687,8 +3691,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                             disabled={isDisabled}
                             onClick={() => setSelectedVideoModels((prev) => prev.includes(m.id) ? (prev.length > 1 ? prev.filter((x) => x !== m.id) : prev) : [...prev, m.id].slice(0, 4))}
                             className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                              isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#f5f5f5]'
-                            } ${isSel ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'}`}>
+                              isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
+                            } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}>
                             <span className="flex items-center gap-2">
                               {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
                               {m.name}
@@ -3708,8 +3712,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                             setShowModelPicker(false)
                           }}
                           onMouseEnter={() => setHoveredModelId(m.id)}
-                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[#f5f5f5] ${
-                            isSel ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'
+                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[var(--surface-muted)] ${
+                            isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'
                           }`}
                         >
                           <span className="flex items-center gap-2">
@@ -3731,8 +3735,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                           disabled={isDisabled}
                           onMouseEnter={() => !isDisabled && setHoveredModelId(m.id)}
                           className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                            isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#f5f5f5]'
-                          } ${isSelected ? 'text-[#0a0a0a] font-medium' : 'text-[#525252]'}`}
+                            isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
+                          } ${isSelected ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}
                         >
                           <span className="flex items-center gap-2">
                             {isSelected ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
@@ -3757,7 +3761,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   className={`flex w-full items-center justify-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors md:w-auto md:py-1 ${
                     isFreeTier
                       ? 'bg-[#fef9ec] text-[#b45309] hover:bg-[#fde68a]'
-                      : 'bg-[#f0f0f0] text-[#525252] hover:bg-[#e8e8e8] hover:text-[#0a0a0a]'
+                      : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
                   }`}
                 >
                   <Terminal size={12} strokeWidth={1.75} />
@@ -3796,13 +3800,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   <p className="mb-3 text-3xl" style={{ fontFamily: 'var(--font-serif)' }}>
                     chat
                   </p>
-                  <p className="mb-6 text-sm text-[#888]">Start a conversation with any AI model</p>
-                  <div className="grid grid-cols-1 gap-2 text-xs text-[#525252] sm:grid-cols-2">
+                  <p className="mb-6 text-sm text-[var(--muted)]">Start a conversation with any AI model</p>
+                  <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
                     {CHAT_SUGGESTIONS.map((prompt) => (
                       <button
                         key={prompt}
                         type="button"
-                        className="rounded-lg border border-[#e5e5e5] p-2.5 text-left leading-snug hover:bg-[#f5f5f5] transition-colors"
+                        className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug hover:bg-[var(--surface-muted)] transition-colors"
                         onClick={() => setInput(prompt)}
                       >
                         {prompt}
@@ -3870,18 +3874,18 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                           <button
                             type="button"
                             onClick={() => jumpToReplyTarget(mediaReplyMeta.replyToTurnId)}
-                            className="max-w-[75%] rounded-lg border border-[#e5e5e5] bg-[#f0f0f0] px-2.5 py-1.5 text-left text-[11px] text-[#525252] transition-colors hover:bg-[#e8e8e8] hover:text-[#0a0a0a]"
+                            className="max-w-[75%] rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-[11px] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
                           >
-                            <span className="flex items-center gap-1.5 font-medium text-[#0a0a0a]">
-                              <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[#71717a]" />
+                            <span className="flex items-center gap-1.5 font-medium text-[var(--foreground)]">
+                              <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
                               Replying to
                             </span>
-                            <span className="mt-0.5 line-clamp-2 block text-[#71717a]">{mediaReplyMeta.replySnippet}</span>
+                            <span className="mt-0.5 line-clamp-2 block text-[var(--muted)]">{mediaReplyMeta.replySnippet}</span>
                           </button>
                         </div>
                       )}
                       <div className="flex justify-end">
-                        <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm bg-[#0a0a0a] px-3 py-2.5 text-sm leading-relaxed text-[#fafafa] sm:max-w-[75%] sm:px-4">
+                        <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:max-w-[75%] sm:px-4">
                           <span className="whitespace-pre-wrap">{promptText}</span>
                         </div>
                       </div>
@@ -3925,7 +3929,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                               if (mediaTurnIdLocal) void handleDeleteTurnById(mediaTurnIdLocal)
                             }}
                             disabled={!mediaTurnIdLocal || mediaIsExiting}
-                            className="rounded-md p-1.5 text-[#71717a] transition-all hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 active:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-30"
+                            className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
                             aria-label="Delete this turn from history"
                           >
                             <Trash2 size={14} strokeWidth={1.75} />
@@ -3936,12 +3940,12 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                               beginReplyToMediaPrompt(promptText, genType, mediaTurnIdLocal)
                             }
                             disabled={mediaIsExiting}
-                            className="rounded-md p-1.5 text-[#71717a] transition-all hover:bg-[#f0f0f0] hover:text-[#0a0a0a] active:scale-90 active:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-30"
+                            className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
                             aria-label="Reply"
                           >
                             <Reply size={14} strokeWidth={1.75} />
                           </button>
-                          <span className="ml-2 shrink-0 text-left text-[11px] text-[#aaa]">{mediaModelLabel}</span>
+                          <span className="ml-2 shrink-0 text-left text-[11px] text-[var(--muted-light)]">{mediaModelLabel}</span>
                         </div>
                       )}
                     </div>
@@ -3977,9 +3981,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 }
 
                 const instLoading = isLatest && (
-                  isActExch
+                  (isActExch
                     ? (actChat.status === 'streaming' || actChat.status === 'submitted')
-                    : !!slotInst && (slotInst.status === 'streaming' || slotInst.status === 'submitted')
+                    : !!slotInst && (slotInst.status === 'streaming' || slotInst.status === 'submitted'))
+                  || isOptimisticLoading
                 )
                 const instError = isLatest ? (isActExch ? actChat.error : slotInst?.error ?? null) : null
 
@@ -4075,10 +4080,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               {attachedImages.map((img, i) => (
                 <div key={`img-${i}`} className="relative group">
                   <img src={img.dataUrl} alt={img.name}
-                    className="w-16 h-16 object-cover rounded-lg border border-[#e5e5e5]" />
+                    className="w-16 h-16 object-cover rounded-lg border border-[var(--border)]" />
                   <button
                     onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#0a0a0a] text-[#fafafa] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[var(--foreground)] text-[var(--background)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X size={9} />
                   </button>
@@ -4087,13 +4092,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               {pendingChatDocuments.map((doc) => (
                 <div
                   key={doc.clientId}
-                  className="relative group flex items-center gap-2 max-w-[220px] px-2.5 py-1.5 rounded-lg border border-[#e5e5e5] bg-white text-xs text-[#525252]"
+                  className="relative group flex items-center gap-2 max-w-[220px] px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-xs text-[var(--muted)]"
                 >
-                  <FileText size={14} className="shrink-0 text-[#888]" />
+                  <FileText size={14} className="shrink-0 text-[var(--muted)]" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-[#0a0a0a]">{doc.name}</p>
+                    <p className="truncate font-medium text-[var(--foreground)]">{doc.name}</p>
                     {doc.status === 'uploading' && (
-                      <p className="text-[10px] text-[#aaa] mt-0.5 animate-pulse">Indexing…</p>
+                      <p className="text-[10px] text-[var(--muted-light)] mt-0.5 animate-pulse">Indexing…</p>
                     )}
                     {doc.status === 'ready' && (
                       <p className="text-[10px] text-emerald-600 mt-0.5">Indexed</p>
@@ -4107,7 +4112,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   <button
                     type="button"
                     onClick={() => removePendingDocument(doc.clientId)}
-                    className="shrink-0 p-0.5 rounded hover:bg-[#f0f0f0] text-[#aaa]"
+                    className="shrink-0 p-0.5 rounded hover:bg-[var(--surface-subtle)] text-[var(--muted-light)]"
                     aria-label="Remove"
                   >
                     <X size={11} />
@@ -4130,25 +4135,25 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               </div>
             )}
             {isSendBlocked && !isActiveLoading ? (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[#fafafa] border border-[#e5e5e5] text-xs text-[#888]">
+              <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--muted)]">
                 <AlertCircle size={13} className="text-amber-500 shrink-0" />
                 {premiumModelBlocked
                   ? 'This model requires Pro. Switch to a free model or upgrade.'
                   : 'No credits remaining. Please top up your account.'}
               </div>
             ) : (
-              <div className="overflow-visible rounded-2xl border border-[#e5e5e5] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 {replyContext && (
-                  <div className="flex items-start gap-2 rounded-t-2xl border-b border-[#e5e5e5] bg-[#f0f0f0] px-3 py-2.5 text-xs text-[#525252]">
-                    <Reply size={14} className="mt-0.5 shrink-0 text-[#71717a]" strokeWidth={1.75} />
+                  <div className="flex items-start gap-2 rounded-t-2xl border-b border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-xs text-[var(--muted)]">
+                    <Reply size={14} className="mt-0.5 shrink-0 text-[var(--muted)]" strokeWidth={1.75} />
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-[#0a0a0a]">Replying to prior response</p>
-                      <p className="mt-0.5 line-clamp-2 text-[#71717a]">{replyContext.snippet}</p>
+                      <p className="font-medium text-[var(--foreground)]">Replying to prior response</p>
+                      <p className="mt-0.5 line-clamp-2 text-[var(--muted)]">{replyContext.snippet}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setReplyContext(null)}
-                      className="shrink-0 rounded-md p-1 text-[#71717a] transition-colors hover:bg-[#e5e5e5] hover:text-[#0a0a0a]"
+                      className="shrink-0 rounded-md p-1 text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
                       aria-label="Cancel reply"
                     >
                       <X size={14} strokeWidth={1.75} />
@@ -4193,7 +4198,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                       handleSend()
                     }
                   }}
-                  className="w-full min-h-11 resize-none border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[#0a0a0a] shadow-none outline-none ring-0 placeholder:text-[#aaa] focus:ring-0"
+                  className="w-full min-h-11 resize-none border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--muted-light)] focus:ring-0"
                 />
                 <div className="mt-2 flex min-h-9 items-center gap-2">
                   <div ref={attachMenuRef} className="relative shrink-0">
@@ -4201,13 +4206,13 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                       <button
                         type="button"
                         onClick={() => setShowAttachMenu((v) => !v)}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#71717a] transition-colors hover:bg-[#f4f4f5] hover:text-[#0a0a0a]"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
                       >
                         <Plus size={18} strokeWidth={1.75} />
                       </button>
                     </DelayedTooltip>
                   {showAttachMenu && (
-                    <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#e5e5e5] rounded-xl shadow-lg py-1 w-52 z-20">
+                    <div className="absolute bottom-full left-0 mb-2 bg-[var(--surface-elevated)] border border-[var(--border)] rounded-xl shadow-lg py-1 w-52 z-20">
                       <button
                         type="button"
                         onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false) }}
@@ -4215,28 +4220,28 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         title={!supportsVision ? 'You need a vision model to attach images.' : undefined}
                         className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs transition-colors ${
                           supportsVision
-                            ? 'text-[#525252] hover:bg-[#f5f5f5]'
+                            ? 'text-[var(--muted)] hover:bg-[var(--surface-muted)]'
                             : 'text-[#bbb] cursor-not-allowed'
                         }`}
                       >
-                        <ImageIcon size={13} className="text-[#0a0a0a]" />
+                        <ImageIcon size={13} className="text-[var(--foreground)]" />
                         <span>Attach Images</span>
                       </button>
                       <div className="border-t border-[#f0f0f0] my-1" />
                       <button
                         type="button"
                         onClick={() => { handleModeChange('image'); setShowAttachMenu(false) }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-muted)] transition-colors"
                       >
-                        <ImageIcon size={13} className="text-[#0a0a0a]" />
+                        <ImageIcon size={13} className="text-[var(--foreground)]" />
                         <span>Generate Image</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => { handleModeChange('video'); setShowAttachMenu(false) }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-muted)] transition-colors"
                       >
-                        <Video size={13} className="text-[#0a0a0a]" />
+                        <Video size={13} className="text-[var(--foreground)]" />
                         <span>Generate Video</span>
                       </button>
                       <div className="border-t border-[#f0f0f0] my-1" />
@@ -4246,11 +4251,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                           docInputRef.current?.click()
                           setShowAttachMenu(false)
                         }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-muted)] transition-colors"
                       >
                         <FileText size={13} />
                         <span>Documents</span>
-                        <span className="ml-auto text-[10px] text-[#aaa]">PDF, Word, text</span>
+                        <span className="ml-auto text-[10px] text-[var(--muted-light)]">PDF, Word, text</span>
                       </button>
                     </div>
                   )}
@@ -4265,7 +4270,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     </span>
                   </DelayedTooltip>
                   {generationChip && (
-                    <div className="flex shrink-0 items-center gap-1 rounded-full bg-[#0a0a0a] px-2 py-1 text-xs font-medium text-[#fafafa]">
+                    <div className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--foreground)] px-2 py-1 text-xs font-medium text-[var(--background)]">
                       {generationChip === 'image' ? <ImageIcon size={10} /> : <Video size={10} />}
                       {generationChip === 'image' ? 'Image' : 'Video'}
                       <button type="button" onClick={() => setGenerationChip(null)} className="ml-0.5 hover:opacity-70">
@@ -4280,9 +4285,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         <button
                           type="button"
                           onClick={stopActiveChat}
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0a0a0a] text-[#fafafa] transition-colors hover:bg-[#333]"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80"
                         >
-                          <div className="h-3.5 w-3.5 rounded-sm bg-[#fafafa]" />
+                          <div className="h-3.5 w-3.5 rounded-sm bg-[var(--background)]" />
                         </button>
                       </DelayedTooltip>
                     ) : (
@@ -4295,7 +4300,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                             attachedImages.length === 0 &&
                             !pendingChatDocuments.some((d) => d.status === 'ready')
                           }
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0a0a0a] text-[#fafafa] transition-colors hover:bg-[#333] disabled:opacity-40"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"
                         >
                           <Send size={17} strokeWidth={1.75} />
                         </button>
@@ -4314,11 +4319,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 sm:items-center sm:p-4"
             onClick={(e) => { if (e.target === e.currentTarget) closeTerminalModal() }}
           >
-            <div className="w-full max-w-lg rounded-t-2xl border border-[#e5e5e5] bg-white shadow-xl sm:rounded-2xl">
-              <div className="flex items-center justify-between border-b border-[#e5e5e5] px-4 py-3">
+            <div className="w-full max-w-lg rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl sm:rounded-2xl">
+              <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
                 <div>
-                  <h3 className="text-sm font-medium text-[#0a0a0a]">Terminal Access</h3>
-                  <p className="mt-0.5 text-[11px] text-[#888]">
+                  <h3 className="text-sm font-medium text-[var(--foreground)]">Terminal Access</h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--muted)]">
                     {isFreeTier
                       ? 'SSH access for your Daytona workspace'
                       : 'SSH into your persistent Daytona workspace'}
@@ -4327,7 +4332,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 <button
                   type="button"
                   onClick={closeTerminalModal}
-                  className="rounded p-1 text-[#888] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+                  className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
                   aria-label="Close terminal dialog"
                 >
                   <X size={16} />
@@ -4337,18 +4342,18 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               <div className="space-y-4 px-4 py-4">
                 {!isFreeTier && terminalProfile && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-[#f4f4f5] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[#525252]">
+                    <span className="rounded-full bg-[var(--surface-subtle)] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
                       {entitlements?.tier}
                     </span>
-                    <span className="rounded-full bg-[#f4f4f5] px-2 py-1 text-[10px] text-[#525252]">
+                    <span className="rounded-full bg-[var(--surface-subtle)] px-2 py-1 text-[10px] text-[var(--muted)]">
                       {formatWorkspaceStateLabel(sshAccess?.state ?? workspaceStatus?.state ?? 'missing')}
                     </span>
                   </div>
                 )}
 
                 {!isFreeTier && terminalProfile && (
-                  <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-xs text-[#525252]">
-                    <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#888]">Workspace</p>
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-3 text-xs text-[var(--muted)]">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Workspace</p>
                     <p className="mt-1 leading-relaxed">
                       {terminalProfile.cpu} CPU, {terminalProfile.memoryGiB} GiB RAM, {terminalProfile.diskGiB} GiB disk, auto-stop after {terminalProfile.autoStopMinutes} minutes.
                     </p>
@@ -4373,7 +4378,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                           closeTerminalModal()
                           router.push('/pricing')
                         }}
-                        className="rounded-md bg-[#0a0a0a] px-3 py-2 text-xs text-[#fafafa] transition-colors hover:bg-[#222]"
+                        className="rounded-md bg-[var(--foreground)] px-3 py-2 text-xs text-[var(--background)] transition-colors hover:opacity-80"
                       >
                         View Plans
                       </button>
@@ -4382,14 +4387,14 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 )}
 
                 {terminalModalState === 'loading' && (
-                  <div className="flex items-center gap-2 rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm text-[#525252]">
+                  <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-3 text-sm text-[var(--muted)]">
                     <div className="h-3.5 w-3.5 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
                     Loading workspace status…
                   </div>
                 )}
 
                 {terminalModalState === 'starting' && (
-                  <div className="flex items-center gap-2 rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm text-[#525252]">
+                  <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-3 text-sm text-[var(--muted)]">
                     <div className="h-3.5 w-3.5 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
                     Starting your workspace and issuing SSH access…
                   </div>
@@ -4397,7 +4402,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
                 {terminalModalState === 'blocked' && (
                   <div className="space-y-4">
-                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm leading-relaxed text-[#525252]">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-3 text-sm leading-relaxed text-[var(--muted)]">
                       No credits remain on this account, so new terminal sessions are blocked until credits are available again.
                     </div>
                     <div className="flex items-center justify-end gap-2">
@@ -4407,7 +4412,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                           closeTerminalModal()
                           router.push('/account')
                         }}
-                        className="rounded-md bg-[#0a0a0a] px-3 py-2 text-xs text-[#fafafa] transition-colors hover:bg-[#222]"
+                        className="rounded-md bg-[var(--foreground)] px-3 py-2 text-xs text-[var(--background)] transition-colors hover:opacity-80"
                       >
                         Open Account
                       </button>
@@ -4417,14 +4422,14 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
                 {terminalModalState === 'error' && (
                   <div className="space-y-4">
-                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm leading-relaxed text-[#525252]">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-3 text-sm leading-relaxed text-[var(--muted)]">
                       The terminal status could not be loaded. Retry to fetch the current workspace state.
                     </div>
                     <div className="flex items-center justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => void loadWorkspaceStatus()}
-                        className="rounded-md bg-[#0a0a0a] px-3 py-2 text-xs text-[#fafafa] transition-colors hover:bg-[#222]"
+                        className="rounded-md bg-[var(--foreground)] px-3 py-2 text-xs text-[var(--background)] transition-colors hover:opacity-80"
                       >
                         Retry
                       </button>
@@ -4434,7 +4439,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
                 {terminalModalState === 'stopped' && !isFreeTier && (
                   <div className="space-y-4">
-                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm leading-relaxed text-[#525252]">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-3 text-sm leading-relaxed text-[var(--muted)]">
                       {workspaceStatus?.state === 'started'
                         ? 'Your workspace is already running. Generate a fresh SSH command to connect from your local terminal.'
                         : 'Start your persistent Daytona workspace and generate a short-lived SSH command for local terminal access.'}
@@ -4444,7 +4449,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         type="button"
                         onClick={() => void requestWorkspaceSshAccess('start')}
                         disabled={isTerminalLoading || !!workspaceStatus && !workspaceStatus.canStart && workspaceStatus.state !== 'started'}
-                        className="rounded-md bg-[#0a0a0a] px-3 py-2 text-xs text-[#fafafa] transition-colors hover:bg-[#222] disabled:opacity-50"
+                        className="rounded-md bg-[var(--foreground)] px-3 py-2 text-xs text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-50"
                       >
                         {terminalPrimaryActionLabel}
                       </button>
@@ -4454,14 +4459,14 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
                 {terminalModalState === 'ready' && sshAccess && (
                   <div className="space-y-4">
-                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm leading-relaxed text-[#525252]">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-3 text-sm leading-relaxed text-[var(--muted)]">
                       Terminal access is available over SSH. Paste this command into your local terminal or VS Code Remote SSH.
                     </div>
 
-                    <div className="rounded-xl border border-[#e5e5e5] bg-white px-3 py-3">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#888]">SSH Command</p>
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-3">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">SSH Command</p>
                       <div className="mt-2 flex items-start gap-2">
-                        <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-[#fafafa] px-3 py-2 font-mono text-[11px] leading-relaxed text-[#0a0a0a]">
+                        <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-[var(--background)] px-3 py-2 font-mono text-[11px] leading-relaxed text-[var(--foreground)]">
                           {sshAccess.sshCommand}
                         </code>
                         <FlashCopyIconButton copyText={sshAccess.sshCommand} ariaLabel="Copy SSH command" />
@@ -4474,7 +4479,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         type="button"
                         onClick={() => void requestWorkspaceSshAccess('regenerate')}
                         disabled={isTerminalLoading}
-                        className="shrink-0 rounded-md border border-[#e5e5e5] px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+                        className="shrink-0 rounded-md border border-[var(--border)] px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50"
                       >
                         Regenerate
                       </button>
@@ -4487,11 +4492,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
         )}
 
         {showOwnSidebar && (
-          <div className="shrink-0 border-t border-[#e5e5e5] bg-[#fafafa]/95 backdrop-blur md:hidden">
+          <div className="shrink-0 border-t border-[var(--border)] bg-[var(--background)]/95 backdrop-blur md:hidden">
             <button
               type="button"
               onClick={() => setMobileChatListOpen(true)}
-              className="flex w-full items-center justify-center gap-2 py-2.5 text-xs font-medium text-[#525252] active:bg-[#f0f0f0]"
+              className="flex w-full items-center justify-center gap-2 py-2.5 text-xs font-medium text-[var(--muted)] active:bg-[var(--surface-subtle)]"
               style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
             >
               <MessageSquare size={15} strokeWidth={1.75} />

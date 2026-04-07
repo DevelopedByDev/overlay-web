@@ -625,18 +625,63 @@ html {
   animation: media-shimmer-slide 1.65s ease-in-out infinite;
 }
 
-/* Selection on dark user bubbles — element + descendants (Safari/WebKit) */
+/* Selection on user bubbles — adapts to theme */
 .chat-user-bubble::selection,
 .chat-user-bubble *::selection {
-  background-color: #c4c4c4 !important;
-  color: #0a0a0a !important;
-  -webkit-text-fill-color: #0a0a0a !important;
+  background-color: rgba(128, 128, 128, 0.35) !important;
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
 }
 
 .chat-user-bubble::-moz-selection,
 .chat-user-bubble *::-moz-selection {
-  background-color: #c4c4c4 !important;
-  color: #0a0a0a !important;
+  background-color: rgba(128, 128, 128, 0.35) !important;
+  color: inherit !important;
+}
+
+/* Dark-mode overrides for hardcoded markdown/editor colors */
+[data-theme='dark'] .markdown-content pre,
+[data-theme='dark'] .app-note-editor pre {
+  background: var(--surface-subtle);
+  color: var(--foreground);
+}
+
+[data-theme='dark'] .markdown-content code,
+[data-theme='dark'] .app-note-editor code {
+  background: var(--surface-subtle);
+  color: var(--foreground);
+}
+
+[data-theme='dark'] .markdown-content blockquote,
+[data-theme='dark'] .app-note-editor blockquote {
+  border-left-color: var(--border);
+  color: var(--muted);
+}
+
+[data-theme='dark'] .markdown-content h5,
+[data-theme='dark'] .markdown-content h6,
+[data-theme='dark'] .app-note-editor h5,
+[data-theme='dark'] .app-note-editor h6 {
+  color: var(--muted);
+}
+
+[data-theme='dark'] .markdown-content hr,
+[data-theme='dark'] .app-note-editor hr {
+  border-top-color: var(--border);
+}
+
+[data-theme='dark'] .markdown-content a,
+[data-theme='dark'] .app-note-editor a {
+  color: var(--foreground);
+}
+
+[data-theme='dark'] .app-note-editor .Tiptap-mathematics-editor {
+  background: var(--surface-subtle);
+  color: var(--foreground);
+}
+
+[data-theme='dark'] .md-typing-indicator span {
+  background: var(--muted-light);
 }
 
 /* Gradient orb animation */

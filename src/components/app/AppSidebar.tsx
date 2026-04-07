@@ -329,7 +329,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               disabled
                 ? 'cursor-not-allowed text-[var(--muted-light)]'
                 : active
-                  ? 'bg-[var(--foreground)] text-[var(--background)]'
+                  ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                   : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
             }`
             if (disabled) {
@@ -368,7 +368,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                     <span
                       className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
                         active
-                          ? 'text-[var(--background)]'
+                          ? 'text-[var(--muted)] opacity-100'
                           : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100'
                       }`}
                       aria-hidden
@@ -380,7 +380,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                     <span
                       className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-opacity ${
                         active
-                          ? 'bg-[color:color-mix(in_srgb,var(--background)_14%,transparent)] text-[var(--background)] opacity-100'
+                          ? 'text-[var(--muted)] opacity-100'
                           : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
                       }`}
                       aria-hidden
@@ -394,12 +394,12 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   {isPending ? (
                     <Loader2
                       size={14}
-                      className={`shrink-0 animate-spin ${active ? 'text-[var(--background)]' : 'text-[var(--muted)]'}`}
+                      className={`shrink-0 animate-spin ${active ? 'text-[var(--muted)]' : 'text-[var(--muted)]'}`}
                       aria-hidden
                     />
                   ) : unreadCount > 0 ? (
                     <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-medium ${
-                      active ? 'bg-[var(--background)] text-[var(--foreground)]' : 'bg-[var(--foreground)] text-[var(--background)]'
+                      active ? 'bg-[var(--border)] text-[var(--foreground)]' : 'bg-[var(--border)] text-[var(--foreground)]'
                     }`}>
                       {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
@@ -439,7 +439,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               <button
                 type="button"
                 onClick={() => void contextualAction.onClick()}
-                className="mb-3 flex w-full items-center gap-2.5 rounded-md bg-[var(--foreground)] px-3 py-2 text-sm text-[var(--background)] transition-colors hover:opacity-90"
+                className="mb-3 flex w-full items-center gap-2.5 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
               >
                 <span className="min-w-0 flex-1 text-left">{contextualAction.label}</span>
               </button>

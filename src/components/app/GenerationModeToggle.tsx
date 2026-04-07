@@ -29,7 +29,7 @@ export function GenerationModeToggle({
   const stretch = layout === 'stretch'
   return (
     <div
-      className={`flex items-center rounded-lg bg-[#f0f0f0] p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
+      className={`flex items-center rounded-lg bg-[var(--surface-subtle)] p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
     >
       {MODES.map(({ value, label, Icon }) => {
         const active = mode === value
@@ -46,11 +46,11 @@ export function GenerationModeToggle({
                 : 'gap-1 px-2.5 py-1'
             } ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${
               active
-                ? 'bg-white font-medium text-[#0a0a0a] shadow-sm'
-                : 'text-[#888] hover:text-[#525252]'
+                ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
+                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
             }`}
           >
-            <Icon size={stretch ? 13 : 11} className="shrink-0 text-[#0a0a0a]" />
+            <Icon size={stretch ? 13 : 11} className="shrink-0" />
             <span className={stretch ? 'max-w-full truncate text-center text-[10px] leading-none sm:text-xs' : ''}>
               {label}
             </span>
@@ -80,7 +80,7 @@ interface AskActModeToggleProps {
 /** Same chrome as {@link GenerationModeToggle} — for the composer only. */
 export function AskActModeToggle({ mode, onChange, disabled, className = '' }: AskActModeToggleProps) {
   return (
-    <div className={`flex items-center bg-[#f0f0f0] rounded-lg p-0.5 shrink-0 ${className}`}>
+    <div className={`flex items-center bg-[var(--surface-subtle)] rounded-lg p-0.5 shrink-0 ${className}`}>
       {ASK_ACT_MODES.map(({ value, label, Icon }) => {
         const active = mode === value
         return (
@@ -94,11 +94,11 @@ export function AskActModeToggle({ mode, onChange, disabled, className = '' }: A
               disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
             } ${
               active
-                ? 'bg-white text-[#0a0a0a] shadow-sm font-medium'
-                : 'text-[#888] hover:text-[#525252]'
+                ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm font-medium'
+                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
             }`}
           >
-            <Icon size={11} className="text-[#0a0a0a]" />
+            <Icon size={11} />
             <span>{label}</span>
           </button>
         )

@@ -44,14 +44,26 @@ export async function PATCH(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const mutationArgs: {
+      userId: string
+      serverSecret: string
+      theme?: 'light' | 'dark'
+      useSecondarySidebar?: boolean
+    } = {
+      userId: auth.userId,
+      serverSecret: getInternalApiSecret(),
+    }
+
+    if (body.theme !== undefined) {
+      mutationArgs.theme = body.theme
+    }
+    if (body.useSecondarySidebar !== undefined) {
+      mutationArgs.useSecondarySidebar = body.useSecondarySidebar
+    }
+
     const settings = await convex.mutation<UiSettings>(
       'uiSettings:upsertByServer',
-      {
-        userId: auth.userId,
-        serverSecret: getInternalApiSecret(),
-        theme: body.theme,
-        useSecondarySidebar: body.useSecondarySidebar,
-      },
+      mutationArgs,
       { throwOnError: true },
     )
     return NextResponse.json(settings)
