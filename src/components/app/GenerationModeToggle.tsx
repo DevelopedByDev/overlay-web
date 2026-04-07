@@ -66,8 +66,8 @@ const ASK_ACT_MODES: {
   label: string
   Icon: ComponentType<{ size?: number; className?: string }>
 }[] = [
-  { value: 'ask', label: 'Ask', Icon: MessageSquare },
   { value: 'act', label: 'Act', Icon: Bot },
+  { value: 'ask', label: 'Ask', Icon: MessageSquare },
 ]
 
 interface AskActModeToggleProps {

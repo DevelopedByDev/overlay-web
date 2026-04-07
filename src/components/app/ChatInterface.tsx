@@ -45,7 +45,6 @@ import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
 import { dispatchChatTitleUpdated, sanitizeChatTitle } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
-import { useNavigationProgress } from '@/lib/navigation-progress'
 import { MarkdownMessage } from './MarkdownMessage'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
@@ -863,10 +862,13 @@ function BrowserToolBlock({
       ? (block.toolOutput as Record<string, unknown>)
       : undefined
   const liveUrl = typeof toolOutput?.liveUrl === 'string' ? toolOutput.liveUrl : null
-  const [browserPreviewOpen, setBrowserPreviewOpen] = useState(false)
-  const isPreviewOpen = Boolean(liveUrl && isDone && browserPreviewOpen)
   const label = getDescriptiveToolLabel('browser_run_task', block.toolInput)
   const running = !isDone && !isError
+  const hasDetails = Boolean(task || liveUrl)
+  /** After the tool finishes, details start collapsed; user expands with the chevron. */
+  const [userExpanded, setUserExpanded] = useState(false)
+  const showDetails =
+    (running && Boolean(task)) || (isDone && userExpanded && hasDetails)
 
   if (isError) {
     return (
@@ -883,38 +885,46 @@ function BrowserToolBlock({
     <div className="w-full px-1 py-0.5">
       <div className="max-w-[min(100%,36rem)]">
         <div className="flex items-stretch gap-2.5 text-[13px] leading-snug">
-          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className={running ? 'tool-line-shimmer' : 'text-[#52525b]'}>{label}</span>
-              {liveUrl && isDone ? (
+           <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+           <div className="min-w-0 flex-1">
+             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+               <span className={running ? 'tool-line-shimmer' : 'text-[#52525b]'}>{label}</span>
+              {hasDetails && isDone ? (
                 <button
                   type="button"
-                  onClick={() => setBrowserPreviewOpen((o) => !o)}
-                  className="inline-flex items-center gap-1 text-[12px] font-medium text-[#71717a] hover:text-[#0a0a0a]"
+                  onClick={() => setUserExpanded((open) => !open)}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[#71717a] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
+                  aria-label={userExpanded ? 'Collapse browser tool details' : 'Expand browser tool details'}
                 >
-                  Preview
                   <ChevronDown
                     size={14}
                     strokeWidth={1.75}
-                    className={`transition-transform duration-200 ${isPreviewOpen ? 'rotate-180' : ''}`}
+                    className={`transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
                   />
                 </button>
               ) : null}
             </div>
-            {task ? <p className="mt-1 text-[12px] leading-relaxed text-[#71717a]">{task}</p> : null}
           </div>
         </div>
-        {liveUrl && isDone ? (
+        {hasDetails ? (
           <div
-            className={`ml-[26px] overflow-hidden transition-all duration-300 ${isPreviewOpen ? 'max-h-[340px] pt-3' : 'max-h-0'}`}
+            className={`ml-[26px] overflow-hidden transition-all duration-300 ${showDetails ? 'max-h-[520px] pt-2' : 'max-h-0'}`}
           >
-            <iframe
-              src={liveUrl}
-              title="Browser Use live browser"
-              sandbox="allow-scripts allow-same-origin"
-              className="h-[280px] w-full rounded-xl border border-[#e8e8e8] bg-[#fafafa]"
-            />
+            {showDetails ? (
+              <div key={userExpanded ? 'open' : running ? 'streaming' : 'closed'} className="space-y-3 message-appear">
+                {task ? (
+                  <p className="text-[12px] leading-relaxed text-[#71717a]">{task}</p>
+                ) : null}
+                {liveUrl && isDone ? (
+                  <iframe
+                    src={liveUrl}
+                    title="Browser Use live browser"
+                    sandbox="allow-scripts allow-same-origin"
+                    className="h-[280px] w-full rounded-xl border border-[#e8e8e8] bg-[#fafafa]"
+                  />
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -1037,6 +1047,8 @@ interface ExchangeBlockProps {
   modelLabel: string
   onDeleteTurn: () => void
   onReply: () => void
+  /** User stopped streaming for this exchange; show notice + footer actions. */
+  interrupted?: boolean
   actionsLocked: boolean
   isExiting?: boolean
   replyThreadMeta: { replyToTurnId: string; replySnippet: string } | null
@@ -1046,7 +1058,7 @@ interface ExchangeBlockProps {
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
-  turnIdForActions, modelLabel, onDeleteTurn, onReply, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
+  turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -1063,8 +1075,14 @@ function ExchangeBlock({
     )
     const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
     const responseSettled = !responseInProgress
+    const copyPlainText =
+      interrupted && !errorMessage
+        ? assistantPlainText.trim()
+          ? `${assistantPlainText}\n\nResponse was interrupted.`
+          : 'Response was interrupted.'
+        : assistantPlainText
     const showFooter =
-      responseSettled && (assistantPlainText.length > 0 || !!errorMessage)
+      responseSettled && (assistantPlainText.length > 0 || !!errorMessage || interrupted)
     return (
       <div
         className={`flex flex-col gap-2 message-appear transition-all duration-300 ease-out ${
@@ -1246,11 +1264,17 @@ function ExchangeBlock({
           </div>
         )}
 
+        {interrupted && responseSettled && !errorMessage && (
+          <div className="flex justify-start px-1 py-1">
+            <p className="text-sm text-[#71717a]">Response was interrupted.</p>
+          </div>
+        )}
+
         {showFooter && (
           <div className="message-appear flex items-center gap-1 px-1 pt-0.5">
             <FlashCopyIconButton
-              copyText={assistantPlainText}
-              disabled={assistantPlainText.length === 0 || isExiting}
+              copyText={copyPlainText}
+              disabled={copyPlainText.length === 0 || isExiting}
               ariaLabel="Copy response"
             />
             <button
@@ -1449,7 +1473,7 @@ function createConversationUiState(
   overrides: Partial<ConversationUiState> = {},
 ): ConversationUiState {
   return {
-    composerMode: overrides.composerMode ?? 'ask',
+    composerMode: overrides.composerMode ?? 'act',
     selectedActModel: overrides.selectedActModel ?? DEFAULT_MODEL_ID,
     selectedModels: [...(overrides.selectedModels ?? [DEFAULT_MODEL_ID])],
     exchangeModes: [...(overrides.exchangeModes ?? [])],
@@ -1763,7 +1787,6 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
-  const { begin, done } = useNavigationProgress()
   const activeChatIdRef = useRef<string | null>(null)
   const loadChatRequestRef = useRef(0)
   const runtimesRef = useRef(new Map<string, ConversationRuntime>())
@@ -1779,7 +1802,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   const [chats, setChats] = useState<Conversation[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
-  const [composerMode, setComposerMode] = useState<'ask' | 'act'>('ask')
+  const [composerMode, setComposerMode] = useState<'ask' | 'act'>('act')
+  /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
+  const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
   const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
   const [isSwitchingChat, setIsSwitchingChat] = useState(false)
@@ -2415,6 +2440,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     })
     if (res.ok) {
       const data = await res.json()
+      setInterruptedExchangeIdx(null)
       const newChat: Conversation = {
         _id: data.id,
         title: DEFAULT_CHAT_TITLE,
@@ -2451,9 +2477,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   async function loadChat(chatId: string) {
     const requestId = ++loadChatRequestRef.current
-    const progressToken = begin('secondary')
     persistActiveRuntimeUiState()
     clearTransientComposerState()
+    setInterruptedExchangeIdx(null)
     markRead(chatId)
     activeChatIdRef.current = chatId
     setActiveViewer(chatId)
@@ -2677,7 +2703,6 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     } catch { /* already cleared */ }
     finally {
       if (requestId === loadChatRequestRef.current) setIsSwitchingChat(false)
-      done(progressToken)
     }
   }
 
@@ -3390,8 +3415,12 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   }
 
   function stopActiveChat() {
+    if (!isActiveLoading) return
+    const userTurns = chat0.messages.filter((m) => m.role === 'user').length
+    const idx = userTurns > 0 ? userTurns - 1 : -1
     activeAskChats.slice(0, selectedModels.length).forEach((chat) => chat.stop())
     activeRuntime.actChat.stop()
+    if (idx >= 0) setInterruptedExchangeIdx(idx)
   }
 
   // ── derived values for header ─────────────────────────────────────────────
@@ -3985,6 +4014,15 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 const textIsExiting = !!textTurnIdForActions && exitingTurnIds.includes(textTurnIdForActions)
 
                 const assistantPlainForReply = assistantBlocksToPlainText(assistantVisualBlocks)
+                const errLabelForTurn = errorLabel(instError)
+                const interruptedHere =
+                  interruptedExchangeIdx === curExchIdx && !errLabelForTurn
+                const replyPlainForInterrupt =
+                  interruptedHere && assistantPlainForReply.trim()
+                    ? `${assistantPlainForReply}\n\nResponse was interrupted.`
+                    : interruptedHere
+                      ? 'Response was interrupted.'
+                      : assistantPlainForReply
 
                 blocks.push(
                   <ExchangeBlock
@@ -3998,7 +4036,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                     responseModelId={selectedModelId}
                     assistantVisualBlocks={assistantVisualBlocks}
                     isStreaming={isStreaming}
-                    errorMessage={errorLabel(instError)}
+                    errorMessage={errLabelForTurn}
                     exchModelList={exchModelList}
                     selectedTab={selectedTab}
                     onTabSelect={(tabIdx) => handleTabSelect(curExchIdx, tabIdx)}
@@ -4012,8 +4050,9 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                       if (tid) void handleDeleteTurnById(tid)
                     }}
                     onReply={() =>
-                      beginReplyToAssistantText(assistantPlainForReply, getUserTurnId(msg))
+                      beginReplyToAssistantText(replyPlainForInterrupt, getUserTurnId(msg))
                     }
+                    interrupted={interruptedHere}
                     actionsLocked={isLatest && isActiveLoading}
                     isExiting={textIsExiting}
                     replyThreadMeta={getUserReplyThreadMeta(msg)}

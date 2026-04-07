@@ -166,7 +166,7 @@ export const create = mutation({
       lastModified: now,
       createdAt: now,
       updatedAt: now,
-      lastMode: lastMode ?? 'ask',
+      lastMode: lastMode ?? 'act',
       askModelIds: ask,
       actModelId: act,
     })

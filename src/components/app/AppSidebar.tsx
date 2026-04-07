@@ -224,7 +224,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
         title: 'New Chat',
         askModelIds: [DEFAULT_MODEL_ID],
         actModelId: DEFAULT_MODEL_ID,
-        lastMode: 'ask',
+        lastMode: 'act',
       }),
     })
     if (!res.ok) return

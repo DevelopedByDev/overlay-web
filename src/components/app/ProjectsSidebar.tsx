@@ -577,7 +577,7 @@ export default function ProjectsSidebar() {
         projectId: selectedProject._id,
         askModelIds: [DEFAULT_MODEL_ID],
         actModelId: DEFAULT_MODEL_ID,
-        lastMode: 'ask',
+        lastMode: 'act',
       }),
     })
     if (res.ok) {
