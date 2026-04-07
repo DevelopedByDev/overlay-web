@@ -27,6 +27,22 @@ export function summarizeAssistantMessage(content: string | undefined): string |
   return trimmed.length > 280 ? `${trimmed.slice(0, 277)}...` : trimmed
 }
 
+function summarizeAutomationErrorBody(bodyText: string | undefined, status: number): string {
+  const trimmed = bodyText?.trim()
+  if (!trimmed) {
+    return `Automation execution failed (${status}).`
+  }
+
+  if (/<!doctype html>/i.test(trimmed) || /<html[\s>]/i.test(trimmed)) {
+    if (status === 404) {
+      return 'Automation execution hit a 404 page. The internal app URL is likely misconfigured.'
+    }
+    return `Automation execution returned an HTML error page (${status}).`
+  }
+
+  return trimmed.length > 400 ? `${trimmed.slice(0, 397)}...` : trimmed
+}
+
 export async function ensureAutomationConversation(args: {
   userId: string
   serverSecret: string
@@ -154,7 +170,9 @@ export async function executeAutomationTurn(args: {
 
   const bodyText = await response.text()
   if (!response.ok) {
-    const error = new Error(bodyText || 'Automation execution failed') as Error & { turnId?: string }
+    const error = new Error(
+      summarizeAutomationErrorBody(bodyText, response.status),
+    ) as Error & { turnId?: string }
     error.turnId = turnId
     throw error
   }

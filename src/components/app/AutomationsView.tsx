@@ -11,6 +11,7 @@ import {
   Pencil,
   Play,
   Plus,
+  RotateCcw,
   Sparkles,
   Trash2,
   Workflow,
@@ -20,6 +21,7 @@ import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getChatModelDisplayName } from '@/l
 import {
   formatAutomationSchedule,
   type AutomationRunDetail,
+  getAutomationHealthLabel,
   getAutomationRunStatusLabel,
   getAutomationStatusLabel,
   type AutomationRunSummary,
@@ -96,6 +98,29 @@ function formatDuration(durationMs?: number): string {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+}
+
+function summarizeRunPreviewText(text?: string): string {
+  const trimmed = text?.trim()
+  if (!trimmed) return 'Run completed without a summary.'
+  if (/<!doctype html>/i.test(trimmed) || /<html[\s>]/i.test(trimmed)) {
+    return 'Automation execution returned an HTML error page.'
+  }
+  return trimmed
+}
+
+function summarizeRunDetailText(detail: AutomationRunDetail): string | undefined {
+  return summarizeRunPreviewText(
+    detail.assistantMessage || detail.run.resultSummary || detail.run.errorMessage,
+  )
+}
+
+function getHealthBadgeClasses(label: string): string {
+  if (label === 'Needs attention') return 'bg-red-50 text-red-600'
+  if (label === 'Queued') return 'bg-amber-50 text-amber-700'
+  if (label === 'Running') return 'bg-blue-50 text-blue-700'
+  if (label === 'Paused' || label === 'Archived') return 'bg-[#f2f2f2] text-[#777]'
+  return 'bg-[#eefaf0] text-[#2f7d47]'
 }
 
 function toDatetimeLocalValue(ts?: number): string {
@@ -185,14 +210,24 @@ function AutomationActions({
 function RunDetailDialog({
   detail,
   loading,
+  retrying,
   timezone,
+  onRetryRun,
   onClose,
 }: {
   detail: AutomationRunDetail | null
   loading: boolean
+  retrying?: boolean
   timezone?: string
+  onRetryRun: () => Promise<void>
   onClose: () => void
 }) {
+  const canRetry = Boolean(
+    detail &&
+      !detail.relatedRetryRun &&
+      (detail.run.status === 'failed' || detail.run.status === 'canceled' || detail.run.status === 'skipped'),
+  )
+
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
@@ -208,13 +243,26 @@ function RunDetailDialog({
               {detail?.automation?.title || 'Automation run'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-[#888] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            {canRetry ? (
+              <button
+                type="button"
+                onClick={() => void onRetryRun()}
+                disabled={retrying}
+                className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+              >
+                {retrying ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                Retry run
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded p-1 text-[#888] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         <div className="max-h-[75vh] space-y-4 overflow-y-auto px-5 py-5">
@@ -241,12 +289,22 @@ function RunDetailDialog({
                   <p>Duration: {formatDuration(detail.run.durationMs)}</p>
                   <p>Mode: {detail.run.mode === 'act' ? 'Act' : 'Ask'}</p>
                   <p>Model: {getChatModelDisplayName(detail.run.modelId)}</p>
+                  <p>Attempt: {detail.run.attemptNumber ?? 1}</p>
                 </div>
                 {detail.run.turnId ? (
                   <p className="mt-2 text-[11px] text-[#888]">Turn: <span className="font-mono">{detail.run.turnId}</span></p>
                 ) : null}
                 {detail.run.conversationId ? (
                   <p className="mt-1 text-[11px] text-[#888]">Conversation: <span className="font-mono">{detail.run.conversationId}</span></p>
+                ) : null}
+                {detail.relatedRetryRun ? (
+                  <div className="mt-3 rounded-lg border border-[#f1e2b8] bg-[#fff9ec] px-3 py-2 text-[11px] text-[#8a6a17]">
+                    Retry {getAutomationRunStatusLabel(detail.relatedRetryRun.status).toLowerCase()} for{' '}
+                    {formatDateTime(detail.relatedRetryRun.scheduledFor, timezone)}
+                    {detail.relatedRetryRun.attemptNumber
+                      ? ` (attempt ${detail.relatedRetryRun.attemptNumber})`
+                      : ''}
+                  </div>
                 ) : null}
               </div>
 
@@ -263,7 +321,7 @@ function RunDetailDialog({
                     {detail.run.status === 'failed' ? 'Failure' : 'Result'}
                   </h4>
                   <div className="rounded-xl border border-[#e5e5e5] bg-white p-4 text-[12px] leading-relaxed text-[#555] whitespace-pre-wrap">
-                    {detail.assistantMessage || detail.run.resultSummary || detail.run.errorMessage}
+                    {summarizeRunDetailText(detail)}
                   </div>
                 </div>
               ) : null}
@@ -345,6 +403,7 @@ function AutomationDialog({
   onSaved,
   onDeleted,
   onRunNow,
+  onRetryRun,
 }: {
   state: DialogState
   skills: Skill[]
@@ -354,6 +413,7 @@ function AutomationDialog({
   onSaved: (automation: AutomationSummary) => void
   onDeleted: (automationId: string) => void
   onRunNow: (automationId: string) => Promise<void>
+  onRetryRun: (automationRunId: string) => Promise<void>
 }) {
   const isEdit = state.mode === 'edit'
   const initial = isEdit ? state.automation : undefined
@@ -364,6 +424,7 @@ function AutomationDialog({
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [selectedRunDetail, setSelectedRunDetail] = useState<AutomationRunDetail | null>(null)
   const [loadingRunDetail, setLoadingRunDetail] = useState(false)
+  const [retryingRun, setRetryingRun] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -477,6 +538,17 @@ function AutomationDialog({
       setSelectedRunDetail(await res.json())
     } finally {
       setLoadingRunDetail(false)
+    }
+  }
+
+  async function handleRetryRun(runId: string) {
+    if (retryingRun) return
+    setRetryingRun(true)
+    try {
+      await onRetryRun(runId)
+      await handleOpenRunDetail(runId)
+    } finally {
+      setRetryingRun(false)
     }
   }
 
@@ -743,7 +815,9 @@ function AutomationDialog({
                         <div className="text-sm font-medium text-[#0a0a0a]">{getAutomationRunStatusLabel(run.status)}</div>
                         <div className="text-[11px] text-[#888]">{timeAgo(run.createdAt)}</div>
                       </div>
-                      <p className="mt-1 text-[11px] text-[#888]">{run.resultSummary || run.errorMessage || 'Run completed without a summary.'}</p>
+                      <p className="mt-1 line-clamp-4 break-words text-[11px] text-[#888]">
+                        {summarizeRunPreviewText(run.resultSummary || run.errorMessage)}
+                      </p>
                       <p className="mt-2 text-[10px] uppercase tracking-[0.12em] text-[#bbb]">
                         View details
                       </p>
@@ -785,7 +859,9 @@ function AutomationDialog({
         <RunDetailDialog
           detail={selectedRunDetail}
           loading={loadingRunDetail}
+          retrying={retryingRun}
           timezone={form.timezone}
+          onRetryRun={() => handleRetryRun(selectedRunId)}
           onClose={() => {
             setSelectedRunId(null)
             setSelectedRunDetail(null)
@@ -892,13 +968,35 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ automationId }),
       })
-      if (!res.ok) return
       await loadAutomations()
       if (dialog?.mode === 'edit' && dialog.automation._id === automationId) {
         await loadRuns(automationId)
       }
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null
+        if (data?.error) window.alert(data.error)
+        return
+      }
     } finally {
       setRunningIds((prev) => ({ ...prev, [automationId]: false }))
+    }
+  }
+
+  async function handleRetryRun(automationRunId: string) {
+    const res = await fetch('/api/app/automations/runs/retry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ automationRunId }),
+    })
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as { error?: string } | null
+      if (data?.error) window.alert(data.error)
+      return
+    }
+
+    await loadAutomations()
+    if (dialog?.mode === 'edit') {
+      await loadRuns(dialog.automation._id)
     }
   }
 
@@ -958,6 +1056,19 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
                   <div className="flex items-center gap-2">
                     <p className="truncate text-sm font-medium text-[#0a0a0a]">{automation.title}</p>
                     <span className="rounded-full bg-[#f5f5f5] px-2 py-0.5 text-[10px] text-[#666]">{getAutomationStatusLabel(automation.status)}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] ${getHealthBadgeClasses(
+                        getAutomationHealthLabel({
+                          status: automation.status,
+                          lastRunStatus: automation.lastRunStatus,
+                        }),
+                      )}`}
+                    >
+                      {getAutomationHealthLabel({
+                        status: automation.status,
+                        lastRunStatus: automation.lastRunStatus,
+                      })}
+                    </span>
                   </div>
                   <p className="mt-0.5 line-clamp-1 text-[11px] text-[#888]">{automation.description || 'No description'}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[#aaa]">
@@ -1002,7 +1113,22 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
                     </div>
                   </button>
                   <div className="mt-4 flex items-center justify-between gap-2">
-                    <span className="rounded-full bg-[#f5f5f5] px-2 py-0.5 text-[10px] text-[#666]">{getAutomationStatusLabel(automation.status)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-[#f5f5f5] px-2 py-0.5 text-[10px] text-[#666]">{getAutomationStatusLabel(automation.status)}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] ${getHealthBadgeClasses(
+                          getAutomationHealthLabel({
+                            status: automation.status,
+                            lastRunStatus: automation.lastRunStatus,
+                          }),
+                        )}`}
+                      >
+                        {getAutomationHealthLabel({
+                          status: automation.status,
+                          lastRunStatus: automation.lastRunStatus,
+                        })}
+                      </span>
+                    </div>
                     <AutomationActions
                       onRun={() => void handleRunNow(automation._id)}
                       onEdit={() => setDialog({ mode: 'edit', automation })}
@@ -1028,6 +1154,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
           onSaved={handleSaved}
           onDeleted={handleDeleted}
           onRunNow={handleRunNow}
+          onRetryRun={handleRetryRun}
         />
       ) : null}
     </div>

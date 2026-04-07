@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getNextAutomationRunAt } from './automations.ts'
 import { shouldRetryAutomationFailure } from './automation-guardrails.ts'
+import { detectRequiredIntegrations } from './automation-preflight.ts'
+import { getBaseUrl } from './url.ts'
 
 test('getNextAutomationRunAt returns future once schedule or undefined when elapsed', () => {
   const future = Date.UTC(2026, 0, 1, 12, 0, 0)
@@ -103,4 +105,39 @@ test('shouldRetryAutomationFailure never retries manual or permanent failures', 
     }),
     false,
   )
+})
+
+test('detectRequiredIntegrations finds referenced connected services', () => {
+  const detected = detectRequiredIntegrations(
+    'Every morning, check Gmail, update the Notion project page, and post blockers to Slack.',
+  )
+  assert.deepEqual(
+    detected.map((integration) => integration.slug),
+    ['gmail', 'slack', 'notion'],
+  )
+})
+
+test('detectRequiredIntegrations avoids false positives for generic scheduling copy', () => {
+  const detected = detectRequiredIntegrations(
+    'Create a calendar-style weekly summary and store it as a markdown note.',
+  )
+  assert.deepEqual(detected.map((integration) => integration.slug), [])
+})
+
+test('getBaseUrl prefers dev app URL in development', () => {
+  const originalNodeEnv = process.env.NODE_ENV
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL
+  const originalDevAppUrl = process.env.DEV_NEXT_PUBLIC_APP_URL
+
+  try {
+    process.env.NODE_ENV = 'development'
+    process.env.NEXT_PUBLIC_APP_URL = 'https://getoverlay.io'
+    process.env.DEV_NEXT_PUBLIC_APP_URL = 'http://localhost:3000'
+
+    assert.equal(getBaseUrl(), 'http://localhost:3000')
+  } finally {
+    process.env.NODE_ENV = originalNodeEnv
+    process.env.NEXT_PUBLIC_APP_URL = originalAppUrl
+    process.env.DEV_NEXT_PUBLIC_APP_URL = originalDevAppUrl
+  }
 })

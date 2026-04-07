@@ -4,6 +4,7 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getInternalApiBaseUrl } from '@/lib/url'
 import type { AutomationSummary, AutomationRunSummary } from '@/lib/automations'
+import { runAutomationIntegrationPreflight } from '@/lib/automation-preflight'
 import {
   buildAutomationRunPrompt,
   ensureAutomationConversation,
@@ -84,6 +85,31 @@ export async function POST(request: NextRequest) {
 
     const sourceInstructions = await loadAutomationSourceInstructions(automation, userId, serverSecret)
     const prompt = buildAutomationRunPrompt(automation, sourceInstructions)
+    const preflight = await runAutomationIntegrationPreflight({
+      automation,
+      sourceInstructions,
+      userId,
+    })
+    if (!preflight.ok) {
+      const finishedAt = Date.now()
+      await convex.mutation(
+        'automations:updateRun',
+        {
+          automationRunId: automationRunId as Id<'automationRuns'>,
+          userId,
+          serverSecret,
+          status: 'failed',
+          finishedAt,
+          durationMs: 0,
+          conversationId: run.conversationId as Id<'conversations'> | undefined,
+          errorCode: preflight.errorCode,
+          errorMessage: preflight.errorMessage,
+        },
+        { throwOnError: true },
+      )
+      return NextResponse.json({ success: true, preflightFailed: true })
+    }
+
     const conversationId = await ensureAutomationConversation({
       userId,
       serverSecret,

@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Run not found' }, { status: 404 })
     }
 
-    const [automation, messages, outputs, tools] = await Promise.all([
+    const [automation, messages, outputs, tools, relatedRetryRun] = await Promise.all([
       convex.query<AutomationSummary | null>(
         'automations:get',
         {
@@ -87,6 +87,16 @@ export async function GET(request: NextRequest) {
             { throwOnError: true },
           )
         : Promise.resolve([]),
+      convex.query<AutomationRunSummary | null>(
+        'automations:findRetryRun',
+        {
+          automationId: run.automationId as Id<'automations'>,
+          automationRunId: run._id as Id<'automationRuns'>,
+          userId,
+          serverSecret,
+        },
+        { throwOnError: true },
+      ),
     ])
 
     const runMessages = run.turnId
@@ -112,6 +122,7 @@ export async function GET(request: NextRequest) {
       assistantMessage,
       outputs: outputs ?? [],
       tools: tools ?? [],
+      relatedRetryRun: relatedRetryRun ?? undefined,
     }
 
     return NextResponse.json(detail)

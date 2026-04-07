@@ -446,6 +446,31 @@ export const getRun = query({
   },
 })
 
+export const findRetryRun = query({
+  args: {
+    automationId: v.id('automations'),
+    automationRunId: v.id('automationRuns'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, { automationId, automationRunId, userId, accessToken, serverSecret }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return null
+    }
+    const automation = await ctx.db.get(automationId)
+    if (!automation || automation.userId !== userId || automation.deletedAt) return null
+    const rows = await ctx.db
+      .query('automationRuns')
+      .withIndex('by_automationId_createdAt', (q) => q.eq('automationId', automationId))
+      .order('desc')
+      .take(100)
+    return rows.find((row) => row.retryOfRunId === automationRunId) ?? null
+  },
+})
+
 export const createRun = mutation({
   args: {
     automationId: v.id('automations'),

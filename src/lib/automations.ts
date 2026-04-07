@@ -100,6 +100,7 @@ export interface AutomationRunDetail {
   assistantMessage?: string
   tools: AutomationToolInvocationSummary[]
   outputs: AutomationOutputSummary[]
+  relatedRetryRun?: AutomationRunSummary
 }
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
@@ -325,6 +326,18 @@ export function getAutomationRunStatusLabel(status?: AutomationRunStatus): strin
   if (status === 'queued') return 'Queued'
   if (status === 'skipped') return 'Skipped'
   return 'Canceled'
+}
+
+export function getAutomationHealthLabel(input: {
+  status: AutomationStatus
+  lastRunStatus?: AutomationRunStatus
+}): string {
+  if (input.status === 'paused') return 'Paused'
+  if (input.status === 'archived') return 'Archived'
+  if (input.lastRunStatus === 'failed' || input.lastRunStatus === 'canceled') return 'Needs attention'
+  if (input.lastRunStatus === 'queued') return 'Queued'
+  if (input.lastRunStatus === 'running') return 'Running'
+  return 'Healthy'
 }
 
 export function buildAutomationPrompt(input: {

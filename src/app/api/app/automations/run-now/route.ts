@@ -4,6 +4,7 @@ import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { type AutomationSummary } from '@/lib/automations'
+import { runAutomationIntegrationPreflight } from '@/lib/automation-preflight'
 import {
   buildAutomationRunPrompt,
   ensureAutomationConversation,
@@ -40,6 +41,43 @@ export async function POST(request: NextRequest) {
 
     const sourceInstructions = await loadAutomationSourceInstructions(automation, userId, serverSecret)
     const prompt = buildAutomationRunPrompt(automation, sourceInstructions)
+    const preflight = await runAutomationIntegrationPreflight({
+      automation,
+      sourceInstructions,
+      userId,
+    })
+
+    const scheduledFor = Date.now()
+    const failedAt = Date.now()
+    if (!preflight.ok) {
+      const runId = await convex.mutation<Id<'automationRuns'>>('automations:createRun', {
+        automationId: automation._id as Id<'automations'>,
+        userId,
+        serverSecret,
+        status: 'failed',
+        triggerSource: 'manual',
+        scheduledFor,
+        promptSnapshot: prompt,
+        mode: automation.mode,
+        modelId: automation.modelId,
+      }, { throwOnError: true })
+
+      await convex.mutation('automations:updateRun', {
+        automationRunId: runId,
+        userId,
+        serverSecret,
+        status: 'failed',
+        finishedAt: failedAt,
+        durationMs: 0,
+        errorCode: preflight.errorCode,
+        errorMessage: preflight.errorMessage,
+      }, { throwOnError: true })
+
+      return NextResponse.json(
+        { error: preflight.errorMessage, automationRunId: runId },
+        { status: 409 },
+      )
+    }
 
     const conversationId = await ensureAutomationConversation({
       userId,
@@ -53,7 +91,7 @@ export async function POST(request: NextRequest) {
       serverSecret,
       status: 'running',
       triggerSource: 'manual',
-      scheduledFor: Date.now(),
+      scheduledFor,
       promptSnapshot: prompt,
       mode: automation.mode,
       modelId: automation.modelId,
