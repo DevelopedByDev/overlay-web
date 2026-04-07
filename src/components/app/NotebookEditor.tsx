@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -58,6 +58,7 @@ import {
 } from 'lucide-react'
 import { common, createLowlight } from 'lowlight'
 import SlashMenu, { type SlashMenuItem } from './SlashMenu'
+import { useAppSettings } from './AppSettingsProvider'
 
 interface Note {
   _id: string
@@ -237,7 +238,10 @@ export default function NotebookEditor({
   projectName?: string
 }) {
   void _userId
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const { settings } = useAppSettings()
+  const showOwnSidebar = !hideSidebar && settings.useSecondarySidebar
   const [notes, setNotes] = useState<Note[]>([])
   const [activeNote, setActiveNote] = useState<Note | null>(null)
   const [title, setTitle] = useState('')
@@ -628,7 +632,10 @@ export default function NotebookEditor({
   const openNote = useCallback((note: Note) => {
     setActiveNote(note)
     setTitle(note.title)
-  }, [])
+    if (!hideSidebar) {
+      router.replace(`/app/notes?id=${encodeURIComponent(note._id)}`)
+    }
+  }, [hideSidebar, router])
 
   useEffect(() => {
     void loadNotes()
@@ -802,9 +809,12 @@ export default function NotebookEditor({
       setActiveNote(null)
       setTitle('')
       editor?.commands.clearContent()
+      if (!hideSidebar) {
+        router.replace('/app/notes')
+      }
     }
     setNotes((prev) => prev.filter((note) => note._id !== noteId))
-    if (!hideSidebar) {
+    if (showOwnSidebar) {
       await loadNotes()
     }
   }
@@ -819,7 +829,7 @@ export default function NotebookEditor({
 
   return (
     <div className="flex h-full">
-      {!hideSidebar && (
+      {showOwnSidebar && (
         <div className="w-52 h-full flex flex-col border-r border-[#e5e5e5] bg-[#f5f5f5]">
           <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3">
             <button

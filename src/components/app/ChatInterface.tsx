@@ -50,6 +50,7 @@ import { MarkdownMessage } from './MarkdownMessage'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
+import { useAppSettings } from './AppSettingsProvider'
 
 function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: boolean; isFreeTier: boolean }) {
   const router = useRouter()
@@ -1760,6 +1761,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   void _userId
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { settings } = useAppSettings()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
   const { begin, done } = useNavigationProgress()
   const activeChatIdRef = useRef<string | null>(null)
@@ -2239,7 +2241,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   }, [composerMode, selectedModels, selectedActModel, activeChatId])
 
   // Auto-load a specific chat when embedded in project view (`id` = conversation)
-  const idParam = hideSidebar ? searchParams?.get('id') ?? null : null
+  const showOwnSidebar = !hideSidebar && settings.useSecondarySidebar
+  const idParam = searchParams?.get('id') ?? null
   /** When chat is opened inside a project, files/docs attach to this project for search scoping. */
   const embedProjectId = hideSidebar ? searchParams?.get('projectId') ?? null : null
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2392,6 +2395,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     runtime.hydrated = true
   }
 
+  function syncStandaloneChatUrl(chatId: string | null) {
+    if (hideSidebar) return
+    router.replace(chatId ? `/app/chat?id=${encodeURIComponent(chatId)}` : '/app/chat')
+  }
+
   async function createNewChat(): Promise<string | null> {
     persistActiveRuntimeUiState()
     const res = await fetch('/api/app/conversations', {
@@ -2433,6 +2441,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       activeChatIdRef.current = data.id
       setActiveViewer(data.id)
       setActiveChatId(data.id)
+      syncStandaloneChatUrl(data.id)
       applyUiStateToView(runtime.ui)
       clearTransientComposerState()
       return data.id
@@ -2449,6 +2458,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     activeChatIdRef.current = chatId
     setActiveViewer(chatId)
     setActiveChatId(chatId)
+    syncStandaloneChatUrl(chatId)
     const runtime = ensureConversationRuntime(chatId)
     const existingChat = chats.find((chat) => chat._id === chatId)
     pendingTitleRef.current = null
@@ -2718,6 +2728,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       }))
       clearTransientComposerState()
       setActiveViewer(null)
+      syncStandaloneChatUrl(null)
     }
     await loadChats()
   }
@@ -3406,7 +3417,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   return (
     <div className="flex h-full min-w-0 overflow-x-hidden">
       {/* Sidebar — hidden when embedded in a project */}
-      {!hideSidebar && (
+      {showOwnSidebar && (
         <>
           <div className="hidden h-full w-52 flex-col border-r border-[#e5e5e5] bg-[#f5f5f5] md:flex">
             <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3">
@@ -4436,7 +4447,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           </div>
         )}
 
-        {!hideSidebar && (
+        {showOwnSidebar && (
           <div className="shrink-0 border-t border-[#e5e5e5] bg-[#fafafa]/95 backdrop-blur md:hidden">
             <button
               type="button"

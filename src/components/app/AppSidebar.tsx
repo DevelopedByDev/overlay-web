@@ -2,16 +2,26 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, LogOut, User,
   Puzzle, Monitor, ChevronUp, AlertCircle,
-  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings,
+  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
+import { DEFAULT_MODEL_ID } from '@/lib/models'
+import { useAppSettings } from './AppSettingsProvider'
+import {
+  ChatInlinePanel,
+  InlineNavChildren,
+  NotesInlinePanel,
+  ProjectsInlinePanel,
+  knowledgeInlineItems,
+  toolsInlineItems,
+} from './AppSidebarInlinePanels'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
 import KnowledgeSidebar from './KnowledgeSidebar'
@@ -45,13 +55,13 @@ interface Entitlements {
 
 function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
   if (!entitlements) {
-    return <p className="text-[11px] text-[#aaa]">Loading...</p>
+    return <p className="text-[11px] text-[var(--muted-light)]">Loading...</p>
   }
 
   const { tier, creditsUsed, creditsTotal } = entitlements
 
   if (tier === 'free') {
-    return <p className="text-[11px] text-[#aaa]">Auto model messages are unlimited. Upgrade to Pro to use premium models and credits.</p>
+    return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Upgrade to Pro to use premium models and credits.</p>
   }
 
   const creditsTotalCents = creditsTotal * 100
@@ -62,7 +72,7 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
   const warning = usedPctRaw >= 80
 
   return (
-    <div className={`flex flex-col gap-1 text-xs ${exhausted ? 'text-red-500' : warning ? 'text-amber-500' : 'text-[#aaa]'}`}>
+    <div className={`flex flex-col gap-1 text-xs ${exhausted ? 'text-red-500' : warning ? 'text-amber-500' : 'text-[var(--muted-light)]'}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="tabular-nums">
           {remainingPctRaw.toFixed(1)}% remaining
@@ -70,9 +80,9 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
         </span>
         {exhausted && <AlertCircle size={11} />}
       </div>
-      <div className="h-1 overflow-hidden rounded-full bg-[#e5e5e5]">
+      <div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
         <div
-          className={`h-full rounded-full transition-all ${exhausted ? 'bg-red-400' : warning ? 'bg-amber-400' : 'bg-[#0a0a0a]'}`}
+          className={`h-full rounded-full transition-all ${exhausted ? 'bg-red-400' : warning ? 'bg-amber-400' : 'bg-[var(--foreground)]'}`}
           style={{ width: `${remainingPctRaw}%` }}
         />
       </div>
@@ -83,21 +93,45 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
 export default function AppSidebar({ user }: { user: AuthUser }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { settings } = useAppSettings()
   const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
   const { totalUnread } = useAsyncSessions()
 
-  const [pendingHref, setPendingHref] = useState<string | null>(null)
+  const [pendingNav, setPendingNav] = useState<{ href: string; fromPath: string } | null>(null)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
+  const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
+  const [notesPanelRefreshKey, setNotesPanelRefreshKey] = useState(0)
+  const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
 
-  const effectivePendingHref = pendingHref && !pathname.startsWith(pendingHref) ? pendingHref : null
+  const effectivePendingHref =
+    pendingNav && pathname === pendingNav.fromPath ? pendingNav.href : null
   const projectsOpen = pathname.startsWith('/app/projects')
+  const notesOpen = pathname.startsWith('/app/notes')
+  const chatOpen = pathname.startsWith('/app/chat')
   const toolsOpen = pathname.startsWith('/app/tools')
   const knowledgeOpen = pathname.startsWith('/app/knowledge')
+  const inlineSecondaryDisabled = !settings.useSecondarySidebar
+  const knowledgeView = (() => {
+    const current = searchParams?.get('view')
+    if (current === 'files') return 'files'
+    if (current === 'outputs') return 'outputs'
+    return 'memories'
+  })()
+  const toolsView = (() => {
+    const current = searchParams?.get('view')
+    if (current === 'skills') return 'skills'
+    if (current === 'mcps') return 'mcps'
+    if (current === 'apps') return 'apps'
+    if (current === 'installed') return 'installed'
+    if (current === 'all') return 'all'
+    return 'connectors'
+  })()
   const loadEntitlements = useCallback(async () => {
     try {
       const res = await fetch('/api/app/subscription')
@@ -125,11 +159,6 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     return () => window.removeEventListener('overlay:subscription-refresh', onSubscriptionRefresh)
   }, [loadEntitlements])
 
-  /** Clear nav pending state on any route change so a spinner never sticks (e.g. Chat loading after navigating to Settings). */
-  useEffect(() => {
-    setPendingHref(null)
-  }, [pathname])
-
   useEffect(() => {
     function onNavShortcut(e: KeyboardEvent) {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.repeat) return
@@ -144,7 +173,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       }
       e.preventDefault()
       if (pathname.startsWith(item.href)) return
-      setPendingHref(item.href)
+      setPendingNav({ href: item.href, fromPath: pathname })
       router.push(item.href)
     }
     window.addEventListener('keydown', onNavShortcut, true)
@@ -187,6 +216,51 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     window.location.href = '/'
   }
 
+  async function handleCreateChat() {
+    const res = await fetch('/api/app/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'New Chat',
+        askModelIds: [DEFAULT_MODEL_ID],
+        actModelId: DEFAULT_MODEL_ID,
+        lastMode: 'ask',
+      }),
+    })
+    if (!res.ok) return
+    const data = await res.json() as { id?: string }
+    if (!data.id) return
+    setChatPanelRefreshKey((value) => value + 1)
+    setMobileMenuOpen(false)
+    router.push(`/app/chat?id=${encodeURIComponent(data.id)}`)
+  }
+
+  async function handleCreateNote() {
+    const res = await fetch('/api/app/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Untitled', content: '', tags: [] }),
+    })
+    if (!res.ok) return
+    const data = await res.json() as { id?: string }
+    if (!data.id) return
+    setNotesPanelRefreshKey((value) => value + 1)
+    setMobileMenuOpen(false)
+    router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
+  }
+
+  async function handleCreateProject() {
+    const res = await fetch('/api/app/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Untitled Project' }),
+    })
+    if (!res.ok) return
+    setProjectsPanelRefreshKey((value) => value + 1)
+    setMobileMenuOpen(false)
+    router.push('/app/projects')
+  }
+
   const brandLink = (
     <Link
       href="/app/chat"
@@ -212,7 +286,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     >
       <Image src="/assets/overlay-logo.png" alt="" width={22} height={22} className="shrink-0" />
       <span
-        className="truncate text-lg font-medium tracking-tight text-[#0a0a0a]"
+        className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
         overlay
@@ -221,125 +295,213 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   )
 
   const showUpgradeCta = !entitlements || entitlements.tier === 'free'
+  const contextualAction = inlineSecondaryDisabled
+    ? chatOpen
+      ? { label: 'New chat', onClick: handleCreateChat }
+      : notesOpen
+        ? { label: 'New note', onClick: handleCreateNote }
+        : projectsOpen
+          ? { label: 'New project', onClick: handleCreateProject }
+          : null
+    : null
+  const hasInlineChildren = (href?: string) =>
+    inlineSecondaryDisabled && (href === '/app/knowledge' || href === '/app/tools')
 
   const sidebarContent = (
     <>
-      <div className="hidden h-16 items-center border-b border-[#e5e5e5] px-5 md:flex">
+      <div className="hidden h-16 items-center border-b border-[var(--border)] px-5 md:flex">
         {brandLink}
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-2 py-3">
-        {NAV_ITEMS.map((item, navIdx) => {
-          const { href, label, icon: Icon, disabled } = item
-          const active =
-            href &&
-            (effectivePendingHref ? effectivePendingHref === href : pathname.startsWith(href))
-          const isPending = href && effectivePendingHref === href
-          const unreadCount = href === '/app/chat' ? totalUnread : 0
-          const shortcut = navIdx < 9 ? navIdx + 1 : null
-          const commonClass = `group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
-            disabled
-              ? 'cursor-not-allowed text-[#a3a3a3]'
-              : active
-                ? 'bg-[#0a0a0a] text-[#fafafa]'
-                : 'text-[#525252] hover:bg-[#f0f0f0] hover:text-[#0a0a0a]'
-          }`
-          if (disabled) {
-            return (
-              <button
-                key={label}
-                type="button"
-                disabled
-                title="Coming soon"
-                aria-label="Automations (coming soon)"
-                className={commonClass}
-              >
-                <Icon size={15} />
-                <div className="min-w-0 flex-1 text-left">{label}</div>
-              </button>
-            )
-          }
-          return (
-            <button
-              key={href}
-              type="button"
-              onClick={() => {
-                if (!href || pathname.startsWith(href)) return
-                setMobileMenuOpen(false)
-                setPendingHref(href)
-                router.push(href)
-              }}
-              title={shortcut ? `${label} · ⌥${shortcut}` : label}
-              className={commonClass}
-            >
-              <Icon size={15} />
-              <div className="min-w-0 flex-1 text-left">
-                <div>{label}</div>
-              </div>
-              {shortcut ? (
-                <span
-                  className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
-                    active
-                      ? 'text-[#fafafa]/70 opacity-0 group-hover:opacity-100'
-                      : 'text-[#a3a3a3] opacity-0 group-hover:opacity-100'
-                  }`}
-                  aria-hidden
+      <div className="flex min-h-0 flex-1 flex-col">
+        <nav className="shrink-0 space-y-0.5 px-2 py-3">
+          {NAV_ITEMS.map((item, navIdx) => {
+            const { href, label, icon: Icon, disabled } = item
+            const active =
+              href &&
+              (effectivePendingHref ? effectivePendingHref === href : pathname.startsWith(href))
+            const isPending = href && effectivePendingHref === href
+            const unreadCount = href === '/app/chat' ? totalUnread : 0
+            const shortcut = navIdx < 9 ? navIdx + 1 : null
+            const showShortcut = Boolean(shortcut) && !active
+            const showChevron = hasInlineChildren(href)
+            const commonClass = `group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
+              disabled
+                ? 'cursor-not-allowed text-[var(--muted-light)]'
+                : active
+                  ? 'bg-[var(--foreground)] text-[var(--background)]'
+                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+            }`
+            if (disabled) {
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  disabled
+                  title="Coming soon"
+                  aria-label="Automations (coming soon)"
+                  className={commonClass}
                 >
-                  ⌥{shortcut}
-                </span>
-              ) : null}
-              {isPending ? (
-                <Loader2
-                  size={14}
-                  className={`shrink-0 animate-spin ${active ? 'text-[#fafafa]' : 'text-[#525252]'}`}
-                  aria-hidden
-                />
-              ) : unreadCount > 0 ? (
-                <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-medium ${
-                  active ? 'bg-[#fafafa] text-[#0a0a0a]' : 'bg-[#0a0a0a] text-[#fafafa]'
-                }`}>
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              ) : null}
-            </button>
-          )
-        })}
-      </nav>
+                  <Icon size={15} />
+                  <div className="min-w-0 flex-1 text-left">{label}</div>
+                </button>
+              )
+            }
+            return (
+              <div key={href}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!href || pathname.startsWith(href)) return
+                    setMobileMenuOpen(false)
+                    setPendingNav({ href, fromPath: pathname })
+                    router.push(href)
+                  }}
+                  title={shortcut ? `${label} · ⌥${shortcut}` : label}
+                  className={commonClass}
+                >
+                  <Icon size={15} />
+                  <div className="min-w-0 flex-1 text-left">
+                    <div>{label}</div>
+                  </div>
+                  {showShortcut ? (
+                    <span
+                      className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
+                        active
+                          ? 'text-[var(--background)]'
+                          : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100'
+                      }`}
+                      aria-hidden
+                    >
+                      ⌥{shortcut}
+                    </span>
+                  ) : null}
+                  {showChevron ? (
+                    <span
+                      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-opacity ${
+                        active
+                          ? 'bg-[color:color-mix(in_srgb,var(--background)_14%,transparent)] text-[var(--background)] opacity-100'
+                          : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                      }`}
+                      aria-hidden
+                    >
+                      <ChevronDown
+                        size={13}
+                        className={`transition-transform ${active ? '' : '-rotate-90'}`}
+                      />
+                    </span>
+                  ) : null}
+                  {isPending ? (
+                    <Loader2
+                      size={14}
+                      className={`shrink-0 animate-spin ${active ? 'text-[var(--background)]' : 'text-[var(--muted)]'}`}
+                      aria-hidden
+                    />
+                  ) : unreadCount > 0 ? (
+                    <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-medium ${
+                      active ? 'bg-[var(--background)] text-[var(--foreground)]' : 'bg-[var(--foreground)] text-[var(--background)]'
+                    }`}>
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  ) : null}
+                </button>
+                {inlineSecondaryDisabled && href === '/app/knowledge' && active ? (
+                  <InlineNavChildren
+                    items={knowledgeInlineItems}
+                    activeId={knowledgeView}
+                    onSelect={(next) => {
+                      const params = new URLSearchParams(searchParams?.toString() ?? '')
+                      params.set('view', next)
+                      if (next !== 'outputs') params.delete('out')
+                      setMobileMenuOpen(false)
+                      router.push(`/app/knowledge?${params.toString()}`)
+                    }}
+                  />
+                ) : null}
+                {inlineSecondaryDisabled && href === '/app/tools' && active ? (
+                  <InlineNavChildren
+                    items={toolsInlineItems}
+                    activeId={toolsView}
+                    onSelect={(next) => {
+                      setMobileMenuOpen(false)
+                      router.push(`/app/tools?view=${next}`)
+                    }}
+                  />
+                ) : null}
+              </div>
+            )
+          })}
+        </nav>
 
-      <div className="space-y-3 border-t border-[#e5e5e5] px-3 py-3">
+        {inlineSecondaryDisabled && (chatOpen || notesOpen || projectsOpen) ? (
+          <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
+            {contextualAction ? (
+              <button
+                type="button"
+                onClick={() => void contextualAction.onClick()}
+                className="mb-3 flex w-full items-center gap-2.5 rounded-md bg-[var(--foreground)] px-3 py-2 text-sm text-[var(--background)] transition-colors hover:opacity-90"
+              >
+                <span className="min-w-0 flex-1 text-left">{contextualAction.label}</span>
+              </button>
+            ) : null}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {chatOpen ? (
+                <ChatInlinePanel
+                  refreshKey={chatPanelRefreshKey}
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
+              ) : null}
+              {notesOpen ? (
+                <NotesInlinePanel
+                  refreshKey={notesPanelRefreshKey}
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
+              ) : null}
+              {projectsOpen ? (
+                <ProjectsInlinePanel
+                  refreshKey={projectsPanelRefreshKey}
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="space-y-3 border-t border-[var(--border)] px-3 py-3">
         <div ref={menuRef} className="relative">
           {accountMenuOpen && (
             <div
-              className="absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg"
+              className="absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
               onMouseDown={(event) => event.stopPropagation()}
             >
               <div className="px-3 py-2">
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
+                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
                 <UsageBar entitlements={entitlements} />
               </div>
-              <div className="border-t border-[#f0f0f0]">
-                <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Apps</p>
+              <div className="border-t border-[var(--border)]">
+                <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
                 {PROFILE_APP_LINKS.map(({ label, icon: Icon, href }) => (
                   <a
                     key={label}
                     href={href}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                   >
                     <Icon size={13} />
                     {label}
                   </a>
                 ))}
               </div>
-              <div className="border-t border-[#f0f0f0]">
+              <div className="border-t border-[var(--border)]">
                 <Link
                   href="/app/settings"
                   onClick={() => {
                     setAccountMenuOpen(false)
                     setMobileMenuOpen(false)
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                 >
                   <Settings size={13} />
                   Settings
@@ -350,7 +512,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                     setAccountMenuOpen(false)
                     setMobileMenuOpen(false)
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                 >
                   <User size={13} />
                   Account
@@ -369,14 +531,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   </Link>
                 )}
               </div>
-              <div className="border-t border-[#f0f0f0]">
+              <div className="border-t border-[var(--border)]">
                 <button
                   type="button"
                   onClick={() => {
                     setAccountMenuOpen(false)
                     void handleSignOut()
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                 >
                   <LogOut size={13} />
                   Sign out
@@ -388,7 +550,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
           <button
             type="button"
             onClick={() => setAccountMenuOpen((value) => !value)}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
           >
             <User size={13} />
             <span className="flex-1 truncate text-left">{displayName}</span>
@@ -401,13 +563,13 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
 
   return (
     <>
-      <div className="fixed inset-x-0 top-0 z-40 border-b border-[#e5e5e5] bg-[#fafafa]/95 backdrop-blur md:hidden">
+      <div className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--sidebar-surface)_95%,transparent)] backdrop-blur md:hidden">
         <div className="flex h-14 items-center justify-between gap-2 px-3">
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Open app navigation"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
           >
             <Menu size={16} />
           </button>
@@ -418,21 +580,21 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               onClick={() => setMobileAccountOpen((o) => !o)}
               aria-label="Account menu"
               aria-expanded={mobileAccountOpen}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
             >
               <User size={16} />
             </button>
             {mobileAccountOpen && (
               <div
-                className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg"
+                className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
                 onMouseDown={(event) => event.stopPropagation()}
               >
                 <div className="px-3 py-2">
-                  <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Usage</p>
+                  <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
                   <UsageBar entitlements={entitlements} />
                 </div>
-                <div className="border-t border-[#f0f0f0]">
-                  <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa]">Apps</p>
+                <div className="border-t border-[var(--border)]">
+                  <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
                   {PROFILE_APP_LINKS.map(({ label, icon: Icon, href }) => (
                     <a
                       key={label}
@@ -440,18 +602,18 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                       target="_blank"
                       rel="noreferrer"
                       onClick={() => setMobileAccountOpen(false)}
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                     >
                       <Icon size={13} />
                       {label}
                     </a>
                   ))}
                 </div>
-                <div className="border-t border-[#f0f0f0]">
+                <div className="border-t border-[var(--border)]">
                   <Link
                     href="/app/settings"
                     onClick={() => setMobileAccountOpen(false)}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                   >
                     <Settings size={13} />
                     Settings
@@ -459,7 +621,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   <Link
                     href="/account"
                     onClick={() => setMobileAccountOpen(false)}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                   >
                     <User size={13} />
                     Account
@@ -475,14 +637,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                     </Link>
                   )}
                 </div>
-                <div className="border-t border-[#f0f0f0]">
+                <div className="border-t border-[var(--border)]">
                   <button
                     type="button"
                     onClick={() => {
                       setMobileAccountOpen(false)
                       void handleSignOut()
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5]"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                   >
                     <LogOut size={13} />
                     Sign out
@@ -494,7 +656,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
         </div>
       </div>
 
-      <aside className="hidden h-full w-56 shrink-0 flex-col border-r border-[#e5e5e5] bg-[#fafafa] md:flex">
+      <aside className="hidden h-full w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)] md:flex">
         {sidebarContent}
       </aside>
 
@@ -506,17 +668,17 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
           className={`absolute inset-0 bg-black/30 transition-opacity ${mobileMenuOpen ? 'opacity-100' : 'opacity-0'}`}
         />
         <aside
-          className={`absolute inset-y-0 left-0 flex w-[82vw] max-w-[320px] flex-col border-r border-[#e5e5e5] bg-[#fafafa] shadow-[0_20px_80px_rgba(10,10,10,0.18)] transition-transform ${
+          className={`absolute inset-y-0 left-0 flex w-[82vw] max-w-[320px] flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)] shadow-[0_20px_80px_rgba(10,10,10,0.18)] transition-transform ${
             mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[#e5e5e5] px-4">
+          <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
             <div className="min-w-0 flex-1">{brandLink}</div>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
               aria-label="Close app navigation"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#525252]"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
             >
               <X size={16} />
             </button>
@@ -526,9 +688,9 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       </div>
 
       <div className="hidden md:flex">
-        {projectsOpen && <ProjectsSidebar />}
-        {toolsOpen && <ToolsSidebar />}
-        {knowledgeOpen && <KnowledgeSidebar entitlements={entitlements} />}
+        {settings.useSecondarySidebar && projectsOpen ? <ProjectsSidebar /> : null}
+        {settings.useSecondarySidebar && toolsOpen ? <ToolsSidebar /> : null}
+        {settings.useSecondarySidebar && knowledgeOpen ? <KnowledgeSidebar entitlements={entitlements} /> : null}
       </div>
     </>
   )

@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#fafafa] text-[#0a0a0a]">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <AsyncSessionsProvider>
         <NavigationProgressProvider>
           <NavigationProgressBar />

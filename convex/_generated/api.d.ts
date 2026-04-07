@@ -32,6 +32,7 @@ import type * as storageAdmin from "../storageAdmin.js";
 import type * as stripe from "../stripe.js";
 import type * as stripeSync from "../stripeSync.js";
 import type * as subscriptions from "../subscriptions.js";
+import type * as uiSettings from "../uiSettings.js";
 import type * as usage from "../usage.js";
 import type * as users from "../users.js";
 
@@ -66,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   stripe: typeof stripe;
   stripeSync: typeof stripeSync;
   subscriptions: typeof subscriptions;
+  uiSettings: typeof uiSettings;
   usage: typeof usage;
   users: typeof users;
 }>;

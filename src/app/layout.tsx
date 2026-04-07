@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ObservabilityClient from "@/components/ObservabilityClient";
+import { AppSettingsProvider } from "@/components/app/AppSettingsProvider";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -44,14 +45,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">
-        <AuthProvider>
-          <Suspense fallback={null}>
-            <ObservabilityClient />
-          </Suspense>
-          {children}
-        </AuthProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased bg-background text-foreground">
+        <AppSettingsProvider>
+          <AuthProvider>
+            <Suspense fallback={null}>
+              <ObservabilityClient />
+            </Suspense>
+            {children}
+          </AuthProvider>
+        </AppSettingsProvider>
         <Analytics />
         <SpeedInsights />
       </body>

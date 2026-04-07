@@ -94,7 +94,7 @@ export function DelayedTooltip({
               zIndex: 400,
               maxWidth: 'min(calc(100vw - 16px), 20rem)',
             }}
-            className="pointer-events-none rounded-md border border-[#e5e5e5] bg-[#f0f0f0] px-2 py-1 text-center text-[11px] font-medium leading-snug text-[#525252] shadow-sm"
+            className="pointer-events-none rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-center text-[11px] font-medium leading-snug text-[var(--muted)] shadow-sm"
           >
             {label}
           </span>,

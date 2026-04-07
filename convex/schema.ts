@@ -2,6 +2,14 @@ import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
 export default defineSchema({
+  userUiSettings: defineTable({
+    userId: v.string(),
+    theme: v.union(v.literal('light'), v.literal('dark')),
+    useSecondarySidebar: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_userId', ['userId']),
+
   // Single source of truth for a user's subscription, tier, and current-period credit spend.
   // creditsUsed is the live accumulator (in cents, may include fractional cents)
   // mutated on every usage event.
