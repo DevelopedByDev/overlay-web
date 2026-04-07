@@ -3,6 +3,7 @@ import 'server-only'
 import { posix as pathPosix } from 'node:path'
 import {
   CodeLanguage,
+  type CreateSandboxFromSnapshotParams,
   Daytona,
   type Resources,
   type Sandbox,
@@ -99,6 +100,17 @@ function buildWorkspaceLabels(userId: string, tier: DaytonaWorkspaceTier): Recor
 
 function getSandboxLanguage(runtime: DaytonaRuntime): CodeLanguage {
   return runtime === 'node' ? CodeLanguage.JAVASCRIPT : CodeLanguage.PYTHON
+}
+
+function isSandboxAlreadyExistsError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return message.toLowerCase().includes('sandbox already exists')
+}
+
+function isSandboxResizeUnsupportedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  const normalized = message.toLowerCase()
+  return normalized.includes('cannot post /api/sandbox/') && normalized.includes('/resize')
 }
 
 function normalizeSandboxState(state: Sandbox['state'] | undefined): DaytonaWorkspaceState {
@@ -273,7 +285,18 @@ async function applyWorkspaceConfiguration(params: {
     memory: desiredProfile.memoryGiB,
     disk: desiredProfile.diskGiB,
   }
-  await params.sandbox.resize(resources, 60)
+  try {
+    await params.sandbox.resize(resources, 60)
+  } catch (error) {
+    if (!isSandboxResizeUnsupportedError(error)) {
+      throw error
+    }
+
+    console.warn(
+      `[Daytona] Workspace ${params.sandbox.id} could not be resized via the current API; continuing with existing resources.`,
+      error,
+    )
+  }
   await params.sandbox.refreshData()
 
   return resolveActualResourceProfile(params.sandbox, params.tier)
@@ -338,6 +361,29 @@ export async function ensureVolume(userId: string): Promise<DaytonaVolumeRecord>
   }
 }
 
+async function findExistingWorkspaceSandbox(userId: string): Promise<Sandbox | null> {
+  const result = await getDaytonaClient().list(
+    {
+      overlay: 'true',
+      'overlay.kind': 'workspace',
+      'overlay.userId': userId,
+    },
+    1,
+    100,
+  )
+  const sandboxName = getWorkspaceSandboxName(userId)
+  const sandbox =
+    result.items.find((candidate) => candidate.name === sandboxName) ??
+    result.items.find((candidate) => candidate.name?.startsWith(sandboxName))
+
+  if (!sandbox) {
+    return null
+  }
+
+  await sandbox.refreshData()
+  return sandbox
+}
+
 export async function ensureWorkspaceSandbox(params: {
   userId: string
   tier: DaytonaWorkspaceTier
@@ -358,6 +404,10 @@ export async function ensureWorkspaceSandbox(params: {
   }
 
   if (!sandbox) {
+    sandbox = await findExistingWorkspaceSandbox(params.userId)
+  }
+
+  if (!sandbox) {
     const createParams = {
       name: getWorkspaceSandboxName(params.userId),
       language: CodeLanguage.JAVASCRIPT,
@@ -366,23 +416,21 @@ export async function ensureWorkspaceSandbox(params: {
       autoArchiveInterval: profile.autoArchiveMinutes,
       autoDeleteInterval: -1,
       volumes: [{ volumeId: volume.id, mountPath: WORKSPACE_MOUNT_PATH }] satisfies VolumeMount[],
-      resources: {
-        cpu: profile.cpu,
-        memory: profile.memoryGiB,
-        disk: profile.diskGiB,
-      } satisfies Resources,
-    } as {
-      name: string
-      language: CodeLanguage
-      labels: Record<string, string>
-      autoStopInterval: number
-      autoArchiveInterval: number
-      autoDeleteInterval: number
-      volumes: VolumeMount[]
-      resources: Resources
+    } satisfies CreateSandboxFromSnapshotParams
+
+    try {
+      sandbox = await getDaytonaClient().create(createParams, { timeout: 90 })
+    } catch (error) {
+      if (!isSandboxAlreadyExistsError(error)) {
+        throw error
+      }
+
+      sandbox = await findExistingWorkspaceSandbox(params.userId)
+      if (!sandbox) {
+        throw error
+      }
     }
 
-    sandbox = await getDaytonaClient().create(createParams, { timeout: 90 })
     await sandbox.refreshData()
     await sandbox.setAutoDeleteInterval(-1)
     await sandbox.setAutostopInterval(profile.autoStopMinutes)
@@ -611,11 +659,10 @@ export async function executeSandboxCommand(
     commandPath,
     `#!/usr/bin/env bash\nset -o pipefail\n${commandScript}`,
   )
-  await sandbox.fs.setFilePermissions(commandPath, { mode: '755' })
 
   const wrappedCommand =
     `mkdir -p ${shellQuote(pathPosix.dirname(params.stdoutPath))} && ` +
-    `${shellQuote(commandPath)} > ${shellQuote(params.stdoutPath)} 2> ${shellQuote(params.stderrPath)}; ` +
+    `bash ${shellQuote(commandPath)} > ${shellQuote(params.stdoutPath)} 2> ${shellQuote(params.stderrPath)}; ` +
     'EXIT_CODE=$?; ' +
     `if [ -f ${shellQuote(params.stdoutPath)} ]; then cat ${shellQuote(params.stdoutPath)}; fi; ` +
     'exit $EXIT_CODE'
