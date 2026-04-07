@@ -160,6 +160,8 @@ export async function POST(request: NextRequest) {
     code,
     inputFileIds,
     expectedOutputs,
+    conversationId,
+    turnId,
     userId: requestedUserId,
     accessToken,
     serverSecret: providedServerSecret,
@@ -170,6 +172,8 @@ export async function POST(request: NextRequest) {
     code?: string
     inputFileIds?: string[]
     expectedOutputs?: string[]
+    conversationId?: string
+    turnId?: string
     userId?: string
     accessToken?: string
     serverSecret?: string
@@ -348,6 +352,8 @@ export async function POST(request: NextRequest) {
           command: normalizedCommand,
           remotePath,
         },
+        ...(conversationId ? { conversationId } : {}),
+        ...(turnId ? { turnId } : {}),
       })
       if (!createdOutputId) {
         throw new Error(`Failed to create Output record for sandbox artifact "${fileName}".`)

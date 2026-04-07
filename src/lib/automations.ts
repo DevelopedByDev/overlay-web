@@ -51,6 +51,7 @@ export interface AutomationRunSummary {
   finishedAt?: number
   durationMs?: number
   conversationId?: string
+  turnId?: string
   promptSnapshot: string
   mode: AutomationMode
   modelId: string
@@ -58,6 +59,45 @@ export interface AutomationRunSummary {
   errorCode?: string
   errorMessage?: string
   createdAt: number
+}
+
+export interface AutomationToolInvocationSummary {
+  _id: string
+  toolId: string
+  mode: AutomationMode
+  modelId?: string
+  conversationId?: string
+  turnId?: string
+  success: boolean
+  durationMs?: number
+  costBucket: 'perplexity' | 'image' | 'video' | 'browser' | 'daytona' | 'composio' | 'internal'
+  errorMessage?: string
+  createdAt: number
+}
+
+export interface AutomationOutputSummary {
+  _id: string
+  type: string
+  status: 'pending' | 'completed' | 'failed'
+  url?: string
+  fileName?: string
+  mimeType?: string
+  sizeBytes?: number
+  modelId: string
+  conversationId?: string
+  turnId?: string
+  errorMessage?: string
+  createdAt: number
+  completedAt?: number
+}
+
+export interface AutomationRunDetail {
+  run: AutomationRunSummary
+  automation?: Pick<AutomationSummary, '_id' | 'title' | 'description' | 'mode' | 'modelId'>
+  userMessage?: string
+  assistantMessage?: string
+  tools: AutomationToolInvocationSummary[]
+  outputs: AutomationOutputSummary[]
 }
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const

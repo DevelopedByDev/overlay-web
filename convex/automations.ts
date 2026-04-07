@@ -379,6 +379,7 @@ export const createRun = mutation({
     mode: v.union(v.literal('ask'), v.literal('act')),
     modelId: v.string(),
     conversationId: v.optional(v.id('conversations')),
+    turnId: v.optional(v.string()),
     startedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -402,6 +403,7 @@ export const createRun = mutation({
       scheduledFor: args.scheduledFor,
       startedAt: args.startedAt,
       conversationId: args.conversationId,
+      turnId: args.turnId,
       promptSnapshot: args.promptSnapshot,
       mode: args.mode,
       modelId: args.modelId,
@@ -428,6 +430,7 @@ export const updateRun = mutation({
     finishedAt: v.optional(v.number()),
     durationMs: v.optional(v.number()),
     conversationId: v.optional(v.id('conversations')),
+    turnId: v.optional(v.string()),
     resultSummary: v.optional(v.string()),
     errorCode: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
@@ -450,6 +453,7 @@ export const updateRun = mutation({
     if (args.finishedAt !== undefined) patch.finishedAt = args.finishedAt
     if (args.durationMs !== undefined) patch.durationMs = args.durationMs
     if (args.conversationId !== undefined) patch.conversationId = args.conversationId
+    if (args.turnId !== undefined) patch.turnId = args.turnId
     if (args.resultSummary !== undefined) patch.resultSummary = args.resultSummary
     if (args.errorCode !== undefined) patch.errorCode = args.errorCode
     if (args.errorMessage !== undefined) patch.errorMessage = args.errorMessage

@@ -21,6 +21,8 @@ export async function executeBrowserRunTask(
         sessionId,
         keepAlive,
         proxyCountryCode,
+        conversationId: options.conversationId,
+        turnId: options.turnId,
         ...toolAuthBody(options),
       },
       options.accessToken,

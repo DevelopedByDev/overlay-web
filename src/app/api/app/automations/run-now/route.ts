@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
         finishedAt,
         durationMs: finishedAt - startedAt,
         conversationId,
+        turnId: result.turnId,
         resultSummary: result.summary,
       }, { throwOnError: true })
 
@@ -95,11 +96,16 @@ export async function POST(request: NextRequest) {
         success: true,
         automationRunId: runId,
         conversationId,
+        turnId: result.turnId,
         resultSummary: result.summary,
       })
     } catch (error) {
       const finishedAt = Date.now()
       const message = error instanceof Error ? error.message : 'Automation execution failed'
+      const turnId =
+        error && typeof error === 'object' && 'turnId' in error && typeof error.turnId === 'string'
+          ? error.turnId
+          : undefined
 
       await convex.mutation('automations:updateRun', {
         automationRunId: runId,
@@ -109,6 +115,7 @@ export async function POST(request: NextRequest) {
         finishedAt,
         durationMs: finishedAt - startedAt,
         conversationId,
+        turnId,
         errorCode: 'manual_run_failed',
         errorMessage: message,
       }, { throwOnError: true })

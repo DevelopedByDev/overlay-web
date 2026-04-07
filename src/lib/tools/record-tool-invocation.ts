@@ -9,6 +9,7 @@ export function fireAndForgetRecordToolInvocation(args: {
   mode: 'ask' | 'act'
   modelId?: string
   conversationId?: string
+  turnId?: string
   success: boolean
   durationMs?: number
   error?: unknown
@@ -32,6 +33,7 @@ export function fireAndForgetRecordToolInvocation(args: {
       mode: args.mode,
       modelId: args.modelId,
       conversationId: args.conversationId,
+      turnId: args.turnId,
       success: args.success,
       durationMs: args.durationMs,
       costBucket: bucket,

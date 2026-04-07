@@ -19,6 +19,7 @@ import {
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getChatModelDisplayName } from '@/lib/models'
 import {
   formatAutomationSchedule,
+  type AutomationRunDetail,
   getAutomationRunStatusLabel,
   getAutomationStatusLabel,
   type AutomationRunSummary,
@@ -74,6 +75,27 @@ function formatTimestamp(ts?: number, timezone?: string): string {
     minute: '2-digit',
     timeZone: timezone,
   }).format(ts)
+}
+
+function formatDateTime(ts?: number, timezone?: string): string {
+  if (!ts) return 'Not available'
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: timezone,
+  }).format(ts)
+}
+
+function formatDuration(durationMs?: number): string {
+  if (!durationMs || durationMs < 1000) return durationMs ? `${durationMs}ms` : 'Not available'
+  const totalSeconds = Math.round(durationMs / 1000)
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
 }
 
 function toDatetimeLocalValue(ts?: number): string {
@@ -160,6 +182,160 @@ function AutomationActions({
   )
 }
 
+function RunDetailDialog({
+  detail,
+  loading,
+  timezone,
+  onClose,
+}: {
+  detail: AutomationRunDetail | null
+  loading: boolean
+  timezone?: string
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[#e5e5e5] bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[#e5e5e5] px-5 py-4">
+          <div>
+            <h3 className="text-sm font-medium text-[#0a0a0a]">Run detail</h3>
+            <p className="text-[11px] text-[#888]">
+              {detail?.automation?.title || 'Automation run'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-[#888] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="max-h-[75vh] space-y-4 overflow-y-auto px-5 py-5">
+          {loading || !detail ? (
+            <div className="flex items-center gap-2 rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-sm text-[#666]">
+              <Loader2 size={14} className="animate-spin" />
+              Loading run details…
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-[#666]">
+                    {getAutomationRunStatusLabel(detail.run.status)}
+                  </span>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-[#666]">
+                    {detail.run.triggerSource}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 text-[12px] text-[#666] sm:grid-cols-2">
+                  <p>Scheduled: {formatDateTime(detail.run.scheduledFor, timezone)}</p>
+                  <p>Started: {formatDateTime(detail.run.startedAt, timezone)}</p>
+                  <p>Finished: {formatDateTime(detail.run.finishedAt, timezone)}</p>
+                  <p>Duration: {formatDuration(detail.run.durationMs)}</p>
+                  <p>Mode: {detail.run.mode === 'act' ? 'Act' : 'Ask'}</p>
+                  <p>Model: {getChatModelDisplayName(detail.run.modelId)}</p>
+                </div>
+                {detail.run.turnId ? (
+                  <p className="mt-2 text-[11px] text-[#888]">Turn: <span className="font-mono">{detail.run.turnId}</span></p>
+                ) : null}
+                {detail.run.conversationId ? (
+                  <p className="mt-1 text-[11px] text-[#888]">Conversation: <span className="font-mono">{detail.run.conversationId}</span></p>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-[#0a0a0a]">Prompt snapshot</h4>
+                <pre className="overflow-x-auto rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-[11px] leading-relaxed text-[#444] whitespace-pre-wrap">
+                  {detail.run.promptSnapshot}
+                </pre>
+              </div>
+
+              {detail.assistantMessage || detail.run.resultSummary || detail.run.errorMessage ? (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-[#0a0a0a]">
+                    {detail.run.status === 'failed' ? 'Failure' : 'Result'}
+                  </h4>
+                  <div className="rounded-xl border border-[#e5e5e5] bg-white p-4 text-[12px] leading-relaxed text-[#555] whitespace-pre-wrap">
+                    {detail.assistantMessage || detail.run.resultSummary || detail.run.errorMessage}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-[#0a0a0a]">Tools</h4>
+                  {detail.tools.length === 0 ? (
+                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-[12px] text-[#888]">
+                      No tool invocations recorded for this run.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {detail.tools.map((tool) => (
+                        <div key={tool._id} className="rounded-xl border border-[#e5e5e5] bg-white p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-[12px] font-medium text-[#0a0a0a]">{tool.toolId}</p>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] ${tool.success ? 'bg-[#eefaf0] text-[#2f7d47]' : 'bg-red-50 text-red-500'}`}>
+                              {tool.success ? 'success' : 'failed'}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-[#888]">
+                            {tool.costBucket} {tool.durationMs ? `· ${formatDuration(tool.durationMs)}` : ''}
+                          </p>
+                          {tool.errorMessage ? (
+                            <p className="mt-1 text-[11px] text-red-500">{tool.errorMessage}</p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-[#0a0a0a]">Artifacts</h4>
+                  {detail.outputs.length === 0 ? (
+                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-[12px] text-[#888]">
+                      No outputs were attached to this run.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {detail.outputs.map((output) => (
+                        <a
+                          key={output._id}
+                          href={output.url ?? `/api/app/outputs/${output._id}/content`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-xl border border-[#e5e5e5] bg-white p-3 transition-colors hover:bg-[#fafafa]"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="truncate text-[12px] font-medium text-[#0a0a0a]">
+                              {output.fileName || output._id}
+                            </p>
+                            <span className="text-[10px] text-[#888]">{output.type}</span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-[#888]">
+                            {output.sizeBytes ? `${Math.max(1, Math.round(output.sizeBytes / 1024))} KB` : 'Stored output'}
+                          </p>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AutomationDialog({
   state,
   skills,
@@ -185,12 +361,21 @@ function AutomationDialog({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [running, setRunning] = useState(false)
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [selectedRunDetail, setSelectedRunDetail] = useState<AutomationRunDetail | null>(null)
+  const [loadingRunDetail, setLoadingRunDetail] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     titleRef.current?.focus()
     titleRef.current?.select()
   }, [])
+
+  useEffect(() => {
+    setSelectedRunId(null)
+    setSelectedRunDetail(null)
+    setLoadingRunDetail(false)
+  }, [initial?._id])
 
   const scheduleLabel = useMemo(
     () => formatAutomationSchedule(form.scheduleKind, buildScheduleConfig(form), form.timezone),
@@ -278,6 +463,20 @@ function AutomationDialog({
       await onRunNow(initial!._id)
     } finally {
       setRunning(false)
+    }
+  }
+
+  async function handleOpenRunDetail(runId: string) {
+    setSelectedRunId(runId)
+    setLoadingRunDetail(true)
+    try {
+      const res = await fetch(
+        `/api/app/automations/runs/detail?automationRunId=${encodeURIComponent(runId)}`,
+      )
+      if (!res.ok) return
+      setSelectedRunDetail(await res.json())
+    } finally {
+      setLoadingRunDetail(false)
     }
   }
 
@@ -534,13 +733,21 @@ function AutomationDialog({
                   ) : runs.length === 0 ? (
                     <div className="rounded-xl border border-[#e5e5e5] bg-white p-4 text-sm text-[#888]">No runs yet</div>
                   ) : runs.map((run) => (
-                    <div key={run._id} className="rounded-xl border border-[#e5e5e5] bg-white p-3">
+                    <button
+                      key={run._id}
+                      type="button"
+                      onClick={() => void handleOpenRunDetail(run._id)}
+                      className="block w-full rounded-xl border border-[#e5e5e5] bg-white p-3 text-left transition-colors hover:bg-[#fafafa]"
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-sm font-medium text-[#0a0a0a]">{getAutomationRunStatusLabel(run.status)}</div>
                         <div className="text-[11px] text-[#888]">{timeAgo(run.createdAt)}</div>
                       </div>
                       <p className="mt-1 text-[11px] text-[#888]">{run.resultSummary || run.errorMessage || 'Run completed without a summary.'}</p>
-                    </div>
+                      <p className="mt-2 text-[10px] uppercase tracking-[0.12em] text-[#bbb]">
+                        View details
+                      </p>
+                    </button>
                   ))}
                 </div>
               ) : null}
@@ -573,6 +780,19 @@ function AutomationDialog({
           </button>
         </div>
       </div>
+
+      {selectedRunId ? (
+        <RunDetailDialog
+          detail={selectedRunDetail}
+          loading={loadingRunDetail}
+          timezone={form.timezone}
+          onClose={() => {
+            setSelectedRunId(null)
+            setSelectedRunDetail(null)
+            setLoadingRunDetail(false)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

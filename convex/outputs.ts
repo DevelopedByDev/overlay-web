@@ -263,6 +263,29 @@ export const listByConversationId = query({
   },
 })
 
+export const listByTurnId = query({
+  args: { turnId: v.string(), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { turnId, userId, accessToken, serverSecret }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return []
+    }
+    const all = await ctx.db
+      .query('outputs')
+      .withIndex('by_turnId', (q) => q.eq('turnId', turnId))
+      .order('desc')
+      .collect()
+    return all
+      .filter((output) => output.userId === userId)
+      .map((output) => ({
+        ...output,
+        type: resolveStoredType(output),
+        url: (output.storageId ?? output.r2Key) ? buildProxyUrl(output._id) : output.url,
+      }))
+  },
+})
+
 export const getStorageUrlForProxy = query({
   args: {
     outputId: v.id('outputs'),

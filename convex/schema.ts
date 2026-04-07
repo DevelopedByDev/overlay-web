@@ -68,6 +68,7 @@ export default defineSchema({
     finishedAt: v.optional(v.number()),
     durationMs: v.optional(v.number()),
     conversationId: v.optional(v.id('conversations')),
+    turnId: v.optional(v.string()),
     promptSnapshot: v.string(),
     mode: v.union(v.literal('ask'), v.literal('act')),
     modelId: v.string(),
@@ -198,6 +199,7 @@ export default defineSchema({
     mode: v.union(v.literal('ask'), v.literal('act')),
     modelId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
     success: v.boolean(),
     durationMs: v.optional(v.number()),
     costBucket: v.union(
@@ -213,7 +215,9 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_userId_toolId', ['userId', 'toolId']),
+    .index('by_userId_toolId', ['userId', 'toolId'])
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_turnId_createdAt', ['turnId', 'createdAt']),
 
   // Daily counters used exclusively for free-tier weekly limit enforcement.
   dailyUsage: defineTable({
@@ -438,7 +442,8 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_conversationId', ['conversationId']),
+    .index('by_conversationId', ['conversationId'])
+    .index('by_turnId', ['turnId']),
 
   // Knowledge base and project files. Text content is stored in `content`.
   // Binary originals (images, PDFs, etc.) use Cloudflare R2 via `r2Key`; served via /api/app/files/[id]/content.

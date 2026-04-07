@@ -527,6 +527,7 @@ export const recordToolInvocation = mutation({
     mode: v.union(v.literal('ask'), v.literal('act')),
     modelId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
     success: v.boolean(),
     durationMs: v.optional(v.number()),
     costBucket: v.union(
@@ -552,6 +553,7 @@ export const recordToolInvocation = mutation({
       mode: args.mode,
       modelId: args.modelId?.slice(0, 256),
       conversationId: args.conversationId?.slice(0, 256),
+      turnId: args.turnId?.slice(0, 256),
       success: args.success,
       durationMs: args.durationMs,
       costBucket: args.costBucket,
@@ -559,5 +561,53 @@ export const recordToolInvocation = mutation({
       createdAt: Date.now(),
     })
     return { success: true }
+  },
+})
+
+export const listToolInvocations = query({
+  args: {
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    userId: v.string(),
+    conversationId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      await authorizeUserAccess({
+        userId: args.userId,
+        accessToken: args.accessToken,
+        serverSecret: args.serverSecret,
+      })
+    } catch {
+      return []
+    }
+
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 200))
+
+    if (args.turnId?.trim()) {
+      return await ctx.db
+        .query('toolInvocations')
+        .withIndex('by_turnId_createdAt', (q) => q.eq('turnId', args.turnId!.trim()))
+        .order('desc')
+        .take(limit)
+    }
+
+    if (args.conversationId?.trim()) {
+      return await ctx.db
+        .query('toolInvocations')
+        .withIndex('by_conversationId_createdAt', (q) =>
+          q.eq('conversationId', args.conversationId!.trim()),
+        )
+        .order('desc')
+        .take(limit)
+    }
+
+    return await ctx.db
+      .query('toolInvocations')
+      .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId))
+      .order('desc')
+      .take(limit)
   },
 })

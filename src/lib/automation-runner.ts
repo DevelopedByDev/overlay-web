@@ -154,7 +154,9 @@ export async function executeAutomationTurn(args: {
 
   const bodyText = await response.text()
   if (!response.ok) {
-    throw new Error(bodyText || 'Automation execution failed')
+    const error = new Error(bodyText || 'Automation execution failed') as Error & { turnId?: string }
+    error.turnId = turnId
+    throw error
   }
 
   const messages = await convex.query<

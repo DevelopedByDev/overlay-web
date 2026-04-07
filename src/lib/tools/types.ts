@@ -18,6 +18,7 @@ export interface OverlayToolsOptions {
   accessToken?: string
   serverSecret?: string
   conversationId?: string
+  turnId?: string
   projectId?: string
   baseUrl?: string
   /** Original browser Cookie header — required for server-side tool `fetch` to `/api/app/*` (middleware expects session cookie). */
