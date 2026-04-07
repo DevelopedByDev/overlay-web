@@ -18,11 +18,16 @@ function getInternalApiSecret(): string {
 async function runMinuteTickHandler(
   ctx: ActionCtx,
 ): Promise<{ claimed: number; dispatched: number; failed: number }> {
-  const jobs = await ctx.runMutation(internal.automations.claimDueRunsInternal, {
+  const retryJobs = await ctx.runMutation(internal.automations.claimRetryRunsInternal, {
+    now: Date.now(),
+    batchSize: DEFAULT_BATCH_SIZE,
+  })
+  const scheduledJobs = await ctx.runMutation(internal.automations.claimDueRunsInternal, {
     now: Date.now(),
     batchSize: DEFAULT_BATCH_SIZE,
     leaseMs: DEFAULT_LEASE_MS,
   })
+  const jobs = [...retryJobs, ...scheduledJobs].slice(0, DEFAULT_BATCH_SIZE * 2)
 
   if (!jobs.length) {
     return { claimed: 0, dispatched: 0, failed: 0 }

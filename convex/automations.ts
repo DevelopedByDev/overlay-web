@@ -1,12 +1,18 @@
 import { v } from 'convex/values'
 import { internalMutation, mutation, query, type MutationCtx } from './_generated/server'
-import type { Id } from './_generated/dataModel'
+import type { Doc, Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import {
   buildAutomationPrompt,
   formatAutomationSchedule,
   getNextAutomationRunAt,
 } from '../src/lib/automations'
+import {
+  AUTOMATION_RETRY_DELAY_MS,
+  MAX_AUTOMATION_ATTEMPTS,
+  MAX_RUNNING_AUTOMATIONS_PER_USER,
+  shouldRetryAutomationFailure,
+} from '../src/lib/automation-guardrails'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -83,6 +89,87 @@ function buildClearedLeasePatch() {
     leaseOwner: undefined,
     leaseExpiresAt: undefined,
   }
+}
+
+async function getRunningAutomationRunCount(ctx: MutationCtx, userId: string): Promise<number> {
+  const running = await ctx.db
+    .query('automationRuns')
+    .withIndex('by_userId_status_createdAt', (q) => q.eq('userId', userId).eq('status', 'running'))
+    .collect()
+  return running.length
+}
+
+async function hasScheduledOccurrenceRun(
+  ctx: MutationCtx,
+  automationId: Id<'automations'>,
+  scheduledFor: number,
+): Promise<boolean> {
+  const existing = await ctx.db
+    .query('automationRuns')
+    .withIndex('by_automationId_scheduledFor', (q) =>
+      q.eq('automationId', automationId).eq('scheduledFor', scheduledFor),
+    )
+    .collect()
+  return existing.some((run) => run.triggerSource === 'schedule')
+}
+
+async function existingRetryForRun(
+  ctx: MutationCtx,
+  automationId: Id<'automations'>,
+  retryOfRunId: Id<'automationRuns'>,
+) {
+  const rows = await ctx.db
+    .query('automationRuns')
+    .withIndex('by_automationId_createdAt', (q) => q.eq('automationId', automationId))
+    .order('desc')
+    .take(50)
+  return rows.find((row) => row.retryOfRunId === retryOfRunId)
+}
+
+async function maybeEnqueueRetryRun(
+  ctx: MutationCtx,
+  input: {
+    run: Doc<'automationRuns'>
+    automation: Doc<'automations'>
+    errorCode?: string
+    errorMessage?: string
+  },
+): Promise<Id<'automationRuns'> | null> {
+  const { run, automation, errorCode, errorMessage } = input
+  const attemptNumber = run.attemptNumber ?? 1
+
+  if (
+    automation.deletedAt ||
+    automation.status !== 'active' ||
+    !shouldRetryAutomationFailure({
+      errorCode,
+      errorMessage,
+      attemptNumber,
+      triggerSource: run.triggerSource,
+    })
+  ) {
+    return null
+  }
+
+  const existingRetry = await existingRetryForRun(ctx, automation._id, run._id)
+  if (existingRetry) {
+    return existingRetry._id
+  }
+
+  return await ctx.db.insert('automationRuns', {
+    automationId: automation._id,
+    userId: run.userId,
+    status: 'queued',
+    triggerSource: 'retry',
+    scheduledFor: Date.now() + AUTOMATION_RETRY_DELAY_MS,
+    promptSnapshot: run.promptSnapshot,
+    mode: run.mode,
+    modelId: run.modelId,
+    conversationId: run.conversationId,
+    attemptNumber: Math.min(attemptNumber + 1, MAX_AUTOMATION_ATTEMPTS),
+    retryOfRunId: run._id,
+    createdAt: Date.now(),
+  })
 }
 
 function validateAutomationSource(input: {
@@ -381,6 +468,8 @@ export const createRun = mutation({
     conversationId: v.optional(v.id('conversations')),
     turnId: v.optional(v.string()),
     startedAt: v.optional(v.number()),
+    attemptNumber: v.optional(v.number()),
+    retryOfRunId: v.optional(v.id('automationRuns')),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
@@ -394,6 +483,18 @@ export const createRun = mutation({
         throw new Error('Unauthorized')
       }
     }
+    if (args.retryOfRunId) {
+      const retryOfRun = await ctx.db.get(args.retryOfRunId)
+      if (!retryOfRun || retryOfRun.userId !== args.userId) {
+        throw new Error('Unauthorized')
+      }
+    }
+    if (args.status === 'running') {
+      const runningCount = await getRunningAutomationRunCount(ctx, args.userId)
+      if (runningCount >= MAX_RUNNING_AUTOMATIONS_PER_USER) {
+        throw new Error('Too many automation runs are already in progress.')
+      }
+    }
     const createdAt = Date.now()
     return await ctx.db.insert('automationRuns', {
       automationId: args.automationId,
@@ -404,6 +505,8 @@ export const createRun = mutation({
       startedAt: args.startedAt,
       conversationId: args.conversationId,
       turnId: args.turnId,
+      attemptNumber: Math.max(1, Math.min(args.attemptNumber ?? 1, MAX_AUTOMATION_ATTEMPTS)),
+      retryOfRunId: args.retryOfRunId,
       promptSnapshot: args.promptSnapshot,
       mode: args.mode,
       modelId: args.modelId,
@@ -445,6 +548,12 @@ export const updateRun = mutation({
       const conversation = await ctx.db.get(args.conversationId)
       if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
         throw new Error('Unauthorized')
+      }
+    }
+    if (args.status === 'running' && run.status !== 'running') {
+      const runningCount = await getRunningAutomationRunCount(ctx, args.userId)
+      if (runningCount >= MAX_RUNNING_AUTOMATIONS_PER_USER) {
+        throw new Error('Too many automation runs are already in progress.')
       }
     }
     const patch: Record<string, unknown> = {}
@@ -493,12 +602,34 @@ export const claimDueRunsInternal = internalMutation({
       automationRunId: Id<'automationRuns'>
       userId: string
     }> = []
+    const runningCounts = new Map<string, number>()
 
     for (const automation of candidates) {
       if (jobs.length >= batchSize) break
       if (automation.deletedAt) continue
       if (!automation.nextRunAt || automation.nextRunAt > now) continue
       if (automation.leaseExpiresAt && automation.leaseExpiresAt > now) continue
+      const currentRunningCount =
+        runningCounts.get(automation.userId) ?? (await getRunningAutomationRunCount(ctx, automation.userId))
+      runningCounts.set(automation.userId, currentRunningCount)
+      if (currentRunningCount >= MAX_RUNNING_AUTOMATIONS_PER_USER) {
+        continue
+      }
+      if (await hasScheduledOccurrenceRun(ctx, automation._id, automation.nextRunAt)) {
+        const nextRunAt = getNextAutomationRunAt({
+          scheduleKind: automation.scheduleKind,
+          scheduleConfig: automation.scheduleConfig,
+          timezone: automation.timezone,
+          afterTimestamp: automation.nextRunAt,
+        })
+        await ctx.db.patch(automation._id, {
+          updatedAt: now,
+          ...buildClearedLeasePatch(),
+          nextRunAt,
+          status: nextRunAt ? automation.status : 'archived',
+        })
+        continue
+      }
 
       const sourceInstructions =
         automation.sourceType === 'inline'
@@ -525,6 +656,7 @@ export const claimDueRunsInternal = internalMutation({
         promptSnapshot,
         mode: automation.mode,
         modelId: automation.modelId,
+        attemptNumber: 1,
         createdAt: now,
       })
 
@@ -555,6 +687,92 @@ export const claimDueRunsInternal = internalMutation({
   },
 })
 
+export const claimRetryRunsInternal = internalMutation({
+  args: {
+    now: v.number(),
+    batchSize: v.number(),
+  },
+  handler: async (ctx, { now, batchSize }) => {
+    const candidates = await ctx.db
+      .query('automationRuns')
+      .withIndex('by_status_scheduledFor', (q) => q.eq('status', 'queued').lte('scheduledFor', now))
+      .take(Math.max(batchSize * 5, 20))
+
+    const jobs: Array<{
+      automationId: Id<'automations'>
+      automationRunId: Id<'automationRuns'>
+      userId: string
+    }> = []
+    const runningCounts = new Map<string, number>()
+
+    for (const run of candidates) {
+      if (jobs.length >= batchSize) break
+      if (run.triggerSource !== 'retry') continue
+
+      const automation = await ctx.db.get(run.automationId)
+      if (!automation || automation.deletedAt || automation.status !== 'active') {
+        await ctx.db.patch(run._id, {
+          status: 'canceled',
+          finishedAt: now,
+          durationMs: 0,
+          errorCode: 'retry_canceled',
+          errorMessage: 'Automation is no longer active.',
+        })
+        continue
+      }
+
+      const currentRunningCount =
+        runningCounts.get(run.userId) ?? (await getRunningAutomationRunCount(ctx, run.userId))
+      runningCounts.set(run.userId, currentRunningCount)
+      if (currentRunningCount >= MAX_RUNNING_AUTOMATIONS_PER_USER) {
+        continue
+      }
+
+      await ctx.db.patch(run._id, {
+        status: 'running',
+        startedAt: now,
+      })
+      runningCounts.set(run.userId, currentRunningCount + 1)
+
+      jobs.push({
+        automationId: run.automationId,
+        automationRunId: run._id,
+        userId: run.userId,
+      })
+    }
+
+    return jobs
+  },
+})
+
+export const queueRetryForRun = mutation({
+  args: {
+    automationRunId: v.id('automationRuns'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const run = await ctx.db.get(args.automationRunId)
+    if (!run || run.userId !== args.userId) {
+      throw new Error('Unauthorized')
+    }
+    const automation = await ctx.db.get(run.automationId)
+    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+    return await maybeEnqueueRetryRun(ctx, {
+      run,
+      automation,
+      errorCode: args.errorCode,
+      errorMessage: args.errorMessage,
+    })
+  },
+})
+
 export const markDispatchFailedInternal = internalMutation({
   args: {
     automationRunId: v.id('automationRuns'),
@@ -575,6 +793,20 @@ export const markDispatchFailedInternal = internalMutation({
 
     const automation = await ctx.db.get(run.automationId)
     if (!automation || automation.deletedAt) return
+
+    await maybeEnqueueRetryRun(ctx, {
+      run: {
+        ...run,
+        status: 'failed',
+        finishedAt,
+        durationMs: Math.max(0, finishedAt - (run.startedAt ?? run.createdAt)),
+        errorCode: 'dispatch_failed',
+        errorMessage,
+      },
+      automation,
+      errorCode: 'dispatch_failed',
+      errorMessage,
+    })
 
     await ctx.db.patch(run.automationId, {
       updatedAt: finishedAt,

@@ -52,6 +52,8 @@ export interface AutomationRunSummary {
   durationMs?: number
   conversationId?: string
   turnId?: string
+  attemptNumber?: number
+  retryOfRunId?: string
   promptSnapshot: string
   mode: AutomationMode
   modelId: string

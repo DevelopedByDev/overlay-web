@@ -58,6 +58,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Automation run not found' }, { status: 404 })
     }
 
+    if (automation.status !== 'active') {
+      const finishedAt = Date.now()
+      await convex.mutation(
+        'automations:updateRun',
+        {
+          automationRunId: automationRunId as Id<'automationRuns'>,
+          userId,
+          serverSecret,
+          status: 'skipped',
+          finishedAt,
+          durationMs: 0,
+          conversationId: run.conversationId as Id<'conversations'> | undefined,
+          errorCode: 'automation_inactive',
+          errorMessage: 'Automation is no longer active.',
+        },
+        { throwOnError: true },
+      )
+      return NextResponse.json({ success: true, skipped: true })
+    }
+
     if (run.status === 'succeeded' || run.status === 'failed' || run.status === 'canceled') {
       return NextResponse.json({ success: true, skipped: true })
     }
@@ -137,6 +157,18 @@ export async function POST(request: NextRequest) {
           durationMs: finishedAt - startedAt,
           conversationId,
           turnId,
+          errorCode: 'scheduled_run_failed',
+          errorMessage: message,
+        },
+        { throwOnError: true },
+      )
+
+      await convex.mutation(
+        'automations:queueRetryForRun',
+        {
+          automationRunId: automationRunId as Id<'automationRuns'>,
+          userId,
+          serverSecret,
           errorCode: 'scheduled_run_failed',
           errorMessage: message,
         },

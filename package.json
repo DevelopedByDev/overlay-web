@@ -20,6 +20,7 @@
     "test:auth:convex": "node --experimental-strip-types scripts/auth-convex-debug.ts",
     "test:auth:cookie": "node --experimental-strip-types scripts/auth-cookie-inspect.ts",
     "test:auth:refresh": "node --experimental-strip-types scripts/auth-refresh-check.ts",
+    "test:automations": "node --test --experimental-strip-types src/lib/automations.test.ts",
     "test:daytona:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-tool-smoke.ts",
     "test:daytona:reconcile:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-reconcile-smoke.ts",
     "test:unified-tools": "node --experimental-strip-types scripts/unified-tools-sanity.ts",

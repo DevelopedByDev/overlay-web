@@ -69,6 +69,8 @@ export default defineSchema({
     durationMs: v.optional(v.number()),
     conversationId: v.optional(v.id('conversations')),
     turnId: v.optional(v.string()),
+    attemptNumber: v.optional(v.number()),
+    retryOfRunId: v.optional(v.id('automationRuns')),
     promptSnapshot: v.string(),
     mode: v.union(v.literal('ask'), v.literal('act')),
     modelId: v.string(),
@@ -78,8 +80,11 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_automationId_createdAt', ['automationId', 'createdAt'])
+    .index('by_automationId_scheduledFor', ['automationId', 'scheduledFor'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_status_createdAt', ['status', 'createdAt']),
+    .index('by_userId_status_createdAt', ['userId', 'status', 'createdAt'])
+    .index('by_status_createdAt', ['status', 'createdAt'])
+    .index('by_status_scheduledFor', ['status', 'scheduledFor']),
 
   userUiSettings: defineTable({
     userId: v.string(),
