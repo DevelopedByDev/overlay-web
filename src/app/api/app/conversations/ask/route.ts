@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const maxDuration = 120
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from 'ai'
 import { convex } from '@/lib/convex'
 import { listMemories } from '@/lib/app-store'
@@ -42,6 +41,7 @@ import {
   summarizeToolInputForLog,
   summarizeToolSetForLog,
 } from '@/lib/safe-log'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import type { StepResult, ToolSet } from 'ai'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
@@ -73,11 +73,6 @@ interface Entitlements {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const {
       messages,
       modelId,
@@ -89,6 +84,8 @@ export async function POST(request: NextRequest) {
       indexedFileNames,
       attachmentNames,
       replyContextForModel,
+      accessToken,
+      userId: requestedUserId,
     }: {
       messages: UIMessage[]
       modelId?: string
@@ -102,8 +99,17 @@ export async function POST(request: NextRequest) {
       attachmentNames?: string[]
       /** Thread reply context appended to last user turn for the model only. */
       replyContextForModel?: string
+      accessToken?: string
+      userId?: string
     } = await request.json()
-    const userId = session.user.id
+    const auth = await resolveAuthenticatedAppUser(request, {
+      accessToken,
+      userId: requestedUserId,
+    })
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const userId = auth.userId
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
     const serverSecret = getInternalApiSecret()
 
@@ -224,14 +230,16 @@ export async function POST(request: NextRequest) {
     let autoRetrieval = ''
     let sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> = {}
     try {
-      const bundle = await buildAutoRetrievalBundle({
-        userMessage: latestUserText ?? '',
-        userId,
-        accessToken: session.accessToken,
-        projectId: conversationProjectId,
-      })
-      autoRetrieval = bundle.extension
-      sourceCitationMap = bundle.citations
+      if (auth.accessToken) {
+        const bundle = await buildAutoRetrievalBundle({
+          userMessage: latestUserText ?? '',
+          userId,
+          accessToken: auth.accessToken,
+          projectId: conversationProjectId,
+        })
+        autoRetrieval = bundle.extension
+        sourceCitationMap = bundle.citations
+      }
     } catch {
       // optional
     }
@@ -350,18 +358,21 @@ export async function POST(request: NextRequest) {
 
     const [composioRaw, perplexityTool, overlayAskTools] = await Promise.all([
       unifiedAskEnabled
-        ? createBrowserUnifiedTools({ userId, accessToken: session.accessToken }).catch((err) => {
+        ? createBrowserUnifiedTools({
+            userId,
+            accessToken: auth.accessToken || undefined,
+          }).catch((err) => {
             console.error('[conversations/ask] Composio tools unavailable:', summarizeErrorForLog(err))
             return {}
           })
         : Promise.resolve({}),
       unifiedAskEnabled
-        ? getGatewayPerplexitySearchTool(session.accessToken, effectiveModelId)
+        ? getGatewayPerplexitySearchTool(auth.accessToken || undefined, effectiveModelId)
         : Promise.resolve(null),
       Promise.resolve(
         buildOverlayToolSet('ask', {
           userId,
-          accessToken: session.accessToken,
+          accessToken: auth.accessToken || undefined,
           serverSecret,
           conversationId: conversationId ?? undefined,
           projectId: conversationProjectId,
@@ -390,7 +401,10 @@ export async function POST(request: NextRequest) {
     )
 
     try {
-      const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
+      const languageModel = await getGatewayLanguageModel(
+        effectiveModelId,
+        auth.accessToken || undefined,
+      )
       const modelMessages = await convertToModelMessages(messagesForModel)
 
       const result = streamText({
@@ -470,7 +484,7 @@ export async function POST(request: NextRequest) {
         return streamOpenRouterChat({
           modelId: effectiveModelId,
           messages: fallbackMsgs,
-          accessToken: session.accessToken,
+          accessToken: auth.accessToken || undefined,
           onFinish: finishAsk,
         })
       }

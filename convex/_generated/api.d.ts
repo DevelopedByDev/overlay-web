@@ -9,6 +9,7 @@
  */
 
 import type * as authDebug from "../authDebug.js";
+import type * as automationRunner from "../automationRunner.js";
 import type * as automations from "../automations.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
@@ -45,6 +46,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   authDebug: typeof authDebug;
+  automationRunner: typeof automationRunner;
   automations: typeof automations;
   conversations: typeof conversations;
   crons: typeof crons;

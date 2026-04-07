@@ -1,7 +1,12 @@
 import { v } from 'convex/values'
-import { mutation, query, type MutationCtx } from './_generated/server'
+import { internalMutation, mutation, query, type MutationCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
+import {
+  buildAutomationPrompt,
+  formatAutomationSchedule,
+  getNextAutomationRunAt,
+} from '../src/lib/automations'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -71,6 +76,13 @@ async function ensureSkillOwnership(ctx: MutationCtx, userId: string, skillId?: 
     throw new Error('Unauthorized')
   }
   return skill
+}
+
+function buildClearedLeasePatch() {
+  return {
+    leaseOwner: undefined,
+    leaseExpiresAt: undefined,
+  }
 }
 
 function validateAutomationSource(input: {
@@ -328,6 +340,25 @@ export const listRuns = query({
   },
 })
 
+export const getRun = query({
+  args: {
+    automationRunId: v.id('automationRuns'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, { automationRunId, userId, accessToken, serverSecret }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return null
+    }
+    const run = await ctx.db.get(automationRunId)
+    if (!run || run.userId !== userId) return null
+    return run
+  },
+})
+
 export const createRun = mutation({
   args: {
     automationId: v.id('automations'),
@@ -428,6 +459,9 @@ export const updateRun = mutation({
     if (automation && automation.userId === args.userId && !automation.deletedAt && args.status) {
       await ctx.db.patch(run.automationId, {
         updatedAt: Date.now(),
+        ...((args.status === 'succeeded' || args.status === 'failed' || args.status === 'canceled')
+          ? buildClearedLeasePatch()
+          : {}),
         ...(args.conversationId !== undefined ? { conversationId: args.conversationId } : {}),
         ...(args.status ? { lastRunStatus: args.status } : {}),
         ...((args.status === 'succeeded' || args.status === 'failed' || args.status === 'canceled')
@@ -435,5 +469,114 @@ export const updateRun = mutation({
           : {}),
       })
     }
+  },
+})
+
+export const claimDueRunsInternal = internalMutation({
+  args: {
+    now: v.number(),
+    batchSize: v.number(),
+    leaseMs: v.number(),
+  },
+  handler: async (ctx, { now, batchSize, leaseMs }) => {
+    const candidates = await ctx.db
+      .query('automations')
+      .withIndex('by_status_nextRunAt', (q) => q.eq('status', 'active').lte('nextRunAt', now))
+      .take(Math.max(batchSize * 5, 20))
+
+    const jobs: Array<{
+      automationId: Id<'automations'>
+      automationRunId: Id<'automationRuns'>
+      userId: string
+    }> = []
+
+    for (const automation of candidates) {
+      if (jobs.length >= batchSize) break
+      if (automation.deletedAt) continue
+      if (!automation.nextRunAt || automation.nextRunAt > now) continue
+      if (automation.leaseExpiresAt && automation.leaseExpiresAt > now) continue
+
+      const sourceInstructions =
+        automation.sourceType === 'inline'
+          ? automation.instructionsMarkdown?.trim() || ''
+          : ((automation.skillId ? await ctx.db.get(automation.skillId) : null)?.instructions?.trim() || '')
+      const promptSnapshot = buildAutomationPrompt({
+        title: automation.title,
+        description: automation.description,
+        scheduleLabel: formatAutomationSchedule(
+          automation.scheduleKind,
+          automation.scheduleConfig,
+          automation.timezone,
+        ),
+        timezone: automation.timezone,
+        sourceInstructions,
+      })
+
+      const automationRunId = await ctx.db.insert('automationRuns', {
+        automationId: automation._id,
+        userId: automation.userId,
+        status: 'queued',
+        triggerSource: 'schedule',
+        scheduledFor: automation.nextRunAt,
+        promptSnapshot,
+        mode: automation.mode,
+        modelId: automation.modelId,
+        createdAt: now,
+      })
+
+      const nextRunAt = getNextAutomationRunAt({
+        scheduleKind: automation.scheduleKind,
+        scheduleConfig: automation.scheduleConfig,
+        timezone: automation.timezone,
+        afterTimestamp: automation.nextRunAt,
+      })
+
+      await ctx.db.patch(automation._id, {
+        updatedAt: now,
+        leaseOwner: automationRunId,
+        leaseExpiresAt: now + leaseMs,
+        nextRunAt,
+        status: nextRunAt ? automation.status : 'archived',
+        lastRunStatus: 'queued',
+      })
+
+      jobs.push({
+        automationId: automation._id,
+        automationRunId,
+        userId: automation.userId,
+      })
+    }
+
+    return jobs
+  },
+})
+
+export const markDispatchFailedInternal = internalMutation({
+  args: {
+    automationRunId: v.id('automationRuns'),
+    errorMessage: v.string(),
+  },
+  handler: async (ctx, { automationRunId, errorMessage }) => {
+    const run = await ctx.db.get(automationRunId)
+    if (!run) return
+
+    const finishedAt = Date.now()
+    await ctx.db.patch(automationRunId, {
+      status: 'failed',
+      finishedAt,
+      durationMs: Math.max(0, finishedAt - (run.startedAt ?? run.createdAt)),
+      errorCode: 'dispatch_failed',
+      errorMessage,
+    })
+
+    const automation = await ctx.db.get(run.automationId)
+    if (!automation || automation.deletedAt) return
+
+    await ctx.db.patch(run.automationId, {
+      updatedAt: finishedAt,
+      ...buildClearedLeasePatch(),
+      lastRunAt: finishedAt,
+      lastRunStatus: 'failed',
+    })
   },
 })

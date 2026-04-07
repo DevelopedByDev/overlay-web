@@ -14,6 +14,8 @@ export async function executeListNotes(
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
+      options.serverSecret,
+      options.userId,
     )
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Failed to list notes' }))
@@ -51,6 +53,8 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
+      options.serverSecret,
+      options.userId,
     )
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Note not found' }))
@@ -156,6 +160,7 @@ export async function executeDeleteNote(options: OverlayToolsOptions, input: { n
       headers: {
         'Content-Type': 'application/json',
         ...(options.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : {}),
+        ...(options.serverSecret ? { 'x-internal-api-secret': options.serverSecret } : {}),
         ...(options.forwardCookie ? { Cookie: options.forwardCookie } : {}),
       },
       body: JSON.stringify(toolAuthBody(options)),

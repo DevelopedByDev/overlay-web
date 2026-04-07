@@ -28,6 +28,8 @@ export default defineSchema({
       dayOfMonth: v.optional(v.number()),
     }),
     nextRunAt: v.optional(v.number()),
+    leaseOwner: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
     lastRunAt: v.optional(v.number()),
     lastRunStatus: v.optional(
       v.union(

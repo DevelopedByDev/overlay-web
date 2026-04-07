@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type UIMessage } from 'ai'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { listMemories } from '@/lib/app-store'
 import { getGatewayLanguageModel, getGatewayPerplexitySearchTool } from '@/lib/ai-gateway'
@@ -34,6 +33,7 @@ import {
   summarizeToolInputForLog,
   summarizeToolSetForLog,
 } from '@/lib/safe-log'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 function summarizeToolOutputForLog(output: unknown): string {
@@ -57,11 +57,6 @@ interface Entitlements {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const {
       messages,
       systemPrompt,
@@ -71,6 +66,8 @@ export async function POST(request: NextRequest) {
       indexedFileNames,
       attachmentNames,
       replyContextForModel,
+      accessToken,
+      userId: requestedUserId,
     }: {
       messages: UIMessage[]
       systemPrompt?: string
@@ -80,8 +77,17 @@ export async function POST(request: NextRequest) {
       indexedFileNames?: string[]
       attachmentNames?: string[]
       replyContextForModel?: string
+      accessToken?: string
+      userId?: string
     } = await request.json()
-    const userId = session.user.id
+    const auth = await resolveAuthenticatedAppUser(request, {
+      accessToken,
+      userId: requestedUserId,
+    })
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const userId = auth.userId
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
     const serverSecret = getInternalApiSecret()
 
@@ -233,14 +239,16 @@ export async function POST(request: NextRequest) {
     let autoRetrieval = ''
     let sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> = {}
     try {
-      const bundle = await buildAutoRetrievalBundle({
-        userMessage: latestUserText ?? '',
-        userId,
-        accessToken: session.accessToken,
-        projectId: conversationProjectId,
-      })
-      autoRetrieval = bundle.extension
-      sourceCitationMap = bundle.citations
+      if (auth.accessToken) {
+        const bundle = await buildAutoRetrievalBundle({
+          userMessage: latestUserText ?? '',
+          userId,
+          accessToken: auth.accessToken,
+          projectId: conversationProjectId,
+        })
+        autoRetrieval = bundle.extension
+        sourceCitationMap = bundle.citations
+      }
     } catch {
       // optional
     }
@@ -259,13 +267,16 @@ export async function POST(request: NextRequest) {
       : ''
 
     const modelMessages = await convertToModelMessages(messagesForModel)
-    const languageModel = await getGatewayLanguageModel(effectiveModelId, session.accessToken)
+    const languageModel = await getGatewayLanguageModel(
+      effectiveModelId,
+      auth.accessToken || undefined,
+    )
     const [composioRaw, webToolSet, perplexityTool] = await Promise.all([
-      createBrowserUnifiedTools({ userId, accessToken: session.accessToken }),
+      createBrowserUnifiedTools({ userId, accessToken: auth.accessToken || undefined }),
       Promise.resolve(
         createWebTools({
           userId,
-          accessToken: session.accessToken,
+          accessToken: auth.accessToken || undefined,
           serverSecret,
           conversationId: conversationId ?? undefined,
           projectId: conversationProjectId,
@@ -273,7 +284,7 @@ export async function POST(request: NextRequest) {
           forwardCookie: request.headers.get('cookie') ?? undefined,
         }),
       ),
-      getGatewayPerplexitySearchTool(session.accessToken, effectiveModelId),
+      getGatewayPerplexitySearchTool(auth.accessToken || undefined, effectiveModelId),
     ])
     const composioTools = filterComposioToolSet(composioRaw, 'act')
     const tools = {

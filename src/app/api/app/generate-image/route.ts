@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateImage } from 'ai'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { getGatewayImageModel } from '@/lib/ai-gateway'
 import { IMAGE_MODELS } from '@/lib/models'
@@ -9,6 +8,7 @@ import { calculateImageCost } from '@/lib/model-pricing'
 import { uploadBuffer, keyForOutput } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
 import { deleteObject } from '@/lib/r2'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 export const maxDuration = 120
 
@@ -22,31 +22,32 @@ interface Entitlements {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl }: {
+    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl, accessToken, userId }: {
       prompt: string
       modelId?: string
       aspectRatio?: string
       conversationId?: string
       turnId?: string
       imageUrl?: string
+      accessToken?: string
+      userId?: string
     } = await request.json()
+
+    const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId })
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
 
-    const userId = session.user.id
     const serverSecret = getInternalApiSecret()
 
     // ── Subscription enforcement ──────────────────────────────────────────────
     const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
       serverSecret,
-      userId,
+      userId: auth.userId,
     })
 
     if (!entitlements) {
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     const creditsTotalCents = creditsTotal * 100
     const remainingCents = creditsTotalCents - creditsUsed
     const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-    console.log(`[GenerateImage] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${userId}`)
+    console.log(`[GenerateImage] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
     if (tier === 'free') {
       return NextResponse.json(
         { error: 'generation_not_allowed', message: 'Image generation requires a Pro subscription.' },
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
 
     for (const tryModelId of priorityList) {
       try {
-        const imageModel = await getGatewayImageModel(tryModelId, session.accessToken)
+        const imageModel = await getGatewayImageModel(tryModelId, auth.accessToken || undefined)
 
         // Build providerOptions for image editing when a reference image is supplied
         // Each provider has a different key — we try the most common patterns
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
       outputId = await convex.mutation<string>(
         'outputs:create',
         {
-          userId,
+          userId: auth.userId,
           serverSecret,
           type: 'image',
           source: 'image_generation',
@@ -180,7 +181,7 @@ export async function POST(request: NextRequest) {
         throw new Error('Output record was not created.')
       }
       const persistedOutputId = outputId
-      const r2Key = keyForOutput(userId, persistedOutputId, fileName)
+      const r2Key = keyForOutput(auth.userId, persistedOutputId, fileName)
       await checkGlobalR2Budget(imageBuffer.length)
       await uploadBuffer(r2Key, imageBuffer, 'image/png')
       uploadedR2Key = r2Key
@@ -190,7 +191,7 @@ export async function POST(request: NextRequest) {
         'outputs:update',
         {
           outputId: persistedOutputId,
-          userId,
+          userId: auth.userId,
           serverSecret,
           status: 'completed',
           modelId: usedModelId,
@@ -212,7 +213,7 @@ export async function POST(request: NextRequest) {
           'outputs:update',
           {
             outputId,
-            userId,
+            userId: auth.userId,
             serverSecret,
             status: 'failed',
             errorMessage,
@@ -245,7 +246,7 @@ export async function POST(request: NextRequest) {
     if (costCents > 0) {
       const recordResult = await convex.mutation('usage:recordBatch', {
         serverSecret,
-        userId,
+        userId: auth.userId,
         events: [{
           type: 'generation',
           modelId: usedModelId,
@@ -257,7 +258,10 @@ export async function POST(request: NextRequest) {
         }],
       })
       if (recordResult) {
-        const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', { serverSecret, userId })
+        const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+          serverSecret,
+          userId: auth.userId,
+        })
         if (updated) {
           const totalCents = updated.creditsTotal * 100
           const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'

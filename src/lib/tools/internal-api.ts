@@ -46,12 +46,21 @@ export async function callInternalApiGet(
   accessToken: string | undefined,
   baseUrl: string | undefined,
   forwardCookie?: string,
+  serverSecret?: string,
+  userId?: string,
 ): Promise<Response> {
-  const url = baseUrl ? `${baseUrl}${pathWithQuery}` : pathWithQuery
+  const urlObject = new URL(pathWithQuery, baseUrl ?? 'http://localhost')
+  if (serverSecret && userId && !urlObject.searchParams.has('userId')) {
+    urlObject.searchParams.set('userId', userId)
+  }
+  const url = baseUrl
+    ? `${baseUrl}${urlObject.pathname}${urlObject.search}`
+    : `${urlObject.pathname}${urlObject.search}`
   return fetch(url, {
     method: 'GET',
     headers: {
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(serverSecret ? { 'x-internal-api-secret': serverSecret } : {}),
       ...(forwardCookie ? { Cookie: forwardCookie } : {}),
     },
   })

@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { getVerifiedAccessTokenClaims } from '../../convex/lib/auth'
+import { validateServerSecret } from '../../convex/lib/auth'
 import { getSession } from '@/lib/workos-auth'
 
 /**
@@ -13,6 +14,15 @@ export async function resolveAuthenticatedAppUser(
   const session = await getSession()
   if (session) {
     return { userId: session.user.id, accessToken: session.accessToken }
+  }
+
+  const internalApiSecret = request.headers.get('x-internal-api-secret')?.trim()
+  const internalUserId =
+    typeof body.userId === 'string' && body.userId.trim()
+      ? body.userId.trim()
+      : request.nextUrl.searchParams.get('userId')?.trim() || ''
+  if (validateServerSecret(internalApiSecret) && internalUserId) {
+    return { userId: internalUserId, accessToken: '' }
   }
 
   const authHeader = request.headers.get('authorization')

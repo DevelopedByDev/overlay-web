@@ -4,7 +4,7 @@ import type { ProxyCountryCode } from 'browser-use-sdk/v3'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { BROWSER_USE_TASK_INIT_USD, calculateBrowserUseV3TokenCost } from '@/lib/model-pricing'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 export const maxDuration = 300
 
@@ -27,18 +27,20 @@ function parseUsd(value: string | number | null | undefined): number {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { task, sessionId, keepAlive, model, proxyCountryCode }: {
+    const { task, sessionId, keepAlive, model, proxyCountryCode, accessToken, userId }: {
       task?: string
       sessionId?: string
       keepAlive?: boolean
       model?: 'bu-mini' | 'bu-max'
       proxyCountryCode?: string
+      accessToken?: string
+      userId?: string
     } = await request.json()
+
+    const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId })
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     if (!task?.trim()) {
       return NextResponse.json({ error: 'Task is required' }, { status: 400 })
@@ -52,11 +54,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const userId = session.user.id
     const serverSecret = getInternalApiSecret()
     const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
       serverSecret,
-      userId,
+      userId: auth.userId,
     })
 
     if (!entitlements) {
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
 
     await convex.mutation('usage:recordBatch', {
       serverSecret,
-      userId,
+      userId: auth.userId,
       events: [{
         type: 'generation',
         modelId: `browser-use/${result.model}`,
@@ -128,7 +129,7 @@ export async function POST(request: NextRequest) {
 
     const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
       serverSecret,
-      userId,
+      userId: auth.userId,
     })
 
     return NextResponse.json({

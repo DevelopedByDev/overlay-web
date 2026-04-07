@@ -123,6 +123,8 @@ export async function executeListSkills(
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
+      options.serverSecret,
+      options.userId,
     )
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch skills' }
@@ -166,7 +168,13 @@ export async function executeGenerateImage(
   try {
     const res = await callInternalApi(
       '/api/app/generate-image',
-      { prompt, modelId, aspectRatio, conversationId: options.conversationId },
+      {
+        prompt,
+        modelId,
+        aspectRatio,
+        conversationId: options.conversationId,
+        ...toolAuthBody(options),
+      },
       options.accessToken,
       options.baseUrl,
       { forwardCookie: options.forwardCookie },
@@ -207,7 +215,14 @@ export async function executeGenerateVideo(
   try {
     const res = await callInternalApi(
       '/api/app/generate-video',
-      { prompt, modelId, aspectRatio, duration, conversationId: options.conversationId },
+      {
+        prompt,
+        modelId,
+        aspectRatio,
+        duration,
+        conversationId: options.conversationId,
+        ...toolAuthBody(options),
+      },
       options.accessToken,
       options.baseUrl,
       { forwardCookie: options.forwardCookie },

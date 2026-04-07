@@ -11,6 +11,7 @@ import type {
   AutomationSourceType,
   AutomationStatus,
 } from '@/lib/automations'
+import { getNextAutomationRunAt } from '@/lib/automations'
 
 type AutomationMutationBody = {
   automationId?: string
@@ -49,9 +50,14 @@ function normalizeScheduleConfig(
 function deriveNextRunAt(
   scheduleKind: AutomationScheduleKind,
   scheduleConfig: AutomationScheduleConfig,
+  timezone: string,
 ): number | undefined {
-  if (scheduleKind === 'once') return scheduleConfig.onceAt
-  return undefined
+  return getNextAutomationRunAt({
+    scheduleKind,
+    scheduleConfig,
+    timezone,
+    afterTimestamp: Date.now(),
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -113,7 +119,7 @@ export async function POST(request: NextRequest) {
       timezone: body.timezone.trim(),
       scheduleKind: body.scheduleKind,
       scheduleConfig,
-      nextRunAt: deriveNextRunAt(body.scheduleKind, scheduleConfig),
+      nextRunAt: deriveNextRunAt(body.scheduleKind, scheduleConfig, body.timezone.trim()),
     }, { throwOnError: true })
 
     return NextResponse.json({ id: automationId })
@@ -135,8 +141,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     const nextRunAt =
-      body.scheduleKind && body.scheduleConfig
-        ? deriveNextRunAt(body.scheduleKind, normalizeScheduleConfig(body.scheduleKind, body.scheduleConfig))
+      body.scheduleKind && body.scheduleConfig && body.timezone?.trim()
+        ? deriveNextRunAt(
+            body.scheduleKind,
+            normalizeScheduleConfig(body.scheduleKind, body.scheduleConfig),
+            body.timezone.trim(),
+          )
         : undefined
 
     await convex.mutation('automations:update', {

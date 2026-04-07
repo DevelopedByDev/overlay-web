@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server'
 import { experimental_generateVideo as generateVideo } from 'ai'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { getGatewayVideoModel } from '@/lib/ai-gateway'
 import { VIDEO_MODELS } from '@/lib/models'
 import { calculateVideoCost } from '@/lib/model-pricing'
 import { uploadBuffer, keyForOutput, deleteObject } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 export const maxDuration = 300
 
@@ -24,25 +24,26 @@ function sseChunk(data: Record<string, unknown>): string {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session) {
-    return new Response('Unauthorized', { status: 401 })
-  }
-
-  const { prompt, modelId, aspectRatio, duration, conversationId, turnId }: {
+  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, accessToken, userId }: {
     prompt: string
     modelId?: string
     aspectRatio?: string
     duration?: number
     conversationId?: string
     turnId?: string
+    accessToken?: string
+    userId?: string
   } = await request.json()
+
+  const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId })
+  if (!auth) {
+    return new Response('Unauthorized', { status: 401 })
+  }
 
   if (!prompt?.trim()) {
     return new Response('Prompt is required', { status: 400 })
   }
 
-  const userId = session.user.id
   const serverSecret = getInternalApiSecret()
 
   const stream = new ReadableStream({
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
           'outputs:update',
           {
             outputId,
-            userId,
+            userId: auth.userId,
             serverSecret,
             status: 'failed',
             errorMessage,
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
         // ── Subscription enforcement ────────────────────────────────────────
         const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
           serverSecret,
-          userId,
+          userId: auth.userId,
         })
 
         if (!entitlements) {
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
         const creditsTotalCents = creditsTotal * 100
         const remainingCents = creditsTotalCents - creditsUsed
         const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-        console.log(`[GenerateVideo] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${userId}`)
+        console.log(`[GenerateVideo] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
         if (tier === 'free') {
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'generation_not_allowed', message: 'Video generation requires a Pro subscription.' })))
           controller.close()
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
           outputId = await convex.mutation<string>(
             'outputs:create',
             {
-              userId,
+              userId: auth.userId,
               serverSecret,
               type: 'video',
               source: 'video_generation',
@@ -155,7 +156,10 @@ export async function POST(request: NextRequest) {
 
         for (const tryModelId of priorityList) {
           try {
-            const videoModel = await getGatewayVideoModel(tryModelId, session.accessToken)
+            const videoModel = await getGatewayVideoModel(
+              tryModelId,
+              auth.accessToken || undefined,
+            )
             const result = await generateVideo({
               model: videoModel,
               prompt: prompt.trim(),
@@ -195,7 +199,7 @@ export async function POST(request: NextRequest) {
         let r2Key: string | null = null
         try {
           const fileName = `overlay-video-${Date.now()}.mp4`
-          const key = keyForOutput(userId, persistedOutputId, fileName)
+          const key = keyForOutput(auth.userId, persistedOutputId, fileName)
           await checkGlobalR2Budget(videoBuffer.length)
           await uploadBuffer(key, videoBuffer, 'video/mp4')
           r2Key = key
@@ -220,7 +224,7 @@ export async function POST(request: NextRequest) {
             'outputs:update',
             {
               outputId: persistedOutputId,
-              userId,
+              userId: auth.userId,
               serverSecret,
               status: 'completed',
               modelId: usedModelId,
@@ -252,7 +256,7 @@ export async function POST(request: NextRequest) {
         if (costCents > 0) {
           const recordResult = await convex.mutation('usage:recordBatch', {
             serverSecret,
-            userId,
+            userId: auth.userId,
             events: [{
               type: 'generation',
               modelId: usedModelId,
@@ -264,7 +268,10 @@ export async function POST(request: NextRequest) {
             }],
           })
           if (recordResult) {
-            const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', { serverSecret, userId })
+            const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+              serverSecret,
+              userId: auth.userId,
+            })
             if (updated) {
               const totalCents = updated.creditsTotal * 100
               const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'

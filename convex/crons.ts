@@ -7,7 +7,13 @@ const crons = cronJobs()
 crons.interval(
   'daytona workspace reconciliation',
   { minutes: 1 },
-  (internal as any).daytonaReconcile.runMinuteTick,
+  internal.daytonaReconcile.runMinuteTick,
+)
+
+crons.interval(
+  'automation scheduler',
+  { minutes: 1 },
+  internal.automationRunner.runMinuteTick,
 )
 
 export default crons
