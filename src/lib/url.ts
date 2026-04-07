@@ -32,6 +32,15 @@ export function getInternalApiBaseUrl(request?: NextRequest): string {
   return canonicalBaseUrl
 }
 
+export function getAutomationExecutorBaseUrl(): string {
+  const explicitExecutorBaseUrl = process.env.AUTOMATION_EXECUTOR_BASE_URL?.trim()
+  if (explicitExecutorBaseUrl) {
+    return explicitExecutorBaseUrl
+  }
+
+  return getBaseUrl()
+}
+
 export function getBaseUrl(): string {
   if (process.env.NODE_ENV === 'development') {
     return process.env.DEV_NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://getoverlay.io'

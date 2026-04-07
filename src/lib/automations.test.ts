@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { getNextAutomationRunAt } from './automations.ts'
 import { shouldRetryAutomationFailure } from './automation-guardrails.ts'
 import { detectRequiredIntegrations } from './automation-preflight.ts'
-import { getBaseUrl } from './url.ts'
+import { getAutomationExecutorBaseUrl, getBaseUrl } from './url.ts'
 
 test('getNextAutomationRunAt returns future once schedule or undefined when elapsed', () => {
   const future = Date.UTC(2026, 0, 1, 12, 0, 0)
@@ -139,5 +139,23 @@ test('getBaseUrl prefers dev app URL in development', () => {
     process.env.NODE_ENV = originalNodeEnv
     process.env.NEXT_PUBLIC_APP_URL = originalAppUrl
     process.env.DEV_NEXT_PUBLIC_APP_URL = originalDevAppUrl
+  }
+})
+
+test('getAutomationExecutorBaseUrl prefers dedicated scheduler URL when set', () => {
+  const originalExecutorBaseUrl = process.env.AUTOMATION_EXECUTOR_BASE_URL
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL
+
+  try {
+    process.env.AUTOMATION_EXECUTOR_BASE_URL = 'https://overlay-landing-git-automation.example.vercel.app'
+    process.env.NEXT_PUBLIC_APP_URL = 'https://getoverlay.io'
+
+    assert.equal(
+      getAutomationExecutorBaseUrl(),
+      'https://overlay-landing-git-automation.example.vercel.app',
+    )
+  } finally {
+    process.env.AUTOMATION_EXECUTOR_BASE_URL = originalExecutorBaseUrl
+    process.env.NEXT_PUBLIC_APP_URL = originalAppUrl
   }
 })

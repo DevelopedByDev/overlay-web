@@ -2,7 +2,7 @@
 
 import { internal } from './_generated/api'
 import { internalAction, type ActionCtx } from './_generated/server'
-import { getBaseUrl } from '../src/lib/url'
+import { getAutomationExecutorBaseUrl } from '../src/lib/url'
 
 const DEFAULT_BATCH_SIZE = 10
 const DEFAULT_LEASE_MS = 15 * 60 * 1000
@@ -33,7 +33,7 @@ async function runMinuteTickHandler(
     return { claimed: 0, dispatched: 0, failed: 0 }
   }
 
-  const baseUrl = getBaseUrl()
+  const baseUrl = getAutomationExecutorBaseUrl()
   const internalApiSecret = getInternalApiSecret()
   let dispatched = 0
   let failed = 0

@@ -1005,7 +1005,6 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#e5e5e5] px-6">
         <div>
           <h2 className="text-sm font-medium text-[#0a0a0a]">Automations</h2>
-          <p className="text-[11px] text-[#888]">Scheduled skill and markdown runs with manual play, edit, and delete actions.</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-md border border-[#e5e5e5] bg-white p-1">
