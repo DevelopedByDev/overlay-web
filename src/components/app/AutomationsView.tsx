@@ -1004,7 +1004,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
     <div className="flex h-full flex-col">
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#e5e5e5] px-6">
         <div>
-          <h2 className="text-sm font-medium text-[#0a0a0a]">Automations</h2>
+          <h2 className="text-sm font-medium text-[#0a0a0a]">Automations!</h2>
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-md border border-[#e5e5e5] bg-white p-1">
