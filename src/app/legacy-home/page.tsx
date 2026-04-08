@@ -557,7 +557,7 @@ export default function Home() {
                 privacy
               </a>
               <a
-                href="mailto:work.dslalwani@gmail.com"
+                href="mailto:divyansh@layernorm.co"
                 className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors"
               >
                 contact

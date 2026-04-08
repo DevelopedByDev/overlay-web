@@ -165,7 +165,7 @@ export default function PrivacyPolicy() {
                 <ul>
                   <li><strong>Access:</strong> You can access your account information through the App settings</li>
                   <li><strong>Update:</strong> You can update your email and preferences in settings</li>
-                  <li><strong>Delete:</strong> You can request account deletion by contacting work.dslalwani@gmail.com</li>
+                  <li><strong>Delete:</strong> You can request account deletion by contacting divyansh@layernorm.co</li>
                   <li><strong>Local Data:</strong> Your local notes, chats, and transcriptions are under your full control</li>
                   <li><strong>Device Permissions:</strong> You can control microphone access through your operating system settings</li>
                 </ul>
@@ -179,7 +179,7 @@ export default function PrivacyPolicy() {
                   <li><strong>Deletion:</strong> Request deletion of your personal information</li>
                   <li><strong>Portability:</strong> Request your data in a portable format</li>
                 </ul>
-                <p className="mt-4">To exercise any privacy rights, contact us at <strong>work.dslalwani@gmail.com</strong>. We aim to respond within 30 days.</p>
+                <p className="mt-4">To exercise any privacy rights, contact us at <strong>divyansh@layernorm.co</strong>. We aim to respond within 30 days.</p>
               </Section>
 
               <Section title="10. Children&apos;s Privacy">
@@ -198,8 +198,8 @@ export default function PrivacyPolicy() {
 
               <Section title="13. Contact Us">
                 <p>If you have questions about this Privacy Policy:</p>
-                <p className="mt-2"><strong>Privacy inquiries:</strong> work.dslalwani@gmail.com</p>
-                <p><strong>General support:</strong> work.dslalwani@gmail.com</p>
+                <p className="mt-2"><strong>Privacy inquiries:</strong> divyansh@layernorm.co</p>
+                <p><strong>General support:</strong> divyansh@layernorm.co</p>
                 <p className="mt-2">We aim to respond within 5 business days.</p>
               </Section>
 
@@ -224,7 +224,7 @@ export default function PrivacyPolicy() {
             <Link href="/privacy" className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors">
               privacy
             </Link>
-            <a href="mailto:work.dslalwani@gmail.com" className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors">
+            <a href="mailto:divyansh@layernorm.co" className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors">
               contact
             </a>
           </div>

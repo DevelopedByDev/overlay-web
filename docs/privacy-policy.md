@@ -275,7 +275,7 @@ We implement reasonable administrative, technical, and organizational measures t
 ### 9.1 Account Information
 - **Access:** You can access your account information through the App settings
 - **Update:** You can update your email and preferences in settings
-- **Delete:** You can request account deletion by contacting work.dslalwani@gmail.com
+- **Delete:** You can request account deletion by contacting divyansh@layernorm.co
 
 ### 9.2 Analytics Opt-Out
 If/when we implement usage analytics:
@@ -317,7 +317,7 @@ If you are in the EEA, UK, or Switzerland, you have additional rights:
 - **Lodge complaint:** With your local data protection authority
 
 **Data controller:** Overlay  
-**Contact:** work.dslalwani@gmail.com
+**Contact:** divyansh@layernorm.co
 
 ### 10.3 California Residents (CCPA/CPRA)
 
@@ -338,7 +338,7 @@ We respect privacy rights under applicable laws worldwide. Contact us to exercis
 ### 10.5 How to Exercise Rights
 
 To exercise any privacy rights, contact us at:
-- **Email:** work.dslalwani@gmail.com
+- **Email:** divyansh@layernorm.co
 - **Response time:** Within 30 days (may be extended by 60 days for complex requests)
 - **Verification:** We may need to verify your identity before processing requests
 
@@ -350,7 +350,7 @@ The Services are **not directed to children under 13** (or under 16 in jurisdict
 
 - We do not knowingly collect personal information from children under 13
 - If we learn we have collected information from a child under 13, we will delete it promptly
-- If you believe a child has provided us with personal information, please contact us at work.dslalwani@gmail.com
+- If you believe a child has provided us with personal information, please contact us at divyansh@layernorm.co
 
 ---
 
@@ -402,10 +402,10 @@ We may update this Privacy Policy from time to time to reflect changes in our pr
 If you have questions, concerns, or requests regarding this Privacy Policy or our data practices:
 
 **Privacy inquiries:**  
-Email: work.dslalwani@gmail.com
+Email: divyansh@layernorm.co
 
 **General support:**  
-Email: work.dslalwani@gmail.com
+Email: divyansh@layernorm.co
 
 **Response time:** We aim to respond within 5 business days.
 

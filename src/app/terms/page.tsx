@@ -31,7 +31,7 @@ export default function TermsOfService() {
 
               <Section title="1. Who We Are">
                 <p>The Services are provided by Overlay.</p>
-                <p>Contact: <strong>work.dslalwani@gmail.com</strong></p>
+                <p>Contact: <strong>divyansh@layernorm.co</strong></p>
               </Section>
 
               <Section title="2. Eligibility">
@@ -157,7 +157,7 @@ export default function TermsOfService() {
               </Section>
 
               <Section title="12. Dispute Resolution">
-                <p>Before filing any formal legal action, you agree to first contact us at <strong>work.dslalwani@gmail.com</strong> and attempt to resolve any dispute informally for at least <strong>thirty (30) days</strong>.</p>
+                <p>Before filing any formal legal action, you agree to first contact us at <strong>divyansh@layernorm.co</strong> and attempt to resolve any dispute informally for at least <strong>thirty (30) days</strong>.</p>
                 <p className="mt-4">If we cannot resolve a dispute informally, any dispute shall be resolved by binding individual arbitration, rather than in court. You and Overlay each waive the right to a jury trial.</p>
               </Section>
 
@@ -166,7 +166,7 @@ export default function TermsOfService() {
               </Section>
 
               <Section title="14. Termination">
-                <p>You may stop using the Services at any time. You may delete your account by contacting us at <strong>work.dslalwani@gmail.com</strong>.</p>
+                <p>You may stop using the Services at any time. You may delete your account by contacting us at <strong>divyansh@layernorm.co</strong>.</p>
                 <p className="mt-4">We may suspend or terminate your access to the Services at any time, with or without cause, with or without notice.</p>
               </Section>
 
@@ -177,7 +177,7 @@ export default function TermsOfService() {
 
               <Section title="16. Contact Us">
                 <p>If you have any questions, concerns, or feedback about these Terms or the Services, please contact us at:</p>
-                <p className="mt-2"><strong>Email:</strong> work.dslalwani@gmail.com</p>
+                <p className="mt-2"><strong>Email:</strong> divyansh@layernorm.co</p>
               </Section>
 
               <p className="text-[#0a0a0a] font-medium mt-12 pt-8 border-t border-[#e4e4e7]">
@@ -201,7 +201,7 @@ export default function TermsOfService() {
             <Link href="/privacy" className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors">
               privacy
             </Link>
-            <a href="mailto:work.dslalwani@gmail.com" className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors">
+            <a href="mailto:divyansh@layernorm.co" className="text-sm text-[#71717a] hover:text-[#0a0a0a] transition-colors">
               contact
             </a>
           </div>

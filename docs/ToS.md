@@ -11,7 +11,7 @@ These Terms of Service ("Terms") constitute a legally binding agreement between 
 ## 1. Who We Are
 
 The Services are provided by Overlay.  
-Contact: **work.dslalwani@gmail.com**
+Contact: **divyansh@layernorm.co**
 
 ---
 
@@ -286,7 +286,7 @@ We will provide you with prompt written notice of any claim subject to indemnifi
 ## 16. Dispute Resolution
 
 ### 16.1 Informal Resolution
-Before filing any formal legal action, you agree to first contact us at **work.dslalwani@gmail.com** and attempt to resolve any dispute informally for at least **thirty (30) days**. Most disputes can be resolved this way.
+Before filing any formal legal action, you agree to first contact us at **divyansh@layernorm.co** and attempt to resolve any dispute informally for at least **thirty (30) days**. Most disputes can be resolved this way.
 
 ### 16.2 Binding Arbitration
 **IF WE CANNOT RESOLVE A DISPUTE INFORMALLY, ANY DISPUTE, CLAIM, OR CONTROVERSY ARISING OUT OF OR RELATING TO THESE TERMS OR THE SERVICES (INCLUDING THE BREACH, TERMINATION, ENFORCEMENT, INTERPRETATION, OR VALIDITY THEREOF) SHALL BE RESOLVED BY BINDING INDIVIDUAL ARBITRATION, RATHER THAN IN COURT.**
@@ -307,7 +307,7 @@ Notwithstanding the above:
 - Either party may seek injunctive or other equitable relief in any court of competent jurisdiction to prevent the actual or threatened infringement or misappropriation of intellectual property rights.
 
 ### 16.5 Opt-Out
-You may opt out of the arbitration and class action waiver provisions by sending written notice to **work.dslalwani@gmail.com** within **thirty (30) days** of first accepting these Terms. Your notice must include your name, email address, and a clear statement that you wish to opt out of arbitration.
+You may opt out of the arbitration and class action waiver provisions by sending written notice to **divyansh@layernorm.co** within **thirty (30) days** of first accepting these Terms. Your notice must include your name, email address, and a clear statement that you wish to opt out of arbitration.
 
 ### 16.6 Severability
 If any portion of this dispute resolution section is found to be unenforceable, the remainder shall continue to apply, except that if the class action waiver is found to be unenforceable as to a particular claim, then the entirety of Section 16 shall be deemed void as to that claim only.
@@ -325,7 +325,7 @@ For any claims not subject to arbitration, you consent to the exclusive jurisdic
 ## 18. Termination
 
 ### 18.1 By You
-You may stop using the Services at any time. You may delete your account by contacting us at **work.dslalwani@gmail.com**.
+You may stop using the Services at any time. You may delete your account by contacting us at **divyansh@layernorm.co**.
 
 ### 18.2 By Us
 We may suspend or terminate your access to the Services at any time, with or without cause, with or without notice, including but not limited to if we believe you have:
@@ -367,7 +367,7 @@ These Terms do not create any third-party beneficiary rights, except as expressl
 We shall not be liable for any failure or delay in performing our obligations due to causes beyond our reasonable control, including but not limited to acts of God, natural disasters, war, terrorism, pandemic, government action, or failure of third-party services.
 
 ### 19.7 Notices
-We may provide notices to you via email, in-app notifications, or by posting on the Services. You may provide notices to us by email at **work.dslalwani@gmail.com**.
+We may provide notices to you via email, in-app notifications, or by posting on the Services. You may provide notices to us by email at **divyansh@layernorm.co**.
 
 ### 19.8 Headings
 Section headings are for convenience only and shall not affect the interpretation of these Terms.
@@ -391,7 +391,7 @@ For material changes, we will make reasonable efforts to notify you (e.g., via e
 
 If you have any questions, concerns, or feedback about these Terms or the Services, please contact us at:
 
-**Email:** work.dslalwani@gmail.com
+**Email:** divyansh@layernorm.co
 
 ---
 
