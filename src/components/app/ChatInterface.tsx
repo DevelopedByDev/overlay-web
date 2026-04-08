@@ -1939,7 +1939,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     let cancelled = false
-    let refetchTimer: ReturnType<typeof setTimeout> | undefined
+    let refetchTimer: number | undefined
 
     const apply = (data: { prompts?: string[]; stale?: boolean }) => {
       if (cancelled) return

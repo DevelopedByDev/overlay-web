@@ -70,13 +70,13 @@ type PersistArgs = {
 
 async function persistStarters({ serverSecret, userId, prompts, day }: PersistArgs): Promise<boolean> {
   try {
-    const result = await convex.mutation('users:setChatStartersByServer', {
+    const result = (await convex.mutation('users:setChatStartersByServer', {
       serverSecret,
       userId,
       prompts,
       day,
-    })
-    return result?.ok === true
+    })) as { ok?: boolean }
+    return result.ok === true
   } catch (err) {
     console.error('[chat-suggestions] failed to persist starters', err)
     return false
