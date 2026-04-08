@@ -7,5 +7,5 @@ export default async function ProjectsPage() {
   if (!session) {
     redirect('/auth/sign-in?redirect=%2Fapp%2Fprojects')
   }
-  return <ProjectsView userId={session.user.id} />
+  return <ProjectsView userId={session.user.id} firstName={session.user.firstName ?? undefined} />
 }

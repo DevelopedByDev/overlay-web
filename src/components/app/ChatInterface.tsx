@@ -50,6 +50,7 @@ import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
 import { useAppSettings } from './AppSettingsProvider'
+import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
 
 function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: boolean; isFreeTier: boolean }) {
   const router = useRouter()
@@ -1430,12 +1431,24 @@ function FlashCopyIconButton({
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-const CHAT_SUGGESTIONS = [
-  'Explain how transformers work in machine learning',
-  'Write a Python script to rename files in a folder',
-  'What are the key differences between REST and GraphQL?',
-  'Help me draft a professional email declining a meeting',
-]
+const CHAT_HAS_INTERACTED_KEY = 'overlay_chat_has_interacted'
+
+function chatSuggestionsCacheKey(userId: string) {
+  return `overlay_chat_suggestions_daily_${userId}`
+}
+
+function localCalendarDateKey() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function chatGreetingLine(firstName: string | undefined) {
+  const raw = firstName?.trim()
+  if (!raw) return 'hi there'
+  const word = raw.split(/\s+/)[0] ?? raw
+  const nice = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  return `hi ${nice}`
+}
 
 const DEFAULT_CHAT_TITLE = 'New Chat'
 const CHAT_MODEL_KEY = 'overlay_chat_model'
@@ -1834,8 +1847,17 @@ function buildMediaSummary(type: 'image' | 'video', prompt: string, modelIds: st
 
 // ─── main component ───────────────────────────────────────────────────────────
 
-export default function ChatInterface({ userId: _userId, hideSidebar, projectName }: { userId: string; hideSidebar?: boolean; projectName?: string }) {
-  void _userId
+export default function ChatInterface({
+  userId,
+  firstName,
+  hideSidebar,
+  projectName,
+}: {
+  userId: string
+  firstName?: string
+  hideSidebar?: boolean
+  projectName?: string
+}) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
@@ -1921,6 +1943,61 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const [pendingChatDocuments, setPendingChatDocuments] = useState<PendingChatDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
+  /** After first sent message (any chat), empty state uses static defaults instead of AI daily suggestions. */
+  const [hasPriorChatInteraction, setHasPriorChatInteraction] = useState(false)
+  /** null = loading (only when !hasPriorChatInteraction); then 4 prompts */
+  const [personalizedSuggestions, setPersonalizedSuggestions] = useState<string[] | null>(null)
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && localStorage.getItem(CHAT_HAS_INTERACTED_KEY) === '1') {
+        setHasPriorChatInteraction(true)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  useEffect(() => {
+    if (hasPriorChatInteraction) return
+    const day = localCalendarDateKey()
+    const key = chatSuggestionsCacheKey(userId)
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+      if (raw) {
+        const parsed = JSON.parse(raw) as { day?: string; prompts?: string[] }
+        if (parsed.day === day && Array.isArray(parsed.prompts) && parsed.prompts.length === 4) {
+          setPersonalizedSuggestions(parsed.prompts)
+          return
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    let cancelled = false
+    fetch('/api/app/chat-suggestions', { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((data: { prompts?: string[] }) => {
+        if (cancelled) return
+        const prompts =
+          Array.isArray(data.prompts) && data.prompts.length === 4 ? data.prompts : [...DEFAULT_CHAT_SUGGESTIONS]
+        setPersonalizedSuggestions(prompts)
+        try {
+          localStorage.setItem(key, JSON.stringify({ day, prompts }))
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPersonalizedSuggestions([...DEFAULT_CHAT_SUGGESTIONS])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [hasPriorChatInteraction, userId])
+
   const [replyContext, setReplyContext] = useState<{
     snippet: string
     bodyForModel: string
@@ -2935,6 +3012,16 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
 
+  function markFirstChatInteraction() {
+    try {
+      if (typeof window === 'undefined') return
+      localStorage.setItem(CHAT_HAS_INTERACTED_KEY, '1')
+      setHasPriorChatInteraction(true)
+    } catch {
+      // ignore
+    }
+  }
+
   async function handleSend() {
     const replyCtxSnapshot = replyContext
     const text = input.trim()
@@ -2964,6 +3051,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       if (isSendBlocked) return
       const chatId = activeChatId || await createNewChat()
       if (!chatId) return
+      markFirstChatInteraction()
       const targetRuntime = ensureConversationRuntime(chatId)
 
       setInput('')
@@ -3252,6 +3340,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     const wasFirst = isFirstMessage
     const chatId = activeChatId || await createNewChat()
     if (!chatId) return
+    markFirstChatInteraction()
     const targetRuntime = ensureConversationRuntime(chatId)
 
     shouldScrollRef.current = true
@@ -3558,6 +3647,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const showCenteredTextEmpty = !hasHistory && generationMode === 'text'
   const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
   const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
+
+  const greetingLine = chatGreetingLine(firstName)
+  const suggestionPrompts: string[] | null = hasPriorChatInteraction
+    ? [...DEFAULT_CHAT_SUGGESTIONS]
+    : personalizedSuggestions
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -3953,22 +4047,32 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             {!hasHistory && !showCenteredTextEmpty && (
               <div className="flex flex-1 items-center justify-center px-1 sm:px-0">
                 <div className="w-full max-w-xl text-center">
-                  <p className="mb-3 text-3xl" style={{ fontFamily: 'var(--font-serif)' }}>
-                    chat
+                  <p className="mb-6 text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
+                    {greetingLine}
                   </p>
-                  <p className="mb-6 text-sm text-[var(--muted)]">Start a conversation with any AI model</p>
-                  <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
-                    {CHAT_SUGGESTIONS.map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug hover:bg-[var(--surface-muted)] transition-colors"
-                        onClick={() => setInput(prompt)}
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
+                  {suggestionPrompts === null && !hasPriorChatInteraction ? (
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {[0, 1, 2, 3].map((i) => (
+                        <div
+                          key={i}
+                          className="h-[4.5rem] rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] animate-pulse"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
+                      {(suggestionPrompts ?? [...DEFAULT_CHAT_SUGGESTIONS]).map((prompt) => (
+                        <button
+                          key={prompt}
+                          type="button"
+                          className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug hover:bg-[var(--surface-muted)] transition-colors"
+                          onClick={() => setInput(prompt)}
+                        >
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -4251,12 +4355,11 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 initial={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                className="mb-6 text-center"
+                className="mb-8 text-center"
               >
-                <p className="mb-3 text-3xl" style={{ fontFamily: 'var(--font-serif)' }}>
-                  chat
+                <p className="text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
+                  {greetingLine}
                 </p>
-                <p className="text-sm text-[var(--muted)]">Start a conversation with any AI model</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -4306,7 +4409,12 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               ))}
             </div>
           )}
-          <motion.div layout="position" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="mx-auto w-full max-w-4xl">
+          <motion.div
+            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+            className={`mx-auto w-full transition-[max-width] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+              showCenteredTextEmpty ? 'max-w-xl' : 'max-w-4xl'
+            }`}
+          >
             {attachmentError && (
               <div
                 className="mb-2 flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs"
@@ -4520,18 +4628,29 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 transition={{ duration: 0.12 }}
                 className="mx-auto mt-6 w-full max-w-xl"
               >
-                <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
-                  {CHAT_SUGGESTIONS.map((prompt) => (
-                    <button
-                      key={prompt}
-                      type="button"
-                      className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug transition-colors hover:bg-[var(--surface-muted)]"
-                      onClick={() => setInput(prompt)}
-                    >
-                      {prompt}
-                    </button>
-                  ))}
-                </div>
+                {suggestionPrompts === null && !hasPriorChatInteraction ? (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {[0, 1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="h-[4.5rem] rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
+                    {(suggestionPrompts ?? [...DEFAULT_CHAT_SUGGESTIONS]).map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug transition-colors hover:bg-[var(--surface-muted)]"
+                        onClick={() => setInput(prompt)}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

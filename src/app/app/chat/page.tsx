@@ -7,5 +7,5 @@ export default async function ChatPage() {
   if (!session) {
     redirect('/auth/sign-in?redirect=%2Fapp%2Fchat')
   }
-  return <ChatInterface userId={session.user.id} />
+  return <ChatInterface userId={session.user.id} firstName={session.user.firstName ?? undefined} />
 }

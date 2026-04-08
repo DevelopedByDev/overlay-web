@@ -86,14 +86,16 @@ function ProjectFileView({ fileId }: { fileId: string }) {
 
 // ─── ProjectsView ─────────────────────────────────────────────────────────────
 
-export default function ProjectsView({ userId }: { userId: string }) {
+export default function ProjectsView({ userId, firstName }: { userId: string; firstName?: string }) {
   const searchParams = useSearchParams()
   const view = searchParams?.get('view') ?? null
   const id = searchParams?.get('id') ?? null
   const projectName = searchParams?.get('projectName') ?? undefined
 
   if (view === 'chat' && id) {
-    return <ChatInterface userId={userId} hideSidebar projectName={projectName} />
+    return (
+      <ChatInterface userId={userId} firstName={firstName} hideSidebar projectName={projectName} />
+    )
   }
 
   if (view === 'note' && id) {
