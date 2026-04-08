@@ -171,15 +171,23 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   useEffect(() => {
     function onNavShortcut(e: KeyboardEvent) {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.repeat) return
-      const m = /^Digit([1-9])$/.exec(e.code)
-      if (!m) return
-      const idx = parseInt(m[1]!, 10) - 1
-      const item = NAV_ITEMS[idx]
-      if (!item || item.disabled || !item.href) return
       const t = e.target
       if (t instanceof Node && (t as HTMLElement).closest?.('input, textarea, select, [contenteditable="true"]')) {
         return
       }
+      if (e.code === 'Digit7') {
+        e.preventDefault()
+        if (pathname.startsWith('/app/settings')) return
+        setMobileMenuOpen(false)
+        setPendingNav({ href: '/app/settings', fromPath: pathname })
+        router.push('/app/settings')
+        return
+      }
+      const m = /^Digit([1-6])$/.exec(e.code)
+      if (!m) return
+      const idx = parseInt(m[1]!, 10) - 1
+      const item = NAV_ITEMS[idx]
+      if (!item || item.disabled || !item.href) return
       e.preventDefault()
       if (pathname.startsWith(item.href)) return
       setPendingNav({ href: item.href, fromPath: pathname })
@@ -443,7 +451,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               </div>
             )
           })}
-          <div className="mt-1 border-t border-[var(--border)] pt-2">
+          <div className="mt-0.5">
             <button
               type="button"
               onClick={() => {
@@ -452,7 +460,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                 setPendingNav({ href: '/app/settings', fromPath: pathname })
                 router.push('/app/settings')
               }}
-              title="Settings"
+              title="Settings · ⌥7"
               className={`group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
                 settingsPathActive
                   ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
@@ -462,7 +470,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               <Settings size={15} />
               <div className="min-w-0 flex-1 text-left">Settings</div>
               <span
-                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-light)] transition-transform ${
+                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-light)] opacity-0 transition-opacity group-hover:opacity-100 ${
                   settingsNavExpanded ? '' : '-rotate-90'
                 }`}
                 aria-hidden

@@ -1442,6 +1442,10 @@ function chatGreetingLine(firstName: string | undefined) {
 const DEFAULT_CHAT_TITLE = 'New Chat'
 const CHAT_MODEL_KEY = 'overlay_chat_model'
 const ASK_MODEL_SELECTION_MODE_KEY = 'overlay_ask_model_selection_mode'
+const IMAGE_MODEL_SELECTION_MODE_KEY = 'overlay_image_model_selection_mode'
+const VIDEO_MODEL_SELECTION_MODE_KEY = 'overlay_video_model_selection_mode'
+const SELECTED_IMAGE_MODELS_KEY = 'overlay_selected_image_models'
+const SELECTED_VIDEO_MODELS_KEY = 'overlay_selected_video_models'
 const ACT_MODEL_KEY = 'overlay_act_model'
 const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
 const SUPPORTED_INPUT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
@@ -1902,6 +1906,42 @@ export default function ChatInterface({
     if (savedAct) setSelectedActModel(savedAct)
     const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
     if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
+
+    const imgMode = localStorage.getItem(IMAGE_MODEL_SELECTION_MODE_KEY)
+    if (imgMode === 'single' || imgMode === 'multiple') {
+      setImageModelSelectionMode(imgMode)
+    }
+    const vidMode = localStorage.getItem(VIDEO_MODEL_SELECTION_MODE_KEY)
+    if (vidMode === 'single' || vidMode === 'multiple') {
+      setVideoModelSelectionMode(vidMode)
+    }
+    try {
+      const rawImg = localStorage.getItem(SELECTED_IMAGE_MODELS_KEY)
+      if (rawImg) {
+        const parsed = JSON.parse(rawImg) as unknown
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const allowed = new Set(IMAGE_MODELS.map((m) => m.id))
+          const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
+          if (next.length > 0) setSelectedImageModels(next)
+        }
+      }
+    } catch {
+      /* keep default */
+    }
+    try {
+      const rawVid = localStorage.getItem(SELECTED_VIDEO_MODELS_KEY)
+      if (rawVid) {
+        const parsed = JSON.parse(rawVid) as unknown
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const allowed = new Set(VIDEO_MODELS.map((m) => m.id))
+          const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
+          if (next.length > 0) setSelectedVideoModels(next)
+        }
+      }
+    } catch {
+      /* keep default */
+    }
+
     setChatPrefsHydrated(true)
   }, [])
 
@@ -1918,6 +1958,8 @@ export default function ChatInterface({
   const [exchangeGenTypes, setExchangeGenTypes] = useState<('text' | 'image' | 'video')[]>([])
   const [selectedImageModels, setSelectedImageModels] = useState<string[]>([DEFAULT_IMAGE_MODEL_ID])
   const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
+  const [imageModelSelectionMode, setImageModelSelectionMode] = useState<AskModelSelectionMode>('single')
+  const [videoModelSelectionMode, setVideoModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const lastGeneratedImageUrlRef = useRef<string | null>(null)
 
   const [showModelPicker, setShowModelPicker] = useState(false)
@@ -2564,6 +2606,86 @@ export default function ChatInterface({
     }
   }, [askModelSelectionMode, composerMode, isActiveLoading, remapChatSlotsForNewModelOrder, selectedModels])
 
+  const handleImageModelSelectionModeChange = useCallback(
+    (next: AskModelSelectionMode) => {
+      if (isActiveLoading || generationMode !== 'image') return
+      if (next === imageModelSelectionMode) return
+      if (isFreeTier && next === 'multiple') return
+      localStorage.setItem(IMAGE_MODEL_SELECTION_MODE_KEY, next)
+      setImageModelSelectionMode(next)
+      if (next === 'single' && selectedImageModels.length > 1) {
+        const one = [selectedImageModels[0]!]
+        setSelectedImageModels(one)
+        localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(one))
+      }
+    },
+    [generationMode, imageModelSelectionMode, isActiveLoading, isFreeTier, selectedImageModels],
+  )
+
+  const handleVideoModelSelectionModeChange = useCallback(
+    (next: AskModelSelectionMode) => {
+      if (isActiveLoading || generationMode !== 'video') return
+      if (next === videoModelSelectionMode) return
+      if (isFreeTier && next === 'multiple') return
+      localStorage.setItem(VIDEO_MODEL_SELECTION_MODE_KEY, next)
+      setVideoModelSelectionMode(next)
+      if (next === 'single' && selectedVideoModels.length > 1) {
+        const one = [selectedVideoModels[0]!]
+        setSelectedVideoModels(one)
+        localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(one))
+      }
+    },
+    [generationMode, videoModelSelectionMode, isActiveLoading, isFreeTier, selectedVideoModels],
+  )
+
+  function toggleImageModelInPicker(modelId: string) {
+    if (isActiveLoading) return
+    if (imageModelSelectionMode === 'single') {
+      if (selectedImageModels.length === 1 && selectedImageModels[0] === modelId) return
+      const next = [modelId]
+      setSelectedImageModels(next)
+      localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
+      setShowModelPicker(false)
+      return
+    }
+    const isSel = selectedImageModels.includes(modelId)
+    if (isSel) {
+      if (selectedImageModels.length === 1) return
+      const next = selectedImageModels.filter((x) => x !== modelId)
+      setSelectedImageModels(next)
+      localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
+    } else {
+      if (selectedImageModels.length >= 4) return
+      const next = [...selectedImageModels, modelId]
+      setSelectedImageModels(next)
+      localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
+    }
+  }
+
+  function toggleVideoModelInPicker(modelId: string) {
+    if (isActiveLoading) return
+    if (videoModelSelectionMode === 'single') {
+      if (selectedVideoModels.length === 1 && selectedVideoModels[0] === modelId) return
+      const next = [modelId]
+      setSelectedVideoModels(next)
+      localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
+      setShowModelPicker(false)
+      return
+    }
+    const isSel = selectedVideoModels.includes(modelId)
+    if (isSel) {
+      if (selectedVideoModels.length === 1) return
+      const next = selectedVideoModels.filter((x) => x !== modelId)
+      setSelectedVideoModels(next)
+      localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
+    } else {
+      if (selectedVideoModels.length >= 4) return
+      const next = [...selectedVideoModels, modelId]
+      setSelectedVideoModels(next)
+      localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
+    }
+  }
+
   // ── chat management ────────────────────────────────────────────────────────
 
   function clearTransientComposerState() {
@@ -2668,6 +2790,7 @@ export default function ChatInterface({
       if (requestId !== loadChatRequestRef.current) return
       if (!messagesRes.ok) return
       const data = await messagesRes.json()
+      if (requestId !== loadChatRequestRef.current) return
       type RawMsg = {
         id: string
         turnId?: string
@@ -2694,6 +2817,7 @@ export default function ChatInterface({
       })
 
       const outputs: ChatOutput[] = outputsRes.ok ? await outputsRes.json() : []
+      if (requestId !== loadChatRequestRef.current) return
       const outputGroups = groupOutputsIntoExchanges(outputs)
 
       if (rawMessages.length === 0 && outputGroups.length > 0) {
@@ -2718,6 +2842,7 @@ export default function ChatInterface({
           askModelIds?: string[]
           actModelId?: string
         }
+        if (requestId !== loadChatRequestRef.current) return
         if (meta.title) resolvedTitle = meta.title
         if (meta.lastMode) resolvedComposerMode = meta.lastMode
         if (meta.askModelIds?.length) {
@@ -2729,6 +2854,8 @@ export default function ChatInterface({
           localStorage.setItem(ACT_MODEL_KEY, meta.actModelId)
         }
       }
+
+      if (requestId !== loadChatRequestRef.current) return
 
       const exchanges: Array<{
         userMsg: RawMsg
@@ -2780,6 +2907,8 @@ export default function ChatInterface({
           if (!uniqueModels.includes(model)) uniqueModels.push(model)
         }
       }
+
+      if (requestId !== loadChatRequestRef.current) return
 
       resetRuntimeState(runtime)
 
@@ -2863,8 +2992,8 @@ export default function ChatInterface({
         exchangeGenTypes: restoredGenTypes,
         isFirstMessage: !hasUserMessages,
       })
-      runtime.hydrated = true
       if (requestId !== loadChatRequestRef.current) return
+      runtime.hydrated = true
       applyUiStateToView(runtime.ui)
     } catch { /* already cleared */ }
     finally {
@@ -3850,11 +3979,12 @@ export default function ChatInterface({
                   {generationMode === 'image' ? (
                     IMAGE_MODELS.map((m) => {
                         const isSel = selectedImageModels.includes(m.id)
-                        const isDisabled = !isSel && selectedImageModels.length >= 4
+                        const isDisabled =
+                          imageModelSelectionMode === 'multiple' && !isSel && selectedImageModels.length >= 4
                         return (
                           <button key={m.id}
                             disabled={isDisabled}
-                            onClick={() => setSelectedImageModels((prev) => prev.includes(m.id) ? (prev.length > 1 ? prev.filter((x) => x !== m.id) : prev) : [...prev, m.id].slice(0, 4))}
+                            onClick={() => toggleImageModelInPicker(m.id)}
                             className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
                               isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
                             } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}>
@@ -3868,11 +3998,12 @@ export default function ChatInterface({
                   ) : generationMode === 'video' ? (
                     VIDEO_MODELS.map((m) => {
                         const isSel = selectedVideoModels.includes(m.id)
-                        const isDisabled = !isSel && selectedVideoModels.length >= 4
+                        const isDisabled =
+                          videoModelSelectionMode === 'multiple' && !isSel && selectedVideoModels.length >= 4
                         return (
                           <button key={m.id}
                             disabled={isDisabled}
-                            onClick={() => setSelectedVideoModels((prev) => prev.includes(m.id) ? (prev.length > 1 ? prev.filter((x) => x !== m.id) : prev) : [...prev, m.id].slice(0, 4))}
+                            onClick={() => toggleVideoModelInPicker(m.id)}
                             className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
                               isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
                             } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}>
@@ -3941,6 +4072,58 @@ export default function ChatInterface({
                               key={mode}
                               type="button"
                               onClick={() => handleAskModelSelectionModeChange(mode)}
+                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
+                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+                                isActive
+                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
+                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                              } ${
+                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
+                              }`}
+                            >
+                              {mode}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {generationMode === 'image' && (
+                    <div className="border-t border-[var(--border)] px-2 py-2">
+                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
+                        {(['single', 'multiple'] as const).map((mode) => {
+                          const isActive = imageModelSelectionMode === mode
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => handleImageModelSelectionModeChange(mode)}
+                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
+                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+                                isActive
+                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
+                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                              } ${
+                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
+                              }`}
+                            >
+                              {mode}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {generationMode === 'video' && (
+                    <div className="border-t border-[var(--border)] px-2 py-2">
+                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
+                        {(['single', 'multiple'] as const).map((mode) => {
+                          const isActive = videoModelSelectionMode === mode
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => handleVideoModelSelectionModeChange(mode)}
                               disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
                               className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
                                 isActive

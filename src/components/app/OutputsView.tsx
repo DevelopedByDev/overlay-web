@@ -88,12 +88,18 @@ function OutputListRow({
   onDetails,
   onDelete,
   isDeleting,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
 }: {
   output: Output
   onExpand: () => void
   onDetails: () => void
   onDelete: () => void
   isDeleting: boolean
+  selectionMode?: boolean
+  selected?: boolean
+  onToggleSelect?: () => void
 }) {
   const isCompleted = output.status === 'completed'
   const isFailed = output.status === 'failed'
@@ -101,7 +107,38 @@ function OutputListRow({
   const isMedia = isMediaOutputType(output.type)
 
   return (
-    <div className="flex items-center gap-3 border-b border-[var(--border)] px-3 py-2.5 transition-colors last:border-b-0 hover:bg-[var(--surface-muted)]">
+    <div
+      role={selectionMode ? 'button' : undefined}
+      tabIndex={selectionMode ? 0 : undefined}
+      onClick={() => selectionMode && onToggleSelect?.()}
+      onKeyDown={
+        selectionMode
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onToggleSelect?.()
+              }
+            }
+          : undefined
+      }
+      className={`flex items-center gap-3 px-3 py-2.5 transition-colors ${
+        selectionMode
+          ? `cursor-pointer rounded-lg border border-transparent hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
+              selected ? 'border-[var(--border)] bg-[var(--surface-muted)]' : ''
+            }`
+          : 'rounded-lg border border-transparent hover:border-[var(--border)] hover:bg-[var(--surface-muted)]'
+      }`}
+    >
+      {selectionMode ? (
+        <span
+          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--border)] ${
+            selected ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]'
+          }`}
+          aria-hidden
+        >
+          {selected ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
+        </span>
+      ) : null}
       <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-[var(--surface-muted)]">
         {isCompleted && output.url && output.type === 'image' && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -128,7 +165,14 @@ function OutputListRow({
       </div>
       <button
         type="button"
-        onClick={isCompleted && isMedia ? onExpand : undefined}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (selectionMode) {
+            onToggleSelect?.()
+            return
+          }
+          if (isCompleted && isMedia) onExpand()
+        }}
         className="min-w-0 flex-1 text-left"
       >
         <p className="line-clamp-1 text-sm text-[var(--foreground)]">{outputLabel(output)}</p>
@@ -142,30 +186,32 @@ function OutputListRow({
           {output.sizeBytes ? ` · ${formatBytes(output.sizeBytes)}` : ''}
         </p>
       </button>
-      <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onDetails()
-          }}
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
-        >
-          <Info size={12} />
-          Details
-        </button>
-        <button
-          type="button"
-          disabled={isDeleting}
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-          className="inline-flex items-center justify-center rounded-md border border-[var(--border)] p-1 text-[var(--muted)] transition-colors hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
-        >
-          {isDeleting ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
-        </button>
-      </div>
+      {!selectionMode ? (
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDetails()
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+          >
+            <Info size={12} />
+            Details
+          </button>
+          <button
+            type="button"
+            disabled={isDeleting}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            className="inline-flex items-center justify-center rounded-md border border-[var(--border)] p-1 text-[var(--muted)] transition-colors hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+          >
+            {isDeleting ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -173,11 +219,18 @@ function OutputListRow({
 export default function OutputsView({
   embedded = false,
   layout = 'cards',
+  selectionMode = false,
+  selectedIds,
+  onToggleSelect,
 }: {
   /** When true, hide the page title row (parent provides chrome). */
   embedded?: boolean
   /** List vs masonry cards — typically from URL `layout` on Knowledge. */
   layout?: 'list' | 'cards'
+  /** Bulk selection (Knowledge header). */
+  selectionMode?: boolean
+  selectedIds?: ReadonlySet<string>
+  onToggleSelect?: (outputId: string) => void
 }) {
   const searchParams = useSearchParams()
   const v = embedded ? searchParams?.get('out') : searchParams?.get('view')
@@ -279,7 +332,7 @@ export default function OutputsView({
         )}
 
         {filtered.length > 0 && layout === 'list' && (
-          <div className="mx-auto w-full max-w-[1440px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]">
+          <div className="mx-auto w-full max-w-3xl space-y-0.5">
             {filtered.map((output) => (
               <OutputListRow
                 key={output._id}
@@ -288,6 +341,9 @@ export default function OutputsView({
                 onDetails={() => setDetailsOutput(output)}
                 onDelete={() => handleDelete(output._id)}
                 isDeleting={deletingId === output._id}
+                selectionMode={selectionMode}
+                selected={Boolean(selectedIds?.has(output._id))}
+                onToggleSelect={onToggleSelect ? () => onToggleSelect(output._id) : undefined}
               />
             ))}
           </div>
@@ -303,6 +359,9 @@ export default function OutputsView({
                 onDetails={() => setDetailsOutput(output)}
                 onDelete={() => handleDelete(output._id)}
                 isDeleting={deletingId === output._id}
+                selectionMode={selectionMode}
+                selected={Boolean(selectedIds?.has(output._id))}
+                onToggleSelect={onToggleSelect ? () => onToggleSelect(output._id) : undefined}
               />
             ))}
           </div>
@@ -434,7 +493,25 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   )
 }
 
-function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { output: Output; onExpand: () => void; onDetails: () => void; onDelete: () => void; isDeleting: boolean }) {
+function OutputCard({
+  output,
+  onExpand,
+  onDetails,
+  onDelete,
+  isDeleting,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
+}: {
+  output: Output
+  onExpand: () => void
+  onDetails: () => void
+  onDelete: () => void
+  isDeleting: boolean
+  selectionMode?: boolean
+  selected?: boolean
+  onToggleSelect?: () => void
+}) {
   const isCompleted = output.status === 'completed'
   const isFailed = output.status === 'failed'
   const isPending = output.status === 'pending'
@@ -461,9 +538,29 @@ function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { out
   return (
     <div
       ref={cardRef}
-      className="group mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] transition-shadow hover:shadow-md"
+      className={`group mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] transition-shadow hover:shadow-md ${
+        selected ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
+      }`}
       style={{ breakInside: 'avoid' }}
-      onClick={isCompleted && isMedia ? onExpand : undefined}
+      role={selectionMode ? 'button' : undefined}
+      tabIndex={selectionMode ? 0 : undefined}
+      onClick={() => {
+        if (selectionMode) {
+          onToggleSelect?.()
+          return
+        }
+        if (isCompleted && isMedia) onExpand()
+      }}
+      onKeyDown={
+        selectionMode
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onToggleSelect?.()
+              }
+            }
+          : undefined
+      }
     >
       <div className="relative bg-[var(--surface-muted)]">
         {isCompleted && output.url && output.type === 'image' && shouldLoadMedia && (
@@ -502,7 +599,19 @@ function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { out
             </a>
           </div>
         )}
-        <div className="absolute left-2 top-2">
+        {selectionMode ? (
+          <div className="absolute left-2 top-2 z-20">
+            <span
+              className={`flex h-4 w-4 items-center justify-center rounded border border-[var(--border)] ${
+                selected ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]'
+              }`}
+              aria-hidden
+            >
+              {selected ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
+            </span>
+          </div>
+        ) : null}
+        <div className={`absolute top-2 ${selectionMode ? 'left-8' : 'left-2'}`}>
           <span className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
             output.type === 'image'
               ? 'bg-purple-100 text-purple-600'
@@ -525,24 +634,26 @@ function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { out
               {output.sizeBytes ? ` • ${formatBytes(output.sizeBytes)}` : ''}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onDetails() }}
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
-            >
-              <Info size={12} />
-              Details
-            </button>
-            <button
-              type="button"
-              disabled={isDeleting}
-              onClick={(e) => { e.stopPropagation(); onDelete() }}
-              className="inline-flex items-center justify-center rounded-md border border-[var(--border)] p-1 text-[var(--muted)] transition-colors hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
-            >
-              {isDeleting ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
-            </button>
-          </div>
+          {!selectionMode ? (
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onDetails() }}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+              >
+                <Info size={12} />
+                Details
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={(e) => { e.stopPropagation(); onDelete() }}
+                className="inline-flex items-center justify-center rounded-md border border-[var(--border)] p-1 text-[var(--muted)] transition-colors hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+              >
+                {isDeleting ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

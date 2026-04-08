@@ -89,6 +89,9 @@ function parseCSV(raw: string): string[][] {
   return rows
 }
 
+const proseMarkdown =
+  'prose prose-sm max-w-2xl text-[var(--foreground)] prose-headings:font-semibold prose-headings:text-[var(--foreground)] prose-p:text-[var(--foreground)] prose-li:text-[var(--foreground)] prose-strong:text-[var(--foreground)] prose-a:text-blue-600 dark:prose-a:text-sky-400 prose-code:rounded prose-code:bg-[var(--surface-subtle)] prose-code:px-1 prose-code:text-[var(--foreground)] prose-pre:bg-[var(--surface-subtle)] prose-pre:text-[var(--foreground)] prose-blockquote:border-[var(--border)] prose-blockquote:text-[var(--muted)]'
+
 // ─── FileViewer ───────────────────────────────────────────────────────────────
 
 export function FileViewer({ name, content }: { name: string; content: string }) {
@@ -98,11 +101,7 @@ export function FileViewer({ name, content }: { name: string; content: string })
   if (type === 'markdown') {
     return (
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        <div className="prose prose-sm max-w-2xl text-[#0a0a0a]
-          prose-headings:font-semibold prose-headings:text-[#0a0a0a]
-          prose-a:text-blue-600 prose-code:bg-[#f0f0f0] prose-code:px-1 prose-code:rounded
-          prose-pre:bg-[#f5f5f5] prose-pre:text-[#0a0a0a]
-          prose-blockquote:border-[#0a0a0a] prose-blockquote:text-[#525252]">
+        <div className={proseMarkdown}>
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
       </div>
@@ -112,7 +111,9 @@ export function FileViewer({ name, content }: { name: string; content: string })
   if (type === 'text') {
     return (
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        <pre className="text-sm text-[#0a0a0a] leading-relaxed font-mono whitespace-pre-wrap">{content}</pre>
+        <pre className="text-sm leading-relaxed font-mono whitespace-pre-wrap text-[var(--foreground)]">
+          {content}
+        </pre>
       </div>
     )
   }
@@ -123,21 +124,26 @@ export function FileViewer({ name, content }: { name: string; content: string })
     const body = rows.slice(1)
     return (
       <div className="flex-1 overflow-auto px-4 py-4">
-        <table className="text-xs border-collapse">
+        <table className="border-collapse text-xs">
           <thead>
             <tr>
               {headers.map((h, i) => (
-                <th key={i} className="border border-[#e5e5e5] px-3 py-2 text-left font-medium bg-[#f5f5f5] text-[#0a0a0a] whitespace-nowrap">{h}</th>
+                <th
+                  key={i}
+                  className="whitespace-nowrap border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-left font-medium text-[var(--foreground)]"
+                >
+                  {h}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {body.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? '' : 'bg-[#fafafa]'}>
+              <tr key={i} className={i % 2 === 0 ? '' : 'bg-[var(--surface-subtle)]/50'}>
                 {row.map((cell, j) => (
                   <td
                     key={j}
-                    className="border border-[#e5e5e5] px-3 py-1.5 text-[#525252] max-w-md align-top whitespace-pre-wrap break-words"
+                    className="max-w-md whitespace-pre-wrap break-words border border-[var(--border)] px-3 py-1.5 align-top text-[var(--muted)]"
                   >
                     {cell}
                   </td>
@@ -152,20 +158,20 @@ export function FileViewer({ name, content }: { name: string; content: string })
 
   if (type === 'image') {
     return (
-      <div className="flex-1 flex items-center justify-center overflow-auto p-8 bg-[#f9f9f9]">
+      <div className="flex flex-1 items-center justify-center overflow-auto bg-[var(--surface-subtle)] p-8">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={content} alt={name} className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
+        <img src={content} alt={name} className="max-h-full max-w-full rounded-lg object-contain shadow-sm" />
       </div>
     )
   }
 
   if (type === 'audio') {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
-        <div className="w-16 h-16 rounded-2xl bg-[#f0f0f0] flex items-center justify-center">
-          <Music size={28} className="text-[#888]" />
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-subtle)]">
+          <Music size={28} className="text-[var(--muted)]" />
         </div>
-        <p className="text-sm font-medium text-[#525252]">{name}</p>
+        <p className="text-sm font-medium text-[var(--foreground)]">{name}</p>
         <audio controls src={content} className="w-full max-w-lg" />
       </div>
     )
@@ -173,8 +179,8 @@ export function FileViewer({ name, content }: { name: string; content: string })
 
   if (type === 'video') {
     return (
-      <div className="flex-1 flex items-center justify-center overflow-hidden p-4 bg-black">
-        <video controls src={content} className="max-w-full max-h-full" />
+      <div className="flex flex-1 items-center justify-center overflow-hidden bg-black p-4">
+        <video controls src={content} className="max-h-full max-w-full" />
       </div>
     )
   }
@@ -189,16 +195,18 @@ export function FileViewer({ name, content }: { name: string; content: string })
     if (isIframeSrc && c.length < 20_000) {
       return (
         <div className="flex-1 overflow-hidden">
-          <iframe src={c} className="w-full h-full border-none" title={name} />
+          <iframe src={c} className="h-full w-full border-none" title={name} />
         </div>
       )
     }
     return (
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        <p className="text-xs text-[#888] mb-4 max-w-2xl">
+        <p className="mb-4 max-w-2xl text-xs text-[var(--muted)]">
           This PDF is stored as extracted text for search and the notebook (not the original layout).
         </p>
-        <pre className="text-sm text-[#0a0a0a] leading-relaxed whitespace-pre-wrap max-w-3xl">{content}</pre>
+        <pre className="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
+          {content}
+        </pre>
       </div>
     )
   }
@@ -213,23 +221,23 @@ export function FileViewer({ name, content }: { name: string; content: string })
   }
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-[#888]">
-      <div className="w-16 h-16 rounded-2xl bg-[#f0f0f0] flex items-center justify-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-[var(--muted)]">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-subtle)]">
         {labels[ext] ? (
-          <FileText size={28} className="text-[#888]" />
+          <FileText size={28} className="text-[var(--muted)]" />
         ) : (
-          <FileQuestion size={28} className="text-[#888]" />
+          <FileQuestion size={28} className="text-[var(--muted)]" />
         )}
       </div>
       <div className="text-center">
-        <p className="text-sm font-medium text-[#525252]">{name}</p>
-        <p className="text-xs text-[#aaa] mt-1">{labels[ext] ?? 'Binary file'} — preview not available</p>
+        <p className="text-sm font-medium text-[var(--foreground)]">{name}</p>
+        <p className="mt-1 text-xs text-[var(--muted-light)]">{labels[ext] ?? 'Binary file'} — preview not available</p>
       </div>
       {content && (
         <a
           href={content}
           download={name}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
+          className="flex items-center gap-1.5 rounded-md bg-[var(--foreground)] px-3 py-1.5 text-xs text-[var(--background)] transition-opacity hover:opacity-90"
         >
           <Download size={12} />
           Download
@@ -258,13 +266,11 @@ export function FileViewerPanel({
   const editable = isEditable && (type === 'text' || type === 'markdown') && onContentChange
 
   return (
-    <>
-      <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-6 shrink-0">
-        <span className="text-sm font-medium text-[#0a0a0a] truncate">{name}</span>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
+        <span className="truncate text-sm font-medium text-[var(--foreground)]">{name}</span>
         {isSaving && (
-          <span className="text-xs text-[#aaa] flex items-center gap-1 shrink-0 ml-2">
-            Saving...
-          </span>
+          <span className="ml-2 flex shrink-0 items-center gap-1 text-xs text-[var(--muted-light)]">Saving...</span>
         )}
       </div>
       {editable ? (
@@ -273,16 +279,18 @@ export function FileViewerPanel({
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
             placeholder="Start typing..."
-            className="flex-1 resize-none outline-none px-8 py-6 text-sm text-[#0a0a0a] leading-relaxed font-mono placeholder-[#aaa] bg-white"
+            className="min-h-0 flex-1 resize-none bg-[var(--background)] px-8 py-6 font-mono text-sm leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
           />
-          <div className="px-8 py-2 border-t border-[#e5e5e5] text-[11px] text-[#aaa]">
+          <div className="shrink-0 border-t border-[var(--border)] px-8 py-2 text-[11px] text-[var(--muted-light)]">
             Reference in chat with{' '}
-            <code className="bg-[#f0f0f0] px-1 py-0.5 rounded font-mono">@{name}</code>
+            <code className="rounded bg-[var(--surface-subtle)] px-1 py-0.5 font-mono text-[var(--foreground)]">
+              @{name}
+            </code>
           </div>
         </>
       ) : (
         <FileViewer name={name} content={content} />
       )}
-    </>
+    </div>
   )
 }

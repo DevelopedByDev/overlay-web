@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   Brain, Trash2, Plus, X, FilePlus, FolderPlus,
   ChevronRight, ChevronDown, FileText, Folder, FolderOpen, Loader2, Search,
-  LayoutList, LayoutGrid, RefreshCw,
+  LayoutList, LayoutGrid, RefreshCw, SquareMousePointer,
 } from 'lucide-react'
 import { FileViewerPanel, getFileType, isEditableType } from './FileViewer'
 import OutputsView from './OutputsView'
@@ -71,6 +71,9 @@ function filePathLabel(all: FileNode[], file: FileNode): string {
 
 function FileTreeNode({
   node, allNodes, depth, selectedId, onSelect, onDelete,
+  bulkSelectMode = false,
+  bulkSelectedIds,
+  onToggleBulk,
 }: {
   node: FileNode
   allNodes: FileNode[]
@@ -78,42 +81,90 @@ function FileTreeNode({
   selectedId: string | null
   onSelect: (node: FileNode) => void
   onDelete: (id: string, e: React.MouseEvent) => void
+  bulkSelectMode?: boolean
+  bulkSelectedIds?: Set<string>
+  onToggleBulk?: (id: string) => void
 }) {
   const [open, setOpen] = useState(true)
   const children = allNodes.filter((n) => n.parentId === node._id)
-  const isSelected = node.type === 'file' && node._id === selectedId
+  const isFileViewerSelected = node.type === 'file' && node._id === selectedId
+  const isBulkSelected = Boolean(bulkSelectedIds?.has(node._id))
+
+  function handleRowClick() {
+    if (bulkSelectMode && onToggleBulk) {
+      onToggleBulk(node._id)
+      return
+    }
+    if (node.type === 'folder') setOpen((v) => !v)
+    else onSelect(node)
+  }
+
+  function handleChevronClick(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (node.type !== 'folder') return
+    setOpen((v) => !v)
+  }
 
   return (
     <div>
       <div
-        onClick={() => node.type === 'folder' ? setOpen((v) => !v) : onSelect(node)}
-        className={`group flex items-center gap-1.5 py-1 rounded-md cursor-pointer text-xs transition-colors ${
-          isSelected
-            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-            : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+        role="button"
+        tabIndex={0}
+        onClick={handleRowClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            handleRowClick()
+          }
+        }}
+        className={`group flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
+          isFileViewerSelected && !bulkSelectMode
+            ? 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)]'
+            : isBulkSelected
+              ? 'border-[var(--border)] bg-[var(--surface-muted)]'
+              : 'text-[var(--foreground)]'
         }`}
-        style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: '8px' }}
+        style={{ paddingLeft: `${depth * 12 + 12}px` }}
       >
-        {node.type === 'folder' ? (
-          <>
-            <ChevronRight size={10} className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
-            {open
-              ? <FolderOpen size={12} className="shrink-0 text-[var(--muted-light)]" />
-              : <Folder size={12} className="shrink-0 text-[var(--muted-light)]" />}
-          </>
-        ) : (
-          <>
-            <span className="w-[10px] shrink-0" />
-            <FileText size={12} className="shrink-0 text-[var(--muted-light)]" />
-          </>
-        )}
-        <span className="flex-1 truncate">{node.name}</span>
-        <button
-          onClick={(e) => onDelete(node._id, e)}
-          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[var(--border)] transition-opacity shrink-0"
-        >
-          <Trash2 size={10} />
-        </button>
+        {bulkSelectMode ? (
+          <span
+            className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--border)] ${
+              isBulkSelected ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]'
+            }`}
+            aria-hidden
+          >
+            {isBulkSelected ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
+          </span>
+        ) : null}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {node.type === 'folder' ? (
+            <>
+              <button
+                type="button"
+                className="-m-0.5 shrink-0 rounded p-0.5 text-[var(--muted-light)] hover:bg-[var(--surface-subtle)]"
+                onClick={handleChevronClick}
+                aria-label={open ? 'Collapse folder' : 'Expand folder'}
+              >
+                <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+              </button>
+              {open
+                ? <FolderOpen size={14} className="shrink-0 text-[var(--muted-light)]" />
+                : <Folder size={14} className="shrink-0 text-[var(--muted-light)]" />}
+            </>
+          ) : (
+            <FileText size={14} className="shrink-0 text-[var(--muted-light)]" />
+          )}
+          <span className="min-w-0 flex-1 truncate leading-relaxed">{node.name}</span>
+        </div>
+        {!bulkSelectMode ? (
+          <button
+            type="button"
+            onClick={(e) => onDelete(node._id, e)}
+            className="shrink-0 rounded p-1 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-red-500 group-hover:opacity-100"
+          >
+            <Trash2 size={12} />
+          </button>
+        ) : null}
       </div>
       {node.type === 'folder' && open && children.map((child) => (
         <FileTreeNode
@@ -124,6 +175,9 @@ function FileTreeNode({
           selectedId={selectedId}
           onSelect={onSelect}
           onDelete={onDelete}
+          bulkSelectMode={bulkSelectMode}
+          bulkSelectedIds={bulkSelectedIds}
+          onToggleBulk={onToggleBulk}
         />
       ))}
     </div>
@@ -210,6 +264,110 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   const [memorySearchQuery, setMemorySearchQuery] = useState('')
   const [fileSearchOpen, setFileSearchOpen] = useState(false)
   const [fileSearchQuery, setFileSearchQuery] = useState('')
+
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedMemoryIds, setSelectedMemoryIds] = useState<Set<string>>(() => new Set())
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(() => new Set())
+  const [selectedOutputIds, setSelectedOutputIds] = useState<Set<string>>(() => new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+
+  useEffect(() => {
+    setSelectMode(false)
+    setSelectedMemoryIds(new Set())
+    setSelectedFileIds(new Set())
+    setSelectedOutputIds(new Set())
+  }, [activeTab])
+
+  function exitSelectMode() {
+    setSelectMode(false)
+    setSelectedMemoryIds(new Set())
+    setSelectedFileIds(new Set())
+    setSelectedOutputIds(new Set())
+  }
+
+  function toggleMemorySelect(memoryId: string) {
+    setSelectedMemoryIds((prev) => {
+      const n = new Set(prev)
+      if (n.has(memoryId)) n.delete(memoryId)
+      else n.add(memoryId)
+      return n
+    })
+  }
+
+  function toggleFileBulkSelect(fileId: string) {
+    setSelectedFileIds((prev) => {
+      const n = new Set(prev)
+      if (n.has(fileId)) n.delete(fileId)
+      else n.add(fileId)
+      return n
+    })
+  }
+
+  function toggleOutputSelect(outputId: string) {
+    setSelectedOutputIds((prev) => {
+      const n = new Set(prev)
+      if (n.has(outputId)) n.delete(outputId)
+      else n.add(outputId)
+      return n
+    })
+  }
+
+  async function bulkDeleteMemories() {
+    if (selectedMemoryIds.size === 0 || bulkDeleting) return
+    setBulkDeleting(true)
+    try {
+      await Promise.all(
+        [...selectedMemoryIds].map((id) =>
+          fetch(`/api/app/memory?memoryId=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+        ),
+      )
+      if (selectedMemory && selectedMemoryIds.has(selectedMemory.memoryId)) {
+        setSelectedMemory(null)
+        updateQuery({ memory: null })
+      }
+      await loadMemories()
+      exitSelectMode()
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
+  async function bulkDeleteFiles() {
+    if (selectedFileIds.size === 0 || bulkDeleting) return
+    setBulkDeleting(true)
+    try {
+      await Promise.all(
+        [...selectedFileIds].map((id) =>
+          fetch(`/api/app/files?fileId=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+        ),
+      )
+      if (selectedFile && selectedFileIds.has(selectedFile._id)) {
+        setSelectedFile(null)
+        setFileContent('')
+        updateQuery({ file: null })
+      }
+      await loadFiles()
+      exitSelectMode()
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
+  async function bulkDeleteOutputs() {
+    if (selectedOutputIds.size === 0 || bulkDeleting) return
+    setBulkDeleting(true)
+    try {
+      await Promise.all(
+        [...selectedOutputIds].map((id) =>
+          fetch(`/api/app/outputs?outputId=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+        ),
+      )
+      setOutputsRefreshKey((k) => k + 1)
+      exitSelectMode()
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
 
   const loadFile = useCallback(async (fileId: string) => {
     const res = await fetch(`/api/app/files?fileId=${fileId}`)
@@ -629,6 +787,52 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {(activeTab === 'memories' || activeTab === 'files' || activeTab === 'outputs') &&
+            (selectMode ? (
+              <>
+                <button type="button" onClick={exitSelectMode} className={TOOLBAR_FILLED_BUTTON_CLASS}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    bulkDeleting ||
+                    (activeTab === 'memories'
+                      ? selectedMemoryIds.size === 0
+                      : activeTab === 'files'
+                        ? selectedFileIds.size === 0
+                        : selectedOutputIds.size === 0)
+                  }
+                  onClick={() => {
+                    if (activeTab === 'memories') void bulkDeleteMemories()
+                    else if (activeTab === 'files') void bulkDeleteFiles()
+                    else void bulkDeleteOutputs()
+                  }}
+                  className="flex items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs text-red-600 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Trash2 size={13} />
+                  {bulkDeleting
+                    ? 'Deleting…'
+                    : `Delete (${
+                        activeTab === 'memories'
+                          ? selectedMemoryIds.size
+                          : activeTab === 'files'
+                            ? selectedFileIds.size
+                            : selectedOutputIds.size
+                      })`}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                title="Select items"
+                onClick={() => setSelectMode(true)}
+                className={TOOLBAR_FILLED_BUTTON_CLASS}
+              >
+                <SquareMousePointer size={13} />
+                Select
+              </button>
+            ))}
           {activeTab === 'outputs' && (
             <div ref={outputFilterRef} className="relative w-fit max-w-[13rem]">
               <button
@@ -788,7 +992,14 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         }`}
       >
         {activeTab === 'outputs' && (
-          <OutputsView key={outputsRefreshKey} embedded layout={layout} />
+          <OutputsView
+            key={outputsRefreshKey}
+            embedded
+            layout={layout}
+            selectionMode={selectMode}
+            selectedIds={selectedOutputIds}
+            onToggleSelect={toggleOutputSelect}
+          />
         )}
 
         {activeTab === 'memories' && memoriesLoading && (
@@ -817,43 +1028,83 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         )}
         {activeTab === 'memories' && !memoriesLoading && memoriesFiltered.length > 0 && layout === 'list' && (
           <div className="mx-auto max-w-3xl space-y-0.5">
-            {memoriesFiltered.map((memory) => (
-              <div
-                key={memory.key}
-                role="button"
-                tabIndex={0}
-                onClick={() => openMemory(memory)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMemory(memory) } }}
-                className="group flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)]"
-              >
-                <p className="min-w-0 flex-1 text-sm leading-relaxed text-[var(--foreground)]">{memory.content}</p>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); handleDeleteMemory(memory.memoryId) }}
-                  className="shrink-0 rounded p-1 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-red-500 group-hover:opacity-100"
+            {memoriesFiltered.map((memory) => {
+              const bulkSel = selectedMemoryIds.has(memory.memoryId)
+              return (
+                <div
+                  key={memory.key}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => (selectMode ? toggleMemorySelect(memory.memoryId) : openMemory(memory))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      if (selectMode) toggleMemorySelect(memory.memoryId)
+                      else openMemory(memory)
+                    }
+                  }}
+                  className={`group flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
+                    bulkSel ? 'border-[var(--border)] bg-[var(--surface-muted)]' : ''
+                  }`}
                 >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
+                  {selectMode ? (
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--border)] ${
+                        bulkSel ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]'
+                      }`}
+                      aria-hidden
+                    >
+                      {bulkSel ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
+                    </span>
+                  ) : null}
+                  <p className="min-w-0 flex-1 text-sm leading-relaxed text-[var(--foreground)]">{memory.content}</p>
+                  {!selectMode ? (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteMemory(memory.memoryId) }}
+                      className="shrink-0 rounded p-1 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-red-500 group-hover:opacity-100"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  ) : null}
+                </div>
+              )
+            })}
           </div>
         )}
         {activeTab === 'memories' && !memoriesLoading && memoriesFiltered.length > 0 && layout === 'cards' && (
           <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3">
-            {memoriesFiltered.map((memory) => (
-              <button
-                key={memory.key}
-                type="button"
-                onClick={() => openMemory(memory)}
-                className="group mb-4 block w-full break-inside-avoid rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-shadow hover:shadow-md"
-                style={{ breakInside: 'avoid' }}
-              >
-                <p className="line-clamp-6 text-xs leading-relaxed text-[var(--foreground)]">{memory.content}</p>
-                <p className="mt-3 text-[10px] text-[var(--muted-light)]">
-                  {new Date(memory.createdAt).toLocaleDateString()}
-                </p>
-              </button>
-            ))}
+            {memoriesFiltered.map((memory) => {
+              const bulkSel = selectedMemoryIds.has(memory.memoryId)
+              return (
+                <button
+                  key={memory.key}
+                  type="button"
+                  onClick={() => (selectMode ? toggleMemorySelect(memory.memoryId) : openMemory(memory))}
+                  className={`group relative mb-4 block w-full break-inside-avoid rounded-xl border bg-[var(--surface-elevated)] p-4 text-left transition-shadow hover:shadow-md ${
+                    bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
+                  }`}
+                  style={{ breakInside: 'avoid' }}
+                >
+                  {selectMode ? (
+                    <span
+                      className={`absolute left-3 top-3 z-10 flex h-4 w-4 items-center justify-center rounded border border-[var(--border)] ${
+                        bulkSel ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]'
+                      }`}
+                      aria-hidden
+                    >
+                      {bulkSel ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
+                    </span>
+                  ) : null}
+                  <p className={`line-clamp-6 text-xs leading-relaxed text-[var(--foreground)] ${selectMode ? 'pl-7' : ''}`}>
+                    {memory.content}
+                  </p>
+                  <p className="mt-3 text-[10px] text-[var(--muted-light)]">
+                    {new Date(memory.createdAt).toLocaleDateString()}
+                  </p>
+                </button>
+              )
+            })}
           </div>
         )}
 
@@ -875,7 +1126,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           </div>
         )}
         {activeTab === 'files' && !filesLoading && rootNodes.length > 0 && layout === 'list' && (
-          <div className="mx-auto max-w-3xl rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-2">
+          <div className="mx-auto max-w-3xl space-y-0.5">
             {rootNodes.map((node) => (
               <FileTreeNode
                 key={node._id}
@@ -885,32 +1136,50 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 selectedId={selectedFile?._id ?? null}
                 onSelect={handleSelectFile}
                 onDelete={handleDeleteNode}
+                bulkSelectMode={selectMode}
+                bulkSelectedIds={selectedFileIds}
+                onToggleBulk={toggleFileBulkSelect}
               />
             ))}
           </div>
         )}
         {activeTab === 'files' && !filesLoading && flatFilesSorted.length > 0 && layout === 'cards' && (
           <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
-            {flatFilesSorted.map((file) => (
-              <button
-                key={file._id}
-                type="button"
-                onClick={() => handleSelectFile(file)}
-                className="group mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md"
-                style={{ breakInside: 'avoid' }}
-              >
-                <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
-                  <FileText size={36} className="text-[var(--muted-light)]" />
-                </div>
-                <div className="px-3 py-2">
-                  <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{file.name}</p>
-                  <p className="mt-1 line-clamp-2 text-[10px] text-[var(--muted)]">{filePathLabel(filesFiltered, file)}</p>
-                  <p className="mt-1 text-[10px] text-[var(--muted-light)]">
-                    {new Date(file.updatedAt).toLocaleDateString()}
-                  </p>
-                </div>
-              </button>
-            ))}
+            {flatFilesSorted.map((file) => {
+              const bulkSel = selectedFileIds.has(file._id)
+              return (
+                <button
+                  key={file._id}
+                  type="button"
+                  onClick={() => (selectMode ? toggleFileBulkSelect(file._id) : handleSelectFile(file))}
+                  className={`group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
+                    bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
+                  }`}
+                  style={{ breakInside: 'avoid' }}
+                >
+                  {selectMode ? (
+                    <span
+                      className={`absolute left-3 top-3 z-10 flex h-4 w-4 items-center justify-center rounded border border-[var(--border)] ${
+                        bulkSel ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]'
+                      }`}
+                      aria-hidden
+                    >
+                      {bulkSel ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
+                    </span>
+                  ) : null}
+                  <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
+                    <FileText size={36} className="text-[var(--muted-light)]" />
+                  </div>
+                  <div className="px-3 py-2">
+                    <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{file.name}</p>
+                    <p className="mt-1 line-clamp-2 text-[10px] text-[var(--muted)]">{filePathLabel(filesFiltered, file)}</p>
+                    <p className="mt-1 text-[10px] text-[var(--muted-light)]">
+                      {new Date(file.updatedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         )}
       </div>
