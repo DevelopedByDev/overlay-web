@@ -128,7 +128,6 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     if (current === 'skills') return 'skills'
     if (current === 'mcps') return 'mcps'
     if (current === 'apps') return 'apps'
-    if (current === 'installed') return 'installed'
     if (current === 'all') return 'all'
     return 'connectors'
   })()

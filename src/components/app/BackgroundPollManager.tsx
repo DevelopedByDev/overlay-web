@@ -13,6 +13,19 @@ export default function BackgroundPollManager() {
   useEffect(() => { completeSessionRef.current = completeSession }, [completeSession])
   useEffect(() => { activeViewerIdsRef.current = activeViewerIds }, [activeViewerIds])
 
+  /** Warm personalized chat starters cache early so empty-chat chips rarely wait on the network. */
+  useEffect(() => {
+    const run = () => {
+      void fetch('/api/app/chat-suggestions', { credentials: 'same-origin' }).catch(() => {})
+    }
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(run, { timeout: 8000 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const t = window.setTimeout(run, 2000)
+    return () => window.clearTimeout(t)
+  }, [])
+
   useEffect(() => {
     const interval = setInterval(async () => {
       const pending = Object.values(sessionsRef.current).filter((s) => s.status === 'streaming')

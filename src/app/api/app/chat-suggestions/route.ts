@@ -1,29 +1,40 @@
 import { NextResponse } from 'next/server'
+import { after } from 'next/server'
 import { generateText } from 'ai'
+import { convex } from '@/lib/convex'
 import { getOpenRouterLanguageModel } from '@/lib/ai-gateway'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/models'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
-export async function GET() {
-  try {
-    const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+function utcDateKey(): string {
+  return new Date().toISOString().slice(0, 10)
+}
 
-    const firstName = session.user.firstName?.trim() ?? ''
-    const nameHint = firstName
-      ? `The user's first name is ${firstName}. Starters can feel lightly tailored — stay useful and professional, never creepy.`
-      : 'The user has not shared a first name. Write varied, broadly useful starters.'
+function normalizeFourPrompts(raw: string[]): string[] {
+  const strings = raw.filter((p) => typeof p === 'string' && p.trim().length > 0).map((p) => p.trim())
+  const out: string[] = [...strings.slice(0, 4)]
+  for (const d of DEFAULT_CHAT_SUGGESTIONS) {
+    if (out.length >= 4) break
+    if (!out.includes(d)) out.push(d)
+  }
+  while (out.length < 4) {
+    out.push(DEFAULT_CHAT_SUGGESTIONS[out.length % DEFAULT_CHAT_SUGGESTIONS.length]!)
+  }
+  return out.slice(0, 4)
+}
 
-    const model = await getOpenRouterLanguageModel(FREE_TIER_AUTO_MODEL_ID, session.accessToken)
+const DEFAULT_PROMPTS_NORMALIZED = normalizeFourPrompts([...DEFAULT_CHAT_SUGGESTIONS])
 
-    const result = await generateText({
-      model,
-      temperature: 0.88,
-      maxOutputTokens: 700,
-      prompt: `${nameHint}
+async function generateStartersWithLLM(accessToken: string, firstName: string): Promise<string[] | null> {
+  const nameHint = `The user's first name is ${firstName}. Starters can feel lightly tailored — stay useful and professional, never creepy.`
+  const model = await getOpenRouterLanguageModel(FREE_TIER_AUTO_MODEL_ID, accessToken)
+  const result = await generateText({
+    model,
+    temperature: 0.88,
+    maxOutputTokens: 700,
+    prompt: `${nameHint}
 
 Generate exactly 4 conversation starter prompts for an AI chat app. Each prompt:
 - One clear sentence, 8–22 words
@@ -33,44 +44,139 @@ Generate exactly 4 conversation starter prompts for an AI chat app. Each prompt:
 
 Reply with ONLY valid JSON (no markdown fences) in this exact shape:
 {"prompts":["...","...","...","..."]}`,
+  })
+
+  const raw = result.text.trim()
+  const jsonStr = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
+
+  const parsed = JSON.parse(jsonStr) as { prompts?: unknown }
+  const promptsUnknown = parsed.prompts
+  if (!Array.isArray(promptsUnknown)) return null
+  const strings = promptsUnknown
+    .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+    .map((p) => p.trim())
+  return normalizeFourPrompts(strings)
+}
+
+type PersistArgs = {
+  serverSecret: string
+  userId: string
+  prompts: string[]
+  day: string
+}
+
+async function persistStarters({ serverSecret, userId, prompts, day }: PersistArgs): Promise<boolean> {
+  try {
+    const result = await convex.mutation('users:setChatStartersByServer', {
+      serverSecret,
+      userId,
+      prompts,
+      day,
+    })
+    return result?.ok === true
+  } catch (err) {
+    console.error('[chat-suggestions] failed to persist starters', err)
+    return false
+  }
+}
+
+/**
+ * Daily refresh after UTC midnight: regenerate (or roll defaults if no first name).
+ * Runs after the response is sent (stale-while-revalidate).
+ */
+function scheduleRefreshForNewDay(args: {
+  serverSecret: string
+  userId: string
+  accessToken: string
+  firstName: string
+  today: string
+}) {
+  const { serverSecret, userId, accessToken, firstName, today } = args
+  after(async () => {
+    try {
+      const trimmed = firstName.trim()
+      if (!trimmed) {
+        await persistStarters({
+          serverSecret,
+          userId,
+          prompts: DEFAULT_PROMPTS_NORMALIZED,
+          day: today,
+        })
+        return
+      }
+      const generated = await generateStartersWithLLM(accessToken, trimmed)
+      if (generated && generated.length === 4) {
+        await persistStarters({ serverSecret, userId, prompts: generated, day: today })
+      }
+    } catch (err) {
+      console.warn('[chat-suggestions] background refresh failed', err)
+    }
+  })
+}
+
+export async function GET() {
+  try {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const userId = session.user.id
+    const serverSecret = getInternalApiSecret()
+    const today = utcDateKey()
+    const firstName = session.user.firstName?.trim() ?? ''
+
+    const cached = await convex.query<{ prompts: string[]; day: string } | null>('users:getChatStartersByServer', {
+      serverSecret,
+      userId,
     })
 
-    const raw = result.text.trim()
-    const jsonStr = raw
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/```\s*$/i, '')
-      .trim()
+    if (cached && cached.day === today && cached.prompts.length === 4) {
+      return NextResponse.json({ prompts: normalizeFourPrompts(cached.prompts), stale: false })
+    }
 
-    let parsed: unknown
+    // Yesterday's (or older) starters: return immediately, refresh for the new UTC day in the background
+    if (cached && cached.prompts.length === 4 && cached.day !== today) {
+      const prompts = normalizeFourPrompts(cached.prompts)
+      scheduleRefreshForNewDay({
+        serverSecret,
+        userId,
+        accessToken: session.accessToken,
+        firstName,
+        today,
+      })
+      return NextResponse.json({ prompts, stale: true })
+    }
+
+    // No personalization signal: skip LLM, persist defaults for today so loads stay cheap
+    if (!firstName) {
+      const prompts = DEFAULT_PROMPTS_NORMALIZED
+      await persistStarters({ serverSecret, userId, prompts, day: today })
+      return NextResponse.json({ prompts, stale: false })
+    }
+
+    let generated: string[] | null = null
     try {
-      parsed = JSON.parse(jsonStr)
-    } catch {
-      console.warn('[chat-suggestions] JSON parse failed, using defaults')
-      return NextResponse.json({ prompts: [...DEFAULT_CHAT_SUGGESTIONS] })
+      generated = await generateStartersWithLLM(session.accessToken, firstName)
+    } catch (err) {
+      console.warn('[chat-suggestions] generation failed', err)
     }
 
-    const promptsUnknown = (parsed as { prompts?: unknown }).prompts
-    if (!Array.isArray(promptsUnknown)) {
-      return NextResponse.json({ prompts: [...DEFAULT_CHAT_SUGGESTIONS] })
+    if (generated && generated.length === 4) {
+      await persistStarters({ serverSecret, userId, prompts: generated, day: today })
+      return NextResponse.json({ prompts: generated, stale: false })
     }
 
-    const strings = promptsUnknown
-      .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
-      .map((p) => p.trim())
-      .slice(0, 4)
-
-    const out: string[] = [...strings]
-    for (const d of DEFAULT_CHAT_SUGGESTIONS) {
-      if (out.length >= 4) break
-      if (!out.includes(d)) out.push(d)
-    }
-    while (out.length < 4) {
-      out.push(DEFAULT_CHAT_SUGGESTIONS[out.length % DEFAULT_CHAT_SUGGESTIONS.length]!)
+    if (cached && cached.prompts.length === 4) {
+      return NextResponse.json({ prompts: normalizeFourPrompts(cached.prompts), stale: false })
     }
 
-    return NextResponse.json({ prompts: out.slice(0, 4) })
+    return NextResponse.json({ prompts: [...DEFAULT_CHAT_SUGGESTIONS], stale: false })
   } catch (err) {
     console.error('[chat-suggestions]', err)
-    return NextResponse.json({ prompts: [...DEFAULT_CHAT_SUGGESTIONS] })
+    return NextResponse.json({ prompts: [...DEFAULT_CHAT_SUGGESTIONS], stale: false })
   }
 }

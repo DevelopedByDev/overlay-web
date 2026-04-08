@@ -477,7 +477,6 @@ export const toolsInlineItems = [
   { id: 'skills', label: 'Skills' },
   { id: 'mcps', label: 'MCPs' },
   { id: 'apps', label: 'Apps', locked: true },
-  { id: 'installed', label: 'Installed' },
 ] as const
 
 export function InlineNavChildren({

@@ -63,6 +63,9 @@
   --chat-alert-warn-text: #92400e;
   --chat-media-error-bg: linear-gradient(180deg, #fffafa 0%, #fff5f5 100%);
   --chat-media-error-border: #fecaca;
+  /* Assistant tool rows ("2 tools called", browser label) — readable on light bg */
+  --tool-line-label: #52525b;
+  --tool-line-chevron: #a1a1aa;
 }
 
 [data-theme='dark'] {
@@ -94,6 +97,8 @@
   --chat-alert-warn-text: #fde68a;
   --chat-media-error-bg: linear-gradient(180deg, rgba(127, 29, 29, 0.35) 0%, rgba(69, 10, 10, 0.5) 100%);
   --chat-media-error-border: rgba(248, 113, 113, 0.3);
+  --tool-line-label: #d4d4d8;
+  --tool-line-chevron: #c4c4c4;
 }
 
 @theme inline {
@@ -575,6 +580,17 @@ html {
   -webkit-background-clip: text;
   color: transparent;
   animation: tool-line-shimmer 1.35s linear infinite;
+}
+
+[data-theme='dark'] .tool-line-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    #a1a1aa 0%,
+    #a1a1aa 38%,
+    #e4e4e7 50%,
+    #a1a1aa 62%,
+    #a1a1aa 100%
+  );
 }
 
 /* Gray shimmer skeleton for media generation */

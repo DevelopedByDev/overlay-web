@@ -780,7 +780,7 @@ function ToolCallRowWithReasoning({
         <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
         <span
           className={`min-w-0 ${
-            running && !err ? 'tool-line-shimmer' : err ? 'text-red-600' : 'text-[#52525b]'
+            running && !err ? 'tool-line-shimmer' : err ? 'text-red-600' : 'text-[var(--tool-line-label)]'
           }`}
         >
           {label}
@@ -831,7 +831,7 @@ function ToolCallsCollapsedGroup({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-[#52525b] hover:bg-transparent"
+        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-[var(--tool-line-label)] hover:bg-transparent"
       >
         <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
         <span className="inline-flex min-w-0 items-center gap-1">
@@ -839,7 +839,7 @@ function ToolCallsCollapsedGroup({
           <ChevronDown
             size={14}
             strokeWidth={1.75}
-            className={`shrink-0 text-[#a1a1aa] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            className={`shrink-0 text-[var(--tool-line-chevron)] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
             aria-hidden
           />
         </span>
@@ -904,7 +904,7 @@ function BrowserToolBlock({
            <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
            <div className="min-w-0 flex-1">
              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-               <span className={running ? 'tool-line-shimmer' : 'text-[#52525b]'}>{label}</span>
+               <span className={running ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>{label}</span>
               {hasDetails && isDone ? (
                 <button
                   type="button"
@@ -1431,23 +1431,12 @@ function FlashCopyIconButton({
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-const CHAT_HAS_INTERACTED_KEY = 'overlay_chat_has_interacted'
-
-function chatSuggestionsCacheKey(userId: string) {
-  return `overlay_chat_suggestions_daily_${userId}`
-}
-
-function localCalendarDateKey() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 function chatGreetingLine(firstName: string | undefined) {
   const raw = firstName?.trim()
   if (!raw) return 'hi there'
   const word = raw.split(/\s+/)[0] ?? raw
   const nice = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-  return `hi ${nice}`
+  return `Hi ${nice}!`
 }
 
 const DEFAULT_CHAT_TITLE = 'New Chat'
@@ -1943,60 +1932,50 @@ export default function ChatInterface({
   const [pendingChatDocuments, setPendingChatDocuments] = useState<PendingChatDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
-  /** After first sent message (any chat), empty state uses static defaults instead of AI daily suggestions. */
-  const [hasPriorChatInteraction, setHasPriorChatInteraction] = useState(false)
-  /** null = loading (only when !hasPriorChatInteraction); then 4 prompts */
-  const [personalizedSuggestions, setPersonalizedSuggestions] = useState<string[] | null>(null)
+  /**
+   * Empty-chat suggestion chips: defaults show immediately; API merges Convex-persisted / freshly generated prompts.
+   */
+  const [emptyChatStarters, setEmptyChatStarters] = useState<string[]>(() => [...DEFAULT_CHAT_SUGGESTIONS])
 
   useEffect(() => {
-    try {
-      if (typeof window !== 'undefined' && localStorage.getItem(CHAT_HAS_INTERACTED_KEY) === '1') {
-        setHasPriorChatInteraction(true)
-      }
-    } catch {
-      // ignore
-    }
-  }, [])
-
-  useEffect(() => {
-    if (hasPriorChatInteraction) return
-    const day = localCalendarDateKey()
-    const key = chatSuggestionsCacheKey(userId)
-    try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null
-      if (raw) {
-        const parsed = JSON.parse(raw) as { day?: string; prompts?: string[] }
-        if (parsed.day === day && Array.isArray(parsed.prompts) && parsed.prompts.length === 4) {
-          setPersonalizedSuggestions(parsed.prompts)
-          return
-        }
-      }
-    } catch {
-      // ignore
-    }
-
     let cancelled = false
+    let refetchTimer: ReturnType<typeof setTimeout> | undefined
+
+    const apply = (data: { prompts?: string[]; stale?: boolean }) => {
+      if (cancelled) return
+      if (Array.isArray(data.prompts) && data.prompts.length === 4) {
+        setEmptyChatStarters(data.prompts)
+      }
+      if (data.stale) {
+        refetchTimer = window.setTimeout(() => {
+          if (cancelled) return
+          void fetch('/api/app/chat-suggestions', { credentials: 'same-origin' })
+            .then((r) => r.json())
+            .then((d: { prompts?: string[] }) => {
+              if (cancelled) return
+              if (Array.isArray(d.prompts) && d.prompts.length === 4) {
+                setEmptyChatStarters(d.prompts)
+              }
+            })
+            .catch(() => {
+              /* keep current */
+            })
+        }, 4500)
+      }
+    }
+
     fetch('/api/app/chat-suggestions', { credentials: 'same-origin' })
       .then((r) => r.json())
-      .then((data: { prompts?: string[] }) => {
-        if (cancelled) return
-        const prompts =
-          Array.isArray(data.prompts) && data.prompts.length === 4 ? data.prompts : [...DEFAULT_CHAT_SUGGESTIONS]
-        setPersonalizedSuggestions(prompts)
-        try {
-          localStorage.setItem(key, JSON.stringify({ day, prompts }))
-        } catch {
-          // ignore
-        }
-      })
+      .then(apply)
       .catch(() => {
-        if (!cancelled) setPersonalizedSuggestions([...DEFAULT_CHAT_SUGGESTIONS])
+        /* keep defaults */
       })
 
     return () => {
       cancelled = true
+      if (refetchTimer !== undefined) window.clearTimeout(refetchTimer)
     }
-  }, [hasPriorChatInteraction, userId])
+  }, [userId])
 
   const [replyContext, setReplyContext] = useState<{
     snippet: string
@@ -3012,16 +2991,6 @@ export default function ChatInterface({
 
   const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
 
-  function markFirstChatInteraction() {
-    try {
-      if (typeof window === 'undefined') return
-      localStorage.setItem(CHAT_HAS_INTERACTED_KEY, '1')
-      setHasPriorChatInteraction(true)
-    } catch {
-      // ignore
-    }
-  }
-
   async function handleSend() {
     const replyCtxSnapshot = replyContext
     const text = input.trim()
@@ -3051,7 +3020,6 @@ export default function ChatInterface({
       if (isSendBlocked) return
       const chatId = activeChatId || await createNewChat()
       if (!chatId) return
-      markFirstChatInteraction()
       const targetRuntime = ensureConversationRuntime(chatId)
 
       setInput('')
@@ -3340,7 +3308,6 @@ export default function ChatInterface({
     const wasFirst = isFirstMessage
     const chatId = activeChatId || await createNewChat()
     if (!chatId) return
-    markFirstChatInteraction()
     const targetRuntime = ensureConversationRuntime(chatId)
 
     shouldScrollRef.current = true
@@ -3643,15 +3610,12 @@ export default function ChatInterface({
   const primaryMessages = chat0.messages
   const hasMessages = primaryMessages.some((m) => m.role === 'user')
   const hasHistory = hasMessages || generationResults.size > 0
-  /** Empty text chat: center composer + suggestions; after first message, dock composer to bottom. */
-  const showCenteredTextEmpty = !hasHistory && generationMode === 'text'
+  /** Empty chat (any modality): center composer + suggestions; after first message, dock composer to bottom. */
+  const showCenteredEmptyChat = !hasHistory
   const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
   const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
 
   const greetingLine = chatGreetingLine(firstName)
-  const suggestionPrompts: string[] | null = hasPriorChatInteraction
-    ? [...DEFAULT_CHAT_SUGGESTIONS]
-    : personalizedSuggestions
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -4037,46 +4001,13 @@ export default function ChatInterface({
           </div>
         </div>
 
-        {/* Messages (hidden while text-mode empty — composer is centered below) */}
-        {(hasHistory || !showCenteredTextEmpty) && (
+        {/* Messages — only after first exchange; empty chat keeps composer centered below */}
+        {hasHistory && (
         <div
           ref={messagesScrollRef}
           className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
         >
           <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
-            {!hasHistory && !showCenteredTextEmpty && (
-              <div className="flex flex-1 items-center justify-center px-1 sm:px-0">
-                <div className="w-full max-w-xl text-center">
-                  <p className="mb-6 text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
-                    {greetingLine}
-                  </p>
-                  {suggestionPrompts === null && !hasPriorChatInteraction ? (
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {[0, 1, 2, 3].map((i) => (
-                        <div
-                          key={i}
-                          className="h-[4.5rem] rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] animate-pulse"
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
-                      {(suggestionPrompts ?? [...DEFAULT_CHAT_SUGGESTIONS]).map((prompt) => (
-                        <button
-                          key={prompt}
-                          type="button"
-                          className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug hover:bg-[var(--surface-muted)] transition-colors"
-                          onClick={() => setInput(prompt)}
-                        >
-                          {prompt}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
             {(() => {
               const blocks: React.ReactNode[] = []
               let exchIdx = 0
@@ -4344,12 +4275,12 @@ export default function ChatInterface({
 
         {/* Input — centered on empty text chat; docks to bottom once there is history */}
         <div
-          className={`flex flex-col ${showCenteredTextEmpty ? 'flex-1 min-h-0 justify-center' : 'shrink-0'} ${
-            !showCenteredTextEmpty ? 'px-3 pb-3 sm:px-4 sm:pb-4' : 'px-4 pb-4'
+          className={`flex flex-col ${showCenteredEmptyChat ? 'flex-1 min-h-0 justify-center' : 'shrink-0'} ${
+            !showCenteredEmptyChat ? 'px-3 pb-3 sm:px-4 sm:pb-4' : 'px-4 pb-4'
           }`}
         >
           <AnimatePresence initial={false}>
-            {showCenteredTextEmpty && (
+            {showCenteredEmptyChat && (
               <motion.div
                 key="chat-empty-hero"
                 initial={{ opacity: 1 }}
@@ -4410,10 +4341,18 @@ export default function ChatInterface({
             </div>
           )}
           <motion.div
-            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-            className={`mx-auto w-full transition-[max-width] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-              showCenteredTextEmpty ? 'max-w-xl' : 'max-w-4xl'
-            }`}
+            initial={false}
+            animate={{
+              maxWidth: showCenteredEmptyChat ? '36rem' : '56rem',
+            }}
+            transition={{
+              maxWidth: {
+                duration: 0.78,
+                ease: [0.16, 1, 0.3, 1],
+              },
+            }}
+            style={{ width: '100%' }}
+            className="mx-auto will-change-[max-width]"
           >
             {attachmentError && (
               <div
@@ -4620,7 +4559,7 @@ export default function ChatInterface({
             )}
           </motion.div>
           <AnimatePresence initial={false}>
-            {showCenteredTextEmpty && (
+            {showCenteredEmptyChat && (
               <motion.div
                 key="chat-suggestions"
                 initial={{ opacity: 1 }}
@@ -4628,29 +4567,18 @@ export default function ChatInterface({
                 transition={{ duration: 0.12 }}
                 className="mx-auto mt-6 w-full max-w-xl"
               >
-                {suggestionPrompts === null && !hasPriorChatInteraction ? (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {[0, 1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        className="h-[4.5rem] rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] animate-pulse"
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
-                    {(suggestionPrompts ?? [...DEFAULT_CHAT_SUGGESTIONS]).map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug transition-colors hover:bg-[var(--surface-muted)]"
-                        onClick={() => setInput(prompt)}
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
+                  {emptyChatStarters.map((prompt, idx) => (
+                    <button
+                      key={`empty-starter-${idx}`}
+                      type="button"
+                      className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug transition-colors hover:bg-[var(--surface-muted)]"
+                      onClick={() => setInput(prompt)}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

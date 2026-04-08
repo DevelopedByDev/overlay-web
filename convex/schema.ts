@@ -123,6 +123,9 @@ export default defineSchema({
     lastName: v.optional(v.string()),
     profilePictureUrl: v.optional(v.string()),
     lastLoginAt: v.optional(v.number()),
+    /** Personalized empty-state prompts; refreshed daily (UTC) via /api/app/chat-suggestions. */
+    chatStarterPrompts: v.optional(v.array(v.string())),
+    chatStarterDay: v.optional(v.string()),
     // Legacy fields kept only so older rows continue to validate during deploys.
     autoRefillEnabled: v.optional(v.boolean()),
     overlayStorageBytesUsed: v.optional(v.number()),

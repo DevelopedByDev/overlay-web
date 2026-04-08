@@ -215,3 +215,49 @@ export const getUserProfile = query({
     }
   },
 })
+
+/** Server-only: read persisted personalized chat starters (see chatStarterDay for daily refresh). */
+export const getChatStartersByServer = query({
+  args: { serverSecret: v.string(), userId: v.string() },
+  handler: async (ctx, { serverSecret, userId }) => {
+    requireServerSecret(serverSecret)
+    const sub = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    if (!sub) return null
+    const prompts = sub.chatStarterPrompts
+    const day = sub.chatStarterDay
+    if (!Array.isArray(prompts) || prompts.length !== 4 || typeof day !== 'string' || !day.trim()) {
+      return null
+    }
+    return { prompts: prompts.map((p) => String(p)), day: day.trim() }
+  },
+})
+
+/** Server-only: persist starters after generation (one row per user in subscriptions). */
+export const setChatStartersByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    prompts: v.array(v.string()),
+    day: v.string(),
+  },
+  handler: async (ctx, { serverSecret, userId, prompts, day }) => {
+    requireServerSecret(serverSecret)
+    const trimmed = prompts.map((p) => p.trim()).filter(Boolean)
+    if (trimmed.length !== 4) {
+      throw new Error('setChatStartersByServer: expected exactly 4 non-empty prompts')
+    }
+    const sub = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    if (!sub) return { ok: false as const }
+    await ctx.db.patch(sub._id, {
+      chatStarterPrompts: trimmed,
+      chatStarterDay: day.trim(),
+    })
+    return { ok: true as const }
+  },
+})
