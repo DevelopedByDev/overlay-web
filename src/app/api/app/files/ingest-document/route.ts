@@ -45,6 +45,14 @@ function extOf(name: string): string {
   return i >= 0 ? name.slice(i + 1).toLowerCase() : ''
 }
 
+/** Reject junk query params so Convex `db.get` never sees malformed ids. */
+function sanitizeConvexIdParam(value: string | undefined): string | undefined {
+  if (!value?.trim()) return undefined
+  const s = value.trim()
+  if (!/^[a-z0-9]+$/i.test(s) || s.length < 16 || s.length > 64) return undefined
+  return s
+}
+
 function isPdf(file: File, ext: string): boolean {
   return ext === 'pdf' || file.type === 'application/pdf'
 }
@@ -92,12 +100,12 @@ export async function POST(request: NextRequest) {
 
     const form = await request.formData()
     const raw = form.get('file')
-    const projectIdRaw = form.get('projectId')
-    const projectId =
-      typeof projectIdRaw === 'string' && projectIdRaw.trim() ? projectIdRaw.trim() : undefined
-    const parentIdRaw = form.get('parentId')
-    const parentId =
-      typeof parentIdRaw === 'string' && parentIdRaw.trim() ? parentIdRaw.trim() : undefined
+    const projectId = sanitizeConvexIdParam(
+      typeof form.get('projectId') === 'string' ? (form.get('projectId') as string) : undefined,
+    )
+    const parentId = sanitizeConvexIdParam(
+      typeof form.get('parentId') === 'string' ? (form.get('parentId') as string) : undefined,
+    )
 
     const serverSecret = getInternalApiSecret()
 
@@ -146,28 +154,55 @@ export async function POST(request: NextRequest) {
     await uploadBuffer(r2Key, buf, mimeType)
 
     const parts = splitTextForConvexDocuments(text)
+    if (parts.length === 0) {
+      return NextResponse.json({ error: 'No extractable text in file' }, { status: 400 })
+    }
     const ids: string[] = []
     const total = parts.length
     for (let p = 0; p < parts.length; p++) {
       const partName = partedFileName(safeName, p + 1, total)
-      const fid = await convex.mutation<Id<'files'>>('files:create', {
-        userId: session.user.id,
-        serverSecret,
-        name: partName,
-        type: 'file',
-        content: parts[p],
-        contentHash: hashTextContent(parts[p]!),
-        projectId,
-        parentId,
-        ...(p === 0
-          ? {
-              r2Key,
-              sizeBytesOverride: Math.max(0, Math.round(raw.size)),
-            }
-          : {}),
-      })
-      if (!fid) {
-        return NextResponse.json({ error: 'Failed to save document part' }, { status: 500 })
+      let fid: Id<'files'>
+      try {
+        const created = await convex.mutation<Id<'files'>>(
+          'files:create',
+          {
+            userId: session.user.id,
+            serverSecret,
+            name: partName,
+            type: 'file',
+            content: parts[p],
+            contentHash: hashTextContent(parts[p]!),
+            projectId,
+            parentId,
+            ...(p === 0
+              ? {
+                  r2Key,
+                  sizeBytesOverride: Math.max(0, Math.round(raw.size)),
+                }
+              : {}),
+          },
+          { throwOnError: true },
+        )
+        if (!created) {
+          return NextResponse.json({ error: 'Could not save indexed document.' }, { status: 500 })
+        }
+        fid = created
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error('[ingest-document] files:create:', e)
+        if (/unauthorized/i.test(msg)) {
+          return NextResponse.json(
+            {
+              error:
+                'Cannot attach this document to the selected project. Check project access or open chat without an invalid project link.',
+            },
+            { status: 403 },
+          )
+        }
+        if (/storage|quota|limit exceeded/i.test(msg)) {
+          return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
+        }
+        return NextResponse.json({ error: 'Could not save indexed document. Try again.' }, { status: 500 })
       }
       ids.push(fid)
     }
@@ -176,6 +211,14 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.message.includes('storage_limit_exceeded')) {
       return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
+    }
+    if (error instanceof Error && error.message.includes('INTERNAL_API_SECRET')) {
+      console.error('[ingest-document] missing INTERNAL_API_SECRET')
+      return NextResponse.json({ error: 'Server configuration error (auth secret).' }, { status: 503 })
+    }
+    if (error instanceof Error && error.message.includes('[R2]')) {
+      console.error('[ingest-document] R2 misconfiguration:', error.message)
+      return NextResponse.json({ error: 'File storage is not available.' }, { status: 503 })
     }
     console.error('[ingest-document]', error)
     return NextResponse.json({ error: 'Failed to ingest document' }, { status: 500 })

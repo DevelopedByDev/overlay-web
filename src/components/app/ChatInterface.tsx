@@ -2399,7 +2399,14 @@ export default function ChatInterface({
   const showOwnSidebar = !hideSidebar && settings.useSecondarySidebar
   const idParam = searchParams?.get('id') ?? null
   /** When chat is opened inside a project, files/docs attach to this project for search scoping. */
-  const embedProjectId = hideSidebar ? searchParams?.get('projectId') ?? null : null
+  const rawEmbedProjectId = hideSidebar ? searchParams?.get('projectId')?.trim() ?? null : null
+  const embedProjectId =
+    rawEmbedProjectId &&
+    /^[a-z0-9]+$/i.test(rawEmbedProjectId) &&
+    rawEmbedProjectId.length >= 16 &&
+    rawEmbedProjectId.length <= 64
+      ? rawEmbedProjectId
+      : null
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (idParam) void loadChat(idParam) }, [idParam])
 
@@ -2928,7 +2935,11 @@ export default function ChatInterface({
     const form = new FormData()
     form.append('file', file)
     if (embedProjectId) form.append('projectId', embedProjectId)
-    void fetch('/api/app/files/ingest-document', { method: 'POST', body: form })
+    void fetch('/api/app/files/ingest-document', {
+      method: 'POST',
+      body: form,
+      credentials: 'same-origin',
+    })
       .then(async (res) => {
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as { error?: string }
@@ -4294,66 +4305,58 @@ export default function ChatInterface({
               </motion.div>
             )}
           </AnimatePresence>
-          {(attachedImages.length > 0 || pendingChatDocuments.length > 0) && (
-            <div className="mx-auto w-full max-w-4xl mb-2 flex flex-wrap gap-2">
-              {attachedImages.map((img, i) => (
-                <div key={`img-${i}`} className="relative group">
-                  <img src={img.dataUrl} alt={img.name}
-                    className="w-16 h-16 object-cover rounded-lg border border-[var(--border)]" />
-                  <button
-                    onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[var(--foreground)] text-[var(--background)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X size={9} />
-                  </button>
-                </div>
-              ))}
-              {pendingChatDocuments.map((doc) => (
-                <div
-                  key={doc.clientId}
-                  className="relative group flex items-center gap-2 max-w-[220px] px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-xs text-[var(--muted)]"
-                >
-                  <FileText size={14} className="shrink-0 text-[var(--muted)]" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-[var(--foreground)]">{doc.name}</p>
-                    {doc.status === 'uploading' && (
-                      <p className="text-[10px] text-[var(--muted-light)] mt-0.5 animate-pulse">Indexing…</p>
-                    )}
-                    {doc.status === 'ready' && (
-                      <p className="text-[10px] text-emerald-600 mt-0.5">Indexed</p>
-                    )}
-                    {doc.status === 'error' && (
-                      <p className="text-[10px] text-red-500 mt-0.5 truncate" title={doc.error}>
-                        {doc.error ?? 'Failed'}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removePendingDocument(doc.clientId)}
-                    className="shrink-0 p-0.5 rounded hover:bg-[var(--surface-subtle)] text-[var(--muted-light)]"
-                    aria-label="Remove"
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <motion.div
-            initial={false}
-            animate={{
-              maxWidth: showCenteredEmptyChat ? '36rem' : '56rem',
-            }}
-            transition={{
-              maxWidth: {
-                duration: 0.78,
-                ease: [0.16, 1, 0.3, 1],
-              },
-            }}
-            style={{ width: '100%' }}
-            className="mx-auto will-change-[max-width]"
+          {/* Use CSS max-width (not motion maxWidth) so the composer column is always capped; framer omitted maxWidth on first paint and chips could span full viewport. */}
+          <div
+            className={`mx-auto w-full min-w-0 transition-[max-width] duration-[780ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              showCenteredEmptyChat ? 'max-w-[36rem]' : 'max-w-[56rem]'
+            }`}
           >
+            {(attachedImages.length > 0 || pendingChatDocuments.length > 0) && (
+              <div className="mb-2 flex min-w-0 flex-wrap gap-2">
+                {attachedImages.map((img, i) => (
+                  <div key={`img-${i}`} className="relative group">
+                    <img src={img.dataUrl} alt={img.name}
+                      className="w-16 h-16 object-cover rounded-lg border border-[var(--border)]" />
+                    <button
+                      onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[var(--foreground)] text-[var(--background)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={9} />
+                    </button>
+                  </div>
+                ))}
+                {pendingChatDocuments.map((doc) => (
+                  <div
+                    key={doc.clientId}
+                    className="relative group flex min-w-0 max-w-full items-center gap-2 px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-xs text-[var(--muted)] sm:max-w-[min(100%,220px)]"
+                  >
+                    <FileText size={14} className="shrink-0 text-[var(--muted)]" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-[var(--foreground)]">{doc.name}</p>
+                      {doc.status === 'uploading' && (
+                        <p className="text-[10px] text-[var(--muted-light)] mt-0.5 animate-pulse">Indexing…</p>
+                      )}
+                      {doc.status === 'ready' && (
+                        <p className="text-[10px] text-emerald-600 mt-0.5">Indexed</p>
+                      )}
+                      {doc.status === 'error' && (
+                        <p className="text-[10px] text-red-500 mt-0.5 truncate" title={doc.error}>
+                          {doc.error ?? 'Failed'}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePendingDocument(doc.clientId)}
+                      className="shrink-0 p-0.5 rounded hover:bg-[var(--surface-subtle)] text-[var(--muted-light)]"
+                      aria-label="Remove"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {attachmentError && (
               <div
                 className="mb-2 flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs"
@@ -4557,7 +4560,7 @@ export default function ChatInterface({
                 </div>
               </div>
             )}
-          </motion.div>
+          </div>
           <AnimatePresence initial={false}>
             {showCenteredEmptyChat && (
               <motion.div
@@ -4565,7 +4568,7 @@ export default function ChatInterface({
                 initial={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.12 }}
-                className="mx-auto mt-6 w-full max-w-xl"
+                className="mx-auto mt-6 w-full max-w-[36rem] min-w-0 px-0"
               >
                 <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
                   {emptyChatStarters.map((prompt, idx) => (

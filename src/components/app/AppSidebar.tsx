@@ -44,6 +44,14 @@ const PROFILE_APP_LINKS = [
   { label: 'Desktop App', icon: Monitor, href: 'https://getoverlay.io' },
 ] as const
 
+const SETTINGS_SECTIONS = [
+  { id: 'general', label: 'General' },
+  { id: 'account', label: 'Account' },
+  { id: 'customization', label: 'Customization' },
+  { id: 'models', label: 'Models' },
+  { id: 'contact', label: 'Contact' },
+] as const
+
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   creditsUsed: number
@@ -116,6 +124,8 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   const chatOpen = pathname.startsWith('/app/chat')
   const toolsOpen = pathname.startsWith('/app/tools')
   const knowledgeOpen = pathname.startsWith('/app/knowledge')
+  const settingsPathActive = pathname.startsWith('/app/settings')
+  const settingsSection = searchParams?.get('section') ?? 'general'
   const inlineSecondaryDisabled = !settings.useSecondarySidebar
   const knowledgeView = (() => {
     const current = searchParams?.get('view')
@@ -178,6 +188,9 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     window.addEventListener('keydown', onNavShortcut, true)
     return () => window.removeEventListener('keydown', onNavShortcut, true)
   }, [pathname, router])
+
+  /** Sub-items only while the settings route is open (avoids orphan dropdown state off-route). */
+  const settingsNavExpanded = settingsPathActive
 
   useEffect(() => {
     if (!accountMenuOpen) return
@@ -430,6 +443,55 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               </div>
             )
           })}
+          <div className="mt-1 border-t border-[var(--border)] pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (settingsPathActive) return
+                setMobileMenuOpen(false)
+                setPendingNav({ href: '/app/settings', fromPath: pathname })
+                router.push('/app/settings')
+              }}
+              title="Settings"
+              className={`group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
+                settingsPathActive
+                  ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              <Settings size={15} />
+              <div className="min-w-0 flex-1 text-left">Settings</div>
+              <span
+                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-light)] transition-transform ${
+                  settingsNavExpanded ? '' : '-rotate-90'
+                }`}
+                aria-hidden
+              >
+                <ChevronDown size={13} />
+              </span>
+            </button>
+            {settingsNavExpanded ? (
+              <div className="mt-1 space-y-0.5 pl-7">
+                {SETTINGS_SECTIONS.map(({ id, label }) => {
+                  const active = settingsPathActive && settingsSection === id
+                  return (
+                    <Link
+                      key={id}
+                      href={`/app/settings?section=${id}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`flex w-full items-center rounded-md px-3 py-1.5 text-xs transition-colors ${
+                        active
+                          ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                          : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      <span className="flex-1 text-left">{label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            ) : null}
+          </div>
         </nav>
 
         {inlineSecondaryDisabled && (chatOpen || notesOpen || projectsOpen) ? (
@@ -494,17 +556,6 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                 ))}
               </div>
               <div className="border-t border-[var(--border)]">
-                <Link
-                  href="/app/settings"
-                  onClick={() => {
-                    setAccountMenuOpen(false)
-                    setMobileMenuOpen(false)
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <Settings size={13} />
-                  Settings
-                </Link>
                 <Link
                   href="/account"
                   onClick={() => {
@@ -609,14 +660,6 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   ))}
                 </div>
                 <div className="border-t border-[var(--border)]">
-                  <Link
-                    href="/app/settings"
-                    onClick={() => setMobileAccountOpen(false)}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <Settings size={13} />
-                    Settings
-                  </Link>
                   <Link
                     href="/account"
                     onClick={() => setMobileAccountOpen(false)}
