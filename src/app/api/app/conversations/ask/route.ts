@@ -7,7 +7,7 @@ import { convex } from '@/lib/convex'
 import { listMemories } from '@/lib/app-store'
 import { getGatewayLanguageModel, getGatewayPerplexitySearchTool } from '@/lib/ai-gateway'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
-import { FREE_TIER_AUTO_MODEL_ID, getModel } from '@/lib/models'
+import { FREE_TIER_AUTO_MODEL_ID, modelUsesOpenRouterTransport } from '@/lib/models'
 import {
   buildOpenRouterMessagesFromUi,
   encodeAssistantTextAsUiDataStream,
@@ -505,7 +505,7 @@ export async function POST(request: NextRequest) {
       })
     } catch (err) {
       console.error('[conversations/ask] streamText failed:', summarizeErrorForLog(err))
-      const isOpenRouter = getModel(effectiveModelId)?.provider === 'openrouter'
+      const isOpenRouter = modelUsesOpenRouterTransport(effectiveModelId)
       if (isOpenRouter && shouldFallbackOpenRouterWithoutTools(err)) {
         const fallbackSystem =
           systemWithTools +

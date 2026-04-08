@@ -131,6 +131,12 @@ export function getModel(id: string): ChatModel | undefined {
   return AVAILABLE_MODELS.find((m) => m.id === resolved)
 }
 
+/** True when completions are served via the OpenRouter HTTP API (incl. Qwen catalog ids). */
+export function modelUsesOpenRouterTransport(modelId: string): boolean {
+  const p = getModel(modelId)?.provider
+  return p === 'openrouter' || p === 'alibaba'
+}
+
 /** UI labels — resolves legacy / gateway ids (e.g. Kimi instruct variant) to catalog names. */
 export function getChatModelDisplayName(modelId: string): string {
   return getModel(modelId)?.name ?? modelId

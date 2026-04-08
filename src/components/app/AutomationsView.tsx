@@ -116,11 +116,19 @@ function summarizeRunDetailText(detail: AutomationRunDetail): string | undefined
 }
 
 function getHealthBadgeClasses(label: string): string {
-  if (label === 'Needs attention') return 'bg-red-50 text-red-600'
-  if (label === 'Queued') return 'bg-amber-50 text-amber-700'
-  if (label === 'Running') return 'bg-blue-50 text-blue-700'
-  if (label === 'Paused' || label === 'Archived') return 'bg-[#f2f2f2] text-[#777]'
-  return 'bg-[#eefaf0] text-[#2f7d47]'
+  if (label === 'Needs attention') {
+    return 'border border-red-500/25 bg-red-500/10 text-red-600'
+  }
+  if (label === 'Queued') {
+    return 'border border-amber-500/25 bg-amber-500/10 text-amber-800'
+  }
+  if (label === 'Running') {
+    return 'border border-sky-500/25 bg-sky-500/10 text-sky-800'
+  }
+  if (label === 'Paused' || label === 'Archived') {
+    return 'border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]'
+  }
+  return 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-800'
 }
 
 function toDatetimeLocalValue(ts?: number): string {
@@ -183,7 +191,7 @@ function AutomationActions({
         type="button"
         onClick={onRun}
         disabled={running}
-        className="inline-flex items-center gap-1 rounded-md bg-[#0a0a0a] px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-[#222] disabled:opacity-50"
+        className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
       >
         {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
         Run
@@ -191,7 +199,7 @@ function AutomationActions({
       <button
         type="button"
         onClick={onEdit}
-        className="inline-flex items-center justify-center rounded-md border border-[#e5e5e5] p-1.5 text-[#666] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+        className="inline-flex items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
       >
         <Pencil size={12} />
       </button>
@@ -199,7 +207,7 @@ function AutomationActions({
         type="button"
         onClick={onDelete}
         disabled={deleting}
-        className="inline-flex items-center justify-center rounded-md border border-[#e5e5e5] p-1.5 text-[#888] transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+        className="inline-flex items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-1.5 text-[var(--muted)] transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-600 disabled:opacity-50"
       >
         {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
       </button>
@@ -230,16 +238,16 @@ function RunDetailDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[#e5e5e5] bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[#e5e5e5] px-5 py-4">
+      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div>
-            <h3 className="text-sm font-medium text-[#0a0a0a]">Run detail</h3>
-            <p className="text-[11px] text-[#888]">
+            <h3 className="text-sm font-medium text-[var(--foreground)]">Run detail</h3>
+            <p className="text-[11px] text-[var(--muted)]">
               {detail?.automation?.title || 'Automation run'}
             </p>
           </div>
@@ -249,7 +257,7 @@ function RunDetailDialog({
                 type="button"
                 onClick={() => void onRetryRun()}
                 disabled={retrying}
-                className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
               >
                 {retrying ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                 Retry run
@@ -258,7 +266,7 @@ function RunDetailDialog({
             <button
               type="button"
               onClick={onClose}
-              className="rounded p-1 text-[#888] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+              className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
             >
               <X size={16} />
             </button>
@@ -267,22 +275,22 @@ function RunDetailDialog({
 
         <div className="max-h-[75vh] space-y-4 overflow-y-auto px-5 py-5">
           {loading || !detail ? (
-            <div className="flex items-center gap-2 rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-sm text-[#666]">
+            <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-sm text-[var(--muted)]">
               <Loader2 size={14} className="animate-spin" />
               Loading run details…
             </div>
           ) : (
             <>
-              <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4">
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-[#666]">
+                  <span className="rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
                     {getAutomationRunStatusLabel(detail.run.status)}
                   </span>
-                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-[#666]">
+                  <span className="rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
                     {detail.run.triggerSource}
                   </span>
                 </div>
-                <div className="mt-3 grid gap-2 text-[12px] text-[#666] sm:grid-cols-2">
+                <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
                   <p>Scheduled: {formatDateTime(detail.run.scheduledFor, timezone)}</p>
                   <p>Started: {formatDateTime(detail.run.startedAt, timezone)}</p>
                   <p>Finished: {formatDateTime(detail.run.finishedAt, timezone)}</p>
@@ -292,13 +300,13 @@ function RunDetailDialog({
                   <p>Attempt: {detail.run.attemptNumber ?? 1}</p>
                 </div>
                 {detail.run.turnId ? (
-                  <p className="mt-2 text-[11px] text-[#888]">Turn: <span className="font-mono">{detail.run.turnId}</span></p>
+                  <p className="mt-2 text-[11px] text-[var(--muted)]">Turn: <span className="font-mono">{detail.run.turnId}</span></p>
                 ) : null}
                 {detail.run.conversationId ? (
-                  <p className="mt-1 text-[11px] text-[#888]">Conversation: <span className="font-mono">{detail.run.conversationId}</span></p>
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">Conversation: <span className="font-mono">{detail.run.conversationId}</span></p>
                 ) : null}
                 {detail.relatedRetryRun ? (
-                  <div className="mt-3 rounded-lg border border-[#f1e2b8] bg-[#fff9ec] px-3 py-2 text-[11px] text-[#8a6a17]">
+                  <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-900">
                     Retry {getAutomationRunStatusLabel(detail.relatedRetryRun.status).toLowerCase()} for{' '}
                     {formatDateTime(detail.relatedRetryRun.scheduledFor, timezone)}
                     {detail.relatedRetryRun.attemptNumber
@@ -309,18 +317,18 @@ function RunDetailDialog({
               </div>
 
               <div className="space-y-2">
-                <h4 className="text-sm font-medium text-[#0a0a0a]">Prompt snapshot</h4>
-                <pre className="overflow-x-auto rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-[11px] leading-relaxed text-[#444] whitespace-pre-wrap">
+                <h4 className="text-sm font-medium text-[var(--foreground)]">Prompt snapshot</h4>
+                <pre className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
                   {detail.run.promptSnapshot}
                 </pre>
               </div>
 
               {detail.assistantMessage || detail.run.resultSummary || detail.run.errorMessage ? (
                 <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-[#0a0a0a]">
+                  <h4 className="text-sm font-medium text-[var(--foreground)]">
                     {detail.run.status === 'failed' ? 'Failure' : 'Result'}
                   </h4>
-                  <div className="rounded-xl border border-[#e5e5e5] bg-white p-4 text-[12px] leading-relaxed text-[#555] whitespace-pre-wrap">
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-[12px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
                     {summarizeRunDetailText(detail)}
                   </div>
                 </div>
@@ -328,26 +336,32 @@ function RunDetailDialog({
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-[#0a0a0a]">Tools</h4>
+                  <h4 className="text-sm font-medium text-[var(--foreground)]">Tools</h4>
                   {detail.tools.length === 0 ? (
-                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-[12px] text-[#888]">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[12px] text-[var(--muted)]">
                       No tool invocations recorded for this run.
                     </div>
                   ) : (
                     <div className="space-y-2">
                       {detail.tools.map((tool) => (
-                        <div key={tool._id} className="rounded-xl border border-[#e5e5e5] bg-white p-3">
+                        <div key={tool._id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3">
                           <div className="flex items-center justify-between gap-3">
-                            <p className="text-[12px] font-medium text-[#0a0a0a]">{tool.toolId}</p>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] ${tool.success ? 'bg-[#eefaf0] text-[#2f7d47]' : 'bg-red-50 text-red-500'}`}>
+                            <p className="text-[12px] font-medium text-[var(--foreground)]">{tool.toolId}</p>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] ${
+                                tool.success
+                                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-800'
+                                  : 'border border-red-500/25 bg-red-500/10 text-red-600'
+                              }`}
+                            >
                               {tool.success ? 'success' : 'failed'}
                             </span>
                           </div>
-                          <p className="mt-1 text-[11px] text-[#888]">
+                          <p className="mt-1 text-[11px] text-[var(--muted)]">
                             {tool.costBucket} {tool.durationMs ? `· ${formatDuration(tool.durationMs)}` : ''}
                           </p>
                           {tool.errorMessage ? (
-                            <p className="mt-1 text-[11px] text-red-500">{tool.errorMessage}</p>
+                            <p className="mt-1 text-[11px] text-red-600">{tool.errorMessage}</p>
                           ) : null}
                         </div>
                       ))}
@@ -356,9 +370,9 @@ function RunDetailDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-[#0a0a0a]">Artifacts</h4>
+                  <h4 className="text-sm font-medium text-[var(--foreground)]">Artifacts</h4>
                   {detail.outputs.length === 0 ? (
-                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-[12px] text-[#888]">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[12px] text-[var(--muted)]">
                       No outputs were attached to this run.
                     </div>
                   ) : (
@@ -369,15 +383,15 @@ function RunDetailDialog({
                           href={output.url ?? `/api/app/outputs/${output._id}/content`}
                           target="_blank"
                           rel="noreferrer"
-                          className="block rounded-xl border border-[#e5e5e5] bg-white p-3 transition-colors hover:bg-[#fafafa]"
+                          className="block rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 transition-colors hover:bg-[var(--surface-muted)]"
                         >
                           <div className="flex items-center justify-between gap-3">
-                            <p className="truncate text-[12px] font-medium text-[#0a0a0a]">
+                            <p className="truncate text-[12px] font-medium text-[var(--foreground)]">
                               {output.fileName || output._id}
                             </p>
-                            <span className="text-[10px] text-[#888]">{output.type}</span>
+                            <span className="text-[10px] text-[var(--muted)]">{output.type}</span>
                           </div>
-                          <p className="mt-1 text-[11px] text-[#888]">
+                          <p className="mt-1 text-[11px] text-[var(--muted)]">
                             {output.sizeBytes ? `${Math.max(1, Math.round(output.sizeBytes / 1024))} KB` : 'Stored output'}
                           </p>
                         </a>
@@ -553,12 +567,12 @@ function AutomationDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="flex w-full max-w-3xl flex-col rounded-xl border border-[#e5e5e5] bg-white shadow-xl" style={{ maxHeight: 'calc(100vh - 48px)' }}>
-        <div className="flex items-center justify-between border-b border-[#e5e5e5] px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="flex w-full max-w-3xl flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl" style={{ maxHeight: 'calc(100vh - 48px)' }}>
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div>
-            <h3 className="text-sm font-medium text-[#0a0a0a]">{isEdit ? 'Edit automation' : 'New automation'}</h3>
-            <p className="text-[11px] text-[#888]">{scheduleLabel}</p>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">{isEdit ? 'Edit automation' : 'New automation'}</h3>
+            <p className="text-[11px] text-[var(--muted)]">{scheduleLabel}</p>
           </div>
           <div className="flex items-center gap-2">
             {isEdit ? (
@@ -566,13 +580,13 @@ function AutomationDialog({
                 type="button"
                 onClick={() => void handleRunNow()}
                 disabled={running}
-                className="inline-flex items-center gap-1 rounded-md bg-[#0a0a0a] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#222] disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
               >
                 {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                 Run now
               </button>
             ) : null}
-            <button type="button" onClick={onClose} className="rounded p-1 text-[#888] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]">
+            <button type="button" onClick={onClose} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
               <X size={16} />
             </button>
           </div>
@@ -582,44 +596,44 @@ function AutomationDialog({
           <div className="min-h-0 overflow-y-auto px-5 py-5">
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Title</label>
+                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Title</label>
                 <input
                   ref={titleRef}
                   value={form.title}
                   onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))}
                   placeholder="e.g. Morning research brief"
-                  className="w-full rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2 text-sm text-[#0a0a0a] outline-none transition-colors focus:border-[#0a0a0a] focus:bg-white"
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)]"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Description</label>
+                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Description</label>
                 <input
                   value={form.description}
                   onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))}
                   placeholder="Short summary shown in the list"
-                  className="w-full rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2 text-sm text-[#0a0a0a] outline-none transition-colors focus:border-[#0a0a0a] focus:bg-white"
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)]"
                 />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Mode</label>
+                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Mode</label>
                   <select
                     value={form.mode}
                     onChange={(e) => setForm((current) => ({ ...current, mode: e.target.value as 'ask' | 'act' }))}
-                    className="w-full rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2 text-sm text-[#0a0a0a] outline-none focus:border-[#0a0a0a] focus:bg-white"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                   >
                     <option value="act">Act</option>
                     <option value="ask">Ask</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Status</label>
+                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Status</label>
                   <select
                     value={form.status}
                     onChange={(e) => setForm((current) => ({ ...current, status: e.target.value as FormState['status'] }))}
-                    className="w-full rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2 text-sm text-[#0a0a0a] outline-none focus:border-[#0a0a0a] focus:bg-white"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                   >
                     <option value="active">Active</option>
                     <option value="paused">Paused</option>
@@ -629,19 +643,19 @@ function AutomationDialog({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Automation source</label>
+                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Automation source</label>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={() => setForm((current) => ({ ...current, sourceType: 'skill' }))}
-                    className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${form.sourceType === 'skill' ? 'border-[#0a0a0a] bg-white text-[#0a0a0a]' : 'border-[#e5e5e5] bg-[#fafafa] text-[#666]'}`}
+                    className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${form.sourceType === 'skill' ? 'border-[var(--border)] bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm' : 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]'}`}
                   >
                     Use an existing skill
                   </button>
                   <button
                     type="button"
                     onClick={() => setForm((current) => ({ ...current, sourceType: 'inline' }))}
-                    className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${form.sourceType === 'inline' ? 'border-[#0a0a0a] bg-white text-[#0a0a0a]' : 'border-[#e5e5e5] bg-[#fafafa] text-[#666]'}`}
+                    className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${form.sourceType === 'inline' ? 'border-[var(--border)] bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm' : 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]'}`}
                   >
                     Write inline markdown
                   </button>
@@ -650,11 +664,11 @@ function AutomationDialog({
 
               {form.sourceType === 'skill' ? (
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Skill</label>
+                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Skill</label>
                   <select
                     value={form.skillId}
                     onChange={(e) => setForm((current) => ({ ...current, skillId: e.target.value }))}
-                    className="w-full rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2 text-sm text-[#0a0a0a] outline-none focus:border-[#0a0a0a] focus:bg-white"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                   >
                     <option value="">Select a skill</option>
                     {skills.filter((skill) => skill.enabled !== false).map((skill) => (
@@ -664,24 +678,24 @@ function AutomationDialog({
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Instructions</label>
+                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Instructions</label>
                   <textarea
                     value={form.instructionsMarkdown}
                     onChange={(e) => setForm((current) => ({ ...current, instructionsMarkdown: e.target.value }))}
                     rows={8}
                     placeholder="Describe what should happen when this automation runs."
-                    className="w-full resize-none rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2.5 font-mono text-xs leading-relaxed text-[#0a0a0a] outline-none transition-colors focus:border-[#0a0a0a] focus:bg-white"
+                    className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 font-mono text-xs leading-relaxed text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)]"
                   />
                 </div>
               )}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Model</label>
+                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Model</label>
                   <select
                     value={form.modelId}
                     onChange={(e) => setForm((current) => ({ ...current, modelId: e.target.value }))}
-                    className="w-full rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2 text-sm text-[#0a0a0a] outline-none focus:border-[#0a0a0a] focus:bg-white"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                   >
                     {AVAILABLE_MODELS.map((model) => (
                       <option key={model.id} value={model.id}>{model.name}</option>
@@ -689,27 +703,27 @@ function AutomationDialog({
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Timezone</label>
+                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Timezone</label>
                   <input
                     value={form.timezone}
                     onChange={(e) => setForm((current) => ({ ...current, timezone: e.target.value }))}
-                    className="w-full rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2 text-sm text-[#0a0a0a] outline-none transition-colors focus:border-[#0a0a0a] focus:bg-white"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)]"
                   />
                 </div>
               </div>
 
-              <div className="space-y-3 rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4">
-                <div className="flex items-center gap-2 text-sm text-[#0a0a0a]">
+              <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+                <div className="flex items-center gap-2 text-sm text-[var(--foreground)]">
                   <Calendar size={14} />
                   Schedule
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Frequency</label>
+                    <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Frequency</label>
                     <select
                       value={form.scheduleKind}
                       onChange={(e) => setForm((current) => ({ ...current, scheduleKind: e.target.value as AutomationScheduleKind }))}
-                      className="w-full rounded-lg border border-[#e5e5e5] bg-white px-3 py-2 text-sm text-[#0a0a0a] outline-none focus:border-[#0a0a0a]"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                     >
                       <option value="once">One time</option>
                       <option value="daily">Daily</option>
@@ -720,22 +734,22 @@ function AutomationDialog({
                   </div>
                   {form.scheduleKind === 'once' ? (
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Date & time</label>
+                      <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Date & time</label>
                       <input
                         type="datetime-local"
                         value={form.onceAt}
                         onChange={(e) => setForm((current) => ({ ...current, onceAt: e.target.value }))}
-                        className="w-full rounded-lg border border-[#e5e5e5] bg-white px-3 py-2 text-sm text-[#0a0a0a] outline-none focus:border-[#0a0a0a]"
+                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                       />
                     </div>
                   ) : (
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Time</label>
+                      <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Time</label>
                       <input
                         type="time"
                         value={form.localTime}
                         onChange={(e) => setForm((current) => ({ ...current, localTime: e.target.value }))}
-                        className="w-full rounded-lg border border-[#e5e5e5] bg-white px-3 py-2 text-sm text-[#0a0a0a] outline-none focus:border-[#0a0a0a]"
+                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                       />
                     </div>
                   )}
@@ -755,7 +769,7 @@ function AutomationDialog({
                               ? current.weekdays.filter((value) => value !== index)
                               : [...current.weekdays, index].sort((a, b) => a - b),
                           }))}
-                          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${active ? 'border-[#0a0a0a] bg-white text-[#0a0a0a]' : 'border-[#dedede] bg-white text-[#777]'}`}
+                          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${active ? 'border-[var(--border)] bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm' : 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]'}`}
                         >
                           {label}
                         </button>
@@ -766,14 +780,14 @@ function AutomationDialog({
 
                 {form.scheduleKind === 'monthly' ? (
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#888]">Day of month</label>
+                    <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Day of month</label>
                     <input
                       type="number"
                       min={1}
                       max={31}
                       value={form.dayOfMonth}
                       onChange={(e) => setForm((current) => ({ ...current, dayOfMonth: Number(e.target.value) || 1 }))}
-                      className="w-full rounded-lg border border-[#e5e5e5] bg-white px-3 py-2 text-sm text-[#0a0a0a] outline-none focus:border-[#0a0a0a]"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                     />
                   </div>
                 ) : null}
@@ -781,11 +795,11 @@ function AutomationDialog({
             </div>
           </div>
 
-          <div className="min-h-0 overflow-y-auto border-t border-[#e5e5e5] bg-[#fafafa] px-5 py-5 md:border-l md:border-t-0">
+          <div className="min-h-0 overflow-y-auto border-t border-[var(--border)] bg-[var(--surface-muted)] px-5 py-5 md:border-l md:border-t-0">
             <div className="space-y-4">
-              <div className="rounded-xl border border-[#e5e5e5] bg-white p-4 text-sm text-[#555]">
-                <p className="font-medium text-[#0a0a0a]">{form.title || 'Untitled automation'}</p>
-                <p className="mt-1 text-[12px] text-[#888]">{form.description || 'No description yet'}</p>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--foreground)]">
+                <p className="font-medium text-[var(--foreground)]">{form.title || 'Untitled automation'}</p>
+                <p className="mt-1 text-[12px] text-[var(--muted)]">{form.description || 'No description yet'}</p>
                 <div className="mt-3 space-y-1 text-[12px]">
                   <p>Schedule: {scheduleLabel}</p>
                   <p>Status: {getAutomationStatusLabel(form.status)}</p>
@@ -797,28 +811,28 @@ function AutomationDialog({
               {isEdit ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-[#0a0a0a]">Recent runs</h4>
-                    {loadingRuns ? <Loader2 size={13} className="animate-spin text-[#888]" /> : null}
+                    <h4 className="text-sm font-medium text-[var(--foreground)]">Recent runs</h4>
+                    {loadingRuns ? <Loader2 size={13} className="animate-spin text-[var(--muted)]" /> : null}
                   </div>
                   {loadingRuns ? (
-                    <div className="rounded-xl border border-[#e5e5e5] bg-white p-4 text-sm text-[#888]">Loading runs…</div>
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--muted)]">Loading runs…</div>
                   ) : runs.length === 0 ? (
-                    <div className="rounded-xl border border-[#e5e5e5] bg-white p-4 text-sm text-[#888]">No runs yet</div>
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--muted)]">No runs yet</div>
                   ) : runs.map((run) => (
                     <button
                       key={run._id}
                       type="button"
                       onClick={() => void handleOpenRunDetail(run._id)}
-                      className="block w-full rounded-xl border border-[#e5e5e5] bg-white p-3 text-left transition-colors hover:bg-[#fafafa]"
+                      className="block w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 text-left transition-colors hover:bg-[var(--surface-muted)]"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium text-[#0a0a0a]">{getAutomationRunStatusLabel(run.status)}</div>
-                        <div className="text-[11px] text-[#888]">{timeAgo(run.createdAt)}</div>
+                        <div className="text-sm font-medium text-[var(--foreground)]">{getAutomationRunStatusLabel(run.status)}</div>
+                        <div className="text-[11px] text-[var(--muted)]">{timeAgo(run.createdAt)}</div>
                       </div>
-                      <p className="mt-1 line-clamp-4 break-words text-[11px] text-[#888]">
+                      <p className="mt-1 line-clamp-4 break-words text-[11px] text-[var(--muted)]">
                         {summarizeRunPreviewText(run.resultSummary || run.errorMessage)}
                       </p>
-                      <p className="mt-2 text-[10px] uppercase tracking-[0.12em] text-[#bbb]">
+                      <p className="mt-2 text-[10px] uppercase tracking-[0.12em] text-[var(--muted-light)]">
                         View details
                       </p>
                     </button>
@@ -829,14 +843,14 @@ function AutomationDialog({
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-[#e5e5e5] px-5 py-3">
+        <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3">
           <div>
             {isEdit ? (
               <button
                 type="button"
                 onClick={() => void handleDelete()}
                 disabled={deleting}
-                className="inline-flex items-center gap-1 text-xs text-[#888] transition-colors hover:text-red-500 disabled:opacity-50"
+                className="inline-flex items-center gap-1 text-xs text-[var(--muted)] transition-colors hover:text-red-500 disabled:opacity-50"
               >
                 {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                 Delete
@@ -847,7 +861,7 @@ function AutomationDialog({
             type="button"
             onClick={() => void handleSave()}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#0a0a0a] px-4 py-1.5 text-xs text-white transition-colors hover:bg-[#222] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
             {saving ? 'Saving…' : isEdit ? 'Save' : 'Create'}
@@ -1002,23 +1016,33 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#e5e5e5] px-6">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
         <div>
-          <h2 className="text-sm font-medium text-[#0a0a0a]">Automations!</h2>
+          <h2 className="text-sm font-medium text-[var(--foreground)]">Automations</h2>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md border border-[#e5e5e5] bg-white p-1">
-            <button type="button" onClick={() => updateQuery('cards')} className={`rounded px-2 py-1 text-xs ${layout === 'cards' ? 'bg-[#0a0a0a] text-white' : 'text-[#666]'}`}>
+          <div className="flex items-center rounded-lg bg-[var(--surface-subtle)] p-0.5">
+            <button
+              type="button"
+              title="Card view"
+              onClick={() => updateQuery('cards')}
+              className={`rounded-md p-1.5 transition-colors ${layout === 'cards' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}
+            >
               <LayoutGrid size={13} />
             </button>
-            <button type="button" onClick={() => updateQuery('list')} className={`rounded px-2 py-1 text-xs ${layout === 'list' ? 'bg-[#0a0a0a] text-white' : 'text-[#666]'}`}>
+            <button
+              type="button"
+              title="List view"
+              onClick={() => updateQuery('list')}
+              className={`rounded-md p-1.5 transition-colors ${layout === 'list' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}
+            >
               <LayoutList size={13} />
             </button>
           </div>
           <button
             type="button"
             onClick={() => setDialog({ mode: 'create' })}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#0a0a0a] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#222]"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
           >
             <Plus size={12} />
             New automation
@@ -1028,19 +1052,19 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
 
       {loading ? (
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 size={20} className="animate-spin text-[#888]" />
+          <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
         </div>
       ) : automations.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4">
-          <Workflow size={40} strokeWidth={1} className="text-[#ccc]" />
+          <Workflow size={40} strokeWidth={1} className="text-[var(--muted-light)]" />
           <div className="space-y-1 text-center">
-            <p className="text-sm font-medium text-[#525252]">No automations yet</p>
-            <p className="text-xs text-[#aaa]">Create a scheduled workflow backed by a skill or inline markdown instructions.</p>
+            <p className="text-sm font-medium text-[var(--muted)]">No automations yet</p>
+            <p className="text-xs text-[var(--muted-light)]">Create a scheduled workflow backed by a skill or inline markdown instructions.</p>
           </div>
           <button
             type="button"
             onClick={() => setDialog({ mode: 'create' })}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#0a0a0a] px-4 py-2 text-sm text-white transition-colors hover:bg-[#222]"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
           >
             <Plus size={14} />
             New automation
@@ -1048,13 +1072,13 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
         </div>
       ) : layout === 'list' ? (
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
-          <div className="overflow-hidden rounded-xl border border-[#e5e5e5] bg-white">
+          <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]">
             {automations.map((automation) => (
-              <div key={automation._id} className="flex items-center gap-3 border-b border-[#f0f0f0] px-4 py-3 last:border-b-0">
+              <div key={automation._id} className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-b-0">
                 <button type="button" onClick={() => setDialog({ mode: 'edit', automation })} className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-medium text-[#0a0a0a]">{automation.title}</p>
-                    <span className="rounded-full bg-[#f5f5f5] px-2 py-0.5 text-[10px] text-[#666]">{getAutomationStatusLabel(automation.status)}</span>
+                    <p className="truncate text-sm font-medium text-[var(--foreground)]">{automation.title}</p>
+                    <span className="rounded-full bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">{getAutomationStatusLabel(automation.status)}</span>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] ${getHealthBadgeClasses(
                         getAutomationHealthLabel({
@@ -1069,8 +1093,8 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
                       })}
                     </span>
                   </div>
-                  <p className="mt-0.5 line-clamp-1 text-[11px] text-[#888]">{automation.description || 'No description'}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[#aaa]">
+                  <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--muted)]">{automation.description || 'No description'}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted-light)]">
                     <span>{formatAutomationSchedule(automation.scheduleKind, automation.scheduleConfig, automation.timezone)}</span>
                     <span>·</span>
                     <span>Next: {formatTimestamp(automation.nextRunAt, automation.timezone)}</span>
@@ -1094,18 +1118,18 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
           <div className="mx-auto max-w-5xl px-6 py-6">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {automations.map((automation) => (
-                <div key={automation._id} className="rounded-xl border border-[#e5e5e5] bg-white p-4">
+                <div key={automation._id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
                   <button type="button" onClick={() => setDialog({ mode: 'edit', automation })} className="block w-full text-left">
                     <div className="mb-3 flex items-start gap-2">
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#f5f5f5]">
-                        {automation.sourceType === 'skill' ? <Sparkles size={14} className="text-[#888]" /> : <Workflow size={14} className="text-[#888]" />}
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--surface-subtle)]">
+                        {automation.sourceType === 'skill' ? <Sparkles size={14} className="text-[var(--muted)]" /> : <Workflow size={14} className="text-[var(--muted)]" />}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-[#0a0a0a]">{automation.title}</p>
-                        <p className="mt-0.5 line-clamp-2 text-[11px] text-[#888]">{automation.description || 'No description'}</p>
+                        <p className="truncate text-sm font-medium text-[var(--foreground)]">{automation.title}</p>
+                        <p className="mt-0.5 line-clamp-2 text-[11px] text-[var(--muted)]">{automation.description || 'No description'}</p>
                       </div>
                     </div>
-                    <div className="space-y-1 text-[11px] text-[#888]">
+                    <div className="space-y-1 text-[11px] text-[var(--muted)]">
                       <p>{formatAutomationSchedule(automation.scheduleKind, automation.scheduleConfig, automation.timezone)}</p>
                       <p>Next: {formatTimestamp(automation.nextRunAt, automation.timezone)}</p>
                       <p>Last: {getAutomationRunStatusLabel(automation.lastRunStatus)}</p>
@@ -1113,7 +1137,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
                   </button>
                   <div className="mt-4 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-[#f5f5f5] px-2 py-0.5 text-[10px] text-[#666]">{getAutomationStatusLabel(automation.status)}</span>
+                      <span className="rounded-full bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">{getAutomationStatusLabel(automation.status)}</span>
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] ${getHealthBadgeClasses(
                           getAutomationHealthLabel({

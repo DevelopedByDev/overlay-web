@@ -37,7 +37,6 @@ import {
   getChatModelDisplayName,
   getModel,
   getModelsByIntelligence,
-  pickBestModelForAct,
   type ChatModel,
   type GenerationMode,
 } from '@/lib/models'
@@ -1829,6 +1828,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
   const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
   const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
+  /** After first paint — avoids free-tier Auto reset racing ahead of localStorage restore. */
+  const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
   const [isSwitchingChat, setIsSwitchingChat] = useState(false)
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
 
@@ -1857,6 +1858,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     if (savedAct) setSelectedActModel(savedAct)
     const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
     if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
+    setChatPrefsHydrated(true)
   }, [])
 
   const [exchangeModels, setExchangeModels] = useState<string[][]>([])
@@ -2124,7 +2126,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   }, [persistActiveRuntimeUiState])
 
   useEffect(() => {
-    if (!isFreeTier || activeChatId) return
+    if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
     const askAlreadyAuto =
       selectedModels.length === 1 && selectedModels[0] === FREE_TIER_AUTO_MODEL_ID
     const actAlreadyAuto = selectedActModel === FREE_TIER_AUTO_MODEL_ID
@@ -2136,7 +2138,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_AUTO_MODEL_ID]))
     localStorage.setItem(ASK_MODEL_SELECTION_MODE_KEY, 'single')
     localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_AUTO_MODEL_ID)
-  }, [activeChatId, isFreeTier, selectedActModel, selectedModels])
+  }, [chatPrefsHydrated, activeChatId, isFreeTier, selectedActModel, selectedModels])
 
   // ── data loading ──────────────────────────────────────────────────────────
 
@@ -2435,12 +2437,20 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   const handleComposerModeChange = useCallback((next: 'ask' | 'act') => {
     if (next === 'act') {
-      const best = pickBestModelForAct(selectedModels)
-      setSelectedActModel(best)
-      localStorage.setItem(ACT_MODEL_KEY, best)
+      // Keep Act aligned with the primary Ask slot so the picker does not jump to a different model.
+      const primary = selectedModels[0] ?? selectedActModel
+      setSelectedActModel(primary)
+      localStorage.setItem(ACT_MODEL_KEY, primary)
+    } else {
+      const nextAsk =
+        selectedModels.length <= 1
+          ? [selectedActModel]
+          : [selectedActModel, ...selectedModels.slice(1)].slice(0, 4)
+      setSelectedModels(nextAsk)
+      localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(nextAsk))
     }
     setComposerMode(next)
-  }, [selectedModels])
+  }, [selectedModels, selectedActModel])
 
   const handleAskModelSelectionModeChange = useCallback((next: AskModelSelectionMode) => {
     if (isActiveLoading || composerMode !== 'ask') return
@@ -3819,7 +3829,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   </div>
                   {generationMode === 'text' && composerMode === 'ask' && (
                     <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-md bg-[var(--surface-subtle)] p-1">
+                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
                         {(['single', 'multiple'] as const).map((mode) => {
                           const isActive = askModelSelectionMode === mode
                           return (
@@ -3828,10 +3838,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                               type="button"
                               onClick={() => handleAskModelSelectionModeChange(mode)}
                               disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
-                              className={`rounded px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
                                 isActive
-                                  ? 'bg-[var(--foreground)] text-[var(--background)]'
-                                  : 'text-[var(--muted)] hover:bg-[var(--border)]'
+                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
+                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
                               } ${
                                 isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
                               }`}

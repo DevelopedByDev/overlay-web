@@ -73,6 +73,11 @@ export async function getGatewayLanguageModel(modelId: string, accessToken?: str
     return getOpenRouterLanguageModel(modelId, accessToken)
   }
 
+  // Alibaba Qwen ids match OpenRouter (e.g. qwen/qwen3.6-plus); AI Gateway often has no route for them.
+  if (model?.provider === 'alibaba') {
+    return getOpenRouterLanguageModel(modelId, accessToken)
+  }
+
   const apiKey = await resolveGatewayApiKey(accessToken)
   if (!apiKey) {
     throw new Error(

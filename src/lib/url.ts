@@ -56,12 +56,7 @@ function isLocalOrigin(origin: string): boolean {
  */
 export function getInternalApiBaseUrl(request?: NextRequest): string {
   const canonicalBaseUrl = getBaseUrl()
-  let canonicalOrigin: string
-  try {
-    canonicalOrigin = new URL(canonicalBaseUrl).origin
-  } catch {
-    canonicalOrigin = new URL(normalizeAppBaseUrl(canonicalBaseUrl, 'https://getoverlay.io')).origin
-  }
+  const canonicalOrigin = new URL(canonicalBaseUrl).origin
 
   if (request) {
     const requestOrigin = request.nextUrl.origin
