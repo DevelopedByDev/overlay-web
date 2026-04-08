@@ -134,7 +134,7 @@ export function getModel(id: string): ChatModel | undefined {
 /** True when completions are served via the OpenRouter HTTP API (incl. Qwen catalog ids). */
 export function modelUsesOpenRouterTransport(modelId: string): boolean {
   const p = getModel(modelId)?.provider
-  return p === 'openrouter' || p === 'alibaba'
+  return p === 'openrouter' || p === 'alibaba' || p === 'zai'
 }
 
 /** UI labels — resolves legacy / gateway ids (e.g. Kimi instruct variant) to catalog names. */

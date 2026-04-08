@@ -78,6 +78,11 @@ export async function getGatewayLanguageModel(modelId: string, accessToken?: str
     return getOpenRouterLanguageModel(modelId, accessToken)
   }
 
+  // Z.ai GLM ids (e.g. z-ai/glm-5.1) are on OpenRouter; Vercel AI Gateway may 404 model_not_found.
+  if (model?.provider === 'zai') {
+    return getOpenRouterLanguageModel(modelId, accessToken)
+  }
+
   const apiKey = await resolveGatewayApiKey(accessToken)
   if (!apiKey) {
     throw new Error(

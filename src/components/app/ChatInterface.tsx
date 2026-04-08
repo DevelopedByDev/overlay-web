@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send,
   Plus,
@@ -60,14 +61,26 @@ function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: bo
         {showUpgrade && (
           <span
             onClick={(e) => { e.stopPropagation(); router.push('/account') }}
-            className="inline-flex items-center h-5 px-1.5 rounded-full bg-[#fef9ec] text-[#b45309] text-[9px] font-semibold leading-none cursor-pointer hover:bg-[#fde68a] transition-colors"
+            className="inline-flex items-center h-5 px-1.5 rounded-full text-[9px] font-semibold leading-none cursor-pointer transition-colors"
+            style={{
+              background: 'var(--chat-badge-upgrade-bg)',
+              color: 'var(--chat-badge-upgrade-fg)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--chat-badge-upgrade-hover)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--chat-badge-upgrade-bg)'
+            }}
           >
             Upgrade
           </span>
         )}
         <span className={`inline-flex items-center h-5 px-1.5 rounded-full text-[9px] font-semibold leading-none tracking-tight ${
-          m.cost === 0 ? 'bg-[#ecfdf5] text-[#065f46]' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
-        }`}>
+          m.cost === 0 ? '' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
+        }`}
+        style={m.cost === 0 ? { background: 'var(--chat-badge-free-bg)', color: 'var(--chat-badge-free-fg)' } : undefined}
+        >
           {m.cost === 0 ? 'Free' : '$'.repeat(m.cost)}
         </span>
       </span>
@@ -77,7 +90,10 @@ function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: bo
   return (
     <span className="flex items-center gap-1 shrink-0 h-5">
       {showUpgrade && (
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[#fef9ec] text-[#b45309]">
+        <span
+          className="inline-flex items-center justify-center w-5 h-5 rounded"
+          style={{ background: 'var(--chat-badge-upgrade-bg)', color: 'var(--chat-badge-upgrade-fg)' }}
+        >
           <ArrowUp size={10} strokeWidth={2} />
         </span>
       )}
@@ -1271,7 +1287,14 @@ function ExchangeBlock({
 
         {errorMessage && !responseInProgress && (
           <div className="flex justify-start">
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 text-xs">
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
+              style={{
+                background: 'var(--chat-alert-error-bg)',
+                borderColor: 'var(--chat-alert-error-border)',
+                color: 'var(--chat-alert-error-text)',
+              }}
+            >
               <AlertCircle size={12} />
               {errorMessage}
             </div>
@@ -1332,6 +1355,9 @@ function errorLabel(err: Error | null | undefined): string | null {
   if (err.message?.includes('bandwidth_limit_exceeded')) return 'File bandwidth limit reached for this billing period.'
   if (err.message?.includes('supported image formats') || err.message?.includes('does not represent a valid image')) {
     return 'Unsupported image format. Use JPEG, PNG, GIF, or WebP.'
+  }
+  if (/model.*not found|not found.*model|model_not_found/i.test(m)) {
+    return 'That model is not available from the provider right now. Try another model.'
   }
   return 'Something went wrong. Please try again.'
 }
@@ -1597,10 +1623,15 @@ function MediaSlotOutput({
         />
       ) : result.status !== 'completed' || !result.url ? (
         <div
-          className={`rounded-xl border border-red-100 bg-[linear-gradient(180deg,#fffafa_0%,#fff5f5_100%)] ${
-            isMulti ? errorFrameClass : 'flex items-center gap-2 px-3 py-2 text-xs text-red-600'
+          className={`rounded-xl border ${
+            isMulti ? errorFrameClass : 'flex items-center gap-2 px-3 py-2 text-xs'
           }`}
-          style={!isMulti ? singleBoxStyle : undefined}
+          style={{
+            ...(!isMulti ? singleBoxStyle : {}),
+            background: 'var(--chat-media-error-bg)',
+            borderColor: 'var(--chat-media-error-border)',
+            color: 'var(--chat-alert-error-text)',
+          }}
         >
           {isMulti ? (
             <div className="mx-auto flex max-w-[240px] flex-col items-center gap-2 px-5 text-center">
@@ -1608,8 +1639,10 @@ function MediaSlotOutput({
                 <AlertCircle size={18} />
               </span>
               <div className="space-y-1">
-                <p className="text-sm font-medium text-red-600">Generation failed</p>
-                <p className="text-xs leading-relaxed text-red-500/90">{result.error ?? 'Please try again.'}</p>
+                <p className="text-sm font-medium" style={{ color: 'var(--chat-alert-error-text)' }}>
+                  Generation failed
+                </p>
+                <p className="text-xs leading-relaxed opacity-90">{result.error ?? 'Please try again.'}</p>
               </div>
             </div>
           ) : (
@@ -3521,6 +3554,8 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const primaryMessages = chat0.messages
   const hasMessages = primaryMessages.some((m) => m.role === 'user')
   const hasHistory = hasMessages || generationResults.size > 0
+  /** Empty text chat: center composer + suggestions; after first message, dock composer to bottom. */
+  const showCenteredTextEmpty = !hasHistory && generationMode === 'text'
   const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
   const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
 
@@ -3866,9 +3901,23 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   onClick={() => setIsTerminalOpen(true)}
                   className={`flex w-full items-center justify-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors md:w-auto md:py-1 ${
                     isFreeTier
-                      ? 'bg-[#fef9ec] text-[#b45309] hover:bg-[#fde68a]'
+                      ? ''
                       : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
                   }`}
+                  style={
+                    isFreeTier
+                      ? {
+                          background: 'var(--chat-badge-upgrade-bg)',
+                          color: 'var(--chat-badge-upgrade-fg)',
+                        }
+                      : undefined
+                  }
+                  onMouseEnter={(e) => {
+                    if (isFreeTier) e.currentTarget.style.background = 'var(--chat-badge-upgrade-hover)'
+                  }}
+                  onMouseLeave={(e) => {
+                    if (isFreeTier) e.currentTarget.style.background = 'var(--chat-badge-upgrade-bg)'
+                  }}
                 >
                   <Terminal size={12} strokeWidth={1.75} />
                   <span>{terminalButtonLabel}</span>
@@ -3894,13 +3943,14 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
           </div>
         </div>
 
-        {/* Messages */}
+        {/* Messages (hidden while text-mode empty — composer is centered below) */}
+        {(hasHistory || !showCenteredTextEmpty) && (
         <div
           ref={messagesScrollRef}
           className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
         >
           <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
-            {!hasHistory && (
+            {!hasHistory && !showCenteredTextEmpty && (
               <div className="flex flex-1 items-center justify-center px-1 sm:px-0">
                 <div className="w-full max-w-xl text-center">
                   <p className="mb-3 text-3xl" style={{ fontFamily: 'var(--font-serif)' }}>
@@ -4186,9 +4236,30 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
             <div ref={messagesEndRef} />
           </div>
         </div>
+        )}
 
-        {/* Input */}
-        <div className="px-3 pb-3 sm:px-4 sm:pb-4">
+        {/* Input — centered on empty text chat; docks to bottom once there is history */}
+        <div
+          className={`flex flex-col ${showCenteredTextEmpty ? 'flex-1 min-h-0 justify-center' : 'shrink-0'} ${
+            !showCenteredTextEmpty ? 'px-3 pb-3 sm:px-4 sm:pb-4' : 'px-4 pb-4'
+          }`}
+        >
+          <AnimatePresence initial={false}>
+            {showCenteredTextEmpty && (
+              <motion.div
+                key="chat-empty-hero"
+                initial={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="mb-6 text-center"
+              >
+                <p className="mb-3 text-3xl" style={{ fontFamily: 'var(--font-serif)' }}>
+                  chat
+                </p>
+                <p className="text-sm text-[var(--muted)]">Start a conversation with any AI model</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
           {(attachedImages.length > 0 || pendingChatDocuments.length > 0) && (
             <div className="mx-auto w-full max-w-4xl mb-2 flex flex-wrap gap-2">
               {attachedImages.map((img, i) => (
@@ -4235,16 +4306,30 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
               ))}
             </div>
           )}
-          <div className="mx-auto w-full max-w-4xl">
+          <motion.div layout="position" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="mx-auto w-full max-w-4xl">
             {attachmentError && (
-              <div className="mb-2 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-600">
+              <div
+                className="mb-2 flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs"
+                style={{
+                  background: 'var(--chat-alert-error-bg)',
+                  borderColor: 'var(--chat-alert-error-border)',
+                  color: 'var(--chat-alert-error-text)',
+                }}
+              >
                 <AlertCircle size={13} className="shrink-0" />
                 {attachmentError}
               </div>
             )}
             {composerNotice && (
-              <div className="mb-2 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                <AlertCircle size={13} className="shrink-0 text-amber-600" />
+              <div
+                className="mb-2 flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs"
+                style={{
+                  background: 'var(--chat-alert-warn-bg)',
+                  borderColor: 'var(--chat-alert-warn-border)',
+                  color: 'var(--chat-alert-warn-text)',
+                }}
+              >
+                <AlertCircle size={13} className="shrink-0 opacity-80" />
                 {composerNotice}
               </div>
             )}
@@ -4341,7 +4426,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         <ImageIcon size={13} className="text-[var(--foreground)]" />
                         <span>Attach Images</span>
                       </button>
-                      <div className="border-t border-[#f0f0f0] my-1" />
+                      <div className="border-t border-[var(--border)] my-1" />
                       <button
                         type="button"
                         onClick={() => { handleModeChange('image'); setShowAttachMenu(false) }}
@@ -4358,7 +4443,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         <Video size={13} className="text-[var(--foreground)]" />
                         <span>Generate Video</span>
                       </button>
-                      <div className="border-t border-[#f0f0f0] my-1" />
+                      <div className="border-t border-[var(--border)] my-1" />
                       <button
                         type="button"
                         onClick={() => {
@@ -4425,7 +4510,31 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 </div>
               </div>
             )}
-          </div>
+          </motion.div>
+          <AnimatePresence initial={false}>
+            {showCenteredTextEmpty && (
+              <motion.div
+                key="chat-suggestions"
+                initial={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.12 }}
+                className="mx-auto mt-6 w-full max-w-xl"
+              >
+                <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
+                  {CHAT_SUGGESTIONS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug transition-colors hover:bg-[var(--surface-muted)]"
+                      onClick={() => setInput(prompt)}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {isTerminalOpen && (
@@ -4475,7 +4584,14 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 )}
 
                 {terminalError && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <div
+                    className="rounded-xl border px-3 py-2 text-xs"
+                    style={{
+                      background: 'var(--chat-alert-error-bg)',
+                      borderColor: 'var(--chat-alert-error-border)',
+                      color: 'var(--chat-alert-error-text)',
+                    }}
+                  >
                     {terminalError}
                   </div>
                 )}

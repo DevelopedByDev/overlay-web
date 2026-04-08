@@ -49,6 +49,20 @@
   --scrollbar-thumb-hover: #a1a1aa;
   --overlay-scrim: rgba(0, 0, 0, 0.4);
   --font-serif-family: 'Libre Baskerville';
+  /* Chat UI — theme-aware badges & alerts (avoid light-only Tailwind reds/greens in dark mode) */
+  --chat-badge-free-bg: #ecfdf5;
+  --chat-badge-free-fg: #065f46;
+  --chat-badge-upgrade-bg: #fef9ec;
+  --chat-badge-upgrade-fg: #b45309;
+  --chat-badge-upgrade-hover: #fde68a;
+  --chat-alert-error-bg: #fef2f2;
+  --chat-alert-error-border: #fecaca;
+  --chat-alert-error-text: #dc2626;
+  --chat-alert-warn-bg: #fffbeb;
+  --chat-alert-warn-border: #fde68a;
+  --chat-alert-warn-text: #92400e;
+  --chat-media-error-bg: linear-gradient(180deg, #fffafa 0%, #fff5f5 100%);
+  --chat-media-error-border: #fecaca;
 }
 
 [data-theme='dark'] {
@@ -67,6 +81,19 @@
   --scrollbar-thumb: #3f3f46;
   --scrollbar-thumb-hover: #52525b;
   --overlay-scrim: rgba(0, 0, 0, 0.58);
+  --chat-badge-free-bg: rgba(16, 185, 129, 0.16);
+  --chat-badge-free-fg: #6ee7b7;
+  --chat-badge-upgrade-bg: rgba(245, 158, 11, 0.14);
+  --chat-badge-upgrade-fg: #fbbf24;
+  --chat-badge-upgrade-hover: rgba(245, 158, 11, 0.22);
+  --chat-alert-error-bg: rgba(127, 29, 29, 0.45);
+  --chat-alert-error-border: rgba(248, 113, 113, 0.28);
+  --chat-alert-error-text: #fecaca;
+  --chat-alert-warn-bg: rgba(120, 53, 15, 0.45);
+  --chat-alert-warn-border: rgba(251, 191, 36, 0.25);
+  --chat-alert-warn-text: #fde68a;
+  --chat-media-error-bg: linear-gradient(180deg, rgba(127, 29, 29, 0.35) 0%, rgba(69, 10, 10, 0.5) 100%);
+  --chat-media-error-border: rgba(248, 113, 113, 0.3);
 }
 
 @theme inline {
