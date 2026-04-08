@@ -296,6 +296,7 @@ export async function POST(request: NextRequest) {
       text: string,
       usage: { inputTokens: number; outputTokens: number },
       steps?: StepResult<ToolSet>[],
+      routedModelId?: string,
     ) => {
       const { content: persistContent, parts: persistParts } = buildAssistantPersistenceFromSteps(
         steps,
@@ -342,6 +343,7 @@ export async function POST(request: NextRequest) {
             contentType: 'text',
             parts: persistParts as never,
             modelId: effectiveModelId,
+            routedModelId,
             variantIndex: variantIndex ?? 0,
             tokens: { input: usage.inputTokens, output: usage.outputTokens },
           })
@@ -455,24 +457,50 @@ export async function POST(request: NextRequest) {
         onFinish: async (event) => {
           const inTok = event.totalUsage?.inputTokens ?? event.usage?.inputTokens ?? 0
           const outTok = event.totalUsage?.outputTokens ?? event.usage?.outputTokens ?? 0
+          const lastStep = event.steps?.at(-1)
+          const routedModelId =
+            effectiveModelId === FREE_TIER_AUTO_MODEL_ID
+              ? lastStep?.response.modelId
+              : undefined
           await finishAsk(
             event.text,
             { inputTokens: inTok, outputTokens: outTok },
             event.steps,
+            routedModelId,
           )
         },
       })
 
       const hasCitations = Object.keys(sourceCitationMap).length > 0
+      let streamedRoutedModelId: string | undefined
+      if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
+        void (async () => {
+          try {
+            const response = await result.response
+            if (typeof response.modelId === 'string' && response.modelId) {
+              streamedRoutedModelId = response.modelId
+            }
+          } catch {
+            // Ignore metadata propagation failures; the persisted message still carries the routed model id.
+          }
+        })()
+      }
 
       return result.toUIMessageStreamResponse({
         originalMessages: messages,
         messageMetadata: ({ part }) => {
-          if (!hasCitations) return undefined
-          if (part.type === 'start' || part.type === 'finish') {
-            return { sourceCitations: sourceCitationMap }
+          const metadata: Record<string, unknown> = {}
+          if (hasCitations && (part.type === 'start' || part.type === 'finish')) {
+            metadata.sourceCitations = sourceCitationMap
           }
-          return undefined
+          if (
+            effectiveModelId === FREE_TIER_AUTO_MODEL_ID &&
+            part.type === 'finish' &&
+            streamedRoutedModelId
+          ) {
+            metadata.routedModelId = streamedRoutedModelId
+          }
+          return Object.keys(metadata).length > 0 ? metadata : undefined
         },
       })
     } catch (err) {
@@ -487,14 +515,14 @@ export async function POST(request: NextRequest) {
           modelId: effectiveModelId,
           messages: fallbackMsgs,
           accessToken: auth.accessToken || undefined,
-          onFinish: finishAsk,
+          onFinish: (text, usage, routedModelId) => finishAsk(text, usage, undefined, routedModelId),
         })
       }
       if (isOpenRouter) {
         return encodeAssistantTextAsUiDataStream(
           userFacingOpenRouterError(err),
           { inputTokens: 0, outputTokens: 0 },
-          finishAsk,
+          (text, usage, routedModelId) => finishAsk(text, usage, undefined, routedModelId),
         )
       }
       throw err

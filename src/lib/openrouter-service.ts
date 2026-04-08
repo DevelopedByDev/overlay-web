@@ -208,7 +208,11 @@ export async function streamOpenRouterChat({
   modelId: string
   messages: OpenRouterMessage[]
   accessToken?: string
-  onFinish?: (text: string, usage: { inputTokens: number; outputTokens: number }) => Promise<void>
+  onFinish?: (
+    text: string,
+    usage: { inputTokens: number; outputTokens: number },
+    routedModelId?: string,
+  ) => Promise<void>
 }): Promise<Response> {
   const apiKey = await resolveApiKey(accessToken)
   if (!apiKey) {
@@ -242,6 +246,7 @@ export async function streamOpenRouterChat({
   let fullText = ''
   let inputTokens = 0
   let outputTokens = 0
+  let routedModelId: string | undefined
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -272,6 +277,9 @@ export async function streamOpenRouterChat({
                 fullText += content
                 controller.enqueue(encoder.encode(`0:${JSON.stringify(content)}\n`))
               }
+              if (typeof parsed.model === 'string' && parsed.model) {
+                routedModelId = parsed.model
+              }
               if (parsed.usage) {
                 inputTokens = parsed.usage.prompt_tokens ?? 0
                 outputTokens = parsed.usage.completion_tokens ?? 0
@@ -293,7 +301,7 @@ export async function streamOpenRouterChat({
         controller.close()
 
         if (onFinish) {
-          await onFinish(fullText, usage)
+          await onFinish(fullText, usage, routedModelId)
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -317,7 +325,11 @@ export async function streamOpenRouterChat({
 export function encodeAssistantTextAsUiDataStream(
   fullText: string,
   usage: { inputTokens: number; outputTokens: number },
-  onFinish?: (text: string, usage: { inputTokens: number; outputTokens: number }) => Promise<void>,
+  onFinish?: (
+    text: string,
+    usage: { inputTokens: number; outputTokens: number },
+    routedModelId?: string,
+  ) => Promise<void>,
 ): Response {
   const encoder = new TextEncoder()
   const messageId = `msg_${Date.now()}`

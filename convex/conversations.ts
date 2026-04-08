@@ -262,6 +262,7 @@ export const addMessage = mutation({
     tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
     replyToTurnId: v.optional(v.string()),
     replySnippet: v.optional(v.string()),
+    routedModelId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess({
@@ -298,6 +299,7 @@ export const addMessage = mutation({
       tokens: args.tokens,
       replyToTurnId: args.replyToTurnId,
       replySnippet: args.replySnippet,
+      routedModelId: args.routedModelId,
       createdAt: match?.createdAt ?? now,
     }
     const msgId = match

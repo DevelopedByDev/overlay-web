@@ -107,23 +107,31 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Google Gemini
   'gemini-3.1-pro-preview': { inputPer1M: 2.0, cachedInputPer1M: 0.2, outputPer1M: 12.0, isFree: false },
   'gemini-3-flash-preview': { inputPer1M: 0.5, cachedInputPer1M: 0.05, outputPer1M: 3.0, isFree: false },
-  'gemini-2.5-flash': { inputPer1M: 0.3, cachedInputPer1M: 0.03, outputPer1M: 2.5, isFree: false },
-  'gemini-2.5-flash-lite': { inputPer1M: 0.1, cachedInputPer1M: 0.01, outputPer1M: 0.4, isFree: false },
+  'google/gemma-4-26b-a4b-it': { inputPer1M: 0.13, cachedInputPer1M: 0, outputPer1M: 0.4, isFree: false },
 
   // OpenAI
   'gpt-5.2-pro-2025-12-11': { inputPer1M: 2.5, cachedInputPer1M: 0.25, outputPer1M: 20.0, isFree: false },
-  'gpt-5.2-2025-12-11': { inputPer1M: 1.75, cachedInputPer1M: 0.175, outputPer1M: 14.0, isFree: false },
-  'gpt-5-mini-2025-08-07': { inputPer1M: 0.25, cachedInputPer1M: 0.025, outputPer1M: 2.0, isFree: false },
-  'gpt-5-nano-2025-08-07': { inputPer1M: 0.05, cachedInputPer1M: 0.005, outputPer1M: 0.4, isFree: false },
+  'gpt-5.2-2025-12-11': { inputPer1M: 2.5, cachedInputPer1M: 0.25, outputPer1M: 15.0, isFree: false },
+  'gpt-5.4': { inputPer1M: 2.5, cachedInputPer1M: 0.25, outputPer1M: 15.0, isFree: false },
+  'gpt-5-mini-2025-08-07': { inputPer1M: 0.75, cachedInputPer1M: 0.075, outputPer1M: 4.5, isFree: false },
+  'gpt-5-nano-2025-08-07': { inputPer1M: 0.75, cachedInputPer1M: 0.075, outputPer1M: 4.5, isFree: false },
+  'openai/gpt-5.4-mini': { inputPer1M: 0.75, cachedInputPer1M: 0.075, outputPer1M: 4.5, isFree: false },
   'gpt-4.1-2025-04-14': { inputPer1M: 2.0, cachedInputPer1M: 0.5, outputPer1M: 8.0, isFree: false },
 
   // xAI Grok
-  'grok-4-1-fast-reasoning': { inputPer1M: 0.2, cachedInputPer1M: 0.2, outputPer1M: 0.5, isFree: false },
+  'grok-4-1-fast-reasoning': { inputPer1M: 2.0, cachedInputPer1M: 0.2, outputPer1M: 6.0, isFree: false },
+  'xai/grok-4.20-reasoning': { inputPer1M: 2.0, cachedInputPer1M: 0.2, outputPer1M: 6.0, isFree: false },
 
   // Groq
   'llama-3.3-70b-versatile': { inputPer1M: 0.59, cachedInputPer1M: 0.59, outputPer1M: 0.79, isFree: false },
-  'moonshotai/kimi-k2-0905': { inputPer1M: 1.0, cachedInputPer1M: 0.5, outputPer1M: 3.0, isFree: false },
-  'moonshotai/kimi-k2-instruct-0905': { inputPer1M: 1.0, cachedInputPer1M: 0.5, outputPer1M: 3.0, isFree: false },
+  'moonshotai/kimi-k2-0905': { inputPer1M: 0.3827, cachedInputPer1M: 0.1935, outputPer1M: 1.72, isFree: false },
+  'moonshotai/kimi-k2-instruct-0905': { inputPer1M: 0.3827, cachedInputPer1M: 0.1935, outputPer1M: 1.72, isFree: false },
+  'moonshotai/kimi-k2.5': { inputPer1M: 0.3827, cachedInputPer1M: 0.1935, outputPer1M: 1.72, isFree: false },
+  'minimax/minimax-m2.7': { inputPer1M: 0.3, cachedInputPer1M: 0, outputPer1M: 1.2, isFree: false },
+  'z-ai/glm-5.1': { inputPer1M: 1.0, cachedInputPer1M: 0, outputPer1M: 3.2, isFree: false },
+  'qwen/qwen3.6-plus': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'zai/glm-5.1': { inputPer1M: 1.0, cachedInputPer1M: 0, outputPer1M: 3.2, isFree: false },
+  'alibaba/qwen3.6-plus': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'openai/gpt-oss-20b': { inputPer1M: 0.075, cachedInputPer1M: 0.0375, outputPer1M: 0.3, isFree: false },
   'openai/gpt-oss-120b': { inputPer1M: 0.15, cachedInputPer1M: 0.075, outputPer1M: 0.6, isFree: false },
 }

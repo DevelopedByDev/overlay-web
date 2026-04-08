@@ -32,7 +32,7 @@ function IntegrationLogo({ logoUrl, name, size = 28 }: { logoUrl?: string | null
 
   return (
     <span
-      className="inline-flex items-center justify-center flex-shrink-0 rounded-lg bg-white border border-black/10"
+      className="inline-flex flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]"
       style={{ width: size, height: size }}
     >
       {logoUrl && !hasError ? (
@@ -45,7 +45,7 @@ function IntegrationLogo({ logoUrl, name, size = 28 }: { logoUrl?: string | null
           onError={() => setFailedLogoUrl(logoUrl)}
         />
       ) : (
-        <span className="text-xs font-bold text-[#525252]">{name.charAt(0).toUpperCase()}</span>
+        <span className="text-xs font-bold text-[var(--foreground)]">{name.charAt(0).toUpperCase()}</span>
       )}
     </span>
   )
@@ -240,32 +240,32 @@ function IntegrationsDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-5 bg-black/40"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-5"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-[680px] max-h-[80vh] bg-white border border-[#e5e5e5] rounded-xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#e5e5e5]">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div>
-            <p className="text-sm font-semibold text-[#0a0a0a]">Add Integration</p>
-            <p className="text-xs text-[#888] mt-0.5">Search and connect any Composio integration</p>
+            <p className="text-sm font-semibold text-[var(--foreground)]">Add Integration</p>
+            <p className="mt-0.5 text-xs text-[var(--muted)]">Search and connect any Composio integration</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-[#f5f5f5] text-[#888] transition-colors">
+          <button onClick={onClose} className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
             <X size={16} />
           </button>
         </div>
 
         {/* Search */}
-        <div className="px-5 py-3 border-b border-[#e5e5e5]">
-          <div className="flex items-center gap-2 bg-[#f5f5f5] rounded-lg px-3 py-2">
-            <Search size={13} className="text-[#aaa] flex-shrink-0" />
+        <div className="border-b border-[var(--border)] px-5 py-3">
+          <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2">
+            <Search size={13} className="shrink-0 text-[var(--muted-light)]" />
             <input
               type="text"
               value={queryInput}
               onChange={(e) => setQueryInput(e.target.value)}
               placeholder="Search integrations..."
               autoFocus
-              className="flex-1 bg-transparent text-sm text-[#0a0a0a] placeholder-[#aaa] outline-none"
+              className="flex-1 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
             />
           </div>
         </div>
@@ -273,40 +273,40 @@ function IntegrationsDialog({
         {/* List */}
         <div className="flex-1 overflow-y-auto" onScroll={handleScroll}>
           {error && (
-            <div className="mx-4 my-2 px-3 py-2 rounded-lg bg-[#f5f5f5] text-xs text-[#525252]">{error}</div>
+            <div className="mx-4 my-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-xs text-[var(--foreground)]">{error}</div>
           )}
           {isSearching && (
-            <div className="flex items-center justify-center py-10 text-xs text-[#888] gap-2">
+            <div className="flex items-center justify-center gap-2 py-10 text-xs text-[var(--muted)]">
               <Loader2 size={13} className="animate-spin" />
               {queryInput.trim() ? 'Searching...' : 'Loading integrations...'}
             </div>
           )}
           {!isSearching && visibleItems.length === 0 && (
-            <div className="py-10 text-center text-xs text-[#888]">No integrations found.</div>
+            <div className="py-10 text-center text-xs text-[var(--muted)]">No integrations found.</div>
           )}
           {visibleItems.map((item) => {
             const isActing = actingSlug === item.slug
             return (
-              <div key={item.slug} className="flex items-center gap-3 px-5 py-3 border-b border-[#f0f0f0] last:border-0">
+              <div key={item.slug} className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-3 last:border-0">
                 <span
-                  className="inline-flex items-center justify-center flex-shrink-0 rounded-lg bg-white border border-black/10"
+                  className="inline-flex flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]"
                   style={{ width: 32, height: 32 }}
                 >
                   {item.logoUrl ? (
                     <img src={item.logoUrl} alt={item.name} width={20} height={20} className="object-contain" />
                   ) : (
-                    <span className="text-sm font-bold text-[#111]">{item.name.charAt(0).toUpperCase()}</span>
+                    <span className="text-sm font-bold text-[var(--foreground)]">{item.name.charAt(0).toUpperCase()}</span>
                   )}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-[#0a0a0a]">{item.name}</p>
-                  <p className="text-xs text-[#888] truncate">{truncateDescription(item.description || item.slug)}</p>
+                  <p className="text-xs font-medium text-[var(--foreground)]">{item.name}</p>
+                  <p className="truncate text-xs text-[var(--muted)]">{truncateDescription(item.description || item.slug)}</p>
                 </div>
                 {item.isConnected ? (
                   <button
                     onClick={() => void handleDisconnect(item.slug)}
                     disabled={isActing}
-                    className="flex-shrink-0 text-xs text-[#525252] hover:bg-[#f0f0f0] px-3 py-1.5 rounded-md transition-colors disabled:opacity-50 underline underline-offset-2"
+                    className="flex-shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
                   >
                     {isActing ? <Loader2 size={11} className="animate-spin" /> : 'Disconnect'}
                   </button>
@@ -314,7 +314,7 @@ function IntegrationsDialog({
                   <button
                     onClick={() => void handleConnect(item.slug)}
                     disabled={isActing}
-                    className="flex-shrink-0 text-xs bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
+                    className="flex-shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
                   >
                     {isActing ? <Loader2 size={11} className="animate-spin" /> : 'Connect'}
                   </button>
@@ -324,7 +324,7 @@ function IntegrationsDialog({
           })}
           {loadingMore && (
             <div className="flex justify-center py-4">
-              <Loader2 size={13} className="animate-spin text-[#aaa]" />
+              <Loader2 size={13} className="animate-spin text-[var(--muted-light)]" />
             </div>
           )}
         </div>
@@ -493,27 +493,27 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex h-16 items-center border-b border-[#e5e5e5] px-6">
-        <h2 className="text-sm font-medium text-[#0a0a0a]">Integrations</h2>
+      <div className="flex h-16 items-center border-b border-[var(--border)] px-6">
+        <h2 className="text-sm font-medium text-[var(--foreground)]">Integrations</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
-            <Loader2 size={20} className="animate-spin text-[#888]" />
+            <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
           </div>
         ) : (
           <div className="mx-auto max-w-2xl px-6 py-6 space-y-8">
             {connectError && (
-              <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-red-50 border border-red-100 text-xs text-red-600">
+              <div className="flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
                 <span>{connectError}</span>
-                <button onClick={() => setConnectError(null)} className="ml-2 text-red-400 hover:text-red-600">✕</button>
+                <button onClick={() => setConnectError(null)} className="ml-2 text-red-400 hover:text-red-300">✕</button>
               </div>
             )}
 
             {connectedList.length > 0 && (
               <div>
-                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#888] mb-3">Connected</p>
+                <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">Connected</p>
                 <div className="space-y-1">
                   {connectedList.map((integration) => (
                     <IntegrationRow
@@ -532,11 +532,11 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
             <div>
               <div className="flex items-center justify-between mb-3">
                 {connectedList.length > 0 && (
-                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#888]">Available</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">Available</p>
                 )}
                 <button
                   onClick={() => setIsDialogOpen(true)}
-                  className="flex items-center gap-1 text-xs text-[#525252] hover:text-[#0a0a0a] border border-[#e5e5e5] rounded-md px-2 py-1 hover:bg-[#f5f5f5] transition-colors ml-auto"
+                  className="ml-auto flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
                   title="Browse all integrations"
                 >
                   <Plus size={12} />
@@ -584,14 +584,14 @@ function IntegrationRow({
   onAction: (i: Integration) => void
 }) {
   return (
-    <div className="flex items-center justify-between px-3 py-3 rounded-lg hover:bg-[#f5f5f5] transition-colors">
+    <div className="flex items-center justify-between rounded-lg px-3 py-3 transition-colors hover:bg-[var(--surface-muted)]">
       <div className="flex items-center gap-3 min-w-0">
         <IntegrationLogo logoUrl={logoUrl} name={integration.name} />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-[#0a0a0a]">{integration.name}</p>
+            <p className="text-sm font-medium text-[var(--foreground)]">{integration.name}</p>
           </div>
-          <p className="text-xs text-[#888] truncate">{integration.description}</p>
+          <p className="truncate text-xs text-[var(--muted)]">{integration.description}</p>
         </div>
       </div>
       <button
@@ -599,8 +599,8 @@ function IntegrationRow({
         disabled={isConnecting}
         className={`flex-shrink-0 ml-4 text-xs px-3 py-1.5 rounded-md transition-colors disabled:opacity-50 ${
           isConnected
-            ? 'text-[#525252] hover:bg-[#f0f0f0]'
-            : 'bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222]'
+            ? 'border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)] hover:bg-[var(--border)]'
+            : 'border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)] hover:bg-[var(--border)]'
         }`}
       >
         {isConnecting ? (

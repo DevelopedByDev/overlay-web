@@ -142,6 +142,24 @@ test('getBaseUrl prefers dev app URL in development', () => {
   }
 })
 
+test('getBaseUrl adds scheme when dev URL omits protocol (avoids Invalid URL in server fetches)', () => {
+  const originalNodeEnv = process.env.NODE_ENV
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL
+  const originalDevAppUrl = process.env.DEV_NEXT_PUBLIC_APP_URL
+
+  try {
+    process.env.NODE_ENV = 'development'
+    process.env.NEXT_PUBLIC_APP_URL = ''
+    process.env.DEV_NEXT_PUBLIC_APP_URL = 'localhost:3000'
+
+    assert.equal(getBaseUrl(), 'http://localhost:3000')
+  } finally {
+    process.env.NODE_ENV = originalNodeEnv
+    process.env.NEXT_PUBLIC_APP_URL = originalAppUrl
+    process.env.DEV_NEXT_PUBLIC_APP_URL = originalDevAppUrl
+  }
+})
+
 test('getAutomationExecutorBaseUrl prefers dedicated scheduler URL when set', () => {
   const originalExecutorBaseUrl = process.env.AUTOMATION_EXECUTOR_BASE_URL
   const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL

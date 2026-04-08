@@ -46,6 +46,15 @@ const OUTPUT_FILTER_LABELS: Record<OutputFilter, string> = {
   files: 'Files',
 }
 
+const TOOLBAR_ICON_BUTTON_CLASS =
+  'flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+
+const TOOLBAR_FILLED_BUTTON_CLASS =
+  'flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
+
+const DIALOG_ACTION_BUTTON_CLASS =
+  'px-3 py-1.5 rounded-md text-xs border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
+
 function filePathLabel(all: FileNode[], file: FileNode): string {
   const parts: string[] = []
   let pid: string | null = file.parentId
@@ -79,7 +88,9 @@ function FileTreeNode({
       <div
         onClick={() => node.type === 'folder' ? setOpen((v) => !v) : onSelect(node)}
         className={`group flex items-center gap-1.5 py-1 rounded-md cursor-pointer text-xs transition-colors ${
-          isSelected ? 'bg-[#e8e8e8] text-[#0a0a0a]' : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
+          isSelected
+            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+            : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
         }`}
         style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: '8px' }}
       >
@@ -87,19 +98,19 @@ function FileTreeNode({
           <>
             <ChevronRight size={10} className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
             {open
-              ? <FolderOpen size={12} className="shrink-0 text-[#888]" />
-              : <Folder size={12} className="shrink-0 text-[#888]" />}
+              ? <FolderOpen size={12} className="shrink-0 text-[var(--muted-light)]" />
+              : <Folder size={12} className="shrink-0 text-[var(--muted-light)]" />}
           </>
         ) : (
           <>
             <span className="w-[10px] shrink-0" />
-            <FileText size={12} className="shrink-0 text-[#888]" />
+            <FileText size={12} className="shrink-0 text-[var(--muted-light)]" />
           </>
         )}
         <span className="flex-1 truncate">{node.name}</span>
         <button
           onClick={(e) => onDelete(node._id, e)}
-          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
+          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[var(--border)] transition-opacity shrink-0"
         >
           <Trash2 size={10} />
         </button>
@@ -445,13 +456,13 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       {/* ── Add memory modal ── */}
       {showAddMemory && (
         <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
           onClick={(e) => { if (e.target === e.currentTarget) { setShowAddMemory(false); setAddText('') } }}
         >
-          <div className="bg-white rounded-xl p-6 w-[480px] max-w-[90vw] shadow-xl">
+          <div className="w-[480px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-[#0a0a0a]">Add memory</h3>
-              <button onClick={() => { setShowAddMemory(false); setAddText('') }} className="p-1 rounded hover:bg-[#f0f0f0] transition-colors">
+              <h3 className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
+              <button onClick={() => { setShowAddMemory(false); setAddText('') }} className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] transition-colors">
                 <X size={14} />
               </button>
             </div>
@@ -462,20 +473,20 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               autoFocus
               rows={5}
               onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) handleAddMemory() }}
-              className="w-full text-sm text-[#0a0a0a] border border-[#e5e5e5] rounded-lg px-3 py-2.5 resize-none outline-none placeholder-[#aaa] focus:border-[#0a0a0a] transition-colors"
+              className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
             />
-            <p className="mt-2 text-[11px] text-[#888] leading-snug">
+            <p className="mt-2 text-[11px] leading-snug text-[var(--muted)]">
               Long memories stay as one saved item; the list shows short previews so you can scan them quickly.
             </p>
             <div className="flex gap-2 mt-3 justify-end">
               <button
                 onClick={() => { setShowAddMemory(false); setAddText('') }}
-                className="px-3 py-1.5 rounded-md text-xs text-[#525252] hover:bg-[#f0f0f0] transition-colors"
+                className={DIALOG_ACTION_BUTTON_CLASS}
               >Cancel</button>
               <button
                 onClick={handleAddMemory}
                 disabled={!addText.trim() || isSavingMemory}
-                className="px-3 py-1.5 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] disabled:opacity-40 hover:bg-[#222] transition-colors"
+                className={`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`}
               >{isSavingMemory ? 'Saving...' : 'Save'}</button>
             </div>
           </div>
@@ -485,15 +496,15 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       {/* ── New file/folder modal ── */}
       {dialog && (
         <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
           onClick={(e) => { if (e.target === e.currentTarget) { setDialog(null); setDialogName('') } }}
         >
-          <div className="bg-white rounded-xl p-6 w-[400px] max-w-[90vw] shadow-xl">
+          <div className="w-[400px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-[#0a0a0a]">
+              <h3 className="text-sm font-medium text-[var(--foreground)]">
                 New {dialog.type === 'folder' ? 'folder' : 'file'}
               </h3>
-              <button onClick={() => { setDialog(null); setDialogName('') }} className="p-1 rounded hover:bg-[#f0f0f0]">
+              <button onClick={() => { setDialog(null); setDialogName('') }} className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
                 <X size={14} />
               </button>
             </div>
@@ -503,17 +514,17 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               placeholder={dialog.type === 'folder' ? 'Folder name' : 'filename.txt'}
               autoFocus
               onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFile() }}
-              className="w-full text-sm border border-[#e5e5e5] rounded-lg px-3 py-2.5 outline-none placeholder-[#aaa] focus:border-[#0a0a0a] transition-colors"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
             />
             <div className="flex gap-2 mt-3 justify-end">
               <button
                 onClick={() => { setDialog(null); setDialogName('') }}
-                className="px-3 py-1.5 rounded-md text-xs text-[#525252] hover:bg-[#f0f0f0] transition-colors"
+                className={DIALOG_ACTION_BUTTON_CLASS}
               >Cancel</button>
               <button
                 onClick={handleCreateFile}
                 disabled={!dialogName.trim() || isCreating}
-                className="px-3 py-1.5 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] disabled:opacity-40 hover:bg-[#222] transition-colors"
+                className={`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`}
               >{isCreating ? 'Creating...' : 'Create'}</button>
             </div>
           </div>
@@ -534,39 +545,39 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       {/* ── View memory dialog ── */}
       {selectedMemory && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
           onClick={(e) => { if (e.target === e.currentTarget) closeMemoryDialog() }}
         >
           <div
-            className="flex max-h-[min(90vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-[#e5e5e5] bg-white shadow-xl"
+            className="flex max-h-[min(90vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-[#e5e5e5] px-4 py-3">
-              <span className="text-sm font-medium text-[#0a0a0a]">Memory</span>
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+              <span className="text-sm font-medium text-[var(--foreground)]">Memory</span>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[#aaa]">
+                <span className="text-xs text-[var(--muted-light)]">
                   {new Date(selectedMemory.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </span>
                 <button
                   type="button"
                   onClick={() => handleDeleteMemory(selectedMemory.memoryId)}
-                  className="rounded-md p-1.5 text-[#aaa] transition-colors hover:bg-red-50 hover:text-red-400"
+                  className="rounded-md p-1.5 text-[var(--muted-light)] transition-colors hover:bg-red-500/10 hover:text-red-400"
                 >
                   <Trash2 size={13} />
                 </button>
                 <button
                   type="button"
                   onClick={closeMemoryDialog}
-                  className="rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
+                  className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                 >
                   <X size={14} />
                 </button>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-              <p className="text-sm leading-relaxed whitespace-pre-wrap text-[#0a0a0a]">{selectedMemory.fullContent}</p>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">{selectedMemory.fullContent}</p>
               {selectedMemory.source ? (
-                <p className="mt-4 text-xs text-[#aaa]">Source: {selectedMemory.source}</p>
+                <p className="mt-4 text-xs text-[var(--muted-light)]">Source: {selectedMemory.source}</p>
               ) : null}
             </div>
           </div>
@@ -576,18 +587,18 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       {/* ── View file dialog ── */}
       {selectedFile && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
           onClick={(e) => { if (e.target === e.currentTarget) closeFileDialog() }}
         >
           <div
-            className="flex max-h-[min(92vh,900px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[#e5e5e5] bg-white shadow-xl"
+            className="flex max-h-[min(92vh,900px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-center justify-end border-b border-[#e5e5e5] px-2 py-2">
+            <div className="flex shrink-0 items-center justify-end border-b border-[var(--border)] px-2 py-2">
               <button
                 type="button"
                 onClick={closeFileDialog}
-                className="rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f0f0f0] hover:text-[#0a0a0a]"
+                className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
               >
                 <X size={14} />
               </button>
@@ -606,13 +617,13 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       )}
 
       {/* ── Header ── */}
-      <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[#e5e5e5] px-6">
+      <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <h1 className="text-sm font-medium text-[#0a0a0a]">
+          <h1 className="text-sm font-medium text-[var(--foreground)]">
             {activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
           </h1>
           {activeTab !== 'outputs' && (
-            <span className="text-xs text-[#aaa]">
+            <span className="text-xs text-[var(--muted-light)]">
               {activeTab === 'memories' ? memoriesFiltered.length : filesFiltered.length} items
             </span>
           )}
@@ -625,8 +636,8 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 onClick={() => setOutputFilterOpen((o) => !o)}
                 aria-expanded={outputFilterOpen}
                 aria-haspopup="listbox"
-                className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[#f0f0f0] px-2.5 py-1.5 text-left text-xs md:py-1 ${
-                  outputFilterOpen ? 'bg-[#e8e8e8]' : 'text-[#525252] hover:bg-[#e8e8e8]'
+                className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs text-[var(--foreground)] md:py-1 ${
+                  outputFilterOpen ? 'bg-[var(--border)]' : 'hover:bg-[var(--border)]'
                 }`}
               >
                 <span className="min-w-0 truncate">{OUTPUT_FILTER_LABELS[outputFilter]}</span>
@@ -634,7 +645,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               </button>
               {outputFilterOpen && (
                 <div
-                  className="absolute left-0 top-full z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-[#e5e5e5] bg-white py-1 shadow-lg"
+                  className="absolute left-0 top-full z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
                   role="listbox"
                 >
                   {(['all', 'image', 'video', 'files'] as const).map((id) => (
@@ -644,8 +655,8 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                       role="option"
                       aria-selected={outputFilter === id}
                       onClick={() => commitOutputFilter(id)}
-                      className={`w-full whitespace-nowrap px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[#f5f5f5] ${
-                        outputFilter === id ? 'font-medium text-[#0a0a0a]' : 'text-[#525252]'
+                      className={`w-full whitespace-nowrap px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[var(--surface-muted)] ${
+                        outputFilter === id ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
                       }`}
                     >
                       {OUTPUT_FILTER_LABELS[id]}
@@ -656,13 +667,15 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
             </div>
           )}
           {(activeTab === 'memories' || activeTab === 'files' || activeTab === 'outputs') && (
-            <div className="flex items-center rounded-md border border-[#e5e5e5] bg-[#fafafa] p-0.5">
+            <div className="flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5">
               <button
                 type="button"
                 title="List"
                 onClick={() => updateQuery({ layout: 'list' })}
                 className={`rounded px-2 py-1 transition-colors ${
-                  layout === 'list' ? 'bg-white text-[#0a0a0a] shadow-sm' : 'text-[#888] hover:text-[#525252]'
+                  layout === 'list'
+                    ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
+                    : 'text-[var(--muted-light)] hover:text-[var(--foreground)]'
                 }`}
               >
                 <LayoutList size={14} strokeWidth={1.75} />
@@ -672,7 +685,9 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 title="Cards"
                 onClick={() => updateQuery({ layout: 'cards' })}
                 className={`rounded px-2 py-1 transition-colors ${
-                  layout === 'cards' ? 'bg-white text-[#0a0a0a] shadow-sm' : 'text-[#888] hover:text-[#525252]'
+                  layout === 'cards'
+                    ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
+                    : 'text-[var(--muted-light)] hover:text-[var(--foreground)]'
                 }`}
               >
                 <LayoutGrid size={14} strokeWidth={1.75} />
@@ -684,7 +699,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               type="button"
               title="Refresh"
               onClick={() => setOutputsRefreshKey((k) => k + 1)}
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#ebebeb]"
+              className={TOOLBAR_ICON_BUTTON_CLASS}
             >
               <RefreshCw size={14} strokeWidth={1.75} />
             </button>
@@ -695,8 +710,8 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 type="button"
                 title="Search memories"
                 onClick={() => setMemorySearchOpen((v) => !v)}
-                className={`flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#ebebeb] ${
-                  memorySearchOpen ? 'border-[#0a0a0a] bg-[#ebebeb]' : ''
+                className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                  memorySearchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
                 }`}
               >
                 <Search size={14} strokeWidth={1.75} />
@@ -704,7 +719,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               <button
                 type="button"
                 onClick={() => setShowAddMemory(true)}
-                className="flex items-center gap-1.5 rounded-md bg-[#0a0a0a] px-3 py-1.5 text-xs text-[#fafafa] transition-colors hover:bg-[#222]"
+                className={TOOLBAR_FILLED_BUTTON_CLASS}
               >
                 <Plus size={13} />
                 New Memory
@@ -716,8 +731,8 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 type="button"
                 title="Search files"
                 onClick={() => setFileSearchOpen((v) => !v)}
-                className={`flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white text-[#525252] transition-colors hover:bg-[#ebebeb] ${
-                  fileSearchOpen ? 'border-[#0a0a0a] bg-[#ebebeb]' : ''
+                className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                  fileSearchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
                 }`}
               >
                 <Search size={14} strokeWidth={1.75} />
@@ -725,7 +740,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               <button
                 type="button"
                 onClick={() => fileUploadRef.current?.click()}
-                className="flex items-center gap-1.5 rounded-md bg-[#0a0a0a] px-3 py-1.5 text-xs text-[#fafafa] transition-colors hover:bg-[#222]"
+                className={TOOLBAR_FILLED_BUTTON_CLASS}
               >
                 <FilePlus size={13} />
                 Upload File
@@ -733,7 +748,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               <button
                 type="button"
                 onClick={() => folderUploadRef.current?.click()}
-                className="flex items-center gap-1.5 rounded-md bg-[#f0f0f0] px-3 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#e8e8e8]"
+                className={TOOLBAR_FILLED_BUTTON_CLASS}
               >
                 <FolderPlus size={13} />
                 Upload Folder
@@ -744,24 +759,24 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       </div>
 
       {activeTab === 'memories' && memorySearchOpen && (
-        <div className="shrink-0 border-b border-[#e5e5e5] px-6 py-2">
+        <div className="shrink-0 border-b border-[var(--border)] px-6 py-2">
           <input
             value={memorySearchQuery}
             onChange={(e) => setMemorySearchQuery(e.target.value)}
             placeholder="Search memories…"
             autoFocus
-            className="w-full max-w-sm rounded-md border border-[#e5e5e5] bg-white px-3 py-1.5 text-xs text-[#0a0a0a] outline-none placeholder-[#aaa] focus:border-[#0a0a0a]"
+            className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
           />
         </div>
       )}
       {activeTab === 'files' && fileSearchOpen && (
-        <div className="shrink-0 border-b border-[#e5e5e5] px-6 py-2">
+        <div className="shrink-0 border-b border-[var(--border)] px-6 py-2">
           <input
             value={fileSearchQuery}
             onChange={(e) => setFileSearchQuery(e.target.value)}
             placeholder="Search file names…"
             autoFocus
-            className="w-full max-w-sm rounded-md border border-[#e5e5e5] bg-white px-3 py-1.5 text-xs text-[#0a0a0a] outline-none placeholder-[#aaa] focus:border-[#0a0a0a]"
+            className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
           />
         </div>
       )}
@@ -777,25 +792,25 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         )}
 
         {activeTab === 'memories' && memoriesLoading && (
-          <div className="flex justify-center pt-16 text-[#888]">
+          <div className="flex justify-center pt-16 text-[var(--muted)]">
             <Loader2 size={16} className="animate-spin" />
           </div>
         )}
         {activeTab === 'memories' && !memoriesLoading && memories.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[#aaa]">
+          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
             <Brain size={32} strokeWidth={1} className="opacity-40" />
             <p className="text-sm">No memories yet</p>
             <button
               type="button"
               onClick={() => setShowAddMemory(true)}
-              className="text-xs text-[#525252] underline underline-offset-2 hover:text-[#0a0a0a]"
+              className="text-xs text-[var(--foreground)] underline underline-offset-2"
             >
               Add your first memory
             </button>
           </div>
         )}
         {activeTab === 'memories' && !memoriesLoading && memories.length > 0 && memoriesFiltered.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[#aaa]">
+          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
             <Search size={32} strokeWidth={1} className="opacity-40" />
             <p className="text-sm">No memories match your search</p>
           </div>
@@ -809,13 +824,13 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 tabIndex={0}
                 onClick={() => openMemory(memory)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMemory(memory) } }}
-                className="group flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[#e5e5e5] hover:bg-[#fafafa]"
+                className="group flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)]"
               >
-                <p className="min-w-0 flex-1 text-sm leading-relaxed text-[#525252]">{memory.content}</p>
+                <p className="min-w-0 flex-1 text-sm leading-relaxed text-[var(--foreground)]">{memory.content}</p>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleDeleteMemory(memory.memoryId) }}
-                  className="shrink-0 rounded p-1 text-[#aaa] opacity-0 transition-opacity hover:bg-[#f0f0f0] hover:text-red-500 group-hover:opacity-100"
+                  className="shrink-0 rounded p-1 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-red-500 group-hover:opacity-100"
                 >
                   <Trash2 size={12} />
                 </button>
@@ -830,11 +845,11 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 key={memory.key}
                 type="button"
                 onClick={() => openMemory(memory)}
-                className="group mb-4 block w-full break-inside-avoid rounded-xl border border-[#e5e5e5] bg-white p-4 text-left transition-shadow hover:shadow-md"
+                className="group mb-4 block w-full break-inside-avoid rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-shadow hover:shadow-md"
                 style={{ breakInside: 'avoid' }}
               >
-                <p className="line-clamp-6 text-xs leading-relaxed text-[#525252]">{memory.content}</p>
-                <p className="mt-3 text-[10px] text-[#aaa]">
+                <p className="line-clamp-6 text-xs leading-relaxed text-[var(--foreground)]">{memory.content}</p>
+                <p className="mt-3 text-[10px] text-[var(--muted-light)]">
                   {new Date(memory.createdAt).toLocaleDateString()}
                 </p>
               </button>
@@ -843,24 +858,24 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         )}
 
         {activeTab === 'files' && filesLoading && (
-          <div className="flex justify-center pt-16 text-[#888]">
+          <div className="flex justify-center pt-16 text-[var(--muted)]">
             <Loader2 size={16} className="animate-spin" />
           </div>
         )}
         {activeTab === 'files' && !filesLoading && files.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[#aaa]">
+          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
             <FileText size={32} strokeWidth={1} className="opacity-40" />
             <p className="text-sm">No files yet</p>
           </div>
         )}
         {activeTab === 'files' && !filesLoading && files.length > 0 && rootNodes.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[#aaa]">
+          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
             <Search size={32} strokeWidth={1} className="opacity-40" />
             <p className="text-sm">No files match your search</p>
           </div>
         )}
         {activeTab === 'files' && !filesLoading && rootNodes.length > 0 && layout === 'list' && (
-          <div className="mx-auto max-w-3xl rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-2 py-2">
+          <div className="mx-auto max-w-3xl rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-2">
             {rootNodes.map((node) => (
               <FileTreeNode
                 key={node._id}
@@ -881,16 +896,16 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 key={file._id}
                 type="button"
                 onClick={() => handleSelectFile(file)}
-                className="group mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-[#e5e5e5] bg-white text-left transition-shadow hover:shadow-md"
+                className="group mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md"
                 style={{ breakInside: 'avoid' }}
               >
-                <div className="flex h-28 items-center justify-center bg-[#f5f5f5]">
-                  <FileText size={36} className="text-[#c0c0c0]" />
+                <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
+                  <FileText size={36} className="text-[var(--muted-light)]" />
                 </div>
                 <div className="px-3 py-2">
-                  <p className="line-clamp-2 text-xs font-medium text-[#0a0a0a]">{file.name}</p>
-                  <p className="mt-1 line-clamp-2 text-[10px] text-[#888]">{filePathLabel(filesFiltered, file)}</p>
-                  <p className="mt-1 text-[10px] text-[#aaa]">
+                  <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{file.name}</p>
+                  <p className="mt-1 line-clamp-2 text-[10px] text-[var(--muted)]">{filePathLabel(filesFiltered, file)}</p>
+                  <p className="mt-1 text-[10px] text-[var(--muted-light)]">
                     {new Date(file.updatedAt).toLocaleDateString()}
                   </p>
                 </div>

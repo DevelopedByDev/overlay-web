@@ -326,6 +326,7 @@ export default defineSchema({
     /** User message: optional thread reply target (assistant / exchange turn). */
     replyToTurnId: v.optional(v.string()),
     replySnippet: v.optional(v.string()),
+    routedModelId: v.optional(v.string()),
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
     .index('by_userId', ['userId']),

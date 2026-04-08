@@ -3,7 +3,17 @@ export type GenerationMode = 'text' | 'image' | 'video'
 export interface ChatModel {
   id: string
   name: string
-  provider: 'openai' | 'anthropic' | 'google' | 'groq' | 'xai' | 'openrouter'
+  provider:
+    | 'openai'
+    | 'anthropic'
+    | 'google'
+    | 'groq'
+    | 'xai'
+    | 'openrouter'
+    | 'minimax'
+    | 'moonshotai'
+    | 'zai'
+    | 'alibaba'
   description?: string
   intelligence: number
   /** 0 = free, 1 = cheap, 2 = mid, 3 = expensive */
@@ -37,23 +47,29 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   // Google Models
   { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'google', description: 'Most capable', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'google', description: 'Fast & efficient', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google', description: 'Balanced', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', provider: 'google', description: 'Lightweight', intelligence: 1, cost: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'google/gemma-4-26b-a4b-it', name: 'Gemma 4 26B A4B', provider: 'google', description: 'Efficient open model', intelligence: 1.1, cost: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+
   // OpenAI Models
-  { id: 'gpt-5.2-2025-12-11', name: 'GPT-5.2', provider: 'openai', description: 'Powerful', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'gpt-5-mini-2025-08-07', name: 'GPT-5 Mini', provider: 'openai', description: 'Compact', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'gpt-5-nano-2025-08-07', name: 'GPT-5 Nano', provider: 'openai', description: 'Fastest', intelligence: 1, cost: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'gpt-5.4', name: 'GPT-5.4', provider: 'openai', description: 'Powerful', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai', description: 'Compact', intelligence: 1.45, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'gpt-4.1-2025-04-14', name: 'GPT-4.1', provider: 'openai', description: 'Reliable', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+
   // Anthropic Models
   { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'anthropic', description: 'Most capable', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', description: 'Best balance', intelligence: 1.75, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', description: 'Fast & light', intelligence: 1.25, cost: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+
   // xAI Models
-  { id: 'grok-4-1-fast-reasoning', name: 'Grok 4.1 Fast', provider: 'xai', description: 'Fast reasoning', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20', provider: 'xai', description: 'Flagship reasoning', intelligence: 1.8, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+
+  // Other frontier / open models
+  { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', description: 'Strong agentic coding', intelligence: 1.85, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'moonshotai/kimi-k2.5', name: 'Kimi K2.5', provider: 'moonshotai', description: 'Multimodal long-context', intelligence: 1.7, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'zai', description: 'Long-horizon coding', intelligence: 1.55, cost: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'qwen/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Agentic coding', intelligence: 1.6, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+
   // Groq Models
-  { id: 'moonshotai/kimi-k2-0905', name: 'Kimi K2', provider: 'groq', description: 'Long-context', intelligence: 1.5, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 1.25, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B', provider: 'groq', description: 'Open weights', intelligence: 0.75, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 
   // OpenRouter (free) — only the auto router; API id stays `openrouter/free` (do not send bare `free`).
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Auto', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, supportsVision: true, supportsReasoning: true, supportsSearch: false },
@@ -68,19 +84,19 @@ export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
 export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'claude-opus-4-6',
   'gemini-3.1-pro-preview',
-  'gpt-5.2-2025-12-11',
+  'gpt-5.4',
+  'minimax/minimax-m2.7',
   'claude-sonnet-4-6',
-  'gpt-5-mini-2025-08-07',
+  'xai/grok-4.20-reasoning',
+  'moonshotai/kimi-k2.5',
+  'qwen/qwen3.6-plus',
   'gemini-3-flash-preview',
-  'gemini-2.5-flash',
-  'grok-4-1-fast-reasoning',
+  'openai/gpt-5.4-mini',
+  'z-ai/glm-5.1',
   'gpt-4.1-2025-04-14',
   'claude-haiku-4-5',
-  'gemini-2.5-flash-lite',
-  'gpt-5-nano-2025-08-07',
-  'moonshotai/kimi-k2-0905',
+  'google/gemma-4-26b-a4b-it',
   'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
   FREE_TIER_AUTO_MODEL_ID,
 ]
 
@@ -96,8 +112,18 @@ export function pickBestModelForAct(selectedAskModelIds: string[]): string {
 
 /** Persisted UI / Convex rows may still reference retired ids. */
 const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
-  'moonshotai/kimi-k2-instruct-0905': 'moonshotai/kimi-k2-0905',
-  'gpt-5.2-pro-2025-12-11': 'gpt-5.2-2025-12-11',
+  'moonshotai/kimi-k2-instruct-0905': 'moonshotai/kimi-k2.5',
+  'moonshotai/kimi-k2-0905': 'moonshotai/kimi-k2.5',
+  'gpt-5.2-pro-2025-12-11': 'gpt-5.4',
+  'gpt-5.2-2025-12-11': 'gpt-5.4',
+  'gpt-5-mini-2025-08-07': 'openai/gpt-5.4-mini',
+  'gpt-5-nano-2025-08-07': 'openai/gpt-5.4-mini',
+  'grok-4-1-fast-reasoning': 'xai/grok-4.20-reasoning',
+  'openai/gpt-oss-20b': 'openai/gpt-oss-120b',
+  'gemini-2.5-flash': 'gemini-3-flash-preview',
+  'gemini-2.5-flash-lite': 'google/gemma-4-26b-a4b-it',
+  'zai/glm-5.1': 'z-ai/glm-5.1',
+  'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
 }
 
 export function getModel(id: string): ChatModel | undefined {

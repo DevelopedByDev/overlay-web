@@ -81,24 +81,8 @@ function getDateLabel(timestamp: number): string {
 }
 
 function getBadgeTone(kind: string): string {
-  switch (kind) {
-    case 'preference':
-      return 'bg-amber-50 text-amber-700 border-amber-200'
-    case 'decision':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200'
-    case 'project':
-      return 'bg-sky-50 text-sky-700 border-sky-200'
-    case 'agent':
-      return 'bg-violet-50 text-violet-700 border-violet-200'
-    case 'candidate':
-      return 'bg-zinc-50 text-zinc-700 border-zinc-200'
-    case 'approved':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200'
-    case 'rejected':
-      return 'bg-rose-50 text-rose-700 border-rose-200'
-    default:
-      return 'bg-[#f5f5f5] text-[#666] border-[#ececec]'
-  }
+  void kind
+  return 'border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]'
 }
 
 export default function MemoriesView({ userId: _userId }: { userId: string }) {
@@ -112,6 +96,12 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
   const [isSaving, setIsSaving] = useState(false)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const actionButtonClass =
+    'flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
+  const dialogButtonClass =
+    'rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
+  const metaChipClass =
+    'rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] text-[var(--muted)]'
 
   const loadMemories = useCallback(async () => {
     try {
@@ -200,11 +190,11 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-6">
-        <h2 className="text-sm font-medium text-[#0a0a0a]">
+      <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-6">
+        <h2 className="text-sm font-medium text-[var(--foreground)]">
           Memories
           {memories.length > 0 && (
-            <span className="ml-2 text-xs text-[#888] font-normal">{memories.length}</span>
+            <span className="ml-2 text-xs font-normal text-[var(--muted-light)]">{memories.length}</span>
           )}
         </h2>
         <div className="flex items-center gap-2">
@@ -213,10 +203,10 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
               setSelectionMode((value) => !value)
               setSelectedIds(new Set())
             }}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition-colors ${
+            className={`flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs transition-colors ${
               selectionMode
-                ? 'bg-[#ebebeb] text-[#0a0a0a]'
-                : 'bg-white text-[#525252] border border-[#e5e5e5] hover:bg-[#f5f5f5]'
+                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                : 'bg-[var(--surface-elevated)] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
             }`}
           >
             <CheckSquare size={12} />
@@ -225,7 +215,7 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
           {selectionMode && selectedIds.size > 0 && (
             <button
               onClick={() => void handleBulkDelete()}
-              className="flex items-center gap-1.5 rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-600 transition-colors hover:bg-red-100"
+              className="flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/15"
             >
               <Trash2 size={12} />
               Delete {selectedIds.size}
@@ -233,7 +223,7 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
           )}
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
+            className={actionButtonClass}
           >
             <Plus size={12} />
             Add memory
@@ -243,17 +233,17 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
 
       {showAdd && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
           onClick={(event) => {
             if (event.target === event.currentTarget) setShowAdd(false)
           }}
         >
-          <div className="w-[520px] max-w-[92vw] rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-[520px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-[#0a0a0a]">Add memory</h3>
+              <h3 className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
               <button
                 onClick={() => setShowAdd(false)}
-                className="rounded p-1 transition-colors hover:bg-[#f0f0f0]"
+                className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
               >
                 <X size={14} />
               </button>
@@ -267,15 +257,15 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && event.metaKey) void handleAdd()
               }}
-              className="w-full resize-none rounded-lg border border-[#e5e5e5] px-3 py-2.5 text-sm text-[#0a0a0a] outline-none transition-colors placeholder-[#aaa] focus:border-[#0a0a0a]"
+              className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
             />
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="text-xs text-[#666]">
+              <label className="text-xs text-[var(--muted)]">
                 Type
                 <select
                   value={addType ?? 'fact'}
                   onChange={(event) => setAddType(event.target.value as Memory['type'])}
-                  className="mt-1 w-full rounded-md border border-[#e5e5e5] bg-white px-2.5 py-2 text-xs text-[#0a0a0a] outline-none focus:border-[#0a0a0a]"
+                  className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                 >
                   <option value="fact">Fact</option>
                   <option value="preference">Preference</option>
@@ -284,12 +274,12 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
                   <option value="agent">Agent</option>
                 </select>
               </label>
-              <label className="text-xs text-[#666]">
+              <label className="text-xs text-[var(--muted)]">
                 Importance
                 <select
                   value={addImportance}
                   onChange={(event) => setAddImportance(event.target.value)}
-                  className="mt-1 w-full rounded-md border border-[#e5e5e5] bg-white px-2.5 py-2 text-xs text-[#0a0a0a] outline-none focus:border-[#0a0a0a]"
+                  className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                 >
                   <option value="1">1</option>
                   <option value="2">2</option>
@@ -299,21 +289,21 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
                 </select>
               </label>
             </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-[#888]">
+            <p className="mt-3 text-[11px] leading-relaxed text-[var(--muted)]">
               Saved memories stay as a single record, but the knowledge sidebar can still preview
               them in short segments for easier scanning.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => setShowAdd(false)}
-                className="rounded-md px-3 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f0f0f0]"
+                className={dialogButtonClass}
               >
                 Cancel
               </button>
               <button
                 onClick={() => void handleAdd()}
                 disabled={!addText.trim() || isSaving}
-                className="rounded-md bg-[#0a0a0a] px-3 py-1.5 text-xs text-[#fafafa] transition-colors hover:bg-[#222] disabled:opacity-40"
+                className={`${dialogButtonClass} disabled:opacity-40`}
               >
                 {isSaving ? 'Saving...' : 'Save'}
               </button>
@@ -324,16 +314,16 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="flex h-full items-center justify-center text-sm text-[#888]">
+          <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
             Loading...
           </div>
         ) : memories.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-[#888]">
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-[var(--muted)]">
             <Brain size={40} strokeWidth={1} className="opacity-40" />
             <p className="text-sm">No memories yet</p>
             <button
               onClick={() => setShowAdd(true)}
-              className="text-xs text-[#525252] underline underline-offset-2 transition-colors hover:text-[#0a0a0a]"
+              className="text-xs text-[var(--foreground)] underline underline-offset-2 transition-colors"
             >
               Add your first memory
             </button>
@@ -342,7 +332,7 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
           <div className="mx-auto max-w-3xl space-y-6 px-6 py-4">
             {groupLabels.map((label) => (
               <div key={label}>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[#888]">
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">
                   {label}
                 </p>
                 <div className="space-y-2">
@@ -353,8 +343,8 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
                         key={memory.memoryId}
                         className={`group rounded-xl border px-3 py-3 transition-colors ${
                           isSelected
-                            ? 'border-[#0a0a0a] bg-[#fafafa]'
-                            : 'border-[#efefef] bg-white hover:border-[#dcdcdc] hover:bg-[#fafafa]'
+                            ? 'border-[var(--border)] bg-[var(--surface-subtle)]'
+                            : 'border-[var(--border)] bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)]'
                         }`}
                       >
                         <div className="flex items-start gap-3">
@@ -362,13 +352,13 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
                             <button
                               type="button"
                               onClick={() => toggleSelected(memory.memoryId)}
-                              className="mt-0.5 shrink-0 text-[#666]"
+                              className="mt-0.5 shrink-0 text-[var(--muted)]"
                             >
                               {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
                             </button>
                           )}
                           <div className="min-w-0 flex-1">
-                            <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#0a0a0a]">
+                            <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
                               {memory.content}
                             </p>
                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -382,44 +372,44 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
                                   {memory.status}
                                 </span>
                               )}
-                              <span className="rounded-full border border-[#ececec] bg-[#f8f8f8] px-2 py-0.5 text-[10px] text-[#666]">
+                              <span className={metaChipClass}>
                                 {memory.source}
                               </span>
                               {typeof memory.importance === 'number' && (
-                                <span className="rounded-full border border-[#ececec] bg-[#f8f8f8] px-2 py-0.5 text-[10px] text-[#666]">
+                                <span className={metaChipClass}>
                                   importance {memory.importance}
                                 </span>
                               )}
                               {memory.actor && (
-                                <span className="rounded-full border border-[#ececec] bg-[#f8f8f8] px-2 py-0.5 text-[10px] text-[#666]">
+                                <span className={metaChipClass}>
                                   {memory.actor}
                                 </span>
                               )}
                               {memory.projectId && (
-                                <span className="rounded-full border border-[#ececec] bg-[#f8f8f8] px-2 py-0.5 text-[10px] text-[#666]">
+                                <span className={metaChipClass}>
                                   project
                                 </span>
                               )}
                               {memory.conversationId && (
-                                <span className="rounded-full border border-[#ececec] bg-[#f8f8f8] px-2 py-0.5 text-[10px] text-[#666]">
+                                <span className={metaChipClass}>
                                   chat
                                 </span>
                               )}
                               {memory.noteId && (
-                                <span className="rounded-full border border-[#ececec] bg-[#f8f8f8] px-2 py-0.5 text-[10px] text-[#666]">
+                                <span className={metaChipClass}>
                                   note
                                 </span>
                               )}
                               {memory.tags.map((tag) => (
                                 <span
                                   key={`${memory.memoryId}:${tag}`}
-                                  className="rounded-full border border-[#ececec] bg-[#f8f8f8] px-2 py-0.5 text-[10px] text-[#666]"
+                                  className={metaChipClass}
                                 >
                                   #{tag}
                                 </span>
                               ))}
                             </div>
-                            <div className="mt-2 flex items-center gap-2 text-[11px] text-[#aaa]">
+                            <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--muted-light)]">
                               <span>
                                 {new Date(memory.createdAt).toLocaleTimeString('en-US', {
                                   hour: '2-digit',
@@ -441,14 +431,14 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
                             <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                               <button
                                 onClick={() => void handleCopy(memory)}
-                                className="rounded p-1 transition-colors hover:bg-[#f0f0f0]"
+                                className="rounded p-1 transition-colors hover:bg-[var(--surface-subtle)]"
                                 title="Copy memory"
                               >
-                                <Copy size={13} className="text-[#666]" />
+                                <Copy size={13} className="text-[var(--muted)]" />
                               </button>
                               <button
                                 onClick={() => void handleDelete(memory.memoryId)}
-                                className="rounded p-1 transition-colors hover:bg-red-50"
+                                className="rounded p-1 transition-colors hover:bg-red-500/10"
                                 title="Delete memory"
                               >
                                 <Trash2 size={13} className="text-red-400" />

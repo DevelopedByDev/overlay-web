@@ -406,6 +406,11 @@ export async function POST(request: NextRequest) {
           )
 
           if (cid && persistContent) {
+            const lastStep = event.steps.at(-1)
+            const routedModelId =
+              effectiveModelId === FREE_TIER_AUTO_MODEL_ID
+                ? lastStep?.response.modelId
+                : undefined
             await convex.mutation('conversations:addMessage', {
               conversationId: cid,
               userId,
@@ -417,6 +422,7 @@ export async function POST(request: NextRequest) {
               contentType: 'text',
               parts: persistParts as never,
               modelId: effectiveModelId,
+              routedModelId,
               tokens: { input: totalInputTokens, output: totalOutputTokens },
             })
           }
@@ -427,17 +433,37 @@ export async function POST(request: NextRequest) {
     })
 
     const hasCitations = Object.keys(sourceCitationMap).length > 0
+    let streamedRoutedModelId: string | undefined
+    if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
+      void (async () => {
+        try {
+          const response = await result.response
+          if (typeof response.modelId === 'string' && response.modelId) {
+            streamedRoutedModelId = response.modelId
+          }
+        } catch {
+          // Ignore metadata propagation failures; the persisted message still carries the routed model id.
+        }
+      })()
+    }
 
     return result.toUIMessageStreamResponse({
       originalMessages: messages,
       onError: (error: unknown) => userFacingOpenRouterError(error),
       messageMetadata: ({ part }) => {
-        if (!hasCitations) return undefined
-        // Send early so the client can linkify **Sources:** while the reply streams.
-        if (part.type === 'start' || part.type === 'finish') {
-          return { sourceCitations: sourceCitationMap }
+        const metadata: Record<string, unknown> = {}
+        if (hasCitations && (part.type === 'start' || part.type === 'finish')) {
+          // Send early so the client can linkify **Sources:** while the reply streams.
+          metadata.sourceCitations = sourceCitationMap
         }
-        return undefined
+        if (
+          effectiveModelId === FREE_TIER_AUTO_MODEL_ID &&
+          part.type === 'finish' &&
+          streamedRoutedModelId
+        ) {
+          metadata.routedModelId = streamedRoutedModelId
+        }
+        return Object.keys(metadata).length > 0 ? metadata : undefined
       },
     })
   } catch (error) {

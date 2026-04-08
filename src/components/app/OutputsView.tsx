@@ -101,8 +101,8 @@ function OutputListRow({
   const isMedia = isMediaOutputType(output.type)
 
   return (
-    <div className="flex items-center gap-3 border-b border-[#f0f0f0] px-3 py-2.5 last:border-b-0 transition-colors hover:bg-[#fafafa]">
-      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-[#f5f5f5]">
+    <div className="flex items-center gap-3 border-b border-[var(--border)] px-3 py-2.5 transition-colors last:border-b-0 hover:bg-[var(--surface-muted)]">
+      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-[var(--surface-muted)]">
         {isCompleted && output.url && output.type === 'image' && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={output.url} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -112,12 +112,12 @@ function OutputListRow({
         )}
         {isCompleted && !isMedia && (
           <div className="flex h-full w-full items-center justify-center">
-            <OutputTypeIcon type={output.type} size={20} className="text-[#b0b0b0]" />
+            <OutputTypeIcon type={output.type} size={20} className="text-[var(--muted-light)]" />
           </div>
         )}
         {(isPending || (isCompleted && isMedia && !output.url)) && (
           <div className="flex h-full w-full items-center justify-center">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#e0e0e0] border-t-[#525252]" />
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--muted)]" />
           </div>
         )}
         {isFailed && (
@@ -131,8 +131,8 @@ function OutputListRow({
         onClick={isCompleted && isMedia ? onExpand : undefined}
         className="min-w-0 flex-1 text-left"
       >
-        <p className="line-clamp-1 text-sm text-[#0a0a0a]">{outputLabel(output)}</p>
-        <p className="mt-0.5 text-[11px] text-[#aaa]">
+        <p className="line-clamp-1 text-sm text-[var(--foreground)]">{outputLabel(output)}</p>
+        <p className="mt-0.5 text-[11px] text-[var(--muted-light)]">
           <span className="inline-flex items-center gap-1">
             <OutputTypeIcon type={output.type} size={10} />
             {output.type}
@@ -149,7 +149,7 @@ function OutputListRow({
             e.stopPropagation()
             onDetails()
           }}
-          className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2 py-1 text-[11px] font-medium text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
         >
           <Info size={12} />
           Details
@@ -161,7 +161,7 @@ function OutputListRow({
             e.stopPropagation()
             onDelete()
           }}
-          className="inline-flex items-center justify-center rounded-md border border-[#e5e5e5] p-1 text-[#888] transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+          className="inline-flex items-center justify-center rounded-md border border-[var(--border)] p-1 text-[var(--muted)] transition-colors hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
         >
           {isDeleting ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
         </button>
@@ -233,16 +233,16 @@ export default function OutputsView({
   return (
     <div className={`flex flex-col min-h-0 flex-1 ${embedded ? '' : 'h-full'}`}>
       {!embedded && (
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#e5e5e5] px-6">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
           <div className="flex items-center gap-3">
-            <h1 className="text-sm font-medium text-[#0a0a0a]">Outputs</h1>
-            <span className="text-xs text-[#aaa]">{filtered.length} items</span>
+            <h1 className="text-sm font-medium text-[var(--foreground)]">Outputs</h1>
+            <span className="text-xs text-[var(--muted-light)]">{filtered.length} items</span>
           </div>
           <button
             type="button"
             onClick={() => load()}
             disabled={loading}
-            className="shrink-0 rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f0f0f0] hover:text-[#525252] disabled:opacity-40"
+            className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-40"
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </button>
@@ -251,7 +251,7 @@ export default function OutputsView({
 
       <div className={`flex-1 overflow-y-auto ${embedded ? 'px-0 py-0' : 'px-4 py-5 sm:px-6 sm:py-6'}`}>
         {loading && outputs.length === 0 && (
-          <div className="flex items-center justify-center h-48 text-[#aaa] text-sm gap-2">
+          <div className="flex h-48 items-center justify-center gap-2 text-sm text-[var(--muted-light)]">
             <RefreshCw size={14} className="animate-spin" />
             Loading outputs...
           </div>
@@ -267,19 +267,19 @@ export default function OutputsView({
         {!loading && !error && filtered.length === 0 && (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             {filter === 'video' ? (
-              <Video size={32} className="text-[#d0d0d0]" />
+              <Video size={32} className="text-[var(--muted-light)]" />
             ) : filter === 'files' ? (
-              <FileText size={32} className="text-[#d0d0d0]" />
+              <FileText size={32} className="text-[var(--muted-light)]" />
             ) : (
-              <ImageIcon size={32} className="text-[#d0d0d0]" />
+              <ImageIcon size={32} className="text-[var(--muted-light)]" />
             )}
-            <p className="text-sm text-[#888]">No {filter === 'all' ? '' : `${filter} `}outputs yet</p>
-            <p className="text-xs text-[#aaa]">Generated media and sandbox artifacts will appear here</p>
+            <p className="text-sm text-[var(--muted)]">No {filter === 'all' ? '' : `${filter} `}outputs yet</p>
+            <p className="text-xs text-[var(--muted-light)]">Generated media and sandbox artifacts will appear here</p>
           </div>
         )}
 
         {filtered.length > 0 && layout === 'list' && (
-          <div className="mx-auto w-full max-w-[1440px] overflow-hidden rounded-xl border border-[#e5e5e5] bg-white">
+          <div className="mx-auto w-full max-w-[1440px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]">
             {filtered.map((output) => (
               <OutputListRow
                 key={output._id}
@@ -315,7 +315,7 @@ export default function OutputsView({
           onClick={() => setLightbox(null)}
         >
           <div
-            className="relative max-h-[90vh] max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+            className="relative max-h-[90vh] max-w-4xl overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {lightbox.type === 'image' && lightbox.url && (
@@ -327,24 +327,24 @@ export default function OutputsView({
             )}
             <div className="space-y-1 p-4">
               <div className="flex items-start gap-3">
-                <p className="min-w-0 flex-1 line-clamp-2 text-sm text-[#0a0a0a]">{outputLabel(lightbox)}</p>
+                <p className="min-w-0 flex-1 line-clamp-2 text-sm text-[var(--foreground)]">{outputLabel(lightbox)}</p>
                 <button
                   type="button"
                   onClick={() => setDetailsOutput(lightbox)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#e5e5e5] px-2 py-1 text-[11px] font-medium text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
                 >
                   <Info size={12} />
                   Details
                 </button>
               </div>
-              <div className="flex items-center gap-3 text-xs text-[#888]">
+              <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
                 <span>{lightbox.fileName || lightbox.modelId}</span>
                 <span><Clock size={10} className="mr-0.5 inline" />{timeAgo(lightbox.createdAt)}</span>
                 {lightbox.url && (
                   <a
                     href={lightbox.url}
                     download={defaultDownloadName(lightbox)}
-                    className="flex items-center gap-1 transition-colors hover:text-[#525252]"
+                    className="flex items-center gap-1 transition-colors hover:text-[var(--foreground)]"
                   >
                     <Download size={10} /> Download
                   </a>
@@ -358,28 +358,28 @@ export default function OutputsView({
       {detailsOutput && (
         <div className="fixed inset-0 z-[60] flex justify-end bg-black/25" onClick={() => setDetailsOutput(null)}>
           <div
-            className="h-full w-full max-w-md overflow-y-auto border-l border-[#e5e5e5] bg-white shadow-2xl"
+            className="h-full w-full max-w-md overflow-y-auto border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-[#e5e5e5] px-5 py-4">
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
               <div>
-                <h2 className="text-sm font-medium text-[#0a0a0a]">Output details</h2>
-                <p className="mt-0.5 text-xs text-[#888]">
+                <h2 className="text-sm font-medium text-[var(--foreground)]">Output details</h2>
+                <p className="mt-0.5 text-xs text-[var(--muted)]">
                   {detailsOutput.source === 'sandbox' ? 'Sandbox artifact' : `${detailsOutput.type} generation`}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setDetailsOutput(null)}
-                className="rounded-md p-1.5 text-[#888] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+                className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
               >
                 <X size={14} />
               </button>
             </div>
             <div className="space-y-5 px-5 py-5">
               <section className="space-y-2">
-                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#9a9a9a]">Prompt</p>
-                <p className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3 text-sm leading-relaxed text-[#0a0a0a]">
+                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Prompt</p>
+                <p className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-3 text-sm leading-relaxed text-[var(--foreground)]">
                   {detailsOutput.prompt}
                 </p>
               </section>
@@ -399,7 +399,7 @@ export default function OutputsView({
               </section>
               {detailsOutput.errorMessage && (
                 <section className="space-y-2">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#9a9a9a]">Error</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Error</p>
                   <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-sm leading-relaxed text-red-600">
                     {detailsOutput.errorMessage}
                   </p>
@@ -410,7 +410,7 @@ export default function OutputsView({
                   <a
                     href={detailsOutput.url}
                     download={defaultDownloadName(detailsOutput)}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-[#0a0a0a] px-3 py-2 text-xs font-medium text-[#fafafa] transition-colors hover:bg-[#222]"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
                   >
                     <Download size={12} />
                     Download
@@ -427,9 +427,9 @@ export default function OutputsView({
 
 function DetailItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-3">
-      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#9a9a9a]">{label}</p>
-      <p className="mt-1 break-words text-sm leading-relaxed text-[#0a0a0a]">{value}</p>
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">{label}</p>
+      <p className="mt-1 break-words text-sm leading-relaxed text-[var(--foreground)]">{value}</p>
     </div>
   )
 }
@@ -461,11 +461,11 @@ function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { out
   return (
     <div
       ref={cardRef}
-      className="group mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-[#e5e5e5] bg-white transition-shadow hover:shadow-md"
+      className="group mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] transition-shadow hover:shadow-md"
       style={{ breakInside: 'avoid' }}
       onClick={isCompleted && isMedia ? onExpand : undefined}
     >
-      <div className="relative bg-[#f5f5f5]">
+      <div className="relative bg-[var(--surface-muted)]">
         {isCompleted && output.url && output.type === 'image' && shouldLoadMedia && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={output.url} alt={outputLabel(output)} loading="lazy" className="block h-auto max-h-[22rem] w-full rounded-t-xl object-cover" />
@@ -475,13 +475,13 @@ function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { out
         )}
         {isCompleted && !isMedia && (
           <div className="flex h-36 flex-col items-center justify-center gap-3">
-            <OutputTypeIcon type={output.type} size={34} className="text-[#b0b0b0]" />
-            <span className="text-xs uppercase tracking-[0.12em] text-[#9a9a9a]">{output.type}</span>
+            <OutputTypeIcon type={output.type} size={34} className="text-[var(--muted-light)]" />
+            <span className="text-xs uppercase tracking-[0.12em] text-[var(--muted-light)]">{output.type}</span>
           </div>
         )}
         {(isPending || (isCompleted && isMedia && output.url && !shouldLoadMedia)) && (
           <div className="flex h-32 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#e0e0e0] border-t-[#525252]" />
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--muted)]" />
           </div>
         )}
         {isFailed && (
@@ -496,9 +496,9 @@ function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { out
               href={output.url}
               download={defaultDownloadName(output)}
               onClick={(e) => e.stopPropagation()}
-              className="rounded-full bg-white/90 p-2 opacity-0 transition-opacity hover:bg-white group-hover:opacity-100"
+              className="rounded-full border border-[var(--border)] bg-[var(--surface-elevated)]/90 p-2 opacity-0 transition-opacity hover:bg-[var(--surface-elevated)] group-hover:opacity-100"
             >
-              <Download size={14} className="text-[#0a0a0a]" />
+              <Download size={14} className="text-[var(--foreground)]" />
             </a>
           </div>
         )}
@@ -518,9 +518,9 @@ function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { out
       <div className="px-3 py-2">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="line-clamp-2 text-xs leading-relaxed text-[#525252]">{outputLabel(output)}</p>
-            {!isMedia && <p className="mt-1 line-clamp-2 text-[11px] text-[#888]">{output.prompt}</p>}
-            <p className="mt-1 text-[10px] text-[#aaa]">
+            <p className="line-clamp-2 text-xs leading-relaxed text-[var(--foreground)]">{outputLabel(output)}</p>
+            {!isMedia && <p className="mt-1 line-clamp-2 text-[11px] text-[var(--muted)]">{output.prompt}</p>}
+            <p className="mt-1 text-[10px] text-[var(--muted-light)]">
               {timeAgo(output.createdAt)}
               {output.sizeBytes ? ` • ${formatBytes(output.sizeBytes)}` : ''}
             </p>
@@ -529,7 +529,7 @@ function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { out
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onDetails() }}
-              className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2 py-1 text-[11px] font-medium text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
             >
               <Info size={12} />
               Details
@@ -538,7 +538,7 @@ function OutputCard({ output, onExpand, onDetails, onDelete, isDeleting }: { out
               type="button"
               disabled={isDeleting}
               onClick={(e) => { e.stopPropagation(); onDelete() }}
-              className="inline-flex items-center justify-center rounded-md border border-[#e5e5e5] p-1 text-[#888] transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+              className="inline-flex items-center justify-center rounded-md border border-[var(--border)] p-1 text-[var(--muted)] transition-colors hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
             >
               {isDeleting ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
             </button>

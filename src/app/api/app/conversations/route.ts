@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
           variantIndex?: number
           replyToTurnId?: string
           replySnippet?: string
+          routedModelId?: string
         }>
       >('conversations:getMessages', {
         conversationId: conversationId as Id<'conversations'>,
@@ -112,6 +113,7 @@ export async function GET(request: NextRequest) {
           model: message.modelId,
           ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),
           ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
+          ...(message.routedModelId ? { routedModelId: message.routedModelId } : {}),
         })),
       })
     }

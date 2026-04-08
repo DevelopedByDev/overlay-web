@@ -25,7 +25,7 @@ function StorageUsageCaption({ entitlements }: { entitlements: StorageEntitlemen
   const nearLimit = used / limit >= 0.85
   return (
     <div
-      className={`mt-1 text-[10px] leading-snug ${nearLimit ? 'text-[#b45309]' : 'text-[#9a9a9a]'}`}
+      className={`mt-1 text-[10px] leading-snug ${nearLimit ? 'text-amber-600' : 'text-[var(--muted-light)]'}`}
     >
       {formatBytes(used)} / {formatBytes(limit)}
     </div>
@@ -51,9 +51,9 @@ export default function KnowledgeSidebar({
   }
 
   return (
-    <div className="flex h-full w-48 shrink-0 flex-col border-r border-[#e5e5e5] bg-[#f5f5f5]">
-      <div className="hidden min-h-16 shrink-0 flex-col justify-center gap-0 border-b border-[#e5e5e5] px-4 py-3 md:flex">
-        <span className="text-sm font-medium text-[#0a0a0a]">Knowledge</span>
+    <div className="flex h-full w-48 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
+      <div className="hidden min-h-16 shrink-0 flex-col justify-center gap-0 border-b border-[var(--border)] px-4 py-3 md:flex">
+        <span className="text-sm font-medium text-[var(--foreground)]">Knowledge</span>
         <StorageUsageCaption entitlements={entitlements} />
       </div>
 
@@ -67,8 +67,8 @@ export default function KnowledgeSidebar({
               onClick={() => pushView(id)}
               className={`group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
                 active
-                  ? 'bg-[#0a0a0a] text-[#fafafa]'
-                  : 'text-[#525252] hover:bg-[#f0f0f0] hover:text-[#0a0a0a]'
+                  ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
               }`}
             >
               <Icon size={15} />

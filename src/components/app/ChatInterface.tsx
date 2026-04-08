@@ -939,10 +939,16 @@ function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; med
     .map((p) => p.url!)
 }
 
-type UserBubbleMetadata = { indexedDocuments?: string[]; replyToTurnId?: string; replySnippet?: string }
+type ChatMessageMetadata = {
+  indexedDocuments?: string[]
+  replyToTurnId?: string
+  replySnippet?: string
+  sourceCitations?: SourceCitationMap
+  routedModelId?: string
+}
 
 function getUserMessageDocNames(msg: unknown): string[] {
-  const m = msg as { metadata?: UserBubbleMetadata }
+  const m = msg as { metadata?: ChatMessageMetadata }
   const fromMeta = m.metadata?.indexedDocuments
   if (Array.isArray(fromMeta) && fromMeta.length > 0) return fromMeta
   return []
@@ -967,7 +973,7 @@ function getUserTurnId(msg: { id: string; turnId?: string }): string | null {
 
 function getUserReplyThreadMeta(msg: unknown): { replyToTurnId: string; replySnippet: string } | null {
   const m = msg as {
-    metadata?: UserBubbleMetadata
+    metadata?: ChatMessageMetadata
     replyToTurnId?: string
     replySnippet?: string
   }
@@ -975,6 +981,15 @@ function getUserReplyThreadMeta(msg: unknown): { replyToTurnId: string; replySni
   if (!tid) return null
   const snippet = (m.metadata?.replySnippet || m.replySnippet || 'Earlier message').trim()
   return { replyToTurnId: tid, replySnippet: snippet }
+}
+
+function getRoutedModelId(msg: unknown): string | null {
+  const m = msg as {
+    metadata?: ChatMessageMetadata
+    routedModelId?: string
+  }
+  const routedModelId = m.metadata?.routedModelId?.trim() || m.routedModelId?.trim()
+  return routedModelId || null
 }
 
 function scrollToExchangeTurn(turnId: string) {
@@ -1399,6 +1414,7 @@ const CHAT_SUGGESTIONS = [
 
 const DEFAULT_CHAT_TITLE = 'New Chat'
 const CHAT_MODEL_KEY = 'overlay_chat_model'
+const ASK_MODEL_SELECTION_MODE_KEY = 'overlay_ask_model_selection_mode'
 const ACT_MODEL_KEY = 'overlay_act_model'
 const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
 const SUPPORTED_INPUT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
@@ -1412,10 +1428,13 @@ interface GenerationResult {
   error?: string
 }
 
+type AskModelSelectionMode = 'single' | 'multiple'
+
 interface ConversationUiState {
   composerMode: 'ask' | 'act'
   selectedActModel: string
   selectedModels: string[]
+  askModelSelectionMode: AskModelSelectionMode
   exchangeModes: ('ask' | 'act')[]
   exchangeModels: string[][]
   selectedTabPerExchange: number[]
@@ -1457,6 +1476,7 @@ function cloneConversationUiState(state: ConversationUiState): ConversationUiSta
     composerMode: state.composerMode,
     selectedActModel: state.selectedActModel,
     selectedModels: [...state.selectedModels],
+    askModelSelectionMode: state.askModelSelectionMode,
     exchangeModes: [...state.exchangeModes],
     exchangeModels: state.exchangeModels.map((models) => [...models]),
     selectedTabPerExchange: [...state.selectedTabPerExchange],
@@ -1476,6 +1496,7 @@ function createConversationUiState(
     composerMode: overrides.composerMode ?? 'act',
     selectedActModel: overrides.selectedActModel ?? DEFAULT_MODEL_ID,
     selectedModels: [...(overrides.selectedModels ?? [DEFAULT_MODEL_ID])],
+    askModelSelectionMode: overrides.askModelSelectionMode ?? 'single',
     exchangeModes: [...(overrides.exchangeModes ?? [])],
     exchangeModels: (overrides.exchangeModels ?? []).map((models) => [...models]),
     selectedTabPerExchange: [...(overrides.selectedTabPerExchange ?? [])],
@@ -1807,18 +1828,30 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
   const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
+  const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [isSwitchingChat, setIsSwitchingChat] = useState(false)
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
 
   useEffect(() => {
     const saved = localStorage.getItem(CHAT_MODEL_KEY)
+    let restoredSelectedModels: string[] | null = null
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) setSelectedModels(parsed.slice(0, 4))
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          restoredSelectedModels = parsed.slice(0, 4)
+          setSelectedModels(restoredSelectedModels)
+        }
       } catch {
-        setSelectedModels([saved])
+        restoredSelectedModels = [saved]
+        setSelectedModels(restoredSelectedModels)
       }
+    }
+    const savedAskSelectionMode = localStorage.getItem(ASK_MODEL_SELECTION_MODE_KEY)
+    if (savedAskSelectionMode === 'single' || savedAskSelectionMode === 'multiple') {
+      setAskModelSelectionMode(savedAskSelectionMode)
+    } else if ((restoredSelectedModels?.length ?? 1) > 1) {
+      setAskModelSelectionMode('multiple')
     }
     const savedAct = localStorage.getItem(ACT_MODEL_KEY)
     if (savedAct) setSelectedActModel(savedAct)
@@ -1927,6 +1960,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     setComposerMode(ui.composerMode)
     setSelectedActModel(ui.selectedActModel)
     setSelectedModels([...ui.selectedModels])
+    setAskModelSelectionMode(ui.askModelSelectionMode)
     setExchangeModes([...ui.exchangeModes])
     setExchangeModels(ui.exchangeModels.map((models) => [...models]))
     setSelectedTabPerExchange([...ui.selectedTabPerExchange])
@@ -1943,6 +1977,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       composerMode,
       selectedActModel,
       selectedModels,
+      askModelSelectionMode,
       exchangeModes,
       exchangeModels,
       selectedTabPerExchange,
@@ -1963,6 +1998,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     exchangeModes,
     generationResults,
     isFirstMessage,
+    askModelSelectionMode,
     selectedActModel,
     selectedModels,
     selectedTabPerExchange,
@@ -2095,8 +2131,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     if (askAlreadyAuto && actAlreadyAuto) return
 
     setSelectedModels([FREE_TIER_AUTO_MODEL_ID])
+    setAskModelSelectionMode('single')
     setSelectedActModel(FREE_TIER_AUTO_MODEL_ID)
     localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_AUTO_MODEL_ID]))
+    localStorage.setItem(ASK_MODEL_SELECTION_MODE_KEY, 'single')
     localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_AUTO_MODEL_ID)
   }, [activeChatId, isFreeTier, selectedActModel, selectedModels])
 
@@ -2404,6 +2442,22 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
     setComposerMode(next)
   }, [selectedModels])
 
+  const handleAskModelSelectionModeChange = useCallback((next: AskModelSelectionMode) => {
+    if (isActiveLoading || composerMode !== 'ask') return
+    if (next === askModelSelectionMode) return
+
+    localStorage.setItem(ASK_MODEL_SELECTION_MODE_KEY, next)
+    setAskModelSelectionMode(next)
+
+    if (next === 'single' && selectedModels.length > 1) {
+      const prev = [...selectedModels]
+      const nextModels = [prev[0]!]
+      remapChatSlotsForNewModelOrder(prev, nextModels)
+      setSelectedModels(nextModels)
+      localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(nextModels))
+    }
+  }, [askModelSelectionMode, composerMode, isActiveLoading, remapChatSlotsForNewModelOrder, selectedModels])
+
   // ── chat management ────────────────────────────────────────────────────────
 
   function clearTransientComposerState() {
@@ -2456,6 +2510,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
         composerMode,
         selectedActModel,
         selectedModels,
+        askModelSelectionMode,
         activeChatTitle: DEFAULT_CHAT_TITLE,
         isFirstMessage: true,
       })
@@ -2463,6 +2518,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
         composerMode,
         selectedActModel,
         selectedModels,
+        askModelSelectionMode,
         activeChatTitle: DEFAULT_CHAT_TITLE,
         isFirstMessage: true,
       })
@@ -2513,9 +2569,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
         role: 'user' | 'assistant'
         parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }>
         model?: string
-        metadata?: UserBubbleMetadata
+        metadata?: ChatMessageMetadata
         replyToTurnId?: string
         replySnippet?: string
+        routedModelId?: string
       }
       let rawMessages: RawMsg[] = data.messages || []
       rawMessages = rawMessages.map((msg) => {
@@ -2691,6 +2748,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
         composerMode: resolvedComposerMode,
         selectedActModel: resolvedActModel,
         selectedModels: resolvedSelectedModels,
+        askModelSelectionMode: resolvedSelectedModels.length > 1 ? 'multiple' : askModelSelectionMode,
         exchangeModes: exchangeModesFromServer,
         exchangeModels: restoredExchangeModels,
         selectedTabPerExchange: exchanges.map(() => 0),
@@ -3181,7 +3239,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
       persistedContent = `[Indexed documents: ${indexedFileNames.join(', ')}]`
     }
 
-    const userMeta: UserBubbleMetadata = {}
+    const userMeta: ChatMessageMetadata = {}
     if (indexedFileNames.length > 0) userMeta.indexedDocuments = indexedFileNames
     if (replyCtxSnapshot?.replyToTurnId) {
       userMeta.replyToTurnId = replyCtxSnapshot.replyToTurnId
@@ -3400,6 +3458,16 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
 
   function toggleModel(modelId: string) {
     if (isActiveLoading || composerMode === 'act') return
+    if (askModelSelectionMode === 'single') {
+      if (selectedModels[0] === modelId && selectedModels.length === 1) return
+      const prev = [...selectedModels]
+      const newModels = [modelId]
+      remapChatSlotsForNewModelOrder(prev, newModels)
+      setSelectedModels(newModels)
+      localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(newModels))
+      setShowModelPicker(false)
+      return
+    }
     const isSelected = selectedModels.includes(modelId)
     if (isSelected) {
       if (selectedModels.length === 1) return
@@ -3661,9 +3729,10 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                 </DelayedTooltip>
                 {showModelPicker && (
                   <div
-                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64"
+                    className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64"
                     onMouseLeave={() => setHoveredModelId(null)}
                   >
+                  <div className="max-h-72 overflow-y-auto">
                   {generationMode === 'image' ? (
                     IMAGE_MODELS.map((m) => {
                         const isSel = selectedImageModels.includes(m.id)
@@ -3727,7 +3796,7 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   ) : (
                     getModelsByIntelligence(isFreeTier).map((m) => {
                       const isSelected = selectedModels.includes(m.id)
-                      const isDisabled = !isSelected && selectedModels.length >= 4
+                      const isDisabled = askModelSelectionMode === 'multiple' && !isSelected && selectedModels.length >= 4
                       return (
                         <button
                           key={m.id}
@@ -3746,6 +3815,33 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                         </button>
                       )
                     })
+                  )}
+                  </div>
+                  {generationMode === 'text' && composerMode === 'ask' && (
+                    <div className="border-t border-[var(--border)] px-2 py-2">
+                      <div className="grid grid-cols-2 gap-1 rounded-md bg-[var(--surface-subtle)] p-1">
+                        {(['single', 'multiple'] as const).map((mode) => {
+                          const isActive = askModelSelectionMode === mode
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => handleAskModelSelectionModeChange(mode)}
+                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
+                              className={`rounded px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+                                isActive
+                                  ? 'bg-[var(--foreground)] text-[var(--background)]'
+                                  : 'text-[var(--muted)] hover:bg-[var(--border)]'
+                              } ${
+                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
+                              }`}
+                            >
+                              {mode}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -4009,7 +4105,15 @@ export default function ChatInterface({ userId: _userId, hideSidebar, projectNam
                   responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined
                 )?.metadata?.sourceCitations
 
-                const modelLabelSingle = getChatModelDisplayName(selectedModelId)
+                const routedModelId = responseMsg ? getRoutedModelId(responseMsg) : null
+                const routedModelName =
+                  selectedModelId === FREE_TIER_AUTO_MODEL_ID && routedModelId
+                    ? getChatModelDisplayName(routedModelId)
+                    : null
+                const modelLabelSingle =
+                  selectedModelId === FREE_TIER_AUTO_MODEL_ID && routedModelName
+                    ? `Auto · ${routedModelName}`
+                    : getChatModelDisplayName(selectedModelId)
                 const modelLabel =
                   exchModelList.length > 1
                     ? `${modelLabelSingle} · ${exchModelList.length} models`

@@ -1,5 +1,45 @@
 import type { NextRequest } from 'next/server'
 
+/** Stable string for app base (no trailing slash on origin-only URLs). */
+function formatParsedBaseUrl(u: URL): string {
+  if (u.pathname === '/' && !u.search && !u.hash) {
+    return u.origin
+  }
+  return `${u.origin}${u.pathname}${u.search}${u.hash}`
+}
+
+/**
+ * Env vars are often set to `localhost:3000` without a scheme; `new URL()` then throws Invalid URL.
+ */
+function normalizeAppBaseUrl(raw: string | undefined, fallback: string): string {
+  const trimmed = (raw ?? '').trim()
+  if (!trimmed) {
+    return fallback
+  }
+  try {
+    const u = new URL(trimmed)
+    // Node accepts `localhost:3000` as a bogus URL (protocol `localhost:`, origin `"null"`).
+    // Only treat real http(s) bases as already valid.
+    if (u.protocol === 'http:' || u.protocol === 'https:') {
+      return formatParsedBaseUrl(u)
+    }
+  } catch {
+    // continue to scheme prepending
+  }
+  if (trimmed.includes('://')) {
+    return fallback
+  }
+  const hostPort = trimmed.split('/')[0] ?? trimmed
+  const hostname = (hostPort.split(':')[0] ?? '').toLowerCase()
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1'
+  const prefixed = `${isLocal ? 'http' : 'https'}://${trimmed}`
+  try {
+    return formatParsedBaseUrl(new URL(prefixed))
+  } catch {
+    return fallback
+  }
+}
+
 function isLocalOrigin(origin: string): boolean {
   try {
     const url = new URL(origin)
@@ -16,7 +56,12 @@ function isLocalOrigin(origin: string): boolean {
  */
 export function getInternalApiBaseUrl(request?: NextRequest): string {
   const canonicalBaseUrl = getBaseUrl()
-  const canonicalOrigin = new URL(canonicalBaseUrl).origin
+  let canonicalOrigin: string
+  try {
+    canonicalOrigin = new URL(canonicalBaseUrl).origin
+  } catch {
+    canonicalOrigin = new URL(normalizeAppBaseUrl(canonicalBaseUrl, 'https://getoverlay.io')).origin
+  }
 
   if (request) {
     const requestOrigin = request.nextUrl.origin
@@ -35,24 +80,29 @@ export function getInternalApiBaseUrl(request?: NextRequest): string {
 export function getAutomationExecutorBaseUrl(): string {
   const explicitExecutorBaseUrl = process.env.AUTOMATION_EXECUTOR_BASE_URL?.trim()
   if (explicitExecutorBaseUrl) {
-    return explicitExecutorBaseUrl
+    return normalizeAppBaseUrl(explicitExecutorBaseUrl, getBaseUrl())
   }
 
   return getBaseUrl()
 }
 
+const DEFAULT_APP_URL = 'https://getoverlay.io'
+
 export function getBaseUrl(): string {
   if (process.env.NODE_ENV === 'development') {
-    return process.env.DEV_NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://getoverlay.io'
+    const fromEnv =
+      process.env.DEV_NEXT_PUBLIC_APP_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim()
+    return normalizeAppBaseUrl(fromEnv, DEFAULT_APP_URL)
   }
 
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL
+  if (process.env.NEXT_PUBLIC_APP_URL?.trim()) {
+    return normalizeAppBaseUrl(process.env.NEXT_PUBLIC_APP_URL, DEFAULT_APP_URL)
   }
 
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`
+  const vercelHost = process.env.VERCEL_URL?.trim()
+  if (vercelHost) {
+    return normalizeAppBaseUrl(`https://${vercelHost}`, DEFAULT_APP_URL)
   }
 
-  return 'https://getoverlay.io'
+  return DEFAULT_APP_URL
 }
