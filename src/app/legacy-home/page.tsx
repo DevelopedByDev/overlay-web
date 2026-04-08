@@ -48,14 +48,12 @@ export default function Home() {
   }, []);
 
   // Track section progress for scroll-triggered animations
-  const [allInOnePlaceProgress, setAllInOnePlaceProgress] = useState(0);
   const [voiceProgress, setVoiceProgress] = useState(0);
   const [notesProgress, setNotesProgress] = useState(0);
   const [chatsProgress, setChatsProgress] = useState(0);
   const [browserProgress, setBrowserProgress] = useState(0);
 
   // Track which sections are active
-  const [allInOnePlaceActive, setAllInOnePlaceActive] = useState(false);
   const [voiceActive, setVoiceActive] = useState(false);
   const [notesActive, setNotesActive] = useState(false);
   const [chatsActive, setChatsActive] = useState(false);
@@ -63,10 +61,6 @@ export default function Home() {
 
   useMotionValueEvent(scrollYProgress, "change", (latest) => {
     // New section ranges for revised flow (12 sections)
-    
-    // AllInOnePlace section: 0.20 - 0.32 (extended for more pause)
-    setAllInOnePlaceActive(latest >= 0.20 && latest < 0.32);
-    setAllInOnePlaceProgress(latest >= 0.20 && latest < 0.32 ? (latest - 0.20) / 0.12 : 0);
     
     // Voice section: 0.32 - 0.40
     setVoiceActive(latest >= 0.32 && latest < 0.40);
@@ -303,7 +297,7 @@ export default function Home() {
         style={{ opacity: allInOnePlaceOpacity, pointerEvents: allInOnePlacePointer }}
         className="fixed inset-0 flex items-center justify-center px-6 py-20 z-10"
       >
-        <AllInOnePlace scrollProgress={allInOnePlaceProgress} isActive={allInOnePlaceActive} />
+        <AllInOnePlace />
       </motion.section>
 
       {/* Voice Section */}

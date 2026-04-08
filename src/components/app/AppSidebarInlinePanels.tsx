@@ -8,10 +8,10 @@ import {
   FileText,
   Folder,
   FolderOpen,
-  Loader2,
   MessageSquare,
   Trash2,
 } from 'lucide-react'
+import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { CHAT_TITLE_UPDATED_EVENT, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
 
@@ -79,9 +79,7 @@ export function ChatInlinePanel({
   return (
     <div className="space-y-0.5">
       {loading ? (
-        <div className="flex items-center justify-center py-4 text-[var(--muted-light)]">
-          <Loader2 size={14} className="animate-spin" />
-        </div>
+        <SidebarListSkeleton rows={6} />
       ) : chats.length === 0 ? (
         <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No chats yet</p>
       ) : chats.map((chat) => {
@@ -162,9 +160,7 @@ export function NotesInlinePanel({
   return (
     <div className="space-y-0.5">
       {loading ? (
-        <div className="flex items-center justify-center py-4 text-[var(--muted-light)]">
-          <Loader2 size={14} className="animate-spin" />
-        </div>
+        <SidebarListSkeleton rows={6} />
       ) : notes.length === 0 ? (
         <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No notes yet</p>
       ) : notes.map((note) => {
@@ -268,9 +264,16 @@ function ProjectBranch({
           ))}
 
           {itemsLoading.has(project._id) ? (
-            <div className="flex items-center gap-2 py-1.5 text-[var(--muted-light)]" style={{ paddingLeft: `${34 + depth * 14}px` }}>
-              <Loader2 size={12} className="animate-spin" />
-              <span className="text-[11px]">Loading…</span>
+            <div className="space-y-1.5 py-1" style={{ paddingLeft: `${34 + depth * 14}px` }} aria-hidden>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-2 pr-2">
+                  <div className="ui-skeleton-line h-2.5 w-2.5 shrink-0 rounded" />
+                  <div
+                    className="ui-skeleton-line h-2.5 max-w-[200px] flex-1 rounded"
+                    style={{ width: `${78 - i * 6}%` }}
+                  />
+                </div>
+              ))}
             </div>
           ) : projectItems ? (
             <>
@@ -440,9 +443,7 @@ export function ProjectsInlinePanel({
   return (
     <div className="space-y-0.5">
       {loading ? (
-        <div className="flex items-center justify-center py-4 text-[var(--muted-light)]">
-          <Loader2 size={14} className="animate-spin" />
-        </div>
+        <SidebarListSkeleton rows={5} />
       ) : rootProjects.length === 0 ? (
         <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No projects yet</p>
       ) : rootProjects.map((project) => (

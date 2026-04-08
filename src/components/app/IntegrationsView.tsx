@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, UIEvent } from 'react'
 import { Loader2, Plus, X, Search } from 'lucide-react'
+import { IntegrationDialogRowSkeleton, IntegrationListSkeleton } from '@/components/ui/Skeleton'
 
 interface Integration {
   id: string
@@ -275,12 +276,7 @@ function IntegrationsDialog({
           {error && (
             <div className="mx-4 my-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-xs text-[var(--foreground)]">{error}</div>
           )}
-          {isSearching && (
-            <div className="flex items-center justify-center gap-2 py-10 text-xs text-[var(--muted)]">
-              <Loader2 size={13} className="animate-spin" />
-              {queryInput.trim() ? 'Searching...' : 'Loading integrations...'}
-            </div>
-          )}
+          {isSearching && <IntegrationDialogRowSkeleton rows={8} />}
           {!isSearching && visibleItems.length === 0 && (
             <div className="py-10 text-center text-xs text-[var(--muted)]">No integrations found.</div>
           )}
@@ -323,8 +319,8 @@ function IntegrationsDialog({
             )
           })}
           {loadingMore && (
-            <div className="flex justify-center py-4">
-              <Loader2 size={13} className="animate-spin text-[var(--muted-light)]" />
+            <div className="px-5 py-4" aria-hidden>
+              <div className="ui-skeleton-line mx-auto h-2 w-32 rounded-full opacity-80" />
             </div>
           )}
         </div>
@@ -499,9 +495,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
-          </div>
+          <IntegrationListSkeleton rows={10} />
         ) : (
           <div className="mx-auto max-w-2xl px-6 py-6 space-y-8">
             {connectError && (

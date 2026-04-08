@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Mail, Moon, PanelsLeftRight, Sun } from 'lucide-react'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
+import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
 
 const SECTIONS = [
   { id: 'general', label: 'General' },
@@ -124,7 +125,10 @@ export default function SettingsPage() {
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-          {section === 'general' && (
+          {isLoading ? (
+            <SettingsSectionSkeleton rows={section === 'general' ? 2 : 1} />
+          ) : null}
+          {!isLoading && section === 'general' && (
             <>
               <SettingRow
                 icon={settings.theme === 'dark' ? <Moon size={18} strokeWidth={1.8} /> : <Sun size={18} strokeWidth={1.8} />}
@@ -145,7 +149,7 @@ export default function SettingsPage() {
             </>
           )}
 
-          {section === 'account' && (
+          {!isLoading && section === 'account' && (
             <SectionPlaceholder title="Account">
               <p>
                 Manage your profile, billing, and subscription on the account portal.
@@ -159,13 +163,13 @@ export default function SettingsPage() {
             </SectionPlaceholder>
           )}
 
-          {section === 'customization' && (
+          {!isLoading && section === 'customization' && (
             <SectionPlaceholder title="Customization">
               <p>Additional appearance and layout options will appear here as they ship.</p>
             </SectionPlaceholder>
           )}
 
-          {section === 'models' && (
+          {!isLoading && section === 'models' && (
             <SectionPlaceholder title="Models">
               <p>
                 Default chat models are chosen from the composer on each conversation. Use the model menu in chat to
@@ -180,17 +184,17 @@ export default function SettingsPage() {
             </SectionPlaceholder>
           )}
 
-          {section === 'contact' && (
+          {!isLoading && section === 'contact' && (
             <SectionPlaceholder title="Contact">
               <p className="flex items-start gap-2">
                 <Mail size={16} className="mt-0.5 shrink-0 text-[var(--muted)]" strokeWidth={1.75} />
                 <span>
-                  Questions or feedback? Email{' '}
+                  Questions or feedback? Email the founder:{' '}
                   <a
-                    href="mailto:support@getoverlay.io"
+                    href="mailto:divyansh@layernorm.co"
                     className="font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
                   >
-                    support@getoverlay.io
+                    divyansh@layernorm.co
                   </a>
                   .
                 </span>

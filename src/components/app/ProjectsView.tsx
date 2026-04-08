@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { FolderOpen, Loader2 } from 'lucide-react'
+import { FolderOpen } from 'lucide-react'
+import { FileViewerSkeleton } from '@/components/ui/Skeleton'
 import ChatInterface from './ChatInterface'
 import NotebookEditor from './NotebookEditor'
 import { FileViewerPanel, isEditableType } from './FileViewer'
@@ -57,11 +58,7 @@ function ProjectFileView({ fileId }: { fileId: string }) {
   }
 
   if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-[#888]">
-        <Loader2 size={16} className="animate-spin" />
-      </div>
-    )
+    return <FileViewerSkeleton />
   }
   if (!file) {
     return (

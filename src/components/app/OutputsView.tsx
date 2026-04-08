@@ -24,6 +24,7 @@ import {
   type OutputSource,
   type OutputType,
 } from '@/lib/output-types'
+import { OutputCardSkeleton, OutputListRowSkeleton } from '@/components/ui/Skeleton'
 
 interface Output {
   _id: string
@@ -152,9 +153,15 @@ function OutputListRow({
             <OutputTypeIcon type={output.type} size={20} className="text-[var(--muted-light)]" />
           </div>
         )}
-        {(isPending || (isCompleted && isMedia && !output.url)) && (
-          <div className="flex h-full w-full items-center justify-center">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--muted)]" />
+        {(isPending || (isCompleted && isMedia && !output.url)) && isMedia && (
+          <div
+            className="media-gen-mesh absolute inset-0 z-[1] rounded-lg border border-[var(--border)] !min-h-0 !min-w-0"
+            aria-hidden
+          />
+        )}
+        {(isPending || (isCompleted && isMedia && !output.url)) && !isMedia && (
+          <div className="relative z-[1] flex h-full w-full items-center justify-center">
+            <div className="ui-skeleton-mesh h-8 w-8 !min-h-0 rounded-md" aria-hidden />
           </div>
         )}
         {isFailed && (
@@ -304,9 +311,20 @@ export default function OutputsView({
 
       <div className={`flex-1 overflow-y-auto ${embedded ? 'px-0 py-0' : 'px-4 py-5 sm:px-6 sm:py-6'}`}>
         {loading && outputs.length === 0 && (
-          <div className="flex h-48 items-center justify-center gap-2 text-sm text-[var(--muted-light)]">
-            <RefreshCw size={14} className="animate-spin" />
-            Loading outputs...
+          <div className="mx-auto w-full max-w-3xl py-2">
+            {layout === 'list' ? (
+              <div className="space-y-1">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <OutputListRowSkeleton key={i} />
+                ))}
+              </div>
+            ) : (
+              <div className="mx-auto w-full max-w-[1440px] columns-1 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <OutputCardSkeleton key={i} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -570,16 +588,33 @@ function OutputCard({
         {isCompleted && output.url && output.type === 'video' && shouldLoadMedia && (
           <video src={output.url} className="block h-auto max-h-[22rem] w-full rounded-t-xl object-cover" muted playsInline preload="metadata" />
         )}
-        {isCompleted && !isMedia && (
+        {isCompleted && !isMedia && !isPending && (
           <div className="flex h-36 flex-col items-center justify-center gap-3">
             <OutputTypeIcon type={output.type} size={34} className="text-[var(--muted-light)]" />
             <span className="text-xs uppercase tracking-[0.12em] text-[var(--muted-light)]">{output.type}</span>
           </div>
         )}
-        {(isPending || (isCompleted && isMedia && output.url && !shouldLoadMedia)) && (
-          <div className="flex h-32 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--muted)]" />
+        {isPending && isMedia && (
+          <div
+            className={`media-gen-mesh w-full rounded-t-xl border border-[var(--border)] ${
+              output.type === 'video' ? 'min-h-[12rem]' : 'min-h-[9rem]'
+            }`}
+            aria-hidden
+          />
+        )}
+        {isPending && !isMedia && (
+          <div className="flex h-36 flex-col items-center justify-center gap-3 px-4">
+            <div className="ui-skeleton-mesh h-20 w-20 rounded-xl" aria-hidden />
+            <div className="ui-skeleton-line h-2.5 w-24 rounded" />
           </div>
+        )}
+        {isCompleted && isMedia && output.url && !shouldLoadMedia && !isPending && (
+          <div
+            className={`media-gen-mesh w-full rounded-t-xl border border-[var(--border)] ${
+              output.type === 'video' ? 'min-h-[12rem]' : 'min-h-[9rem]'
+            }`}
+            aria-hidden
+          />
         )}
         {isFailed && (
           <div className="flex h-32 flex-col items-center justify-center gap-1.5 text-red-400">

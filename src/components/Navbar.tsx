@@ -1,13 +1,18 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { motion, MotionValue, useTransform, useMotionValue } from 'framer-motion'
+import { motion, MotionValue, useMotionValue, useTransform } from 'framer-motion'
 import { Menu, X } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 
 interface NavbarProps {
   scrollYProgress: MotionValue<number>
+  /** Marketing /home only — theme toggle + chrome */
+  landingTheme?: 'light' | 'dark'
+  onLandingThemeToggle?: () => void
+  navLogoOpacity?: MotionValue<number>
+  navLogoX?: MotionValue<number>
 }
 
 interface AuthState {
@@ -20,7 +25,13 @@ interface AuthState {
   }
 }
 
-export function Navbar({ scrollYProgress }: NavbarProps) {
+export function Navbar({
+  scrollYProgress,
+  landingTheme = 'light',
+  onLandingThemeToggle,
+  navLogoOpacity: navLogoOpacityProp,
+  navLogoX: navLogoXProp,
+}: NavbarProps) {
   const [authState, setAuthState] = useState<AuthState>({ authenticated: false })
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const navShiftDistance = useMotionValue(0)
@@ -68,14 +79,30 @@ export function Navbar({ scrollYProgress }: NavbarProps) {
     }
   }, [navShiftDistance])
 
-  const navLayoutProgress = useTransform(scrollYProgress, [0, 0.06], [0, 1])
+  const navLayoutProgress = useTransform(scrollYProgress, [0, 0.12], [0, 1])
   const navLinksX = useTransform(() => navLayoutProgress.get() * navShiftDistance.get())
-  const logoOpacity = useTransform(scrollYProgress, [0.028, 0.06], [0, 1])
-  const logoX = useTransform(scrollYProgress, [0.028, 0.06], [-12, 0])
-  const logoPointerEvents = useTransform(scrollYProgress, (value) => (value >= 0.03 ? 'auto' : 'none'))
+  const logoOpacityDefault = useTransform(scrollYProgress, [0.04, 0.12], [0, 1])
+  const logoXDefault = useTransform(scrollYProgress, [0.04, 0.12], [-12, 0])
+  const logoOpacity = navLogoOpacityProp ?? logoOpacityDefault
+  const logoX = navLogoXProp ?? logoXDefault
+  const logoPointerEvents = useTransform(scrollYProgress, (value) => (value >= 0.05 ? 'auto' : 'none'))
 
-  const linkClass = 'text-sm text-zinc-500 hover:text-zinc-900 transition-colors'
-  const mobileLinkClass = 'block rounded-2xl border border-[#e5e5e5] bg-white px-4 py-3 text-base text-[#3f3f46] transition-colors hover:text-[#0a0a0a]'
+  const isDark = landingTheme === 'dark'
+  const linkClass = isDark
+    ? 'text-sm text-zinc-400 transition-colors hover:text-zinc-100'
+    : 'text-sm text-zinc-500 transition-colors hover:text-zinc-900'
+  const mobileLinkClass = isDark
+    ? 'block rounded-2xl border border-zinc-700 bg-zinc-900/90 px-4 py-3 text-base text-zinc-200 transition-colors hover:text-white'
+    : 'block rounded-2xl border border-[#e5e5e5] bg-white px-4 py-3 text-base text-[#3f3f46] transition-colors hover:text-[#0a0a0a]'
+  const shellClass = isDark
+    ? 'flex h-full items-center justify-between rounded-full border border-zinc-700/80 bg-zinc-950/85 px-4 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur md:hidden'
+    : 'flex h-full items-center justify-between rounded-full border border-[#e5e5e5] bg-white/85 px-4 shadow-[0_10px_30px_rgba(10,10,10,0.06)] backdrop-blur md:hidden'
+  const mobileMenuShell = isDark
+    ? 'mt-3 rounded-[28px] border border-zinc-700 bg-zinc-950/95 p-3 shadow-[0_24px_64px_rgba(0,0,0,0.45)] backdrop-blur md:hidden'
+    : 'mt-3 rounded-[28px] border border-[#e5e5e5] bg-[#fafafa]/95 p-3 shadow-[0_24px_64px_rgba(10,10,10,0.12)] backdrop-blur md:hidden'
+  const menuBtnClass = isDark
+    ? 'inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-600 text-zinc-300'
+    : 'inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] text-[#52525b]'
   const appHref = authState.authenticated ? '/app/chat' : '/auth/sign-in?redirect=%2Fapp%2Fchat'
 
   const navLinks = (
@@ -106,13 +133,22 @@ export function Navbar({ scrollYProgress }: NavbarProps) {
           sign in
         </Link>
       )}
+      {onLandingThemeToggle ? (
+        <button
+          type="button"
+          onClick={onLandingThemeToggle}
+          className={linkClass}
+        >
+          {landingTheme === 'light' ? 'dark' : 'light'}
+        </button>
+      ) : null}
     </div>
   )
 
   return (
     <nav className="fixed left-0 right-0 top-0 z-50 px-4 py-4 md:px-8 md:py-6">
       <div ref={containerRef} className="mx-auto h-10 max-w-6xl md:relative">
-        <div className="flex h-full items-center justify-between rounded-full border border-[#e5e5e5] bg-white/85 px-4 shadow-[0_10px_30px_rgba(10,10,10,0.06)] backdrop-blur md:hidden">
+        <div className={shellClass}>
           <Link href="/home" className="flex items-center gap-2">
             <Image src="/assets/overlay-logo.png" alt="Overlay" width={22} height={22} />
             <span className="font-serif text-lg">overlay</span>
@@ -122,14 +158,14 @@ export function Navbar({ scrollYProgress }: NavbarProps) {
             aria-expanded={mobileMenuOpen}
             aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
             onClick={() => setMobileMenuOpen((value) => !value)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] text-[#52525b]"
+            className={menuBtnClass}
           >
             {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>
         </div>
 
         {mobileMenuOpen ? (
-          <div className="mt-3 rounded-[28px] border border-[#e5e5e5] bg-[#fafafa]/95 p-3 shadow-[0_24px_64px_rgba(10,10,10,0.12)] backdrop-blur md:hidden">
+          <div className={mobileMenuShell}>
             <div className="grid gap-2">
               <Link href={appHref} className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>
                 app
@@ -151,11 +187,23 @@ export function Navbar({ scrollYProgress }: NavbarProps) {
               </Link>
               <Link
                 href={authState.authenticated ? '/account' : '/auth/sign-in'}
-                className="block rounded-2xl bg-[#0a0a0a] px-4 py-3 text-base text-white transition-colors hover:bg-[#27272a]"
+                className={mobileLinkClass}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 {authState.authenticated ? 'account' : 'sign in'}
               </Link>
+              {onLandingThemeToggle ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLandingThemeToggle()
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`${mobileLinkClass} w-full text-left`}
+                >
+                  {landingTheme === 'light' ? 'dark' : 'light'}
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -166,7 +214,7 @@ export function Navbar({ scrollYProgress }: NavbarProps) {
         >
           <Link href="/home" className="flex items-center gap-2">
             <Image src="/assets/overlay-logo.png" alt="Overlay" width={28} height={28} />
-            <span className="font-serif text-xl">overlay</span>
+            <span className={`font-serif text-xl ${isDark ? 'text-zinc-100' : ''}`}>overlay</span>
           </Link>
         </motion.div>
 

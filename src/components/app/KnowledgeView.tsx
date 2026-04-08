@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   Brain, Trash2, Plus, X, FilePlus, FolderPlus,
-  ChevronRight, ChevronDown, FileText, Folder, FolderOpen, Loader2, Search,
+  ChevronRight, ChevronDown, FileText, Folder, FolderOpen, Search,
   LayoutList, LayoutGrid, RefreshCw, SquareMousePointer,
 } from 'lucide-react'
+import { FileTreeSkeleton, KnowledgeListSkeleton } from '@/components/ui/Skeleton'
 import { FileViewerPanel, getFileType, isEditableType } from './FileViewer'
 import OutputsView from './OutputsView'
 
@@ -1002,11 +1003,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           />
         )}
 
-        {activeTab === 'memories' && memoriesLoading && (
-          <div className="flex justify-center pt-16 text-[var(--muted)]">
-            <Loader2 size={16} className="animate-spin" />
-          </div>
-        )}
+        {activeTab === 'memories' && memoriesLoading && <KnowledgeListSkeleton rows={10} />}
         {activeTab === 'memories' && !memoriesLoading && memories.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
             <Brain size={32} strokeWidth={1} className="opacity-40" />
@@ -1108,11 +1105,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           </div>
         )}
 
-        {activeTab === 'files' && filesLoading && (
-          <div className="flex justify-center pt-16 text-[var(--muted)]">
-            <Loader2 size={16} className="animate-spin" />
-          </div>
-        )}
+        {activeTab === 'files' && filesLoading && <FileTreeSkeleton rows={10} />}
         {activeTab === 'files' && !filesLoading && files.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
             <FileText size={32} strokeWidth={1} className="opacity-40" />

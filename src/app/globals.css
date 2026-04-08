@@ -668,6 +668,106 @@ html {
   animation: media-shimmer-slide 1.65s ease-in-out infinite;
 }
 
+/* App-wide skeleton: same sheen as media-gen-mesh, for cards / large placeholders */
+.ui-skeleton-mesh {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  background: linear-gradient(
+    135deg,
+    #efe8f4 0%,
+    #e6dcf2 28%,
+    #ddd0ea 52%,
+    #e8dff6 78%,
+    #f0e9f8 100%
+  );
+  min-height: 4rem;
+}
+
+.ui-skeleton-mesh::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 38%,
+    rgba(255, 255, 255, 0.65) 50%,
+    rgba(255, 255, 255, 0.08) 62%,
+    transparent 100%
+  );
+  filter: blur(0.5px);
+  animation: media-shimmer-slide 1.65s ease-in-out infinite;
+}
+
+[data-theme='dark'] .ui-skeleton-mesh {
+  background: linear-gradient(
+    135deg,
+    #2a2630 0%,
+    #252028 35%,
+    #1f1c24 55%,
+    #2c2733 78%,
+    #322c38 100%
+  );
+}
+
+[data-theme='dark'] .ui-skeleton-mesh::after {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 38%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.04) 62%,
+    transparent 100%
+  );
+}
+
+/* Text row skeleton (sidebar lists, settings) */
+.ui-skeleton-line {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.375rem;
+  background-color: var(--surface-muted);
+  min-height: 0.625rem;
+}
+
+.ui-skeleton-line::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -55%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(128, 128, 128, 0.06) 35%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(128, 128, 128, 0.06) 65%,
+    transparent 100%
+  );
+  animation: media-shimmer-slide 1.4s ease-in-out infinite;
+}
+
+[data-theme='dark'] .ui-skeleton-line {
+  background-color: var(--surface-subtle);
+}
+
+[data-theme='dark'] .ui-skeleton-line::after {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.03) 35%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.03) 65%,
+    transparent 100%
+  );
+}
+
 /* Selection on user bubbles — adapts to theme */
 .chat-user-bubble::selection,
 .chat-user-bubble *::selection {
@@ -808,4 +908,20 @@ html {
   75% {
     transform: translate(-2%, 1%) rotate(-1deg);
   }
+}
+
+/* Marketing /home dark — paired with data-landing-theme on root */
+[data-landing-theme='dark'] .liquid-glass::before {
+  background:
+    radial-gradient(ellipse 40% 30% at 30% 30%, rgba(80, 80, 120, 0.35), transparent 50%),
+    radial-gradient(ellipse 35% 25% at 70% 20%, rgba(60, 60, 100, 0.3), transparent 50%),
+    radial-gradient(ellipse 45% 35% at 60% 70%, rgba(50, 50, 90, 0.28), transparent 50%),
+    radial-gradient(ellipse 30% 40% at 20% 80%, rgba(40, 40, 80, 0.25), transparent 50%),
+    radial-gradient(ellipse 50% 30% at 80% 50%, rgba(45, 45, 85, 0.22), transparent 50%);
+}
+
+[data-landing-theme='dark'] .liquid-glass::after {
+  background:
+    radial-gradient(circle at 25% 25%, rgba(40, 40, 55, 0.5), transparent 42%),
+    radial-gradient(circle at 75% 75%, rgba(30, 30, 45, 0.45), transparent 42%);
 }

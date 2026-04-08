@@ -17,6 +17,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react'
+import { AutomationListSkeleton, RunDetailSkeleton } from '@/components/ui/Skeleton'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getChatModelDisplayName } from '@/lib/models'
 import {
   formatAutomationSchedule,
@@ -275,10 +276,7 @@ function RunDetailDialog({
 
         <div className="max-h-[75vh] space-y-4 overflow-y-auto px-5 py-5">
           {loading || !detail ? (
-            <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-sm text-[var(--muted)]">
-              <Loader2 size={14} className="animate-spin" />
-              Loading run details…
-            </div>
+            <RunDetailSkeleton />
           ) : (
             <>
               <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
@@ -812,10 +810,16 @@ function AutomationDialog({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-medium text-[var(--foreground)]">Recent runs</h4>
-                    {loadingRuns ? <Loader2 size={13} className="animate-spin text-[var(--muted)]" /> : null}
+                    {loadingRuns ? (
+                      <span className="ui-skeleton-line inline-block h-3 w-3 rounded-full" aria-hidden />
+                    ) : null}
                   </div>
                   {loadingRuns ? (
-                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--muted)]">Loading runs…</div>
+                    <div className="space-y-2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="ui-skeleton-line h-16 w-full rounded-lg" />
+                      ))}
+                    </div>
                   ) : runs.length === 0 ? (
                     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--muted)]">No runs yet</div>
                   ) : runs.map((run) => (
@@ -1051,9 +1055,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
       </div>
 
       {loading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
-        </div>
+        <AutomationListSkeleton rows={7} />
       ) : automations.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4">
           <Workflow size={40} strokeWidth={1} className="text-[var(--muted-light)]" />
