@@ -69,10 +69,6 @@ export interface EnsuredDaytonaWorkspace {
   profile: DaytonaResourceProfile
 }
 
-export type DaytonaSshAccess = Awaited<ReturnType<Sandbox['createSshAccess']>> & {
-  sshCommand: string
-}
-
 let daytonaClient: Daytona | null = null
 
 function trimTrailingSlash(value: string): string {
@@ -553,21 +549,6 @@ export async function archiveIfNeeded(input: EnsuredDaytonaWorkspace): Promise<E
 
 export async function refreshWorkspaceActivity(input: EnsuredDaytonaWorkspace): Promise<void> {
   await input.sandbox.refreshActivity()
-}
-
-export async function issueSshAccess(
-  input: EnsuredDaytonaWorkspace,
-  expiresInMinutes = 30,
-): Promise<DaytonaSshAccess> {
-  if (input.sandbox.state !== 'started') {
-    throw new Error('Sandbox must be started before issuing SSH access.')
-  }
-
-  const access = await input.sandbox.createSshAccess(expiresInMinutes)
-  return {
-    ...access,
-    sshCommand: access.sshCommand || `ssh ${access.token}@ssh.app.daytona.io`,
-  }
 }
 
 export async function accrueWorkspaceSpend(params: {
