@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Groq from 'groq-sdk'
 import { sanitizeChatTitle } from '@/lib/chat-title'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
 
-async function resolveGroqApiKey(accessToken?: string): Promise<string | null> {
+const TITLE_MODEL = 'openrouter/free'
+
+async function resolveOpenRouterApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
-    const serverKey = await getServerProviderKey('groq')
+    const serverKey = await getServerProviderKey('openrouter')
     if (serverKey) {
       return serverKey
     }
   }
-
-  return process.env.GROQ_API_KEY ?? null
+  return process.env.OPENROUTER_API_KEY ?? null
 }
 
 function fallbackTitleFromFirstMessage(text: string): string {
@@ -23,7 +24,7 @@ function fallbackTitleFromFirstMessage(text: string): string {
 
   const withoutPrefix = cleaned.replace(
     /^(please\s+)?(can you|could you|would you|will you|give me|tell me|show me|help me|explain|write|draft|create|make|summari[sz]e)\s+/i,
-    ''
+    '',
   )
 
   const limited = withoutPrefix
@@ -61,20 +62,17 @@ function shouldUseFallbackTitle(candidate: string, sourceText: string): boolean 
   return false
 }
 
-function getCompletionContent(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-
-  return content
-    .map((part) => {
-      if (typeof part === 'string') return part
-      if (part && typeof part === 'object' && 'text' in part) {
-        const text = (part as { text?: string }).text
-        return typeof text === 'string' ? text : ''
-      }
-      return ''
-    })
-    .join('')
+function extractTitleFromOpenRouterContent(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  try {
+    const parsed = JSON.parse(trimmed) as { title?: string }
+    if (typeof parsed.title === 'string' && parsed.title.trim()) return parsed.title.trim()
+  } catch {
+    // not JSON
+  }
+  const line = trimmed.replace(/^["'`]+|["'`]+$/g, '').split('\n')[0]?.trim() ?? ''
+  return line
 }
 
 export async function POST(request: NextRequest) {
@@ -96,122 +94,60 @@ export async function POST(request: NextRequest) {
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const fallbackTitle = fallbackTitleFromFirstMessage(text)
-    console.log('[ChatTitle][server] Generating title', {
-      userId: auth.userId,
-      textPreview: text.slice(0, 120),
-      textLength: text.length,
-      model: 'openai/gpt-oss-20b',
-    })
-
-    const apiKey = await resolveGroqApiKey(auth.accessToken)
+    const apiKey = await resolveOpenRouterApiKey(auth.accessToken)
     if (!apiKey) {
-      console.warn('[ChatTitle][server] GROQ_API_KEY missing, using fallback title')
+      console.warn('[ChatTitle][server] OpenRouter API key missing, using fallback title')
       return NextResponse.json({ title: fallbackTitle })
     }
 
-    const groq = new Groq({ apiKey })
     const userPrompt = `Generate a concise 3-6 word title for a conversation that starts with this message:\n\n${text.slice(0, 500)}`
 
-    let structuredCompletion: Awaited<ReturnType<typeof groq.chat.completions.create>> | null = null
-    let structuredContent = ''
-    try {
-      structuredCompletion = await groq.chat.completions.create({
-        model: 'openai/gpt-oss-20b',
-        user: auth.userId,
-        temperature: 0,
-        max_completion_tokens: 64,
-        reasoning_effort: 'low',
-        reasoning_format: 'hidden',
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'chat_title',
-            description: 'A concise 3-6 word title for a conversation.',
-            strict: true,
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                title: {
-                  type: 'string',
-                  description: 'A concise 3-6 word title with no trailing punctuation.',
-                },
-              },
-              required: ['title'],
-            },
-          },
-        },
+    const response = await openRouterFetchWithRetry('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://getoverlay.io',
+        'X-Title': 'Overlay Chat Title',
+      },
+      body: JSON.stringify({
+        model: toOpenRouterApiModelId(TITLE_MODEL),
+        temperature: 0.2,
+        max_tokens: 80,
         messages: [
           {
             role: 'system',
-            content: 'You write short, precise chat titles. Return valid JSON with a single "title" field. The title must be 3 to 6 words, with no quotes or trailing punctuation.',
+            content:
+              'You write short, precise chat titles. Reply with valid JSON only, one line: {"title":"3 to 6 words"} — no markdown, no trailing punctuation in the title string.',
           },
           { role: 'user', content: userPrompt },
         ],
-      })
-      structuredContent = getCompletionContent(structuredCompletion.choices[0]?.message?.content)
-    } catch (error) {
-      console.warn('[ChatTitle][server] Structured Groq title generation failed, falling back to plain text', error)
-    }
-    let structuredTitle = ''
-    try {
-      const parsed = JSON.parse(structuredContent) as { title?: string }
-      if (typeof parsed.title === 'string') structuredTitle = parsed.title
-    } catch (error) {
-      console.error('[ChatTitle][server] Failed to parse structured Groq title payload', {
-        structuredContent,
-        error,
-      })
+      }),
+    })
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      console.warn('[ChatTitle][server] OpenRouter title request failed', response.status, errText.slice(0, 200))
+      return NextResponse.json({ title: fallbackTitle })
     }
 
-    let plainTextTitle = ''
-    if (!structuredTitle.trim()) {
-      try {
-        const plainTextCompletion = await groq.chat.completions.create({
-          model: 'openai/gpt-oss-20b',
-          user: auth.userId,
-          temperature: 0.1,
-          max_completion_tokens: 64,
-          reasoning_effort: 'low',
-          reasoning_format: 'hidden',
-          messages: [
-            {
-              role: 'system',
-              content: 'You write short, precise chat titles. Reply with only the title in plain text. The title must be 3 to 6 words, with no quotes or trailing punctuation.',
-            },
-            { role: 'user', content: userPrompt },
-          ],
-        })
-
-        plainTextTitle = getCompletionContent(plainTextCompletion.choices[0]?.message?.content)
-        console.log('[ChatTitle][server] Plain-text Groq retry completed', {
-          plainTextTitle,
-          finishReason: plainTextCompletion.choices[0]?.finish_reason,
-          usage: plainTextCompletion.usage,
-          xGroq: plainTextCompletion.x_groq,
-        })
-      } catch (error) {
-        console.warn('[ChatTitle][server] Plain-text Groq retry failed, using fallback title', error)
-      }
+    const payload = (await response.json().catch(() => ({}))) as {
+      choices?: Array<{ message?: { content?: string | unknown[] } }>
     }
+    const rawContent = payload.choices?.[0]?.message?.content
+    const textOut =
+      typeof rawContent === 'string'
+        ? rawContent
+        : Array.isArray(rawContent)
+          ? rawContent
+              .map((p) => (p && typeof p === 'object' && 'text' in p ? String((p as { text?: string }).text ?? '') : ''))
+              .join('')
+          : ''
 
-    const rawTitle = structuredTitle || plainTextTitle
-    const candidateTitle = sanitizeChatTitle(rawTitle, fallbackTitle)
+    const extracted = extractTitleFromOpenRouterContent(textOut)
+    const candidateTitle = sanitizeChatTitle(extracted, fallbackTitle)
     const usedFallback = shouldUseFallbackTitle(candidateTitle, text)
     const sanitizedTitle = usedFallback ? fallbackTitle : candidateTitle
-    console.log('[ChatTitle][server] Title generated', {
-      structuredContent,
-      structuredTitle,
-      plainTextTitle,
-      rawTitle,
-      candidateTitle,
-      sanitizedTitle,
-      fallbackTitle,
-      usedFallback,
-      finishReason: structuredCompletion?.choices[0]?.finish_reason,
-      usage: structuredCompletion?.usage,
-      xGroq: structuredCompletion?.x_groq,
-    })
 
     return NextResponse.json({ title: sanitizedTitle })
   } catch (error) {
