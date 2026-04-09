@@ -10,6 +10,9 @@ const INTERNAL_TOOL_IDS = new Set<string>([
   'create_note',
   'update_note',
   'delete_note',
+  'list_skills',
+  'draft_automation_from_chat',
+  'draft_skill_from_chat',
 ])
 
 /** Maps tool name → Convex toolInvocations.costBucket. */

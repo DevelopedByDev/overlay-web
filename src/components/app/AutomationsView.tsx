@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
+  AlertCircle,
   Calendar,
   Check,
   LayoutGrid,
@@ -117,6 +118,15 @@ function summarizeRunDetailText(detail: AutomationRunDetail): string | undefined
 }
 
 function getHealthBadgeClasses(label: string): string {
+  if (label === 'Needs setup' || label === 'Paused after failures') {
+    return 'border border-orange-500/25 bg-orange-500/10 text-orange-700'
+  }
+  if (label === 'Timed out') {
+    return 'border border-red-500/25 bg-red-500/10 text-red-600'
+  }
+  if (label === 'Retrying') {
+    return 'border border-sky-500/25 bg-sky-500/10 text-sky-800'
+  }
   if (label === 'Needs attention') {
     return 'border border-red-500/25 bg-red-500/10 text-red-600'
   }
@@ -130,6 +140,48 @@ function getHealthBadgeClasses(label: string): string {
     return 'border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]'
   }
   return 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-800'
+}
+
+function formatEventTimestamp(ts?: number, timezone?: string): string {
+  if (!ts) return 'Unknown'
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    month: 'short',
+    day: 'numeric',
+    timeZone: timezone,
+  }).format(ts)
+}
+
+function summarizeAutomationCard(automation: AutomationSummary): string {
+  const dependency =
+    automation.readinessState === 'needs_setup'
+      ? automation.readinessMessage || 'Needs setup before the next run.'
+      : automation.sourceType === 'skill'
+        ? 'Backed by a saved skill.'
+        : 'Backed by inline instructions.'
+  return `${formatAutomationSchedule(automation.scheduleKind, automation.scheduleConfig, automation.timezone)}. ${dependency}`
+}
+
+function getFixAutomationCta(input: {
+  readinessMessage?: string
+  readinessState?: AutomationSummary['readinessState']
+  lastRunStatus?: AutomationSummary['lastRunStatus']
+}): { label: string; href?: string; action?: 'source' } | null {
+  const message = input.readinessMessage?.toLowerCase() || ''
+  if (message.includes('integrations')) {
+    return { label: 'Fix in Integrations', href: '/app/integrations' }
+  }
+  if (message.includes('premium model') || message.includes('credits') || message.includes('tier')) {
+    return { label: 'Review Account', href: '/account' }
+  }
+  if (input.readinessState === 'invalid_source') {
+    return { label: 'Review Source', action: 'source' }
+  }
+  if (input.lastRunStatus === 'timed_out') {
+    return { label: 'Inspect Run Details', action: 'source' }
+  }
+  return null
 }
 
 function toDatetimeLocalValue(ts?: number): string {
@@ -296,12 +348,28 @@ function RunDetailDialog({
                   <p>Mode: {detail.run.mode === 'act' ? 'Act' : 'Ask'}</p>
                   <p>Model: {getChatModelDisplayName(detail.run.modelId)}</p>
                   <p>Attempt: {detail.run.attemptNumber ?? 1}</p>
+                  <p>Stage: {detail.run.stage || detail.run.status}</p>
+                  <p>Failure stage: {detail.run.failureStage || 'None'}</p>
+                  <p>Assistant persisted: {detail.run.assistantPersisted ? 'Yes' : 'No'}</p>
+                  <p>Heartbeat: {formatDateTime(detail.run.lastHeartbeatAt, timezone)}</p>
                 </div>
                 {detail.run.turnId ? (
                   <p className="mt-2 text-[11px] text-[var(--muted)]">Turn: <span className="font-mono">{detail.run.turnId}</span></p>
                 ) : null}
                 {detail.run.conversationId ? (
                   <p className="mt-1 text-[11px] text-[var(--muted)]">Conversation: <span className="font-mono">{detail.run.conversationId}</span></p>
+                ) : null}
+                {detail.run.requestId ? (
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">Request: <span className="font-mono">{detail.run.requestId}</span></p>
+                ) : null}
+                {detail.run.executor ? (
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">
+                    Executor: <span className="font-mono">
+                      {detail.run.executor.platform}
+                      {detail.run.executor.region ? ` · ${detail.run.executor.region}` : ''}
+                      {detail.run.executor.runtime ? ` · ${detail.run.executor.runtime}` : ''}
+                    </span>
+                  </p>
                 ) : null}
                 {detail.relatedRetryRun ? (
                   <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-900">
@@ -328,6 +396,30 @@ function RunDetailDialog({
                   </h4>
                   <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-[12px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
                     {summarizeRunDetailText(detail)}
+                  </div>
+                </div>
+              ) : null}
+
+              {detail.events && detail.events.length > 0 ? (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-[var(--foreground)]">Timeline</h4>
+                  <div className="space-y-2">
+                    {detail.events.map((event) => (
+                      <div key={event._id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+                              {event.stage}
+                            </span>
+                            <span className={`text-[10px] ${event.level === 'error' ? 'text-red-600' : event.level === 'warning' ? 'text-amber-700' : 'text-[var(--muted)]'}`}>
+                              {event.level}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-[var(--muted)]">{formatEventTimestamp(event.createdAt, timezone)}</span>
+                        </div>
+                        <p className="mt-2 text-[12px] text-[var(--foreground)]">{event.message}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : null}
@@ -438,6 +530,12 @@ function AutomationDialog({
   const [loadingRunDetail, setLoadingRunDetail] = useState(false)
   const [retryingRun, setRetryingRun] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
+  const sourceSectionRef = useRef<HTMLDivElement>(null)
+  const fixCta = getFixAutomationCta({
+    readinessMessage: initial?.readinessMessage,
+    readinessState: initial?.readinessState,
+    lastRunStatus: initial?.lastRunStatus,
+  })
 
   useEffect(() => {
     titleRef.current?.focus()
@@ -455,7 +553,7 @@ function AutomationDialog({
     [form],
   )
 
-  async function handleSave() {
+  async function handleSave(statusOverride?: FormState['status']) {
     if (saving) return
     setSaving(true)
     try {
@@ -468,7 +566,7 @@ function AutomationDialog({
         instructionsMarkdown: form.sourceType === 'inline' ? form.instructionsMarkdown : undefined,
         mode: form.mode,
         modelId: form.modelId,
-        status: form.status,
+        status: statusOverride ?? form.status,
         timezone: form.timezone,
         scheduleKind: form.scheduleKind,
         scheduleConfig: buildScheduleConfig(form),
@@ -511,6 +609,11 @@ function AutomationDialog({
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleCreatePaused() {
+    if (isEdit || saving) return
+    await handleSave('paused')
   }
 
   async function handleDelete() {
@@ -569,11 +672,11 @@ function AutomationDialog({
       <div className="flex w-full max-w-3xl flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl" style={{ maxHeight: 'calc(100vh - 48px)' }}>
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div>
-            <h3 className="text-sm font-medium text-[var(--foreground)]">{isEdit ? 'Edit automation' : 'New automation'}</h3>
-            <p className="text-[11px] text-[var(--muted)]">{scheduleLabel}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isEdit ? (
+                <h3 className="text-sm font-medium text-[var(--foreground)]">{isEdit ? 'Edit automation' : 'New automation'}</h3>
+                <p className="text-[11px] text-[var(--muted)]">{scheduleLabel}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {isEdit ? (
               <button
                 type="button"
                 onClick={() => void handleRunNow()}
@@ -581,7 +684,7 @@ function AutomationDialog({
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
               >
                 {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-                Run now
+                Test once
               </button>
             ) : null}
             <button type="button" onClick={onClose} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
@@ -640,7 +743,7 @@ function AutomationDialog({
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div ref={sourceSectionRef} data-automation-source className="space-y-1.5">
                 <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Automation source</label>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <button
@@ -803,7 +906,38 @@ function AutomationDialog({
                   <p>Status: {getAutomationStatusLabel(form.status)}</p>
                   <p>Mode: {form.mode === 'act' ? 'Act' : 'Ask'}</p>
                   <p>Model: {getChatModelDisplayName(form.modelId)}</p>
+                  {initial?.readinessState ? <p>Readiness: {initial.readinessState}</p> : null}
                 </div>
+                {isEdit ? (
+                  <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-[12px] text-[var(--muted)]">
+                    {summarizeAutomationCard(initial!)}
+                  </div>
+                ) : null}
+                {initial?.readinessMessage ? (
+                  <div className="mt-3 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-[12px] text-orange-800">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                      <div>
+                        <p>{initial.readinessMessage}</p>
+                        {fixCta ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (fixCta.href) {
+                                window.location.href = fixCta.href
+                                return
+                              }
+                              sourceSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                            }}
+                            className="mt-2 inline-flex items-center gap-1 rounded-md border border-orange-500/30 bg-white/50 px-2.5 py-1 text-[11px] font-medium text-orange-900 transition-colors hover:bg-white/80"
+                          >
+                            {fixCta.label}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {isEdit ? (
@@ -861,15 +995,28 @@ function AutomationDialog({
               </button>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
-          >
-            {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-            {saving ? 'Saving…' : isEdit ? 'Save' : 'Create'}
-          </button>
+          <div className="flex items-center gap-2">
+            {!isEdit ? (
+              <button
+                type="button"
+                onClick={() => void handleCreatePaused()}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                Create paused
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+              {saving ? 'Saving…' : isEdit ? 'Save' : 'Create active'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1086,18 +1233,20 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
                         getAutomationHealthLabel({
                           status: automation.status,
                           lastRunStatus: automation.lastRunStatus,
+                          readinessState: automation.readinessState,
                         }),
                       )}`}
                     >
                       {getAutomationHealthLabel({
                         status: automation.status,
                         lastRunStatus: automation.lastRunStatus,
+                        readinessState: automation.readinessState,
                       })}
                     </span>
                   </div>
                   <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--muted)]">{automation.description || 'No description'}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted-light)]">
-                    <span>{formatAutomationSchedule(automation.scheduleKind, automation.scheduleConfig, automation.timezone)}</span>
+                    <span>{summarizeAutomationCard(automation)}</span>
                     <span>·</span>
                     <span>Next: {formatTimestamp(automation.nextRunAt, automation.timezone)}</span>
                     <span>·</span>
@@ -1145,12 +1294,14 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
                           getAutomationHealthLabel({
                             status: automation.status,
                             lastRunStatus: automation.lastRunStatus,
+                            readinessState: automation.readinessState,
                           }),
                         )}`}
                       >
                         {getAutomationHealthLabel({
                           status: automation.status,
                           lastRunStatus: automation.lastRunStatus,
+                          readinessState: automation.readinessState,
                         })}
                       </span>
                     </div>

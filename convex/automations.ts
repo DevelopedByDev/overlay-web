@@ -10,9 +10,41 @@ import {
 import {
   AUTOMATION_RETRY_DELAY_MS,
   MAX_AUTOMATION_ATTEMPTS,
+  MAX_AUTOMATION_FAILURE_STREAK,
   MAX_RUNNING_AUTOMATIONS_PER_USER,
+  isDeterministicAutomationFailure,
+  shouldPauseAutomationAfterFailure,
   shouldRetryAutomationFailure,
 } from '../src/lib/automation-guardrails'
+
+const automationReadinessValidator = v.union(
+  v.literal('ready'),
+  v.literal('needs_setup'),
+  v.literal('invalid_source'),
+  v.literal('paused_due_to_failures'),
+)
+
+const automationRunStatusValidator = v.union(
+  v.literal('queued'),
+  v.literal('running'),
+  v.literal('succeeded'),
+  v.literal('failed'),
+  v.literal('skipped'),
+  v.literal('canceled'),
+  v.literal('timed_out'),
+)
+
+const automationRunStageValidator = v.union(
+  v.literal('queued'),
+  v.literal('dispatching'),
+  v.literal('running'),
+  v.literal('persisting'),
+  v.literal('succeeded'),
+  v.literal('failed'),
+  v.literal('timed_out'),
+  v.literal('canceled'),
+  v.literal('needs_setup'),
+)
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -160,8 +192,10 @@ async function maybeEnqueueRetryRun(
     automationId: automation._id,
     userId: run.userId,
     status: 'queued',
+    stage: 'queued',
     triggerSource: 'retry',
     scheduledFor: Date.now() + AUTOMATION_RETRY_DELAY_MS,
+    readinessState: automation.readinessState,
     promptSnapshot: run.promptSnapshot,
     mode: run.mode,
     modelId: run.modelId,
@@ -184,6 +218,76 @@ function validateAutomationSource(input: {
   if (!input.instructionsMarkdown?.trim()) {
     throw new Error('instructionsMarkdown required for inline automations')
   }
+}
+
+function deriveAutomationReadiness(input: {
+  status: 'active' | 'paused' | 'archived'
+  sourceType: 'skill' | 'inline'
+  skillId?: Id<'skills'>
+  instructionsMarkdown?: string
+  failureStreak?: number
+}): {
+  readinessState: 'ready' | 'needs_setup' | 'invalid_source' | 'paused_due_to_failures'
+  readinessMessage?: string
+} {
+  if (input.status === 'paused' && (input.failureStreak ?? 0) >= MAX_AUTOMATION_FAILURE_STREAK) {
+    return {
+      readinessState: 'paused_due_to_failures',
+      readinessMessage: 'Paused after repeated transient automation failures.',
+    }
+  }
+
+  if (input.sourceType === 'skill' && !input.skillId) {
+    return {
+      readinessState: 'invalid_source',
+      readinessMessage: 'This automation no longer points at a valid skill.',
+    }
+  }
+
+  if (input.sourceType === 'inline' && !input.instructionsMarkdown?.trim()) {
+    return {
+      readinessState: 'invalid_source',
+      readinessMessage: 'This automation is missing inline instructions.',
+    }
+  }
+
+  return {
+    readinessState: 'ready',
+    readinessMessage: undefined,
+  }
+}
+
+async function appendRunEventRow(
+  ctx: MutationCtx,
+  input: {
+    automationRunId: Id<'automationRuns'>
+    automationId: Id<'automations'>
+    userId: string
+    stage:
+      | 'queued'
+      | 'dispatching'
+      | 'running'
+      | 'persisting'
+      | 'succeeded'
+      | 'failed'
+      | 'timed_out'
+      | 'canceled'
+      | 'needs_setup'
+    level: 'info' | 'warning' | 'error'
+    message: string
+    metadata?: Record<string, unknown>
+  },
+) {
+  await ctx.db.insert('automationRunEvents', {
+    automationRunId: input.automationRunId,
+    automationId: input.automationId,
+    userId: input.userId,
+    stage: input.stage,
+    level: input.level,
+    message: input.message.slice(0, 1000),
+    metadata: input.metadata,
+    createdAt: Date.now(),
+  })
 }
 
 export const list = query({
@@ -262,6 +366,13 @@ export const create = mutation({
     await ensureSkillOwnership(ctx, args.userId, args.skillId)
 
     const now = Date.now()
+    const readiness = deriveAutomationReadiness({
+      status: args.status ?? 'active',
+      sourceType: args.sourceType,
+      skillId: args.skillId,
+      instructionsMarkdown: args.instructionsMarkdown,
+      failureStreak: 0,
+    })
     return await ctx.db.insert('automations', {
       userId: args.userId,
       projectId: args.projectId,
@@ -277,6 +388,9 @@ export const create = mutation({
       scheduleKind: args.scheduleKind,
       scheduleConfig: args.scheduleConfig,
       nextRunAt: args.nextRunAt,
+      readinessState: readiness.readinessState,
+      readinessMessage: readiness.readinessMessage,
+      failureStreak: 0,
       createdAt: now,
       updatedAt: now,
     })
@@ -317,7 +431,11 @@ export const update = mutation({
       v.literal('failed'),
       v.literal('skipped'),
       v.literal('canceled'),
+      v.literal('timed_out'),
     )),
+    readinessState: v.optional(automationReadinessValidator),
+    readinessMessage: v.optional(v.string()),
+    failureStreak: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
@@ -358,6 +476,16 @@ export const update = mutation({
       }
     }
 
+    const nextStatus = args.status ?? existing.status
+    const nextFailureStreak = existing.failureStreak ?? 0
+    const readiness = deriveAutomationReadiness({
+      status: nextStatus,
+      sourceType: nextSourceType,
+      skillId: nextSkillId,
+      instructionsMarkdown: nextInstructions,
+      failureStreak: nextFailureStreak,
+    })
+
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (args.projectId !== undefined) patch.projectId = args.projectId || undefined
     if (args.title !== undefined) patch.title = args.title.trim() || 'Untitled automation'
@@ -375,6 +503,9 @@ export const update = mutation({
     if (args.conversationId !== undefined) patch.conversationId = args.conversationId
     if (args.lastRunAt !== undefined) patch.lastRunAt = args.lastRunAt
     if (args.lastRunStatus !== undefined) patch.lastRunStatus = args.lastRunStatus
+    patch.readinessState = args.readinessState ?? readiness.readinessState
+    patch.readinessMessage = args.readinessMessage ?? readiness.readinessMessage
+    if (args.failureStreak !== undefined) patch.failureStreak = args.failureStreak
     await ctx.db.patch(args.automationId, patch)
   },
 })
@@ -471,20 +602,143 @@ export const findRetryRun = query({
   },
 })
 
+export const listRunEvents = query({
+  args: {
+    automationRunId: v.id('automationRuns'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { automationRunId, userId, accessToken, serverSecret, limit }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return []
+    }
+    const run = await ctx.db.get(automationRunId)
+    if (!run || run.userId !== userId) return []
+    return await ctx.db
+      .query('automationRunEvents')
+      .withIndex('by_automationRunId_createdAt', (q) => q.eq('automationRunId', automationRunId))
+      .order('asc')
+      .take(Math.max(1, Math.min(limit ?? 100, 200)))
+  },
+})
+
+export const appendRunEvent = mutation({
+  args: {
+    automationRunId: v.id('automationRuns'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    stage: automationRunStageValidator,
+    level: v.union(v.literal('info'), v.literal('warning'), v.literal('error')),
+    message: v.string(),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, { automationRunId, userId, accessToken, serverSecret, stage, level, message, metadata }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    const run = await ctx.db.get(automationRunId)
+    if (!run || run.userId !== userId) {
+      throw new Error('Unauthorized')
+    }
+    await appendRunEventRow(ctx, {
+      automationRunId,
+      automationId: run.automationId,
+      userId,
+      stage,
+      level,
+      message,
+      metadata: metadata as Record<string, unknown> | undefined,
+    })
+    return { success: true }
+  },
+})
+
+export const appendRunEventInternal = internalMutation({
+  args: {
+    automationRunId: v.id('automationRuns'),
+    stage: automationRunStageValidator,
+    level: v.union(v.literal('info'), v.literal('warning'), v.literal('error')),
+    message: v.string(),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, { automationRunId, stage, level, message, metadata }) => {
+    const run = await ctx.db.get(automationRunId)
+    if (!run) return { success: false }
+    await appendRunEventRow(ctx, {
+      automationRunId,
+      automationId: run.automationId,
+      userId: run.userId,
+      stage,
+      level,
+      message,
+      metadata: metadata as Record<string, unknown> | undefined,
+    })
+    return { success: true }
+  },
+})
+
+export const updateRunHeartbeat = mutation({
+  args: {
+    automationRunId: v.id('automationRuns'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    stage: v.optional(automationRunStageValidator),
+    lastHeartbeatAt: v.optional(v.number()),
+  },
+  handler: async (ctx, { automationRunId, userId, accessToken, serverSecret, stage, lastHeartbeatAt }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    const run = await ctx.db.get(automationRunId)
+    if (!run || run.userId !== userId) {
+      throw new Error('Unauthorized')
+    }
+    await ctx.db.patch(automationRunId, {
+      ...(stage ? { stage } : {}),
+      lastHeartbeatAt: lastHeartbeatAt ?? Date.now(),
+    })
+    return { success: true }
+  },
+})
+
+export const markDispatchingInternal = internalMutation({
+  args: {
+    automationRunId: v.id('automationRuns'),
+    requestId: v.optional(v.string()),
+  },
+  handler: async (ctx, { automationRunId, requestId }) => {
+    const run = await ctx.db.get(automationRunId)
+    if (!run) return { success: false }
+    const now = Date.now()
+    await ctx.db.patch(automationRunId, {
+      status: 'running',
+      stage: 'dispatching',
+      startedAt: run.startedAt ?? now,
+      lastHeartbeatAt: now,
+      ...(requestId ? { requestId } : {}),
+    })
+    await appendRunEventRow(ctx, {
+      automationRunId,
+      automationId: run.automationId,
+      userId: run.userId,
+      stage: 'dispatching',
+      level: 'info',
+      message: 'Dispatching automation run to the executor.',
+      metadata: requestId ? { requestId } : undefined,
+    })
+    return { success: true }
+  },
+})
+
 export const createRun = mutation({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
-    status: v.union(
-      v.literal('queued'),
-      v.literal('running'),
-      v.literal('succeeded'),
-      v.literal('failed'),
-      v.literal('skipped'),
-      v.literal('canceled'),
-    ),
+    status: automationRunStatusValidator,
     triggerSource: v.union(v.literal('manual'), v.literal('schedule'), v.literal('retry')),
     scheduledFor: v.number(),
     promptSnapshot: v.string(),
@@ -495,6 +749,16 @@ export const createRun = mutation({
     startedAt: v.optional(v.number()),
     attemptNumber: v.optional(v.number()),
     retryOfRunId: v.optional(v.id('automationRuns')),
+    stage: v.optional(automationRunStageValidator),
+    requestId: v.optional(v.string()),
+    lastHeartbeatAt: v.optional(v.number()),
+    readinessState: v.optional(automationReadinessValidator),
+    executor: v.optional(v.object({
+      platform: v.union(v.literal('vercel'), v.literal('local'), v.literal('unknown')),
+      region: v.optional(v.string()),
+      deploymentId: v.optional(v.string()),
+      runtime: v.optional(v.string()),
+    })),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
@@ -532,10 +796,27 @@ export const createRun = mutation({
       turnId: args.turnId,
       attemptNumber: Math.max(1, Math.min(args.attemptNumber ?? 1, MAX_AUTOMATION_ATTEMPTS)),
       retryOfRunId: args.retryOfRunId,
+      requestId: args.requestId,
+      lastHeartbeatAt: args.lastHeartbeatAt,
+      readinessState: args.readinessState,
+      executor: args.executor,
       promptSnapshot: args.promptSnapshot,
       mode: args.mode,
       modelId: args.modelId,
       createdAt,
+      stage:
+        args.stage ??
+        (args.status === 'queued'
+          ? 'queued'
+          : args.status === 'timed_out'
+            ? 'timed_out'
+            : args.status === 'canceled'
+              ? 'canceled'
+              : args.status === 'succeeded'
+                ? 'succeeded'
+                : args.status === 'failed' || args.status === 'skipped'
+                  ? 'failed'
+                  : 'running'),
     })
   },
 })
@@ -546,22 +827,28 @@ export const updateRun = mutation({
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
-    status: v.optional(v.union(
-      v.literal('queued'),
-      v.literal('running'),
-      v.literal('succeeded'),
-      v.literal('failed'),
-      v.literal('skipped'),
-      v.literal('canceled'),
-    )),
+    status: v.optional(automationRunStatusValidator),
+    stage: v.optional(automationRunStageValidator),
     startedAt: v.optional(v.number()),
     finishedAt: v.optional(v.number()),
     durationMs: v.optional(v.number()),
     conversationId: v.optional(v.id('conversations')),
     turnId: v.optional(v.string()),
     resultSummary: v.optional(v.string()),
+    assistantMessage: v.optional(v.string()),
+    assistantPersisted: v.optional(v.boolean()),
     errorCode: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
+    failureStage: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    lastHeartbeatAt: v.optional(v.number()),
+    readinessState: v.optional(automationReadinessValidator),
+    executor: v.optional(v.object({
+      platform: v.union(v.literal('vercel'), v.literal('local'), v.literal('unknown')),
+      region: v.optional(v.string()),
+      deploymentId: v.optional(v.string()),
+      runtime: v.optional(v.string()),
+    })),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
@@ -583,28 +870,65 @@ export const updateRun = mutation({
     }
     const patch: Record<string, unknown> = {}
     if (args.status !== undefined) patch.status = args.status
+    if (args.stage !== undefined) patch.stage = args.stage
     if (args.startedAt !== undefined) patch.startedAt = args.startedAt
     if (args.finishedAt !== undefined) patch.finishedAt = args.finishedAt
     if (args.durationMs !== undefined) patch.durationMs = args.durationMs
     if (args.conversationId !== undefined) patch.conversationId = args.conversationId
     if (args.turnId !== undefined) patch.turnId = args.turnId
     if (args.resultSummary !== undefined) patch.resultSummary = args.resultSummary
+    if (args.assistantMessage !== undefined) patch.assistantMessage = args.assistantMessage
+    if (args.assistantPersisted !== undefined) patch.assistantPersisted = args.assistantPersisted
     if (args.errorCode !== undefined) patch.errorCode = args.errorCode
     if (args.errorMessage !== undefined) patch.errorMessage = args.errorMessage
+    if (args.failureStage !== undefined) patch.failureStage = args.failureStage
+    if (args.requestId !== undefined) patch.requestId = args.requestId
+    if (args.lastHeartbeatAt !== undefined) patch.lastHeartbeatAt = args.lastHeartbeatAt
+    if (args.readinessState !== undefined) patch.readinessState = args.readinessState
+    if (args.executor !== undefined) patch.executor = args.executor
     await ctx.db.patch(args.automationRunId, patch)
 
     const automation = await ctx.db.get(run.automationId)
     if (automation && automation.userId === args.userId && !automation.deletedAt && args.status) {
+      const isFinalFailure =
+        args.status === 'failed' || args.status === 'timed_out' || args.status === 'canceled'
+      const shouldPause =
+        isFinalFailure &&
+        shouldPauseAutomationAfterFailure({
+          errorCode: args.errorCode ?? run.errorCode,
+          errorMessage: args.errorMessage ?? run.errorMessage,
+          failureStreak: (automation.failureStreak ?? 0) + 1,
+        })
+      const nextFailureStreak =
+        args.status === 'succeeded'
+          ? 0
+          : isFinalFailure && !isDeterministicAutomationFailure({
+              errorCode: args.errorCode ?? run.errorCode,
+              errorMessage: args.errorMessage ?? run.errorMessage,
+            })
+            ? (automation.failureStreak ?? 0) + 1
+            : automation.failureStreak ?? 0
+      const readiness = deriveAutomationReadiness({
+        status: shouldPause ? 'paused' : automation.status,
+        sourceType: automation.sourceType,
+        skillId: automation.skillId,
+        instructionsMarkdown: automation.instructionsMarkdown,
+        failureStreak: nextFailureStreak,
+      })
       await ctx.db.patch(run.automationId, {
         updatedAt: Date.now(),
-        ...((args.status === 'succeeded' || args.status === 'failed' || args.status === 'canceled')
+        ...((args.status === 'succeeded' || args.status === 'failed' || args.status === 'canceled' || args.status === 'timed_out')
           ? buildClearedLeasePatch()
           : {}),
         ...(args.conversationId !== undefined ? { conversationId: args.conversationId } : {}),
         ...(args.status ? { lastRunStatus: args.status } : {}),
-        ...((args.status === 'succeeded' || args.status === 'failed' || args.status === 'canceled')
+        ...((args.status === 'succeeded' || args.status === 'failed' || args.status === 'canceled' || args.status === 'timed_out')
           ? { lastRunAt: args.finishedAt ?? Date.now() }
           : {}),
+        failureStreak: nextFailureStreak,
+        readinessState: readiness.readinessState,
+        readinessMessage: readiness.readinessMessage,
+        ...(shouldPause ? { status: 'paused' as const } : {}),
       })
     }
   },
@@ -676,13 +1000,23 @@ export const claimDueRunsInternal = internalMutation({
         automationId: automation._id,
         userId: automation.userId,
         status: 'queued',
+        stage: 'queued',
         triggerSource: 'schedule',
         scheduledFor: automation.nextRunAt,
+        readinessState: automation.readinessState,
         promptSnapshot,
         mode: automation.mode,
         modelId: automation.modelId,
         attemptNumber: 1,
         createdAt: now,
+      })
+      await appendRunEventRow(ctx, {
+        automationRunId,
+        automationId: automation._id,
+        userId: automation.userId,
+        stage: 'queued',
+        level: 'info',
+        message: 'Scheduled run queued.',
       })
 
       const nextRunAt = getNextAutomationRunAt({
@@ -755,7 +1089,17 @@ export const claimRetryRunsInternal = internalMutation({
 
       await ctx.db.patch(run._id, {
         status: 'running',
+        stage: 'dispatching',
         startedAt: now,
+        lastHeartbeatAt: now,
+      })
+      await appendRunEventRow(ctx, {
+        automationRunId: run._id,
+        automationId: run.automationId,
+        userId: run.userId,
+        stage: 'dispatching',
+        level: 'info',
+        message: 'Retry run claimed for dispatch.',
       })
       runningCounts.set(run.userId, currentRunningCount + 1)
 
@@ -789,12 +1133,24 @@ export const queueRetryForRun = mutation({
     if (!automation || automation.userId !== args.userId || automation.deletedAt) {
       throw new Error('Unauthorized')
     }
-    return await maybeEnqueueRetryRun(ctx, {
+    const retryRunId = await maybeEnqueueRetryRun(ctx, {
       run,
       automation,
       errorCode: args.errorCode,
       errorMessage: args.errorMessage,
     })
+    if (retryRunId) {
+      await appendRunEventRow(ctx, {
+        automationRunId: run._id,
+        automationId: run.automationId,
+        userId: run.userId,
+        stage: 'failed',
+        level: 'warning',
+        message: 'Retry queued for this automation run.',
+        metadata: { retryRunId },
+      })
+    }
+    return retryRunId
   },
 })
 
@@ -810,10 +1166,21 @@ export const markDispatchFailedInternal = internalMutation({
     const finishedAt = Date.now()
     await ctx.db.patch(automationRunId, {
       status: 'failed',
+      stage: 'failed',
       finishedAt,
       durationMs: Math.max(0, finishedAt - (run.startedAt ?? run.createdAt)),
+      failureStage: 'dispatch',
       errorCode: 'dispatch_failed',
       errorMessage,
+    })
+    await appendRunEventRow(ctx, {
+      automationRunId,
+      automationId: run.automationId,
+      userId: run.userId,
+      stage: 'failed',
+      level: 'error',
+      message: 'Automation dispatch failed.',
+      metadata: { errorMessage },
     })
 
     const automation = await ctx.db.get(run.automationId)
@@ -839,5 +1206,72 @@ export const markDispatchFailedInternal = internalMutation({
       lastRunAt: finishedAt,
       lastRunStatus: 'failed',
     })
+  },
+})
+
+export const markTimedOutRunsInternal = internalMutation({
+  args: {
+    now: v.number(),
+    timeoutMs: v.number(),
+  },
+  handler: async (ctx, { now, timeoutMs }) => {
+    const rows = await ctx.db
+      .query('automationRuns')
+      .withIndex('by_status_createdAt', (q) => q.eq('status', 'running'))
+      .collect()
+
+    let timedOut = 0
+    for (const run of rows) {
+      const heartbeat = run.lastHeartbeatAt ?? run.startedAt ?? run.createdAt
+      if (now - heartbeat < timeoutMs) continue
+
+      await ctx.db.patch(run._id, {
+        status: 'timed_out',
+        stage: 'timed_out',
+        finishedAt: now,
+        durationMs: Math.max(0, now - (run.startedAt ?? run.createdAt)),
+        failureStage: 'watchdog',
+        errorCode: 'automation_timed_out',
+        errorMessage: 'Automation timed out while waiting for a heartbeat.',
+      })
+      await appendRunEventRow(ctx, {
+        automationRunId: run._id,
+        automationId: run.automationId,
+        userId: run.userId,
+        stage: 'timed_out',
+        level: 'error',
+        message: 'Automation timed out while running.',
+      })
+
+      const automation = await ctx.db.get(run.automationId)
+      if (automation && !automation.deletedAt) {
+        const nextFailureStreak = (automation.failureStreak ?? 0) + 1
+        const shouldPause = shouldPauseAutomationAfterFailure({
+          errorCode: 'automation_timed_out',
+          errorMessage: 'Automation timed out while waiting for a heartbeat.',
+          failureStreak: nextFailureStreak,
+        })
+        const readiness = deriveAutomationReadiness({
+          status: shouldPause ? 'paused' : automation.status,
+          sourceType: automation.sourceType,
+          skillId: automation.skillId,
+          instructionsMarkdown: automation.instructionsMarkdown,
+          failureStreak: nextFailureStreak,
+        })
+        await ctx.db.patch(automation._id, {
+          updatedAt: now,
+          ...buildClearedLeasePatch(),
+          lastRunAt: now,
+          lastRunStatus: 'timed_out',
+          failureStreak: nextFailureStreak,
+          readinessState: readiness.readinessState,
+          readinessMessage: readiness.readinessMessage,
+          ...(shouldPause ? { status: 'paused' as const } : {}),
+        })
+      }
+      timedOut += 1
+    }
+
+    return { timedOut }
   },
 })

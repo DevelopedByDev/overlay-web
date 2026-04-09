@@ -51,6 +51,13 @@ import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
 import { useAppSettings } from './AppSettingsProvider'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
+import {
+  buildAutomationDraftFromTurn,
+  buildSkillDraftFromTurn,
+  type AutomationDraftSummary,
+  type ChatAutomationSuggestionSummary,
+  type SkillDraftSummary,
+} from '@/lib/automation-drafts'
 
 function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: boolean; isFreeTier: boolean }) {
   const router = useRouter()
@@ -948,6 +955,61 @@ function BrowserToolBlock({
   )
 }
 
+function DraftSuggestionCard({
+  title,
+  description,
+  badge,
+  reason,
+  primaryLabel,
+  secondaryLabel,
+  onPrimary,
+  onSecondary,
+}: {
+  title: string
+  description: string
+  badge: string
+  reason: string
+  primaryLabel: string
+  secondaryLabel?: string
+  onPrimary: () => void
+  onSecondary?: () => void
+}) {
+  return (
+    <div className="w-full px-1 py-1.5">
+      <div className="max-w-[min(100%,36rem)] rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <span className="inline-flex rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--muted)]">
+              {badge}
+            </span>
+            <p className="mt-2 text-sm font-medium text-[var(--foreground)]">{title}</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-[var(--muted)]">{description}</p>
+            <p className="mt-2 text-[11px] text-[var(--muted)]">{reason}</p>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onPrimary}
+            className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-colors hover:opacity-85"
+          >
+            {primaryLabel}
+          </button>
+          {secondaryLabel && onSecondary ? (
+            <button
+              type="button"
+              onClick={onSecondary}
+              className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+            >
+              {secondaryLabel}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; mediaType?: string }> }): string[] {
   if (!msg.parts) return []
   return msg.parts
@@ -961,7 +1023,18 @@ type ChatMessageMetadata = {
   replySnippet?: string
   sourceCitations?: SourceCitationMap
   routedModelId?: string
+  automationSuggestion?: ChatAutomationSuggestionSummary
 }
+
+type DraftModalState =
+  | {
+      kind: 'automation'
+      draft: AutomationDraftSummary
+    }
+  | {
+      kind: 'skill'
+      draft: SkillDraftSummary
+    }
 
 function getUserMessageDocNames(msg: unknown): string[] {
   const m = msg as { metadata?: ChatMessageMetadata }
@@ -1006,6 +1079,32 @@ function getRoutedModelId(msg: unknown): string | null {
   }
   const routedModelId = m.metadata?.routedModelId?.trim() || m.routedModelId?.trim()
   return routedModelId || null
+}
+
+function getAutomationSuggestion(msg: unknown): ChatAutomationSuggestionSummary | null {
+  const m = msg as {
+    metadata?: ChatMessageMetadata
+  }
+  return m.metadata?.automationSuggestion ?? null
+}
+
+function getDraftFromToolBlock(block: ToolVisualBlock):
+  | { kind: 'automation'; draft: AutomationDraftSummary }
+  | { kind: 'skill'; draft: SkillDraftSummary }
+  | null {
+  const output =
+    block.toolOutput && typeof block.toolOutput === 'object'
+      ? (block.toolOutput as Record<string, unknown>)
+      : null
+  if (!output || output.success !== true) return null
+
+  if (block.name === 'draft_automation_from_chat' && output.draft && typeof output.draft === 'object') {
+    return { kind: 'automation', draft: output.draft as AutomationDraftSummary }
+  }
+  if (block.name === 'draft_skill_from_chat' && output.draft && typeof output.draft === 'object') {
+    return { kind: 'skill', draft: output.draft as SkillDraftSummary }
+  }
+  return null
 }
 
 function scrollToExchangeTurn(turnId: string) {
@@ -1074,6 +1173,7 @@ interface ExchangeBlockProps {
   isLoadingTabs: boolean
   responseInProgress: boolean
   sourceCitations?: SourceCitationMap
+  automationSuggestion?: ChatAutomationSuggestionSummary | null
   turnIdForActions: string | null
   modelLabel: string
   onDeleteTurn: () => void
@@ -1084,15 +1184,20 @@ interface ExchangeBlockProps {
   isExiting?: boolean
   replyThreadMeta: { replyToTurnId: string; replySnippet: string } | null
   onJumpToReply: (turnId: string) => void
+  onOpenDraft: (state: DraftModalState) => void
 }
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
-  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
+  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
+  onOpenDraft,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
+    const hasDraftToolCard = assistantVisualBlocks.some(
+      (block) => block.kind === 'tool' && !!getDraftFromToolBlock(block),
+    )
     const lastTextBlockIndex = (() => {
       let idx = -1
       for (let i = 0; i < assistantVisualBlocks.length; i++) {
@@ -1215,6 +1320,26 @@ function ExchangeBlock({
           if (seg.kind === 'tools') {
             if (seg.tools.length === 1) {
               const t = seg.tools[0]!
+              const draft = getDraftFromToolBlock(t)
+              if (draft) {
+                return (
+                  <DraftSuggestionCard
+                    key={`${exchIdx}-draft-${seg.originIndex}-${t.key}`}
+                    title={draft.kind === 'automation' ? draft.draft.title : draft.draft.name}
+                    description={draft.kind === 'automation' ? draft.draft.description : draft.draft.description}
+                    badge={draft.kind === 'automation' ? 'Automation Draft' : 'Skill Draft'}
+                    reason={draft.kind === 'automation' ? draft.draft.reason : draft.draft.reason}
+                    primaryLabel="Review draft"
+                    secondaryLabel={draft.kind === 'automation' ? 'Create automation' : 'Save skill'}
+                    onPrimary={() => onOpenDraft(draft.kind === 'automation'
+                      ? { kind: 'automation', draft: draft.draft }
+                      : { kind: 'skill', draft: draft.draft })}
+                    onSecondary={() => onOpenDraft(draft.kind === 'automation'
+                      ? { kind: 'automation', draft: draft.draft }
+                      : { kind: 'skill', draft: draft.draft })}
+                  />
+                )
+              }
               return (
                 <SingleToolCallRow
                   key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
@@ -1275,6 +1400,41 @@ function ExchangeBlock({
             </div>
           )
         })}
+
+        {!isStreaming && !errorMessage && automationSuggestion && !hasDraftToolCard ? (
+          <DraftSuggestionCard
+            title={automationSuggestion.kind === 'automation' ? 'Turn This Into An Automation' : 'Save This As A Skill'}
+            description={
+              automationSuggestion.kind === 'automation'
+                ? 'This Act workflow looks repeatable. Review a draft before saving it into Automations.'
+                : 'This workflow looks reusable. Review a draft before saving it as a skill.'
+            }
+            badge={automationSuggestion.kind === 'automation' ? 'Suggested Automation' : 'Suggested Skill'}
+            reason={automationSuggestion.reason}
+            primaryLabel="Review draft"
+            onPrimary={() =>
+              onOpenDraft(
+                automationSuggestion.kind === 'automation'
+                  ? {
+                      kind: 'automation',
+                      draft: buildAutomationDraftFromTurn({
+                        userText: userBodyText,
+                        assistantText: assistantPlainText,
+                        reason: automationSuggestion.reason,
+                      }),
+                    }
+                  : {
+                      kind: 'skill',
+                      draft: buildSkillDraftFromTurn({
+                        userText: userBodyText,
+                        assistantText: assistantPlainText,
+                        reason: automationSuggestion.reason,
+                      }),
+                    },
+              )
+            }
+          />
+        ) : null}
 
         {responseInProgress && (
           <div className="flex items-center px-1 py-2 min-h-7" aria-live="polite" aria-busy="true">
@@ -1426,6 +1586,105 @@ function FlashCopyIconButton({
     >
       {showCheck ? <Check size={14} strokeWidth={1.75} /> : <Copy size={14} strokeWidth={1.75} />}
     </button>
+  )
+}
+
+function DraftReviewModal({
+  state,
+  saving,
+  onClose,
+  onSaveAutomation,
+  onSaveSkill,
+}: {
+  state: DraftModalState | null
+  saving: boolean
+  onClose: () => void
+  onSaveAutomation: (draft: AutomationDraftSummary) => Promise<void>
+  onSaveSkill: (draft: SkillDraftSummary) => Promise<void>
+}) {
+  if (!state) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 sm:items-center sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="w-full max-w-2xl rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl sm:rounded-2xl">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+          <div>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">
+              {state.kind === 'automation' ? 'Review Automation Draft' : 'Review Skill Draft'}
+            </h3>
+            <p className="mt-0.5 text-[11px] text-[var(--muted)]">
+              {state.kind === 'automation' ? state.draft.reason : state.draft.reason}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            aria-label="Close draft review"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="space-y-4 px-4 py-4">
+          {state.kind === 'automation' ? (
+            <>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+                <p className="text-sm font-medium text-[var(--foreground)]">{state.draft.title}</p>
+                <p className="mt-1 text-[12px] text-[var(--muted)]">{state.draft.description}</p>
+                <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
+                  <p>Mode: {state.draft.mode === 'act' ? 'Act' : 'Ask'}</p>
+                  <p>Model: {getChatModelDisplayName(state.draft.modelId)}</p>
+                  <p>Confidence: {state.draft.confidence}</p>
+                  <p>Integrations: {state.draft.detectedIntegrations.join(', ') || 'None detected'}</p>
+                  <p className="sm:col-span-2">
+                    Schedule: {state.draft.suggestedSchedule?.label || 'No schedule inferred. You can edit this later in Automations.'}
+                  </p>
+                </div>
+              </div>
+              <pre className="max-h-[280px] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
+                {state.draft.instructionsMarkdown}
+              </pre>
+            </>
+          ) : (
+            <>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+                <p className="text-sm font-medium text-[var(--foreground)]">{state.draft.name}</p>
+                <p className="mt-1 text-[12px] text-[var(--muted)]">{state.draft.description}</p>
+                <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
+                  <p>Confidence: {state.draft.confidence}</p>
+                  <p>Integrations: {state.draft.detectedIntegrations.join(', ') || 'None detected'}</p>
+                </div>
+              </div>
+              <pre className="max-h-[280px] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
+                {state.draft.instructions}
+              </pre>
+            </>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void (state.kind === 'automation' ? onSaveAutomation(state.draft) : onSaveSkill(state.draft))}
+            className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-colors hover:opacity-85 disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : state.kind === 'automation' ? 'Create automation' : 'Save skill'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -2035,6 +2294,8 @@ export default function ChatInterface({
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
   /** Mobile: chat history opens from bottom sheet (primary sidebar is desktop-only). */
   const [mobileChatListOpen, setMobileChatListOpen] = useState(false)
+  const [draftModalState, setDraftModalState] = useState<DraftModalState | null>(null)
+  const [isDraftSaving, setIsDraftSaving] = useState(false)
 
   useEffect(() => {
     setExitingTurnIds([])
@@ -2572,6 +2833,71 @@ export default function ChatInterface({
   const jumpToReplyTarget = useCallback((turnId: string) => {
     scrollToExchangeTurn(turnId)
   }, [])
+
+  const saveAutomationDraft = useCallback(async (draft: AutomationDraftSummary) => {
+    setIsDraftSaving(true)
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+      const res = await fetch('/api/app/automations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: draft.title,
+          description: draft.description,
+          sourceType: 'inline',
+          instructionsMarkdown: draft.instructionsMarkdown,
+          mode: draft.mode,
+          modelId: draft.modelId,
+          status: 'active',
+          timezone,
+          scheduleKind: draft.suggestedSchedule?.kind ?? 'daily',
+          scheduleConfig: draft.suggestedSchedule?.config ?? { localTime: '09:00' },
+          ...(embedProjectId ? { projectId: embedProjectId } : {}),
+        }),
+      })
+      const payload = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        throw new Error(payload.error || 'Failed to create automation draft')
+      }
+      setDraftModalState(null)
+      setComposerNotice('Automation created. Review it in Automations.')
+      window.setTimeout(() => setComposerNotice(null), 5000)
+    } catch (error) {
+      setComposerNotice(error instanceof Error ? error.message : 'Failed to create automation.')
+      window.setTimeout(() => setComposerNotice(null), 6000)
+    } finally {
+      setIsDraftSaving(false)
+    }
+  }, [embedProjectId])
+
+  const saveSkillDraft = useCallback(async (draft: SkillDraftSummary) => {
+    setIsDraftSaving(true)
+    try {
+      const res = await fetch('/api/app/skills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: draft.name,
+          description: draft.description,
+          instructions: draft.instructions,
+          enabled: true,
+          ...(embedProjectId ? { projectId: embedProjectId } : {}),
+        }),
+      })
+      const payload = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        throw new Error(payload.error || 'Failed to save skill draft')
+      }
+      setDraftModalState(null)
+      setComposerNotice('Skill saved. It will now be available in chat.')
+      window.setTimeout(() => setComposerNotice(null), 5000)
+    } catch (error) {
+      setComposerNotice(error instanceof Error ? error.message : 'Failed to save skill.')
+      window.setTimeout(() => setComposerNotice(null), 6000)
+    } finally {
+      setIsDraftSaving(false)
+    }
+  }, [embedProjectId])
 
   const handleComposerModeChange = useCallback((next: 'ask' | 'act') => {
     if (next === 'act') {
@@ -4393,6 +4719,7 @@ export default function ChatInterface({
                 const sourceCitations = (
                   responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined
                 )?.metadata?.sourceCitations
+                const automationSuggestion = responseMsg ? getAutomationSuggestion(responseMsg) : null
 
                 const routedModelId = responseMsg ? getRoutedModelId(responseMsg) : null
                 const routedModelName =
@@ -4441,6 +4768,7 @@ export default function ChatInterface({
                     isLoadingTabs={isActiveLoading}
                     responseInProgress={instLoading}
                     sourceCitations={sourceCitations}
+                    automationSuggestion={automationSuggestion}
                     turnIdForActions={textTurnIdForActions}
                     modelLabel={modelLabel}
                     onDeleteTurn={() => {
@@ -4455,6 +4783,7 @@ export default function ChatInterface({
                     isExiting={textIsExiting}
                     replyThreadMeta={getUserReplyThreadMeta(msg)}
                     onJumpToReply={jumpToReplyTarget}
+                    onOpenDraft={setDraftModalState}
                   />
                 )
               }
@@ -4769,6 +5098,16 @@ export default function ChatInterface({
             )}
           </AnimatePresence>
         </div>
+
+        <DraftReviewModal
+          state={draftModalState}
+          saving={isDraftSaving}
+          onClose={() => {
+            if (!isDraftSaving) setDraftModalState(null)
+          }}
+          onSaveAutomation={saveAutomationDraft}
+          onSaveSkill={saveSkillDraft}
+        />
 
         {isTerminalOpen && (
           <div

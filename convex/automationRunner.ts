@@ -3,6 +3,7 @@
 import { internal } from './_generated/api'
 import { internalAction, type ActionCtx } from './_generated/server'
 import { getAutomationExecutorBaseUrl } from '../src/lib/url'
+import { AUTOMATION_TIMEOUT_MS } from '../src/lib/automation-guardrails'
 
 const DEFAULT_BATCH_SIZE = 10
 const DEFAULT_LEASE_MS = 15 * 60 * 1000
@@ -18,6 +19,11 @@ function getInternalApiSecret(): string {
 async function runMinuteTickHandler(
   ctx: ActionCtx,
 ): Promise<{ claimed: number; dispatched: number; failed: number }> {
+  await ctx.runMutation(internal.automations.markTimedOutRunsInternal, {
+    now: Date.now(),
+    timeoutMs: AUTOMATION_TIMEOUT_MS,
+  })
+
   const retryJobs = await ctx.runMutation(internal.automations.claimRetryRunsInternal, {
     now: Date.now(),
     batchSize: DEFAULT_BATCH_SIZE,
@@ -40,6 +46,11 @@ async function runMinuteTickHandler(
 
   for (const job of jobs) {
     try {
+      const requestId = `automation-dispatch-${job.automationRunId}-${Date.now()}`
+      await ctx.runMutation(internal.automations.markDispatchingInternal, {
+        automationRunId: job.automationRunId,
+        requestId,
+      })
       const response = await fetch(`${baseUrl}/api/internal/automations/execute`, {
         method: 'POST',
         headers: {
@@ -50,6 +61,7 @@ async function runMinuteTickHandler(
           automationId: job.automationId,
           automationRunId: job.automationRunId,
           userId: job.userId,
+          requestId,
         }),
       })
 

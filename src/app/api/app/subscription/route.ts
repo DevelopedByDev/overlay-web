@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import type { NextRequest } from 'next/server'
 
-export async function GET() {
-  const session = await getSession()
-  if (!session) {
+export async function GET(request: NextRequest) {
+  const auth = await resolveAuthenticatedAppUser(request, {})
+  if (!auth) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -13,7 +14,7 @@ export async function GET() {
     const entitlements = await convex.query(
       'usage:getEntitlementsByServer',
       {
-        userId: session.user.id,
+        userId: auth.userId,
         serverSecret: getInternalApiSecret(),
       },
       { throwOnError: true },

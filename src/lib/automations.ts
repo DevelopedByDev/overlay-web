@@ -2,6 +2,21 @@ export type AutomationSourceType = 'skill' | 'inline'
 export type AutomationMode = 'ask' | 'act'
 export type AutomationStatus = 'active' | 'paused' | 'archived'
 export type AutomationScheduleKind = 'once' | 'daily' | 'weekdays' | 'weekly' | 'monthly'
+export type AutomationReadinessState =
+  | 'ready'
+  | 'needs_setup'
+  | 'invalid_source'
+  | 'paused_due_to_failures'
+export type AutomationRunStage =
+  | 'queued'
+  | 'dispatching'
+  | 'running'
+  | 'persisting'
+  | 'succeeded'
+  | 'failed'
+  | 'timed_out'
+  | 'canceled'
+  | 'needs_setup'
 export type AutomationRunStatus =
   | 'queued'
   | 'running'
@@ -9,6 +24,14 @@ export type AutomationRunStatus =
   | 'failed'
   | 'skipped'
   | 'canceled'
+  | 'timed_out'
+
+export interface AutomationExecutorSummary {
+  platform: 'vercel' | 'local' | 'unknown'
+  region?: string
+  deploymentId?: string
+  runtime?: string
+}
 
 export interface AutomationScheduleConfig {
   onceAt?: number
@@ -36,6 +59,9 @@ export interface AutomationSummary {
   lastRunAt?: number
   lastRunStatus?: AutomationRunStatus
   conversationId?: string
+  readinessState?: AutomationReadinessState
+  readinessMessage?: string
+  failureStreak?: number
   createdAt: number
   updatedAt: number
 }
@@ -54,6 +80,14 @@ export interface AutomationRunSummary {
   turnId?: string
   attemptNumber?: number
   retryOfRunId?: string
+  stage?: AutomationRunStage
+  failureStage?: string
+  requestId?: string
+  lastHeartbeatAt?: number
+  assistantPersisted?: boolean
+  assistantMessage?: string
+  readinessState?: AutomationReadinessState
+  executor?: AutomationExecutorSummary
   promptSnapshot: string
   mode: AutomationMode
   modelId: string
@@ -101,6 +135,48 @@ export interface AutomationRunDetail {
   tools: AutomationToolInvocationSummary[]
   outputs: AutomationOutputSummary[]
   relatedRetryRun?: AutomationRunSummary
+  events?: AutomationRunEventSummary[]
+}
+
+export interface AutomationRunEventSummary {
+  _id: string
+  automationRunId: string
+  stage: AutomationRunStage
+  level: 'info' | 'warning' | 'error'
+  message: string
+  metadata?: Record<string, unknown>
+  createdAt: number
+}
+
+export interface AutomationDraftSummary {
+  title: string
+  description: string
+  mode: AutomationMode
+  modelId: string
+  instructionsMarkdown: string
+  detectedIntegrations: string[]
+  suggestedSchedule?: {
+    kind: AutomationScheduleKind
+    label: string
+    config: AutomationScheduleConfig
+  }
+  confidence: 'low' | 'medium' | 'high'
+  reason: string
+}
+
+export interface SkillDraftSummary {
+  name: string
+  description: string
+  instructions: string
+  detectedIntegrations: string[]
+  confidence: 'low' | 'medium' | 'high'
+  reason: string
+}
+
+export interface ChatAutomationSuggestionSummary {
+  kind: 'automation' | 'skill'
+  reason: string
+  confidence: 'low' | 'medium' | 'high'
 }
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
@@ -325,15 +401,22 @@ export function getAutomationRunStatusLabel(status?: AutomationRunStatus): strin
   if (status === 'running') return 'Running'
   if (status === 'queued') return 'Queued'
   if (status === 'skipped') return 'Skipped'
+  if (status === 'timed_out') return 'Timed out'
   return 'Canceled'
 }
 
 export function getAutomationHealthLabel(input: {
   status: AutomationStatus
   lastRunStatus?: AutomationRunStatus
+  readinessState?: AutomationReadinessState
+  stage?: AutomationRunStage
 }): string {
   if (input.status === 'paused') return 'Paused'
   if (input.status === 'archived') return 'Archived'
+  if (input.readinessState === 'paused_due_to_failures') return 'Paused after failures'
+  if (input.readinessState === 'needs_setup' || input.readinessState === 'invalid_source') return 'Needs setup'
+  if (input.stage === 'dispatching' && input.lastRunStatus === 'running') return 'Retrying'
+  if (input.stage === 'timed_out' || input.lastRunStatus === 'timed_out') return 'Timed out'
   if (input.lastRunStatus === 'failed' || input.lastRunStatus === 'canceled') return 'Needs attention'
   if (input.lastRunStatus === 'queued') return 'Queued'
   if (input.lastRunStatus === 'running') return 'Running'

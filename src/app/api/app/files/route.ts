@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
 import { deleteObjects } from '@/lib/r2'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 function storageErrorResponse(error: unknown, fallback = 'Failed to save file') {
   const message = error instanceof Error ? error.message : String(error)
@@ -15,25 +15,25 @@ function storageErrorResponse(error: unknown, fallback = 'Failed to save file') 
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
     const { searchParams } = request.nextUrl
     const fileId = searchParams.get('fileId')
     if (fileId) {
       const file = await convex.query('files:get', {
         fileId,
-        userId: session.user.id,
+        userId: auth.userId,
         serverSecret,
       })
-      if (!file || (file as { userId: string }).userId !== session.user.id) {
+      if (!file || (file as { userId: string }).userId !== auth.userId) {
         return NextResponse.json({ error: 'Not found' }, { status: 404 })
       }
       return NextResponse.json(file)
     }
     const projectId = searchParams.get('projectId')
     const args: Record<string, unknown> = {
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
     }
     if (projectId !== null) args.projectId = projectId
@@ -46,11 +46,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const formDataContentType = request.headers.get('content-type') || ''
+    const body = formDataContentType.includes('application/json') ? await request.json() : {}
+    const auth = await resolveAuthenticatedAppUser(request, body as { accessToken?: string; userId?: string })
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { name, type, parentId, content, storageId, r2Key, sizeBytes, projectId } = await request.json()
-    if (!name || !type) return NextResponse.json({ error: 'name and type required' }, { status: 400 })
+    const { name, type, parentId, content, storageId, r2Key, sizeBytes, projectId } = body as Record<string, unknown>
+    if (typeof name !== 'string' || typeof type !== 'string') {
+      return NextResponse.json({ error: 'name and type required' }, { status: 400 })
+    }
     if (storageId) {
       return NextResponse.json(
         { error: 'Convex file storage is no longer supported. Upload to R2 and pass r2Key from the upload-url flow.' },
@@ -59,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     const args: Record<string, unknown> = {
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
       name,
       type,
@@ -97,7 +101,7 @@ export async function POST(request: NextRequest) {
       }
       id = ids[0]
     } else {
-      if (content) {
+      if (typeof content === 'string' && content.length > 0) {
         args.content = content
         args.contentHash = hashTextContent(content)
       }
@@ -112,20 +116,23 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const body = await request.json()
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { fileId, name, content } = await request.json()
+    const { fileId, name, content } = body as Record<string, unknown>
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
     const args: Record<string, unknown> = {
       fileId,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
     }
     if (name !== undefined) args.name = name
-    if (content !== undefined) {
+    if (typeof content === 'string') {
       args.content = content
       args.contentHash = hashTextContent(content)
+    } else if (content !== undefined) {
+      args.content = content
     }
     await convex.mutation('files:update', args)
     return NextResponse.json({ success: true })
@@ -136,15 +143,24 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let body: { accessToken?: string; userId?: string } = {}
+    const contentType = request.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      try {
+        body = await request.json()
+      } catch {
+        body = {}
+      }
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
     const fileId = request.nextUrl.searchParams.get('fileId')
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
 
     const r2Entries = await convex.query<Array<{ fileId: string; r2Key?: string; storageId?: string }>>(
       'files:getR2KeysForSubtree',
-      { fileId, userId: session.user.id, serverSecret },
+      { fileId, userId: auth.userId, serverSecret },
     )
     const r2Keys = (r2Entries ?? []).map((e) => e.r2Key).filter((k): k is string => Boolean(k))
     if (r2Keys.length > 0) {
@@ -154,7 +170,7 @@ export async function DELETE(request: NextRequest) {
 
     await convex.mutation('files:remove', {
       fileId,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
     })
     return NextResponse.json({ success: true })

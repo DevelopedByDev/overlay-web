@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
     const projectId = request.nextUrl.searchParams.get('projectId')
     const skills = await convex.query('skills:list', {
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
       projectId: projectId ?? undefined,
     })
@@ -23,15 +23,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const body = await request.json()
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
-    const { name, description, instructions, projectId } = await request.json()
+    const { name, description, instructions, projectId } = body as Record<string, unknown>
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
 
     const skillId = await convex.mutation<string>('skills:create', {
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
       name,
       description: description || '',
@@ -46,16 +47,17 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const body = await request.json()
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
-    const { skillId, name, description, instructions, enabled } = await request.json()
+    const { skillId, name, description, instructions, enabled } = body as Record<string, unknown>
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
 
     await convex.mutation('skills:update', {
       skillId,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
       name,
       description,
@@ -70,8 +72,17 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let body: { accessToken?: string; userId?: string } = {}
+    const contentType = request.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      try {
+        body = await request.json()
+      } catch {
+        body = {}
+      }
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
     const skillId = request.nextUrl.searchParams.get('skillId')
@@ -79,7 +90,7 @@ export async function DELETE(request: NextRequest) {
 
     await convex.mutation('skills:remove', {
       skillId,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
     })
     return NextResponse.json({ success: true })

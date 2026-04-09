@@ -52,6 +52,21 @@ async function getComposioApiKey(): Promise<string | null> {
   return (await getServerProviderKey('composio')) ?? process.env.COMPOSIO_API_KEY?.trim() ?? null
 }
 
+async function loadAutomationPreflightSupport() {
+  const [{ convex }, internalApiModule, urlModule, pricingModule] = await Promise.all([
+    import(new URL('./convex.ts', import.meta.url).href),
+    import(new URL('./internal-api-secret.ts', import.meta.url).href),
+    import(new URL('./url.ts', import.meta.url).href),
+    import(new URL('./model-pricing.ts', import.meta.url).href),
+  ])
+  return {
+    convex,
+    getInternalApiSecret: internalApiModule.getInternalApiSecret,
+    getAutomationExecutorBaseUrl: urlModule.getAutomationExecutorBaseUrl,
+    isPremiumModel: pricingModule.isPremiumModel,
+  }
+}
+
 async function listConnectedIntegrationSlugs(userId: string): Promise<Set<string> | null> {
   const apiKey = await getComposioApiKey()
   if (!apiKey) return null
@@ -87,12 +102,88 @@ export async function runAutomationIntegrationPreflight(args: {
     }
   | {
       ok: false
-      errorCode: 'integration_provider_unavailable' | 'missing_integrations'
+      errorCode:
+        | 'integration_provider_unavailable'
+        | 'missing_integrations'
+        | 'invalid_source'
+        | 'model_not_allowed'
+        | 'executor_unavailable'
       errorMessage: string
       requiredIntegrations: KnownIntegration[]
       missingIntegrations: KnownIntegration[]
     }
 > {
+  if (!args.sourceInstructions.trim()) {
+    return {
+      ok: false,
+      errorCode: 'invalid_source',
+      errorMessage: 'This automation has no executable instructions. Update the source before running it.',
+      requiredIntegrations: [],
+      missingIntegrations: [],
+    }
+  }
+
+  const {
+    convex,
+    getInternalApiSecret,
+    getAutomationExecutorBaseUrl,
+    isPremiumModel,
+  } = await loadAutomationPreflightSupport()
+
+  const executorBaseUrl = getAutomationExecutorBaseUrl()
+  if (!executorBaseUrl) {
+    return {
+      ok: false,
+      errorCode: 'executor_unavailable',
+      errorMessage: 'The automation executor is not configured on the server.',
+      requiredIntegrations: [],
+      missingIntegrations: [],
+    }
+  }
+
+  let serverSecret: string
+  try {
+    serverSecret = getInternalApiSecret()
+  } catch {
+    return {
+      ok: false,
+      errorCode: 'executor_unavailable',
+      errorMessage: 'The automation executor server secret is not configured.',
+      requiredIntegrations: [],
+      missingIntegrations: [],
+    }
+  }
+  const entitlements = (await convex.query(
+    'usage:getEntitlementsByServer',
+    {
+      userId: args.userId,
+      serverSecret,
+    },
+    { throwOnError: true },
+  )) as {
+    tier: 'free' | 'pro' | 'max'
+    creditsUsed: number
+    creditsTotal: number
+  } | null
+  if (!entitlements) {
+    return {
+      ok: false,
+      errorCode: 'model_not_allowed',
+      errorMessage: 'Could not verify account entitlements for this automation.',
+      requiredIntegrations: [],
+      missingIntegrations: [],
+    }
+  }
+  if (entitlements.tier === 'free' && isPremiumModel(args.automation.modelId)) {
+    return {
+      ok: false,
+      errorCode: 'model_not_allowed',
+      errorMessage: 'This automation uses a premium model, but the account is on the free tier.',
+      requiredIntegrations: [],
+      missingIntegrations: [],
+    }
+  }
+
   const searchableText = [
     args.automation.title,
     args.automation.description,

@@ -24,6 +24,7 @@ import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
 import { buildSecondarySystemPromptExtension } from '@/lib/operator-system-prompt'
+import { shouldSuggestAutomationFromTurn } from '@/lib/automation-drafts'
 import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
@@ -303,6 +304,8 @@ export async function POST(request: NextRequest) {
 
     const generationNote =
       '\nYou also have generate_image and generate_video tools. Use them whenever the user asks to create visual content. For videos, inform the user that generation is async and may take a few minutes — results will appear in the Outputs tab.'
+    const automationDraftNote =
+      '\nYou also have draft_automation_from_chat and draft_skill_from_chat. Use them only when the user is clearly asking for a repeatable workflow, recurring task, or reusable procedure. These tools only draft suggestions and never create live automations or skills.'
     const browserToolNote =
       '\nYou also have a browser_run_task tool to browse the web with a real browser. Use it when you need fresh live data or need to interact with a website.'
     const sandboxToolNote =
@@ -323,6 +326,7 @@ export async function POST(request: NextRequest) {
         projectInstructionsExtension +
         skillsContext +
         generationNote +
+        automationDraftNote +
         browserToolNote +
         sandboxToolNote +
         knowledgeNote +
@@ -330,6 +334,10 @@ export async function POST(request: NextRequest) {
         autoRetrieval +
         indexedNote,
     })
+
+    let automationSuggestion:
+      | ReturnType<typeof shouldSuggestAutomationFromTurn>
+      | undefined
 
     const result = await agent.stream({
       messages: modelMessages,
@@ -375,6 +383,24 @@ export async function POST(request: NextRequest) {
         const totalUsage = event.totalUsage
         const totalInputTokens = totalUsage?.inputTokens ?? 0
         const totalOutputTokens = totalUsage?.outputTokens ?? 0
+        automationSuggestion =
+          shouldSuggestAutomationFromTurn({
+            userText: latestUserText ?? '',
+            toolNames: event.steps
+              .flatMap((step) => (step.toolCalls ?? []).map((toolCall) => toolCall?.toolName))
+              .filter((toolName): toolName is string => Boolean(toolName)),
+            recentUserTexts: messages
+              .filter((message) => message.role === 'user')
+              .map((message) =>
+                message.parts
+                  ?.filter((part) => part.type === 'text')
+                  .map((part) => ('text' in part ? part.text || '' : ''))
+                  .join(' ')
+                  .trim() || '',
+              )
+              .filter(Boolean)
+              .slice(-4),
+          }) ?? undefined
 
         const costDollars = calculateTokenCost(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
         const costCents = Math.round(costDollars * 100)
@@ -455,6 +481,9 @@ export async function POST(request: NextRequest) {
         if (hasCitations && (part.type === 'start' || part.type === 'finish')) {
           // Send early so the client can linkify **Sources:** while the reply streams.
           metadata.sourceCitations = sourceCitationMap
+        }
+        if (automationSuggestion && part.type === 'finish') {
+          metadata.automationSuggestion = automationSuggestion
         }
         if (
           effectiveModelId === FREE_TIER_AUTO_MODEL_ID &&

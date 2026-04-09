@@ -3,13 +3,14 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type {
   AutomationOutputSummary,
+  AutomationRunEventSummary,
   AutomationRunDetail,
   AutomationRunSummary,
   AutomationSummary,
   AutomationToolInvocationSummary,
 } from '@/lib/automations'
 import type { Id } from '../../../../../../../convex/_generated/dataModel'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 type ConversationMessage = {
   turnId: string
@@ -19,8 +20,8 @@ type ConversationMessage = {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const automationRunId = request.nextUrl.searchParams.get('automationRunId')
     if (!automationRunId) {
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     }
 
     const serverSecret = getInternalApiSecret()
-    const userId = session.user.id
+    const userId = auth.userId
 
     const run = await convex.query<AutomationRunSummary | null>(
       'automations:getRun',
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Run not found' }, { status: 404 })
     }
 
-    const [automation, messages, outputs, tools, relatedRetryRun] = await Promise.all([
+    const [automation, messages, outputs, tools, relatedRetryRun, events] = await Promise.all([
       convex.query<AutomationSummary | null>(
         'automations:get',
         {
@@ -97,6 +98,16 @@ export async function GET(request: NextRequest) {
         },
         { throwOnError: true },
       ),
+      convex.query<AutomationRunEventSummary[]>(
+        'automations:listRunEvents',
+        {
+          automationRunId: run._id as Id<'automationRuns'>,
+          userId,
+          serverSecret,
+          limit: 100,
+        },
+        { throwOnError: true },
+      ),
     ])
 
     const runMessages = run.turnId
@@ -105,7 +116,7 @@ export async function GET(request: NextRequest) {
     const userMessage = runMessages.find((message) => message.role === 'user')?.content
     const assistantMessage = [...runMessages]
       .reverse()
-      .find((message) => message.role === 'assistant')?.content
+      .find((message) => message.role === 'assistant')?.content || run.assistantMessage
 
     const detail: AutomationRunDetail = {
       run,
@@ -123,6 +134,7 @@ export async function GET(request: NextRequest) {
       outputs: outputs ?? [],
       tools: tools ?? [],
       relatedRetryRun: relatedRetryRun ?? undefined,
+      events: events ?? [],
     }
 
     return NextResponse.json(detail)

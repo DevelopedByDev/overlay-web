@@ -10,6 +10,8 @@ import {
 } from './notes-executes'
 import { executeBrowserRunTask } from './browser-executes'
 import {
+  executeDraftAutomationFromChat,
+  executeDraftSkillFromChat,
   executeDeleteMemory,
   executeGenerateImage,
   executeGenerateVideo,
@@ -141,6 +143,41 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
   })
 
   if (mode === 'act') {
+    tools.draft_automation_from_chat = tool({
+      description:
+        'Create a draft automation proposal from the current chat turn. ' +
+        'Use this when the user is asking for a repeatable or scheduled workflow. ' +
+        'This only creates a draft and never saves a live automation.',
+      inputSchema: z.object({
+        userText: z.string().describe('The user request to turn into an automation draft'),
+        assistantText: z.string().optional().describe('Optional assistant summary of the workflow'),
+        toolNames: z.array(z.string()).optional().describe('Tool names used in the workflow'),
+        reason: z.string().optional().describe('Why this should become an automation'),
+        mode: z.enum(['ask', 'act']).optional(),
+        modelId: z.string().optional(),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowedForMode(mode, 'draft_automation_from_chat')
+        return executeDraftAutomationFromChat(options, input)
+      },
+    })
+
+    tools.draft_skill_from_chat = tool({
+      description:
+        'Create a reusable skill draft from the current chat turn. ' +
+        'Use this when the workflow is reusable but not obviously scheduled. ' +
+        'This only drafts the skill and never saves it.',
+      inputSchema: z.object({
+        userText: z.string().describe('The user request to turn into a saved skill draft'),
+        assistantText: z.string().optional().describe('Optional assistant summary of the workflow'),
+        reason: z.string().optional().describe('Why this should become a saved skill'),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowedForMode(mode, 'draft_skill_from_chat')
+        return executeDraftSkillFromChat(options, input)
+      },
+    })
+
     tools.generate_image = tool({
       description:
         'Generate an image from a text prompt using AI image generation models. ' +

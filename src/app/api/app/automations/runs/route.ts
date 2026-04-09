@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const automationId = request.nextUrl.searchParams.get('automationId')
     if (!automationId) {
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const runs = await convex.query('automations:listRuns', {
       automationId: automationId as Id<'automations'>,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
       limit,
     })

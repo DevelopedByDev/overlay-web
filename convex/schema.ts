@@ -39,8 +39,19 @@ export default defineSchema({
         v.literal('failed'),
         v.literal('skipped'),
         v.literal('canceled'),
+        v.literal('timed_out'),
       ),
     ),
+    readinessState: v.optional(
+      v.union(
+        v.literal('ready'),
+        v.literal('needs_setup'),
+        v.literal('invalid_source'),
+        v.literal('paused_due_to_failures'),
+      ),
+    ),
+    readinessMessage: v.optional(v.string()),
+    failureStreak: v.optional(v.number()),
     conversationId: v.optional(v.id('conversations')),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -61,7 +72,22 @@ export default defineSchema({
       v.literal('failed'),
       v.literal('skipped'),
       v.literal('canceled'),
+      v.literal('timed_out'),
     ),
+    stage: v.optional(
+      v.union(
+        v.literal('queued'),
+        v.literal('dispatching'),
+        v.literal('running'),
+        v.literal('persisting'),
+        v.literal('succeeded'),
+        v.literal('failed'),
+        v.literal('timed_out'),
+        v.literal('canceled'),
+        v.literal('needs_setup'),
+      ),
+    ),
+    failureStage: v.optional(v.string()),
     triggerSource: v.union(v.literal('manual'), v.literal('schedule'), v.literal('retry')),
     scheduledFor: v.number(),
     startedAt: v.optional(v.number()),
@@ -71,6 +97,26 @@ export default defineSchema({
     turnId: v.optional(v.string()),
     attemptNumber: v.optional(v.number()),
     retryOfRunId: v.optional(v.id('automationRuns')),
+    requestId: v.optional(v.string()),
+    lastHeartbeatAt: v.optional(v.number()),
+    assistantPersisted: v.optional(v.boolean()),
+    assistantMessage: v.optional(v.string()),
+    readinessState: v.optional(
+      v.union(
+        v.literal('ready'),
+        v.literal('needs_setup'),
+        v.literal('invalid_source'),
+        v.literal('paused_due_to_failures'),
+      ),
+    ),
+    executor: v.optional(
+      v.object({
+        platform: v.union(v.literal('vercel'), v.literal('local'), v.literal('unknown')),
+        region: v.optional(v.string()),
+        deploymentId: v.optional(v.string()),
+        runtime: v.optional(v.string()),
+      }),
+    ),
     promptSnapshot: v.string(),
     mode: v.union(v.literal('ask'), v.literal('act')),
     modelId: v.string(),
@@ -84,7 +130,31 @@ export default defineSchema({
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_userId_status_createdAt', ['userId', 'status', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt'])
-    .index('by_status_scheduledFor', ['status', 'scheduledFor']),
+    .index('by_status_scheduledFor', ['status', 'scheduledFor'])
+    .index('by_status_lastHeartbeatAt', ['status', 'lastHeartbeatAt']),
+
+  automationRunEvents: defineTable({
+    automationRunId: v.id('automationRuns'),
+    automationId: v.id('automations'),
+    userId: v.string(),
+    stage: v.union(
+      v.literal('queued'),
+      v.literal('dispatching'),
+      v.literal('running'),
+      v.literal('persisting'),
+      v.literal('succeeded'),
+      v.literal('failed'),
+      v.literal('timed_out'),
+      v.literal('canceled'),
+      v.literal('needs_setup'),
+    ),
+    level: v.union(v.literal('info'), v.literal('warning'), v.literal('error')),
+    message: v.string(),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index('by_automationRunId_createdAt', ['automationRunId', 'createdAt'])
+    .index('by_automationId_createdAt', ['automationId', 'createdAt']),
 
   userUiSettings: defineTable({
     userId: v.string(),

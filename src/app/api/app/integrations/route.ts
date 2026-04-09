@@ -1,8 +1,8 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadComposioSDK(apiKey: string): Promise<any> {
@@ -29,10 +29,10 @@ async function getComposioApiKey(accessToken: string): Promise<string | null> {
 // GET - list connected integrations, or search toolkits
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const apiKey = await getComposioApiKey(session.accessToken)
+    const apiKey = await getComposioApiKey(auth.accessToken)
     if (!apiKey) return NextResponse.json({ connected: [] })
 
     const { searchParams } = new URL(request.url)
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       const cursor = searchParams.get('cursor') || ''
       const limit = Math.min(parseInt(searchParams.get('limit') || '12'), 50)
 
-      const userId = session.user.id
+      const userId = auth.userId
 
     // Fetch connected accounts to annotate results
       const connectedRes = await fetch(
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Default: return connected integration slugs (scoped to this user's entity)
-    const userId = session.user.id
+    const userId = auth.userId
     const res = await fetch(
       `https://backend.composio.dev/api/v1/connectedAccounts?entityId=${encodeURIComponent(userId)}&page=1&pageSize=100`,
       { headers: { 'x-api-key': apiKey } }
@@ -120,16 +120,17 @@ export async function GET(request: NextRequest) {
 // POST - initiate connection (returns redirect URL) or disconnect
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const body = await request.json()
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { action, toolkit } = await request.json()
+    const { action, toolkit } = body as { action?: string; toolkit?: string }
     if (!toolkit) return NextResponse.json({ error: 'toolkit required' }, { status: 400 })
 
-    const apiKey = await getComposioApiKey(session.accessToken)
+    const apiKey = await getComposioApiKey(auth.accessToken)
     if (!apiKey) return NextResponse.json({ error: 'Composio not configured' }, { status: 503 })
 
-    const userId = session.user.id
+    const userId = auth.userId
 
     const composio = await loadComposioSDK(apiKey)
 

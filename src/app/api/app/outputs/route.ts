@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { isKnownOutputType } from '@/lib/output-types'
 import { deleteObject } from '@/lib/r2'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) {
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const serverSecret = getInternalApiSecret()
@@ -22,11 +22,11 @@ export async function GET(request: NextRequest) {
     const outputs = conversationId
       ? await convex.query('outputs:listByConversationId', {
           conversationId,
-          userId: session.user.id,
+          userId: auth.userId,
           serverSecret,
         }, { throwOnError: true })
       : await convex.query('outputs:list', {
-          userId: session.user.id,
+          userId: auth.userId,
           serverSecret,
           type: type ?? undefined,
           limit,
@@ -41,15 +41,24 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let body: { accessToken?: string; userId?: string } = {}
+    const contentType = request.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      try {
+        body = await request.json()
+      } catch {
+        body = {}
+      }
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
     const outputId = request.nextUrl.searchParams.get('outputId')
     if (!outputId) return NextResponse.json({ error: 'outputId required' }, { status: 400 })
 
     const output = await convex.query<{ r2Key?: string; storageId?: string } | null>('outputs:get', {
       outputId,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
     }, { throwOnError: true })
 
@@ -60,7 +69,7 @@ export async function DELETE(request: NextRequest) {
 
     await convex.mutation('outputs:remove', {
       outputId,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
     }, { throwOnError: true })
     return NextResponse.json({ success: true })

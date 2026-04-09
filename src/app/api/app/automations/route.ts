@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { DEFAULT_MODEL_ID } from '@/lib/models'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -12,6 +11,7 @@ import type {
   AutomationStatus,
 } from '@/lib/automations'
 import { getNextAutomationRunAt } from '@/lib/automations'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 type AutomationMutationBody = {
   automationId?: string
@@ -27,6 +27,8 @@ type AutomationMutationBody = {
   timezone?: string
   scheduleKind?: AutomationScheduleKind
   scheduleConfig?: AutomationScheduleConfig
+  accessToken?: string
+  userId?: string
 }
 
 function normalizeScheduleConfig(
@@ -62,13 +64,13 @@ function deriveNextRunAt(
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
     const projectId = request.nextUrl.searchParams.get('projectId')
 
     const rows = await convex.query('automations:list', {
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
       projectId: projectId ?? undefined,
     })
@@ -81,9 +83,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const body = (await request.json()) as AutomationMutationBody
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
     if (!body.title?.trim()) {
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
     const scheduleConfig = normalizeScheduleConfig(body.scheduleKind, body.scheduleConfig)
 
     const automationId = await convex.mutation<Id<'automations'>>('automations:create', {
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
       projectId: body.projectId?.trim() || undefined,
       title: body.title.trim(),
@@ -131,9 +133,9 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const body = (await request.json()) as AutomationMutationBody
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
     if (!body.automationId) {
@@ -151,7 +153,7 @@ export async function PATCH(request: NextRequest) {
 
     await convex.mutation('automations:update', {
       automationId: body.automationId as Id<'automations'>,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
       projectId: body.projectId?.trim() || undefined,
       title: body.title,
@@ -177,15 +179,24 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let body: { accessToken?: string; userId?: string } = {}
+    const contentType = request.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      try {
+        body = await request.json()
+      } catch {
+        body = {}
+      }
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const automationId = request.nextUrl.searchParams.get('automationId')
     if (!automationId) return NextResponse.json({ error: 'automationId required' }, { status: 400 })
     const serverSecret = getInternalApiSecret()
 
     await convex.mutation('automations:remove', {
       automationId: automationId as Id<'automations'>,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret,
     }, { throwOnError: true })
 

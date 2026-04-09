@@ -4,43 +4,15 @@ import {
   formatAutomationSchedule,
   type AutomationSummary,
 } from '@/lib/automations'
+import {
+  executeAutomationConversationTurn,
+} from '@/lib/automation-execution'
 import type { Id } from '../../convex/_generated/dataModel'
-
-export function buildUiMessage(prompt: string, turnId: string) {
-  return [
-    {
-      id: turnId,
-      role: 'user',
-      parts: [
-        {
-          type: 'text',
-          text: prompt,
-        },
-      ],
-    },
-  ]
-}
 
 export function summarizeAssistantMessage(content: string | undefined): string | undefined {
   const trimmed = content?.trim()
   if (!trimmed) return undefined
   return trimmed.length > 280 ? `${trimmed.slice(0, 277)}...` : trimmed
-}
-
-function summarizeAutomationErrorBody(bodyText: string | undefined, status: number): string {
-  const trimmed = bodyText?.trim()
-  if (!trimmed) {
-    return `Automation execution failed (${status}).`
-  }
-
-  if (/<!doctype html>/i.test(trimmed) || /<html[\s>]/i.test(trimmed)) {
-    if (status === 404) {
-      return 'Automation execution hit a 404 page. The internal app URL is likely misconfigured.'
-    }
-    return `Automation execution returned an HTML error page (${status}).`
-  }
-
-  return trimmed.length > 400 ? `${trimmed.slice(0, 397)}...` : trimmed
 }
 
 export async function ensureAutomationConversation(args: {
@@ -141,64 +113,25 @@ export function buildAutomationRunPrompt(automation: AutomationSummary, sourceIn
 export async function executeAutomationTurn(args: {
   automation: AutomationSummary
   baseUrl: string
-  internalApiSecret: string
   conversationId: Id<'conversations'>
   prompt: string
   userId: string
   serverSecret: string
+  turnId: string
+  requestId: string
+  executor: {
+    platform: 'vercel' | 'local' | 'unknown'
+    region?: string
+    deploymentId?: string
+    runtime?: string
+  }
+  onEvent?: (event: {
+    stage: 'dispatching' | 'running' | 'persisting' | 'succeeded' | 'failed' | 'needs_setup'
+    level: 'info' | 'warning' | 'error'
+    message: string
+    metadata?: Record<string, unknown>
+  }) => Promise<void>
+  onHeartbeat?: (stage?: 'running' | 'persisting') => Promise<void>
 }) {
-  const { automation, baseUrl, internalApiSecret, conversationId, prompt, userId, serverSecret } = args
-  const endpoint = automation.mode === 'act'
-    ? '/api/app/conversations/act'
-    : '/api/app/conversations/ask'
-  const turnId = `automation-${Date.now()}`
-
-  const response = await fetch(`${baseUrl}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-internal-api-secret': internalApiSecret,
-    },
-    body: JSON.stringify({
-      conversationId,
-      turnId,
-      modelId: automation.modelId,
-      messages: buildUiMessage(prompt, turnId),
-      userId,
-    }),
-  })
-
-  const bodyText = await response.text()
-  if (!response.ok) {
-    const error = new Error(
-      summarizeAutomationErrorBody(bodyText, response.status),
-    ) as Error & { turnId?: string }
-    error.turnId = turnId
-    throw error
-  }
-
-  const messages = await convex.query<
-    Array<{
-      turnId: string
-      role: 'user' | 'assistant'
-      content: string
-    }>
-  >(
-    'conversations:getMessages',
-    {
-      conversationId,
-      userId,
-      serverSecret,
-    },
-    { throwOnError: true },
-  )
-
-  const assistantMessage = [...(messages ?? [])]
-    .reverse()
-    .find((message) => message.turnId === turnId && message.role === 'assistant')
-
-  return {
-    turnId,
-    summary: summarizeAssistantMessage(assistantMessage?.content),
-  }
+  return executeAutomationConversationTurn(args)
 }

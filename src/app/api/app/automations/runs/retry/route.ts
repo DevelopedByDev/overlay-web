@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import type { AutomationRunSummary } from '@/lib/automations'
 import type { Id } from '../../../../../../../convex/_generated/dataModel'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const body = (await request.json()) as {
+      automationRunId?: string
+      accessToken?: string
+      userId?: string
+    }
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { automationRunId } = (await request.json()) as { automationRunId?: string }
+    const { automationRunId } = body
     if (!automationRunId) {
       return NextResponse.json({ error: 'automationRunId required' }, { status: 400 })
     }
 
-    const userId = session.user.id
+    const userId = auth.userId
     const serverSecret = getInternalApiSecret()
     const run = await convex.query<AutomationRunSummary | null>(
       'automations:getRun',

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) {
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
