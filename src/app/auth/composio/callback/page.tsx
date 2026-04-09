@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { notifyOpenerIntegrationsChanged } from '@/lib/integrations-events'
 
 function CallbackContent() {
   const searchParams = useSearchParams()
@@ -13,6 +14,7 @@ function CallbackContent() {
 
   useEffect(() => {
     if (!isSuccess) return
+    notifyOpenerIntegrationsChanged()
     const interval = setInterval(() => {
       setCountdown((n) => {
         if (n <= 1) {

@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, UIEvent } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, UIEvent } from 'react'
 import { Loader2, Plus, X, Search } from 'lucide-react'
 import { IntegrationDialogRowSkeleton, IntegrationListSkeleton } from '@/components/ui/Skeleton'
+import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/lib/integrations-events'
 
 interface Integration {
   id: string
@@ -69,6 +70,7 @@ const KNOWN_NAMES: Record<string, string> = {
   googlecalendar: 'Google Calendar',
   googlesheets: 'Google Sheets',
   googledrive: 'Google Drive',
+  googlemeet: 'Google Meet',
   notion: 'Notion',
   outlook: 'Outlook',
   twitter: 'X (Twitter)',
@@ -329,20 +331,23 @@ function IntegrationsDialog({
   )
 }
 
-function notifyIntegrationsChanged() {
-  window.dispatchEvent(new CustomEvent('overlay:integrations-changed'))
-}
+const LIST_PAGE_SIZE = 8
+
+type CatalogItem = { slug: string; name: string; description: string; logoUrl: string | null; isConnected?: boolean }
 
 // ── Main integrations view ─────────────────────────────────────────────────────
 
 export default function IntegrationsView({ userId: _userId }: { userId: string }) {
   void _userId
   const [connected, setConnected] = useState<Set<string>>(new Set())
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
   const [logos, setLogos] = useState<Record<string, string | null>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [connecting, setConnecting] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [connectedVisible, setConnectedVisible] = useState(LIST_PAGE_SIZE)
+  const [availableVisible, setAvailableVisible] = useState(LIST_PAGE_SIZE)
 
   const loadConnected = useCallback(async () => {
     try {
@@ -358,34 +363,59 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
     }
   }, [])
 
-  // Fetch logo URLs for static integrations from Composio
-  const loadLogos = useCallback(async () => {
+  /** Toolkit catalog for logos, descriptions, and rows not in INTEGRATIONS (e.g. connected only from chat). */
+  const loadCatalog = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/integrations?action=search&limit=50')
+      const res = await fetch('/api/app/integrations?action=search&limit=100')
       if (!res.ok) return
       const data = await res.json()
-      const items = Array.isArray(data?.items) ? data.items : []
-      const logoMap: Record<string, string | null> = {}
-      for (const item of items) {
-        logoMap[item.slug] = item.logoUrl ?? null
-      }
-      setLogos(logoMap)
+      const items = (Array.isArray(data?.items) ? data.items : []) as CatalogItem[]
+      setCatalogItems(items)
+      setLogos((prev) => {
+        const next = { ...prev }
+        for (const item of items) {
+          next[item.slug] = item.logoUrl ?? null
+        }
+        return next
+      })
     } catch {
-      // logos are optional
+      // optional
     }
   }, [])
 
   useEffect(() => {
-    loadConnected()
-    loadLogos()
-  }, [loadConnected, loadLogos])
+    void loadConnected()
+    void loadCatalog()
+  }, [loadConnected, loadCatalog])
 
   // Refresh on focus (user may have completed OAuth in another tab)
   useEffect(() => {
-    const onFocus = () => loadConnected()
+    const onFocus = () => {
+      void loadConnected()
+      void loadCatalog()
+    }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [loadConnected])
+  }, [loadConnected, loadCatalog])
+
+  useEffect(() => {
+    const onIntegrationsChanged = () => {
+      void loadConnected()
+      void loadCatalog()
+    }
+    window.addEventListener('overlay:integrations-changed', onIntegrationsChanged)
+    let bc: BroadcastChannel | null = null
+    try {
+      bc = new BroadcastChannel(INTEGRATIONS_BC_CHANNEL)
+      bc.onmessage = onIntegrationsChanged
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      window.removeEventListener('overlay:integrations-changed', onIntegrationsChanged)
+      bc?.close()
+    }
+  }, [loadConnected, loadCatalog])
 
   async function handleConnect(integration: Integration) {
     if (connecting) return
@@ -483,8 +513,57 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
     notifyIntegrationsChanged()
   }, [])
 
-  const connectedList = INTEGRATIONS.filter((i) => connected.has(i.composioId))
-  const availableList = INTEGRATIONS.filter((i) => !connected.has(i.composioId))
+  const integrationForSlug = useCallback(
+    (slug: string): Integration => {
+      const preset = INTEGRATIONS.find((i) => i.composioId === slug)
+      if (preset) return preset
+      const cat = catalogItems.find((c) => c.slug === slug)
+      return {
+        id: slug,
+        composioId: slug,
+        name: resolvedName(slug, cat?.name ?? slug),
+        description: cat?.description?.trim() || 'Connected integration',
+        icon: '🔌',
+      }
+    },
+    [catalogItems],
+  )
+
+  const connectedRows = useMemo(() => {
+    return Array.from(connected)
+      .map((slug) => integrationForSlug(slug))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [connected, integrationForSlug])
+
+  const availableList = useMemo(() => {
+    const bySlug = new Map<string, Integration>()
+    for (const i of INTEGRATIONS) {
+      if (!connected.has(i.composioId)) bySlug.set(i.composioId, i)
+    }
+    for (const c of catalogItems) {
+      if (connected.has(c.slug)) continue
+      if (bySlug.has(c.slug)) continue
+      bySlug.set(c.slug, {
+        id: c.slug,
+        composioId: c.slug,
+        name: resolvedName(c.slug, c.name),
+        description: c.description?.trim() || '',
+        icon: '🔌',
+      })
+    }
+    return [...bySlug.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [connected, catalogItems])
+
+  useEffect(() => {
+    setConnectedVisible(LIST_PAGE_SIZE)
+  }, [connected.size])
+
+  useEffect(() => {
+    setAvailableVisible(LIST_PAGE_SIZE)
+  }, [availableList.length])
+
+  const connectedShown = connectedRows.slice(0, connectedVisible)
+  const availableShown = availableList.slice(0, availableVisible)
 
   return (
     <div className="flex h-full flex-col">
@@ -505,13 +584,13 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
               </div>
             )}
 
-            {connectedList.length > 0 && (
+            {connectedRows.length > 0 && (
               <div>
                 <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">Connected</p>
                 <div className="space-y-1">
-                  {connectedList.map((integration) => (
+                  {connectedShown.map((integration) => (
                     <IntegrationRow
-                      key={integration.id}
+                      key={integration.composioId}
                       integration={integration}
                       logoUrl={logos[integration.composioId]}
                       isConnected={true}
@@ -520,17 +599,25 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
                     />
                   ))}
                 </div>
+                {connectedVisible < connectedRows.length ? (
+                  <button
+                    type="button"
+                    onClick={() => setConnectedVisible((n) => n + LIST_PAGE_SIZE)}
+                    className="mt-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+                  >
+                    Show more
+                  </button>
+                ) : null}
               </div>
             )}
 
             <div>
-              <div className="flex items-center justify-between mb-3">
-                {connectedList.length > 0 && (
-                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">Available</p>
-                )}
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">Available</p>
                 <button
+                  type="button"
                   onClick={() => setIsDialogOpen(true)}
-                  className="ml-auto flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+                  className="flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
                   title="Browse all integrations"
                 >
                   <Plus size={12} />
@@ -538,9 +625,9 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
                 </button>
               </div>
               <div className="space-y-1">
-                {availableList.map((integration) => (
+                {availableShown.map((integration) => (
                   <IntegrationRow
-                    key={integration.id}
+                    key={integration.composioId}
                     integration={integration}
                     logoUrl={logos[integration.composioId]}
                     isConnected={false}
@@ -549,6 +636,15 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
                   />
                 ))}
               </div>
+              {availableVisible < availableList.length ? (
+                <button
+                  type="button"
+                  onClick={() => setAvailableVisible((n) => n + LIST_PAGE_SIZE)}
+                  className="mt-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+                >
+                  Show more
+                </button>
+              ) : null}
             </div>
           </div>
         )}

@@ -361,7 +361,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   const sidebarContent = (
     <>
       <div
-        className={`hidden h-16 items-center border-b border-[var(--border)] md:flex ${
+        className={`hidden h-16 min-h-16 shrink-0 items-center border-b border-[var(--border)] md:flex ${
           sidebarCollapsed ? 'justify-center px-3' : 'justify-between px-5'
         }`}
       >

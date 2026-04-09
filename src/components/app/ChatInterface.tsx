@@ -4275,9 +4275,8 @@ export default function ChatInterface({
             </div>
           </div>
         )}
-        {/* Sticky header — stacked on small screens to avoid horizontal scroll */}
-        <div className="shrink-0 border-b border-[var(--border)] px-3 md:px-4">
-          <div className="flex h-auto min-h-0 flex-col gap-2 py-2 md:h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0">
+        {/* Sticky header — md: h-16 aligns with AppSidebar brand row border; stack on narrow screens */}
+        <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-hidden md:py-0 md:px-4">
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--foreground)] md:max-w-[min(100%,20rem)] md:truncate lg:max-w-[24rem]">
                 <span className="line-clamp-2 md:line-clamp-1 md:truncate">
@@ -4499,7 +4498,6 @@ export default function ChatInterface({
                 </span>
               </span>
             </DelayedTooltip>
-          </div>
           </div>
         </div>
 

@@ -234,6 +234,20 @@ html {
   color: var(--foreground);
 }
 
+/* Prism / syntax-highlighter: keep code body on-theme in dark mode (inline styles from oneLight otherwise win). */
+[data-theme='dark'] .code-block-wrapper .react-syntax-highlighter {
+  background: var(--surface-subtle) !important;
+}
+
+[data-theme='dark'] .code-block-wrapper pre,
+[data-theme='dark'] .code-block-wrapper code {
+  background: transparent !important;
+}
+
+[data-theme='dark'] .code-block-wrapper .react-syntax-highlighter code[class*='language-'] {
+  text-shadow: none;
+}
+
 /* Table styling */
 .table-wrapper {
   overflow-x: auto;

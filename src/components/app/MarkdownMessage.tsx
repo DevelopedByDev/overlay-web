@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState, useSyncExternalStore } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
@@ -12,7 +12,20 @@ import { mergeGfmTableContinuationLines } from '@/lib/markdown-table-fix'
 import { stripThinkingPlaceholderMarkdown } from '@/lib/agent-assistant-text'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+
+function useDocumentThemeIsDark(): boolean {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const el = document.documentElement
+      const obs = new MutationObserver(onStoreChange)
+      obs.observe(el, { attributes: true, attributeFilter: ['data-theme'] })
+      return () => obs.disconnect()
+    },
+    () => document.documentElement.getAttribute('data-theme') === 'dark',
+    () => false,
+  )
+}
 
 function extractLinkText(node: ReactNode): string {
   if (typeof node === 'string') return node
@@ -89,6 +102,7 @@ const CONNECT_SERVICE_DESCRIPTIONS: Record<string, string> = {
   'google calendar': 'Read and create calendar events',
   'google sheets': 'Read, update, and create spreadsheets',
   'google drive': 'Search and manage Drive files',
+  'google meet': 'Join and manage video meetings',
   'notion': 'Create pages and manage workspace',
   'outlook': 'Send emails and manage calendar',
   'x (twitter)': 'Post tweets and manage your account',
@@ -100,6 +114,7 @@ const CONNECT_SERVICE_DESCRIPTIONS: Record<string, string> = {
 // Custom code block with syntax highlighting and copy button
 function CodeBlock({ language, children }: { language: string; children: string }) {
   const [copied, setCopied] = useState(false)
+  const isDark = useDocumentThemeIsDark()
 
   function handleCopy() {
     navigator.clipboard.writeText(children).then(() => {
@@ -112,18 +127,18 @@ function CodeBlock({ language, children }: { language: string; children: string 
     <div className="code-block-wrapper">
       <div className="code-block-header">
         <span className="code-block-lang">{language}</span>
-        <button className="code-block-copy" onClick={handleCopy}>
+        <button type="button" className="code-block-copy" onClick={handleCopy}>
           {copied ? 'Copied!' : 'Copy code'}
         </button>
       </div>
       <SyntaxHighlighter
-        style={oneLight}
+        style={isDark ? oneDark : oneLight}
         language={language}
         PreTag="div"
         customStyle={{
           margin: 0,
           borderRadius: '0 0 10px 10px',
-          background: '#f8f8f8',
+          background: isDark ? 'transparent' : '#f8f8f8',
           fontSize: '0.85rem',
           lineHeight: '1.6',
         }}
@@ -151,22 +166,20 @@ const mdComponents = {
         'Connect to use this integration'
 
       return (
-        <a href={href} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+        <a href={href} target="_blank" rel="noopener noreferrer" className="no-underline">
           <span
-            className="inline-flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[#e5e5e5] bg-white hover:bg-[#f5f5f5] transition-colors my-1.5"
-            style={{ minWidth: 260, maxWidth: 360 }}
+            className="my-1.5 inline-flex max-w-[360px] min-w-[260px] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 transition-colors hover:bg-[var(--surface-subtle)]"
           >
             <span
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[#e5e5e5] bg-[#f5f5f5] text-xs font-bold text-[#0a0a0a]"
-              style={{ width: 36, height: 36 }}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-xs font-bold text-[var(--foreground)]"
             >
               {serviceName.charAt(0).toUpperCase()}
             </span>
-            <span className="flex-1 min-w-0">
-              <span className="block text-sm font-medium text-[#0a0a0a] leading-snug">{serviceName}</span>
-              <span className="block text-xs text-[#888] leading-snug">{description}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium leading-snug text-[var(--foreground)]">{serviceName}</span>
+              <span className="block text-xs leading-snug text-[var(--muted)]">{description}</span>
             </span>
-            <span className="shrink-0 rounded-md bg-[#0a0a0a] px-3 py-1.5 text-xs whitespace-nowrap text-[#fafafa]">
+            <span className="shrink-0 whitespace-nowrap rounded-md bg-[var(--foreground)] px-3 py-1.5 text-xs text-[var(--background)]">
               Connect
             </span>
           </span>
@@ -180,7 +193,7 @@ const mdComponents = {
       href.startsWith('/app/') &&
       (href.length > 96 || href.includes('%7C') || href.includes('|'))
     ) {
-      return <span className="text-[#0a0a0a] whitespace-pre-wrap wrap-break-word">{children}</span>
+      return <span className="whitespace-pre-wrap wrap-break-word text-[var(--foreground)]">{children}</span>
     }
 
     if (typeof href === 'string' && href.startsWith('/app/')) {
