@@ -2,6 +2,13 @@ import type { StepResult, ToolSet } from 'ai'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import { summarizeToolResultForTranscript } from '@/lib/tool-result-summary'
 
+/** Persisted when the model produced no text/tool transcript so reload never drops the assistant row. */
+export const ASSISTANT_EMPTY_CONTENT_PLACEHOLDER = '[Empty response]'
+
+export function ensureAssistantPersistContent(content: string): string {
+  return content.trim() ? content : ASSISTANT_EMPTY_CONTENT_PLACEHOLDER
+}
+
 /**
  * Convex documents may not exceed 16 levels of nesting. Tool outputs (e.g. Notion API
  * responses) can easily exceed this. This helper truncates any object/array that is
@@ -58,7 +65,8 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
     }
   }
   const fallback = normalizeAgentAssistantText(fallbackText.trim())
-  const content = textSegments.join('\n\n') || synthesizedToolSegments.join('\n\n') || fallback
+  let content = textSegments.join('\n\n') || synthesizedToolSegments.join('\n\n') || fallback
+  content = ensureAssistantPersistContent(content)
 
   const parts: Array<Record<string, unknown>> = []
   for (const step of list) {
@@ -104,7 +112,7 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   if (!parts.some((part) => part.type === 'text') && content) {
     parts.push({ type: 'text', text: content })
   }
-  if (parts.length === 0 && content) {
+  if (parts.length === 0) {
     parts.push({ type: 'text', text: content })
   }
   return { content, parts }

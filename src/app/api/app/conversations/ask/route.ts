@@ -330,7 +330,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (cid && tid && persistContent) {
+      if (cid && tid) {
         try {
           await convex.mutation('conversations:addMessage', {
             serverSecret,
@@ -341,7 +341,7 @@ export async function POST(request: NextRequest) {
             mode: 'ask',
             content: persistContent,
             contentType: 'text',
-            parts: persistParts as never,
+            parts: (persistParts.length > 0 ? persistParts : [{ type: 'text', text: persistContent }]) as never,
             modelId: effectiveModelId,
             routedModelId,
             variantIndex: variantIndex ?? 0,

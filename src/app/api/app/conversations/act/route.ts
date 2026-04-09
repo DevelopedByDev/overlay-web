@@ -431,7 +431,7 @@ export async function POST(request: NextRequest) {
             event.text,
           )
 
-          if (cid && persistContent) {
+          if (cid) {
             const lastStep = event.steps.at(-1)
             const routedModelId =
               effectiveModelId === FREE_TIER_AUTO_MODEL_ID
@@ -446,7 +446,7 @@ export async function POST(request: NextRequest) {
               mode: 'act',
               content: persistContent,
               contentType: 'text',
-              parts: persistParts as never,
+              parts: (persistParts.length > 0 ? persistParts : [{ type: 'text', text: persistContent }]) as never,
               modelId: effectiveModelId,
               routedModelId,
               tokens: { input: totalInputTokens, output: totalOutputTokens },

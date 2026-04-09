@@ -2918,11 +2918,16 @@ export default function ChatInterface({
     setComposerNotice(null)
   }
 
-  function resetRuntimeState(runtime: ConversationRuntime, uiOverrides: Partial<ConversationUiState> = {}) {
-    runtime.askChats.forEach((chat) => { chat.messages = [] })
+  function clearRuntimeMessages(runtime: ConversationRuntime) {
+    runtime.askChats.forEach((chat) => {
+      chat.messages = []
+    })
     runtime.actChat.messages = []
+  }
+
+  function resetRuntimeState(runtime: ConversationRuntime, uiOverrides: Partial<ConversationUiState> = {}) {
+    clearRuntimeMessages(runtime)
     runtime.ui = createConversationUiState(uiOverrides)
-    runtime.hydrated = true
   }
 
   function syncStandaloneChatUrl(chatId: string | null) {
@@ -2971,6 +2976,7 @@ export default function ChatInterface({
         activeChatTitle: DEFAULT_CHAT_TITLE,
         isFirstMessage: true,
       })
+      runtime.hydrated = true
       activeChatIdRef.current = data.id
       setActiveViewer(data.id)
       setActiveChatId(data.id)
@@ -2996,20 +3002,21 @@ export default function ChatInterface({
     const existingChat = chats.find((chat) => chat._id === chatId)
     pendingTitleRef.current = null
     setIsSwitchingChat(true)
+    runtime.hydrated = false
     try {
-      if (runtime.hydrated) {
-        applyUiStateToView(runtime.ui)
-        if (requestId === loadChatRequestRef.current) setIsSwitchingChat(false)
-        return
-      }
-
       const [messagesRes, outputsRes, metaRes] = await Promise.all([
         fetch(`/api/app/conversations?conversationId=${chatId}&messages=true`),
         fetch(`/api/app/outputs?conversationId=${chatId}`),
         fetch(`/api/app/conversations?conversationId=${chatId}`),
       ])
       if (requestId !== loadChatRequestRef.current) return
-      if (!messagesRes.ok) return
+      if (!messagesRes.ok) {
+        clearRuntimeMessages(runtime)
+        runtime.hydrated = false
+        setComposerNotice('Could not load chat messages. Try again.')
+        window.setTimeout(() => setComposerNotice(null), 5000)
+        return
+      }
       const data = await messagesRes.json()
       if (requestId !== loadChatRequestRef.current) return
       type RawMsg = {
@@ -3017,7 +3024,13 @@ export default function ChatInterface({
         turnId?: string
         mode?: 'ask' | 'act'
         role: 'user' | 'assistant'
-        parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }>
+        parts: Array<{
+          type: string
+          text?: string
+          url?: string
+          mediaType?: string
+          fileName?: string
+        }>
         model?: string
         metadata?: ChatMessageMetadata
         replyToTurnId?: string
@@ -3100,6 +3113,35 @@ export default function ChatInterface({
         }
         for (const tid of turnOrder) {
           const g = byTurn.get(tid)!
+          if (!g.user && g.assistants.length > 0) {
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('[ChatInterface] Orphan assistant rows without user message for turn', tid)
+            }
+            const mode = (g.assistants[0]?.mode || 'ask') as 'ask' | 'act'
+            const orphanResponses = g.assistants.map((a) => ({
+              model: a.model || DEFAULT_MODEL_ID,
+              msg: a,
+            }))
+            const lastEx = exchanges[exchanges.length - 1]
+            if (lastEx) {
+              for (const r of orphanResponses) {
+                lastEx.responses.push(r)
+              }
+            } else {
+              exchanges.push({
+                userMsg: {
+                  id: `synthetic-user-${tid}`,
+                  turnId: tid,
+                  role: 'user',
+                  mode,
+                  parts: [{ type: 'text', text: '[Earlier message unavailable]' }],
+                },
+                responses: orphanResponses,
+                mode,
+              })
+            }
+            continue
+          }
           if (!g.user) continue
           const mode = (g.assistants[0]?.mode || g.user.mode || 'ask') as 'ask' | 'act'
           const responses = g.assistants.map((a) => ({
@@ -3131,7 +3173,7 @@ export default function ChatInterface({
 
       if (requestId !== loadChatRequestRef.current) return
 
-      resetRuntimeState(runtime)
+      clearRuntimeMessages(runtime)
 
       if (uniqueModels.length === 0) {
         const linear: RawMsg[] = []
@@ -3216,7 +3258,13 @@ export default function ChatInterface({
       if (requestId !== loadChatRequestRef.current) return
       runtime.hydrated = true
       applyUiStateToView(runtime.ui)
-    } catch { /* already cleared */ }
+    } catch (err) {
+      console.error('[ChatInterface] loadChat failed:', err)
+      clearRuntimeMessages(runtime)
+      runtime.hydrated = false
+      setComposerNotice('Could not load this chat. Try again.')
+      window.setTimeout(() => setComposerNotice(null), 5000)
+    }
     finally {
       if (requestId === loadChatRequestRef.current) setIsSwitchingChat(false)
     }

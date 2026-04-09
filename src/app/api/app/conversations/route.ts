@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
           content: string
           contentType: 'text' | 'image' | 'video'
           parts?: Array<
-            | { type: string; text?: string; url?: string; mediaType?: string; state?: string }
+            | { type: string; text?: string; url?: string; mediaType?: string; fileName?: string; state?: string }
             | {
                 type: 'tool-invocation'
                 toolInvocation: {
@@ -101,12 +101,20 @@ export async function GET(request: NextRequest) {
                     toolInvocation: part.toolInvocation,
                   }
                 }
-                const p = part as { type: string; text?: string; url?: string; mediaType?: string; state?: string }
+                const p = part as {
+                  type: string
+                  text?: string
+                  url?: string
+                  mediaType?: string
+                  fileName?: string
+                  state?: string
+                }
                 return {
                   type: p.type,
                   text: p.text,
                   url: p.url,
                   mediaType: p.mediaType,
+                  fileName: p.fileName,
                   state: p.state,
                 }
               })

@@ -3,12 +3,25 @@ type MessagePartLike = {
   text?: string
   url?: string
   mediaType?: string
+  /** AI SDK file parts may use `filename` */
+  filename?: string
+  fileName?: string
 }
 
 type PersistedTextPart = {
   type: 'text'
   text: string
 }
+
+/** Convex `conversationMessages.parts` — file rows restore thumbnails after reload. */
+export type PersistedFilePart = {
+  type: 'file'
+  url: string
+  mediaType?: string
+  fileName?: string
+}
+
+export type PersistedMessagePart = PersistedTextPart | PersistedFilePart
 
 interface PersistenceOptions {
   attachmentNames?: string[]
@@ -57,19 +70,37 @@ export function summarizeAttachmentParts(
   return `[Attached ${segments.join(', ')}${namesSuffix}]`
 }
 
+function fileDisplayName(part: MessagePartLike): string | undefined {
+  const n = part.fileName?.trim() || part.filename?.trim()
+  return n || undefined
+}
+
 export function sanitizeMessagePartsForPersistence(
   parts?: MessagePartLike[],
   options: PersistenceOptions = {}
-): PersistedTextPart[] | undefined {
+): PersistedMessagePart[] | undefined {
   if (!parts?.length) return undefined
 
-  const persistedParts: PersistedTextPart[] = []
+  const persistedParts: PersistedMessagePart[] = []
 
   for (const part of parts) {
-    if (part.type !== 'text') continue
-    const text = part.text?.trim()
-    if (!text) continue
-    persistedParts.push({ type: 'text', text })
+    if (part.type === 'text') {
+      const text = part.text?.trim()
+      if (!text) continue
+      persistedParts.push({ type: 'text', text })
+      continue
+    }
+    if (part.type === 'file') {
+      const url = typeof part.url === 'string' ? part.url.trim() : ''
+      if (!url) continue
+      const name = fileDisplayName(part)
+      persistedParts.push({
+        type: 'file',
+        url,
+        ...(part.mediaType ? { mediaType: part.mediaType } : {}),
+        ...(name ? { fileName: name } : {}),
+      })
+    }
   }
 
   const attachmentSummary = summarizeAttachmentParts(parts, options)

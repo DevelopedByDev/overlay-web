@@ -22,6 +22,7 @@ const messagePart = v.union(
     text: v.optional(v.string()),
     url: v.optional(v.string()),
     mediaType: v.optional(v.string()),
+    fileName: v.optional(v.string()),
     state: v.optional(v.string()),
   }),
 )

@@ -389,6 +389,8 @@ export default defineSchema({
             text: v.optional(v.string()),
             url: v.optional(v.string()),
             mediaType: v.optional(v.string()),
+            /** Optional display name for file parts */
+            fileName: v.optional(v.string()),
             state: v.optional(v.string()),
           }),
         ),
