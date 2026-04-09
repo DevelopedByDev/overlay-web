@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
 import Groq from 'groq-sdk'
 import { sanitizeChatTitle } from '@/lib/chat-title'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
 async function resolveGroqApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
@@ -79,20 +79,31 @@ function getCompletionContent(content: unknown): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const body = (await request.json().catch(() => ({}))) as {
+      text?: string
+      accessToken?: string
+      userId?: string
+    }
+    const { text, accessToken, userId: requestedUserId } = body
+    if (!text || typeof text !== 'string') {
+      return NextResponse.json({ error: 'text required' }, { status: 400 })
+    }
 
-    const { text } = await request.json()
-    if (!text) return NextResponse.json({ error: 'text required' }, { status: 400 })
+    const auth = await resolveAuthenticatedAppUser(request, {
+      accessToken,
+      userId: requestedUserId,
+    })
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
     const fallbackTitle = fallbackTitleFromFirstMessage(text)
     console.log('[ChatTitle][server] Generating title', {
-      userId: session.user.id,
+      userId: auth.userId,
       textPreview: text.slice(0, 120),
       textLength: text.length,
       model: 'openai/gpt-oss-20b',
     })
 
-    const apiKey = await resolveGroqApiKey(session.accessToken)
+    const apiKey = await resolveGroqApiKey(auth.accessToken)
     if (!apiKey) {
       console.warn('[ChatTitle][server] GROQ_API_KEY missing, using fallback title')
       return NextResponse.json({ title: fallbackTitle })
@@ -106,7 +117,7 @@ export async function POST(request: NextRequest) {
     try {
       structuredCompletion = await groq.chat.completions.create({
         model: 'openai/gpt-oss-20b',
-        user: session.user.id,
+        user: auth.userId,
         temperature: 0,
         max_completion_tokens: 64,
         reasoning_effort: 'low',
@@ -158,7 +169,7 @@ export async function POST(request: NextRequest) {
       try {
         const plainTextCompletion = await groq.chat.completions.create({
           model: 'openai/gpt-oss-20b',
-          user: session.user.id,
+          user: auth.userId,
           temperature: 0.1,
           max_completion_tokens: 64,
           reasoning_effort: 'low',
