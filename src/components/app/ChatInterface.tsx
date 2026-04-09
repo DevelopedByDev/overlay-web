@@ -17,6 +17,7 @@ import {
   Download,
   Copy,
   Reply,
+  Pencil,
   BrainCircuit,
   ArrowUp,
   Play,
@@ -43,7 +44,12 @@ import {
 } from '@/lib/models'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
-import { dispatchChatTitleUpdated, sanitizeChatTitle } from '@/lib/chat-title'
+import {
+  CHAT_TITLE_UPDATED_EVENT,
+  dispatchChatTitleUpdated,
+  sanitizeChatTitle,
+  type ChatTitleUpdatedDetail,
+} from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
 import { DelayedTooltip } from './DelayedTooltip'
@@ -2294,6 +2300,8 @@ export default function ChatInterface({
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
   /** Mobile: chat history opens from bottom sheet (primary sidebar is desktop-only). */
   const [mobileChatListOpen, setMobileChatListOpen] = useState(false)
+  const [editingChatId, setEditingChatId] = useState<string | null>(null)
+  const [editingChatTitle, setEditingChatTitle] = useState('')
   const [draftModalState, setDraftModalState] = useState<DraftModalState | null>(null)
   const [isDraftSaving, setIsDraftSaving] = useState(false)
 
@@ -2415,6 +2423,22 @@ export default function ChatInterface({
       applyUiStateToView(runtime.ui)
     }
   }, [applyUiStateToView, ensureConversationRuntime])
+
+  useEffect(() => {
+    function handleChatTitleUpdated(event: Event) {
+      const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
+      if (!detail?.chatId || !detail.title) return
+      setChats((prev) => prev.map((chat) => (
+        chat._id === detail.chatId ? { ...chat, title: detail.title } : chat
+      )))
+      updateRuntimeUiState(detail.chatId, (prev) => ({ ...prev, activeChatTitle: detail.title }))
+      if (activeChatIdRef.current === detail.chatId) {
+        setActiveChatTitle(detail.title)
+      }
+    }
+    window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+    return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+  }, [updateRuntimeUiState])
 
   const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : emptyRuntimeRef.current
   const chat0 = useChat({ chat: activeRuntime.askChats[0] })
@@ -2649,6 +2673,42 @@ export default function ChatInterface({
     dispatchChatTitleUpdated({ chatId, title: nextTitle })
     return nextTitle
   }, [updateRuntimeUiState])
+
+  const beginChatRename = useCallback((chatId: string, title: string, event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    setEditingChatId(chatId)
+    setEditingChatTitle(title)
+  }, [])
+
+  const cancelChatRename = useCallback(() => {
+    setEditingChatId(null)
+    setEditingChatTitle('')
+  }, [])
+
+  const commitChatRename = useCallback(async (chatId: string) => {
+    const previousTitle =
+      chats.find((chat) => chat._id === chatId)?.title ??
+      (activeChatIdRef.current === chatId ? activeChatTitle ?? DEFAULT_CHAT_TITLE : DEFAULT_CHAT_TITLE)
+    const nextTitle = sanitizeChatTitle(editingChatTitle, previousTitle)
+
+    cancelChatRename()
+    if (nextTitle === previousTitle) return
+
+    applyChatTitleUpdate(chatId, nextTitle)
+
+    try {
+      const res = await fetch('/api/app/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: chatId, title: nextTitle }),
+      })
+      if (!res.ok) throw new Error('Failed to rename chat')
+    } catch {
+      applyChatTitleUpdate(chatId, previousTitle)
+    } finally {
+      void loadChats()
+    }
+  }, [activeChatTitle, applyChatTitleUpdate, cancelChatRename, chats, editingChatTitle, loadChats])
 
   // Called on the first message of a new chat. Immediately shows a fallback title,
   // then replaces it with the GPT OSS 20B-generated title once it arrives.
@@ -4103,17 +4163,41 @@ export default function ChatInterface({
               {chats.map((chat) => {
                 const isStreaming = sessions[chat._id]?.status === 'streaming'
                 const unread = getUnread(chat._id)
+                const isEditing = editingChatId === chat._id
                 return (
                   <div
                     key={chat._id}
-                    onClick={() => loadChat(chat._id)}
+                    onClick={() => {
+                      if (isEditing) return
+                      void loadChat(chat._id)
+                    }}
                     className={`group flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors ${
                       activeChatId === chat._id
                         ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                         : 'text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
                     }`}
                   >
-                    <span className="flex-1 truncate">{chat.title}</span>
+                    {isEditing ? (
+                      <input
+                        autoFocus
+                        value={editingChatTitle}
+                        onChange={(event) => setEditingChatTitle(event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            void commitChatRename(chat._id)
+                          } else if (event.key === 'Escape') {
+                            event.preventDefault()
+                            cancelChatRename()
+                          }
+                        }}
+                        onBlur={() => void commitChatRename(chat._id)}
+                        className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
+                      />
+                    ) : (
+                      <span className="flex-1 truncate">{chat.title}</span>
+                    )}
                     {isStreaming && !unread && (
                       <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
                     )}
@@ -4122,12 +4206,25 @@ export default function ChatInterface({
                         {unread}
                       </span>
                     )}
-                    <button
-                      onClick={(e) => deleteChat(chat._id, e)}
-                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                    >
-                      <Trash2 size={11} />
-                    </button>
+                    {!isEditing ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(event) => beginChatRename(chat._id, chat.title, event)}
+                          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                          aria-label="Rename chat"
+                        >
+                          <Pencil size={11} />
+                        </button>
+                        <button
+                          onClick={(e) => deleteChat(chat._id, e)}
+                          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                          aria-label="Delete chat"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 )
               })}
@@ -4178,20 +4275,42 @@ export default function ChatInterface({
                     {chats.map((chat) => {
                       const isStreaming = sessions[chat._id]?.status === 'streaming'
                       const unread = getUnread(chat._id)
+                      const isEditing = editingChatId === chat._id
                       return (
                         <div
                           key={chat._id}
                           onClick={() => {
+                            if (isEditing) return
                             void loadChat(chat._id)
                             setMobileChatListOpen(false)
                           }}
                           className={`group flex items-center justify-between rounded-md px-2.5 py-2 text-xs transition-colors ${
-                            activeChatId === chat._id
-                              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                              : 'text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
+                              activeChatId === chat._id
+                                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                                : 'text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
                           }`}
                         >
-                          <span className="flex-1 truncate">{chat.title}</span>
+                          {isEditing ? (
+                            <input
+                              autoFocus
+                              value={editingChatTitle}
+                              onChange={(event) => setEditingChatTitle(event.target.value)}
+                              onClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault()
+                                  void commitChatRename(chat._id)
+                                } else if (event.key === 'Escape') {
+                                  event.preventDefault()
+                                  cancelChatRename()
+                                }
+                              }}
+                              onBlur={() => void commitChatRename(chat._id)}
+                              className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
+                            />
+                          ) : (
+                            <span className="flex-1 truncate">{chat.title}</span>
+                          )}
                           {isStreaming && !unread && (
                             <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
                           )}
@@ -4200,13 +4319,26 @@ export default function ChatInterface({
                               {unread}
                             </span>
                           )}
-                          <button
-                            type="button"
-                            onClick={(e) => deleteChat(chat._id, e)}
-                            className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                          >
-                            <Trash2 size={11} />
-                          </button>
+                          {!isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(event) => beginChatRename(chat._id, chat.title, event)}
+                                className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                                aria-label="Rename chat"
+                              >
+                                <Pencil size={11} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => deleteChat(chat._id, e)}
+                                className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                                aria-label="Delete chat"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       )
                     })}

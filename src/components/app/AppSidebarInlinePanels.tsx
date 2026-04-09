@@ -4,16 +4,23 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'reac
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   BookOpen,
+  Check,
   ChevronRight,
   FileText,
   Folder,
   FolderOpen,
+  Pencil,
   MessageSquare,
   Trash2,
 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
-import { CHAT_TITLE_UPDATED_EVENT, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
+import {
+  CHAT_TITLE_UPDATED_EVENT,
+  dispatchChatTitleUpdated,
+  sanitizeChatTitle,
+  type ChatTitleUpdatedDetail,
+} from '@/lib/chat-title'
 
 type Conversation = { _id: string; title: string; lastModified: number }
 type Note = { _id: string; title: string; updatedAt: number }
@@ -37,6 +44,8 @@ export function ChatInlinePanel({
   const { sessions, getUnread } = useAsyncSessions()
   const [chats, setChats] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
+  const [editingChatId, setEditingChatId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
   const activeId = searchParams?.get('id') ?? null
 
   const loadChats = useCallback(async () => {
@@ -67,6 +76,43 @@ export function ChatInlinePanel({
     return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
   }, [])
 
+  function beginRename(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    setEditingChatId(chat._id)
+    setEditingTitle(chat.title)
+  }
+
+  function cancelRename() {
+    setEditingChatId(null)
+    setEditingTitle('')
+  }
+
+  async function saveRename(chatId: string) {
+    const previousTitle = chats.find((chat) => chat._id === chatId)?.title ?? 'New Chat'
+    const nextTitle = sanitizeChatTitle(editingTitle, previousTitle)
+    cancelRename()
+    if (nextTitle === previousTitle) return
+
+    setChats((prev) => prev.map((chat) => (
+      chat._id === chatId ? { ...chat, title: nextTitle } : chat
+    )))
+    dispatchChatTitleUpdated({ chatId, title: nextTitle })
+
+    try {
+      const response = await fetch('/api/app/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: chatId, title: nextTitle }),
+      })
+      if (!response.ok) throw new Error('Failed to rename chat')
+    } catch {
+      setChats((prev) => prev.map((chat) => (
+        chat._id === chatId ? { ...chat, title: previousTitle } : chat
+      )))
+      dispatchChatTitleUpdated({ chatId, title: previousTitle })
+    }
+  }
+
   async function deleteChat(chatId: string, event: MouseEvent) {
     event.stopPropagation()
     await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
@@ -86,17 +132,39 @@ export function ChatInlinePanel({
         const isStreaming = sessions[chat._id]?.status === 'streaming'
         const unread = getUnread(chat._id)
         const active = activeId === chat._id
+        const isEditing = editingChatId === chat._id
         return (
           <div
             key={chat._id}
             onClick={() => {
+              if (isEditing) return
               router.push(`/app/chat?id=${encodeURIComponent(chat._id)}`)
               onNavigate?.()
             }}
             className={`${panelItemClass} cursor-pointer ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
           >
             <MessageSquare size={12} className="shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+            {isEditing ? (
+              <input
+                autoFocus
+                value={editingTitle}
+                onChange={(event) => setEditingTitle(event.target.value)}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void saveRename(chat._id)
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    cancelRename()
+                  }
+                }}
+                onBlur={() => void saveRename(chat._id)}
+                className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
+              />
+            ) : (
+              <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+            )}
             {isStreaming && !unread ? (
               <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
             ) : null}
@@ -105,13 +173,39 @@ export function ChatInlinePanel({
                 {unread > 9 ? '9+' : unread}
               </span>
             ) : null}
-            <button
-              type="button"
-              onClick={(event) => void deleteChat(chat._id, event)}
-              className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-            >
-              <Trash2 size={11} />
-            </button>
+            {isEditing ? (
+              <button
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  void saveRename(chat._id)
+                }}
+                className="ml-1 shrink-0 rounded p-0.5 text-[var(--foreground)] hover:bg-[var(--border)]"
+                aria-label="Save chat name"
+              >
+                <Check size={11} />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={(event) => beginRename(chat, event)}
+                  className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                  aria-label="Rename chat"
+                >
+                  <Pencil size={11} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => void deleteChat(chat._id, event)}
+                  className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                  aria-label="Delete chat"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </>
+            )}
           </div>
         )
       })}

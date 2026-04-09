@@ -8,7 +8,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, LogOut, User,
   Puzzle, Monitor, ChevronUp, AlertCircle,
-  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown,
+  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, PanelLeftClose,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -111,6 +111,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage.getItem('overlay:app-sidebar-collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
   const [notesPanelRefreshKey, setNotesPanelRefreshKey] = useState(0)
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
@@ -138,6 +146,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     if (current === 'skills') return 'skills'
     if (current === 'mcps') return 'mcps'
     if (current === 'apps') return 'apps'
+    if (current === 'installed') return 'installed'
     if (current === 'all') return 'all'
     return 'connectors'
   })()
@@ -149,6 +158,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       // ignore
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('overlay:app-sidebar-collapsed', sidebarCollapsed ? 'true' : 'false')
+    } catch {
+      // ignore
+    }
+  }, [sidebarCollapsed])
 
   useEffect(() => {
     if (!accountMenuOpen && !mobileAccountOpen && !knowledgeOpen) return
@@ -297,6 +314,20 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     </Link>
   )
 
+  const desktopBrandControl = sidebarCollapsed ? (
+    <button
+      type="button"
+      onClick={() => setSidebarCollapsed(false)}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)]"
+      aria-label="Expand sidebar"
+      title="Expand sidebar"
+    >
+      <Image src="/assets/overlay-logo.png" alt="" width={24} height={24} className="shrink-0" />
+    </button>
+  ) : (
+    brandLink
+  )
+
   /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
   const mobileBrandLink = (
     <Link
@@ -329,12 +360,30 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
 
   const sidebarContent = (
     <>
-      <div className="hidden h-16 items-center border-b border-[var(--border)] px-5 md:flex">
-        {brandLink}
+      <div
+        className={`hidden h-16 items-center border-b border-[var(--border)] md:flex ${
+          sidebarCollapsed ? 'justify-center px-3' : 'justify-between px-5'
+        }`}
+      >
+        {desktopBrandControl}
+        {!sidebarCollapsed ? (
+          <button
+            type="button"
+            onClick={() => {
+              setAccountMenuOpen(false)
+              setSidebarCollapsed(true)
+            }}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          >
+            <PanelLeftClose size={16} />
+          </button>
+        ) : null}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <nav className="shrink-0 space-y-0.5 px-2 py-3">
+        <nav className={`shrink-0 space-y-0.5 py-3 ${sidebarCollapsed ? 'px-1.5' : 'px-2'}`}>
           {NAV_ITEMS.map((item, navIdx) => {
             const { href, label, icon: Icon, disabled } = item
             const active =
@@ -345,13 +394,13 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
             const shortcut = navIdx < 9 ? navIdx + 1 : null
             const showShortcut = Boolean(shortcut) && !active
             const showChevron = hasInlineChildren(href)
-            const commonClass = `group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
+            const commonClass = `group flex w-full items-center rounded-md px-3 py-2 text-sm transition-colors ${
               disabled
                 ? 'cursor-not-allowed text-[var(--muted-light)]'
                 : active
                   ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                   : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-            }`
+            } ${sidebarCollapsed ? 'justify-center px-2.5' : 'gap-2.5'}`
             if (disabled) {
               return (
                 <button
@@ -363,7 +412,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   className={commonClass}
                 >
                   <Icon size={15} />
-                  <div className="min-w-0 flex-1 text-left">{label}</div>
+                  {!sidebarCollapsed ? <div className="min-w-0 flex-1 text-left">{label}</div> : null}
                 </button>
               )
             }
@@ -378,13 +427,16 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                     router.push(href)
                   }}
                   title={shortcut ? `${label} · ⌥${shortcut}` : label}
+                  aria-label={label}
                   className={commonClass}
                 >
                   <Icon size={15} />
-                  <div className="min-w-0 flex-1 text-left">
-                    <div>{label}</div>
-                  </div>
-                  {showShortcut ? (
+                  {!sidebarCollapsed ? (
+                    <div className="min-w-0 flex-1 text-left">
+                      <div>{label}</div>
+                    </div>
+                  ) : null}
+                  {!sidebarCollapsed && showShortcut ? (
                     <span
                       className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
                         active
@@ -396,7 +448,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                       ⌥{shortcut}
                     </span>
                   ) : null}
-                  {showChevron ? (
+                  {!sidebarCollapsed && showChevron ? (
                     <span
                       className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-opacity ${
                         active
@@ -425,7 +477,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                     </span>
                   ) : null}
                 </button>
-                {inlineSecondaryDisabled && href === '/app/knowledge' && active ? (
+                {!sidebarCollapsed && inlineSecondaryDisabled && href === '/app/knowledge' && active ? (
                   <InlineNavChildren
                     items={knowledgeInlineItems}
                     activeId={knowledgeView}
@@ -438,7 +490,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                     }}
                   />
                 ) : null}
-                {inlineSecondaryDisabled && href === '/app/tools' && active ? (
+                {!sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
                   <InlineNavChildren
                     items={toolsInlineItems}
                     activeId={toolsView}
@@ -461,24 +513,27 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                 router.push('/app/settings')
               }}
               title="Settings · ⌥7"
-              className={`group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
+              aria-label="Settings"
+              className={`group flex w-full items-center rounded-md px-3 py-2 text-sm transition-colors ${
                 settingsPathActive
                   ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                   : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-              }`}
+              } ${sidebarCollapsed ? 'justify-center px-2.5' : 'gap-2.5'}`}
             >
               <Settings size={15} />
-              <div className="min-w-0 flex-1 text-left">Settings</div>
-              <span
-                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-light)] opacity-0 transition-opacity group-hover:opacity-100 ${
-                  settingsNavExpanded ? '' : '-rotate-90'
-                }`}
-                aria-hidden
-              >
-                <ChevronDown size={13} />
-              </span>
+              {!sidebarCollapsed ? <div className="min-w-0 flex-1 text-left">Settings</div> : null}
+              {!sidebarCollapsed ? (
+                <span
+                  className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-light)] opacity-0 transition-opacity group-hover:opacity-100 ${
+                    settingsNavExpanded ? '' : '-rotate-90'
+                  }`}
+                  aria-hidden
+                >
+                  <ChevronDown size={13} />
+                </span>
+              ) : null}
             </button>
-            {settingsNavExpanded ? (
+            {!sidebarCollapsed && settingsNavExpanded ? (
               <div className="mt-1 space-y-0.5 pl-7">
                 {SETTINGS_SECTIONS.map(({ id, label }) => {
                   const active = settingsPathActive && settingsSection === id
@@ -502,7 +557,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
           </div>
         </nav>
 
-        {inlineSecondaryDisabled && (chatOpen || notesOpen || projectsOpen) ? (
+        {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || notesOpen || projectsOpen) ? (
           <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
             {contextualAction ? (
               <button
@@ -537,11 +592,13 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
         ) : null}
       </div>
 
-      <div className="space-y-3 border-t border-[var(--border)] px-3 py-3">
+      <div className={`space-y-3 border-t border-[var(--border)] py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
         <div ref={menuRef} className="relative">
           {accountMenuOpen && (
             <div
-              className="absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+              className={`absolute bottom-full z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg ${
+                sidebarCollapsed ? 'left-0 w-64' : 'left-0 right-0'
+              }`}
               onMouseDown={(event) => event.stopPropagation()}
             >
               <div className="px-3 py-2">
@@ -577,7 +634,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                 </Link>
                 {showUpgradeCta && (
                   <Link
-                    href="/account"
+                    href="/pricing"
                     onClick={() => {
                       setAccountMenuOpen(false)
                       setMobileMenuOpen(false)
@@ -608,11 +665,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
           <button
             type="button"
             onClick={() => setAccountMenuOpen((value) => !value)}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+              sidebarCollapsed ? 'justify-center' : 'gap-2'
+            }`}
+            aria-label="Account menu"
           >
             <User size={13} />
-            <span className="flex-1 truncate text-left">{displayName}</span>
-            <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} />
+            {!sidebarCollapsed ? <span className="flex-1 truncate text-left">{displayName}</span> : null}
+            {!sidebarCollapsed ? <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} /> : null}
           </button>
         </div>
       </div>
@@ -678,7 +738,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   </Link>
                   {showUpgradeCta && (
                     <Link
-                      href="/account"
+                      href="/pricing"
                       onClick={() => setMobileAccountOpen(false)}
                       className="flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]"
                     >
@@ -706,7 +766,11 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
         </div>
       </div>
 
-      <aside className="hidden h-full w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)] md:flex">
+      <aside
+        className={`hidden h-full shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)] transition-[width] duration-200 md:flex ${
+          sidebarCollapsed ? 'w-[72px]' : 'w-56'
+        }`}
+      >
         {sidebarContent}
       </aside>
 
