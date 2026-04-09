@@ -830,11 +830,11 @@ export default function NotebookEditor({
   return (
     <div className="flex h-full">
       {showOwnSidebar && (
-        <div className="w-52 h-full flex flex-col border-r border-[#e5e5e5] bg-[#f5f5f5]">
-          <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3">
+        <div className="w-52 h-full flex flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
+          <div className="flex h-16 items-center border-b border-[var(--border)] px-3">
             <button
               onClick={createNote}
-              className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
+              className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 transition-opacity"
             >
               <Plus size={13} />
               New note
@@ -845,16 +845,16 @@ export default function NotebookEditor({
               <div
                 key={note._id}
                 onClick={() => openNote(note)}
-                className={`group flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer transition-colors ${
+                className={`group flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 transition-colors ${
                   activeNote?._id === note._id
-                    ? 'bg-[#e8e8e8] text-[#0a0a0a]'
-                    : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
+                    ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                    : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
                 }`}
               >
                 <span className="text-xs truncate">{note.title || 'Untitled'}</span>
                 <button
                   onClick={(event) => void deleteNote(note._id, event)}
-                  className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity"
+                  className="ml-1 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
                 >
                   <Trash2 size={11} />
                 </button>
@@ -867,23 +867,23 @@ export default function NotebookEditor({
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {activeNote ? (
           <>
-            <div className="flex h-16 items-center justify-between border-b border-[#e5e5e5] px-6">
+            <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--background)] px-6">
               <input
                 type="text"
                 value={title}
                 onChange={handleTitleChange}
                 placeholder="Note title..."
-                className="text-xl font-medium text-[#0a0a0a] bg-transparent outline-none placeholder-[#ccc] flex-1"
+                className="flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
                 style={{ fontFamily: 'var(--font-serif)' }}
               />
-              <div className="flex items-center gap-2 ml-3 shrink-0">
+              <div className="ml-3 flex shrink-0 items-center gap-2">
                 {projectName && (
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-[#f0f0f0] text-[#525252] border border-[#e8e8e8] whitespace-nowrap">
+                  <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
                     <FolderOpen size={9} />
                     {projectName}
                   </span>
                 )}
-                {isSaving && <Loader2 size={14} className="text-[#aaa] animate-spin" />}
+                {isSaving && <Loader2 size={14} className="animate-spin text-[var(--muted)]" />}
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -906,10 +906,10 @@ export default function NotebookEditor({
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <p className="text-3xl mb-2" style={{ fontFamily: 'var(--font-serif)' }}>
+              <p className="mb-2 text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
                 notes
               </p>
-              <p className="text-sm text-[#888]">Select a note or create a new one</p>
+              <p className="text-sm text-[var(--muted)]">Select a note or create a new one</p>
             </div>
           </div>
         )}

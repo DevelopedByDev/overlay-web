@@ -7,8 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AllInOnePlace } from "@/components/AllInOnePlace";
 import { Navbar } from "@/components/Navbar";
-
-const LANDING_THEME_KEY = "overlay.landing.theme";
+import { LANDING_THEME_STORAGE_KEY } from "@/lib/landingThemeConstants";
 
 export default function HomeLandingPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -18,7 +17,7 @@ export default function HomeLandingPage() {
 
   useEffect(() => {
     try {
-      const t = window.localStorage.getItem(LANDING_THEME_KEY);
+      const t = window.localStorage.getItem(LANDING_THEME_STORAGE_KEY);
       if (t === "dark" || t === "light") {
         // Hydration: default light on server; sync stored preference after mount.
         // eslint-disable-next-line react-hooks/set-state-in-effect -- external persisted theme
@@ -33,7 +32,7 @@ export default function HomeLandingPage() {
     setLandingTheme((prev) => {
       const next = prev === "light" ? "dark" : "light";
       try {
-        window.localStorage.setItem(LANDING_THEME_KEY, next);
+        window.localStorage.setItem(LANDING_THEME_STORAGE_KEY, next);
       } catch {
         /* ignore */
       }
@@ -229,19 +228,25 @@ export default function HomeLandingPage() {
 
       <motion.section
         {...sectionInView}
-        className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 pb-32 pt-20"
+        className="relative z-10 flex min-h-screen flex-col px-6 pb-16 pt-20"
       >
-        <h2 className={`mb-8 font-serif text-4xl md:text-5xl lg:text-6xl ${heading}`}>begin</h2>
-        <Link href={webAppHref} className={ctaDarkClass}>
-          <Globe className="h-5 w-5" />
-          open app
-        </Link>
-        <p className={`mt-4 text-sm ${isDark ? "text-zinc-500" : "text-[#a1a1aa]"}`}>
-          desktop download coming soon
-        </p>
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <h2 className={`mb-8 font-serif text-4xl md:text-5xl lg:text-6xl ${heading}`}>begin</h2>
+          <Link href={webAppHref} className={ctaDarkClass}>
+            <Globe className="h-5 w-5" />
+            open app
+          </Link>
+          <p className={`mt-4 text-sm ${isDark ? "text-zinc-500" : "text-[#a1a1aa]"}`}>
+            desktop download coming soon
+          </p>
+        </div>
 
-        <footer className="mt-24 w-full max-w-4xl px-6">
-          <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
+        <footer
+          className={`mt-auto w-full max-w-4xl self-center border-t pt-12 ${
+            isDark ? "border-zinc-800" : "border-zinc-200"
+          }`}
+        >
+          <div className="flex flex-col items-stretch justify-between gap-4 px-0 pb-4 md:flex-row md:items-center">
             <div className="flex items-center gap-3">
               <Image
                 src="/assets/overlay-logo.png"

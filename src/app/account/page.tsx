@@ -5,7 +5,16 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { PageNavbar } from '@/components/PageNavbar'
+import {
+  marketingBody,
+  marketingHeading,
+  marketingMuted,
+  marketingPageTitle,
+  marketingPanel,
+  marketingPanelLg,
+} from '@/lib/landingPageStyles'
 
 // Always use overlay:// for deep links (registered in WorkOS for both environments)
 const APP_PROTOCOL = 'overlay'
@@ -49,33 +58,43 @@ function ProgressBar({
   used,
   total,
   label,
-  showAsPercentage = false
+  showAsPercentage = false,
+  isLandingDark = false,
 }: {
   used: number
   total: number
   label: string
   showAsPercentage?: boolean
+  isLandingDark?: boolean
 }) {
   const remaining = Math.max(0, total - used)
   const percentage = total > 0 ? (remaining / total) * 100 : 0
   const isLow = percentage <= 20
   const isEmpty = percentage <= 0
+  const labelCls = isLandingDark ? 'text-zinc-400' : 'text-zinc-500'
+  const valueCls = isEmpty
+    ? 'text-red-400'
+    : isLow
+      ? 'text-amber-400'
+      : isLandingDark
+        ? 'text-zinc-100'
+        : 'text-zinc-900'
+  const track = isLandingDark ? 'bg-zinc-700' : 'bg-zinc-200'
+  const fill = isEmpty ? 'bg-red-500' : isLow ? 'bg-amber-500' : isLandingDark ? 'bg-zinc-100' : 'bg-zinc-900'
 
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-sm">
-        <span className="text-zinc-500">{label}</span>
-        <span className={isEmpty ? 'text-red-500' : isLow ? 'text-amber-500' : ''}>
+        <span className={labelCls}>{label}</span>
+        <span className={valueCls}>
           {showAsPercentage
             ? `${Math.round(percentage)}% remaining`
             : `$${remaining.toFixed(2)} / $${total}`}
         </span>
       </div>
-      <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+      <div className={`h-1.5 overflow-hidden rounded-full ${track}`}>
         <div
-          className={`h-full transition-all duration-300 rounded-full ${
-            isEmpty ? 'bg-red-500' : isLow ? 'bg-amber-500' : 'bg-zinc-800'
-          }`}
+          className={`h-full rounded-full transition-all duration-300 ${fill}`}
           style={{ width: `${percentage}%` }}
         />
       </div>
@@ -84,6 +103,17 @@ function ProgressBar({
 }
 
 function AccountPageContent() {
+  const { isLandingDark } = useLandingTheme()
+  const panel = marketingPanel(isLandingDark)
+  const panelLg = marketingPanelLg(isLandingDark)
+  const t = {
+    title: marketingPageTitle(isLandingDark),
+    h: marketingHeading(isLandingDark),
+    muted: marketingMuted(isLandingDark),
+    body: marketingBody(isLandingDark),
+  }
+  const footBorder = isLandingDark ? 'border-zinc-800' : 'border-zinc-200'
+  const footMuted = marketingMuted(isLandingDark)
   const router = useRouter()
   const searchParams = useSearchParams()
   const sessionId = searchParams?.get('session_id') ?? null
@@ -294,7 +324,7 @@ function AccountPageContent() {
   }
 
   return (
-    <div className="min-h-screen gradient-bg flex flex-col">
+    <div className="flex min-h-screen w-full flex-col gradient-bg">
       <div className="liquid-glass" />
 
       {/* Header */}
@@ -345,23 +375,27 @@ function AccountPageContent() {
             </div>
           )}
 
-          <h1 className="text-3xl font-serif mb-8">account</h1>
+          <h1 className={`text-3xl font-serif mb-8 ${t.title}`}>account</h1>
 
           {loading || authLoading || !sessionCheckComplete ? (
             <div className="text-center py-16">
-              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-zinc-400" />
-              <p className="mt-4 text-zinc-500">Loading your account...</p>
+              <RefreshCw className={`mx-auto h-8 w-8 animate-spin ${isLandingDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
+              <p className={`mt-4 ${t.muted}`}>Loading your account...</p>
             </div>
           ) : !isAuthenticated ? (
             <div className="text-center py-16">
-              <div className="glass-dark rounded-2xl p-8 max-w-md mx-auto">
-                <h2 className="text-xl font-serif mb-2">Sign in to view your account</h2>
-                <p className="text-zinc-500 mb-6">
+              <div className={panelLg}>
+                <h2 className={`text-xl font-serif mb-2 ${t.h}`}>Sign in to view your account</h2>
+                <p className={`mb-6 ${t.muted}`}>
                   Access your subscription details, usage statistics, and billing information.
                 </p>
                 <Link
                   href="/auth/sign-in"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition-colors"
+                  className={`inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-colors ${
+                    isLandingDark
+                      ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                      : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                  }`}
                 >
                   Sign in
                   <ArrowRight className="w-4 h-4" />
@@ -405,41 +439,53 @@ function AccountPageContent() {
               )}
 
               {/* User Profile Card */}
-              <div className="glass-dark rounded-2xl p-6">
+              <div className={panel}>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-zinc-200 flex items-center justify-center text-lg font-medium">
+                    <div
+                      className={`flex h-12 w-12 items-center justify-center rounded-full text-lg font-medium ${
+                        isLandingDark ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-200 text-zinc-900'
+                      }`}
+                    >
                       {user?.firstName?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
                     </div>
                     <div>
-                      <h2 className="text-lg font-medium">
+                      <h2 className={`text-lg font-medium ${t.h}`}>
                         {user?.firstName && user?.lastName 
                           ? `${user.firstName} ${user.lastName}`
                           : user?.email}
                       </h2>
-                      <p className="text-sm text-zinc-500">{user?.email}</p>
+                      <p className={`text-sm ${t.muted}`}>{user?.email}</p>
                     </div>
                   </div>
                   <button
                     onClick={handleSignOut}
                     disabled={signingOut}
-                    className="w-full rounded-lg px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50 sm:w-auto"
+                    className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
+                      isLandingDark
+                        ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
+                        : 'text-red-600 hover:bg-red-50 hover:text-red-700'
+                    }`}
                   >
                     {signingOut ? 'Signing out...' : 'Sign out'}
                   </button>
                 </div>
               </div>
 
-              <div className="glass-dark rounded-2xl p-6">
-                <p className="mb-1 text-sm text-zinc-500">Continue with Overlay</p>
-                <p className="mb-4 text-sm text-zinc-500">
+              <div className={panel}>
+                <p className={`mb-1 text-sm ${t.muted}`}>Continue with Overlay</p>
+                <p className={`mb-4 text-sm ${t.body}`}>
                   Open the desktop app for the native overlay workflow, or continue in the web app from here.
                 </p>
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <button
                     onClick={handleOpenInApp}
                     disabled={actionLoading === 'openApp'}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50"
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                      isLandingDark
+                        ? 'border-zinc-600 text-zinc-200 hover:bg-zinc-800'
+                        : 'border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+                    }`}
                   >
                     {actionLoading === 'openApp' ? (
                       <>
@@ -455,7 +501,11 @@ function AccountPageContent() {
                   </button>
                   <Link
                     href="/app/chat"
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      isLandingDark
+                        ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                        : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                    }`}
                   >
                     Open web app
                     <ArrowRight className="h-4 w-4" />
@@ -466,13 +516,13 @@ function AccountPageContent() {
               {entitlements && (
                 <>
                   {/* Subscription Card */}
-                  <div className="glass-dark rounded-2xl p-6">
+                  <div className={panel}>
                     <div className="flex items-start justify-between mb-6">
                       <div>
-                        <h2 className="text-lg font-medium mb-1">
+                        <h2 className={`text-lg font-medium mb-1 ${t.h}`}>
                           {entitlements.tier.charAt(0).toUpperCase() + entitlements.tier.slice(1)} Plan
                         </h2>
-                        <p className="text-sm text-(--muted)">
+                        <p className={`text-sm ${t.muted}`}>
                           {entitlements.status === 'active' && entitlements.billingPeriodEnd
                             ? `Renews ${formatDate(entitlements.billingPeriodEnd)}`
                             : entitlements.status === 'canceled'
@@ -485,12 +535,18 @@ function AccountPageContent() {
 
                       <div className="flex items-center gap-2">
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${
                             entitlements.status === 'active'
-                              ? 'bg-emerald-100 text-emerald-800'
+                              ? isLandingDark
+                                ? 'bg-emerald-900/50 text-emerald-200 ring-1 ring-emerald-700/60'
+                                : 'bg-emerald-100 text-emerald-800'
                               : entitlements.status === 'past_due'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-zinc-100 text-zinc-800'
+                                ? isLandingDark
+                                  ? 'bg-amber-900/40 text-amber-200 ring-1 ring-amber-700/50'
+                                  : 'bg-amber-100 text-amber-800'
+                                : isLandingDark
+                                  ? 'bg-zinc-800 text-zinc-200'
+                                  : 'bg-zinc-100 text-zinc-800'
                           }`}
                         >
                           {entitlements.status}
@@ -502,7 +558,9 @@ function AccountPageContent() {
                       {entitlements.tier === 'free' && (
                         <Link
                           href="/pricing"
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-[var(--background)] rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 ${
+                            isLandingDark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white'
+                          }`}
                         >
                           Upgrade to Pro
                           <ArrowRight className="w-4 h-4" />
@@ -513,21 +571,28 @@ function AccountPageContent() {
 
                   {/* Usage Card (Pro/Max only) */}
                   {entitlements.tier !== 'free' && (
-                    <div className="glass-dark rounded-2xl p-6">
-                      <h2 className="text-lg font-medium mb-4">Usage This Period</h2>
+                    <div className={panel}>
+                      <h2 className={`text-lg font-medium mb-4 ${t.h}`}>Usage This Period</h2>
 
                       <ProgressBar
                         used={entitlements.usage.tokenCostAccrued}
                         total={entitlements.limits.tokenBudget}
                         label="Subscription"
                         showAsPercentage={true}
+                        isLandingDark={isLandingDark}
                       />
 
-                      <div className="mt-6 pt-4 border-t border-zinc-200">
+                      <div
+                        className={`mt-6 border-t pt-4 ${isLandingDark ? 'border-zinc-700' : 'border-zinc-200'}`}
+                      >
                         <button
                           onClick={handleManageBilling}
                           disabled={actionLoading === 'billing'}
-                          className="px-4 py-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+                          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                            isLandingDark
+                              ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                              : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                          }`}
                         >
                           {actionLoading === 'billing' ? 'Opening...' : 'Manage Subscription'}
                         </button>
@@ -537,13 +602,19 @@ function AccountPageContent() {
 
                   {/* Weekly Usage (Free tier) */}
                   {entitlements.tier === 'free' && (
-                    <div className="glass-dark rounded-2xl p-6">
-                      <h2 className="text-lg font-medium mb-4">Weekly Usage</h2>
+                    <div className={panel}>
+                      <h2 className={`text-lg font-medium mb-4 ${t.h}`}>Weekly Usage</h2>
 
                       <div className="space-y-4">
-                        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3">
-                          <p className="text-sm font-medium text-zinc-900">Auto model requests</p>
-                          <p className="mt-1 text-sm text-zinc-500">
+                        <div
+                          className={`rounded-xl border px-4 py-3 ${
+                            isLandingDark
+                              ? 'border-zinc-700 bg-zinc-950/60'
+                              : 'border-zinc-200 bg-zinc-50'
+                          }`}
+                        >
+                          <p className={`text-sm font-medium ${t.h}`}>Auto model requests</p>
+                          <p className={`mt-1 text-sm ${t.muted}`}>
                             Unlimited on the free tier when you use Auto.
                           </p>
                         </div>
@@ -553,10 +624,11 @@ function AccountPageContent() {
                           total={entitlements.limits.transcriptionSecondsPerWeek}
                           label="Transcription"
                           showAsPercentage={true}
+                          isLandingDark={isLandingDark}
                         />
                       </div>
 
-                      <p className="mt-4 text-xs text-[var(--muted)]">
+                      <p className={`mt-4 text-xs ${t.muted}`}>
                         Auto is unlimited on free. Upgrade to Pro to use premium models.
                       </p>
                     </div>
@@ -568,15 +640,20 @@ function AccountPageContent() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="relative z-10 py-8 px-8 border-t border-zinc-200 mt-auto">
-        <div className="max-w-4xl mx-auto flex items-center justify-between text-sm text-[var(--muted)]">
+      <footer className={`relative z-10 mt-auto border-t py-8 px-8 ${footBorder}`}>
+        <div className={`mx-auto flex max-w-4xl items-center justify-between text-sm ${footMuted}`}>
           <p>© 2026 overlay</p>
           <div className="flex gap-6">
-            <Link href="/terms" className="hover:text-[var(--foreground)] transition-colors">
+            <Link
+              href="/terms"
+              className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
+            >
               terms
             </Link>
-            <Link href="/privacy" className="hover:text-[var(--foreground)] transition-colors">
+            <Link
+              href="/privacy"
+              className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
+            >
               privacy
             </Link>
           </div>
@@ -588,18 +665,20 @@ function AccountPageContent() {
 
 export default function AccountPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen gradient-bg flex items-center justify-center">
-          <div className="liquid-glass" />
-          <div className="relative z-10 text-center">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-(--muted)" />
-            <p className="mt-4 text-(--muted)">Loading...</p>
+    <LandingThemeProvider>
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen items-center justify-center gradient-bg">
+            <div className="liquid-glass" />
+            <div className="relative z-10 text-center">
+              <RefreshCw className="mx-auto h-8 w-8 animate-spin text-zinc-400" />
+              <p className="mt-4 text-zinc-500">Loading...</p>
+            </div>
           </div>
-        </div>
-      }
-    >
-      <AccountPageContent />
-    </Suspense>
+        }
+      >
+        <AccountPageContent />
+      </Suspense>
+    </LandingThemeProvider>
   )
 }

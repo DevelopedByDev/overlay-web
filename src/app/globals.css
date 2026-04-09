@@ -859,6 +859,11 @@ html {
   background: linear-gradient(to bottom, #fafafa, #f4f4f5);
 }
 
+/* Marketing pages — paired with LandingThemeProvider / `data-landing-theme` */
+[data-landing-theme='dark'] .gradient-bg {
+  background: linear-gradient(to bottom, #0a0a0a, #111113);
+}
+
 .liquid-glass {
   position: fixed;
   inset: 0;

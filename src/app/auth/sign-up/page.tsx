@@ -4,8 +4,26 @@ import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { PageNavbar } from '@/components/PageNavbar'
+import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
+import {
+  marketingAuthCard,
+  marketingAuthMuted,
+  marketingDividerLabel,
+  marketingPrimaryField,
+  marketingSsoButton,
+  marketingSubmitButton,
+} from '@/lib/landingPageStyles'
 
 function SignUpContent() {
+  const { isLandingDark } = useLandingTheme()
+  const card = marketingAuthCard(isLandingDark)
+  const muted = marketingAuthMuted(isLandingDark)
+  const sso = marketingSsoButton(isLandingDark)
+  const field = marketingPrimaryField(isLandingDark)
+  const submit = marketingSubmitButton(isLandingDark)
+  const divLabel = marketingDividerLabel(isLandingDark)
+  const labelText = isLandingDark ? 'text-zinc-300' : 'text-zinc-900'
+  const createLink = isLandingDark ? 'text-zinc-100 hover:underline font-medium' : 'text-zinc-900 hover:underline font-medium'
   const searchParams = useSearchParams()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -138,12 +156,12 @@ function SignUpContent() {
     // Show verified success screen
     if (verified) {
       return (
-        <div className="min-h-screen gradient-bg flex flex-col">
+        <div className="flex min-h-screen w-full flex-col gradient-bg">
           <div className="liquid-glass" />
           <PageNavbar />
           <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
             <div className="w-full max-w-md">
-              <div className="glass-dark rounded-2xl p-8 text-center">
+              <div className={`${card} text-center`}>
                 <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
                   <svg
                     className="w-8 h-8 text-emerald-600"
@@ -159,13 +177,17 @@ function SignUpContent() {
                     />
                   </svg>
                 </div>
-                <h1 className="text-2xl font-serif mb-2">Email verified!</h1>
-                <p className="text-(--muted) mb-6">
+                <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>Email verified!</h1>
+                <p className={`mb-6 ${muted}`}>
                   Your account has been verified. You can now sign in.
                 </p>
                 <Link
                   href={`/auth/sign-in${redirectUrl !== '/account' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`}
-                  className="inline-block px-6 py-3 bg-foreground text-background rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+                  className={
+                    isLandingDark
+                      ? 'inline-block rounded-xl bg-zinc-100 px-8 py-3 text-sm font-medium text-zinc-900 transition-opacity hover:opacity-90'
+                      : 'inline-block rounded-xl bg-zinc-900 px-8 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90'
+                  }
                 >
                   Sign in
                 </Link>
@@ -178,12 +200,12 @@ function SignUpContent() {
 
     // Show verification code input
     return (
-      <div className="min-h-screen gradient-bg flex flex-col">
+      <div className="flex min-h-screen w-full flex-col gradient-bg">
         <div className="liquid-glass" />
         <PageNavbar />
         <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
           <div className="w-full max-w-md">
-            <div className="glass-dark rounded-2xl p-8 text-center">
+            <div className={`${card} text-center`}>
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <svg
                   className="w-8 h-8 text-blue-600"
@@ -199,10 +221,10 @@ function SignUpContent() {
                   />
                 </svg>
               </div>
-              <h1 className="text-2xl font-serif mb-2">Check your email</h1>
-              <p className="text-[var(--muted)] mb-6">
+              <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>Check your email</h1>
+              <p className={`mb-6 ${muted}`}>
                 We&apos;ve sent a verification code to{' '}
-                <strong className="text-foreground">{email}</strong>.
+                <strong className={labelText}>{email}</strong>.
                 Enter the code below to verify your account.
               </p>
 
@@ -219,13 +241,13 @@ function SignUpContent() {
                   onChange={(e) => setVerificationCode(e.target.value)}
                   placeholder="Enter 6-digit code"
                   maxLength={6}
-                  className="w-full px-4 py-3 bg-white border border-(--border) rounded-xl text-center text-lg tracking-widest font-mono focus:outline-none focus:ring-2 focus:ring-foreground focus:border-transparent"
+                  className={`${field} text-center text-lg font-mono tracking-widest`}
                   autoFocus
                 />
                 <button
                   type="submit"
                   disabled={verifying || verificationCode.length < 6}
-                  className="w-full py-3 px-4 bg-foreground text-background rounded-xl text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                  className={submit}
                 >
                   {verifying ? 'Verifying...' : 'Verify email'}
                 </button>
@@ -258,7 +280,7 @@ function SignUpContent() {
   }
 
   return (
-    <div className="min-h-screen gradient-bg flex flex-col">
+    <div className="flex min-h-screen w-full flex-col gradient-bg">
       <div className="liquid-glass" />
 
       {/* Header */}
@@ -267,9 +289,9 @@ function SignUpContent() {
       {/* Main Content */}
       <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-md">
-          <div className="glass-dark rounded-2xl p-8">
-            <h1 className="text-2xl font-serif text-center mb-2">Create your account</h1>
-            <p className="text-sm text-[var(--muted)] text-center mb-8">
+          <div className={card}>
+            <h1 className={`text-2xl font-serif text-center mb-2 ${labelText}`}>Create your account</h1>
+            <p className={`text-sm text-center mb-8 ${muted}`}>
               Start your journey with overlay
             </p>
 
@@ -283,9 +305,10 @@ function SignUpContent() {
             {/* SSO Buttons */}
             <div className="space-y-3 mb-6">
               <button
+                type="button"
                 onClick={() => handleSSO('google')}
                 disabled={ssoLoading !== null}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-[var(--border)] rounded-xl text-sm font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
+                className={sso}
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path
@@ -309,9 +332,10 @@ function SignUpContent() {
               </button>
 
               <button
+                type="button"
                 onClick={() => handleSSO('apple')}
                 disabled={ssoLoading !== null}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-(--border) rounded-xl text-sm font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
+                className={sso}
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
@@ -320,9 +344,10 @@ function SignUpContent() {
               </button>
 
               <button
+                type="button"
                 onClick={() => handleSSO('microsoft')}
                 disabled={ssoLoading !== null}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-(--border) rounded-xl text-sm font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
+                className={sso}
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path fill="#F25022" d="M1 1h10v10H1z" />
@@ -337,12 +362,12 @@ function SignUpContent() {
             {/* Divider */}
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-(--border)" />
+                <div
+                  className={`w-full border-t ${isLandingDark ? 'border-zinc-700' : 'border-zinc-200'}`}
+                />
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="px-4 bg-background text-(--muted)">
-                  or create with email
-                </span>
+                <span className={divLabel}>or create with email</span>
               </div>
             </div>
 
@@ -350,7 +375,7 @@ function SignUpContent() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="firstName" className="block text-sm font-medium mb-2">
+                  <label htmlFor="firstName" className={`block text-sm font-medium mb-2 ${labelText}`}>
                     First name
                   </label>
                   <input
@@ -358,12 +383,12 @@ function SignUpContent() {
                     type="text"
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border border-(--border) rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-foreground focus:border-transparent"
+                    className={field}
                     placeholder="John"
                   />
                 </div>
                 <div>
-                  <label htmlFor="lastName" className="block text-sm font-medium mb-2">
+                  <label htmlFor="lastName" className={`block text-sm font-medium mb-2 ${labelText}`}>
                     Last name
                   </label>
                   <input
@@ -371,14 +396,14 @@ function SignUpContent() {
                     type="text"
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border border-(--border) rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-foreground focus:border-transparent"
+                    className={field}
                     placeholder="Doe"
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="email" className="block text-sm font-medium mb-2">
+                <label htmlFor="email" className={`block text-sm font-medium mb-2 ${labelText}`}>
                   Email
                 </label>
                 <input
@@ -387,13 +412,13 @@ function SignUpContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-3 bg-white border border-[var(--border)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[var(--foreground)] focus:border-transparent"
+                  className={field}
                   placeholder="you@example.com"
                 />
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-sm font-medium mb-2">
+                <label htmlFor="password" className={`block text-sm font-medium mb-2 ${labelText}`}>
                   Password
                 </label>
                 <input
@@ -403,16 +428,16 @@ function SignUpContent() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
-                  className="w-full px-4 py-3 bg-white border border-[var(--border)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[var(--foreground)] focus:border-transparent"
+                  className={field}
                   placeholder="••••••••"
                 />
-                <p className="mt-1 text-xs text-[var(--muted)]">
+                <p className={`mt-1 text-xs ${muted}`}>
                   Must be at least 8 characters
                 </p>
               </div>
 
               <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2">
+                <label htmlFor="confirmPassword" className={`block text-sm font-medium mb-2 ${labelText}`}>
                   Confirm password
                 </label>
                 <input
@@ -421,38 +446,33 @@ function SignUpContent() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-3 bg-white border border-[var(--border)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[var(--foreground)] focus:border-transparent"
+                  className={field}
                   placeholder="••••••••"
                 />
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 px-4 bg-[var(--foreground)] text-[var(--background)] rounded-xl text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
+              <button type="submit" disabled={loading} className={submit}>
                 {loading ? 'Creating account...' : 'Create account'}
               </button>
             </form>
 
             {/* Terms */}
-            <p className="mt-4 text-xs text-[var(--muted)] text-center">
+            <p className={`mt-4 text-center text-xs ${muted}`}>
               By creating an account, you agree to our{' '}
-              <Link href="/terms" className="underline hover:text-[var(--foreground)]">
+              <Link href="/terms" className={`underline ${isLandingDark ? 'hover:text-zinc-100' : 'hover:text-zinc-900'}`}>
                 Terms of Service
               </Link>{' '}
               and{' '}
-              <Link href="/privacy" className="underline hover:text-[var(--foreground)]">
+              <Link href="/privacy" className={`underline ${isLandingDark ? 'hover:text-zinc-100' : 'hover:text-zinc-900'}`}>
                 Privacy Policy
               </Link>
             </p>
 
-            {/* Sign In Link */}
-            <p className="mt-6 text-center text-sm text-[var(--muted)]">
+            <p className={`mt-6 text-center text-sm ${muted}`}>
               Already have an account?{' '}
               <Link
                 href={`/auth/sign-in${redirectUrl !== '/account' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`}
-                className="text-[var(--foreground)] hover:underline font-medium"
+                className={createLink}
               >
                 Sign in
               </Link>
@@ -462,7 +482,11 @@ function SignUpContent() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 py-6 px-8 text-center text-sm text-(--muted)">
+      <footer
+        className={`relative z-10 mt-auto flex justify-center border-t px-8 py-6 text-sm sm:justify-start ${
+          isLandingDark ? 'border-zinc-800 text-zinc-500' : 'border-zinc-200 text-zinc-500'
+        }`}
+      >
         <p>© 2026 overlay</p>
       </footer>
     </div>
@@ -471,18 +495,20 @@ function SignUpContent() {
 
 export default function SignUpPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen gradient-bg flex items-center justify-center">
-          <div className="liquid-glass" />
-          <div className="relative z-10 text-center">
-            <div className="w-8 h-8 border-2 border-[var(--foreground)] border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="mt-4 text-[var(--muted)]">Loading...</p>
+    <LandingThemeProvider>
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen items-center justify-center gradient-bg">
+            <div className="liquid-glass" />
+            <div className="relative z-10 text-center">
+              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent" />
+              <p className="mt-4 text-zinc-500">Loading...</p>
+            </div>
           </div>
-        </div>
-      }
-    >
-      <SignUpContent />
-    </Suspense>
+        }
+      >
+        <SignUpContent />
+      </Suspense>
+    </LandingThemeProvider>
   )
 }
