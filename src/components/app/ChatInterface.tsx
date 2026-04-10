@@ -1654,6 +1654,21 @@ function chatGreetingLine(firstName: string | undefined) {
   return `Hi ${nice}!`
 }
 
+function sanitizeEmptyChatStarters(prompts: string[], firstName?: string): string[] {
+  const trimmedFirstName = firstName?.trim()
+  const firstNamePattern = trimmedFirstName
+    ? new RegExp(`\\b${trimmedFirstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+    : null
+
+  return prompts
+    .filter((prompt) => typeof prompt === 'string')
+    .map((prompt) => prompt.trim())
+    .filter((prompt) => prompt.length > 0)
+    .filter((prompt) => !/\boverlay\b/i.test(prompt))
+    .filter((prompt) => !(firstNamePattern?.test(prompt) ?? false))
+    .slice(0, 4)
+}
+
 const DEFAULT_CHAT_TITLE = 'New Chat'
 const CHAT_MODEL_KEY = 'overlay_chat_model'
 const ASK_MODEL_SELECTION_MODE_KEY = 'overlay_ask_model_selection_mode'
@@ -2197,7 +2212,7 @@ export default function ChatInterface({
   /**
    * Empty-chat suggestion chips: defaults show immediately; API merges Convex-persisted / freshly generated prompts.
    */
-  const [emptyChatStarters, setEmptyChatStarters] = useState<string[]>(() => [...DEFAULT_CHAT_SUGGESTIONS])
+  const [emptyChatStarters, setEmptyChatStarters] = useState<string[]>(() => sanitizeEmptyChatStarters([...DEFAULT_CHAT_SUGGESTIONS], firstName))
 
   useEffect(() => {
     let cancelled = false
@@ -2206,7 +2221,7 @@ export default function ChatInterface({
     const apply = (data: { prompts?: string[]; stale?: boolean }) => {
       if (cancelled) return
       if (Array.isArray(data.prompts) && data.prompts.length === 4) {
-        setEmptyChatStarters(data.prompts)
+        setEmptyChatStarters(sanitizeEmptyChatStarters(data.prompts, firstName))
       }
       if (data.stale) {
         refetchTimer = window.setTimeout(() => {
@@ -2216,7 +2231,7 @@ export default function ChatInterface({
             .then((d: { prompts?: string[] }) => {
               if (cancelled) return
               if (Array.isArray(d.prompts) && d.prompts.length === 4) {
-                setEmptyChatStarters(d.prompts)
+                setEmptyChatStarters(sanitizeEmptyChatStarters(d.prompts, firstName))
               }
             })
             .catch(() => {
@@ -2237,7 +2252,7 @@ export default function ChatInterface({
       cancelled = true
       if (refetchTimer !== undefined) window.clearTimeout(refetchTimer)
     }
-  }, [userId])
+  }, [userId, firstName])
 
   const [replyContext, setReplyContext] = useState<{
     snippet: string

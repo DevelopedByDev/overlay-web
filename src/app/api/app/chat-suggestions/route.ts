@@ -12,8 +12,40 @@ function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-function normalizeFourPrompts(raw: string[]): string[] {
-  const strings = raw.filter((p) => typeof p === 'string' && p.trim().length > 0).map((p) => p.trim())
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function sanitizePrompt(prompt: string, firstName?: string): string | null {
+  let next = prompt.trim()
+  if (!next) return null
+
+  next = next.replace(/^['"“”]+|['"“”]+$/g, '').trim()
+  next = next.replace(/^(?:hey|hi|hello)\s+[^,!:;.-]*[,!:;.-]+\s*/i, '')
+
+  const trimmedFirstName = firstName?.trim()
+  if (trimmedFirstName) {
+    const escaped = escapeRegExp(trimmedFirstName)
+    next = next.replace(new RegExp(`^${escaped}\\b\\s*[,!:;.-]+\\s*`, 'i'), '')
+  }
+
+  next = next.replace(/\boverlay\b/gi, '').replace(/\s{2,}/g, ' ').trim()
+  next = next.replace(/^[,!:;.-]+\s*/, '').trim()
+
+  if (!next) return null
+  if (/\boverlay\b/i.test(next)) return null
+  if (trimmedFirstName && new RegExp(`\\b${escapeRegExp(trimmedFirstName)}\\b`, 'i').test(next)) {
+    return null
+  }
+
+  return next
+}
+
+function normalizeFourPrompts(raw: string[], firstName?: string): string[] {
+  const strings = raw
+    .filter((p) => typeof p === 'string' && p.trim().length > 0)
+    .map((p) => sanitizePrompt(p, firstName) ?? '')
+    .filter((p) => p.length > 0)
   const out: string[] = [...strings.slice(0, 4)]
   for (const d of DEFAULT_CHAT_SUGGESTIONS) {
     if (out.length >= 4) break
@@ -28,19 +60,19 @@ function normalizeFourPrompts(raw: string[]): string[] {
 const DEFAULT_PROMPTS_NORMALIZED = normalizeFourPrompts([...DEFAULT_CHAT_SUGGESTIONS])
 
 async function generateStartersWithLLM(accessToken: string, firstName: string): Promise<string[] | null> {
-  const nameHint = `The user's first name is ${firstName}. Starters can feel lightly tailored — stay useful and professional, never creepy.`
   const model = await getOpenRouterLanguageModel(FREE_TIER_AUTO_MODEL_ID, accessToken)
   const result = await generateText({
     model,
     temperature: 0.88,
     maxOutputTokens: 700,
-    prompt: `${nameHint}
-
-Generate exactly 4 conversation starter prompts for an AI chat app. Each prompt:
+    prompt: `Generate exactly 4 conversation starter prompts for an AI chat app. Each prompt:
 - One clear sentence, 8–22 words
-- Specific and actionable
-- Cover a mix: coding/tools, learning a concept, writing/communication, and a practical everyday task
+- Specific, actionable, and phrased as a task the assistant can help complete
+- Cover a mix: coding/tools, research/learning, writing/communication, and a practical work or life task
 - No two prompts on the same narrow topic
+- Do not address the user directly by name
+- Do not mention the app, assistant, or brand name "Overlay"
+- Prefer concrete verbs like draft, plan, summarize, analyze, organize, compare, or create
 
 Reply with ONLY valid JSON (no markdown fences) in this exact shape:
 {"prompts":["...","...","...","..."]}`,
@@ -57,8 +89,9 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
   if (!Array.isArray(promptsUnknown)) return null
   const strings = promptsUnknown
     .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
-    .map((p) => p.trim())
-  return normalizeFourPrompts(strings)
+    .map((p) => sanitizePrompt(p, firstName) ?? '')
+    .filter((p) => p.length > 0)
+  return normalizeFourPrompts(strings, firstName)
 }
 
 type PersistArgs = {
@@ -135,12 +168,12 @@ export async function GET() {
     })
 
     if (cached && cached.day === today && cached.prompts.length === 4) {
-      return NextResponse.json({ prompts: normalizeFourPrompts(cached.prompts), stale: false })
+      return NextResponse.json({ prompts: normalizeFourPrompts(cached.prompts, firstName), stale: false })
     }
 
     // Yesterday's (or older) starters: return immediately, refresh for the new UTC day in the background
     if (cached && cached.prompts.length === 4 && cached.day !== today) {
-      const prompts = normalizeFourPrompts(cached.prompts)
+      const prompts = normalizeFourPrompts(cached.prompts, firstName)
       scheduleRefreshForNewDay({
         serverSecret,
         userId,
@@ -171,7 +204,7 @@ export async function GET() {
     }
 
     if (cached && cached.prompts.length === 4) {
-      return NextResponse.json({ prompts: normalizeFourPrompts(cached.prompts), stale: false })
+      return NextResponse.json({ prompts: normalizeFourPrompts(cached.prompts, firstName), stale: false })
     }
 
     return NextResponse.json({ prompts: [...DEFAULT_CHAT_SUGGESTIONS], stale: false })

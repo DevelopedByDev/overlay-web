@@ -8,7 +8,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, LogOut, User,
   Puzzle, Monitor, ChevronUp, AlertCircle,
-  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, PanelLeftClose,
+  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -318,11 +318,12 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     <button
       type="button"
       onClick={() => setSidebarCollapsed(false)}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)]"
+      className="group inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)]"
       aria-label="Expand sidebar"
       title="Expand sidebar"
     >
-      <Image src="/assets/overlay-logo.png" alt="" width={24} height={24} className="shrink-0" />
+      <Image src="/assets/overlay-logo.png" alt="" width={24} height={24} className="shrink-0 group-hover:hidden" />
+      <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
   ) : (
     brandLink
@@ -362,7 +363,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     <>
       <div
         className={`hidden h-16 min-h-16 shrink-0 items-center border-b border-[var(--border)] md:flex ${
-          sidebarCollapsed ? 'justify-center px-3' : 'justify-between px-5'
+          sidebarCollapsed ? 'justify-center px-4' : 'justify-between px-5'
         }`}
       >
         {desktopBrandControl}
@@ -377,13 +378,13 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
             title="Collapse sidebar"
             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
           >
-            <PanelLeftClose size={16} />
+            <ChevronLeft size={16} />
           </button>
         ) : null}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <nav className={`shrink-0 space-y-0.5 py-3 ${sidebarCollapsed ? 'px-1.5' : 'px-2'}`}>
+        <nav className="shrink-0 space-y-0.5 px-2 py-3">
           {NAV_ITEMS.map((item, navIdx) => {
             const { href, label, icon: Icon, disabled } = item
             const active =
@@ -394,13 +395,13 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
             const shortcut = navIdx < 9 ? navIdx + 1 : null
             const showShortcut = Boolean(shortcut) && !active
             const showChevron = hasInlineChildren(href)
-            const commonClass = `group flex w-full items-center rounded-md px-3 py-2 text-sm transition-colors ${
+            const commonClass = `group flex h-9 w-full items-center rounded-md px-3 text-sm transition-colors ${
               disabled
                 ? 'cursor-not-allowed text-[var(--muted-light)]'
                 : active
                   ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                   : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-            } ${sidebarCollapsed ? 'justify-center px-2.5' : 'gap-2.5'}`
+            } ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`
             if (disabled) {
               return (
                 <button
@@ -514,11 +515,11 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               }}
               title="Settings · ⌥7"
               aria-label="Settings"
-              className={`group flex w-full items-center rounded-md px-3 py-2 text-sm transition-colors ${
+              className={`group flex h-9 w-full items-center rounded-md px-3 text-sm transition-colors ${
                 settingsPathActive
                   ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                   : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-              } ${sidebarCollapsed ? 'justify-center px-2.5' : 'gap-2.5'}`}
+              } ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}
             >
               <Settings size={15} />
               {!sidebarCollapsed ? <div className="min-w-0 flex-1 text-left">Settings</div> : null}
