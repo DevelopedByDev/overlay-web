@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import {
+  createAppSkill,
+  deleteAppSkill,
+  listAppSkills,
+  updateAppSkill,
+} from '@/lib/app-api/skill-service'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,12 +15,11 @@ export async function GET(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
 
     const projectId = request.nextUrl.searchParams.get('projectId')
-    const skills = await convex.query('skills:list', {
-      userId: auth.userId,
-      serverSecret,
-      projectId: projectId ?? undefined,
-    })
-    return NextResponse.json(skills || [])
+    return NextResponse.json(
+      await listAppSkills(auth.userId, serverSecret, {
+        ...(projectId !== null ? { projectId } : {}),
+      }),
+    )
   } catch {
     return NextResponse.json({ error: 'Failed to fetch skills' }, { status: 500 })
   }
@@ -31,15 +35,14 @@ export async function POST(request: NextRequest) {
     const { name, description, instructions, projectId } = body as Record<string, unknown>
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
 
-    const skillId = await convex.mutation<string>('skills:create', {
+    return NextResponse.json(await createAppSkill({
       userId: auth.userId,
       serverSecret,
-      name,
-      description: description || '',
-      instructions: instructions || '',
-      projectId: projectId ?? undefined,
-    })
-    return NextResponse.json({ id: skillId })
+      name: String(name),
+      ...(typeof description === 'string' ? { description } : {}),
+      ...(typeof instructions === 'string' ? { instructions } : {}),
+      ...(typeof projectId === 'string' ? { projectId } : {}),
+    }))
   } catch {
     return NextResponse.json({ error: 'Failed to create skill' }, { status: 500 })
   }
@@ -55,16 +58,15 @@ export async function PATCH(request: NextRequest) {
     const { skillId, name, description, instructions, enabled } = body as Record<string, unknown>
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
 
-    await convex.mutation('skills:update', {
-      skillId,
+    return NextResponse.json(await updateAppSkill({
+      skillId: String(skillId),
       userId: auth.userId,
       serverSecret,
-      name,
-      description,
-      instructions,
-      enabled,
-    })
-    return NextResponse.json({ success: true })
+      ...(typeof name === 'string' ? { name } : {}),
+      ...(typeof description === 'string' ? { description } : {}),
+      ...(typeof instructions === 'string' ? { instructions } : {}),
+      ...(typeof enabled === 'boolean' ? { enabled } : {}),
+    }))
   } catch {
     return NextResponse.json({ error: 'Failed to update skill' }, { status: 500 })
   }
@@ -88,12 +90,7 @@ export async function DELETE(request: NextRequest) {
     const skillId = request.nextUrl.searchParams.get('skillId')
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
 
-    await convex.mutation('skills:remove', {
-      skillId,
-      userId: auth.userId,
-      serverSecret,
-    })
-    return NextResponse.json({ success: true })
+    return NextResponse.json(await deleteAppSkill(auth.userId, serverSecret, skillId))
   } catch {
     return NextResponse.json({ error: 'Failed to delete skill' }, { status: 500 })
   }

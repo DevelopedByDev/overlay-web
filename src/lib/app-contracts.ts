@@ -13,11 +13,13 @@ import type {
   AppConversationSummary,
 } from "@/lib/app-api/conversation-contract";
 import type { AppFileRecord } from "@/lib/app-api/file-contract";
+import type { AppIntegrationSummary } from "@/lib/app-api/integration-contract";
 import type { AppKnowledgeSearchChunk } from "@/lib/app-api/knowledge-contract";
 import type { AppMemoryListRow } from "@/lib/app-api/memory-contract";
 import type { AppNoteDoc } from "@/lib/app-api/note-contract";
 import type { AppOutputSummary } from "@/lib/app-api/output-contract";
 import type { AppProjectSummary } from "@/lib/app-api/project-contract";
+import type { AppSkillSummary } from "@/lib/app-api/skill-contract";
 import type { ChatModel, ImageModel, VideoModel } from "@/lib/models";
 
 export type { AppSettings, ThemePreference };
@@ -51,23 +53,9 @@ export type OutputSummary = AppOutputSummary;
 
 export type KnowledgeSearchChunk = AppKnowledgeSearchChunk;
 
-export interface IntegrationSummary {
-  slug: string;
-  name: string;
-  description: string;
-  logoUrl: string | null;
-  isConnected: boolean;
-  connectedAccountId?: string | null;
-}
+export type IntegrationSummary = AppIntegrationSummary;
 
-export interface SkillSummary {
-  _id: string;
-  name: string;
-  description: string;
-  instructions: string;
-  enabled?: boolean;
-  projectId?: string;
-}
+export type SkillSummary = AppSkillSummary;
 
 export type ProjectSummary = AppProjectSummary;
 

@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import { DEFAULT_MODEL_ID } from '@/lib/models'
-import type { Id } from '../../../../../convex/_generated/dataModel'
 import type {
   AutomationMode,
   AutomationScheduleConfig,
@@ -10,8 +7,13 @@ import type {
   AutomationSourceType,
   AutomationStatus,
 } from '@/lib/automations'
-import { getNextAutomationRunAt } from '@/lib/automations'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import {
+  createAppAutomation,
+  deleteAppAutomation,
+  listAppAutomations,
+  updateAppAutomation,
+} from '@/lib/app-api/automation-service'
 
 type AutomationMutationBody = {
   automationId?: string
@@ -31,37 +33,6 @@ type AutomationMutationBody = {
   userId?: string
 }
 
-function normalizeScheduleConfig(
-  scheduleKind: AutomationScheduleKind,
-  scheduleConfig?: AutomationScheduleConfig,
-): AutomationScheduleConfig {
-  const next: AutomationScheduleConfig = {
-    onceAt: scheduleConfig?.onceAt,
-    localTime: scheduleConfig?.localTime?.trim() || undefined,
-    weekdays: scheduleConfig?.weekdays?.filter((value) => Number.isInteger(value)),
-    dayOfMonth: scheduleConfig?.dayOfMonth,
-  }
-
-  if (scheduleKind === 'weekdays') {
-    next.weekdays = [1, 2, 3, 4, 5]
-  }
-
-  return next
-}
-
-function deriveNextRunAt(
-  scheduleKind: AutomationScheduleKind,
-  scheduleConfig: AutomationScheduleConfig,
-  timezone: string,
-): number | undefined {
-  return getNextAutomationRunAt({
-    scheduleKind,
-    scheduleConfig,
-    timezone,
-    afterTimestamp: Date.now(),
-  })
-}
-
 export async function GET(request: NextRequest) {
   try {
     const auth = await resolveAuthenticatedAppUser(request, {})
@@ -69,12 +40,11 @@ export async function GET(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
     const projectId = request.nextUrl.searchParams.get('projectId')
 
-    const rows = await convex.query('automations:list', {
-      userId: auth.userId,
-      serverSecret,
-      projectId: projectId ?? undefined,
-    })
-    return NextResponse.json(rows ?? [])
+    return NextResponse.json(
+      await listAppAutomations(auth.userId, serverSecret, {
+        ...(projectId !== null ? { projectId } : {}),
+      }),
+    )
   } catch (error) {
     console.error('[automations] GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch automations' }, { status: 500 })
@@ -104,27 +74,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'scheduleKind required' }, { status: 400 })
     }
 
-    const scheduleConfig = normalizeScheduleConfig(body.scheduleKind, body.scheduleConfig)
-
-    const automationId = await convex.mutation<Id<'automations'>>('automations:create', {
+    return NextResponse.json(await createAppAutomation({
       userId: auth.userId,
       serverSecret,
       projectId: body.projectId?.trim() || undefined,
       title: body.title.trim(),
       description: body.description?.trim() || '',
       sourceType: body.sourceType,
-      skillId: body.skillId as Id<'skills'> | undefined,
+      skillId: body.skillId,
       instructionsMarkdown: body.instructionsMarkdown?.trim() || undefined,
       mode: body.mode,
-      modelId: body.modelId?.trim() || DEFAULT_MODEL_ID,
+      modelId: body.modelId,
       status: body.status ?? 'active',
       timezone: body.timezone.trim(),
       scheduleKind: body.scheduleKind,
-      scheduleConfig,
-      nextRunAt: deriveNextRunAt(body.scheduleKind, scheduleConfig, body.timezone.trim()),
-    }, { throwOnError: true })
-
-    return NextResponse.json({ id: automationId })
+      scheduleConfig: body.scheduleConfig,
+    }))
   } catch (error) {
     console.error('[automations] POST error:', error)
     return NextResponse.json({ error: 'Failed to create automation' }, { status: 500 })
@@ -142,35 +107,23 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'automationId required' }, { status: 400 })
     }
 
-    const nextRunAt =
-      body.scheduleKind && body.scheduleConfig && body.timezone?.trim()
-        ? deriveNextRunAt(
-            body.scheduleKind,
-            normalizeScheduleConfig(body.scheduleKind, body.scheduleConfig),
-            body.timezone.trim(),
-          )
-        : undefined
-
-    await convex.mutation('automations:update', {
-      automationId: body.automationId as Id<'automations'>,
+    return NextResponse.json(await updateAppAutomation({
+      automationId: body.automationId,
       userId: auth.userId,
       serverSecret,
       projectId: body.projectId?.trim() || undefined,
       title: body.title,
       description: body.description,
       sourceType: body.sourceType,
-      skillId: body.skillId as Id<'skills'> | undefined,
+      skillId: body.skillId,
       instructionsMarkdown: body.instructionsMarkdown,
       mode: body.mode,
       modelId: body.modelId,
       status: body.status,
       timezone: body.timezone?.trim() || undefined,
       scheduleKind: body.scheduleKind,
-      scheduleConfig: body.scheduleKind ? normalizeScheduleConfig(body.scheduleKind, body.scheduleConfig) : undefined,
-      nextRunAt,
-    }, { throwOnError: true })
-
-    return NextResponse.json({ success: true })
+      scheduleConfig: body.scheduleConfig,
+    }))
   } catch (error) {
     console.error('[automations] PATCH error:', error)
     return NextResponse.json({ error: 'Failed to update automation' }, { status: 500 })
@@ -194,13 +147,9 @@ export async function DELETE(request: NextRequest) {
     if (!automationId) return NextResponse.json({ error: 'automationId required' }, { status: 400 })
     const serverSecret = getInternalApiSecret()
 
-    await convex.mutation('automations:remove', {
-      automationId: automationId as Id<'automations'>,
-      userId: auth.userId,
-      serverSecret,
-    }, { throwOnError: true })
-
-    return NextResponse.json({ success: true })
+    return NextResponse.json(
+      await deleteAppAutomation(auth.userId, serverSecret, automationId),
+    )
   } catch (error) {
     console.error('[automations] DELETE error:', error)
     return NextResponse.json({ error: 'Failed to delete automation' }, { status: 500 })

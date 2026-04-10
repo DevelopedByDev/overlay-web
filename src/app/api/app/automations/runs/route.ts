@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { listAppAutomationRuns } from '@/lib/app-api/automation-service'
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,14 +17,9 @@ export async function GET(request: NextRequest) {
     const limit = Number.isFinite(limitParam) ? limitParam : 20
     const serverSecret = getInternalApiSecret()
 
-    const runs = await convex.query('automations:listRuns', {
-      automationId: automationId as Id<'automations'>,
-      userId: auth.userId,
-      serverSecret,
-      limit,
-    })
-
-    return NextResponse.json(runs ?? [])
+    return NextResponse.json(
+      await listAppAutomationRuns(auth.userId, serverSecret, automationId, { limit }),
+    )
   } catch (error) {
     console.error('[automation runs] GET error:', error)
     return NextResponse.json({ error: 'Failed to load automation runs' }, { status: 500 })

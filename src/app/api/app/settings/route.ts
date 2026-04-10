@@ -1,26 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-
-type UiSettings = {
-  theme: 'light' | 'dark'
-  useSecondarySidebar: boolean
-}
+import { getAppUiSettings, updateAppUiSettings } from '@/lib/app-api/settings-service'
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await resolveAuthenticatedAppUser(request, {})
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const settings = await convex.query<UiSettings>(
-      'uiSettings:getByServer',
-      {
-        userId: auth.userId,
-        serverSecret: getInternalApiSecret(),
-      },
-      { throwOnError: true },
-    )
+    const settings = await getAppUiSettings(auth.userId, getInternalApiSecret())
     return NextResponse.json(settings)
   } catch (error) {
     console.error('[app/settings] GET error:', error)
@@ -44,28 +32,14 @@ export async function PATCH(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const mutationArgs: {
-      userId: string
-      serverSecret: string
-      theme?: 'light' | 'dark'
-      useSecondarySidebar?: boolean
-    } = {
+    const settings = await updateAppUiSettings({
       userId: auth.userId,
       serverSecret: getInternalApiSecret(),
-    }
-
-    if (body.theme !== undefined) {
-      mutationArgs.theme = body.theme
-    }
-    if (body.useSecondarySidebar !== undefined) {
-      mutationArgs.useSecondarySidebar = body.useSecondarySidebar
-    }
-
-    const settings = await convex.mutation<UiSettings>(
-      'uiSettings:upsertByServer',
-      mutationArgs,
-      { throwOnError: true },
-    )
+      ...(body.theme !== undefined ? { theme: body.theme } : {}),
+      ...(body.useSecondarySidebar !== undefined
+        ? { useSecondarySidebar: body.useSecondarySidebar }
+        : {}),
+    })
     return NextResponse.json(settings)
   } catch (error) {
     console.error('[app/settings] PATCH error:', error)
