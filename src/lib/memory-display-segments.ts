@@ -1,129 +1,112 @@
+import type { AppMemoryListRow } from "@/lib/app-api/memory-contract";
+
 /**
  * Paragraph/sentence-aware chunking (~300 chars) for memory ingestion and optional UI previews.
  * Stored memories are one Convex row per chunk; list API returns one row per memory (no virtual segments).
  */
-const TARGET_CHARS = 300
-const HARD_CAP = 480
+const TARGET_CHARS = 300;
+const HARD_CAP = 480;
 
 /**
  * Split memory text into ~TARGET_CHARS segments (sentence / paragraph aware).
  */
 export function segmentMemoryForSidebarDisplay(text: string): string[] {
-  const t = text.trim()
-  if (!t.length) return []
-  if (t.length <= TARGET_CHARS) return [t]
+  const t = text.trim();
+  if (!t.length) return [];
+  if (t.length <= TARGET_CHARS) return [t];
 
   // Paragraphs first, then sentences within blocks
-  const blocks = t.split(/\n\n+/)
-  const sentences: string[] = []
+  const blocks = t.split(/\n\n+/);
+  const sentences: string[] = [];
   for (const block of blocks) {
-    const b = block.trim()
-    if (!b) continue
-    const parts = b.split(/(?<=[.!?])\s+/).filter((p) => p.trim())
+    const b = block.trim();
+    if (!b) continue;
+    const parts = b.split(/(?<=[.!?])\s+/).filter((p) => p.trim());
     if (parts.length > 0) {
-      sentences.push(...parts.map((p) => p.trim()))
+      sentences.push(...parts.map((p) => p.trim()));
     } else {
-      sentences.push(b)
+      sentences.push(b);
     }
   }
 
-  const out: string[] = []
-  let buf = ''
+  const out: string[] = [];
+  let buf = "";
 
   const flush = (): void => {
-    const s = buf.trim()
-    if (s) out.push(s)
-    buf = ''
-  }
+    const s = buf.trim();
+    if (s) out.push(s);
+    buf = "";
+  };
 
   const pushHardSlices = (s: string): void => {
     for (let i = 0; i < s.length; i += HARD_CAP) {
-      out.push(s.slice(i, i + HARD_CAP))
+      out.push(s.slice(i, i + HARD_CAP));
     }
-  }
+  };
 
   for (const sent of sentences) {
     if (sent.length > HARD_CAP) {
-      flush()
-      pushHardSlices(sent)
-      continue
+      flush();
+      pushHardSlices(sent);
+      continue;
     }
 
-    const candidate = buf ? `${buf} ${sent}` : sent
+    const candidate = buf ? `${buf} ${sent}` : sent;
     if (candidate.length <= TARGET_CHARS) {
-      buf = candidate
-      continue
+      buf = candidate;
+      continue;
     }
 
     if (buf.trim().length >= 40) {
-      flush()
+      flush();
     }
 
     if (sent.length <= TARGET_CHARS) {
-      buf = sent
+      buf = sent;
     } else {
-      flush()
-      buf = sent
+      flush();
+      buf = sent;
     }
 
     if (buf.length > HARD_CAP) {
-      flush()
-      pushHardSlices(sent)
-      buf = ''
+      flush();
+      pushHardSlices(sent);
+      buf = "";
     }
   }
-  flush()
+  flush();
 
-  return out.length > 0 ? out : [t.slice(0, TARGET_CHARS)]
+  return out.length > 0 ? out : [t.slice(0, TARGET_CHARS)];
 }
 
-export type MemoryRowForSidebar = {
-  key: string
-  memoryId: string
-  segmentIndex: number
-  content: string
-  fullContent: string
-  source: string
-  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-  importance?: number
-  projectId?: string
-  conversationId?: string
-  noteId?: string
-  messageId?: string
-  turnId?: string
-  tags?: string[]
-  actor?: 'user' | 'agent'
-  status?: 'candidate' | 'approved' | 'rejected'
-  createdAt: number
-  updatedAt?: number
-}
+export type MemoryRowForSidebar = AppMemoryListRow;
 
 /**
  * Split pasted text into multiple stored memories when over ~300 chars
  * (paragraph/sentence aware). Used by POST /api/app/memory.
  */
 export function segmentMemoryForIngestion(text: string): string[] {
-  return segmentMemoryForSidebarDisplay(text)
+  return segmentMemoryForSidebarDisplay(text);
 }
 
 /** One row per Convex memory for Knowledge / Memories UI (no virtual segments). */
 export function memoriesToClientListRows(
   memories: Array<{
-    _id: string
-    content: string
-    source: string
-    type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-    importance?: number
-    projectId?: string
-    conversationId?: string
-    noteId?: string
-    messageId?: string
-    turnId?: string
-    tags?: string[]
-    actor?: 'user' | 'agent'
-    status?: 'candidate' | 'approved' | 'rejected'
-    createdAt: number
-    updatedAt?: number
+    _id: string;
+    content: string;
+    source: string;
+    type?: "preference" | "fact" | "project" | "decision" | "agent";
+    importance?: number;
+    projectId?: string;
+    conversationId?: string;
+    noteId?: string;
+    messageId?: string;
+    turnId?: string;
+    tags?: string[];
+    actor?: "user" | "agent";
+    status?: "candidate" | "approved" | "rejected";
+    createdAt: number;
+    updatedAt?: number;
   }>,
 ): MemoryRowForSidebar[] {
   return memories.map((m) => ({
@@ -145,32 +128,32 @@ export function memoriesToClientListRows(
     status: m.status,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
-  }))
+  }));
 }
 
 /** One Convex memory row → many sidebar rows (virtual segments). */
 export function expandMemoriesForSidebarList(
   memories: Array<{
-    _id: string
-    content: string
-    source: string
-    type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-    importance?: number
-    projectId?: string
-    conversationId?: string
-    noteId?: string
-    messageId?: string
-    turnId?: string
-    tags?: string[]
-    actor?: 'user' | 'agent'
-    status?: 'candidate' | 'approved' | 'rejected'
-    createdAt: number
-    updatedAt?: number
+    _id: string;
+    content: string;
+    source: string;
+    type?: "preference" | "fact" | "project" | "decision" | "agent";
+    importance?: number;
+    projectId?: string;
+    conversationId?: string;
+    noteId?: string;
+    messageId?: string;
+    turnId?: string;
+    tags?: string[];
+    actor?: "user" | "agent";
+    status?: "candidate" | "approved" | "rejected";
+    createdAt: number;
+    updatedAt?: number;
   }>,
 ): MemoryRowForSidebar[] {
-  const rows: MemoryRowForSidebar[] = []
+  const rows: MemoryRowForSidebar[] = [];
   for (const m of memories) {
-    const segs = segmentMemoryForSidebarDisplay(m.content)
+    const segs = segmentMemoryForSidebarDisplay(m.content);
     segs.forEach((preview, i) => {
       rows.push({
         key: `${m._id}:${i}`,
@@ -191,8 +174,8 @@ export function expandMemoriesForSidebarList(
         status: m.status,
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
-      })
-    })
+      });
+    });
   }
-  return rows
+  return rows;
 }
