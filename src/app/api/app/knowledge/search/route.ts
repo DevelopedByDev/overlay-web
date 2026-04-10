@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import type { HybridSearchChunk } from '../../../../../../convex/knowledge'
+import { searchAppKnowledge } from '@/lib/app-api/knowledge-service'
 
 export const maxDuration = 60
 
@@ -47,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const serverSecret = getInternalApiSecret()
-    const result = await convex.action<{ chunks: HybridSearchChunk[] }>('knowledge:hybridSearch', {
+    const result = await searchAppKnowledge({
       accessToken: auth?.accessToken,
       userId,
       serverSecret,

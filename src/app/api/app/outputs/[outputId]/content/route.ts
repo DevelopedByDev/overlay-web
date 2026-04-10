@@ -1,29 +1,25 @@
 import { NextRequest } from 'next/server'
-import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
 import { generatePresignedDownloadUrl } from '@/lib/r2'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { getAppOutputProxyTarget } from '@/lib/app-api/output-service'
 
 export const runtime = 'nodejs'
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ outputId: string }> },
 ) {
-  const session = await getSession()
-  if (!session) {
+  const auth = await resolveAuthenticatedAppUser(request, {})
+  if (!auth) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { outputId } = await params
-  const proxyTarget = await convex.query<{ r2Key?: string; url?: string; sizeBytes: number; type: string; fileName?: string; mimeType?: string } | null>(
-    'outputs:getStorageUrlForProxy',
-    {
-      outputId,
-      userId: session.user.id,
-      serverSecret: getInternalApiSecret(),
-    },
-    { throwOnError: true },
+  const proxyTarget = await getAppOutputProxyTarget(
+    auth.userId,
+    getInternalApiSecret(),
+    outputId,
   )
 
   if (!proxyTarget) {

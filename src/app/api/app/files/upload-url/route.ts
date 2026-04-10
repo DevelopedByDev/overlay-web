@@ -1,58 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
-import { convex } from '@/lib/convex'
-import { generatePresignedUploadUrl, keyForFile } from '@/lib/r2'
-import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
-
-interface Entitlements {
-  overlayStorageBytesUsed: number
-  overlayStorageBytesLimit: number
-}
+import { R2GlobalBudgetError } from '@/lib/r2-budget'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { createAppFileUploadUrl } from '@/lib/app-api/file-service'
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { sizeBytes, name, mimeType } = await request.json().catch(() => ({})) as {
+    const body = await request.json().catch(() => ({})) as {
       sizeBytes?: number
       name?: string
       mimeType?: string
+      accessToken?: string
+      userId?: string
     }
-    const normalizedSizeBytes =
-      typeof sizeBytes === 'number' && Number.isFinite(sizeBytes) && sizeBytes > 0
-        ? Math.round(sizeBytes)
-        : 0
-    if (normalizedSizeBytes <= 0) {
-      return NextResponse.json({ error: 'sizeBytes is required' }, { status: 400 })
-    }
-
-    const userId = session.user.id
-    const serverSecret = getInternalApiSecret()
-
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
-      serverSecret,
-      userId,
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const result = await createAppFileUploadUrl({
+      userId: auth.userId,
+      serverSecret: getInternalApiSecret(),
+      sizeBytes: body.sizeBytes ?? 0,
+      name: body.name,
+      mimeType: body.mimeType,
     })
-    if (!entitlements) return NextResponse.json({ error: 'Could not verify subscription.' }, { status: 401 })
-    if (entitlements.overlayStorageBytesUsed + normalizedSizeBytes > entitlements.overlayStorageBytesLimit) {
-      return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
-    }
-
-    await checkGlobalR2Budget(normalizedSizeBytes)
-
-    const fileName = name ?? `upload-${Date.now()}`
-    const fileIdPlaceholder = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const r2Key = keyForFile(userId, fileIdPlaceholder, fileName)
-    const uploadUrl = await generatePresignedUploadUrl(r2Key, mimeType ?? 'application/octet-stream')
-
-    return NextResponse.json({ uploadUrl, r2Key })
+    return NextResponse.json({ uploadUrl: result.presignedUrl, r2Key: result.r2Key })
   } catch (error) {
     if (error instanceof R2GlobalBudgetError) {
       return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
     }
     const message = error instanceof Error ? error.message : 'Failed to generate upload URL'
+    if (message === 'sizeBytes is required') {
+      return NextResponse.json({ error: message }, { status: 400 })
+    }
+    if (message === 'Could not verify subscription.') {
+      return NextResponse.json({ error: message }, { status: 401 })
+    }
     if (message.includes('storage_limit_exceeded')) {
       return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
     }

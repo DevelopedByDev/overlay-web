@@ -12,11 +12,13 @@ import type {
   AppConversationMessage,
   AppConversationSummary,
 } from "@/lib/app-api/conversation-contract";
+import type { AppFileRecord } from "@/lib/app-api/file-contract";
+import type { AppKnowledgeSearchChunk } from "@/lib/app-api/knowledge-contract";
 import type { AppMemoryListRow } from "@/lib/app-api/memory-contract";
 import type { AppNoteDoc } from "@/lib/app-api/note-contract";
+import type { AppOutputSummary } from "@/lib/app-api/output-contract";
 import type { AppProjectSummary } from "@/lib/app-api/project-contract";
 import type { ChatModel, ImageModel, VideoModel } from "@/lib/models";
-import type { OutputType, OutputSource } from "@/lib/output-types";
 
 export type { AppSettings, ThemePreference };
 
@@ -41,38 +43,13 @@ export type ConversationMessage = AppConversationMessage;
 
 export type NoteDoc = AppNoteDoc;
 
-export interface KnowledgeFile {
-  _id: string;
-  name: string;
-  type: "file" | "folder";
-  parentId: string | null;
-  content?: string;
-  sizeBytes?: number;
-  isStorageBacked?: boolean;
-  downloadUrl?: string;
-  createdAt: number;
-  updatedAt: number;
-  projectId?: string;
-}
+export type KnowledgeFile = AppFileRecord;
 
 export type MemoryRow = AppMemoryListRow;
 
-export interface OutputSummary {
-  _id: string;
-  type: OutputType;
-  source?: OutputSource;
-  status: "pending" | "completed" | "failed";
-  prompt: string;
-  modelId: string;
-  url?: string;
-  fileName?: string;
-  mimeType?: string;
-  sizeBytes?: number;
-  metadata?: Record<string, unknown>;
-  errorMessage?: string;
-  createdAt: number;
-  completedAt?: number;
-}
+export type OutputSummary = AppOutputSummary;
+
+export type KnowledgeSearchChunk = AppKnowledgeSearchChunk;
 
 export interface IntegrationSummary {
   slug: string;

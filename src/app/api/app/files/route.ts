@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
-import { deleteObjects } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import {
+  createAppFile,
+  deleteAppFile,
+  getAppFile,
+  listAppFiles,
+  updateAppFile,
+} from '@/lib/app-api/file-service'
 
 function storageErrorResponse(error: unknown, fallback = 'Failed to save file') {
   const message = error instanceof Error ? error.message : String(error)
@@ -21,24 +25,18 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const fileId = searchParams.get('fileId')
     if (fileId) {
-      const file = await convex.query('files:get', {
-        fileId,
-        userId: auth.userId,
-        serverSecret,
-      })
+      const file = await getAppFile(auth.userId, serverSecret, fileId)
       if (!file || (file as { userId: string }).userId !== auth.userId) {
         return NextResponse.json({ error: 'Not found' }, { status: 404 })
       }
       return NextResponse.json(file)
     }
     const projectId = searchParams.get('projectId')
-    const args: Record<string, unknown> = {
-      userId: auth.userId,
-      serverSecret,
-    }
-    if (projectId !== null) args.projectId = projectId
-    const files = await convex.query('files:list', args)
-    return NextResponse.json(files ?? [])
+    return NextResponse.json(
+      await listAppFiles(auth.userId, serverSecret, {
+        ...(projectId !== null ? { projectId } : {}),
+      }),
+    )
   } catch {
     return NextResponse.json({ error: 'Failed to fetch files' }, { status: 500 })
   }
@@ -61,54 +59,19 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
-
-    const args: Record<string, unknown> = {
-      userId: auth.userId,
-      serverSecret,
-      name,
-      type,
-    }
-    if (parentId) args.parentId = parentId
-    if (projectId) args.projectId = projectId
-
-    let id: unknown
-    const ids: string[] = []
-
-    if (r2Key) {
-      const { type: _type, ...storageArgs } = args
-      void _type
-      id = await convex.mutation('files:createWithStorage', {
-        ...storageArgs,
-        r2Key,
-        sizeBytes: typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0,
-      })
-    } else if (type === 'file' && typeof content === 'string' && content.length > 0) {
-      const parts = splitTextForConvexDocuments(content)
-      const total = parts.length
-      for (let p = 0; p < parts.length; p++) {
-        const part = parts[p]!
-        const partName = partedFileName(name, p + 1, total)
-        const partId = await convex.mutation<string>('files:create', {
-          ...args,
-          name: partName,
-          content: part,
-          contentHash: hashTextContent(part),
-        })
-        if (!partId) {
-          return NextResponse.json({ error: 'Failed to create file part' }, { status: 500 })
-        }
-        ids.push(partId)
-      }
-      id = ids[0]
-    } else {
-      if (typeof content === 'string' && content.length > 0) {
-        args.content = content
-        args.contentHash = hashTextContent(content)
-      }
-      id = await convex.mutation('files:create', args)
-    }
-
-    return NextResponse.json({ id, ids: ids.length ? ids : undefined, parts: ids.length || undefined })
+    return NextResponse.json(
+      await createAppFile({
+        userId: auth.userId,
+        serverSecret,
+        name,
+        type: type as 'file' | 'folder',
+        ...(typeof parentId === 'string' ? { parentId } : {}),
+        ...(typeof content === 'string' ? { content } : {}),
+        ...(typeof r2Key === 'string' ? { r2Key } : {}),
+        ...(typeof sizeBytes === 'number' ? { sizeBytes } : {}),
+        ...(typeof projectId === 'string' ? { projectId } : {}),
+      }),
+    )
   } catch (error) {
     return storageErrorResponse(error, 'Failed to create file')
   }
@@ -122,20 +85,15 @@ export async function PATCH(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
     const { fileId, name, content } = body as Record<string, unknown>
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
-    const args: Record<string, unknown> = {
-      fileId,
-      userId: auth.userId,
-      serverSecret,
-    }
-    if (name !== undefined) args.name = name
-    if (typeof content === 'string') {
-      args.content = content
-      args.contentHash = hashTextContent(content)
-    } else if (content !== undefined) {
-      args.content = content
-    }
-    await convex.mutation('files:update', args)
-    return NextResponse.json({ success: true })
+    return NextResponse.json(
+      await updateAppFile({
+        userId: auth.userId,
+        serverSecret,
+        fileId: String(fileId),
+        ...(typeof name === 'string' ? { name } : {}),
+        ...(content !== undefined ? { content } : {}),
+      }),
+    )
   } catch (error) {
     return storageErrorResponse(error, 'Failed to update file')
   }
@@ -157,23 +115,7 @@ export async function DELETE(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
     const fileId = request.nextUrl.searchParams.get('fileId')
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
-
-    const r2Entries = await convex.query<Array<{ fileId: string; r2Key?: string; storageId?: string }>>(
-      'files:getR2KeysForSubtree',
-      { fileId, userId: auth.userId, serverSecret },
-    )
-    const r2Keys = (r2Entries ?? []).map((e) => e.r2Key).filter((k): k is string => Boolean(k))
-    if (r2Keys.length > 0) {
-      await deleteObjects(r2Keys)
-      console.log(`[FilesDelete] Deleted ${r2Keys.length} R2 objects for fileId=${fileId}`)
-    }
-
-    await convex.mutation('files:remove', {
-      fileId,
-      userId: auth.userId,
-      serverSecret,
-    })
-    return NextResponse.json({ success: true })
+    return NextResponse.json(await deleteAppFile(auth.userId, serverSecret, fileId))
   } catch {
     return NextResponse.json({ error: 'Failed to delete file' }, { status: 500 })
   }
