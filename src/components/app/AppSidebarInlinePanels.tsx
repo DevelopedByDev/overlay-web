@@ -34,9 +34,11 @@ const panelItemClass =
 
 export function ChatInlinePanel({
   refreshKey,
+  searchQuery = '',
   onNavigate,
 }: {
   refreshKey: number
+  searchQuery?: string
   onNavigate?: () => void
 }) {
   const router = useRouter()
@@ -122,13 +124,17 @@ export function ChatInlinePanel({
     }
   }
 
+  const filteredChats = searchQuery.trim()
+    ? chats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : chats
+
   return (
     <div className="space-y-0.5">
       {loading ? (
         <SidebarListSkeleton rows={6} />
-      ) : chats.length === 0 ? (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No chats yet</p>
-      ) : chats.map((chat) => {
+      ) : filteredChats.length === 0 ? (
+        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{chats.length === 0 ? 'No chats yet' : 'No results'}</p>
+      ) : filteredChats.map((chat) => {
         const isStreaming = sessions[chat._id]?.status === 'streaming'
         const unread = getUnread(chat._id)
         const active = activeId === chat._id
@@ -215,9 +221,11 @@ export function ChatInlinePanel({
 
 export function NotesInlinePanel({
   refreshKey,
+  searchQuery = '',
   onNavigate,
 }: {
   refreshKey: number
+  searchQuery?: string
   onNavigate?: () => void
 }) {
   const router = useRouter()
@@ -251,13 +259,17 @@ export function NotesInlinePanel({
     }
   }
 
+  const filteredNotes = searchQuery.trim()
+    ? notes.filter((n) => n.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : notes
+
   return (
     <div className="space-y-0.5">
       {loading ? (
         <SidebarListSkeleton rows={6} />
-      ) : notes.length === 0 ? (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No notes yet</p>
-      ) : notes.map((note) => {
+      ) : filteredNotes.length === 0 ? (
+        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{notes.length === 0 ? 'No notes yet' : 'No results'}</p>
+      ) : filteredNotes.map((note) => {
         const active = activeId === note._id
         return (
           <div

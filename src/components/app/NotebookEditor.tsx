@@ -40,7 +40,6 @@ import {
   List,
   ListOrdered,
   ListTodo,
-  Loader2,
   Minus,
   Plus,
   Quote,
@@ -245,14 +244,18 @@ export default function NotebookEditor({
   const [notes, setNotes] = useState<Note[]>([])
   const [activeNote, setActiveNote] = useState<Note | null>(null)
   const [title, setTitle] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
-  const [saveTimer, setSaveTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
+  const [isDirty, setIsDirty] = useState(false)
   const [showSlashMenu, setShowSlashMenu] = useState(false)
   const [slashMenuPosition, setSlashMenuPosition] = useState({ top: 0, left: 0 })
   const [slashMenuFilter, setSlashMenuFilter] = useState('')
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0)
   const activeNoteRef = useRef<Note | null>(null)
   const titleRef = useRef('')
+  const isDirtyRef = useRef(false)
+  const pendingNoteIdRef = useRef<string | null>(null)
+  const pendingTitleRef = useRef('')
+  const pendingContentRef = useRef('')
+  const flushSaveRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     activeNoteRef.current = activeNote
@@ -324,7 +327,11 @@ export default function NotebookEditor({
     immediatelyRender: false,
     onUpdate: ({ editor: currentEditor }) => {
       if (activeNoteRef.current) {
-        scheduleSave(activeNoteRef.current._id, titleRef.current, currentEditor.getHTML())
+        isDirtyRef.current = true
+        pendingNoteIdRef.current = activeNoteRef.current._id
+        pendingTitleRef.current = titleRef.current
+        pendingContentRef.current = currentEditor.getHTML()
+        setIsDirty(true)
       }
 
       const { selection } = currentEditor.state
@@ -630,6 +637,8 @@ export default function NotebookEditor({
   }, [hideSidebar])
 
   const openNote = useCallback((note: Note) => {
+    flushSaveRef.current()
+    setIsDirty(false)
     setActiveNote(note)
     setTitle(note.title)
     if (!hideSidebar) {
@@ -640,6 +649,29 @@ export default function NotebookEditor({
   useEffect(() => {
     void loadNotes()
   }, [loadNotes])
+
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (isDirtyRef.current) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.hidden) flushSaveRef.current()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
+
+  useEffect(() => {
+    return () => { flushSaveRef.current() }
+  }, [])
 
   const idParam = searchParams?.get('id') ?? null
   useEffect(() => {
@@ -683,7 +715,8 @@ export default function NotebookEditor({
     }
 
     editor.commands.setContent(normalizeNoteContent(activeNote.content || ''))
-  }, [editor, activeNote])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, activeNote?._id])
 
   useEffect(() => {
     setSelectedSlashIndex(0)
@@ -744,38 +777,30 @@ export default function NotebookEditor({
     return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [showSlashMenu, filteredSlashItems, selectedSlashIndex, executeSlashCommand])
 
-  function scheduleSave(noteId: string, noteTitle: string, content: string) {
-    if (saveTimer) clearTimeout(saveTimer)
-    const timer = setTimeout(() => {
-      void saveNote(noteId, noteTitle, content)
-    }, 800)
-    setSaveTimer(timer)
-  }
-
-  async function saveNote(noteId: string, noteTitle: string, content: string) {
-    setIsSaving(true)
-    try {
-      const res = await fetch('/api/app/notes', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ noteId, title: noteTitle, content }),
-      })
-      if (res.ok) {
-        const data = (await res.json()) as { note?: Note }
-        if (data.note) {
-          setActiveNote(data.note)
-          setNotes((prev) => {
-            const next = prev.filter((note) => note._id !== data.note!._id)
-            return [data.note!, ...next]
-          })
-        } else {
-          await loadNotes()
-        }
+  function flushSave() {
+    if (!isDirtyRef.current || !pendingNoteIdRef.current) return
+    isDirtyRef.current = false
+    setIsDirty(false)
+    const noteId = pendingNoteIdRef.current
+    const noteTitle = pendingTitleRef.current
+    const content = pendingContentRef.current
+    void fetch('/api/app/notes', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ noteId, title: noteTitle, content }),
+      keepalive: true,
+    }).then(async (res) => {
+      if (!res.ok) return
+      const data = (await res.json()) as { note?: Note }
+      if (data.note) {
+        setNotes((prev) => {
+          const next = prev.filter((note) => note._id !== data.note!._id)
+          return [data.note!, ...next]
+        })
       }
-    } finally {
-      setIsSaving(false)
-    }
+    }).catch(() => {})
   }
+  flushSaveRef.current = flushSave
 
   async function createNote() {
     const res = await fetch('/api/app/notes', {
@@ -822,8 +847,13 @@ export default function NotebookEditor({
   function handleTitleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const newTitle = event.target.value
     setTitle(newTitle)
+    titleRef.current = newTitle
     if (activeNote) {
-      scheduleSave(activeNote._id, newTitle, editor?.getHTML() || '')
+      isDirtyRef.current = true
+      pendingNoteIdRef.current = activeNote._id
+      pendingTitleRef.current = newTitle
+      pendingContentRef.current = editor?.getHTML() || ''
+      setIsDirty(true)
     }
   }
 
@@ -883,7 +913,7 @@ export default function NotebookEditor({
                     {projectName}
                   </span>
                 )}
-                {isSaving && <Loader2 size={14} className="animate-spin text-[var(--muted)]" />}
+                {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">

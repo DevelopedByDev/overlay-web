@@ -8,7 +8,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, FileText, Images, LogOut, User,
   Puzzle, Monitor, ChevronUp, AlertCircle, LayoutGrid, Plug, Sparkles, Server, Package,
-  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, ChevronLeft, ChevronRight,
+  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -373,6 +373,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     </Link>
   )
 
+  const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false)
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('')
+
+  useEffect(() => {
+    setSidebarSearchOpen(false)
+    setSidebarSearchQuery('')
+  }, [chatOpen, notesOpen, projectsOpen])
+
   const showUpgradeCta = !entitlements || entitlements.tier === 'free'
   const contextualAction = inlineSecondaryDisabled
     ? chatOpen
@@ -640,7 +648,39 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
 
         {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || notesOpen || projectsOpen) ? (
           <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
-            {contextualAction ? (
+            {contextualAction && (chatOpen || notesOpen) ? (
+              <div className="mb-3 flex items-center gap-1.5">
+                {sidebarSearchOpen ? (
+                  <input
+                    value={sidebarSearchQuery}
+                    onChange={(e) => setSidebarSearchQuery(e.target.value)}
+                    placeholder={chatOpen ? 'Search chats…' : 'Search notes…'}
+                    autoFocus
+                    className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void contextualAction.onClick()}
+                    className="flex flex-1 items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <span className="min-w-0 flex-1 text-left text-xs">{contextualAction.label}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  title={chatOpen ? 'Search chats' : 'Search notes'}
+                  onClick={() => { setSidebarSearchOpen((v) => !v); if (sidebarSearchOpen) setSidebarSearchQuery('') }}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                    sidebarSearchOpen
+                      ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                      : 'bg-[var(--surface-elevated)] text-[var(--muted)]'
+                  }`}
+                >
+                  {sidebarSearchOpen ? <X size={13} strokeWidth={1.75} /> : <Search size={13} strokeWidth={1.75} />}
+                </button>
+              </div>
+            ) : contextualAction ? (
               <button
                 type="button"
                 onClick={() => void contextualAction.onClick()}
@@ -653,12 +693,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               {chatOpen ? (
                 <ChatInlinePanel
                   refreshKey={chatPanelRefreshKey}
+                  searchQuery={sidebarSearchQuery}
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
               {notesOpen ? (
                 <NotesInlinePanel
                   refreshKey={notesPanelRefreshKey}
+                  searchQuery={sidebarSearchQuery}
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
