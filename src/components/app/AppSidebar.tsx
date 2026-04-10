@@ -6,8 +6,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  MessageSquare, BookOpen, Brain, LogOut, User,
-  Puzzle, Monitor, ChevronUp, AlertCircle,
+  MessageSquare, BookOpen, Brain, FileText, Images, LogOut, User,
+  Puzzle, Monitor, ChevronUp, AlertCircle, LayoutGrid, Plug, Sparkles, Server, Package,
   FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
@@ -458,7 +458,11 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   aria-label={label}
                   className={commonClass}
                 >
-                  <Icon size={15} />
+                  {sidebarCollapsed && isPending ? (
+                    <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
+                  ) : (
+                    <Icon size={15} />
+                  )}
                   {!sidebarCollapsed ? (
                     <div className="min-w-0 flex-1 text-left">
                       <div>{label}</div>
@@ -491,16 +495,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                       />
                     </span>
                   ) : null}
-                  {isPending ? (
+                  {!sidebarCollapsed && isPending ? (
                     <Loader2
                       size={14}
-                      className={`shrink-0 animate-spin ${active ? 'text-[var(--muted)]' : 'text-[var(--muted)]'}`}
+                      className="shrink-0 animate-spin text-[var(--muted)]"
                       aria-hidden
                     />
-                  ) : unreadCount > 0 ? (
-                    <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-medium ${
-                      active ? 'bg-[var(--border)] text-[var(--foreground)]' : 'bg-[var(--border)] text-[var(--foreground)]'
-                    }`}>
+                  ) : !sidebarCollapsed && unreadCount > 0 ? (
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium text-[var(--foreground)]">
                       {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                   ) : null}
@@ -518,6 +520,31 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                     }}
                   />
                 ) : null}
+                {sidebarCollapsed && inlineSecondaryDisabled && href === '/app/knowledge' && active ? (
+                  <div className="mx-2 mt-1 flex flex-col overflow-hidden rounded-md border border-[var(--border)]">
+                    {([{ id: 'memories', Icon: Brain, label: 'Memories' }, { id: 'files', Icon: FileText, label: 'Files' }, { id: 'outputs', Icon: Images, label: 'Outputs' }] as const).map((sub) => (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        title={sub.label}
+                        aria-label={sub.label}
+                        onClick={() => {
+                          const params = new URLSearchParams(searchParams?.toString() ?? '')
+                          params.set('view', sub.id)
+                          if (sub.id !== 'outputs') params.delete('out')
+                          router.push(`/app/knowledge?${params.toString()}`)
+                        }}
+                        className={`flex h-8 items-center justify-center transition-colors ${
+                          knowledgeView === sub.id
+                            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                            : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                        }`}
+                      >
+                        <sub.Icon size={13} />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 {!sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
                   <InlineNavChildren
                     items={toolsInlineItems}
@@ -527,6 +554,32 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                       router.push(`/app/tools?view=${next}`)
                     }}
                   />
+                ) : null}
+                {sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
+                  <div className="mx-2 mt-1 flex flex-col overflow-hidden rounded-md border border-[var(--border)]">
+                    {([{ id: 'all', Icon: LayoutGrid, label: 'All', locked: false }, { id: 'connectors', Icon: Plug, label: 'Connectors', locked: false }, { id: 'skills', Icon: Sparkles, label: 'Skills', locked: false }, { id: 'mcps', Icon: Server, label: 'MCPs', locked: false }, { id: 'apps', Icon: Package, label: 'Apps', locked: true }] as const).map((sub) => (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        title={sub.locked ? `${sub.label} · Soon` : sub.label}
+                        aria-label={sub.label}
+                        disabled={sub.locked}
+                        onClick={() => {
+                          if (sub.locked) return
+                          router.push(`/app/tools?view=${sub.id}`)
+                        }}
+                        className={`flex h-8 items-center justify-center transition-colors ${
+                          sub.locked
+                            ? 'cursor-default text-[var(--muted-light)]'
+                            : toolsView === sub.id
+                              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                              : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                        }`}
+                      >
+                        <sub.Icon size={13} />
+                      </button>
+                    ))}
+                  </div>
                 ) : null}
               </div>
             )
