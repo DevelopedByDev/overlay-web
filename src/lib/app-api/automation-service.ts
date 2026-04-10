@@ -4,8 +4,11 @@ import { getInternalApiBaseUrl } from "@/lib/url";
 import { resolveAutomationExecutorMetadata } from "@/lib/automation-execution";
 import {
   getNextAutomationRunAt,
+  type AutomationOutputSummary,
+  type AutomationRunEventSummary,
   type AutomationRunSummary,
   type AutomationSummary,
+  type AutomationToolInvocationSummary,
 } from "@/lib/automations";
 import { runAutomationIntegrationPreflight } from "@/lib/automation-preflight";
 import {
@@ -117,6 +120,9 @@ export async function createAppAutomation(
     },
     { throwOnError: true },
   );
+  if (!automationId) {
+    throw new Error("Failed to create automation");
+  }
 
   return { id: automationId };
 }
@@ -236,14 +242,14 @@ export async function getAppAutomationRunDetail(
           )
         : Promise.resolve([]),
       run.turnId
-        ? convex.query("outputs:listByTurnId", {
+        ? convex.query<AutomationOutputSummary[]>("outputs:listByTurnId", {
             turnId: run.turnId,
             userId,
             serverSecret,
           }, { throwOnError: true })
         : Promise.resolve([]),
       run.turnId
-        ? convex.query("usage:listToolInvocations", {
+        ? convex.query<AutomationToolInvocationSummary[]>("usage:listToolInvocations", {
             userId,
             serverSecret,
             turnId: run.turnId,
@@ -260,7 +266,7 @@ export async function getAppAutomationRunDetail(
         },
         { throwOnError: true },
       ),
-      convex.query("automations:listRunEvents", {
+      convex.query<AutomationRunEventSummary[]>("automations:listRunEvents", {
         automationRunId: run._id as Id<"automationRuns">,
         userId,
         serverSecret,
@@ -386,6 +392,9 @@ export async function runAppAutomationNow(input: {
       },
       { throwOnError: true },
     );
+    if (!runId) {
+      throw new Error("Failed to create automation run");
+    }
 
     await convex.mutation("automations:updateRun", {
       automationRunId: runId,
@@ -459,6 +468,9 @@ export async function runAppAutomationNow(input: {
     },
     { throwOnError: true },
   );
+  if (!runId) {
+    throw new Error("Failed to create automation run");
+  }
 
   await convex.mutation("automations:update", {
     automationId: automation._id as Id<"automations">,

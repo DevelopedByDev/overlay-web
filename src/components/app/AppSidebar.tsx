@@ -137,6 +137,8 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
 }
 
 export default function AppSidebar({ user }: { user: AuthUser }) {
+  type SidebarSearchScope = 'chat' | 'notes' | 'projects' | null
+
   const pathname = usePathname() ?? ''
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -373,13 +375,31 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
     </Link>
   )
 
-  const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false)
-  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('')
-
-  useEffect(() => {
-    setSidebarSearchOpen(false)
-    setSidebarSearchQuery('')
-  }, [chatOpen, notesOpen, projectsOpen])
+  const [sidebarSearchState, setSidebarSearchState] = useState<{
+    scope: SidebarSearchScope
+    open: boolean
+    query: string
+  }>({
+    scope: null,
+    open: false,
+    query: '',
+  })
+  const activeSidebarSearchScope: SidebarSearchScope = chatOpen
+    ? 'chat'
+    : notesOpen
+      ? 'notes'
+      : projectsOpen
+        ? 'projects'
+        : null
+  const sidebarSearchOpen =
+    activeSidebarSearchScope !== null &&
+    sidebarSearchState.scope === activeSidebarSearchScope &&
+    sidebarSearchState.open
+  const sidebarSearchQuery =
+    activeSidebarSearchScope !== null &&
+    sidebarSearchState.scope === activeSidebarSearchScope
+      ? sidebarSearchState.query
+      : ''
 
   const showUpgradeCta = !entitlements || entitlements.tier === 'free'
   const contextualAction = inlineSecondaryDisabled
@@ -653,7 +673,13 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                 {sidebarSearchOpen ? (
                   <input
                     value={sidebarSearchQuery}
-                    onChange={(e) => setSidebarSearchQuery(e.target.value)}
+                    onChange={(e) =>
+                      setSidebarSearchState({
+                        scope: activeSidebarSearchScope,
+                        open: true,
+                        query: e.target.value,
+                      })
+                    }
                     placeholder={chatOpen ? 'Search chats…' : 'Search notes…'}
                     autoFocus
                     className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
@@ -670,7 +696,25 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                 <button
                   type="button"
                   title={chatOpen ? 'Search chats' : 'Search notes'}
-                  onClick={() => { setSidebarSearchOpen((v) => !v); if (sidebarSearchOpen) setSidebarSearchQuery('') }}
+                  onClick={() => {
+                    if (!activeSidebarSearchScope) return
+                    setSidebarSearchState((current) => {
+                      const isActiveScope = current.scope === activeSidebarSearchScope
+                      if (isActiveScope && current.open) {
+                        return {
+                          scope: activeSidebarSearchScope,
+                          open: false,
+                          query: '',
+                        }
+                      }
+
+                      return {
+                        scope: activeSidebarSearchScope,
+                        open: true,
+                        query: '',
+                      }
+                    })
+                  }}
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
                     sidebarSearchOpen
                       ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'

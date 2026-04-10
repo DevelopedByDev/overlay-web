@@ -64,6 +64,9 @@ export async function createAppProject(
     instructions: input.instructions?.trim() || undefined,
     parentId: input.parentId ?? undefined,
   });
+  if (!id) {
+    throw new Error("Failed to create project");
+  }
 
   return {
     id,

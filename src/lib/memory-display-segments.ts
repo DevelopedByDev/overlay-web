@@ -1,4 +1,7 @@
-import type { AppMemoryListRow } from "@/lib/app-api/memory-contract";
+import {
+  coerceAppMemorySource,
+  type AppMemoryListRow,
+} from "@/lib/app-api/memory-contract";
 
 /**
  * Paragraph/sentence-aware chunking (~300 chars) for memory ingestion and optional UI previews.
@@ -115,7 +118,7 @@ export function memoriesToClientListRows(
     segmentIndex: 0,
     content: m.content,
     fullContent: m.content,
-    source: m.source,
+    source: coerceAppMemorySource(m.source),
     type: m.type,
     importance: m.importance,
     projectId: m.projectId,
@@ -161,7 +164,7 @@ export function expandMemoriesForSidebarList(
         segmentIndex: i,
         content: preview,
         fullContent: m.content,
-        source: m.source,
+        source: coerceAppMemorySource(m.source),
         type: m.type,
         importance: m.importance,
         projectId: m.projectId,

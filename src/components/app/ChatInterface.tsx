@@ -216,6 +216,50 @@ interface Conversation {
   actModelId?: string
 }
 
+function sortChatsByLastModified(chats: Conversation[]): Conversation[] {
+  return [...chats].sort((a, b) => b.lastModified - a.lastModified)
+}
+
+function upsertChatInList(chats: Conversation[], nextChat: Conversation): Conversation[] {
+  const remaining = chats.filter((chat) => chat._id !== nextChat._id)
+  return sortChatsByLastModified([nextChat, ...remaining])
+}
+
+function mergeServerChatsWithLocalState(
+  serverChats: Conversation[],
+  localChats: Conversation[],
+  pendingTitle: { chatId: string; title: string } | null,
+): Conversation[] {
+  const localById = new Map(localChats.map((chat) => [chat._id, chat]))
+  const merged = new Map<string, Conversation>()
+
+  for (const serverChat of serverChats) {
+    const localChat = localById.get(serverChat._id)
+    const mergedChat: Conversation = {
+      ...serverChat,
+      title:
+        pendingTitle?.chatId === serverChat._id
+          ? pendingTitle.title
+          : localChat?.title && localChat.lastModified >= serverChat.lastModified
+            ? localChat.title
+            : serverChat.title,
+      lastModified: Math.max(serverChat.lastModified, localChat?.lastModified ?? 0),
+      lastMode: serverChat.lastMode ?? localChat?.lastMode,
+      askModelIds: serverChat.askModelIds ?? localChat?.askModelIds,
+      actModelId: serverChat.actModelId ?? localChat?.actModelId,
+    }
+    merged.set(serverChat._id, mergedChat)
+  }
+
+  for (const localChat of localChats) {
+    if (!merged.has(localChat._id)) {
+      merged.set(localChat._id, localChat)
+    }
+  }
+
+  return sortChatsByLastModified(Array.from(merged.values()))
+}
+
 interface AttachedImage {
   dataUrl: string
   mimeType: string
@@ -2291,6 +2335,7 @@ export default function ChatInterface({
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
   const wasStreamingRef = useRef(false)
+  const loadChatRef = useRef<(chatId: string) => Promise<void>>(async () => {})
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
@@ -2511,11 +2556,7 @@ export default function ChatInterface({
       const res = await fetch('/api/app/conversations')
       if (res.ok) {
         const serverChats: Conversation[] = await res.json()
-        setChats(
-          pending
-            ? serverChats.map((c) => (c._id === pending.chatId ? { ...c, title: pending.title } : c))
-            : serverChats
-        )
+        setChats((prev) => mergeServerChatsWithLocalState(serverChats, prev, pending))
         // Clear the ref once the server has confirmed the title
         if (pending && serverChats.some((c) => c._id === pending.chatId && c.title === pending.title)) {
           if (pendingTitleRef.current?.chatId === pending.chatId) pendingTitleRef.current = null
@@ -2529,16 +2570,17 @@ export default function ChatInterface({
     const nextTitle = sanitizeChatTitle(title, DEFAULT_CHAT_TITLE)
     pendingTitleRef.current = { chatId, title: nextTitle }
     setChats((prev) => {
-      const exists = prev.some((c) => c._id === chatId)
-      if (!exists) {
-        // Chat not yet in local state (edge case: generateTitle resolved before createNewChat state settled)
-        return [{ _id: chatId, title: nextTitle, lastModified: Date.now() }, ...prev]
-      }
-      return prev.map((c) => (c._id === chatId ? { ...c, title: nextTitle } : c))
+      const existing = prev.find((c) => c._id === chatId)
+      return upsertChatInList(
+        prev,
+        existing
+          ? { ...existing, title: nextTitle, lastModified: Date.now() }
+          : { _id: chatId, title: nextTitle, lastModified: Date.now() },
+      )
     })
     updateRuntimeUiState(chatId, (prev) => ({ ...prev, activeChatTitle: nextTitle }))
     if (activeChatIdRef.current === chatId) {
-      setActiveChatTitle((prev) => prev !== null ? nextTitle : prev)
+      setActiveChatTitle(nextTitle)
     }
     dispatchChatTitleUpdated({ chatId, title: nextTitle })
     return nextTitle
@@ -2629,8 +2671,6 @@ export default function ChatInterface({
     rawEmbedProjectId.length <= 64
       ? rawEmbedProjectId
       : null
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (idParam) void loadChat(idParam) }, [idParam])
 
   useEffect(() => {
     if (wasStreamingRef.current && !isActiveLoading && chat0.messages.length > 0) {
@@ -2981,7 +3021,7 @@ export default function ChatInterface({
         askModelIds: selectedModels,
         actModelId: selectedActModel,
       }
-      setChats((prev) => [newChat, ...prev])
+      setChats((prev) => upsertChatInList(prev, newChat))
       const runtime = ensureConversationRuntime(data.id, {
         composerMode,
         selectedActModel,
@@ -3292,6 +3332,38 @@ export default function ChatInterface({
     }
   }
 
+  loadChatRef.current = loadChat
+
+  useEffect(() => {
+    if (!idParam) return
+
+    const existingRuntime = runtimesRef.current.get(idParam)
+    const alreadyStreamingSameChat =
+      activeChatIdRef.current === idParam &&
+      !!existingRuntime &&
+      (
+        existingRuntime.askChats.some(
+          (chat) =>
+            chat.messages.some((message) => message.role === 'user') ||
+            chat.status === 'streaming' ||
+            chat.status === 'submitted',
+        ) ||
+        existingRuntime.actChat.messages.some((message) => message.role === 'user') ||
+        existingRuntime.actChat.status === 'streaming' ||
+        existingRuntime.actChat.status === 'submitted'
+      )
+    const alreadyHydratedSameChat =
+      activeChatIdRef.current === idParam &&
+      !!existingRuntime &&
+      existingRuntime.hydrated
+
+    if (alreadyStreamingSameChat || alreadyHydratedSameChat) {
+      return
+    }
+
+    void loadChatRef.current(idParam)
+  }, [idParam])
+
   async function handleDeleteTurnById(turnId: string) {
     const cid = activeChatIdRef.current ?? activeChatId
     if (!cid || !turnId) {
@@ -3327,6 +3399,7 @@ export default function ChatInterface({
   async function deleteChat(chatId: string, e: React.MouseEvent) {
     e.stopPropagation()
     await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
+    setChats((prev) => prev.filter((chat) => chat._id !== chatId))
     runtimesRef.current.delete(chatId)
     if (activeChatId === chatId) {
       setActiveChatId(null)

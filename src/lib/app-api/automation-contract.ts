@@ -93,10 +93,3 @@ export interface AppRunAutomationNowResult {
   turnId?: string;
   resultSummary?: string;
 }
-
-export type AppAutomationSummary = AutomationSummary;
-export type AppAutomationRunSummary = AutomationRunSummary;
-export type AppAutomationRunDetail = AutomationRunDetail;
-export type AppAutomationRunEventSummary = AutomationRunEventSummary;
-export type AppAutomationToolInvocationSummary = AutomationToolInvocationSummary;
-export type AppAutomationOutputSummary = AutomationOutputSummary;

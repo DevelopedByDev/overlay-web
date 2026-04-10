@@ -30,6 +30,8 @@ function SignInContent() {
   const redirectUrl = searchParams?.get("redirect") || "/account";
   const forceLogin = searchParams?.get("force") === "true";
   const isDesktopAuth = redirectUrl.startsWith("overlay://");
+  const desktopAuthFlow =
+    forceLogin || redirectUrl.includes("desktop_code_challenge=");
 
   useEffect(() => {
     const errorParam = searchParams?.get("error");
@@ -100,8 +102,16 @@ function SignInContent() {
     window.location.href = ssoUrl;
   };
 
-  const card = marketingAuthCard(isLandingDark);
-  const muted = marketingAuthMuted(isLandingDark);
+  const card = desktopAuthFlow
+    ? isLandingDark
+      ? "mx-auto w-full max-w-md rounded-[28px] border border-zinc-800 bg-zinc-950/92 p-8 shadow-[0_28px_120px_rgba(0,0,0,0.35)] backdrop-blur"
+      : "mx-auto w-full max-w-md rounded-[28px] border border-zinc-200 bg-white/96 p-8 shadow-[0_28px_120px_rgba(15,23,42,0.12)] backdrop-blur"
+    : marketingAuthCard(isLandingDark);
+  const muted = desktopAuthFlow
+    ? isLandingDark
+      ? "text-zinc-400"
+      : "text-zinc-500"
+    : marketingAuthMuted(isLandingDark);
   const sso = marketingSsoButton(isLandingDark);
   const field = marketingPrimaryField(isLandingDark);
   const submit = marketingSubmitButton(isLandingDark);
@@ -109,10 +119,24 @@ function SignInContent() {
   const labelText = isLandingDark ? "text-zinc-300" : "text-zinc-900";
   const linkMuted = isLandingDark ? "text-zinc-400 hover:text-zinc-200" : "text-zinc-500 hover:text-zinc-900";
   const createLink = isLandingDark ? "text-zinc-100 hover:underline font-medium" : "text-zinc-900 hover:underline font-medium";
+  const shellClass = desktopAuthFlow
+    ? isLandingDark
+      ? "flex min-h-screen w-full flex-col bg-[linear-gradient(180deg,#0b0b0d_0%,#101013_100%)]"
+      : "flex min-h-screen w-full flex-col bg-[linear-gradient(180deg,#fafafa_0%,#f4f4f5_100%)]"
+    : isLandingDark
+      ? "flex min-h-screen w-full flex-col bg-[radial-gradient(circle_at_top,_rgba(120,119,198,0.16),_transparent_32%),linear-gradient(180deg,#0b0b0d_0%,#121215_56%,#0a0a0c_100%)]"
+      : "flex min-h-screen w-full flex-col bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.06),_transparent_28%),linear-gradient(180deg,#fcfcfd_0%,#f5f5f7_56%,#efeff2_100%)]";
+  const ambientClass = desktopAuthFlow
+    ? isLandingDark
+      ? "pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(255,255,255,0.04),transparent_22%)]"
+      : "pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.85),transparent_20%)]"
+    : isLandingDark
+      ? "pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(255,255,255,0.06),transparent_22%),radial-gradient(circle_at_80%_0%,rgba(99,102,241,0.12),transparent_26%)]"
+      : "pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(255,255,255,0.92),transparent_18%),radial-gradient(circle_at_82%_4%,rgba(148,163,184,0.14),transparent_24%)]";
 
   return (
-    <div className="flex min-h-screen w-full flex-col gradient-bg">
-      <div className="liquid-glass" />
+    <div className={shellClass}>
+      <div className={ambientClass} />
 
       <PageNavbar />
 
@@ -269,7 +293,13 @@ function SignInContent() {
 
       <footer
         className={`relative z-10 mt-auto flex justify-center px-8 py-6 text-sm sm:justify-start ${
-          isLandingDark ? "border-t border-zinc-800 text-zinc-500" : "border-t border-zinc-200/80 text-zinc-500"
+          desktopAuthFlow
+            ? isLandingDark
+              ? "border-t border-zinc-900 text-zinc-500"
+              : "border-t border-zinc-200 text-zinc-500"
+            : isLandingDark
+              ? "border-t border-zinc-800 text-zinc-500"
+              : "border-t border-zinc-200/80 text-zinc-500"
         }`}
       >
         <p>© 2026 overlay</p>
@@ -283,8 +313,7 @@ export default function SignInPage() {
     <LandingThemeProvider>
       <Suspense
         fallback={
-          <div className="flex min-h-screen flex-col items-center justify-center gradient-bg">
-            <div className="liquid-glass" />
+          <div className="flex min-h-screen flex-col items-center justify-center bg-[linear-gradient(180deg,#fcfcfd_0%,#f5f5f7_56%,#efeff2_100%)]">
             <div className="relative z-10 text-center">
               <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent" />
               <p className="mt-4 text-zinc-500">Loading...</p>

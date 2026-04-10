@@ -104,22 +104,44 @@ function ProgressBar({
 
 function AccountPageContent() {
   const { isLandingDark } = useLandingTheme()
-  const panel = marketingPanel(isLandingDark)
-  const panelLg = marketingPanelLg(isLandingDark)
-  const t = {
-    title: marketingPageTitle(isLandingDark),
-    h: marketingHeading(isLandingDark),
-    muted: marketingMuted(isLandingDark),
-    body: marketingBody(isLandingDark),
-  }
-  const footBorder = isLandingDark ? 'border-zinc-800' : 'border-zinc-200'
-  const footMuted = marketingMuted(isLandingDark)
   const router = useRouter()
   const searchParams = useSearchParams()
   const sessionId = searchParams?.get('session_id') ?? null
   const successParam = searchParams?.get('success')
   const canceledParam = searchParams?.get('canceled')
   const desktopCodeChallenge = searchParams?.get('desktop_code_challenge')?.trim() || ''
+  const desktopAuthFlow = desktopCodeChallenge.length > 0
+  const panel = desktopAuthFlow
+    ? isLandingDark
+      ? 'rounded-3xl border border-zinc-800 bg-zinc-950/92 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.28)]'
+      : 'rounded-3xl border border-zinc-200 bg-white/96 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.10)]'
+    : marketingPanel(isLandingDark)
+  const panelLg = desktopAuthFlow ? panel : marketingPanelLg(isLandingDark)
+  const t = desktopAuthFlow
+    ? {
+        title: isLandingDark ? 'text-zinc-100' : 'text-zinc-900',
+        h: isLandingDark ? 'text-zinc-100' : 'text-zinc-900',
+        muted: isLandingDark ? 'text-zinc-400' : 'text-zinc-500',
+        body: isLandingDark ? 'text-zinc-300' : 'text-zinc-700',
+      }
+    : {
+        title: marketingPageTitle(isLandingDark),
+        h: marketingHeading(isLandingDark),
+        muted: marketingMuted(isLandingDark),
+        body: marketingBody(isLandingDark),
+      }
+  const footBorder = desktopAuthFlow
+    ? isLandingDark
+      ? 'border-zinc-900'
+      : 'border-zinc-200'
+    : isLandingDark
+      ? 'border-zinc-800'
+      : 'border-zinc-200'
+  const footMuted = desktopAuthFlow
+    ? isLandingDark
+      ? 'text-zinc-500'
+      : 'text-zinc-500'
+    : marketingMuted(isLandingDark)
   const [loading, setLoading] = useState(true)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   /** Set when /api/entitlements fails (e.g. Convex cannot verify WorkOS JWT) — avoids showing fake "free" defaults. */
@@ -324,8 +346,24 @@ function AccountPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col gradient-bg">
-      <div className="liquid-glass" />
+    <div
+      className={
+        desktopAuthFlow
+          ? isLandingDark
+            ? 'flex min-h-screen w-full flex-col bg-[linear-gradient(180deg,#0b0b0d_0%,#101013_100%)]'
+            : 'flex min-h-screen w-full flex-col bg-[linear-gradient(180deg,#fafafa_0%,#f4f4f5_100%)]'
+          : 'flex min-h-screen w-full flex-col gradient-bg'
+      }
+    >
+      <div
+        className={
+          desktopAuthFlow
+            ? isLandingDark
+              ? 'pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(255,255,255,0.04),transparent_22%)]'
+              : 'pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.85),transparent_20%)]'
+            : 'liquid-glass'
+        }
+      />
 
       {/* Header */}
       <PageNavbar />

@@ -78,7 +78,7 @@ export async function createAppFile(
   if (input.r2Key) {
     const { type: _type, ...storageArgs } = args;
     void _type;
-    id = await convex.mutation<string>("files:createWithStorage", {
+    const createdFileId = await convex.mutation<string>("files:createWithStorage", {
       ...storageArgs,
       r2Key: input.r2Key,
       sizeBytes:
@@ -86,6 +86,10 @@ export async function createAppFile(
           ? Math.max(0, Math.round(input.sizeBytes))
           : 0,
     });
+    if (!createdFileId) {
+      throw new Error("Failed to create file");
+    }
+    id = createdFileId;
   } else if (
     input.type === "file" &&
     typeof input.content === "string" &&
@@ -108,13 +112,17 @@ export async function createAppFile(
       ids.push(partId);
     }
     id = ids[0]!;
-  } else {
-    if (typeof input.content === "string" && input.content.length > 0) {
-      args.content = input.content;
-      args.contentHash = hashTextContent(input.content);
+    } else {
+      if (typeof input.content === "string" && input.content.length > 0) {
+        args.content = input.content;
+        args.contentHash = hashTextContent(input.content);
+      }
+      const createdFileId = await convex.mutation<string>("files:create", args);
+      if (!createdFileId) {
+        throw new Error("Failed to create file");
+      }
+      id = createdFileId;
     }
-    id = await convex.mutation<string>("files:create", args);
-  }
 
   return {
     id,

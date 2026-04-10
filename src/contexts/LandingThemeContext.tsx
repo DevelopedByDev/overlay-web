@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import { LANDING_THEME_STORAGE_KEY } from "@/lib/landingThemeConstants";
 
 export type LandingTheme = "light" | "dark";
@@ -13,6 +13,7 @@ type LandingThemeContextValue = {
 };
 
 const LandingThemeContext = createContext<LandingThemeContextValue | null>(null);
+const LANDING_THEME_CHANGE_EVENT = "overlay:landing-theme-change";
 
 function readStoredLandingTheme(): LandingTheme {
   if (typeof window === "undefined") return "light";
@@ -25,28 +26,52 @@ function readStoredLandingTheme(): LandingTheme {
   return "light";
 }
 
+function subscribeToLandingTheme(callback: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleStorage = (event: StorageEvent): void => {
+    if (!event.key || event.key === LANDING_THEME_STORAGE_KEY) {
+      callback();
+    }
+  };
+  const handleThemeChange = (): void => {
+    callback();
+  };
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(LANDING_THEME_CHANGE_EVENT, handleThemeChange);
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(LANDING_THEME_CHANGE_EVENT, handleThemeChange);
+  };
+}
+
 export function LandingThemeProvider({ children }: { children: React.ReactNode }) {
-  const [landingTheme, setLandingThemeState] = useState<LandingTheme>(readStoredLandingTheme);
+  const landingTheme = useSyncExternalStore<LandingTheme>(
+    subscribeToLandingTheme,
+    readStoredLandingTheme,
+    () => "light",
+  );
 
   const setLandingTheme = useCallback((theme: LandingTheme) => {
-    setLandingThemeState(theme);
     try {
       window.localStorage.setItem(LANDING_THEME_STORAGE_KEY, theme);
+      window.dispatchEvent(new Event(LANDING_THEME_CHANGE_EVENT));
     } catch {
       /* ignore */
     }
   }, []);
 
   const toggleLandingTheme = useCallback(() => {
-    setLandingThemeState((prev) => {
-      const next: LandingTheme = prev === "light" ? "dark" : "light";
-      try {
-        window.localStorage.setItem(LANDING_THEME_STORAGE_KEY, next);
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+    const next: LandingTheme = readStoredLandingTheme() === "light" ? "dark" : "light";
+    try {
+      window.localStorage.setItem(LANDING_THEME_STORAGE_KEY, next);
+      window.dispatchEvent(new Event(LANDING_THEME_CHANGE_EVENT));
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const value = useMemo<LandingThemeContextValue>(

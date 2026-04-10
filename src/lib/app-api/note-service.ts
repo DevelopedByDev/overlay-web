@@ -68,6 +68,9 @@ export async function createAppNote(
     tags: input.tags || [],
     projectId: input.projectId ?? undefined,
   });
+  if (!noteId) {
+    throw new Error("Failed to create note");
+  }
 
   return {
     id: noteId,

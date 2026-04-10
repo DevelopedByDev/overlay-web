@@ -8,20 +8,22 @@ export async function getAppUiSettings(
   userId: string,
   serverSecret: string,
 ): Promise<AppUiSettings> {
-  return await convex.query<AppUiSettings>(
-    "uiSettings:getByServer",
-    {
-      userId,
-      serverSecret,
-    },
-    { throwOnError: true },
+  return (
+    (await convex.query<AppUiSettings>(
+      "uiSettings:getByServer",
+      {
+        userId,
+        serverSecret,
+      },
+      { throwOnError: true },
+    )) ?? { theme: "light", useSecondarySidebar: false }
   );
 }
 
 export async function updateAppUiSettings(
   input: AppUpdateUiSettingsInput,
 ): Promise<AppUiSettings> {
-  const mutationArgs: AppUpdateUiSettingsInput = {
+  const mutationArgs: Record<string, unknown> = {
     userId: input.userId,
     serverSecret: input.serverSecret,
   };
@@ -33,9 +35,11 @@ export async function updateAppUiSettings(
     mutationArgs.useSecondarySidebar = input.useSecondarySidebar;
   }
 
-  return await convex.mutation<AppUiSettings>(
-    "uiSettings:upsertByServer",
-    mutationArgs,
-    { throwOnError: true },
+  return (
+    (await convex.mutation<AppUiSettings>(
+      "uiSettings:upsertByServer",
+      mutationArgs,
+      { throwOnError: true },
+    )) ?? { theme: "light", useSecondarySidebar: false }
   );
 }

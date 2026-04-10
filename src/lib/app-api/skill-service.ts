@@ -47,6 +47,9 @@ export async function createAppSkill(
     ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
     projectId: input.projectId ?? undefined,
   });
+  if (!skillId) {
+    throw new Error("Failed to create skill");
+  }
 
   return { id: skillId };
 }

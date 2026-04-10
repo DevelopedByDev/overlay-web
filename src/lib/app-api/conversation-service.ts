@@ -244,6 +244,9 @@ export async function createAppConversation(
       lastMode: input.lastMode,
     },
   );
+  if (!id) {
+    throw new Error("Failed to create conversation");
+  }
 
   return {
     id,

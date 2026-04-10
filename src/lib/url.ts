@@ -82,12 +82,13 @@ export function getAutomationExecutorBaseUrl(): string {
 }
 
 const DEFAULT_APP_URL = 'https://getoverlay.io'
+const DEFAULT_DEV_APP_URL = 'http://localhost:3000'
 
 export function getBaseUrl(): string {
   if (process.env.NODE_ENV === 'development') {
     const fromEnv =
       process.env.DEV_NEXT_PUBLIC_APP_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim()
-    return normalizeAppBaseUrl(fromEnv, DEFAULT_APP_URL)
+    return normalizeAppBaseUrl(fromEnv, DEFAULT_DEV_APP_URL)
   }
 
   if (process.env.NEXT_PUBLIC_APP_URL?.trim()) {

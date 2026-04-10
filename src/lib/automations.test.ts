@@ -210,6 +210,25 @@ test('getBaseUrl adds scheme when dev URL omits protocol (avoids Invalid URL in 
   }
 })
 
+test('getBaseUrl defaults to localhost in development when app URL env is absent', () => {
+  const env = process.env as Record<string, string | undefined>
+  const originalNodeEnv = env.NODE_ENV
+  const originalAppUrl = env.NEXT_PUBLIC_APP_URL
+  const originalDevAppUrl = env.DEV_NEXT_PUBLIC_APP_URL
+
+  try {
+    env.NODE_ENV = 'development'
+    env.NEXT_PUBLIC_APP_URL = ''
+    env.DEV_NEXT_PUBLIC_APP_URL = ''
+
+    assert.equal(getBaseUrl(), 'http://localhost:3000')
+  } finally {
+    env.NODE_ENV = originalNodeEnv
+    env.NEXT_PUBLIC_APP_URL = originalAppUrl
+    env.DEV_NEXT_PUBLIC_APP_URL = originalDevAppUrl
+  }
+})
+
 test('getAutomationExecutorBaseUrl prefers dedicated scheduler URL when set', () => {
   const env = process.env as Record<string, string | undefined>
   const originalExecutorBaseUrl = env.AUTOMATION_EXECUTOR_BASE_URL
