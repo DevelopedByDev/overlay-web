@@ -4,6 +4,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
+type ComposioAppRecord = {
+  key?: string
+  slug?: string
+  name?: string
+  displayName?: string
+  display_name?: string
+  appName?: string
+  app_name?: string
+  description?: string
+  logo?: string
+  logoUrl?: string
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadComposioSDK(apiKey: string): Promise<any> {
   let ComposioModule: { Composio: new (args: { apiKey: string }) => unknown }
@@ -24,6 +37,48 @@ async function loadComposioSDK(apiKey: string): Promise<any> {
 async function getComposioApiKey(accessToken: string): Promise<string | null> {
   const serverKey = accessToken ? await getServerProviderKey('composio') : null
   return serverKey ?? process.env.COMPOSIO_API_KEY ?? null
+}
+
+function firstNonEmptyString(...values: Array<unknown>): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+  return null
+}
+
+function normalizeSlug(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+function fallbackDisplayName(slug: string): string {
+  return slug
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function mapAppRecord(app: ComposioAppRecord) {
+  const slug = normalizeSlug(firstNonEmptyString(app.key, app.slug, app.appName, app.app_name, app.name) ?? '')
+  const name = firstNonEmptyString(app.displayName, app.display_name, app.name, app.appName, app.app_name)
+  return {
+    slug,
+    name: name ?? fallbackDisplayName(slug),
+    description: firstNonEmptyString(app.description) ?? '',
+    logoUrl: firstNonEmptyString(app.logoUrl, app.logo),
+  }
+}
+
+async function fetchAppRecord(apiKey: string, slug: string) {
+  const res = await fetch(`https://backend.composio.dev/api/v1/apps/${encodeURIComponent(slug)}`, {
+    headers: { 'x-api-key': apiKey },
+  })
+  if (!res.ok) return null
+  const data = await res.json() as ComposioAppRecord
+  const item = mapAppRecord(data)
+  return item.slug ? item : null
 }
 
 // GET - list connected integrations, or search toolkits
@@ -68,21 +123,22 @@ export async function GET(request: NextRequest) {
       const data = await res.json()
 
       // items may be under data.items or data directly as an array
-      const rawItems: Array<{ key?: string; name?: string; description?: string; logo?: string }> =
+      const rawItems: ComposioAppRecord[] =
         Array.isArray(data) ? data : (data.items || [])
 
       let items = rawItems.map((app) => {
-        const slug = (app.key || '').toLowerCase()
+        const mapped = mapAppRecord(app)
+        const slug = mapped.slug
         const connectedId = connectedMap.get(slug) ?? null
         return {
           slug,
-          name: app.name || slug,
-          description: app.description || '',
-          logoUrl: app.logo || null,
+          name: mapped.name,
+          description: mapped.description,
+          logoUrl: mapped.logoUrl,
           isConnected: connectedId !== null,
           connectedAccountId: connectedId,
         }
-      })
+      }).filter((item) => item.slug)
 
       // Client-side filter as fallback if server doesn't filter
       if (q) {
@@ -106,12 +162,22 @@ export async function GET(request: NextRequest) {
     )
 
     if (!res.ok) return NextResponse.json({ connected: [] })
-    const data = await res.json()
-    const connected: string[] = (data.items || []).map(
-      (item: { appName: string }) => item.appName?.toLowerCase()
-    ).filter(Boolean)
+    const data = await res.json() as { items?: Array<{ appName?: string }> }
+    const connected: string[] = [
+      ...new Set(((data.items ?? []) as Array<{ appName?: string }>)
+        .map((item) => normalizeSlug(item.appName || ''))
+        .filter(Boolean)),
+    ]
+    const items = (await Promise.all(connected.map((slug) => fetchAppRecord(apiKey, slug).catch(() => null))))
+      .filter((item): item is NonNullable<Awaited<ReturnType<typeof fetchAppRecord>>> => item !== null)
+      .map((item) => ({
+        slug: item.slug,
+        name: item.name,
+        description: item.description,
+        logoUrl: item.logoUrl,
+      }))
 
-    return NextResponse.json({ connected: [...new Set(connected)] })
+    return NextResponse.json({ connected, items })
   } catch {
     return NextResponse.json({ connected: [] })
   }

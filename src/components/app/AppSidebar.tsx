@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, LogOut, User,
@@ -51,6 +51,44 @@ const SETTINGS_SECTIONS = [
   { id: 'models', label: 'Models' },
   { id: 'contact', label: 'Contact' },
 ] as const
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'overlay:app-sidebar-collapsed'
+const SIDEBAR_COLLAPSED_EVENT = 'overlay:sidebar-collapsed-change'
+
+function getSidebarCollapsedSnapshot(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function subscribeToSidebarCollapsed(onStoreChange: () => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === SIDEBAR_COLLAPSED_STORAGE_KEY) onStoreChange()
+  }
+  const onLocalChange = () => onStoreChange()
+
+  window.addEventListener('storage', onStorage)
+  window.addEventListener(SIDEBAR_COLLAPSED_EVENT, onLocalChange)
+  return () => {
+    window.removeEventListener('storage', onStorage)
+    window.removeEventListener(SIDEBAR_COLLAPSED_EVENT, onLocalChange)
+  }
+}
+
+function setStoredSidebarCollapsed(next: boolean) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, next ? 'true' : 'false')
+    window.dispatchEvent(new Event(SIDEBAR_COLLAPSED_EVENT))
+  } catch {
+    // ignore
+  }
+}
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
@@ -111,14 +149,11 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    try {
-      return window.localStorage.getItem('overlay:app-sidebar-collapsed') === 'true'
-    } catch {
-      return false
-    }
-  })
+  const sidebarCollapsed = useSyncExternalStore(
+    subscribeToSidebarCollapsed,
+    getSidebarCollapsedSnapshot,
+    () => false,
+  )
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
   const [notesPanelRefreshKey, setNotesPanelRefreshKey] = useState(0)
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
@@ -158,14 +193,6 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       // ignore
     }
   }, [])
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('overlay:app-sidebar-collapsed', sidebarCollapsed ? 'true' : 'false')
-    } catch {
-      // ignore
-    }
-  }, [sidebarCollapsed])
 
   useEffect(() => {
     if (!accountMenuOpen && !mobileAccountOpen && !knowledgeOpen) return
@@ -317,7 +344,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   const desktopBrandControl = sidebarCollapsed ? (
     <button
       type="button"
-      onClick={() => setSidebarCollapsed(false)}
+      onClick={() => setStoredSidebarCollapsed(false)}
       className="group inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)]"
       aria-label="Expand sidebar"
       title="Expand sidebar"
@@ -372,7 +399,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
             type="button"
             onClick={() => {
               setAccountMenuOpen(false)
-              setSidebarCollapsed(true)
+              setStoredSidebarCollapsed(true)
             }}
             aria-label="Collapse sidebar"
             title="Collapse sidebar"

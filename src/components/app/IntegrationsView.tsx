@@ -82,18 +82,40 @@ const KNOWN_NAMES: Record<string, string> = {
 
 function sanitizeName(name: string): string {
   // Fix snake_case names from Composio (e.g. "Rocket_reach" → "Rocket Reach")
-  return name.replace(/_([a-z])/g, (_, c: string) => ' ' + c.toUpperCase()).replace(/_/g, ' ')
+  return name.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function resolvedName(slug: string, apiName: string): string {
+  const resolvedApiName = sanitizeName(apiName)
+  if (resolvedApiName) return resolvedApiName
   if (KNOWN_NAMES[slug]) return KNOWN_NAMES[slug]
-  const base = (apiName && apiName.toLowerCase() !== slug.toLowerCase()) ? apiName : slug
-  return sanitizeName(base.charAt(0).toUpperCase() + base.slice(1))
+  const base = sanitizeName(slug)
+  return base
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function truncateDescription(desc: string): string {
   const compact = desc.replace(/\s+/g, ' ').trim()
   return compact.length <= 84 ? compact : `${compact.slice(0, 83).trimEnd()}...`
+}
+
+function mergeCatalogEntries(current: CatalogItem[], incoming: CatalogItem[]): CatalogItem[] {
+  const merged = new Map<string, CatalogItem>()
+  for (const item of current) merged.set(item.slug, item)
+  for (const item of incoming) {
+    const existing = merged.get(item.slug)
+    merged.set(item.slug, {
+      ...existing,
+      ...item,
+      name: resolvedName(item.slug, item.name || existing?.name || ''),
+      description: item.description?.trim() || existing?.description || '',
+      logoUrl: item.logoUrl ?? existing?.logoUrl ?? null,
+    })
+  }
+  return [...merged.values()]
 }
 
 function IntegrationsDialog({
@@ -353,8 +375,19 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
     try {
       const res = await fetch('/api/app/integrations')
       if (res.ok) {
-        const data = await res.json()
+        const data = await res.json() as { connected?: string[]; items?: CatalogItem[] }
         setConnected(new Set(data.connected || []))
+        const items = Array.isArray(data.items) ? data.items : []
+        if (items.length > 0) {
+          setCatalogItems((prev) => mergeCatalogEntries(prev, items))
+          setLogos((prev) => {
+            const next = { ...prev }
+            for (const item of items) {
+              next[item.slug] = item.logoUrl ?? null
+            }
+            return next
+          })
+        }
       }
     } catch {
       // ignore
@@ -370,7 +403,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
       if (!res.ok) return
       const data = await res.json()
       const items = (Array.isArray(data?.items) ? data.items : []) as CatalogItem[]
-      setCatalogItems(items)
+      setCatalogItems((prev) => mergeCatalogEntries(prev, items))
       setLogos((prev) => {
         const next = { ...prev }
         for (const item of items) {
@@ -515,14 +548,24 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
 
   const integrationForSlug = useCallback(
     (slug: string): Integration => {
-      const preset = INTEGRATIONS.find((i) => i.composioId === slug)
-      if (preset) return preset
       const cat = catalogItems.find((c) => c.slug === slug)
+      const preset = INTEGRATIONS.find((i) => i.composioId === slug)
+      if (cat) {
+        return {
+          id: slug,
+          composioId: slug,
+          name: resolvedName(slug, cat.name),
+          description: cat.description?.trim() || preset?.description || 'Connected integration',
+          icon: preset?.icon || '🔌',
+          logoUrl: cat.logoUrl,
+        }
+      }
+      if (preset) return preset
       return {
         id: slug,
         composioId: slug,
-        name: resolvedName(slug, cat?.name ?? slug),
-        description: cat?.description?.trim() || 'Connected integration',
+        name: resolvedName(slug, slug),
+        description: 'Connected integration',
         icon: '🔌',
       }
     },
@@ -542,13 +585,14 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
     }
     for (const c of catalogItems) {
       if (connected.has(c.slug)) continue
-      if (bySlug.has(c.slug)) continue
+      const existing = bySlug.get(c.slug)
       bySlug.set(c.slug, {
         id: c.slug,
         composioId: c.slug,
-        name: resolvedName(c.slug, c.name),
-        description: c.description?.trim() || '',
-        icon: '🔌',
+        name: resolvedName(c.slug, c.name || existing?.name || ''),
+        description: c.description?.trim() || existing?.description || '',
+        icon: existing?.icon || '🔌',
+        logoUrl: c.logoUrl ?? existing?.logoUrl ?? null,
       })
     }
     return [...bySlug.values()].sort((a, b) => a.name.localeCompare(b.name))
