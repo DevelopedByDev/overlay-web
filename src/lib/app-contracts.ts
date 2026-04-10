@@ -13,6 +13,8 @@ import type {
   AppConversationSummary,
 } from "@/lib/app-api/conversation-contract";
 import type { AppMemoryListRow } from "@/lib/app-api/memory-contract";
+import type { AppNoteDoc } from "@/lib/app-api/note-contract";
+import type { AppProjectSummary } from "@/lib/app-api/project-contract";
 import type { ChatModel, ImageModel, VideoModel } from "@/lib/models";
 import type { OutputType, OutputSource } from "@/lib/output-types";
 
@@ -37,17 +39,7 @@ export interface Entitlements {
 export type ConversationSummary = AppConversationSummary;
 export type ConversationMessage = AppConversationMessage;
 
-export interface NoteDoc {
-  _id: string;
-  title: string;
-  content: string;
-  tags: string[];
-  createdAt: number;
-  updatedAt: number;
-  deletedAt?: number;
-  clientId?: string;
-  projectId?: string;
-}
+export type NoteDoc = AppNoteDoc;
 
 export interface KnowledgeFile {
   _id: string;
@@ -100,14 +92,7 @@ export interface SkillSummary {
   projectId?: string;
 }
 
-export interface ProjectSummary {
-  _id: string;
-  name: string;
-  description?: string;
-  instructions?: string;
-  updatedAt: number;
-  createdAt: number;
-}
+export type ProjectSummary = AppProjectSummary;
 
 export interface AppFeatureFlags {
   canUseVoiceTranscription: boolean;
