@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  Brain, Trash2, Plus, X, FilePlus, FolderPlus,
+  Brain, Trash2, Plus, X, FilePlus, FolderPlus, FolderInput, Copy, Check,
   ChevronRight, ChevronDown, FileText, Folder, FolderOpen, Search,
   LayoutList, LayoutGrid, RefreshCw, SquareMousePointer,
 } from 'lucide-react'
@@ -55,6 +55,8 @@ const TOOLBAR_FILLED_BUTTON_CLASS =
 
 const DIALOG_ACTION_BUTTON_CLASS =
   'px-3 py-1.5 rounded-md text-xs border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
+
+const IMPORT_MEMORY_PROMPT = 'Export all of my stored memories and any context you\'ve learned about me from past conversations. Preserve my words verbatim where possible, especially for instructions and preferences.'
 
 function filePathLabel(all: FileNode[], file: FileNode): string {
   const parts: string[] = []
@@ -247,6 +249,10 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   const [showAddMemory, setShowAddMemory] = useState(false)
   const [addText, setAddText] = useState('')
   const [isSavingMemory, setIsSavingMemory] = useState(false)
+  const [showImportMemory, setShowImportMemory] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [isImporting, setIsImporting] = useState(false)
+  const [importPromptCopied, setImportPromptCopied] = useState(false)
 
   // ── File system state ──
   const [files, setFiles] = useState<FileNode[]>([])
@@ -433,6 +439,23 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       setShowAddMemory(false)
       await loadMemories()
     } finally { setIsSavingMemory(false) }
+  }
+
+  async function handleImportMemory() {
+    const text = importText.trim()
+    if (!text || isImporting) return
+    setIsImporting(true)
+    try {
+      const res = await fetch('/api/app/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text, source: 'manual' }),
+      })
+      if (!res.ok) return
+      setImportText('')
+      setShowImportMemory(false)
+      await loadMemories()
+    } finally { setIsImporting(false) }
   }
 
   async function handleDeleteMemory(memoryId: string) {
@@ -652,6 +675,65 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         </div>
       )}
 
+      {/* ── Import memory modal ── */}
+      {showImportMemory && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowImportMemory(false); setImportText('') } }}
+        >
+          <div className="w-[540px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-sm font-medium text-[var(--foreground)]">Import memory</h3>
+              <button onClick={() => { setShowImportMemory(false); setImportText('') }} className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] transition-colors">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex gap-3 mb-5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">1</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-[var(--foreground)] mb-2">Copy this prompt into a chat with your other AI provider</p>
+                <div className="relative rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 pt-3 pb-10">
+                  <p className="text-xs leading-relaxed text-[var(--foreground)]">{IMPORT_MEMORY_PROMPT}</p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(IMPORT_MEMORY_PROMPT)
+                      setImportPromptCopied(true)
+                      setTimeout(() => setImportPromptCopied(false), 2000)
+                    }}
+                    className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+                  >
+                    {importPromptCopied ? <Check size={11} /> : <Copy size={11} />}
+                    {importPromptCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mb-5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">2</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-[var(--foreground)] mb-2">Paste results below to add to your memory</p>
+                <textarea
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  placeholder="Paste your memory details here"
+                  rows={6}
+                  className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-xs text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setShowImportMemory(false); setImportText('') }} className={DIALOG_ACTION_BUTTON_CLASS}>Cancel</button>
+              <button
+                onClick={handleImportMemory}
+                disabled={!importText.trim() || isImporting}
+                className={`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`}
+              >{isImporting ? 'Saving…' : 'Add to memory'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── New file/folder modal ── */}
       {dialog && (
         <div
@@ -776,17 +858,36 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       )}
 
       {/* ── Header ── */}
-      <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-6">
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
+        <div className="flex min-w-0 shrink-0 items-center gap-3">
           <h1 className="text-sm font-medium text-[var(--foreground)]">
             {activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
           </h1>
-          {activeTab !== 'outputs' && (
+          {activeTab !== 'outputs' && !memorySearchOpen && !fileSearchOpen && (
             <span className="text-xs text-[var(--muted-light)]">
               {activeTab === 'memories' ? memoriesFiltered.length : filesFiltered.length} items
             </span>
           )}
         </div>
+        {activeTab === 'memories' && memorySearchOpen ? (
+          <input
+            value={memorySearchQuery}
+            onChange={(e) => setMemorySearchQuery(e.target.value)}
+            placeholder="Search memories…"
+            autoFocus
+            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+          />
+        ) : activeTab === 'files' && fileSearchOpen ? (
+          <input
+            value={fileSearchQuery}
+            onChange={(e) => setFileSearchQuery(e.target.value)}
+            placeholder="Search file names…"
+            autoFocus
+            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+          />
+        ) : (
+          <div className="flex-1" />
+        )}
         <div className="flex shrink-0 items-center gap-2">
           {(activeTab === 'memories' || activeTab === 'files' || activeTab === 'outputs') &&
             (selectMode ? (
@@ -923,6 +1024,14 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               </button>
               <button
                 type="button"
+                onClick={() => setShowImportMemory(true)}
+                className={TOOLBAR_FILLED_BUTTON_CLASS}
+              >
+                <FolderInput size={13} />
+                Import
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowAddMemory(true)}
                 className={TOOLBAR_FILLED_BUTTON_CLASS}
               >
@@ -962,29 +1071,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           ) : null}
         </div>
       </div>
-
-      {activeTab === 'memories' && memorySearchOpen && (
-        <div className="shrink-0 border-b border-[var(--border)] px-6 py-2">
-          <input
-            value={memorySearchQuery}
-            onChange={(e) => setMemorySearchQuery(e.target.value)}
-            placeholder="Search memories…"
-            autoFocus
-            className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-          />
-        </div>
-      )}
-      {activeTab === 'files' && fileSearchOpen && (
-        <div className="shrink-0 border-b border-[var(--border)] px-6 py-2">
-          <input
-            value={fileSearchQuery}
-            onChange={(e) => setFileSearchQuery(e.target.value)}
-            placeholder="Search file names…"
-            autoFocus
-            className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-          />
-        </div>
-      )}
 
       {/* ── Main content ── */}
       <div

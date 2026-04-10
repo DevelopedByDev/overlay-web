@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Sparkles, Trash2, Loader2, Check, ToggleLeft, ToggleRight, X, Pencil } from 'lucide-react'
+import { Plus, Sparkles, Trash2, Loader2, Check, ToggleLeft, ToggleRight, X, Pencil, Search } from 'lucide-react'
 
 interface Skill {
   _id: string
@@ -195,6 +195,8 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const loadSkills = useCallback(async () => {
     try {
@@ -234,18 +236,41 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
-        <div>
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
+        <div className="shrink-0">
           <h2 className="text-sm font-medium text-[var(--foreground)]">Skills</h2>
-          <p className="text-[11px] text-[var(--muted)]">Reusable instructions injected into every AI response</p>
+          {!searchOpen && <p className="text-[11px] text-[var(--muted)]">Reusable instructions injected into every AI response</p>}
         </div>
-        <button
-          onClick={() => setDialog({ mode: 'create' })}
-          className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
-        >
-          <Plus size={12} />
-          New Skill
-        </button>
+        {searchOpen ? (
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search skills…"
+            autoFocus
+            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+          />
+        ) : (
+          <div className="flex-1" />
+        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            title="Search skills"
+            onClick={() => { setSearchOpen((v) => !v); if (searchOpen) setSearchQuery('') }}
+            className={`flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+              searchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
+            }`}
+          >
+            <Search size={14} strokeWidth={1.75} />
+          </button>
+          <button
+            onClick={() => setDialog({ mode: 'create' })}
+            className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+          >
+            <Plus size={12} />
+            New Skill
+          </button>
+        </div>
       </div>
 
       {/* Body */}
@@ -272,7 +297,7 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-6 py-6">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {skills.map((skill) => (
+              {skills.filter((s) => !searchQuery.trim() || s.name.toLowerCase().includes(searchQuery.toLowerCase()) || (s.description && s.description.toLowerCase().includes(searchQuery.toLowerCase()))).map((skill) => (
                 <div
                   key={skill._id}
                   onClick={() => setDialog({ mode: 'edit', skill })}

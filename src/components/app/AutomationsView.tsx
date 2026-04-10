@@ -13,6 +13,7 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Search,
   Sparkles,
   Trash2,
   Workflow,
@@ -1050,6 +1051,8 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
   const [runs, setRuns] = useState<AutomationRunSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingRuns, setLoadingRuns] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [runningIds, setRunningIds] = useState<Record<string, boolean>>({})
   const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({})
@@ -1165,13 +1168,40 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
     }
   }
 
+  const automationsFiltered = automations.filter((a) =>
+    !searchQuery.trim() ||
+    a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (a.description && a.description.toLowerCase().includes(searchQuery.toLowerCase()))
+  )
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
-        <div>
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
+        <div className="shrink-0">
           <h2 className="text-sm font-medium text-[var(--foreground)]">Automations</h2>
         </div>
+        {searchOpen ? (
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search automations…"
+            autoFocus
+            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+          />
+        ) : (
+          <div className="flex-1" />
+        )}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            title="Search automations"
+            onClick={() => { setSearchOpen((v) => !v); if (searchOpen) setSearchQuery('') }}
+            className={`flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+              searchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
+            }`}
+          >
+            <Search size={14} strokeWidth={1.75} />
+          </button>
           <div className="flex items-center rounded-lg bg-[var(--surface-subtle)] p-0.5">
             <button
               type="button"
@@ -1222,7 +1252,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
       ) : layout === 'list' ? (
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
           <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]">
-            {automations.map((automation) => (
+            {automationsFiltered.map((automation) => (
               <div key={automation._id} className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-b-0">
                 <button type="button" onClick={() => setDialog({ mode: 'edit', automation })} className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-2">
@@ -1268,7 +1298,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl px-6 py-6">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {automations.map((automation) => (
+              {automationsFiltered.map((automation) => (
                 <div key={automation._id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
                   <button type="button" onClick={() => setDialog({ mode: 'edit', automation })} className="block w-full text-left">
                     <div className="mb-3 flex items-start gap-2">

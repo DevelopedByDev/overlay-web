@@ -370,6 +370,8 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [connectedVisible, setConnectedVisible] = useState(LIST_PAGE_SIZE)
   const [availableVisible, setAvailableVisible] = useState(LIST_PAGE_SIZE)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const loadConnected = useCallback(async () => {
     try {
@@ -606,14 +608,38 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
     setAvailableVisible(LIST_PAGE_SIZE)
   }, [availableList.length])
 
-  const connectedShown = connectedRows.slice(0, connectedVisible)
-  const availableShown = availableList.slice(0, availableVisible)
+  const searchQ = searchQuery.toLowerCase().trim()
+  const filteredConnectedRows = searchQ ? connectedRows.filter((i) => i.name.toLowerCase().includes(searchQ)) : connectedRows
+  const filteredAvailableList = searchQ ? availableList.filter((i) => i.name.toLowerCase().includes(searchQ)) : availableList
+  const connectedShown = filteredConnectedRows.slice(0, connectedVisible)
+  const availableShown = filteredAvailableList.slice(0, availableVisible)
 
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex h-16 items-center border-b border-[var(--border)] px-6">
-        <h2 className="text-sm font-medium text-[var(--foreground)]">Integrations</h2>
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
+        <h2 className="shrink-0 text-sm font-medium text-[var(--foreground)]">Integrations</h2>
+        {searchOpen ? (
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search integrations…"
+            autoFocus
+            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+          />
+        ) : (
+          <div className="flex-1" />
+        )}
+        <button
+          type="button"
+          title="Search integrations"
+          onClick={() => { setSearchOpen((v) => !v); if (searchOpen) setSearchQuery('') }}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+            searchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
+          }`}
+        >
+          <Search size={14} strokeWidth={1.75} />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -628,7 +654,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
               </div>
             )}
 
-            {connectedRows.length > 0 && (
+            {filteredConnectedRows.length > 0 && (
               <div>
                 <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">Connected</p>
                 <div className="space-y-1">
@@ -643,7 +669,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
                     />
                   ))}
                 </div>
-                {connectedVisible < connectedRows.length ? (
+                {connectedVisible < filteredConnectedRows.length ? (
                   <button
                     type="button"
                     onClick={() => setConnectedVisible((n) => n + LIST_PAGE_SIZE)}
@@ -680,7 +706,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
                   />
                 ))}
               </div>
-              {availableVisible < availableList.length ? (
+              {availableVisible < filteredAvailableList.length ? (
                 <button
                   type="button"
                   onClick={() => setAvailableVisible((n) => n + LIST_PAGE_SIZE)}
