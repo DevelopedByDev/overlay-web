@@ -1662,6 +1662,7 @@ const VIDEO_MODEL_SELECTION_MODE_KEY = 'overlay_video_model_selection_mode'
 const SELECTED_IMAGE_MODELS_KEY = 'overlay_selected_image_models'
 const SELECTED_VIDEO_MODELS_KEY = 'overlay_selected_video_models'
 const ACT_MODEL_KEY = 'overlay_act_model'
+const COMPOSER_MODE_KEY = 'overlay_composer_mode'
 const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
 const SUPPORTED_INPUT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 
@@ -2119,6 +2120,10 @@ export default function ChatInterface({
     }
     const savedAct = localStorage.getItem(ACT_MODEL_KEY)
     if (savedAct) setSelectedActModel(savedAct)
+    const savedComposerMode = localStorage.getItem(COMPOSER_MODE_KEY)
+    if (savedComposerMode === 'ask' || savedComposerMode === 'act') {
+      setComposerMode(savedComposerMode)
+    }
     const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
     if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
 
@@ -2469,6 +2474,10 @@ export default function ChatInterface({
     localStorage.setItem(ASK_MODEL_SELECTION_MODE_KEY, 'single')
     localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_AUTO_MODEL_ID)
   }, [chatPrefsHydrated, activeChatId, isFreeTier, selectedActModel, selectedModels])
+
+  useEffect(() => {
+    localStorage.setItem(COMPOSER_MODE_KEY, composerMode)
+  }, [composerMode])
 
   // ── data loading ──────────────────────────────────────────────────────────
 
@@ -2911,8 +2920,6 @@ export default function ChatInterface({
 
   function clearTransientComposerState() {
     setPendingChatDocuments([])
-    setSelectedImageModels([DEFAULT_IMAGE_MODEL_ID])
-    setSelectedVideoModels([DEFAULT_VIDEO_MODEL_ID])
     setReplyContext(null)
     setAttachmentError(null)
     setComposerNotice(null)
@@ -3314,6 +3321,7 @@ export default function ChatInterface({
         composerMode,
         selectedActModel,
         selectedModels,
+        askModelSelectionMode,
       }))
       clearTransientComposerState()
       setActiveViewer(null)
@@ -4276,7 +4284,7 @@ export default function ChatInterface({
           </div>
         )}
         {/* Sticky header — md: h-16 aligns with AppSidebar brand row border; stack on narrow screens */}
-        <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-hidden md:py-0 md:px-4">
+        <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:py-0 md:px-4">
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--foreground)] md:max-w-[min(100%,20rem)] md:truncate lg:max-w-[24rem]">
                 <span className="line-clamp-2 md:line-clamp-1 md:truncate">

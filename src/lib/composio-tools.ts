@@ -106,10 +106,10 @@ async function loadComposioModules(): Promise<{
     }
   } catch {
     const coreUrl = pathToFileURL(
-      path.resolve(process.cwd(), '../overlay/node_modules/@composio/core/dist/index.mjs')
+      path.resolve(process.cwd(), '../overlay-desktop/node_modules/@composio/core/dist/index.mjs')
     ).href
     const vercelUrl = pathToFileURL(
-      path.resolve(process.cwd(), '../overlay/node_modules/@composio/vercel/dist/index.mjs')
+      path.resolve(process.cwd(), '../overlay-desktop/node_modules/@composio/vercel/dist/index.mjs')
     ).href
 
     try {

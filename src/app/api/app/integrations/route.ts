@@ -12,7 +12,7 @@ async function loadComposioSDK(apiKey: string): Promise<any> {
     ComposioModule = await import('@composio/core')
   } catch {
     const coreUrl = pathToFileURL(
-      path.resolve(process.cwd(), '../overlay/node_modules/@composio/core/dist/index.mjs')
+      path.resolve(process.cwd(), '../overlay-desktop/node_modules/@composio/core/dist/index.mjs')
     ).href
     ComposioModule = await import(/* webpackIgnore: true */ coreUrl)
   }
