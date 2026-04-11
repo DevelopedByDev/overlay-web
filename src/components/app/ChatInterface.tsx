@@ -44,9 +44,12 @@ import {
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
 import {
+  CHAT_CREATED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
+  dispatchChatCreated,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
+  type ChatCreatedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -2380,6 +2383,24 @@ export default function ChatInterface({
   }, [applyUiStateToView, ensureConversationRuntime])
 
   useEffect(() => {
+    function handleChatCreated(event: Event) {
+      const { detail } = event as CustomEvent<ChatCreatedDetail>
+      const nextChat = detail?.chat
+      if (!nextChat?._id) return
+      setChats((prev) => {
+        const existingIndex = prev.findIndex((chat) => chat._id === nextChat._id)
+        if (existingIndex === -1) return [nextChat, ...prev]
+        const existing = prev[existingIndex]
+        const merged = {
+          ...existing,
+          ...nextChat,
+          title: nextChat.title || existing.title,
+        }
+        const withoutExisting = prev.filter((chat) => chat._id !== nextChat._id)
+        return [merged, ...withoutExisting]
+      })
+    }
+
     function handleChatTitleUpdated(event: Event) {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
@@ -2391,8 +2412,12 @@ export default function ChatInterface({
         setActiveChatTitle(detail.title)
       }
     }
+    window.addEventListener(CHAT_CREATED_EVENT, handleChatCreated)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
-    return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+    return () => {
+      window.removeEventListener(CHAT_CREATED_EVENT, handleChatCreated)
+      window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+    }
   }, [updateRuntimeUiState])
 
   const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : emptyRuntimeRef.current
@@ -2629,8 +2654,14 @@ export default function ChatInterface({
     rawEmbedProjectId.length <= 64
       ? rawEmbedProjectId
       : null
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (idParam) void loadChat(idParam) }, [idParam])
+  // Skip reloading the same chat we just created/switched to locally; otherwise the
+  // route update can race the optimistic first-turn state and snap the UI back to empty.
+  useEffect(() => {
+    if (!idParam || activeChatIdRef.current === idParam) return
+    void loadChat(idParam)
+    // `loadChat` is intentionally excluded so this only reacts to route changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idParam])
 
   useEffect(() => {
     if (wasStreamingRef.current && !isActiveLoading && chat0.messages.length > 0) {
@@ -2982,6 +3013,7 @@ export default function ChatInterface({
         actModelId: selectedActModel,
       }
       setChats((prev) => [newChat, ...prev])
+      dispatchChatCreated({ chat: newChat })
       const runtime = ensureConversationRuntime(data.id, {
         composerMode,
         selectedActModel,

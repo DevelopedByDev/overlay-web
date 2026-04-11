@@ -16,9 +16,11 @@ import {
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import {
+  CHAT_CREATED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
+  type ChatCreatedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
 
@@ -67,6 +69,25 @@ export function ChatInlinePanel({
   }, [loadChats, refreshKey])
 
   useEffect(() => {
+    function handleChatCreated(event: Event) {
+      const { detail } = event as CustomEvent<ChatCreatedDetail>
+      const nextChat = detail?.chat
+      if (!nextChat?._id) return
+      setLoading(false)
+      setChats((prev) => {
+        const existingIndex = prev.findIndex((chat) => chat._id === nextChat._id)
+        if (existingIndex === -1) return [nextChat, ...prev]
+        const existing = prev[existingIndex]
+        const merged = {
+          ...existing,
+          ...nextChat,
+          title: nextChat.title || existing.title,
+        }
+        const withoutExisting = prev.filter((chat) => chat._id !== nextChat._id)
+        return [merged, ...withoutExisting]
+      })
+    }
+
     function handleChatTitleUpdated(event: Event) {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
@@ -74,8 +95,12 @@ export function ChatInlinePanel({
         chat._id === detail.chatId ? { ...chat, title: detail.title } : chat
       )))
     }
+    window.addEventListener(CHAT_CREATED_EVENT, handleChatCreated)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
-    return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+    return () => {
+      window.removeEventListener(CHAT_CREATED_EVENT, handleChatCreated)
+      window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+    }
   }, [])
 
   function beginRename(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
