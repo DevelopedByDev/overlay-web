@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
+import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { PageNavbar } from '@/components/PageNavbar'
+import { formatBytes } from '@/lib/storage-limits'
 import {
   marketingBody,
   marketingHeading,
@@ -21,13 +23,26 @@ const APP_PROTOCOL = 'overlay'
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
+  planKind: 'free' | 'paid'
+  planAmountCents: number
   status: 'active' | 'canceled' | 'past_due' | 'trialing'
+  autoTopUpEnabled: boolean
+  autoTopUpAmountCents: number
+  autoTopUpConsentGranted: boolean
+  budgetUsedCents: number
+  budgetTotalCents: number
+  budgetRemainingCents: number
+  creditsUsed: number
+  creditsTotal: number
+  overlayStorageBytesUsed: number
+  overlayStorageBytesLimit: number
   limits: {
     askPerDay: number
     agentPerDay: number
     writePerDay: number
     tokenBudget: number
     transcriptionSecondsPerWeek: number
+    overlayStorageBytes: number
   }
   usage: {
     ask: number
@@ -35,6 +50,7 @@ interface Entitlements {
     write: number
     tokenCostAccrued: number
     transcriptionSeconds: number
+    overlayStorageBytes: number
   }
   remaining: {
     ask: number
@@ -42,15 +58,49 @@ interface Entitlements {
     write: number
     tokenBudget: number
     transcriptionSeconds: number
+    overlayStorageBytes: number
   }
   billingPeriodEnd?: number
+}
+
+interface BillingSettings {
+  planKind: 'free' | 'paid'
+  autoTopUpEnabled: boolean
+  topUpAmountCents: number
+  autoTopUpAmountCents: number
+  offSessionConsentAt?: number
+  topUpMinAmountCents: number
+  topUpMaxAmountCents: number
+  topUpStepAmountCents: number
+}
+
+interface TopUpHistoryItem {
+  _id: string
+  amountCents: number
+  source: 'manual' | 'auto'
+  status: 'pending' | 'succeeded' | 'failed' | 'canceled'
+  createdAt: number
+  updatedAt: number
+  errorMessage?: string
 }
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+function formatDateTime(timestampMs: number): string {
+  return new Date(timestampMs).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'UTC',
   })
 }
 
@@ -119,6 +169,8 @@ function AccountPageContent() {
   const sessionId = searchParams?.get('session_id') ?? null
   const successParam = searchParams?.get('success')
   const canceledParam = searchParams?.get('canceled')
+  const topUpSuccessParam = searchParams?.get('topup_success')
+  const topUpSessionId = searchParams?.get('topup_session_id') ?? null
   const desktopCodeChallenge = searchParams?.get('desktop_code_challenge')?.trim() || ''
   const [loading, setLoading] = useState(true)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
@@ -126,6 +178,10 @@ function AccountPageContent() {
   const [entitlementsError, setEntitlementsError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null)
+  const [topUpHistory, setTopUpHistory] = useState<TopUpHistoryItem[]>([])
+  const [topUpAmountDraftCents, setTopUpAmountDraftCents] = useState(800)
+  const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
 
   // Get userId from AuthContext (session-based)
   const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
@@ -166,8 +222,42 @@ function AccountPageContent() {
     }
   }
 
+  const refreshBillingState = useCallback(async () => {
+    const [entitlementsResponse, settingsResponse, topUpHistoryResponse] = await Promise.all([
+      fetch('/api/entitlements'),
+      fetch('/api/subscription/settings'),
+      fetch('/api/topups/history'),
+    ])
+
+    if (entitlementsResponse.ok) {
+      setEntitlements(await entitlementsResponse.json())
+      setEntitlementsError(null)
+    }
+
+    if (settingsResponse.ok) {
+      const settingsData = await settingsResponse.json()
+      setBillingSettings(settingsData)
+      setTopUpAmountDraftCents(settingsData.topUpAmountCents ?? settingsData.autoTopUpAmountCents ?? settingsData.topUpMinAmountCents ?? 800)
+      setAutoTopUpEnabledDraft(Boolean(settingsData.autoTopUpEnabled))
+    }
+
+    if (topUpHistoryResponse.ok) {
+      const data = await topUpHistoryResponse.json()
+      setTopUpHistory(Array.isArray(data.items) ? data.items : [])
+    }
+  }, [])
+
   // Check for success/error params, verify checkout, and auto-trigger deep link
   useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
+    nextParams.delete('success')
+    nextParams.delete('session_id')
+    nextParams.delete('canceled')
+    nextParams.delete('topup_success')
+    nextParams.delete('topup_session_id')
+    nextParams.delete('topup_canceled')
+    const nextUrl = `/account${nextParams.toString() ? `?${nextParams.toString()}` : ''}`
+
     if (successParam && sessionId) {
       // Verify the checkout session and update subscription in Convex
       async function verifyCheckout() {
@@ -180,28 +270,50 @@ function AccountPageContent() {
           
           if (response.ok) {
             const data = await response.json()
-            setMessage({ type: 'success', text: `Subscription to ${data.tier} plan activated successfully!` })
-            // Refresh entitlements after verification
-            const entResponse = await fetch('/api/entitlements')
-            if (entResponse.ok) {
-              const entData = await entResponse.json()
-              setEntitlements(entData)
-              setEntitlementsError(null)
-            }
+            const planLabel = typeof data.planAmountCents === 'number' ? `$${(data.planAmountCents / 100).toFixed(0)}/month` : 'paid'
+            setMessage({ type: 'success', text: `Subscription to the ${planLabel} plan activated successfully.` })
+            await refreshBillingState()
           } else {
             setMessage({ type: 'success', text: 'Subscription activated successfully!' })
           }
         } catch (error) {
           console.error('[Account] Checkout verification error:', error)
           setMessage({ type: 'success', text: 'Subscription activated successfully!' })
+        } finally {
+          router.replace(nextUrl)
         }
       }
       
       verifyCheckout()
+    } else if (topUpSuccessParam && topUpSessionId) {
+      async function verifyTopUp() {
+        try {
+          const response = await fetch('/api/topups/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId: topUpSessionId }),
+          })
+          if (response.ok) {
+            const data = await response.json()
+            setMessage({ type: 'success', text: `Top-up applied: $${(Number(data.amountCents ?? 0) / 100).toFixed(2)}.` })
+            await refreshBillingState()
+          } else {
+            setMessage({ type: 'error', text: 'We could not verify your top-up. Refresh and check again.' })
+          }
+        } catch (error) {
+          console.error('[Account] Top-up verification error:', error)
+          setMessage({ type: 'error', text: 'We could not verify your top-up. Refresh and check again.' })
+        } finally {
+          router.replace(nextUrl)
+        }
+      }
+
+      verifyTopUp()
     } else if (canceledParam) {
       setMessage({ type: 'error', text: 'Checkout was canceled.' })
+      router.replace(nextUrl)
     }
-  }, [canceledParam, currentUserId, sessionId, successParam])
+  }, [canceledParam, currentUserId, refreshBillingState, router, searchParams, sessionId, successParam, topUpSessionId, topUpSuccessParam])
 
   // Handler for manual "Open in App" button
   // This generates a deep link with auth tokens so the desktop app signs in with the current account
@@ -273,20 +385,37 @@ function AccountPageContent() {
     async function fetchEntitlements() {
       try {
         setEntitlementsError(null)
-        const response = await fetch('/api/entitlements')
-        if (response.ok) {
-          const data = await response.json()
+        const [entitlementsResponse, settingsResponse, topUpHistoryResponse] = await Promise.all([
+          fetch('/api/entitlements'),
+          fetch('/api/subscription/settings'),
+          fetch('/api/topups/history'),
+        ])
+
+        if (entitlementsResponse.ok) {
+          const data = await entitlementsResponse.json()
           console.log('[Account] Received entitlements:', data)
           setEntitlements(data)
         } else {
-          const errBody = await response.json().catch(() => ({})) as { error?: string }
+          const errBody = await entitlementsResponse.json().catch(() => ({})) as { error?: string }
           setEntitlements(null)
           setEntitlementsError(
             errBody.error ||
-              (response.status === 401
+              (entitlementsResponse.status === 401
                 ? 'We could not verify your session with the server. Sign out and sign in again, and ensure Convex has the same WorkOS client IDs as this app.'
                 : 'Could not load your plan. Try again in a moment.'),
           )
+        }
+
+        if (settingsResponse.ok) {
+          const settingsData = await settingsResponse.json()
+          setBillingSettings(settingsData)
+          setTopUpAmountDraftCents(settingsData.topUpAmountCents ?? settingsData.autoTopUpAmountCents ?? settingsData.topUpMinAmountCents ?? 800)
+          setAutoTopUpEnabledDraft(Boolean(settingsData.autoTopUpEnabled))
+        }
+
+        if (topUpHistoryResponse.ok) {
+          const data = await topUpHistoryResponse.json()
+          setTopUpHistory(Array.isArray(data.items) ? data.items : [])
         }
       } catch (error) {
         console.error('Failed to fetch entitlements:', error)
@@ -323,6 +452,59 @@ function AccountPageContent() {
     }
   }
 
+  const handleStartTopUp = async (amountCents: number, autoTopUpEnabled: boolean) => {
+    setActionLoading(`topup-${amountCents}`)
+    try {
+      const response = await fetch('/api/topups/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountCents,
+          autoTopUpEnabled,
+          returnPath: '/account',
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.url) {
+        setMessage({ type: 'error', text: data.error || 'Failed to start top-up checkout.' })
+        return
+      }
+      window.location.href = data.url
+    } catch (error) {
+      console.error('[Account] Top-up checkout error:', error)
+      setMessage({ type: 'error', text: 'Failed to start top-up checkout.' })
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleTopUpPreferenceSave = async () => {
+    setActionLoading('topup-settings')
+    try {
+      const response = await fetch('/api/subscription/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          autoTopUpEnabled: autoTopUpEnabledDraft,
+          topUpAmountCents: topUpAmountDraftCents,
+          grantOffSessionConsent: autoTopUpEnabledDraft,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setMessage({ type: 'error', text: data.error || 'Failed to update top-up settings.' })
+        return
+      }
+      await refreshBillingState()
+      setMessage({ type: 'success', text: 'Top-up preference updated.' })
+    } catch (error) {
+      console.error('[Account] Top-up settings error:', error)
+      setMessage({ type: 'error', text: 'Failed to update top-up settings.' })
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   return (
     <div className="flex min-h-screen w-full flex-col gradient-bg">
       <div className="liquid-glass" />
@@ -331,7 +513,7 @@ function AccountPageContent() {
       <PageNavbar />
 
       {/* Main Content */}
-      <main className="relative z-10 flex-1 px-4 py-6 md:px-8 md:py-8">
+      <main className="relative z-10 flex-1 px-4 py-10 md:px-8 md:py-14">
         <div className="max-w-4xl mx-auto">
           {/* Message Banner */}
           {message && (
@@ -375,7 +557,7 @@ function AccountPageContent() {
             </div>
           )}
 
-          <h1 className={`text-3xl font-serif mb-8 ${t.title}`}>account</h1>
+          <h1 className={`text-3xl font-serif md:text-4xl mb-8 ${t.title}`}>account</h1>
 
           {loading || authLoading || !sessionCheckComplete ? (
             <div className="text-center py-16">
@@ -520,7 +702,9 @@ function AccountPageContent() {
                     <div className="flex items-start justify-between mb-6">
                       <div>
                         <h2 className={`text-lg font-medium mb-1 ${t.h}`}>
-                          {entitlements.tier.charAt(0).toUpperCase() + entitlements.tier.slice(1)} Plan
+                          {entitlements.planKind === 'paid'
+                            ? `${(entitlements.planAmountCents / 100).toFixed(0)} dollar plan`
+                            : 'Free plan'}
                         </h2>
                         <p className={`text-sm ${t.muted}`}>
                           {entitlements.status === 'active' && entitlements.billingPeriodEnd
@@ -555,53 +739,179 @@ function AccountPageContent() {
                     </div>
 
                     <div className="flex items-center gap-3 flex-wrap">
-                      {entitlements.tier === 'free' && (
+                      {entitlements.planKind === 'free' && (
                         <Link
                           href="/pricing"
                           className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 ${
                             isLandingDark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white'
                           }`}
                         >
-                          Upgrade to Pro
+                          Upgrade to paid
                           <ArrowRight className="w-4 h-4" />
                         </Link>
+                      )}
+                      {entitlements.planKind === 'paid' && (
+                        <>
+                          <Link
+                            href="/pricing?intent=change-plan"
+                            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
+                              isLandingDark
+                                ? 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
+                                : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                            }`}
+                          >
+                            Change plan
+                          </Link>
+                          <button
+                            onClick={handleManageBilling}
+                            disabled={actionLoading === 'billing'}
+                            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                              isLandingDark
+                                ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                                : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                            }`}
+                          >
+                            {actionLoading === 'billing' ? 'Opening...' : 'Manage billing'}
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
 
-                  {/* Usage Card (Pro/Max only) */}
-                  {entitlements.tier !== 'free' && (
+                  {entitlements.planKind === 'paid' && (
                     <div className={panel}>
                       <h2 className={`text-lg font-medium mb-4 ${t.h}`}>Usage This Period</h2>
 
                       <ProgressBar
-                        used={entitlements.usage.tokenCostAccrued}
-                        total={entitlements.limits.tokenBudget}
-                        label="Subscription"
+                        used={entitlements.budgetUsedCents / 100}
+                        total={entitlements.budgetTotalCents / 100}
+                        label="Monthly budget"
                         showAsPercentage={true}
                         isLandingDark={isLandingDark}
                       />
 
-                      <div
-                        className={`mt-6 border-t pt-4 ${isLandingDark ? 'border-zinc-700' : 'border-zinc-200'}`}
-                      >
-                        <button
-                          onClick={handleManageBilling}
-                          disabled={actionLoading === 'billing'}
-                          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
-                            isLandingDark
-                              ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
-                              : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div
+                          className={`rounded-xl border px-4 py-3 ${
+                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
                           }`}
                         >
-                          {actionLoading === 'billing' ? 'Opening...' : 'Manage Subscription'}
-                        </button>
+                          <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Used</p>
+                          <p className={`mt-2 text-lg font-medium ${t.h}`}>${(entitlements.budgetUsedCents / 100).toFixed(2)}</p>
+                        </div>
+                        <div
+                          className={`rounded-xl border px-4 py-3 ${
+                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
+                          }`}
+                        >
+                          <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Remaining</p>
+                          <p className={`mt-2 text-lg font-medium ${t.h}`}>${(entitlements.budgetRemainingCents / 100).toFixed(2)}</p>
+                        </div>
+                        <div
+                          className={`rounded-xl border px-4 py-3 ${
+                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
+                          }`}
+                        >
+                          <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Storage</p>
+                          <p className={`mt-2 text-lg font-medium ${t.h}`}>
+                            {formatBytes(entitlements.overlayStorageBytesUsed)} / {formatBytes(entitlements.overlayStorageBytesLimit)}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Weekly Usage (Free tier) */}
-                  {entitlements.tier === 'free' && (
+                  {entitlements.planKind === 'paid' && (
+                    <div className={panel}>
+                      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <h2 className={`text-lg font-medium ${t.h}`}>Top-ups and billing controls</h2>
+                          <p className={`mt-1 text-sm ${t.muted}`}>
+                            Use one top-up amount everywhere. Add it once now, or save it for future automatic recharges.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-5">
+                        <TopUpPreferenceControl
+                          variant="marketing"
+                          isDark={isLandingDark}
+                          title="Top-up amount"
+                          description="The same amount is used for manual top-ups and, if enabled, future automatic recharges."
+                          amountCents={topUpAmountDraftCents}
+                          minAmountCents={billingSettings?.topUpMinAmountCents ?? 800}
+                          maxAmountCents={billingSettings?.topUpMaxAmountCents ?? 20_000}
+                          stepAmountCents={billingSettings?.topUpStepAmountCents ?? 100}
+                          onAmountChange={setTopUpAmountDraftCents}
+                          autoTopUpEnabled={autoTopUpEnabledDraft}
+                          onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
+                          checkboxDescription="If enabled, this same amount will recharge automatically whenever your cumulative budget reaches zero."
+                          note="Saving or checking the box authorizes off-session recharges for the selected amount."
+                          footer={
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleStartTopUp(topUpAmountDraftCents, autoTopUpEnabledDraft)}
+                                disabled={actionLoading === `topup-${topUpAmountDraftCents}`}
+                                className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                                  isLandingDark
+                                    ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                                    : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                                }`}
+                              >
+                                {actionLoading === `topup-${topUpAmountDraftCents}` ? 'Opening…' : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleTopUpPreferenceSave()}
+                                disabled={actionLoading === 'topup-settings'}
+                                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                                  isLandingDark
+                                    ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                                    : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                                }`}
+                              >
+                                {actionLoading === 'topup-settings' ? 'Saving...' : 'Save top-up preference'}
+                              </button>
+                            </>
+                          }
+                        />
+                      </div>
+
+                      <div className="mt-6">
+                        <h3 className={`text-sm font-medium ${t.h}`}>Recent top-ups</h3>
+                        <div className="mt-3 space-y-3">
+                          {topUpHistory.length === 0 ? (
+                            <p className={`text-sm ${t.muted}`}>No top-ups yet.</p>
+                          ) : (
+                            topUpHistory.slice(0, 6).map((item) => (
+                              <div
+                                key={item._id}
+                                className={`flex flex-col gap-2 rounded-xl border px-4 py-3 text-sm md:flex-row md:items-center md:justify-between ${
+                                  isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
+                                }`}
+                              >
+                                <div>
+                                  <p className={t.h}>
+                                    ${ (item.amountCents / 100).toFixed(2)} · {item.source === 'auto' ? 'Auto top-up' : 'Manual top-up'}
+                                  </p>
+                                  <p className={t.muted}>{formatDateTime(item.createdAt)}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className={`${item.status === 'succeeded' ? 'text-emerald-600' : item.status === 'failed' ? 'text-red-500' : t.muted}`}>
+                                    {item.status}
+                                  </p>
+                                  {item.errorMessage ? <p className={`max-w-xs text-xs ${t.muted}`}>{item.errorMessage}</p> : null}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {entitlements.planKind === 'free' && (
                     <div className={panel}>
                       <h2 className={`text-lg font-medium mb-4 ${t.h}`}>Weekly Usage</h2>
 
@@ -629,7 +939,7 @@ function AccountPageContent() {
                       </div>
 
                       <p className={`mt-4 text-xs ${t.muted}`}>
-                        Auto is unlimited on free. Upgrade to Pro to use premium models.
+                        Auto is unlimited on free. Upgrade to a paid plan to use premium models, Daytona, browser tasks, and generation tools.
                       </p>
                     </div>
                   )}

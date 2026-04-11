@@ -18,16 +18,12 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { classifyOutputType } from '@/lib/output-types'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getSession } from '@/lib/workos-auth'
+import type { Entitlements } from '@/lib/app-contracts'
+import { buildInsufficientCreditsPayload, ensureBudgetAvailable, getBudgetTotals, isPaidPlan } from '@/lib/billing-runtime'
 import { validateServerSecret } from '../../../../../../convex/lib/auth'
 import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl } from '@/lib/r2'
 
 export const maxDuration = 300
-
-interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  creditsUsed: number
-  creditsTotal: number
-}
 
 interface OverlayFileRecord {
   _id: string
@@ -220,17 +216,26 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     )
   }
-  if (entitlements.tier === 'free') {
+  if (!isPaidPlan(entitlements)) {
     return NextResponse.json(
-      { error: 'sandbox_not_allowed', message: 'Daytona sandbox execution requires Pro or Max.' },
+      { error: 'sandbox_not_allowed', message: 'Daytona sandbox execution requires a paid plan.' },
       { status: 403 },
     )
   }
-  const creditsTotalCents = entitlements.creditsTotal * 100
-  const remainingCents = creditsTotalCents - entitlements.creditsUsed
-  if (remainingCents <= 0) {
+  let currentEntitlements = entitlements
+  let budget = getBudgetTotals(currentEntitlements)
+  if (budget.remainingCents <= 0) {
+    const autoTopUp = await ensureBudgetAvailable({
+      userId,
+      entitlements: currentEntitlements,
+      minimumRequiredCents: 1,
+    })
+    currentEntitlements = autoTopUp.entitlements
+    budget = getBudgetTotals(currentEntitlements)
+  }
+  if (budget.remainingCents <= 0) {
     return NextResponse.json(
-      { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
+      buildInsufficientCreditsPayload(currentEntitlements, 'No budget remaining. Please top up your account.'),
       { status: 402 },
     )
   }
@@ -244,7 +249,7 @@ export async function POST(request: NextRequest) {
   try {
     workspaceRun = await ensureWorkspaceSandbox({
       userId,
-      tier: entitlements.tier,
+      tier: 'pro',
     })
     workspaceRun = await startIfNeeded(workspaceRun)
     await refreshWorkspaceActivity(workspaceRun)

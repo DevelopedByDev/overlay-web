@@ -8,16 +8,16 @@ import { calculateVideoCost } from '@/lib/model-pricing'
 import { uploadBuffer, keyForOutput, deleteObject } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import type { Entitlements } from '@/lib/app-contracts'
+import {
+  buildInsufficientCreditsPayload,
+  billableBudgetCentsFromProviderUsd,
+  ensureBudgetAvailable,
+  getBudgetTotals,
+  isPaidPlan,
+} from '@/lib/billing-runtime'
 
 export const maxDuration = 300
-
-interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  creditsUsed: number
-  creditsTotal: number
-  overlayStorageBytesUsed: number
-  overlayStorageBytesLimit: number
-}
 
 function sseChunk(data: Record<string, unknown>): string {
   return `data: ${JSON.stringify(data)}\n\n`
@@ -88,22 +88,36 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        const { tier, creditsUsed, creditsTotal } = entitlements
-        const creditsTotalCents = creditsTotal * 100
-        const remainingCents = creditsTotalCents - creditsUsed
-        const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-        console.log(`[GenerateVideo] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
-        if (tier === 'free') {
-          controller.enqueue(encode(sseChunk({ type: 'error', error: 'generation_not_allowed', message: 'Video generation requires a Pro subscription.' })))
+        const effectiveDuration = duration ?? 8
+        const estimatedProviderCostUsd = calculateVideoCost(modelId ?? VIDEO_MODELS[0]?.id ?? 'google/veo-3-fast', effectiveDuration)
+        const minimumRequiredCents = billableBudgetCentsFromProviderUsd(estimatedProviderCostUsd)
+        let currentEntitlements = entitlements
+        let budget = getBudgetTotals(currentEntitlements)
+        const usedPct = budget.totalCents > 0 ? ((budget.usedCents / budget.totalCents) * 100).toFixed(2) : '0.00'
+        console.log(`[GenerateVideo] 📊 Entitlements: tier=${currentEntitlements.tier} | used=${budget.usedCents}¢ / ${budget.totalCents}¢ (${usedPct}% used, $${(budget.remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
+        if (!isPaidPlan(currentEntitlements)) {
+          controller.enqueue(encode(sseChunk({ type: 'error', error: 'generation_not_allowed', message: 'Video generation requires a paid plan.' })))
           controller.close()
           return
         }
-        if (remainingCents <= 0) {
-          controller.enqueue(encode(sseChunk({ type: 'error', error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' })))
+        if (budget.remainingCents < minimumRequiredCents) {
+          const autoTopUp = await ensureBudgetAvailable({
+            userId: auth.userId,
+            entitlements: currentEntitlements,
+            minimumRequiredCents,
+          })
+          currentEntitlements = autoTopUp.entitlements
+          budget = getBudgetTotals(currentEntitlements)
+        }
+        if (budget.remainingCents < minimumRequiredCents) {
+          controller.enqueue(encode(sseChunk({
+            type: 'error',
+            ...buildInsufficientCreditsPayload(currentEntitlements, 'Not enough budget remaining to generate this video. Please top up your account.'),
+          })))
           controller.close()
           return
         }
-        if (entitlements.overlayStorageBytesUsed >= entitlements.overlayStorageBytesLimit) {
+        if ((currentEntitlements.overlayStorageBytesUsed ?? 0) >= (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.' })))
           controller.close()
           return
@@ -152,8 +166,6 @@ export async function POST(request: NextRequest) {
         let lastError: Error | null = null
         let usedModelId: string | null = null
         let videoBase64: string | null = null
-        const effectiveDuration = duration ?? 8
-
         for (const tryModelId of priorityList) {
           try {
             const videoModel = await getGatewayVideoModel(
@@ -188,7 +200,7 @@ export async function POST(request: NextRequest) {
         const videoBuffer = Buffer.from(videoBase64!, 'base64')
 
         // ── Check per-user storage quota ────────────────────────────────────────
-        if (entitlements.overlayStorageBytesUsed + videoBuffer.length > entitlements.overlayStorageBytesLimit) {
+        if ((currentEntitlements.overlayStorageBytesUsed ?? 0) + videoBuffer.length > (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
           await markOutputFailed('Not enough Overlay storage remaining for this video.')
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
           controller.close()
@@ -251,8 +263,8 @@ export async function POST(request: NextRequest) {
 
         // ── Usage tracking ────────────────────────────────────────────────────────
         const costDollars = calculateVideoCost(usedModelId, effectiveDuration)
-        const costCents = Math.round(costDollars * 100)
-        console.log(`[GenerateVideo] 💰 Cost: model=${usedModelId} | duration=${effectiveDuration}s | $${costDollars.toFixed(4)} = ${costCents}¢`)
+        const costCents = billableBudgetCentsFromProviderUsd(costDollars)
+        console.log(`[GenerateVideo] 💰 Cost: model=${usedModelId} | duration=${effectiveDuration}s | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
         if (costCents > 0) {
           const recordResult = await convex.mutation('usage:recordBatch', {
             serverSecret,

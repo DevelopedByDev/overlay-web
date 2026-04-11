@@ -1,0 +1,74 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getSession } from '@/lib/workos-auth'
+import { stripe, getBaseUrl } from '@/lib/stripe'
+import { getTopUpPriceId, getTopUpQuantityForCheckout, isRecognizedTopUpAmount } from '@/lib/stripe-billing'
+import { clampTopUpAmountCents, formatDollarAmount } from '@/lib/billing-pricing'
+
+function resolveReturnUrl(baseUrl: string, returnPath: unknown, state: 'success' | 'canceled') {
+  const safePath = typeof returnPath === 'string' && returnPath.startsWith('/') ? returnPath : '/account'
+  const url = new URL(safePath, baseUrl)
+  if (state === 'success') {
+    const checkoutSessionPlaceholder = 'CHECKOUT_SESSION_ID_PLACEHOLDER'
+    url.searchParams.set('topup_success', 'true')
+    url.searchParams.set('topup_session_id', checkoutSessionPlaceholder)
+    return url.toString().replace(checkoutSessionPlaceholder, '{CHECKOUT_SESSION_ID}')
+  } else {
+    url.searchParams.set('topup_canceled', 'true')
+  }
+  return url.toString()
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const amountCents = clampTopUpAmountCents(Number(body.amountCents))
+    const autoTopUpEnabled = Boolean(body.autoTopUpEnabled)
+    if (!isRecognizedTopUpAmount(amountCents)) {
+      return NextResponse.json({ error: 'Unsupported top-up amount' }, { status: 400 })
+    }
+
+    const priceId = getTopUpPriceId()
+    if (!priceId) {
+      return NextResponse.json({ error: 'Top-up price not configured' }, { status: 500 })
+    }
+    const quantity = getTopUpQuantityForCheckout(amountCents)
+
+    const baseUrl = getBaseUrl()
+    const checkoutSession = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      billing_address_collection: 'auto',
+      line_items: [{ price: priceId, quantity }],
+      success_url: resolveReturnUrl(baseUrl, body.returnPath, 'success'),
+      cancel_url: resolveReturnUrl(baseUrl, body.returnPath, 'canceled'),
+      customer_email: session.user.email,
+      metadata: {
+        kind: 'budget_topup',
+        userId: session.user.id,
+        amountCents: String(amountCents),
+        stripeQuantity: String(quantity),
+        autoTopUpEnabled: String(autoTopUpEnabled),
+      },
+      payment_intent_data: {
+        metadata: {
+          kind: 'budget_topup',
+          userId: session.user.id,
+          amountCents: String(amountCents),
+          stripeQuantity: String(quantity),
+          autoTopUpEnabled: String(autoTopUpEnabled),
+        },
+      },
+      allow_promotion_codes: true,
+    })
+
+    console.log(`[TopUp Checkout] Created manual top-up checkout for ${session.user.id}: ${formatDollarAmount(amountCents)}`)
+    return NextResponse.json({ url: checkoutSession.url })
+  } catch (error) {
+    console.error('[TopUp Checkout] Error:', error)
+    return NextResponse.json({ error: 'Failed to create top-up checkout' }, { status: 500 })
+  }
+}

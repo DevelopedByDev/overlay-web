@@ -175,7 +175,13 @@ export default defineSchema({
     name: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
+    stripePriceId: v.optional(v.string()),
+    stripeQuantity: v.optional(v.number()),
     tier: v.union(v.literal('free'), v.literal('pro'), v.literal('max')),
+    planKind: v.optional(v.union(v.literal('free'), v.literal('paid'))),
+    planVersion: v.optional(v.union(v.literal('fixed_v1'), v.literal('variable_v2'))),
+    planAmountCents: v.optional(v.number()),
+    markupBasisPoints: v.optional(v.number()),
     status: v.union(
       v.literal('active'),
       v.literal('canceled'),
@@ -188,6 +194,9 @@ export default defineSchema({
     // include fractional cents for Daytona runtime accrual).
     // Reset to 0 whenever currentPeriodStart rolls over.
     creditsUsed: v.optional(v.number()),
+    autoTopUpEnabled: v.optional(v.boolean()),
+    autoTopUpAmountCents: v.optional(v.number()),
+    offSessionConsentAt: v.optional(v.number()),
     // User profile fields (synced from WorkOS)
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -203,6 +212,31 @@ export default defineSchema({
     fileBandwidthPeriodStart: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_email', ['email']),
+
+  budgetTopUps: defineTable({
+    userId: v.string(),
+    stripeCustomerId: v.optional(v.string()),
+    stripeCheckoutSessionId: v.optional(v.string()),
+    stripePaymentIntentId: v.optional(v.string()),
+    stripeInvoiceId: v.optional(v.string()),
+    billingPeriodStart: v.number(),
+    billingPeriodEnd: v.optional(v.number()),
+    amountCents: v.number(),
+    source: v.union(v.literal('manual'), v.literal('auto')),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('succeeded'),
+      v.literal('failed'),
+      v.literal('canceled'),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    errorMessage: v.optional(v.string()),
+  })
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_userId_billingPeriodStart', ['userId', 'billingPeriodStart'])
+    .index('by_paymentIntentId', ['stripePaymentIntentId'])
+    .index('by_checkoutSessionId', ['stripeCheckoutSessionId']),
 
   // Append-only audit log: one row per billing period per user.
   // Written to on every usage batch for raw token counts and a credit snapshot.
@@ -289,6 +323,9 @@ export default defineSchema({
       v.literal('composio'),
       v.literal('internal'),
     ),
+    providerCostCents: v.optional(v.number()),
+    billableCostCents: v.optional(v.number()),
+    pricingVersion: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
     createdAt: v.number(),
   })

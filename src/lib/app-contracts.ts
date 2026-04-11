@@ -15,8 +15,20 @@ export type { AppSettings, ThemePreference }
 
 export interface Entitlements {
   tier: 'free' | 'pro' | 'max'
+  planKind?: 'free' | 'paid'
+  planAmountCents?: number
   creditsUsed: number
   creditsTotal: number
+  budgetUsedCents?: number
+  budgetTotalCents?: number
+  budgetRemainingCents?: number
+  autoTopUpEnabled?: boolean
+  topUpAmountCents?: number
+  autoTopUpAmountCents?: number
+  autoTopUpConsentGranted?: boolean
+  topUpMinAmountCents?: number
+  topUpMaxAmountCents?: number
+  topUpStepAmountCents?: number
   dailyUsage: { ask: number; write: number; agent: number }
   dailyLimits?: { ask: number; write: number; agent: number }
   overlayStorageBytesUsed?: number

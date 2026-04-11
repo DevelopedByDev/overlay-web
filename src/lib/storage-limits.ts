@@ -1,13 +1,28 @@
-export type OverlayTier = 'free' | 'pro' | 'max'
+import {
+  derivePlanAmountCents,
+  derivePlanKind,
+  getStorageLimitBytes,
+  type LegacyOverlayTier,
+} from './billing-pricing'
 
-export const OVERLAY_STORAGE_BYTES_LIMITS: Record<OverlayTier, number> = {
-  free: 10 * 1024 * 1024,
-  pro: 1024 * 1024 * 1024,
-  max: 10 * 1024 * 1024 * 1024,
-}
+export type OverlayTier = LegacyOverlayTier
 
 export function getOverlayStorageBytesLimit(tier: OverlayTier): number {
-  return OVERLAY_STORAGE_BYTES_LIMITS[tier]
+  return getStorageLimitBytes({
+    planKind: derivePlanKind({ tier }),
+    planAmountCents: derivePlanAmountCents({ tier }),
+  })
+}
+
+export function getOverlayStorageBytesLimitForPlan(params: {
+  planKind?: string | null
+  planAmountCents?: number | null
+  tier?: string | null
+}): number {
+  return getStorageLimitBytes({
+    planKind: derivePlanKind(params),
+    planAmountCents: derivePlanAmountCents(params),
+  })
 }
 
 export function formatBytes(bytes: number): string {

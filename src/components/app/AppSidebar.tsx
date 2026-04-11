@@ -92,8 +92,12 @@ function setStoredSidebarCollapsed(next: boolean) {
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
+  planKind?: 'free' | 'paid'
   creditsUsed: number
   creditsTotal: number
+  budgetUsedCents?: number
+  budgetTotalCents?: number
+  budgetRemainingCents?: number
   dailyUsage: { ask: number; write: number; agent: number }
   overlayStorageBytesUsed: number
   overlayStorageBytesLimit: number
@@ -104,15 +108,17 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
     return <p className="text-[11px] text-[var(--muted-light)]">Loading...</p>
   }
 
-  const { tier, creditsUsed, creditsTotal } = entitlements
+  const { tier } = entitlements
+  const planKind = entitlements.planKind ?? (tier === 'free' ? 'free' : 'paid')
+  const budgetUsedCents = entitlements.budgetUsedCents ?? entitlements.creditsUsed
+  const budgetTotalCents = entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100
 
-  if (tier === 'free') {
-    return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Upgrade to Pro to use premium models and credits.</p>
+  if (planKind === 'free') {
+    return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Upgrade to a paid plan to use premium models and budgeted tools.</p>
   }
 
-  const creditsTotalCents = creditsTotal * 100
-  if (creditsTotalCents <= 0) return <p className="text-[11px] text-[#aaa]">No credit limit set</p>
-  const usedPctRaw = Math.min(100, (creditsUsed / creditsTotalCents) * 100)
+  if (budgetTotalCents <= 0) return <p className="text-[11px] text-[#aaa]">No budget limit set</p>
+  const usedPctRaw = Math.min(100, (budgetUsedCents / budgetTotalCents) * 100)
   const remainingPctRaw = Math.max(0, 100 - usedPctRaw)
   const exhausted = remainingPctRaw <= 0
   const warning = usedPctRaw >= 80
@@ -122,7 +128,9 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
       <div className="flex items-center justify-between gap-2">
         <span className="tabular-nums">
           {remainingPctRaw.toFixed(1)}% remaining
-          <span className="text-[10px] opacity-70"> · {usedPctRaw.toFixed(1)}% used</span>
+          <span className="text-[10px] opacity-70">
+            {' '}· ${ (budgetUsedCents / 100).toFixed(2)} / ${(budgetTotalCents / 100).toFixed(2)}
+          </span>
         </span>
         {exhausted && <AlertCircle size={11} />}
       </div>
@@ -375,11 +383,6 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
 
   const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false)
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('')
-
-  useEffect(() => {
-    setSidebarSearchOpen(false)
-    setSidebarSearchQuery('')
-  }, [chatOpen, notesOpen, projectsOpen])
 
   const showUpgradeCta = !entitlements || entitlements.tier === 'free'
   const contextualAction = inlineSecondaryDisabled

@@ -21,6 +21,7 @@
     "test:auth:cookie": "node --experimental-strip-types scripts/auth-cookie-inspect.ts",
     "test:auth:refresh": "node --experimental-strip-types scripts/auth-refresh-check.ts",
     "test:automations": "node --test --experimental-strip-types src/lib/automations.test.ts",
+    "test:billing": "node --test --experimental-strip-types src/lib/billing-pricing.test.ts",
     "test:chat-history": "node --test --experimental-strip-types src/lib/chat-history-persistence.test.ts",
     "test:daytona:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-tool-smoke.ts",
     "test:daytona:reconcile:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-reconcile-smoke.ts",
@@ -32,7 +33,9 @@
     "test:r2:connectivity": "node --env-file=.env.local --experimental-strip-types scripts/smoke-r2-connectivity.ts",
     "test:r2:presign": "node --env-file=.env.local --experimental-strip-types scripts/smoke-r2-presign.ts",
     "test:r2:budget": "node --env-file=.env.local --experimental-strip-types scripts/smoke-r2-budget.ts",
-    "test:vault:smoke": "node --env-file=../overlay-desktop/.env.local --experimental-strip-types scripts/smoke-vault.ts"
+    "test:vault:smoke": "node --env-file=../overlay-desktop/.env.local --experimental-strip-types scripts/smoke-vault.ts",
+    "stripe:setup:variable-pricing": "node --env-file=.env.local --experimental-strip-types scripts/stripe-variable-pricing-setup.ts",
+    "billing:migrate:staging": "node --env-file=.env.local --experimental-strip-types scripts/variable-pricing-migration.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",

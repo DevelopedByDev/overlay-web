@@ -42,6 +42,14 @@ import {
   summarizeToolSetForLog,
 } from '@/lib/safe-log'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import type { Entitlements } from '@/lib/app-contracts'
+import {
+  buildInsufficientCreditsPayload,
+  billableBudgetCentsFromProviderUsd,
+  ensureBudgetAvailable,
+  getBudgetTotals,
+  isPaidPlan,
+} from '@/lib/billing-runtime'
 import type { StepResult, ToolSet } from 'ai'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
@@ -62,14 +70,6 @@ const MATH_FORMAT_INSTRUCTION = [
   '- Do not use single-dollar math, \\(...\\), or \\[...\\].',
   '- Keep explanatory prose outside the $$ delimiters.',
 ].join('\n')
-
-interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  creditsUsed: number
-  creditsTotal: number
-  dailyUsage: { ask: number; write: number; agent: number }
-  dailyLimits: { ask: number; write: number; agent: number }
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -125,21 +125,48 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { tier, creditsUsed, creditsTotal } = entitlements
-    const creditsTotalCents = creditsTotal * 100
-    const remainingCents = creditsTotalCents - creditsUsed
+    const budget = getBudgetTotals(entitlements)
 
-    if (tier === 'free') {
+    if (!isPaidPlan(entitlements)) {
       if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID) {
         return NextResponse.json(
-          { error: 'premium_model_not_allowed', message: 'Free tier is limited to the Auto model. Upgrade to Pro to use premium models.' },
+          { error: 'premium_model_not_allowed', message: 'Free tier is limited to the Auto model. Upgrade to a paid plan to use premium models.' },
           { status: 403 },
         )
       }
     } else {
-      if (remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
+      if (budget.remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
+        const autoTopUp = await ensureBudgetAvailable({
+          userId,
+          entitlements,
+          minimumRequiredCents: 1,
+        })
+        if (autoTopUp.remainingCents <= 0) {
+          return NextResponse.json(
+            buildInsufficientCreditsPayload(entitlements, 'No budget remaining. Please top up your account.'),
+            { status: 402 },
+          )
+        }
+      }
+    }
+
+    const refreshedEntitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+      serverSecret,
+      userId,
+    })
+
+    if (!refreshedEntitlements) {
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Could not refresh subscription state.' },
+        { status: 401 },
+      )
+    }
+
+    if (isPaidPlan(refreshedEntitlements) && isPremiumModel(effectiveModelId)) {
+      const refreshedBudget = getBudgetTotals(refreshedEntitlements)
+      if (refreshedBudget.remainingCents <= 0) {
         return NextResponse.json(
-          { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
+          buildInsufficientCreditsPayload(refreshedEntitlements, 'No budget remaining. Please top up your account.'),
           { status: 402 },
         )
       }
@@ -302,13 +329,13 @@ export async function POST(request: NextRequest) {
         steps,
         text,
       )
-      const costDollars = calculateTokenCost(
+      const providerCostUsd = calculateTokenCost(
         effectiveModelId,
         usage.inputTokens,
         0,
         usage.outputTokens,
       )
-      const costCents = Math.round(costDollars * 100)
+      const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
 
       if (costCents > 0 || usage.inputTokens > 0 || usage.outputTokens > 0) {
         try {

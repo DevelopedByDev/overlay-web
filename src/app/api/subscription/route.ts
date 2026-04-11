@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
+import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
 type ConvexEntitlements = {
   tier: 'free' | 'pro' | 'max'
+  planKind: 'free' | 'paid'
+  planAmountCents: number
+  budgetUsedCents: number
+  budgetTotalCents: number
+  budgetRemainingCents: number
+  autoTopUpEnabled: boolean
+  autoTopUpAmountCents: number
+  autoTopUpConsentGranted: boolean
   creditsUsed: number
   creditsTotal: number
   billingPeriodEnd: string
@@ -46,9 +55,19 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       tier: entitlements.tier,
+      planKind: entitlements.planKind,
+      planAmountCents: entitlements.planAmountCents,
       status: 'active' as const,
-      creditsUsed: entitlements.creditsUsed,
-      creditsTotal: entitlements.creditsTotal,
+      ...getTopUpPreferenceSnapshot(entitlements),
+      creditsUsed: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
+      creditsTotal: entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100,
+      budgetUsedCents: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
+      budgetTotalCents: entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100,
+      budgetRemainingCents:
+        entitlements.budgetRemainingCents ??
+        Math.max(0, (entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100) - (entitlements.budgetUsedCents ?? entitlements.creditsUsed)),
+      autoTopUpEnabled: entitlements.autoTopUpEnabled,
+      autoTopUpConsentGranted: entitlements.autoTopUpConsentGranted,
       billingPeriodEnd: entitlements.billingPeriodEnd || null,
     })
   } catch (error) {

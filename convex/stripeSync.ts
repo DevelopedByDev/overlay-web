@@ -5,9 +5,9 @@ import { v } from 'convex/values'
 import { internalAction } from './_generated/server'
 import { internal } from './_generated/api'
 import {
+  extractPlanFromSubscription,
   extractCustomerInfo,
   getSubscriptionPeriodMs,
-  mapPriceToTier,
   mapSubscriptionStatus,
 } from './lib/stripeOverlaySubscription'
 
@@ -41,7 +41,7 @@ async function listAllSubscriptions(
  *
  * Run on prod: `npx convex run stripeSync:syncPaidSubscriptionsFromStripe --prod`
  *
- * Requires `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID`, `STRIPE_MAX_PRICE_ID` in Convex env.
+ * Requires `STRIPE_SECRET_KEY` and the relevant price IDs in Convex env.
  * Skips subscriptions without `metadata.userId` (set in Checkout).
  */
 export const syncPaidSubscriptionsFromStripe = internalAction({
@@ -98,16 +98,15 @@ export const syncPaidSubscriptionsFromStripe = internalAction({
           continue
         }
 
-        const priceId = subscription.items.data[0]?.price?.id
-        const tier = mapPriceToTier(priceId)
-        if (tier === 'free') {
+        const plan = extractPlanFromSubscription(subscription)
+        if (plan.tier === 'free') {
           skipped++
           results.push({
             subscriptionId,
             customerId,
             userId,
             outcome: 'skipped',
-            reason: `unknown or unset price id (${priceId ?? 'none'}) — check STRIPE_PRO_PRICE_ID / STRIPE_MAX_PRICE_ID`,
+            reason: `unknown or unset price id (${plan.stripePriceId ?? 'none'}) — check Stripe price configuration`,
           })
           continue
         }
@@ -129,7 +128,12 @@ export const syncPaidSubscriptionsFromStripe = internalAction({
               ? subscription.customer
               : subscription.customer.id,
           stripeSubscriptionId: subscription.id,
-          tier,
+          stripePriceId: plan.stripePriceId,
+          stripeQuantity: plan.stripeQuantity,
+          tier: plan.tier,
+          planKind: plan.planKind,
+          planVersion: plan.planVersion,
+          planAmountCents: plan.planAmountCents,
           status: mapSubscriptionStatus(subscription.status),
           currentPeriodStart,
           currentPeriodEnd,

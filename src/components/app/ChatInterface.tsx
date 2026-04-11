@@ -25,8 +25,10 @@ import {
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
-import { useSearchParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import {
   CHAT_MODEL_QUALITY_PRIORITY,
   DEFAULT_MODEL_ID,
@@ -245,8 +247,18 @@ interface ChatOutput {
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
+  planKind?: 'free' | 'paid'
   creditsUsed: number
   creditsTotal: number
+  budgetUsedCents?: number
+  budgetTotalCents?: number
+  budgetRemainingCents?: number
+  autoTopUpEnabled?: boolean
+  topUpAmountCents?: number
+  autoTopUpAmountCents?: number
+  topUpMinAmountCents?: number
+  topUpMaxAmountCents?: number
+  topUpStepAmountCents?: number
   dailyUsage: { ask: number; write: number; agent: number }
   dailyLimits: { ask: number; write: number; agent: number }
 }
@@ -1487,10 +1499,10 @@ function errorLabel(err: Error | null | undefined): string | null {
   if (m.includes('OpenRouter') || m.includes('rate-limited') || m.includes('rate limit')) {
     return m
   }
-  if (err.message?.includes('weekly_limit')) return 'Weekly limit reached — upgrade to Pro for unlimited messages.'
-  if (err.message?.includes('premium_model')) return 'This model requires a Pro subscription.'
-  if (err.message?.includes('generation_not_allowed')) return 'This action requires a Pro subscription.'
-  if (err.message?.includes('insufficient_credits')) return 'No credits remaining.'
+  if (err.message?.includes('weekly_limit')) return 'Weekly limit reached — upgrade to a paid plan for unlimited messages.'
+  if (err.message?.includes('premium_model')) return 'This model requires a paid plan.'
+  if (err.message?.includes('generation_not_allowed')) return 'This action requires a paid plan.'
+  if (err.message?.includes('insufficient_credits')) return 'No budget remaining.'
   if (err.message?.includes('storage_limit_exceeded')) return 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.'
   if (err.message?.includes('bandwidth_limit_exceeded')) return 'File bandwidth limit reached for this billing period.'
   if (err.message?.includes('supported image formats') || err.message?.includes('does not represent a valid image')) {
@@ -2086,6 +2098,7 @@ export default function ChatInterface({
   projectName?: string
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
@@ -2212,6 +2225,9 @@ export default function ChatInterface({
   const [pendingChatDocuments, setPendingChatDocuments] = useState<PendingChatDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
+  const [topUpAmountDraftCents, setTopUpAmountDraftCents] = useState(800)
+  const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
+  const [billingActionLoading, setBillingActionLoading] = useState<'checkout' | 'save' | null>(null)
   /**
    * Empty-chat suggestion chips: defaults show immediately; API merges Convex-persisted / freshly generated prompts.
    */
@@ -2483,7 +2499,7 @@ export default function ChatInterface({
       ? (getModel(selectedActModel)?.supportsVision ?? false)
       : selectedModels.every((id) => getModel(id)?.supportsVision ?? false)
 
-  const isFreeTier = entitlements?.tier === 'free'
+  const isFreeTier = (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'free'
   const premiumModelBlocked =
     isFreeTier &&
     (composerMode === 'act'
@@ -2492,8 +2508,8 @@ export default function ChatInterface({
   const creditsExhausted =
     !isFreeTier &&
     entitlements != null &&
-    entitlements.creditsTotal > 0 &&
-    entitlements.creditsUsed >= entitlements.creditsTotal * 100
+    (entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100) > 0 &&
+    (entitlements.budgetUsedCents ?? entitlements.creditsUsed) >= (entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100)
   const isSendBlocked = premiumModelBlocked || creditsExhausted
 
   useEffect(() => {
@@ -2524,9 +2540,124 @@ export default function ChatInterface({
   const loadSubscription = useCallback(async () => {
     try {
       const res = await fetch('/api/app/subscription')
-      if (res.ok) setEntitlements(await res.json())
+      if (res.ok) {
+        const data = await res.json()
+        setEntitlements(data)
+        setTopUpAmountDraftCents(data.topUpAmountCents ?? data.autoTopUpAmountCents ?? 800)
+        setAutoTopUpEnabledDraft(Boolean(data.autoTopUpEnabled))
+      }
     } catch { /* ignore */ }
   }, [])
+
+  const buildTopUpReturnPath = useCallback(() => {
+    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
+    nextParams.delete('topup_success')
+    nextParams.delete('topup_session_id')
+    nextParams.delete('topup_canceled')
+    const query = nextParams.toString()
+    return `${pathname}${query ? `?${query}` : ''}`
+  }, [pathname, searchParams])
+
+  const handleStartTopUp = useCallback(async () => {
+    setBillingActionLoading('checkout')
+    try {
+      const response = await fetch('/api/topups/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountCents: topUpAmountDraftCents,
+          autoTopUpEnabled: autoTopUpEnabledDraft,
+          returnPath: buildTopUpReturnPath(),
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data.url) {
+        setComposerNotice(data.error || 'Failed to start top-up checkout.')
+        return
+      }
+      window.location.href = data.url
+    } catch {
+      setComposerNotice('Failed to start top-up checkout.')
+    } finally {
+      setBillingActionLoading(null)
+    }
+  }, [autoTopUpEnabledDraft, buildTopUpReturnPath, topUpAmountDraftCents])
+
+  const handleSaveTopUpPreference = useCallback(async () => {
+    setBillingActionLoading('save')
+    try {
+      const response = await fetch('/api/subscription/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          autoTopUpEnabled: autoTopUpEnabledDraft,
+          topUpAmountCents: topUpAmountDraftCents,
+          grantOffSessionConsent: autoTopUpEnabledDraft,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setComposerNotice(data.error || 'Failed to save top-up preference.')
+        return
+      }
+      await loadSubscription()
+      setComposerNotice('Top-up preference updated.')
+      window.setTimeout(() => setComposerNotice((current) => current === 'Top-up preference updated.' ? null : current), 5000)
+    } catch {
+      setComposerNotice('Failed to save top-up preference.')
+    } finally {
+      setBillingActionLoading(null)
+    }
+  }, [autoTopUpEnabledDraft, loadSubscription, topUpAmountDraftCents])
+
+  useEffect(() => {
+    const topUpSuccess = searchParams?.get('topup_success') === 'true'
+    const topUpSessionId = searchParams?.get('topup_session_id')
+    const topUpCanceled = searchParams?.get('topup_canceled') === 'true'
+
+    if (!topUpSuccess && !topUpCanceled) return
+
+    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
+    nextParams.delete('topup_success')
+    nextParams.delete('topup_session_id')
+    nextParams.delete('topup_canceled')
+    const nextUrl = `${pathname}${nextParams.toString() ? `?${nextParams.toString()}` : ''}`
+
+    if (topUpCanceled) {
+      setComposerNotice('Top-up checkout canceled.')
+      router.replace(nextUrl)
+      return
+    }
+
+    if (!topUpSessionId) return
+
+    let cancelled = false
+    void fetch('/api/topups/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: topUpSessionId }),
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}))
+        if (cancelled) return
+        if (response.ok) {
+          setComposerNotice(`Top-up applied: $${(Number(data.amountCents ?? 0) / 100).toFixed(2)}.`)
+          await loadSubscription()
+        } else {
+          setComposerNotice(data.error || 'We could not verify your top-up.')
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setComposerNotice('We could not verify your top-up.')
+      })
+      .finally(() => {
+        if (!cancelled) router.replace(nextUrl)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [loadSubscription, pathname, router, searchParams])
 
   // Snapshot pendingTitleRef before the async fetch so a concurrent PATCH completing mid-flight
   // can't clear the ref before we've applied the override to the incoming server chats.
@@ -4931,12 +5062,57 @@ export default function ChatInterface({
               </div>
             )}
             {isSendBlocked && !isActiveLoading ? (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--muted)]">
-                <AlertCircle size={13} className="text-amber-500 shrink-0" />
-                {premiumModelBlocked
-                  ? 'This model requires Pro. Switch to a free model or upgrade.'
-                  : 'No credits remaining. Please top up your account.'}
-              </div>
+              premiumModelBlocked ? (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--muted)]">
+                  <AlertCircle size={13} className="text-amber-500 shrink-0" />
+                  This model requires a paid plan. Switch to Auto or upgrade.
+                </div>
+              ) : (
+                <TopUpPreferenceControl
+                  variant="app"
+                  title="No budget remaining"
+                  description="Choose one top-up amount for now and future recharges. Add it once, or save the same amount for automatic top-ups later."
+                  amountCents={topUpAmountDraftCents}
+                  minAmountCents={entitlements?.topUpMinAmountCents ?? 800}
+                  maxAmountCents={entitlements?.topUpMaxAmountCents ?? 20_000}
+                  stepAmountCents={entitlements?.topUpStepAmountCents ?? 100}
+                  onAmountChange={setTopUpAmountDraftCents}
+                  autoTopUpEnabled={autoTopUpEnabledDraft}
+                  onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
+                  checkboxDescription="If enabled, the same amount will recharge automatically whenever your cumulative budget reaches zero."
+                  note={
+                    <>
+                      You can also manage this from{' '}
+                      <Link href="/account" className="font-medium underline underline-offset-4">
+                        Account
+                      </Link>
+                      .
+                    </>
+                  }
+                  footer={
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleStartTopUp()}
+                        disabled={billingActionLoading === 'checkout'}
+                        className="inline-flex items-center justify-center rounded-xl bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-60"
+                      >
+                        {billingActionLoading === 'checkout'
+                          ? 'Opening checkout...'
+                          : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveTopUpPreference()}
+                        disabled={billingActionLoading === 'save'}
+                        className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-opacity hover:opacity-90 disabled:opacity-60"
+                      >
+                        {billingActionLoading === 'save' ? 'Saving...' : 'Save top-up preference'}
+                      </button>
+                    </>
+                  }
+                />
+              )
             ) : (
               <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 {replyContext && (

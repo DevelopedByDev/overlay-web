@@ -10,6 +10,14 @@ const NO_STORE_HEADERS = {
 
 interface ConvexEntitlements {
   tier: 'free' | 'pro' | 'max'
+  planKind: 'free' | 'paid'
+  planAmountCents: number
+  budgetUsedCents: number
+  budgetTotalCents: number
+  budgetRemainingCents: number
+  autoTopUpEnabled: boolean
+  autoTopUpAmountCents: number
+  autoTopUpConsentGranted: boolean
   creditsUsed: number
   creditsTotal: number
   dailyUsage: { ask: number; write: number; agent: number }
@@ -66,7 +74,17 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    return NextResponse.json(entitlements, { headers: NO_STORE_HEADERS })
+    return NextResponse.json(
+      {
+        ...entitlements,
+        creditsUsed: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
+        creditsTotal:
+          entitlements.budgetTotalCents !== undefined
+            ? entitlements.budgetTotalCents / 100
+            : entitlements.creditsTotal,
+      },
+      { headers: NO_STORE_HEADERS },
+    )
   } catch (error) {
     console.error('[NativeSubscription] Error:', error)
     return NextResponse.json(

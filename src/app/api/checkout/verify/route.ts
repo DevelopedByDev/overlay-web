@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
+import { quantityToPlanAmountCents } from '@/lib/billing-pricing'
 
 function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscription) {
   const now = Date.now()
@@ -50,7 +51,14 @@ export async function POST(request: NextRequest) {
     }
 
     const subscription = checkoutSession.subscription as import('stripe').Stripe.Subscription
-    const tier = (checkoutSession.metadata?.tier as 'pro' | 'max') || 'pro'
+    const firstItem = subscription.items.data[0]
+    const priceId = firstItem?.price?.id
+    const metadataQuantity = Number.parseInt(checkoutSession.metadata?.stripeQuantity ?? '0', 10)
+    const quantity = firstItem?.quantity ?? (Number.isFinite(metadataQuantity) && metadataQuantity > 0 ? metadataQuantity : 1)
+    const planAmountCents = quantityToPlanAmountCents(quantity)
+    const topUpAmountCents = Number.parseInt(checkoutSession.metadata?.topUpAmountCents ?? '0', 10) || undefined
+    const autoTopUpEnabled = checkoutSession.metadata?.autoTopUpEnabled === 'true'
+    const offSessionConsentAt = Number.parseInt(checkoutSession.metadata?.offSessionConsentAt ?? '0', 10) || undefined
     const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
 
     await convex.mutation('subscriptions:upsertSubscription', {
@@ -58,7 +66,15 @@ export async function POST(request: NextRequest) {
       userId: authSession.user.id,
       stripeCustomerId: checkoutSession.customer as string,
       stripeSubscriptionId: subscription.id,
-      tier,
+      stripePriceId: priceId,
+      stripeQuantity: quantity,
+      tier: 'pro',
+      planKind: 'paid',
+      planVersion: 'variable_v2',
+      planAmountCents,
+      autoTopUpEnabled,
+      autoTopUpAmountCents: topUpAmountCents,
+      offSessionConsentAt,
       status: 'active',
       currentPeriodStart,
       currentPeriodEnd,
@@ -68,7 +84,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      tier,
+      planKind: 'paid',
+      planAmountCents,
       message: 'Subscription activated successfully',
     })
   } catch (error) {
