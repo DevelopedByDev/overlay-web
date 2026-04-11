@@ -4,6 +4,7 @@ import { internal } from './_generated/api'
 import { mutation, query } from './_generated/server'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import { applyStorageUsageDelta, ensureStorageAvailable } from './lib/storageQuota'
+import { assertOwnedFileR2Key, isOwnedFileR2Key } from '../src/lib/storage-keys'
 
 const utf8Encoder = new TextEncoder()
 
@@ -131,6 +132,9 @@ export const getStorageUrlForProxy = query({
     const file = await ctx.db.get(fileId)
     if (!file || file.userId !== userId) return null
     if (file.r2Key) {
+      if (!isOwnedFileR2Key(userId, file.r2Key)) {
+        return null
+      }
       return {
         r2Key: file.r2Key,
         name: file.name,
@@ -249,6 +253,9 @@ export const create = mutation({
   },
   handler: async (ctx, { userId, accessToken, serverSecret, name, type, parentId, content, contentHash, projectId, r2Key, sizeBytesOverride }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    if (r2Key) {
+      assertOwnedFileR2Key(userId, r2Key)
+    }
     if (parentId) {
       const parent = await ctx.db.get(parentId as Id<'files'>)
       if (!parent || parent.userId !== userId) {
@@ -319,6 +326,7 @@ export const createWithStorage = mutation({
     if (!r2Key) {
       throw new Error('createWithStorage requires r2Key')
     }
+    assertOwnedFileR2Key(userId, r2Key)
     if (parentId) {
       const parent = await ctx.db.get(parentId as Id<'files'>)
       if (!parent || parent.userId !== userId) {
@@ -456,4 +464,3 @@ export const remove = mutation({
     await deleteSubtree(fileId)
   },
 })
-

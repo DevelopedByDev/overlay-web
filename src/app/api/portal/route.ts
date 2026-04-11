@@ -3,6 +3,8 @@ import { stripe, getBaseUrl } from '@/lib/stripe'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { resolvePortalConfigurationId } from '@/lib/stripe-billing'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 interface Subscription {
   userId: string
@@ -65,6 +67,17 @@ async function resolveExistingCustomerId(customerId?: string): Promise<string | 
   }
 }
 
+async function resolveVerifiedCustomerIdFromCheckoutSession(
+  sessionId: string,
+  userId: string,
+): Promise<string | undefined> {
+  const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId)
+  if (checkoutSession.metadata?.userId !== userId) {
+    return undefined
+  }
+  return await resolveExistingCustomerId(checkoutSession.customer as string)
+}
+
 export async function POST(request: NextRequest) {
   try {
     const authSession = await getSession()
@@ -73,6 +86,12 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = authSession.user.id
+    const rateLimitResponse = enforceRateLimits(request, [
+      { bucket: 'billing:portal:ip', key: getClientIp(request), limit: 10, windowMs: 10 * 60_000 },
+      { bucket: 'billing:portal:user', key: userId, limit: 5, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+
     const body = await request.json().catch(() => ({}))
     const { sessionId } = body
 
@@ -81,8 +100,13 @@ export async function POST(request: NextRequest) {
 
     // If we have a checkout session ID, get customer from there
     if (sessionId) {
-      const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId)
-      customerId = await resolveExistingCustomerId(checkoutSession.customer as string)
+      customerId = await resolveVerifiedCustomerIdFromCheckoutSession(sessionId, userId)
+      if (!customerId) {
+        return NextResponse.json(
+          { error: 'Checkout session does not belong to the authenticated user.' },
+          { status: 403 }
+        )
+      }
     }
 
     // Otherwise, look up customer from our database
@@ -109,7 +133,7 @@ export async function POST(request: NextRequest) {
 
       if (customerId && !subscription?.stripeCustomerId) {
         await convex.mutation('subscriptions:upsertSubscription', {
-          serverSecret: process.env.INTERNAL_API_SECRET || '',
+          serverSecret: getInternalApiSecret(),
           userId,
           email: authSession.user.email,
           stripeCustomerId: customerId,

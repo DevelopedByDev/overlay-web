@@ -6,20 +6,6 @@ import type { HybridSearchChunk } from '../../../../../../convex/knowledge'
 
 export const maxDuration = 60
 
-function isTrustedInternalToolRequest(
-  request: NextRequest,
-  body: { userId?: string },
-): boolean {
-  const h = request.headers.get('x-internal-api-secret')?.trim()
-  const expected = getInternalApiSecret()
-  return Boolean(
-    h &&
-      h === expected &&
-      typeof body.userId === 'string' &&
-      body.userId.trim().length > 0,
-  )
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
@@ -34,9 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const auth = await resolveAuthenticatedAppUser(request, body)
-    const userId =
-      auth?.userId ??
-      (isTrustedInternalToolRequest(request, body) ? body.userId!.trim() : null)
+    const userId = auth?.userId ?? null
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

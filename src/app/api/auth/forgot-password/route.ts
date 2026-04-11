@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendPasswordResetEmail } from '@/lib/workos-auth'
+import { rateLimitByIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimitResponse = rateLimitByIp(request, 'auth:forgot-password', 5, 10 * 60_000)
+    if (rateLimitResponse) return rateLimitResponse
+
     const body = await request.json()
     const { email } = body
 

@@ -3,6 +3,7 @@ import { getSession } from '@/lib/workos-auth'
 import { stripe, getBaseUrl } from '@/lib/stripe'
 import { getTopUpPriceId, getTopUpQuantityForCheckout, isRecognizedTopUpAmount } from '@/lib/stripe-billing'
 import { clampTopUpAmountCents, formatDollarAmount } from '@/lib/billing-pricing'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 function resolveReturnUrl(baseUrl: string, returnPath: unknown, state: 'success' | 'canceled') {
   const safePath = typeof returnPath === 'string' && returnPath.startsWith('/') ? returnPath : '/account'
@@ -24,6 +25,12 @@ export async function POST(request: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
+
+    const rateLimitResponse = enforceRateLimits(request, [
+      { bucket: 'billing:topup:ip', key: getClientIp(request), limit: 10, windowMs: 10 * 60_000 },
+      { bucket: 'billing:topup:user', key: session.user.id, limit: 5, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
 
     const body = await request.json()
     const amountCents = clampTopUpAmountCents(Number(body.amountCents))

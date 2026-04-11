@@ -7,6 +7,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
+export { keyForFile, keyForOutput } from './storage-keys'
 
 function requireR2Env(name: string): string {
   const value = process.env[name]?.trim()
@@ -44,18 +45,6 @@ let _client: S3Client | null = null
 function getR2Client(): S3Client {
   if (!_client) _client = createR2Client()
   return _client
-}
-
-// ── Key helpers ──────────────────────────────────────────────────────────────
-
-export function keyForFile(userId: string, fileId: string, filename: string): string {
-  const safeName = encodeURIComponent(filename).replace(/%20/g, '+')
-  return `users/${userId}/files/${fileId}/${safeName}`
-}
-
-export function keyForOutput(userId: string, outputId: string, filename: string): string {
-  const safeName = encodeURIComponent(filename).replace(/%20/g, '+')
-  return `users/${userId}/outputs/${outputId}/${safeName}`
 }
 
 // ── Presigned upload URL ─────────────────────────────────────────────────────

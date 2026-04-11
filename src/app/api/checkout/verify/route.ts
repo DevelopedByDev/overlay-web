@@ -3,6 +3,7 @@ import { stripe } from '@/lib/stripe'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { quantityToPlanAmountCents } from '@/lib/billing-pricing'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
 
 function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscription) {
   const now = Date.now()
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
 
     await convex.mutation('subscriptions:upsertSubscription', {
-      serverSecret: process.env.INTERNAL_API_SECRET || '',
+      serverSecret: getInternalApiSecret(),
       userId: authSession.user.id,
       stripeCustomerId: checkoutSession.customer as string,
       stripeSubscriptionId: subscription.id,

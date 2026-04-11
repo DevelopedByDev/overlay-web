@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyEmail, resendVerificationEmail } from '@/lib/workos-auth'
+import { rateLimitByIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimitResponse = rateLimitByIp(request, 'auth:verify-email', 10, 10 * 60_000)
+    if (rateLimitResponse) return rateLimitResponse
+
     const body = await request.json()
     const { userId, code, action } = body
 

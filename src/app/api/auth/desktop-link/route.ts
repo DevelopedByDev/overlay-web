@@ -8,6 +8,7 @@ import {
   decryptSessionTransferPayload,
   encryptSessionTransferPayload,
 } from '@/lib/session-transfer-crypto'
+import { normalizeCodeChallenge } from '@/lib/workos-auth'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -32,9 +33,17 @@ export async function POST(request: Request) {
     }
 
     const requestBody = await request.json().catch(() => ({})) as { codeChallenge?: unknown }
-    const codeChallenge = typeof requestBody.codeChallenge === 'string'
-      ? requestBody.codeChallenge.trim()
-      : ''
+    const codeChallenge = normalizeCodeChallenge(
+      typeof requestBody.codeChallenge === 'string'
+        ? requestBody.codeChallenge
+        : null,
+    )
+    if (!codeChallenge) {
+      return NextResponse.json(
+        { error: 'A valid codeChallenge is required' },
+        { status: 400, headers: NO_STORE_HEADERS }
+      )
+    }
 
     const authData = {
       userId: session.user.id,
@@ -51,7 +60,7 @@ export async function POST(request: Request) {
     await convex.mutation('sessionTransfer:storeToken', {
       serverSecret: getInternalApiSecret(),
       token,
-      codeChallenge: codeChallenge || undefined,
+      codeChallenge,
       data: encryptSessionTransferPayload(JSON.stringify(authData)),
       expiresAt,
     })
@@ -84,6 +93,12 @@ export async function GET(request: Request) {
     if (!token) {
       return NextResponse.json(
         { error: 'Token required' },
+        { status: 400, headers: NO_STORE_HEADERS }
+      )
+    }
+    if (!codeVerifier) {
+      return NextResponse.json(
+        { error: 'Code verifier required' },
         { status: 400, headers: NO_STORE_HEADERS }
       )
     }

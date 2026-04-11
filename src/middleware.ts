@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 
@@ -25,10 +26,8 @@ function isProtectedRoute(pathname: string): boolean {
   )
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const internalApiSecret = request.headers.get('x-internal-api-secret')?.trim()
-  const expectedInternalApiSecret = process.env.INTERNAL_API_SECRET?.trim()
 
   if (
     pathname.startsWith('/_next') ||
@@ -43,13 +42,17 @@ export function middleware(request: NextRequest) {
   }
 
   if (isProtectedRoute(pathname)) {
-    if (
-      pathname.startsWith('/api/') &&
-      internalApiSecret &&
-      expectedInternalApiSecret &&
-      internalApiSecret === expectedInternalApiSecret
-    ) {
-      return NextResponse.next()
+    if (pathname.startsWith('/api/')) {
+      const serviceAuth = await verifyServiceAuthToken(
+        request.headers.get(getServiceAuthHeaderName()),
+        {
+          method: request.method,
+          path: pathname,
+        },
+      )
+      if (serviceAuth) {
+        return NextResponse.next()
+      }
     }
 
     const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)
@@ -66,7 +69,6 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(signInUrl)
     }
 
-    // Validate cookie has expected signed format (payload.signature)
     const parts = sessionCookie.value.split('.')
     if (parts.length < 2 || parts[0].length < 10) {
       if (pathname.startsWith('/api/')) {

@@ -16,6 +16,7 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/lib/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export const maxDuration = 300
 
@@ -39,6 +40,12 @@ export async function POST(request: NextRequest) {
   if (!auth) {
     return new Response('Unauthorized', { status: 401 })
   }
+
+  const rateLimitResponse = enforceRateLimits(request, [
+    { bucket: 'generation:video:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
+    { bucket: 'generation:video:user', key: auth.userId, limit: 10, windowMs: 10 * 60_000 },
+  ])
+  if (rateLimitResponse) return rateLimitResponse
 
   if (!prompt?.trim()) {
     return new Response('Prompt is required', { status: 400 })

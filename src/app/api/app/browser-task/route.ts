@@ -13,6 +13,7 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/lib/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export const maxDuration = 300
 
@@ -42,6 +43,18 @@ export async function POST(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId })
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const rateLimitResponse = enforceRateLimits(request, [
+      { bucket: 'browser-task:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
+      { bucket: 'browser-task:user', key: auth.userId, limit: 10, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+    const requestedSessionId = sessionId?.trim()
+    if (requestedSessionId) {
+      console.warn('[Browser Task API] Ignoring requested session reuse during security hardening', {
+        userId: auth.userId,
+      })
     }
 
     if (!task?.trim()) {
@@ -102,7 +115,6 @@ export async function POST(request: NextRequest) {
         ? (proxyCountryCode.toLowerCase() as ProxyCountryCode)
         : undefined
     const result = await client.run(task.trim(), {
-      ...(sessionId ? { sessionId } : {}),
       ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
       ...(model ? { model } : {}),
       ...(normalizedProxyCountryCode ? { proxyCountryCode: normalizedProxyCountryCode } : {}),

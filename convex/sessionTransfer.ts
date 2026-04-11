@@ -28,7 +28,7 @@ export const storeToken = mutation({
   args: {
     serverSecret: v.string(),
     token: v.string(),
-    codeChallenge: v.optional(v.string()),
+    codeChallenge: v.string(),
     data: v.string(),
     expiresAt: v.number(),
   },
@@ -37,7 +37,7 @@ export const storeToken = mutation({
     const tokenHash = await hashTransferToken(token)
     await ctx.db.insert('sessionTransferTokens', {
       tokenHash,
-      codeChallenge: codeChallenge?.trim() || undefined,
+      codeChallenge: codeChallenge.trim(),
       data,
       expiresAt,
     })
@@ -65,16 +65,19 @@ export const consumeToken = mutation({
       return null
     }
 
-    if (entry.codeChallenge) {
-      const trimmedVerifier = codeVerifier?.trim()
-      if (!trimmedVerifier) {
-        return null
-      }
+    const storedCodeChallenge = entry.codeChallenge?.trim()
+    if (!storedCodeChallenge) {
+      await ctx.db.delete(entry._id)
+      return null
+    }
+    const trimmedVerifier = codeVerifier?.trim()
+    if (!trimmedVerifier) {
+      return null
+    }
 
-      const hashedVerifier = await hashCodeVerifier(trimmedVerifier)
-      if (!constantTimeEqualStrings(entry.codeChallenge, hashedVerifier)) {
-        return null
-      }
+    const hashedVerifier = await hashCodeVerifier(trimmedVerifier)
+    if (!constantTimeEqualStrings(storedCodeChallenge, hashedVerifier)) {
+      return null
     }
 
     await ctx.db.delete(entry._id)

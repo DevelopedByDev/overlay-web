@@ -4,6 +4,7 @@ import { convex } from '@/lib/convex'
 import { isKnownOutputType } from '@/lib/output-types'
 import { deleteObject } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { isOwnedOutputR2Key } from '@/lib/storage-keys'
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,6 +64,9 @@ export async function DELETE(request: NextRequest) {
     }, { throwOnError: true })
 
     if (output?.r2Key) {
+      if (!isOwnedOutputR2Key(auth.userId, output.r2Key)) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      }
       await deleteObject(output.r2Key)
       console.log(`[OutputsDelete] Deleted R2 object key=${output.r2Key} for outputId=${outputId}`)
     }

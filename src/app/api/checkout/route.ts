@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe, getBaseUrl } from '@/lib/stripe'
 import { getSession } from '@/lib/workos-auth'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import {
   clampPaidPlanAmountCents,
   clampTopUpAmountCents,
@@ -20,6 +21,12 @@ export async function POST(request: NextRequest) {
     }
 
     const { user } = session
+    const rateLimitResponse = enforceRateLimits(request, [
+      { bucket: 'billing:checkout:ip', key: getClientIp(request), limit: 10, windowMs: 10 * 60_000 },
+      { bucket: 'billing:checkout:user', key: user.id, limit: 5, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+
     const body = await request.json()
     const planAmountCents = clampPaidPlanAmountCents(Number(body.planAmountCents))
     const topUpAmountCents = clampTopUpAmountCents(Number(body.topUpAmountCents))

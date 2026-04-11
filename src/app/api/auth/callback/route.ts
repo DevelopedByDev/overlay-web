@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
+  consumeAuthorizationState,
   handleCallback,
   getBaseUrl,
   getSession,
   MOBILE_AUTH_REDIRECT_PATH,
-  normalizeAuthRedirect,
 } from '@/lib/workos-auth'
 import { logAuthDebug, summarizeSessionForLog } from '@/lib/auth-debug'
 import { convex as serverConvex } from '@/lib/convex'
@@ -50,6 +50,10 @@ export async function GET(request: NextRequest) {
       hasCode: Boolean(code),
       hasState: Boolean(state),
     })
+    const authState = await consumeAuthorizationState(state)
+    if (!authState) {
+      return NextResponse.redirect(`${getBaseUrl()}/auth/sign-in?error=Invalid or expired authentication state`)
+    }
     const result = await handleCallback(code)
 
     if (!result.success || !result.user) {
@@ -131,26 +135,15 @@ export async function GET(request: NextRequest) {
       // Continue anyway - user can still use the app
     }
 
-    // Decode state to get redirect URI if present
-    let redirectTo = '/account'
-    if (state) {
-      try {
-        const decodedState = Buffer.from(state, 'base64').toString('utf-8')
-        const normalizedRedirect = normalizeAuthRedirect(decodedState)
-        if (normalizedRedirect) {
-          redirectTo = normalizedRedirect
-        } else {
-          console.warn('[Auth] Ignoring invalid callback redirect state')
-        }
-      } catch {
-        // Invalid state, use default redirect
-      }
-    }
+    const redirectTo = authState.redirectTo
 
     // Handle mobile app auth: generate a transfer token and deep link directly
     // instead of redirecting to a separate page that may not be deployed.
     if (redirectTo === MOBILE_AUTH_REDIRECT_PATH && session) {
       try {
+        if (!authState.codeChallenge) {
+          return NextResponse.redirect(`${getBaseUrl()}/auth/sign-in?error=Missing native auth code challenge`)
+        }
         const authData = {
           userId: session.user.id,
           email: session.user.email,
@@ -166,6 +159,7 @@ export async function GET(request: NextRequest) {
         await convex.mutation(api.sessionTransfer.storeToken, {
           serverSecret: getInternalApiSecret(),
           token,
+          codeChallenge: authState.codeChallenge,
           data: encryptSessionTransferPayload(JSON.stringify(authData)),
           expiresAt,
         })

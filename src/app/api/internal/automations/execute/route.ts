@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateServerSecret } from '../../../../../../convex/lib/auth'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getInternalApiBaseUrl } from '@/lib/url'
@@ -12,6 +11,7 @@ import {
   executeAutomationTurn,
   loadAutomationSourceInstructions,
 } from '@/lib/automation-runner'
+import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export const maxDuration = 300
@@ -20,16 +20,25 @@ export async function POST(request: NextRequest) {
   const startedAt = Date.now()
 
   try {
-    if (!validateServerSecret(request.headers.get('x-internal-api-secret')?.trim() || undefined)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { automationId, automationRunId, userId, requestId: incomingRequestId } = (await request.json()) as {
+    const body = (await request.json()) as {
       automationId?: string
       automationRunId?: string
       userId?: string
       requestId?: string
     }
+    const serviceAuth = await verifyServiceAuthToken(
+      request.headers.get(getServiceAuthHeaderName()),
+      {
+        method: request.method,
+        path: request.nextUrl.pathname,
+        userId: body.userId,
+      },
+    )
+    if (!serviceAuth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { automationId, automationRunId, userId, requestId: incomingRequestId } = body
     if (!automationId || !automationRunId || !userId) {
       return NextResponse.json(
         { error: 'automationId, automationRunId, and userId are required' },

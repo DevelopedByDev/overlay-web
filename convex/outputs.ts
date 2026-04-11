@@ -4,6 +4,7 @@ import { Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import { applyStorageUsageDelta, ensureStorageAvailable } from './lib/storageQuota'
 import { classifyOutputType } from '../src/lib/output-types'
+import { assertOwnedOutputR2Key, isOwnedOutputR2Key } from '../src/lib/storage-keys'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -72,6 +73,9 @@ export const create = mutation({
       accessToken: args.accessToken,
       serverSecret: args.serverSecret,
     })
+    if (args.r2Key) {
+      assertOwnedOutputR2Key(args.userId, args.r2Key)
+    }
     const sizeBytes = Math.max(0, args.sizeBytes ?? 0)
     if (sizeBytes > 0) {
       await ensureStorageAvailable(ctx as never, args.userId, sizeBytes)
@@ -153,6 +157,9 @@ export const update = mutation({
     const output = await ctx.db.get(outputId)
     if (!output || output.userId !== userId) {
       throw new Error('Unauthorized')
+    }
+    if (r2Key !== undefined && r2Key) {
+      assertOwnedOutputR2Key(userId, r2Key)
     }
     const updates: Record<string, unknown> = {}
     const previousSizeBytes = output.sizeBytes ?? 0
@@ -302,6 +309,9 @@ export const getStorageUrlForProxy = query({
     const output = await ctx.db.get(outputId)
     if (!output || output.userId !== userId) return null
     if (output.r2Key) {
+      if (!isOwnedOutputR2Key(userId, output.r2Key)) {
+        return null
+      }
       return {
         r2Key: output.r2Key,
         sizeBytes: output.sizeBytes ?? 0,

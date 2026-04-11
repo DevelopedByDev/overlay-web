@@ -23,9 +23,17 @@ const clientId = isDev
   : (process.env.WORKOS_CLIENT_ID || '')
 
 const SESSION_COOKIE_NAME = 'overlay_session'
+const AUTH_STATE_COOKIE_NAME = 'overlay_auth_state'
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30
+const AUTH_STATE_MAX_AGE = 60 * 10
 const DEFAULT_AUTH_REDIRECT = '/account'
 export const MOBILE_AUTH_REDIRECT_PATH = '/auth/mobile-complete'
+
+type AuthorizationState = {
+  codeChallenge?: string
+  nonce: string
+  redirectTo: string
+}
 
 logAuthDebug('workos-auth initialized', {
   isDev,
@@ -87,6 +95,39 @@ function verifySignedCookie(cookieValue: string): string | null {
   }
 
   return payload
+}
+
+function signedValuesMatch(left: string, right: string): boolean {
+  const leftBuf = Buffer.from(left, 'utf8')
+  const rightBuf = Buffer.from(right, 'utf8')
+  return leftBuf.length === rightBuf.length && timingSafeEqual(leftBuf, rightBuf)
+}
+
+function encodeSignedValue(value: string): string {
+  const payload = Buffer.from(value, 'utf8').toString('base64url')
+  const signature = signPayload(payload)
+  return `${payload}.${signature}`
+}
+
+function decodeSignedValue(value: string): string | null {
+  const payload = verifySignedCookie(value)
+  if (!payload) return null
+  try {
+    return Buffer.from(payload, 'base64url').toString('utf8')
+  } catch {
+    return null
+  }
+}
+
+async function clearAuthorizationStateCookie(): Promise<void> {
+  const cookieStore = await cookies()
+  cookieStore.set(AUTH_STATE_COOKIE_NAME, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 0,
+    path: '/',
+  })
 }
 
 function parseSessionPayload(payload: string): AuthSession {
@@ -164,48 +205,121 @@ export function normalizeAuthRedirect(redirectUri?: string | null): string | nul
   }
 }
 
+export function normalizeCodeChallenge(codeChallenge?: string | null): string | null {
+  if (codeChallenge == null) return null
+  const trimmed = codeChallenge.trim()
+  if (!trimmed) return null
+  if (!/^[A-Za-z0-9._~-]{43,128}$/.test(trimmed)) {
+    return null
+  }
+  return trimmed
+}
+
+async function createAuthorizationState(params: {
+  redirectTo: string
+  codeChallenge?: string | null
+}): Promise<string> {
+  const state: AuthorizationState = {
+    nonce: crypto.randomUUID(),
+    redirectTo: params.redirectTo,
+    ...(params.codeChallenge ? { codeChallenge: params.codeChallenge } : {}),
+  }
+  const encoded = encodeSignedValue(JSON.stringify(state))
+  const cookieStore = await cookies()
+  cookieStore.set(AUTH_STATE_COOKIE_NAME, encoded, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: AUTH_STATE_MAX_AGE,
+    path: '/',
+  })
+  return encoded
+}
+
+export async function consumeAuthorizationState(
+  encodedState: string | null | undefined,
+): Promise<AuthorizationState | null> {
+  const trimmed = encodedState?.trim()
+  const cookieStore = await cookies()
+  const cookieValue = cookieStore.get(AUTH_STATE_COOKIE_NAME)?.value
+
+  await clearAuthorizationStateCookie()
+
+  if (!trimmed || !cookieValue || !signedValuesMatch(trimmed, cookieValue)) {
+    return null
+  }
+
+  const decoded = decodeSignedValue(trimmed)
+  if (!decoded) return null
+
+  try {
+    const parsed = JSON.parse(decoded) as Partial<AuthorizationState>
+    if (typeof parsed.nonce !== 'string' || !parsed.nonce.trim()) return null
+    if (typeof parsed.redirectTo !== 'string' || !parsed.redirectTo.trim()) return null
+    if (parsed.codeChallenge !== undefined && normalizeCodeChallenge(parsed.codeChallenge) === null) {
+      return null
+    }
+    return {
+      nonce: parsed.nonce,
+      redirectTo: parsed.redirectTo,
+      ...(parsed.codeChallenge ? { codeChallenge: parsed.codeChallenge } : {}),
+    }
+  } catch {
+    return null
+  }
+}
+
 // Generate authorization URL for SSO providers
-export function getAuthorizationUrl(
+export async function getAuthorizationUrl(
   provider: 'GoogleOAuth' | 'AppleOAuth' | 'MicrosoftOAuth',
-  redirectUri?: string,
-  forceSignIn?: boolean
-): string {
+  options: {
+    redirectUri?: string
+    forceSignIn?: boolean
+    codeChallenge?: string | null
+  } = {},
+): Promise<string> {
   if (!clientId) {
     throw new Error('WorkOS client ID is not configured')
   }
 
   const workos = getWorkOS()
   const baseRedirectUri = `${getBaseUrl()}/api/auth/callback`
-  const normalizedRedirectUri = normalizeAuthRedirect(redirectUri)
-  if (redirectUri && normalizedRedirectUri === null) {
+  const normalizedRedirectUri = normalizeAuthRedirect(options.redirectUri)
+  if (options.redirectUri && normalizedRedirectUri === null) {
     throw new Error('Invalid redirect URI')
   }
+  const normalizedCodeChallenge = normalizeCodeChallenge(options.codeChallenge)
+  if (normalizedRedirectUri === MOBILE_AUTH_REDIRECT_PATH && !normalizedCodeChallenge) {
+    throw new Error('Native authentication requires a valid codeChallenge')
+  }
+
+  const state = await createAuthorizationState({
+    redirectTo: normalizedRedirectUri ?? DEFAULT_AUTH_REDIRECT,
+    codeChallenge: normalizedCodeChallenge,
+  })
   // Build authorization URL options
-  const options: Parameters<typeof workos.userManagement.getAuthorizationUrl>[0] = {
+  const authOptions: Parameters<typeof workos.userManagement.getAuthorizationUrl>[0] = {
     provider,
     clientId,
     redirectUri: baseRedirectUri,
-    state:
-      normalizedRedirectUri && normalizedRedirectUri !== DEFAULT_AUTH_REDIRECT
-        ? Buffer.from(normalizedRedirectUri).toString('base64')
-        : undefined,
+    state,
   }
   
   // Force sign-in screen when coming from desktop app
   // This prevents auto-redirecting if the user has an existing OAuth session
-  if (forceSignIn) {
-    options.screenHint = 'sign-in'
+  if (options.forceSignIn) {
+    authOptions.screenHint = 'sign-in'
   }
   
   let authorizationUrl: string
   try {
-    authorizationUrl = workos.userManagement.getAuthorizationUrl(options)
+    authorizationUrl = workos.userManagement.getAuthorizationUrl(authOptions)
   } catch {
     // Fallback: try without screenHint if it causes issues
-    delete options.screenHint
-    authorizationUrl = workos.userManagement.getAuthorizationUrl(options)
+    delete authOptions.screenHint
+    authorizationUrl = workos.userManagement.getAuthorizationUrl(authOptions)
 
-    if (forceSignIn) {
+    if (options.forceSignIn) {
       const url = new URL(authorizationUrl)
       url.searchParams.set('prompt', 'login')
       authorizationUrl = url.toString()

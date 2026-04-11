@@ -1,4 +1,5 @@
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
+import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/lib/service-auth'
 import type { OverlayToolsOptions } from './types'
 
 export async function executeListNotes(
@@ -155,15 +156,26 @@ export async function executeDeleteNote(options: OverlayToolsOptions, input: { n
     const url = options.baseUrl
       ? `${options.baseUrl}/api/app/notes?noteId=${encodeURIComponent(input.noteId.trim())}`
       : `/api/app/notes?noteId=${encodeURIComponent(input.noteId.trim())}`
+    const serviceAuthHeader =
+      options.serverSecret
+        ? await buildServiceAuthToken({
+            userId: options.userId,
+            method: 'DELETE',
+            path: '/api/app/notes',
+          })
+        : null
     const res = await fetch(url, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
         ...(options.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : {}),
-        ...(options.serverSecret ? { 'x-internal-api-secret': options.serverSecret } : {}),
+        ...(serviceAuthHeader ? { [getServiceAuthHeaderName()]: serviceAuthHeader } : {}),
         ...(options.forwardCookie ? { Cookie: options.forwardCookie } : {}),
       },
-      body: JSON.stringify(toolAuthBody(options)),
+      body: JSON.stringify({
+        userId: options.userId,
+        accessToken: options.accessToken,
+      }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Failed to delete note' }))

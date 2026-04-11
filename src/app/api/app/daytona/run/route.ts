@@ -17,10 +17,10 @@ import {
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { classifyOutputType } from '@/lib/output-types'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import { getSession } from '@/lib/workos-auth'
 import type { Entitlements } from '@/lib/app-contracts'
 import { buildInsufficientCreditsPayload, ensureBudgetAvailable, getBudgetTotals, isPaidPlan } from '@/lib/billing-runtime'
-import { validateServerSecret } from '../../../../../../convex/lib/auth'
 import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl } from '@/lib/r2'
 
 export const maxDuration = 300
@@ -160,7 +160,6 @@ export async function POST(request: NextRequest) {
     turnId,
     userId: requestedUserId,
     accessToken,
-    serverSecret: providedServerSecret,
   }: {
     task?: string
     runtime?: DaytonaRuntime
@@ -172,7 +171,6 @@ export async function POST(request: NextRequest) {
     turnId?: string
     userId?: string
     accessToken?: string
-    serverSecret?: string
   } = await request.json()
 
   if (!task?.trim()) {
@@ -190,18 +188,22 @@ export async function POST(request: NextRequest) {
 
   let userId: string | null = session?.user.id ?? null
   if (!userId) {
-    if (validateServerSecret(providedServerSecret) && typeof requestedUserId === 'string' && requestedUserId.trim()) {
-      userId = requestedUserId.trim()
-    } else {
-      const auth = await resolveAuthenticatedAppUser(request, {
-        accessToken,
-        userId: requestedUserId,
-      })
-      userId = auth?.userId ?? null
-    }
+    const auth = await resolveAuthenticatedAppUser(request, {
+      accessToken,
+      userId: requestedUserId,
+    })
+    userId = auth?.userId ?? null
   }
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const rateLimitResponse = enforceRateLimits(request, [
+    { bucket: 'sandbox:daytona:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
+    { bucket: 'sandbox:daytona:user', key: userId, limit: 10, windowMs: 10 * 60_000 },
+  ])
+  if (rateLimitResponse) {
+    return rateLimitResponse
   }
 
   const serverSecret = getInternalApiSecret()
