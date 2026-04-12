@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { logSecurityEvent } from '@/lib/security-events'
 
 type RateLimitWindow = {
   count: number
@@ -90,7 +91,7 @@ export function enforceRateLimits(
     const result = takeRateLimit(rule)
     if (result.allowed) continue
 
-    console.warn('[RateLimit] blocked request', {
+    logSecurityEvent('rate_limit_blocked', {
       bucket: rule.bucket,
       key: rule.key,
       path: request.nextUrl.pathname,

@@ -14,6 +14,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "security:audit": "npm audit --omit=dev --audit-level=high",
     "video:studio": "npx remotion studio src/remotion/index.ts",
     "video:render:launch": "mkdir -p renders && npx remotion render src/remotion/index.ts overlay-launch-video renders/overlay-launch-video.mp4",
     "test:auth:env": "node --experimental-strip-types scripts/auth-dev-env-check.ts",
@@ -48,7 +50,7 @@
     "@composio/core": "^0.6.7",
     "@composio/vercel": "^0.6.7",
     "@convex-dev/stripe": "^0.1.3",
-    "@daytonaio/sdk": "^0.157.0",
+    "@daytonaio/sdk": "^0.164.0",
     "@openrouter/ai-sdk-provider": "^2.3.3",
     "@remotion/player": "^4.0.441",
     "@sentry/nextjs": "^10.46.0",
@@ -81,7 +83,9 @@
     "@vercel/speed-insights": "^1.3.1",
     "@workos-inc/authkit-nextjs": "^2.14.0",
     "@workos-inc/node": "^8.7.0",
+    "@xmldom/xmldom": "^0.9.9",
     "ai": "^6.0.116",
+    "axios": "^1.15.0",
     "browser-use-sdk": "^3.3.1",
     "convex": "^1.32.0",
     "framer-motion": "^12.26.2",
@@ -91,8 +95,9 @@
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.0",
     "mixpanel-browser": "^2.77.0",
-    "next": "^15.2.9",
+    "next": "^15.5.15",
     "pdf-parse": "^1.1.1",
+    "picomatch": "^2.3.2",
     "proxy-from-env": "^2.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -105,7 +110,6 @@
     "remark-math": "^6.0.0",
     "remotion": "^4.0.441",
     "stripe": "^20.3.1",
-    "vercel": "^50.41.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -117,6 +121,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vercel": "^50.44.0"
   }
 }

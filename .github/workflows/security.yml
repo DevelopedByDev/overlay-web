@@ -55,3 +55,47 @@ jobs:
           fi
 
           echo "No forbidden NEXT_PUBLIC_* secret-like variables found."
+
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check dependency changes
+        uses: actions/dependency-review-action@v4
+
+  dependency-audit:
+    name: Lockfile, Typecheck, and Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Ensure package lock exists
+        run: test -f package-lock.json
+
+      - name: Install from lockfile
+        run: npm ci --ignore-scripts
+
+      - name: Verify lockfile is in sync
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          git diff --exit-code package-lock.json package.json
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Audit production dependencies
+        run: npm run security:audit

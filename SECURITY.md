@@ -41,6 +41,13 @@ High-priority areas for this repository include:
 - Desktop/mobile session transfer flows.
 - AI interaction and tool execution surfaces.
 
+## Enterprise Launch Controls
+
+Enterprise launch readiness is blocked on the checklist in
+[`docs/enterprise-security-launch-checklist.md`](docs/enterprise-security-launch-checklist.md).
+That checklist covers the required cloud-side controls for Vercel, Cloudflare R2, Daytona,
+Convex, WorkOS, Stripe, and security telemetry.
+
 ## Secret Handling Expectations
 
 - Never commit real API keys, webhook secrets, JWTs, refresh tokens, or production hostnames
@@ -54,3 +61,4 @@ High-priority areas for this repository include:
 - Prefer test credentials and sandbox projects.
 - Avoid using production customer data in repro steps.
 - If a report requires privileged access, describe the minimum permissions needed.
+- Review CSP violation reports and security event alerts before enabling enforced CSP in production.
