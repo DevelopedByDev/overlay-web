@@ -8,10 +8,6 @@ const PROVIDER_VAULT_NAMES: Record<string, string> = {
   composio: 'COMPOSIO_API_KEY',
   ai_gateway: 'AI_GATEWAY_API_KEY',
   mixpanel: 'MIXPANEL_TOKEN',
-  openai: 'OPENAI_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-  google: 'GOOGLE_API_KEY',
-  xai: 'XAI_API_KEY',
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000

@@ -12,6 +12,11 @@ import {
   summarizeOpaqueTokenForLog,
   summarizeSessionForLog,
 } from './auth-debug'
+import {
+  DEFAULT_AUTH_REDIRECT,
+  DESKTOP_AUTH_REDIRECT_URI,
+  SESSION_TRANSFER_DEEP_LINK_PREFIX,
+} from './auth-constants'
 import { getBaseUrl } from './url'
 
 const isDev = process.env.NODE_ENV === 'development'
@@ -26,13 +31,19 @@ const SESSION_COOKIE_NAME = 'overlay_session'
 const AUTH_STATE_COOKIE_NAME = 'overlay_auth_state'
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30
 const AUTH_STATE_MAX_AGE = 60 * 10
-const DEFAULT_AUTH_REDIRECT = '/account'
+const EMAIL_VERIFICATION_TICKET_MAX_AGE_MS = 24 * 60 * 60 * 1000
 export const MOBILE_AUTH_REDIRECT_PATH = '/auth/mobile-complete'
 
 type AuthorizationState = {
   codeChallenge?: string
   nonce: string
   redirectTo: string
+}
+
+type EmailVerificationTicket = {
+  email: string
+  expiresAt: number
+  userId: string
 }
 
 logAuthDebug('workos-auth initialized', {
@@ -185,7 +196,7 @@ export function normalizeAuthRedirect(redirectUri?: string | null): string | nul
     return DEFAULT_AUTH_REDIRECT
   }
 
-  if (trimmed.startsWith('overlay://')) {
+  if (trimmed === DESKTOP_AUTH_REDIRECT_URI || trimmed.startsWith(`${SESSION_TRANSFER_DEEP_LINK_PREFIX}?`)) {
     return MOBILE_AUTH_REDIRECT_PATH
   }
 
@@ -200,6 +211,43 @@ export function normalizeAuthRedirect(redirectUri?: string | null): string | nul
       return null
     }
     return `${candidate.pathname}${candidate.search}${candidate.hash}` || DEFAULT_AUTH_REDIRECT
+  } catch {
+    return null
+  }
+}
+
+export function createEmailVerificationTicket(args: {
+  email: string
+  userId: string
+}): string {
+  const ticket: EmailVerificationTicket = {
+    email: args.email.trim(),
+    expiresAt: Date.now() + EMAIL_VERIFICATION_TICKET_MAX_AGE_MS,
+    userId: args.userId.trim(),
+  }
+  return encodeSignedValue(JSON.stringify(ticket))
+}
+
+export function readEmailVerificationTicket(
+  value: string | null | undefined,
+): EmailVerificationTicket | null {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+
+  const decoded = decodeSignedValue(trimmed)
+  if (!decoded) return null
+
+  try {
+    const parsed = JSON.parse(decoded) as Partial<EmailVerificationTicket>
+    if (typeof parsed.userId !== 'string' || !parsed.userId.trim()) return null
+    if (typeof parsed.email !== 'string' || !parsed.email.trim()) return null
+    if (typeof parsed.expiresAt !== 'number' || parsed.expiresAt < Date.now()) return null
+
+    return {
+      email: parsed.email.trim(),
+      expiresAt: parsed.expiresAt,
+      userId: parsed.userId.trim(),
+    }
   } catch {
     return null
   }
@@ -368,7 +416,7 @@ export async function createUser(
   password: string,
   firstName?: string,
   lastName?: string
-): Promise<{ success: boolean; user?: AuthUser; error?: string; pendingEmailVerification?: boolean }> {
+): Promise<{ success: boolean; user?: AuthUser; error?: string; pendingEmailVerification?: boolean; verificationTicket?: string }> {
   try {
     const workos = getWorkOS(true)
     const user = await workos.userManagement.createUser({
@@ -387,6 +435,10 @@ export async function createUser(
     return {
       success: true,
       pendingEmailVerification: true,
+      verificationTicket: createEmailVerificationTicket({
+        email: user.email,
+        userId: user.id,
+      }),
       user: {
         id: user.id,
         email: user.email,

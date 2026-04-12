@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       user: result.user,
+      verificationTicket: result.verificationTicket,
       pendingEmailVerification: result.pendingEmailVerification,
       message: 'Account created! Please check your email to verify your account.',
     })

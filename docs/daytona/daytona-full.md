@@ -12336,7 +12336,7 @@ Copy `.env.example` to `.env` and add your keys:
 
 ```bash
 DAYTONA_API_KEY=your_daytona_key
-ANTHROPIC_API_KEY=your_anthropic_key
+PROVIDER_API_KEY=your_anthropic_key
 ```
 
 #### Local Usage
@@ -12834,23 +12834,23 @@ cd daytona/guides/typescript/anthropic/multi-agent-claude-sdk
 To run this example, you need to set the following environment variables:
 
 - `DAYTONA_API_KEY`: Required for access to Daytona sandboxes. Get it from [Daytona Dashboard](https://app.daytona.io/dashboard/keys)
-- `ANTHROPIC_API_KEY`: Required for the **Project Manager Agent** (runs locally). Get it from [Claude Developer Platform](https://console.anthropic.com/settings/keys)
-- `SANDBOX_ANTHROPIC_API_KEY`: **Optional** for the **Developer Agent** (runs in sandbox). If not provided, defaults to using `ANTHROPIC_API_KEY`. Get it from [Claude Developer Platform](https://console.anthropic.com/settings/keys)
+- `PROVIDER_API_KEY`: Required for the **Project Manager Agent** (runs locally). Get it from [Claude Developer Platform](https://console.anthropic.com/settings/keys)
+- `SANDBOX_PROVIDER_API_KEY`: **Optional** for the **Developer Agent** (runs in sandbox). If not provided, defaults to using `PROVIDER_API_KEY`. Get it from [Claude Developer Platform](https://console.anthropic.com/settings/keys)
 
 Copy `.env.example` to `.env` and add your keys:
 
 ```bash
 DAYTONA_API_KEY=your_daytona_key
-ANTHROPIC_API_KEY=your_anthropic_key
-SANDBOX_ANTHROPIC_API_KEY=your_anthropic_key
+PROVIDER_API_KEY=your_anthropic_key
+SANDBOX_PROVIDER_API_KEY=your_anthropic_key
 ```
 
 :::tip[Agent API Key Options]
-You can use a single `ANTHROPIC_API_KEY` for both agents, or provide a separate `SANDBOX_ANTHROPIC_API_KEY` for billing/tracking purposes.
+You can use a single `PROVIDER_API_KEY` for both agents, or provide a separate `SANDBOX_PROVIDER_API_KEY` for billing/tracking purposes.
 :::
 
 :::caution[API Key Security]
-The `SANDBOX_ANTHROPIC_API_KEY` is passed into the Daytona sandbox environment and is accessible to any code executed inside the sandbox.
+The `SANDBOX_PROVIDER_API_KEY` is passed into the Daytona sandbox environment and is accessible to any code executed inside the sandbox.
 :::
 
 #### Local Usage
@@ -13109,11 +13109,11 @@ Copy `.env.example` to `.env` and add your keys:
 
 ```bash
 DAYTONA_API_KEY=your_daytona_key
-SANDBOX_ANTHROPIC_API_KEY=your_anthropic_key
+SANDBOX_PROVIDER_API_KEY=your_anthropic_key
 ```
 
 :::caution[API Key Security]
-Note: The `SANDBOX_ANTHROPIC_API_KEY` key is passed into the Daytona sandbox environment and is accessible to any code executed inside the sandbox.
+Note: The `SANDBOX_PROVIDER_API_KEY` key is passed into the Daytona sandbox environment and is accessible to any code executed inside the sandbox.
 :::
 
 #### Local Usage
@@ -13399,7 +13399,7 @@ async def run_claude_code():
 
         # Run the Claude Code command inside the sandbox
         await pty_handle.send_input(
-            f"ANTHROPIC_API_KEY={os.environ['ANTHROPIC_API_KEY']} {claude_command}\n"
+            f"PROVIDER_API_KEY={os.environ['PROVIDER_API_KEY']} {claude_command}\n"
         )
 
         # Use this to close the terminal session if no more commands will be executed
@@ -13440,7 +13440,7 @@ try {
 
     // Run the Claude Code command inside the sandbox
     ptyHandle.sendInput(
-    `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY} ${claudeCommand}\n`
+    `PROVIDER_API_KEY=${process.env.PROVIDER_API_KEY} ${claudeCommand}\n`
     );
 
     // Use this to close the terminal session if no more commands will be executed
@@ -13545,11 +13545,11 @@ Copy `.env.example` to `.env` and add your keys:
 
 ```bash
 DAYTONA_API_KEY=your_daytona_key
-SANDBOX_OPENAI_API_KEY=your_openai_key
+SANDBOX_PROVIDER_API_KEY=your_openai_key
 ```
 
 :::caution[API Key Security]
-Note: The `SANDBOX_OPENAI_API_KEY` key is passed into the Daytona sandbox environment and is accessible to any code executed inside the sandbox.
+Note: The `SANDBOX_PROVIDER_API_KEY` key is passed into the Daytona sandbox environment and is accessible to any code executed inside the sandbox.
 :::
 
 #### Local Usage
@@ -13716,7 +13716,7 @@ Create a `.env` file in your project:
 
 ```bash
 DAYTONA_API_KEY=dtn_***
-ANTHROPIC_API_KEY=sk-ant-***
+PROVIDER_API_KEY=sk-ant-***
 ```
 
 ### 2. Dataset Preparation
@@ -13898,7 +13898,7 @@ Next, we'll create the prompt that tells Claude about our dataset and what analy
     Write Python code that analyzes the dataset based on my request and produces a matplotlib chart accordingly.
     Always finish with plt.show() to display the chart.`
 
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const anthropic = new Anthropic({ apiKey: process.env.PROVIDER_API_KEY })
     ```
 
 #### 3.3 Tool Definition
@@ -14403,7 +14403,7 @@ Here are the complete, ready-to-run examples with the agentic loop:
     Write Python code that analyzes the dataset based on my request and produces a matplotlib chart accordingly.
     Always finish with plt.show() to display the chart.`;
 
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const anthropic = new Anthropic({ apiKey: process.env.PROVIDER_API_KEY });
 
       const tools: Tool[] = [
         {
@@ -14616,7 +14616,7 @@ Create a `.env` file in your project:
 
 ```bash
 DAYTONA_API_KEY=dtn_***
-GOOGLE_API_KEY=***
+PROVIDER_API_KEY=***
 ```
 
 ### 3. Understanding the Core Components
@@ -15140,7 +15140,7 @@ Create a `.env` file in your project:
 
 ```bash
 DAYTONA_API_KEY=dtn_***
-ANTHROPIC_API_KEY=sk-ant-***
+PROVIDER_API_KEY=sk-ant-***
 ```
 
 ### 3. Download Dataset
@@ -16024,7 +16024,7 @@ The `.env` file requires the following configuration:
 For this guide, we'll use OpenAI as the LLM provider with the `gpt-4o-mini` model:
 
 ```env
-OPENAI_API_KEY=your_openai_key
+PROVIDER_API_KEY=your_openai_key
 MODEL=openai/gpt-4o-mini
 ```
 
@@ -16570,7 +16570,7 @@ Copy `.env.example` to `.env` and add your Daytona API key:
 DAYTONA_API_KEY=your_daytona_key
 ```
 
-A default OpenClaw configuration is stored in `openclaw.json`. You can customize it according to the [configuration reference](https://docs.openclaw.ai/gateway/configuration-reference). You can also add additional environment variables to `.env.sandbox` (e.g. `ANTHROPIC_API_KEY` for Claude) and they will be loaded into the sandbox.
+A default OpenClaw configuration is stored in `openclaw.json`. You can customize it according to the [configuration reference](https://docs.openclaw.ai/gateway/configuration-reference). You can also add additional environment variables to `.env.sandbox` (e.g. `PROVIDER_API_KEY` for Claude) and they will be loaded into the sandbox.
 
 #### Run the Example
 
@@ -17130,7 +17130,7 @@ For example, to use an Anthropic API key, modify the `daytona.create()` call in 
 ```typescript
 sandbox = await daytona.create({
   envVars: {
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+    PROVIDER_API_KEY: process.env.PROVIDER_API_KEY || '',
   },
 })
 ```
@@ -18881,7 +18881,7 @@ The file needs two variables:
 
 ```bash
 DAYTONA_API_KEY=your_daytona_api_key
-OPENROUTER_API_KEY=your_openrouter_api_key  # or OPENAI_API_KEY / ANTHROPIC_API_KEY
+OPENROUTER_API_KEY=your_openrouter_api_key  # or PROVIDER_API_KEY / PROVIDER_API_KEY
 ```
 
 :::note

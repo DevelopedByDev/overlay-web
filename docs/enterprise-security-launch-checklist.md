@@ -17,21 +17,21 @@ This checklist is the launch gate for enterprise-facing releases. Treat every un
 
 ### Secret Rotation
 
-- [ ] Rotate `INTERNAL_API_SECRET`, `AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`, `COMPOSIO_API_KEY`, `BROWSER_USE_API_KEY`, Daytona credentials, WorkOS keys, Stripe secrets, and any other provider key that was previously reachable from client flows.
-- [ ] Confirm old credentials are revoked, not just superseded.
-- [ ] Capture rotation date, owner, and evidence in the release notes or an internal security tracker.
+- [ ] Rotate `INTERNAL_API_SECRET`, `AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`, `COMPOSIO_API_KEY`, `BROWSER_USE_API_KEY`, Daytona credentials, WorkOS keys, Stripe secrets, and any other provider key that was previously reachable from client flows.
+- [x] Confirm old credentials are revoked, not just superseded.
+- [x] Capture rotation date, owner, and evidence in the release notes or an internal security tracker.
 
 ### Vercel
 
-- [ ] Enable Vercel Firewall protections appropriate for public traffic: managed rules, bot protection, and route-level rate limiting for auth, billing, AI, browser, and sandbox endpoints.
-- [ ] Configure AI Gateway budgets, alerts, and per-provider usage review. Verify budget alerts route to an on-call channel.
-- [ ] Confirm runtime logs and deployment logs are retained long enough for incident response and are accessible to the production responders.
+- [x] Enable Vercel Firewall protections appropriate for public traffic: managed rules, bot protection, and route-level rate limiting for auth, billing, AI, browser, and sandbox endpoints.
+- [x] Configure AI Gateway budgets, alerts, and per-provider usage review. Verify budget alerts route to an on-call channel.
+- [x] Confirm runtime logs and deployment logs are retained long enough for incident response and are accessible to the production responders.
 - [ ] Verify preview deployments do not expose production secrets or production datasets.
 
 ### Cloudflare R2
 
-- [ ] Bucket access remains private. Only presigned URLs should reach end users.
-- [ ] R2 API tokens are scoped to the minimum bucket and permissions required.
+- [x] Bucket access remains private. Only presigned URLs should reach end users.
+- [x] R2 API tokens are scoped to the minimum bucket and permissions required.
 - [ ] Bucket CORS allows only the expected app origins and HTTP methods.
 - [ ] Presigned URL TTL stays short and is documented. Current implementation assumes short-lived bearer-style access.
 - [ ] Lifecycle, retention, and delete behavior are documented for customer data.
@@ -46,11 +46,11 @@ This checklist is the launch gate for enterprise-facing releases. Treat every un
 
 ### Convex
 
-- [ ] Production and development deployments are separate and correctly wired through env vars.
+- [x] Production and development deployments are separate and correctly wired through env vars.
 - [ ] Auth issuer and audience settings match the actual WorkOS tokens in production.
-- [ ] No admin or deployment tokens are exposed to clients.
-- [ ] After editing `convex/` auth or authorization logic, push both deployments with `npm run convex:push:all`.
-- [ ] Audit logs or equivalent traces exist for privileged server mutations.
+- [x] No admin or deployment tokens are exposed to clients.
+- [x] After editing `convex/` auth or authorization logic, push both deployments with `npm run convex:push:all`.
+- [x] Audit logs or equivalent traces exist for privileged server mutations.
 
 ### WorkOS
 

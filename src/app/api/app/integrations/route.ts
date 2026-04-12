@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { getBaseUrl } from '@/lib/url'
 
 type ComposioAppRecord = {
   key?: string
@@ -79,6 +80,47 @@ async function fetchAppRecord(apiKey: string, slug: string) {
   const data = await res.json() as ComposioAppRecord
   const item = mapAppRecord(data)
   return item.slug ? item : null
+}
+
+function getAllowedAppOrigins(): string[] {
+  const configured = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.DEV_NEXT_PUBLIC_APP_URL,
+    getBaseUrl(),
+  ]
+
+  const origins = new Set<string>()
+  for (const value of configured) {
+    const trimmed = value?.trim()
+    if (!trimmed) continue
+    try {
+      origins.add(new URL(trimmed).origin)
+    } catch {
+      continue
+    }
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    origins.add('http://localhost:3000')
+    origins.add('http://127.0.0.1:3000')
+  }
+
+  return Array.from(origins)
+}
+
+function resolveComposioCallbackOrigin(request: NextRequest): string {
+  const allowedOrigins = getAllowedAppOrigins()
+  const requestOrigin = request.nextUrl.origin
+  if (allowedOrigins.includes(requestOrigin)) {
+    return requestOrigin
+  }
+
+  const headerOrigin = request.headers.get('origin')?.trim()
+  if (headerOrigin && allowedOrigins.includes(headerOrigin)) {
+    return headerOrigin
+  }
+
+  return new URL(getBaseUrl()).origin
 }
 
 // GET - list connected integrations, or search toolkits
@@ -218,13 +260,7 @@ export async function POST(request: NextRequest) {
 
     // action === 'connect' — get OAuth redirect URL via Composio SDK
     // Derive origin from the request so the callback works on any domain (www, non-www, localhost)
-    const origin =
-      request.headers.get('origin') ||
-      (() => {
-        const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || ''
-        const proto = request.headers.get('x-forwarded-proto') || 'https'
-        return host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL || 'https://getoverlay.io')
-      })()
+    const origin = resolveComposioCallbackOrigin(request)
     const callbackUrl = `${origin}/auth/composio/callback`
 
     // Get an auth config for this toolkit; create a Composio-managed one if none exists
