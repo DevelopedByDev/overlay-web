@@ -1079,6 +1079,54 @@ function getAutomationSuggestion(msg: unknown): ChatAutomationSuggestionSummary 
   return m.metadata?.automationSuggestion ?? null
 }
 
+type ServerConversationMessage = {
+  id: string
+  turnId?: string
+  role: 'user' | 'assistant'
+  parts: Array<{
+    type: string
+    text?: string
+    url?: string
+    mediaType?: string
+    fileName?: string
+    state?: string
+  }>
+  model?: string
+  metadata?: ChatMessageMetadata
+  replyToTurnId?: string
+  replySnippet?: string
+  routedModelId?: string
+}
+
+function messageMatchesLocalTurn(msg: { id?: string; turnId?: string }, turnId: string): boolean {
+  const persistedTurnId = msg.turnId?.trim()
+  if (persistedTurnId) return persistedTurnId === turnId
+  const localId = msg.id?.trim() || ''
+  return localId === turnId || localId.startsWith(`${turnId}::`)
+}
+
+function replaceAssistantForTurn(
+  messages: UIMessage[],
+  turnId: string,
+  assistantFromServer: ServerConversationMessage,
+): UIMessage[] {
+  const next = [...messages]
+  let matchedUser = false
+  for (let i = 0; i < next.length; i++) {
+    const msg = next[i] as UIMessage & { turnId?: string }
+    if (msg.role === 'user') {
+      if (matchedUser) break
+      matchedUser = messageMatchesLocalTurn(msg, turnId)
+      continue
+    }
+    if (matchedUser && msg.role === 'assistant') {
+      next[i] = assistantFromServer as unknown as UIMessage
+      return next
+    }
+  }
+  return next
+}
+
 function getDraftFromToolBlock(block: ToolVisualBlock):
   | { kind: 'automation'; draft: AutomationDraftSummary }
   | { kind: 'skill'; draft: SkillDraftSummary }
@@ -3586,6 +3634,42 @@ export default function ChatInterface({
 
   const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
 
+  async function hydrateCompletedAskTurnFromServer(
+    chatId: string,
+    turnId: string,
+    modelIds: string[],
+  ) {
+    try {
+      const res = await fetch(`/api/app/conversations?conversationId=${encodeURIComponent(chatId)}`)
+      if (!res.ok) return
+
+      const data = await res.json() as { messages?: ServerConversationMessage[] }
+      const allMessages = Array.isArray(data.messages) ? data.messages : []
+      const assistantsByModel = new Map<string, ServerConversationMessage>()
+
+      for (const msg of allMessages) {
+        if (msg.role !== 'assistant') continue
+        if (msg.turnId?.trim() !== turnId) continue
+        const modelKey = msg.model?.trim()
+        if (!modelKey) continue
+        assistantsByModel.set(modelKey, msg)
+      }
+
+      if (assistantsByModel.size === 0) return
+
+      const runtime = ensureConversationRuntime(chatId)
+      modelIds.forEach((modelId, idx) => {
+        const serverAssistant = assistantsByModel.get(modelId)
+        if (!serverAssistant) return
+        const chat = runtime.askChats[idx]
+        if (!chat) return
+        chat.messages = replaceAssistantForTurn(chat.messages, turnId, serverAssistant)
+      })
+    } catch (err) {
+      console.error('[ChatInterface] Failed to hydrate completed assistant turn', err)
+    }
+  }
+
   async function handleSend() {
     const replyCtxSnapshot = replyContext
     const text = input.trim()
@@ -4095,7 +4179,8 @@ export default function ChatInterface({
           },
         ),
       ),
-    ).then(() => {
+    ).then(async () => {
+      await hydrateCompletedAskTurnFromServer(chatId, textTurnId, selectedModelsSnapshot)
       completeSession(chatId, activeChatIdRef.current === chatId)
       loadChats()
       loadSubscription()

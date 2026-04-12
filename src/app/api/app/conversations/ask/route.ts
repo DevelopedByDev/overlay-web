@@ -541,6 +541,7 @@ export async function POST(request: NextRequest) {
         return streamOpenRouterChat({
           modelId: effectiveModelId,
           messages: fallbackMsgs,
+          originalMessages: messages,
           accessToken: auth.accessToken || undefined,
           onFinish: (text, usage, routedModelId) => finishAsk(text, usage, undefined, routedModelId),
         })
@@ -549,6 +550,7 @@ export async function POST(request: NextRequest) {
         return encodeAssistantTextAsUiDataStream(
           userFacingOpenRouterError(err),
           { inputTokens: 0, outputTokens: 0 },
+          messages,
           (text, usage, routedModelId) => finishAsk(text, usage, undefined, routedModelId),
         )
       }
