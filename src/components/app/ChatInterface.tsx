@@ -3634,35 +3634,43 @@ export default function ChatInterface({
 
   const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
 
-  async function hydrateCompletedAskTurnFromServer(
+async function hydrateCompletedAskTurnFromServer(
     chatId: string,
     turnId: string,
     modelIds: string[],
   ) {
     try {
-      const res = await fetch(`/api/app/conversations?conversationId=${encodeURIComponent(chatId)}`)
+      const res = await fetch(`/api/app/conversations?conversationId=${encodeURIComponent(chatId)}&messages=true`)
       if (!res.ok) return
 
       const data = await res.json() as { messages?: ServerConversationMessage[] }
       const allMessages = Array.isArray(data.messages) ? data.messages : []
       const assistantsByModel = new Map<string, ServerConversationMessage>()
+      const assistantsInTurn: ServerConversationMessage[] = []
 
       for (const msg of allMessages) {
         if (msg.role !== 'assistant') continue
-        if (msg.turnId?.trim() !== turnId) continue
+        if (!messageMatchesLocalTurn(msg, turnId)) continue
+        assistantsInTurn.push(msg)
         const modelKey = msg.model?.trim()
         if (!modelKey) continue
         assistantsByModel.set(modelKey, msg)
       }
 
-      if (assistantsByModel.size === 0) return
+      if (assistantsInTurn.length === 0) return
 
       const runtime = ensureConversationRuntime(chatId)
+      const usedAssistantIds = new Set<string>()
       modelIds.forEach((modelId, idx) => {
-        const serverAssistant = assistantsByModel.get(modelId)
-        if (!serverAssistant) return
         const chat = runtime.askChats[idx]
         if (!chat) return
+
+        let serverAssistant = assistantsByModel.get(modelId)
+        if (!serverAssistant) {
+          serverAssistant = assistantsInTurn.find((msg) => !usedAssistantIds.has(msg.id))
+        }
+        if (!serverAssistant) return
+        usedAssistantIds.add(serverAssistant.id)
         chat.messages = replaceAssistantForTurn(chat.messages, turnId, serverAssistant)
       })
     } catch (err) {
