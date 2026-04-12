@@ -6,6 +6,7 @@ import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 type UiSettings = {
   theme: 'light' | 'dark'
   useSecondarySidebar: boolean
+  experimentalGenerativeUI?: boolean
 }
 
 export async function GET(request: NextRequest) {
@@ -33,6 +34,7 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json()) as {
       theme?: 'light' | 'dark'
       useSecondarySidebar?: boolean
+      experimentalGenerativeUI?: boolean
       accessToken?: string
       userId?: string
     }
@@ -49,6 +51,7 @@ export async function PATCH(request: NextRequest) {
       serverSecret: string
       theme?: 'light' | 'dark'
       useSecondarySidebar?: boolean
+      experimentalGenerativeUI?: boolean
     } = {
       userId: auth.userId,
       serverSecret: getInternalApiSecret(),
@@ -59,6 +62,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.useSecondarySidebar !== undefined) {
       mutationArgs.useSecondarySidebar = body.useSecondarySidebar
+    }
+    if (body.experimentalGenerativeUI !== undefined) {
+      mutationArgs.experimentalGenerativeUI = body.experimentalGenerativeUI
     }
 
     const settings = await convex.mutation<UiSettings>(

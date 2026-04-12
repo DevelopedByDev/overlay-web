@@ -6,12 +6,14 @@ const themeValidator = v.union(v.literal('light'), v.literal('dark'))
 const uiSettingsValidator = v.object({
   theme: themeValidator,
   useSecondarySidebar: v.boolean(),
+  experimentalGenerativeUI: v.optional(v.boolean()),
 })
 
 function defaultUiSettings() {
   return {
     theme: 'light' as const,
     useSecondarySidebar: false,
+    experimentalGenerativeUI: false,
   }
 }
 
@@ -38,6 +40,7 @@ export const getByServer = query({
     return {
       theme: existing.theme,
       useSecondarySidebar: existing.useSecondarySidebar,
+      experimentalGenerativeUI: existing.experimentalGenerativeUI ?? false,
     }
   },
 })
@@ -48,6 +51,7 @@ export const upsertByServer = mutation({
     serverSecret: v.string(),
     theme: v.optional(themeValidator),
     useSecondarySidebar: v.optional(v.boolean()),
+    experimentalGenerativeUI: v.optional(v.boolean()),
   },
   returns: uiSettingsValidator,
   handler: async (ctx, args) => {
@@ -57,6 +61,7 @@ export const upsertByServer = mutation({
     const next = {
       theme: args.theme ?? existing?.theme ?? 'light',
       useSecondarySidebar: args.useSecondarySidebar ?? existing?.useSecondarySidebar ?? false,
+      experimentalGenerativeUI: args.experimentalGenerativeUI ?? existing?.experimentalGenerativeUI ?? false,
     }
 
     if (existing) {
