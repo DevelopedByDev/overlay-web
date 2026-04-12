@@ -37,7 +37,8 @@
     "test:r2:budget": "node --env-file=.env.local --experimental-strip-types scripts/smoke-r2-budget.ts",
     "test:vault:smoke": "node --env-file=../overlay-desktop/.env.local --experimental-strip-types scripts/smoke-vault.ts",
     "stripe:setup:variable-pricing": "node --env-file=.env.local --experimental-strip-types scripts/stripe-variable-pricing-setup.ts",
-    "billing:migrate:staging": "node --env-file=.env.local --experimental-strip-types scripts/variable-pricing-migration.ts"
+    "billing:migrate:staging": "node --env-file=.env.local --experimental-strip-types scripts/variable-pricing-migration.ts",
+    "billing:audit:stripe": "node --experimental-strip-types scripts/stripe-dynamic-pricing-audit.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",

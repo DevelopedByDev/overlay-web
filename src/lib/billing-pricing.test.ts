@@ -8,6 +8,7 @@ const {
   applyMarkupToDollars,
   clampPaidPlanAmountCents,
   getStorageLimitBytes,
+  isValidTopUpAmount,
   planAmountCentsToQuantity,
   quantityToPlanAmountCents,
 } = await import(new URL('./billing-pricing.ts', import.meta.url).href)
@@ -31,4 +32,10 @@ test('paid storage scales linearly with spend', () => {
 test('markup applies to provider spend', () => {
   assert.equal(applyMarkupToDollars({ providerCostUsd: 8 }), 1_000)
   assert.equal(applyMarkupToDollars({ providerCostUsd: 0.2 }), 25)
+})
+
+test('top-up amount validation rejects unsupported raw amounts', () => {
+  assert.equal(isValidTopUpAmount(800), true)
+  assert.equal(isValidTopUpAmount(850), false)
+  assert.equal(isValidTopUpAmount(20_050), false)
 })

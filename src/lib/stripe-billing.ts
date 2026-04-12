@@ -6,7 +6,6 @@ import {
   TOP_UP_MAX_AMOUNT_CENTS,
   TOP_UP_MIN_AMOUNT_CENTS,
   TOP_UP_STEP_AMOUNT_CENTS,
-  clampTopUpAmountCents,
   isValidTopUpAmount,
   planAmountCentsToQuantity,
   topUpAmountCentsToQuantity,
@@ -23,6 +22,8 @@ type SubscriptionBillingState = {
   autoTopUpAmountCents?: number
   offSessionConsentAt?: number
 }
+
+const AUTO_TOP_UP_IDEMPOTENCY_WINDOW_MS = 10 * 60 * 1000
 
 function resolveStripeEnvValue(primary: string, devKey: string): string | undefined {
   if (process.env.VERCEL_ENV === 'production') {
@@ -121,7 +122,49 @@ export async function maybeAutoTopUpBudget(params: {
     return { applied: false as const, reason: 'missing_payment_method' }
   }
 
+  const now = Date.now()
+  const triggerWindowStart = now - AUTO_TOP_UP_IDEMPOTENCY_WINDOW_MS
+  const recentTopUps = await convex.query<
+    Array<{
+      amountCents: number
+      source: 'manual' | 'auto'
+      status: 'pending' | 'succeeded' | 'failed' | 'canceled'
+      billingPeriodStart: number
+      updatedAt: number
+      stripePaymentIntentId?: string
+    }>
+  >(
+    'subscriptions:listBudgetTopUpsByServer',
+    {
+      serverSecret: getInternalApiSecret(),
+      userId: params.userId,
+    },
+    { throwOnError: true },
+  )
+  const matchingRecentTopUp = (recentTopUps ?? []).find((topUp) =>
+    topUp.source === 'auto' &&
+    topUp.amountCents === amountCents &&
+    topUp.billingPeriodStart === state.currentPeriodStart &&
+    (topUp.status === 'pending' || topUp.status === 'succeeded') &&
+    topUp.updatedAt >= triggerWindowStart
+  )
+  if (matchingRecentTopUp) {
+    return {
+      applied: matchingRecentTopUp.status === 'succeeded',
+      amountCents,
+      paymentIntentId: matchingRecentTopUp.stripePaymentIntentId,
+      reason: matchingRecentTopUp.status === 'succeeded' ? 'already_succeeded' : 'already_pending',
+    } as const
+  }
+
   try {
+    const idempotencyKey = [
+      'auto-topup',
+      params.userId,
+      state.currentPeriodStart ?? 'no-period',
+      amountCents,
+      Math.floor(now / AUTO_TOP_UP_IDEMPOTENCY_WINDOW_MS),
+    ].join(':')
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountCents,
       currency: 'usd',
@@ -135,6 +178,8 @@ export async function maybeAutoTopUpBudget(params: {
         userId: params.userId,
         billingPeriodStart: String(state.currentPeriodStart ?? ''),
       },
+    }, {
+      idempotencyKey,
     })
 
     await convex.mutation(
@@ -180,7 +225,8 @@ export async function maybeAutoTopUpBudget(params: {
 }
 
 export function isRecognizedTopUpAmount(amountCents: number): boolean {
-  return isValidTopUpAmount(clampTopUpAmountCents(amountCents))
+  if (!Number.isFinite(amountCents)) return false
+  return isValidTopUpAmount(Math.round(amountCents))
 }
 
 export function getMinimumPaidPlanAmountCents(): number {

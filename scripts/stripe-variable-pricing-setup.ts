@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import Stripe from 'stripe'
-import { loadLocalEnv } from './convex-admin-utils.ts'
+import { loadLocalEnv, readArg } from './convex-admin-utils.ts'
 
 loadLocalEnv()
 
@@ -11,7 +11,10 @@ function resolveStripeSecretKey(): string {
     throw new Error('Missing STRIPE_SECRET_KEY or DEV_STRIPE_SECRET_KEY in .env.local')
   }
   if (!key.startsWith('sk_test_')) {
-    throw new Error('Refusing to run against a non-test Stripe key.')
+    const allowLive = readArg('allow-live', 'false') === 'true'
+    if (!allowLive) {
+      throw new Error('Refusing to run against a non-test Stripe key without --allow-live=true.')
+    }
   }
   return key
 }
@@ -24,10 +27,16 @@ const TOPUP_PRODUCT_METADATA_VALUE = 'budget_topup_v2'
 const PORTAL_METADATA_VALUE = 'variable_paid_plan_portal_v2'
 
 function readBaseUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (configured) return configured
   const envPath = resolve(process.cwd(), '.env.local')
-  const raw = readFileSync(envPath, 'utf8')
-  const match = raw.match(/^NEXT_PUBLIC_APP_URL=(.+)$/m)
-  return match?.[1]?.trim() || 'http://localhost:3000'
+  try {
+    const raw = readFileSync(envPath, 'utf8')
+    const match = raw.match(/^NEXT_PUBLIC_APP_URL=(.+)$/m)
+    return match?.[1]?.trim() || 'http://localhost:3000'
+  } catch {
+    return 'http://localhost:3000'
+  }
 }
 
 async function findProductByMetadata(value: string) {
@@ -179,7 +188,8 @@ async function main() {
   const topUpUnitPrice = await ensureTopUpUnitPrice(topUpProduct.id)
   const portalConfiguration = await ensurePortalConfiguration(paidProduct.id, paidUnitPrice.id)
 
-  console.log('\nStripe sandbox resources ready:\n')
+  const mode = process.env.STRIPE_SECRET_KEY?.startsWith('sk_live_') ? 'live' : 'sandbox'
+  console.log(`\nStripe ${mode} resources ready:\n`)
   console.log(`STRIPE_PAID_UNIT_PRICE_ID=${paidUnitPrice.id}`)
   console.log(`STRIPE_TOPUP_UNIT_PRICE_ID=${topUpUnitPrice.id}`)
   console.log(`STRIPE_PORTAL_CONFIGURATION_ID=${portalConfiguration.id}`)

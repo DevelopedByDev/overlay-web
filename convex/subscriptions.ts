@@ -629,6 +629,8 @@ export const recordBudgetTopUpByServer = mutation({
       await ctx.db.patch(existing._id, {
         ...payload,
         createdAt: existing.createdAt,
+        billingPeriodStart: existing.billingPeriodStart,
+        billingPeriodEnd: existing.billingPeriodEnd,
       })
       return existing._id
     }
@@ -689,6 +691,8 @@ export const recordBudgetTopUpInternal = internalMutation({
       await ctx.db.patch(existing._id, {
         ...payload,
         createdAt: existing.createdAt,
+        billingPeriodStart: existing.billingPeriodStart,
+        billingPeriodEnd: existing.billingPeriodEnd,
       })
       return existing._id
     }

@@ -29,17 +29,18 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const planAmountCents = clampPaidPlanAmountCents(Number(body.planAmountCents))
-    const topUpAmountCents = clampTopUpAmountCents(Number(body.topUpAmountCents))
+    const requestedTopUpAmountCents = Number(body.topUpAmountCents)
     const autoTopUpEnabled = Boolean(body.autoTopUpEnabled)
     const quantity = getPlanQuantityForCheckout(planAmountCents)
     const priceId = resolvePaidUnitPriceId()
 
-    if (!isRecognizedTopUpAmount(topUpAmountCents)) {
+    if (!isRecognizedTopUpAmount(requestedTopUpAmountCents)) {
       return NextResponse.json(
         { error: 'Unsupported top-up amount.' },
         { status: 400 }
       )
     }
+    const topUpAmountCents = clampTopUpAmountCents(requestedTopUpAmountCents)
 
     if (!priceId) {
       console.error('Missing paid unit Stripe price ID')

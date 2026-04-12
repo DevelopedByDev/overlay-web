@@ -33,11 +33,12 @@ export async function POST(request: NextRequest) {
     if (rateLimitResponse) return rateLimitResponse
 
     const body = await request.json()
-    const amountCents = clampTopUpAmountCents(Number(body.amountCents))
+    const requestedAmountCents = Number(body.amountCents)
     const autoTopUpEnabled = Boolean(body.autoTopUpEnabled)
-    if (!isRecognizedTopUpAmount(amountCents)) {
+    if (!isRecognizedTopUpAmount(requestedAmountCents)) {
       return NextResponse.json({ error: 'Unsupported top-up amount' }, { status: 400 })
     }
+    const amountCents = clampTopUpAmountCents(requestedAmountCents)
 
     const priceId = getTopUpPriceId()
     if (!priceId) {

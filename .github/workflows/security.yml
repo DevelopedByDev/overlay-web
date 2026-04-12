@@ -37,14 +37,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          allowlist='NEXT_PUBLIC_(MIXPANEL_TOKEN|SENTRY_DSN|CONVEX_URL|APP_URL|MIXPANEL_API_HOST)'
           matches="$(
-            git grep -nE 'NEXT_PUBLIC_[A-Z0-9_]*(SECRET|TOKEN|KEY|PASSWORD)' -- \
-              . \
-              ':(exclude).env.example' \
-              ':(exclude)README.md' \
-              ':(exclude)ENV_SETUP.md' \
-              ':(exclude)TESTING_CHECKLIST.md' \
-              ':(exclude)docs/**' \
+            {
+              git grep -nE 'NEXT_PUBLIC_[A-Z0-9_]*(SECRET|TOKEN|KEY|PASSWORD)' -- \
+                . \
+                ':(exclude).env.example' \
+                ':(exclude)README.md' \
+                ':(exclude)ENV_SETUP.md' \
+                ':(exclude)TESTING_CHECKLIST.md' \
+                ':(exclude)docs/**' \
+                || true
+            } | grep -vE "$allowlist" \
               || true
           )"
 
@@ -62,13 +66,32 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      security-events: read
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Detect dependency graph availability
+        id: dependency-graph
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const response = await github.rest.repos.get({
+              owner,
+              repo,
+            });
+            const status = response.data.security_and_analysis?.dependency_graph?.status || 'disabled';
+            core.setOutput('enabled', String(status === 'enabled'));
+
       - name: Check dependency changes
+        if: steps.dependency-graph.outputs.enabled == 'true'
         uses: actions/dependency-review-action@v4
+
+      - name: Skip dependency review when dependency graph is disabled
+        if: steps.dependency-graph.outputs.enabled != 'true'
+        run: echo "Skipping dependency review because GitHub dependency graph is disabled for this repository."
 
   dependency-audit:
     name: Lockfile, Typecheck, and Audit

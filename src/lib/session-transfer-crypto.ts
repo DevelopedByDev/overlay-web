@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypt
 
 const AES_ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH_BYTES = 12
+const GCM_AUTH_TAG_LENGTH_BYTES = 16
 
 function deriveAesKey(secret: string): Buffer {
   return createHash('sha256').update(secret).digest()
@@ -73,8 +74,13 @@ function decryptPayload(payload: string, key: Buffer): string {
     AES_ALGORITHM,
     key,
     Buffer.from(ivSegment, 'base64url'),
+    { authTagLength: GCM_AUTH_TAG_LENGTH_BYTES },
   )
-  decipher.setAuthTag(Buffer.from(authTagSegment, 'base64url'))
+  const authTag = Buffer.from(authTagSegment, 'base64url')
+  if (authTag.byteLength !== GCM_AUTH_TAG_LENGTH_BYTES) {
+    throw new Error('Invalid encrypted session transfer auth tag')
+  }
+  decipher.setAuthTag(authTag)
 
   return Buffer.concat([
     decipher.update(Buffer.from(encryptedSegment, 'base64url')),
