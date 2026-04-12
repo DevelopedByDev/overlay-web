@@ -14,6 +14,7 @@ import { filterComposioToolSet } from '@/lib/tools/composio-filter'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
 import { MAX_TOOL_STEPS_ACT, MAX_TOOL_STEPS_ASK } from '@/lib/tools/policy'
 import { calculateTokenCost } from '@/lib/model-pricing'
+import { billableBudgetCentsFromProviderUsd } from '@/lib/billing-runtime'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
 import type { AutomationSummary } from '@/lib/automations'
 import { summarizeAssistantMessage } from '@/lib/automation-runner'
@@ -92,7 +93,7 @@ async function recordAutomationUsage(args: {
   const inputTokens = args.usage?.inputTokens ?? 0
   const outputTokens = args.usage?.outputTokens ?? 0
   const costDollars = calculateTokenCost(args.modelId, inputTokens, 0, outputTokens)
-  const costCents = Math.round(costDollars * 100)
+  const costCents = billableBudgetCentsFromProviderUsd(costDollars)
   if (costCents <= 0 && inputTokens <= 0 && outputTokens <= 0) return
 
   await convex.mutation(

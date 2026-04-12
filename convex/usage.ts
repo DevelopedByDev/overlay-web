@@ -1,10 +1,11 @@
 import { v } from 'convex/values'
-import { mutation, query, internalMutation, internalQuery, type MutationCtx } from './_generated/server'
+import { mutation, query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from './_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from './lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../src/lib/models'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from './lib/storageQuota'
 import { roundCurrencyAmount } from '../src/lib/daytona-pricing'
+import { derivePlanAmountCents, derivePlanKind } from '../src/lib/billing-pricing'
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []
@@ -48,6 +49,113 @@ async function authorizeUserAccess(params: {
 
 function roundCreditAmount(value: number): number {
   return roundCurrencyAmount(value)
+}
+
+type EntitlementCtx = QueryCtx | MutationCtx
+
+async function getSucceededTopUpTotalCents(ctx: EntitlementCtx, userId: string, billingPeriodStart?: number): Promise<number> {
+  if (!billingPeriodStart) return 0
+  const rows = await ctx.db
+    .query('budgetTopUps')
+    .withIndex('by_userId_billingPeriodStart', (q) =>
+      q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart),
+    )
+    .collect()
+  return rows.reduce((sum, row) => (
+    row.status === 'succeeded' ? sum + Math.max(0, row.amountCents) : sum
+  ), 0)
+}
+
+async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
+  const subscription = await ctx.db
+    .query('subscriptions')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .first()
+
+  const today = new Date().toISOString().split('T')[0]
+  const dailyUsage = await ctx.db
+    .query('dailyUsage')
+    .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
+    .first()
+
+  const planKind = derivePlanKind(subscription ?? {})
+  const tier = planKind === 'free' ? 'free' : ((subscription?.tier === 'max' ? 'max' : 'pro') as 'free' | 'pro' | 'max')
+  const planAmountCents = derivePlanAmountCents(subscription ?? {})
+  const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, userId, subscription?.currentPeriodStart)
+  const budgetTotalCents = planKind === 'free' ? 0 : planAmountCents + topUpTotalCents
+
+  const tierDefaults = {
+    free: {
+      dailyLimits: { ask: 15, write: 15, agent: 15 },
+      transcriptionSecondsLimit: 600,
+      localTranscriptionEnabled: false,
+    },
+    paid: {
+      dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
+      transcriptionSecondsLimit: Infinity,
+      localTranscriptionEnabled: true,
+    },
+  } as const
+
+  const defaults = tierDefaults[planKind]
+  const budgetUsedCents = subscription?.creditsUsed ?? 0
+
+  let weeklyTranscriptionSeconds = 0
+  let weeklyUsage = { ask: 0, write: 0, agent: 0 }
+
+  if (planKind === 'free') {
+    const pastWeekDates = getPastWeekDates()
+    const weeklyUsageRecords = await Promise.all(
+      pastWeekDates.map(date =>
+        ctx.db
+          .query('dailyUsage')
+          .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
+          .first()
+      )
+    )
+    weeklyTranscriptionSeconds = weeklyUsageRecords.reduce(
+      (sum, record) => sum + (record?.transcriptionSeconds ?? 0),
+      0
+    )
+    weeklyUsage = weeklyUsageRecords.reduce(
+      (acc, record) => ({
+        ask: acc.ask + (record?.askCount ?? 0),
+        write: acc.write + (record?.writeCount ?? 0),
+        agent: acc.agent + (record?.agentCount ?? 0)
+      }),
+      { ask: 0, write: 0, agent: 0 }
+    )
+  }
+
+  return {
+    tier,
+    planKind,
+    planAmountCents,
+    budgetUsedCents,
+    budgetTotalCents,
+    budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
+    autoTopUpEnabled: Boolean(subscription?.autoTopUpEnabled),
+    autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
+    autoTopUpConsentGranted: Boolean(subscription?.offSessionConsentAt),
+    creditsUsed: budgetUsedCents,
+    creditsTotal: budgetTotalCents / 100,
+    overlayStorageBytesUsed: getStorageBytesUsed(subscription),
+    overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
+    dailyUsage: planKind === 'free' ? weeklyUsage : {
+      ask: dailyUsage?.askCount || 0,
+      write: dailyUsage?.writeCount || 0,
+      agent: dailyUsage?.agentCount || 0
+    },
+    dailyLimits: defaults.dailyLimits,
+    transcriptionSecondsUsed: planKind === 'free' ? weeklyTranscriptionSeconds : 0,
+    transcriptionSecondsLimit: defaults.transcriptionSecondsLimit,
+    localTranscriptionEnabled: defaults.localTranscriptionEnabled,
+    resetAt: getNextWeeklyReset(),
+    billingPeriodEnd: subscription?.currentPeriodEnd
+      ? new Date(subscription.currentPeriodEnd).toISOString()
+      : '',
+    lastSyncedAt: Date.now()
+  }
 }
 
 export async function applyUsageEvents(
@@ -174,94 +282,7 @@ export const getEntitlements = query({
     })
     await requireAccessToken(accessToken, userId)
     logAuthDebug('usage:getEntitlements access token verified', { userId })
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-
-    const today = new Date().toISOString().split('T')[0]
-    const dailyUsage = await ctx.db
-      .query('dailyUsage')
-      .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
-      .first()
-
-    const tier = subscription?.tier || 'free'
-
-    const tierDefaults = {
-      free: {
-        creditsTotal: 0,
-        dailyLimits: { ask: 15, write: 15, agent: 15 },
-        transcriptionSecondsLimit: 600,
-        localTranscriptionEnabled: false
-      },
-      pro: {
-        creditsTotal: 15,
-        dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
-        transcriptionSecondsLimit: Infinity,
-        localTranscriptionEnabled: true
-      },
-      max: {
-        creditsTotal: 90,
-        dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
-        transcriptionSecondsLimit: Infinity,
-        localTranscriptionEnabled: true
-      }
-    }
-
-    const defaults = tierDefaults[tier]
-
-    // Read creditsUsed from the subscription row directly — no billingPeriodStart
-    // key lookup, so period drift can never cause a phantom reset to 0.
-    const credits = subscription?.creditsUsed ?? 0
-
-    let weeklyTranscriptionSeconds = 0
-    let weeklyUsage = { ask: 0, write: 0, agent: 0 }
-
-    if (tier === 'free') {
-      const pastWeekDates = getPastWeekDates()
-      const weeklyUsageRecords = await Promise.all(
-        pastWeekDates.map(date =>
-          ctx.db
-            .query('dailyUsage')
-            .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
-            .first()
-        )
-      )
-      weeklyTranscriptionSeconds = weeklyUsageRecords.reduce(
-        (sum, record) => sum + (record?.transcriptionSeconds ?? 0),
-        0
-      )
-      weeklyUsage = weeklyUsageRecords.reduce(
-        (acc, record) => ({
-          ask: acc.ask + (record?.askCount ?? 0),
-          write: acc.write + (record?.writeCount ?? 0),
-          agent: acc.agent + (record?.agentCount ?? 0)
-        }),
-        { ask: 0, write: 0, agent: 0 }
-      )
-    }
-
-    const result = {
-      tier,
-      creditsUsed: credits,
-      creditsTotal: defaults.creditsTotal,
-      overlayStorageBytesUsed: getStorageBytesUsed(subscription),
-      overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
-      dailyUsage: tier === 'free' ? weeklyUsage : {
-        ask: dailyUsage?.askCount || 0,
-        write: dailyUsage?.writeCount || 0,
-        agent: dailyUsage?.agentCount || 0
-      },
-      dailyLimits: defaults.dailyLimits,
-      transcriptionSecondsUsed: tier === 'free' ? weeklyTranscriptionSeconds : 0,
-      transcriptionSecondsLimit: defaults.transcriptionSecondsLimit,
-      localTranscriptionEnabled: defaults.localTranscriptionEnabled,
-      resetAt: getNextWeeklyReset(),
-      billingPeriodEnd: subscription?.currentPeriodEnd
-        ? new Date(subscription.currentPeriodEnd).toISOString()
-        : '',
-      lastSyncedAt: Date.now()
-    }
+    const result = await buildEntitlements(ctx, userId)
     logAuthDebug('usage:getEntitlements success', {
       userId,
       tier: result.tier,
@@ -275,91 +296,7 @@ export const getEntitlementsByServer = query({
   handler: async (ctx, { serverSecret, userId }) => {
     requireServerSecret(serverSecret)
     logAuthDebug('usage:getEntitlementsByServer start', { userId })
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-
-    const today = new Date().toISOString().split('T')[0]
-    const dailyUsage = await ctx.db
-      .query('dailyUsage')
-      .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
-      .first()
-
-    const tier = subscription?.tier || 'free'
-
-    const tierDefaults = {
-      free: {
-        creditsTotal: 0,
-        dailyLimits: { ask: 15, write: 15, agent: 15 },
-        transcriptionSecondsLimit: 600,
-        localTranscriptionEnabled: false
-      },
-      pro: {
-        creditsTotal: 15,
-        dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
-        transcriptionSecondsLimit: Infinity,
-        localTranscriptionEnabled: true
-      },
-      max: {
-        creditsTotal: 90,
-        dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
-        transcriptionSecondsLimit: Infinity,
-        localTranscriptionEnabled: true
-      }
-    }
-
-    const defaults = tierDefaults[tier]
-    const credits = subscription?.creditsUsed ?? 0
-
-    let weeklyTranscriptionSeconds = 0
-    let weeklyUsage = { ask: 0, write: 0, agent: 0 }
-
-    if (tier === 'free') {
-      const pastWeekDates = getPastWeekDates()
-      const weeklyUsageRecords = await Promise.all(
-        pastWeekDates.map(date =>
-          ctx.db
-            .query('dailyUsage')
-            .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
-            .first()
-        )
-      )
-      weeklyTranscriptionSeconds = weeklyUsageRecords.reduce(
-        (sum, record) => sum + (record?.transcriptionSeconds ?? 0),
-        0
-      )
-      weeklyUsage = weeklyUsageRecords.reduce(
-        (acc, record) => ({
-          ask: acc.ask + (record?.askCount ?? 0),
-          write: acc.write + (record?.writeCount ?? 0),
-          agent: acc.agent + (record?.agentCount ?? 0)
-        }),
-        { ask: 0, write: 0, agent: 0 }
-      )
-    }
-
-    const result = {
-      tier,
-      creditsUsed: credits,
-      creditsTotal: defaults.creditsTotal,
-      overlayStorageBytesUsed: getStorageBytesUsed(subscription),
-      overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
-      dailyUsage: tier === 'free' ? weeklyUsage : {
-        ask: dailyUsage?.askCount || 0,
-        write: dailyUsage?.writeCount || 0,
-        agent: dailyUsage?.agentCount || 0
-      },
-      dailyLimits: defaults.dailyLimits,
-      transcriptionSecondsUsed: tier === 'free' ? weeklyTranscriptionSeconds : 0,
-      transcriptionSecondsLimit: defaults.transcriptionSecondsLimit,
-      localTranscriptionEnabled: defaults.localTranscriptionEnabled,
-      resetAt: getNextWeeklyReset(),
-      billingPeriodEnd: subscription?.currentPeriodEnd
-        ? new Date(subscription.currentPeriodEnd).toISOString()
-        : '',
-      lastSyncedAt: Date.now()
-    }
+    const result = await buildEntitlements(ctx, userId)
     logAuthDebug('usage:getEntitlementsByServer success', {
       userId,
       tier: result.tier,
@@ -376,12 +313,22 @@ export const getEntitlementsInternal = internalQuery({
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
-    const tier = (subscription?.tier ?? 'free') as 'free' | 'pro' | 'max'
-    const creditsTotalByTier: Record<string, number> = { free: 0, pro: 15, max: 90 }
+    const planKind = derivePlanKind(subscription ?? {})
+    const tier = planKind === 'free' ? 'free' : ((subscription?.tier === 'max' ? 'max' : 'pro') as 'free' | 'pro' | 'max')
+    const planAmountCents = derivePlanAmountCents(subscription ?? {})
+    const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, userId, subscription?.currentPeriodStart)
+    const budgetTotalCents = planKind === 'free' ? 0 : planAmountCents + topUpTotalCents
     return {
       tier,
+      planKind,
+      planAmountCents,
+      budgetUsedCents: subscription?.creditsUsed ?? 0,
+      budgetTotalCents,
+      budgetRemainingCents: Math.max(0, budgetTotalCents - (subscription?.creditsUsed ?? 0)),
+      autoTopUpEnabled: Boolean(subscription?.autoTopUpEnabled),
+      autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
       creditsUsed: subscription?.creditsUsed ?? 0,
-      creditsTotal: creditsTotalByTier[tier] ?? 0,
+      creditsTotal: budgetTotalCents / 100,
       overlayStorageBytesUsed: getStorageBytesUsed(subscription),
       overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
     }
@@ -539,6 +486,9 @@ export const recordToolInvocation = mutation({
       v.literal('composio'),
       v.literal('internal'),
     ),
+    providerCostCents: v.optional(v.number()),
+    billableCostCents: v.optional(v.number()),
+    pricingVersion: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -557,6 +507,9 @@ export const recordToolInvocation = mutation({
       success: args.success,
       durationMs: args.durationMs,
       costBucket: args.costBucket,
+      providerCostCents: args.providerCostCents,
+      billableCostCents: args.billableCostCents,
+      pricingVersion: args.pricingVersion,
       errorMessage: args.errorMessage?.slice(0, 2000),
       createdAt: Date.now(),
     })

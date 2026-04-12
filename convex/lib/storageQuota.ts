@@ -1,7 +1,14 @@
 import type { Doc } from '../_generated/dataModel'
-import { getOverlayStorageBytesLimit, type OverlayTier } from '../../src/lib/storage-limits'
+import type { MutationCtx } from '../_generated/server'
+import {
+  derivePlanAmountCents,
+  derivePlanKind,
+  getStorageLimitBytes,
+  type LegacyOverlayTier,
+  type OverlayPlanKind,
+} from '../../src/lib/billing-pricing'
 
-type MutationCtxLike = any
+type SubscriptionCtx = MutationCtx
 
 export class StorageQuotaExceededError extends Error {
   constructor(message = 'storage_limit_exceeded') {
@@ -17,10 +24,10 @@ function defaultBillingWindow(now: number) {
   }
 }
 
-export async function getOrCreateSubscription(ctx: MutationCtxLike, userId: string): Promise<Doc<'subscriptions'>> {
+export async function getOrCreateSubscription(ctx: SubscriptionCtx, userId: string): Promise<Doc<'subscriptions'>> {
   const existing = await ctx.db
     .query('subscriptions')
-    .withIndex('by_userId', (q: any) => q.eq('userId', userId))
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
     .first()
   if (existing) return existing
 
@@ -35,7 +42,7 @@ export async function getOrCreateSubscription(ctx: MutationCtxLike, userId: stri
   })
   const created = await ctx.db
     .query('subscriptions')
-    .withIndex('by_userId', (q: any) => q.eq('userId', userId))
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
     .first()
   if (!created) {
     throw new Error(`Failed to create subscription state for user ${userId}; insert=${String(createdId)}`)
@@ -43,8 +50,12 @@ export async function getOrCreateSubscription(ctx: MutationCtxLike, userId: stri
   return created
 }
 
-export function getSubscriptionTier(subscription: Doc<'subscriptions'> | null | undefined): OverlayTier {
-  return (subscription?.tier ?? 'free') as OverlayTier
+export function getSubscriptionTier(subscription: Doc<'subscriptions'> | null | undefined): LegacyOverlayTier {
+  return (subscription?.tier ?? 'free') as LegacyOverlayTier
+}
+
+export function getSubscriptionPlanKind(subscription: Doc<'subscriptions'> | null | undefined): OverlayPlanKind {
+  return derivePlanKind(subscription ?? {})
 }
 
 export function getStorageBytesUsed(subscription: Doc<'subscriptions'> | null | undefined): number {
@@ -52,10 +63,13 @@ export function getStorageBytesUsed(subscription: Doc<'subscriptions'> | null | 
 }
 
 export function getStorageLimitForSubscription(subscription: Doc<'subscriptions'> | null | undefined): number {
-  return getOverlayStorageBytesLimit(getSubscriptionTier(subscription))
+  return getStorageLimitBytes({
+    planKind: getSubscriptionPlanKind(subscription),
+    planAmountCents: derivePlanAmountCents(subscription ?? {}),
+  })
 }
 
-export async function applyStorageUsageDelta(ctx: MutationCtxLike, userId: string, deltaBytes: number): Promise<Doc<'subscriptions'>> {
+export async function applyStorageUsageDelta(ctx: SubscriptionCtx, userId: string, deltaBytes: number): Promise<Doc<'subscriptions'>> {
   const subscription = await getOrCreateSubscription(ctx, userId)
   const nextValue = Math.max(0, getStorageBytesUsed(subscription) + deltaBytes)
   await ctx.db.patch(subscription._id, { overlayStorageBytesUsed: nextValue })
@@ -66,7 +80,7 @@ export async function applyStorageUsageDelta(ctx: MutationCtxLike, userId: strin
 }
 
 export async function ensureStorageAvailable(
-  ctx: MutationCtxLike,
+  ctx: SubscriptionCtx,
   userId: string,
   requiredAdditionalBytes: number,
 ): Promise<Doc<'subscriptions'>> {
@@ -81,4 +95,3 @@ export async function ensureStorageAvailable(
   }
   return subscription
 }
-

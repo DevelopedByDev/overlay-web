@@ -4,17 +4,10 @@ import { internal } from './_generated/api'
 import { internalAction, type ActionCtx } from './_generated/server'
 import { getAutomationExecutorBaseUrl } from '../src/lib/url'
 import { AUTOMATION_TIMEOUT_MS } from '../src/lib/automation-guardrails'
+import { buildServiceAuthToken, getServiceAuthHeaderName } from '../src/lib/service-auth'
 
 const DEFAULT_BATCH_SIZE = 10
 const DEFAULT_LEASE_MS = 15 * 60 * 1000
-
-function getInternalApiSecret(): string {
-  const secret = process.env.INTERNAL_API_SECRET?.trim()
-  if (!secret) {
-    throw new Error('INTERNAL_API_SECRET is not configured.')
-  }
-  return secret
-}
 
 async function runMinuteTickHandler(
   ctx: ActionCtx,
@@ -40,13 +33,17 @@ async function runMinuteTickHandler(
   }
 
   const baseUrl = getAutomationExecutorBaseUrl()
-  const internalApiSecret = getInternalApiSecret()
   let dispatched = 0
   let failed = 0
 
   for (const job of jobs) {
     try {
       const requestId = `automation-dispatch-${job.automationRunId}-${Date.now()}`
+      const serviceAuthHeader = await buildServiceAuthToken({
+        userId: job.userId,
+        method: 'POST',
+        path: '/api/internal/automations/execute',
+      })
       await ctx.runMutation(internal.automations.markDispatchingInternal, {
         automationRunId: job.automationRunId,
         requestId,
@@ -55,7 +52,7 @@ async function runMinuteTickHandler(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-api-secret': internalApiSecret,
+          [getServiceAuthHeaderName()]: serviceAuthHeader,
         },
         body: JSON.stringify({
           automationId: job.automationId,

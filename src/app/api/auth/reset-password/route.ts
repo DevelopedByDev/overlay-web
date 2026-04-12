@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resetPassword } from '@/lib/workos-auth'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { token, password } = body
+    const token = typeof body?.token === 'string' ? body.token.trim() : ''
+    const password = typeof body?.password === 'string' ? body.password : ''
+
+    const rateLimitResponse = enforceRateLimits(request, [
+      { bucket: 'auth:reset-password:ip', key: getClientIp(request), limit: 8, windowMs: 10 * 60_000 },
+      { bucket: 'auth:reset-password:token', key: token, limit: 5, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
 
     if (!token || !password) {
       return NextResponse.json(

@@ -1,12 +1,24 @@
 import { NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import { logAuthDebug, summarizeSessionForLog } from '@/lib/auth-debug'
+import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
+  planKind: 'free' | 'paid'
+  planAmountCents: number
   status: 'active' | 'canceled' | 'past_due' | 'trialing'
+  autoTopUpEnabled: boolean
+  topUpAmountCents: number
+  autoTopUpAmountCents: number
+  autoTopUpConsentGranted: boolean
+  budgetUsedCents: number
+  budgetTotalCents: number
+  budgetRemainingCents: number
+  creditsUsed: number
+  creditsTotal: number
   limits: {
     askPerDay: number
     agentPerDay: number
@@ -33,6 +45,14 @@ interface Entitlements {
   }
   resetAt: number
   billingPeriodEnd?: number
+  dailyUsage: { ask: number; write: number; agent: number }
+  dailyLimits: { ask: number; write: number; agent: number }
+  overlayStorageBytesUsed: number
+  overlayStorageBytesLimit: number
+  transcriptionSecondsUsed: number
+  transcriptionSecondsLimit: number
+  localTranscriptionEnabled: boolean
+  lastSyncedAt: number
 }
 
 function normalizeLimitValue(value: number | string): number {
@@ -58,6 +78,14 @@ export async function GET() {
     // Convex returns a different structure, so we need to transform it
     interface ConvexEntitlements {
       tier: 'free' | 'pro' | 'max'
+      planKind: 'free' | 'paid'
+      planAmountCents: number
+      budgetUsedCents: number
+      budgetTotalCents: number
+      budgetRemainingCents: number
+      autoTopUpEnabled: boolean
+      autoTopUpAmountCents: number
+      autoTopUpConsentGranted: boolean
       creditsUsed: number
       creditsTotal: number
       dailyUsage: { ask: number; write: number; agent: number }
@@ -109,10 +137,11 @@ export async function GET() {
 
     // Transform Convex shape — never guess "free" on auth/backend failure (handled above).
     const tier = convexData.tier
+    const planKind = convexData.planKind
     const dailyUsage = convexData.dailyUsage
     const dailyLimits = convexData.dailyLimits
-    const creditsUsed = convexData.creditsUsed
-    const creditsTotal = convexData.creditsTotal * 100 // Convex stores dollars, app uses cents
+    const creditsUsed = convexData.budgetUsedCents ?? convexData.creditsUsed
+    const creditsTotal = convexData.budgetTotalCents ?? convexData.creditsTotal * 100
     const transcriptionSecondsUsed = convexData.transcriptionSecondsUsed
     const transcriptionSecondsLimit = convexData.transcriptionSecondsLimit
     const overlayStorageBytesUsed = convexData.overlayStorageBytesUsed
@@ -124,7 +153,11 @@ export async function GET() {
 
     const entitlements: Entitlements = {
       tier,
+      planKind,
+      planAmountCents: convexData.planAmountCents,
       status: 'active',
+      ...getTopUpPreferenceSnapshot(convexData),
+      autoTopUpConsentGranted: convexData.autoTopUpConsentGranted,
       limits: {
         askPerDay,
         agentPerDay,
@@ -149,10 +182,23 @@ export async function GET() {
         transcriptionSeconds: Math.max(0, transcriptionSecondsPerWeek - transcriptionSecondsUsed),
         overlayStorageBytes: Math.max(0, overlayStorageBytesLimit - overlayStorageBytesUsed),
       },
+      budgetUsedCents: creditsUsed,
+      budgetTotalCents: creditsTotal,
+      budgetRemainingCents: convexData.budgetRemainingCents ?? Math.max(0, creditsTotal - creditsUsed),
+      creditsUsed,
+      creditsTotal: creditsTotal / 100,
+      dailyUsage,
+      dailyLimits,
+      overlayStorageBytesUsed,
+      overlayStorageBytesLimit,
+      transcriptionSecondsUsed,
+      transcriptionSecondsLimit,
+      localTranscriptionEnabled: convexData.localTranscriptionEnabled,
       resetAt: convexData.resetAt,
       billingPeriodEnd: convexData.billingPeriodEnd
         ? new Date(convexData.billingPeriodEnd).getTime() / 1000
         : undefined,
+      lastSyncedAt: convexData.lastSyncedAt,
     }
 
     logAuthDebug('/api/entitlements success', {

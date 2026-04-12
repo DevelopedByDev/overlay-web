@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { PageNavbar } from '@/components/PageNavbar'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
+import { sanitizeClientAuthRedirect } from '@/lib/auth-redirect'
 import {
   marketingAuthCard,
   marketingAuthMuted,
@@ -34,14 +35,14 @@ function SignUpContent() {
   const [ssoLoading, setSsoLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [userId, setUserId] = useState<string | null>(null)
+  const [verificationTicket, setVerificationTicket] = useState<string | null>(null)
   const [verificationCode, setVerificationCode] = useState('')
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
   const [verified, setVerified] = useState(false)
 
   // Get redirect URL from params (for desktop app auth)
-  const redirectUrl = searchParams?.get('redirect') || '/account'
+  const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get('redirect'))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -77,8 +78,8 @@ function SignUpContent() {
       }
 
       // Store userId for verification and show verification UI
-      if (data.user?.id) {
-        setUserId(data.user.id)
+      if (typeof data.verificationTicket === 'string' && data.verificationTicket.trim()) {
+        setVerificationTicket(data.verificationTicket)
       }
       setSuccess(true)
     } catch {
@@ -90,7 +91,7 @@ function SignUpContent() {
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!userId || !verificationCode) return
+    if (!verificationTicket || !verificationCode) return
 
     setVerifying(true)
     setError(null)
@@ -99,7 +100,7 @@ function SignUpContent() {
       const response = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, code: verificationCode }),
+        body: JSON.stringify({ ticket: verificationTicket, code: verificationCode }),
       })
 
       const data = await response.json()
@@ -118,7 +119,7 @@ function SignUpContent() {
   }
 
   const handleResendCode = async () => {
-    if (!userId) return
+    if (!verificationTicket) return
 
     setResending(true)
     setError(null)
@@ -127,7 +128,7 @@ function SignUpContent() {
       const response = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, action: 'resend' }),
+        body: JSON.stringify({ ticket: verificationTicket, action: 'resend' }),
       })
 
       const data = await response.json()

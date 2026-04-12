@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthorizationUrl, normalizeAuthRedirect } from '@/lib/workos-auth'
+import { getAuthorizationUrl, normalizeAuthRedirect, normalizeCodeChallenge } from '@/lib/workos-auth'
 
 type SSOProvider = 'google' | 'apple' | 'microsoft'
 
@@ -17,6 +17,7 @@ export async function GET(
   const { searchParams } = new URL(request.url)
   const redirectUri = searchParams.get('redirect') || undefined
   const normalizedRedirectUri = normalizeAuthRedirect(redirectUri)
+  const codeChallenge = normalizeCodeChallenge(searchParams.get('codeChallenge'))
   const forceSignIn = searchParams.get('force') === 'true'
   
   // Also force sign-in when redirecting to desktop app (overlay:// protocol)
@@ -35,14 +36,23 @@ export async function GET(
       { status: 400 }
     )
   }
+  if (searchParams.has('codeChallenge') && !codeChallenge) {
+    return NextResponse.json(
+      { error: 'Invalid codeChallenge' },
+      { status: 400 }
+    )
+  }
 
   try {
     console.log('[Auth] SSO request:', { provider, redirectUri, forceSignIn, isDesktopAuth })
     
-    const authUrl = getAuthorizationUrl(
+    const authUrl = await getAuthorizationUrl(
       providerMap[provider as SSOProvider],
-      normalizedRedirectUri ?? undefined,
-      forceSignIn || isDesktopAuth // Force sign-in screen for desktop auth
+      {
+        redirectUri: normalizedRedirectUri ?? undefined,
+        forceSignIn: forceSignIn || isDesktopAuth,
+        codeChallenge,
+      },
     )
 
     console.log('[Auth] Generated auth URL, redirecting...')

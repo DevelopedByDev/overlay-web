@@ -2,6 +2,11 @@ import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import { requireAccessToken, requireServerSecret } from './lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
+import {
+  DEFAULT_MARKUP_BASIS_POINTS,
+  derivePlanAmountCents,
+  derivePlanKind,
+} from '../src/lib/billing-pricing'
 
 // Sync user profile from auth system (called after login).
 // For new users, always sets currentPeriodStart/End so the billingPeriodStart
@@ -47,6 +52,21 @@ export const syncUserProfile = mutation({
       if (existing.creditsUsed === undefined || existing.creditsUsed === null) {
         patch.creditsUsed = 0
       }
+      if (!existing.planKind) {
+        patch.planKind = derivePlanKind(existing)
+      }
+      if (!existing.planVersion) {
+        patch.planVersion = existing.tier === 'free' ? 'fixed_v1' : 'variable_v2'
+      }
+      if (existing.planAmountCents === undefined || existing.planAmountCents === null) {
+        patch.planAmountCents = derivePlanAmountCents(existing)
+      }
+      if (existing.markupBasisPoints === undefined || existing.markupBasisPoints === null) {
+        patch.markupBasisPoints = DEFAULT_MARKUP_BASIS_POINTS
+      }
+      if (existing.autoTopUpEnabled === undefined) {
+        patch.autoTopUpEnabled = false
+      }
 
       await ctx.db.patch(existing._id, patch)
       logAuthDebug('users:syncUserProfile updated existing subscription', { userId })
@@ -61,10 +81,15 @@ export const syncUserProfile = mutation({
         lastName,
         profilePictureUrl,
         tier: 'free',
+        planKind: 'free',
+        planVersion: 'variable_v2',
+        planAmountCents: 0,
+        markupBasisPoints: DEFAULT_MARKUP_BASIS_POINTS,
         status: 'active',
         currentPeriodStart: now,
         currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
         creditsUsed: 0,
+        autoTopUpEnabled: false,
         lastLoginAt: now,
       })
       logAuthDebug('users:syncUserProfile created subscription', { userId })
@@ -111,6 +136,21 @@ export const syncUserProfileByServer = mutation({
       if (existing.creditsUsed === undefined || existing.creditsUsed === null) {
         patch.creditsUsed = 0
       }
+      if (!existing.planKind) {
+        patch.planKind = derivePlanKind(existing)
+      }
+      if (!existing.planVersion) {
+        patch.planVersion = existing.tier === 'free' ? 'fixed_v1' : 'variable_v2'
+      }
+      if (existing.planAmountCents === undefined || existing.planAmountCents === null) {
+        patch.planAmountCents = derivePlanAmountCents(existing)
+      }
+      if (existing.markupBasisPoints === undefined || existing.markupBasisPoints === null) {
+        patch.markupBasisPoints = DEFAULT_MARKUP_BASIS_POINTS
+      }
+      if (existing.autoTopUpEnabled === undefined) {
+        patch.autoTopUpEnabled = false
+      }
 
       await ctx.db.patch(existing._id, patch)
       logAuthDebug('users:syncUserProfileByServer updated existing subscription', { userId })
@@ -126,10 +166,15 @@ export const syncUserProfileByServer = mutation({
       lastName,
       profilePictureUrl,
       tier: 'free',
+      planKind: 'free',
+      planVersion: 'variable_v2',
+      planAmountCents: 0,
+      markupBasisPoints: DEFAULT_MARKUP_BASIS_POINTS,
       status: 'active',
       currentPeriodStart: now,
       currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
       creditsUsed: 0,
+      autoTopUpEnabled: false,
       lastLoginAt: now,
     })
     logAuthDebug('users:syncUserProfileByServer created subscription', { userId })
@@ -188,6 +233,8 @@ export const getUserProfile = query({
       },
       subscription: {
         tier: subscription.tier,
+        planKind: derivePlanKind(subscription),
+        planAmountCents: derivePlanAmountCents(subscription),
         status: subscription.status,
         stripeCustomerId: subscription.stripeCustomerId,
         stripeSubscriptionId: subscription.stripeSubscriptionId,
@@ -197,7 +244,7 @@ export const getUserProfile = query({
       usage: {
         // creditsUsed comes from subscription — single source of truth
         creditsUsed: subscription.creditsUsed ?? 0,
-        creditsTotal: subscription.tier === 'free' ? 0 : subscription.tier === 'pro' ? 15 : 90,
+        creditsTotal: derivePlanAmountCents(subscription) / 100,
         // Raw token counts from audit log (may lag slightly behind creditsUsed)
         inputTokens: tokenUsage?.inputTokens ?? 0,
         outputTokens: tokenUsage?.outputTokens ?? 0,

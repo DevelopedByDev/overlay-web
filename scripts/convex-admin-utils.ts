@@ -45,7 +45,7 @@ export function resolveTargets(arg = 'both'): DeploymentTarget[] {
 export function getConvexUrl(target: DeploymentTarget): string {
   const value =
     target === 'dev'
-      ? process.env.DEV_NEXT_PUBLIC_CONVEX_URL
+      ? process.env.DEV_NEXT_PUBLIC_CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL
       : process.env.NEXT_PUBLIC_CONVEX_URL
   if (!value) {
     throw new Error(`Missing Convex URL for ${target} deployment`)

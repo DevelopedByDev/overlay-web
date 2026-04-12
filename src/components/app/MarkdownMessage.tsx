@@ -312,9 +312,12 @@ function splitStreamingMarkdown(text: string): { completedBlocks: string[]; stre
       continue
     }
 
-    const blockText = text.slice(offset, offset + boundary).trim()
+    const blockText = text.slice(offset, offset + boundary)
     if (blockText) completedBlocks.push(blockText)
-    offset += boundary + 1
+    offset += boundary
+    while (offset < text.length && (text[offset] === '\n' || text[offset] === '\r')) {
+      offset += 1
+    }
   }
 
   return { completedBlocks, streamTail: text.slice(offset) }

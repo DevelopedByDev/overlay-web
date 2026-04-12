@@ -5,14 +5,17 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { BROWSER_USE_TASK_INIT_USD, calculateBrowserUseV3TokenCost } from '@/lib/model-pricing'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import type { Entitlements } from '@/lib/app-contracts'
+import {
+  buildInsufficientCreditsPayload,
+  billableBudgetCentsFromProviderUsd,
+  ensureBudgetAvailable,
+  getBudgetTotals,
+  isPaidPlan,
+} from '@/lib/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export const maxDuration = 300
-
-interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  creditsUsed: number
-  creditsTotal: number
-}
 
 function parseUsd(value: string | number | null | undefined): number {
   if (typeof value === 'number') {
@@ -42,6 +45,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const rateLimitResponse = enforceRateLimits(request, [
+      { bucket: 'browser-task:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
+      { bucket: 'browser-task:user', key: auth.userId, limit: 10, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+    const requestedSessionId = sessionId?.trim()
+    if (requestedSessionId) {
+      console.warn('[Browser Task API] Ignoring requested session reuse during security hardening', {
+        userId: auth.userId,
+      })
+    }
+
     if (!task?.trim()) {
       return NextResponse.json({ error: 'Task is required' }, { status: 400 })
     }
@@ -67,20 +82,29 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const creditsTotalCents = entitlements.creditsTotal * 100
-    const remainingCents = creditsTotalCents - entitlements.creditsUsed
-    const taskInitCents = Math.round(BROWSER_USE_TASK_INIT_USD * 100)
-    const remainingVariableBudgetUsd = Math.max(0, (remainingCents - taskInitCents) / 100)
+    let currentEntitlements = entitlements
+    let budget = getBudgetTotals(currentEntitlements)
+    const taskInitCents = billableBudgetCentsFromProviderUsd(BROWSER_USE_TASK_INIT_USD)
 
-    if (entitlements.tier === 'free') {
+    if (!isPaidPlan(currentEntitlements)) {
       return NextResponse.json(
-        { error: 'generation_not_allowed', message: 'Browser browsing requires a Pro subscription.' },
+        { error: 'generation_not_allowed', message: 'Browser browsing requires a paid plan.' },
         { status: 403 },
       )
     }
-    if (remainingCents <= taskInitCents || remainingVariableBudgetUsd <= 0) {
+    if (budget.remainingCents <= taskInitCents) {
+      const autoTopUp = await ensureBudgetAvailable({
+        userId: auth.userId,
+        entitlements: currentEntitlements,
+        minimumRequiredCents: taskInitCents + 1,
+      })
+      currentEntitlements = autoTopUp.entitlements
+      budget = getBudgetTotals(currentEntitlements)
+    }
+    const remainingVariableBudgetUsd = Math.max(0, budget.remainingCents / 100 / 1.25 - BROWSER_USE_TASK_INIT_USD)
+    if (budget.remainingCents <= taskInitCents || remainingVariableBudgetUsd <= 0) {
       return NextResponse.json(
-        { error: 'insufficient_credits', message: 'Not enough credits remaining to start a browser task.' },
+        buildInsufficientCreditsPayload(currentEntitlements, 'Not enough budget remaining to start a browser task.'),
         { status: 402 },
       )
     }
@@ -91,7 +115,6 @@ export async function POST(request: NextRequest) {
         ? (proxyCountryCode.toLowerCase() as ProxyCountryCode)
         : undefined
     const result = await client.run(task.trim(), {
-      ...(sessionId ? { sessionId } : {}),
       ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
       ...(model ? { model } : {}),
       ...(normalizedProxyCountryCode ? { proxyCountryCode: normalizedProxyCountryCode } : {}),
@@ -111,7 +134,7 @@ export async function POST(request: NextRequest) {
             result.totalOutputTokens ?? 0,
           ) + proxyCostUsd + browserCostUsd
     const totalChargeUsd = BROWSER_USE_TASK_INIT_USD + estimatedVariableCostUsd
-    const costCents = Math.round(totalChargeUsd * 100)
+    const costCents = billableBudgetCentsFromProviderUsd(totalChargeUsd)
 
     await convex.mutation('usage:recordBatch', {
       serverSecret,
@@ -148,7 +171,9 @@ export async function POST(request: NextRequest) {
         billedCents: costCents,
         maxCostUsd: remainingVariableBudgetUsd.toFixed(4),
         remainingCreditsCents:
-          updated ? updated.creditsTotal * 100 - updated.creditsUsed : undefined,
+          updated
+            ? (updated.budgetRemainingCents ?? updated.creditsTotal * 100 - updated.creditsUsed)
+            : undefined,
       },
     })
   } catch (error) {

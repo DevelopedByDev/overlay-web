@@ -130,6 +130,7 @@ stay aligned.
 | `npm run convex:push:prod` | Push Convex changes to production |
 | `npm run convex:push:dev` | Push Convex changes to dev |
 | `npm run convex:push:all` | Push Convex changes to both deployments |
+| `npm run billing:audit:stripe -- --target=prod` | Audit Stripe subscriptions against the dynamic pricing cutover expectations |
 
 ## Ask / Act Tooling
 
@@ -203,6 +204,7 @@ If you plan to contribute:
 - `ENV_SETUP.md`
 - `SECURITY.md`
 - `TESTING_CHECKLIST.md`
+- `docs/stripe-dynamic-pricing-cutover.md`
 
 ## Status
 

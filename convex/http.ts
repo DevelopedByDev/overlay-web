@@ -3,13 +3,25 @@ import { components, internal } from './_generated/api'
 import { registerRoutes } from '@convex-dev/stripe'
 import type Stripe from 'stripe'
 import {
+  extractPlanFromSubscription,
   extractCustomerInfo,
   getSubscriptionPeriodMs,
-  mapPriceToTier,
   mapSubscriptionStatus,
 } from './lib/stripeOverlaySubscription'
 
 const http = httpRouter()
+
+function readBooleanMetadata(value: string | undefined): boolean | undefined {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return undefined
+}
+
+function readNumberMetadata(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
 
 // Register Stripe webhook handler using @convex-dev/stripe component
 registerRoutes(http, components.stripe, {
@@ -26,8 +38,7 @@ registerRoutes(http, components.stripe, {
         return
       }
 
-      const priceId = subscription.items.data[0]?.price?.id
-      const tier = mapPriceToTier(priceId)
+      const plan = extractPlanFromSubscription(subscription)
 
       const customerInfo = extractCustomerInfo(subscription.customer as Stripe.Customer | string)
       const email = subscription.metadata?.email || customerInfo.email
@@ -41,13 +52,21 @@ registerRoutes(http, components.stripe, {
         name,
         stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
         stripeSubscriptionId: subscription.id,
-        tier,
+        stripePriceId: plan.stripePriceId,
+        stripeQuantity: plan.stripeQuantity,
+        tier: plan.tier,
+        planKind: plan.planKind,
+        planVersion: plan.planVersion,
+        planAmountCents: plan.planAmountCents,
+        autoTopUpEnabled: readBooleanMetadata(subscription.metadata?.autoTopUpEnabled),
+        autoTopUpAmountCents: readNumberMetadata(subscription.metadata?.topUpAmountCents),
+        offSessionConsentAt: readNumberMetadata(subscription.metadata?.offSessionConsentAt),
         status: mapSubscriptionStatus(subscription.status),
         currentPeriodStart,
         currentPeriodEnd
       })
 
-      console.log(`[Stripe Webhook] Created subscription for user ${userId}: tier=${tier}, priceId=${priceId}, email=${email}`)
+      console.log(`[Stripe Webhook] Created subscription for user ${userId}: tier=${plan.tier}, planKind=${plan.planKind}, planAmountCents=${plan.planAmountCents}, priceId=${plan.stripePriceId}, email=${email}`)
     },
 
     'customer.subscription.updated': async (ctx, event: Stripe.CustomerSubscriptionUpdatedEvent) => {
@@ -59,8 +78,7 @@ registerRoutes(http, components.stripe, {
         return
       }
 
-      const priceId = subscription.items.data[0]?.price?.id
-      const tier = mapPriceToTier(priceId)
+      const plan = extractPlanFromSubscription(subscription)
 
       const customerInfo = extractCustomerInfo(subscription.customer as Stripe.Customer | string)
       const email = subscription.metadata?.email || customerInfo.email
@@ -74,13 +92,21 @@ registerRoutes(http, components.stripe, {
         name,
         stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
         stripeSubscriptionId: subscription.id,
-        tier,
+        stripePriceId: plan.stripePriceId,
+        stripeQuantity: plan.stripeQuantity,
+        tier: plan.tier,
+        planKind: plan.planKind,
+        planVersion: plan.planVersion,
+        planAmountCents: plan.planAmountCents,
+        autoTopUpEnabled: readBooleanMetadata(subscription.metadata?.autoTopUpEnabled),
+        autoTopUpAmountCents: readNumberMetadata(subscription.metadata?.topUpAmountCents),
+        offSessionConsentAt: readNumberMetadata(subscription.metadata?.offSessionConsentAt),
         status: mapSubscriptionStatus(subscription.status),
         currentPeriodStart,
         currentPeriodEnd
       })
 
-      console.log(`[Stripe Webhook] Updated subscription for user ${userId}: tier=${tier}, priceId=${priceId}, email=${email}`)
+      console.log(`[Stripe Webhook] Updated subscription for user ${userId}: tier=${plan.tier}, planKind=${plan.planKind}, planAmountCents=${plan.planAmountCents}, priceId=${plan.stripePriceId}, email=${email}`)
     },
 
     'customer.subscription.deleted': async (ctx, event: Stripe.CustomerSubscriptionDeletedEvent) => {
@@ -115,9 +141,26 @@ registerRoutes(http, components.stripe, {
       }
     },
 
-    'checkout.session.completed': async (_ctx, event: Stripe.CheckoutSessionCompletedEvent) => {
+    'checkout.session.completed': async (ctx, event: Stripe.CheckoutSessionCompletedEvent) => {
       const session = event.data.object
       console.log(`[Stripe Webhook] Checkout completed: ${session.id}, mode: ${session.mode}`)
+      if (session.metadata?.kind === 'budget_topup' && session.payment_status === 'paid' && session.metadata.userId) {
+        await ctx.runMutation(internal.subscriptions.recordBudgetTopUpInternal, {
+          userId: session.metadata.userId,
+          amountCents: Number.parseInt(session.metadata.amountCents ?? '0', 10) || 0,
+          source: 'manual',
+          stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
+          stripeCheckoutSessionId: session.id,
+          stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : undefined,
+          status: 'succeeded',
+        })
+        await ctx.runMutation(internal.subscriptions.updateBillingPreferencesInternal, {
+          userId: session.metadata.userId,
+          autoTopUpEnabled: session.metadata.autoTopUpEnabled === 'true',
+          topUpAmountCents: Number.parseInt(session.metadata.amountCents ?? '0', 10) || undefined,
+          grantOffSessionConsent: session.metadata.autoTopUpEnabled === 'true',
+        })
+      }
     }
   },
   onEvent: async (_ctx, event: Stripe.Event) => {

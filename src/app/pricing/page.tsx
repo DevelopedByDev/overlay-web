@@ -1,96 +1,30 @@
 'use client'
 
-import { useState, useEffect, Suspense, useCallback } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Check, X, Zap, Crown, Sparkles } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowRight, Check, CreditCard, GaugeCircle, MessageSquare, PlusCircle, Wallet } from 'lucide-react'
+import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { PageNavbar } from '@/components/PageNavbar'
-import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { marketingFeatureText, marketingMuted, marketingPageTitle } from '@/lib/landingPageStyles'
-
-interface Feature {
-  name: string
-  included: boolean
-  detail?: string
-}
-
-interface Tier {
-  name: string
-  price: string
-  period: string
-  description: string
-  icon: typeof Zap
-  features: Feature[]
-  cta: string
-  ctaLink?: string
-  ctaAction?: string
-  highlighted: boolean
-}
-
-const tiers: Tier[] = [
-  {
-    name: 'Free',
-    price: '$0',
-    period: 'forever',
-    description: 'Start with the core web app experience',
-    icon: Zap,
-    features: [
-      { name: 'Unlimited auto messages', included: true },
-      { name: 'Notes, chats, and browser workspace', included: true },
-      { name: 'Basic AI tools', included: true },
-      { name: 'Standard model access', included: true },
-      { name: 'Premium AI models', included: false },
-      { name: 'Search, image generation, and video generation', included: false },
-      { name: 'Advanced agents and premium workflows', included: false }
-    ],
-    cta: 'Start Free',
-    ctaLink: '/auth/sign-in?redirect=%2Fapp%2Fchat',
-    highlighted: false
-  },
-  {
-    name: 'Pro',
-    price: '$20',
-    period: '/month',
-    description: 'For people who want the full web app toolkit',
-    icon: Crown,
-    features: [
-      { name: 'Everything in Free', included: true },
-      { name: 'Search', included: true },
-      { name: 'Image generation', included: true },
-      { name: 'Video generation', included: true },
-      { name: 'More powerful agents', included: true },
-      { name: 'Premium AI models', included: true, detail: '$10 token budget/mo' },
-      { name: 'Prompt caching (save up to 90%)', included: true },
-      { name: 'Priority access to new tools', included: true },
-      { name: 'Cloud sync', included: false },
-      { name: 'Priority support', included: false }
-    ],
-    cta: 'Subscribe to Pro',
-    ctaAction: 'pro',
-    highlighted: true
-  },
-  {
-    name: 'Max',
-    price: '$100',
-    period: '/month',
-    description: 'Everything in Pro, plus more capacity and access',
-    icon: Sparkles,
-    features: [
-      { name: 'Everything in Pro', included: true },
-      { name: 'Premium AI models', included: true, detail: '$90 token budget/mo' },
-      { name: 'Higher limits across advanced tools', included: true },
-      { name: 'More agent capacity and premium workflows', included: true },
-      { name: 'Cloud sync (coming soon)', included: true },
-      { name: 'Priority support', included: true },
-      { name: 'Early access to features', included: true },
-      { name: 'Direct feedback channel', included: true }
-    ],
-    cta: 'Subscribe to Max',
-    ctaAction: 'max',
-    highlighted: false
-  }
-]
+import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
+import {
+  PAID_PLAN_MAX_AMOUNT_CENTS,
+  PAID_PLAN_MIN_AMOUNT_CENTS,
+  PAID_PLAN_STEP_AMOUNT_CENTS,
+  centsToDollarAmount,
+  formatDollarAmount,
+  getStorageLimitBytes,
+} from '@/lib/billing-pricing'
+import {
+  marketingBody,
+  marketingFeatureText,
+  marketingHeading,
+  marketingMuted,
+  marketingPageTitle,
+  marketingPanel,
+} from '@/lib/landingPageStyles'
+import { formatBytes } from '@/lib/storage-limits'
 
 function UserIdExtractor() {
   const searchParams = useSearchParams()
@@ -109,115 +43,197 @@ function PricingContent() {
   const router = useRouter()
   const { isLandingDark } = useLandingTheme()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-  const [loading, setLoading] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [currentTier, setCurrentTier] = useState<'free' | 'pro' | 'max'>('free')
+  const [selectedPlanAmountCents, setSelectedPlanAmountCents] = useState(2_000)
+  const [topUpAmountCents, setTopUpAmountCents] = useState(800)
+  const [autoTopUpEnabled, setAutoTopUpEnabled] = useState(false)
+  const [currentPlanKind, setCurrentPlanKind] = useState<'free' | 'paid'>('free')
+  const [currentPlanAmountCents, setCurrentPlanAmountCents] = useState(0)
+  const [loading, setLoading] = useState<'checkout' | 'portal' | 'topup-settings' | null>(null)
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
-
-  // Fetch user's current subscription
-  const fetchSubscription = useCallback(async () => {
-    if (!user?.id) return
-    
-    setSubscriptionLoading(true)
-    try {
-      const response = await fetch(`/api/subscription?userId=${encodeURIComponent(user.id)}`)
-      if (response.ok) {
-        const data = await response.json()
-        if (data.tier) {
-          setCurrentTier(data.tier)
-        }
-      }
-    } catch (err) {
-      console.error('[Pricing] Failed to fetch subscription:', err)
-    } finally {
-      setSubscriptionLoading(false)
-    }
-  }, [user?.id])
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (isAuthenticated && user?.id) {
-      fetchSubscription()
-    }
-  }, [isAuthenticated, user?.id, fetchSubscription])
+    if (!isAuthenticated || !user?.id) return
 
-  const handleSubscribe = async (tier: string) => {
-    // Require authentication before checkout
+    let active = true
+    setSubscriptionLoading(true)
+
+    void Promise.all([
+      fetch(`/api/subscription?userId=${encodeURIComponent(user.id)}`).then(async (response) => {
+        if (!response.ok) return null
+        return await response.json()
+      }),
+      fetch('/api/subscription/settings').then(async (response) => {
+        if (!response.ok) return null
+        return await response.json()
+      }),
+    ])
+      .then(([subscriptionData, settingsData]) => {
+        if (!active) return
+        if (subscriptionData) {
+          const planKind = subscriptionData.planKind === 'paid' ? 'paid' : 'free'
+          const planAmountCents = Math.max(0, Math.round(Number(subscriptionData.planAmountCents ?? 0)))
+          setCurrentPlanKind(planKind)
+          setCurrentPlanAmountCents(planAmountCents)
+          if (planKind === 'paid' && planAmountCents >= PAID_PLAN_MIN_AMOUNT_CENTS) {
+            setSelectedPlanAmountCents(planAmountCents)
+          }
+        }
+        if (settingsData) {
+          setTopUpAmountCents(Math.max(settingsData.topUpMinAmountCents ?? 800, settingsData.topUpAmountCents ?? settingsData.autoTopUpAmountCents ?? 800))
+          setAutoTopUpEnabled(Boolean(settingsData.autoTopUpEnabled))
+        }
+      })
+      .catch((fetchError) => {
+        console.error('[Pricing] Failed to fetch subscription:', fetchError)
+      })
+      .finally(() => {
+        if (active) setSubscriptionLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [isAuthenticated, user?.id])
+
+  const selectedPlanDollars = centsToDollarAmount(selectedPlanAmountCents)
+  const selectedStorageBytes = useMemo(
+    () => getStorageLimitBytes({ planKind: 'paid', planAmountCents: selectedPlanAmountCents }),
+    [selectedPlanAmountCents],
+  )
+  const isCurrentPaidSelection =
+    currentPlanKind === 'paid' && currentPlanAmountCents === selectedPlanAmountCents
+
+  const theme = {
+    title: marketingPageTitle(isLandingDark),
+    heading: marketingHeading(isLandingDark),
+    body: marketingBody(isLandingDark),
+    muted: marketingMuted(isLandingDark),
+    panel: marketingPanel(isLandingDark),
+    heroGlow: isLandingDark
+      ? 'bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_45%)]'
+      : 'bg-[radial-gradient(circle_at_top_left,rgba(10,10,10,0.06),transparent_45%)]',
+    primaryButton: isLandingDark
+      ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+      : 'bg-zinc-900 text-white hover:bg-zinc-800',
+    secondaryButton: isLandingDark
+      ? 'border border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
+      : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50',
+    badge: isLandingDark
+      ? 'bg-zinc-100 text-zinc-900'
+      : 'bg-zinc-900 text-white',
+    iconChip: isLandingDark
+      ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 text-zinc-100'
+      : 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-900',
+    elevatedCard: isLandingDark
+      ? 'rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.24)]'
+      : 'rounded-2xl border border-zinc-200 bg-white p-4 shadow-[0_16px_40px_rgba(10,10,10,0.06)]',
+    subtleCard: isLandingDark
+      ? 'rounded-2xl border border-zinc-800/90 bg-zinc-950/55 p-4'
+      : 'rounded-2xl border border-zinc-200 bg-zinc-50/90 p-4',
+    featurePanel: isLandingDark
+      ? 'rounded-[28px] border border-zinc-800 bg-zinc-950/75 p-6'
+      : 'rounded-[28px] border border-zinc-200 bg-zinc-50/80 p-6',
+    sliderTrack: isLandingDark
+      ? 'mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-zinc-100'
+      : 'mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-200 accent-zinc-900',
+    currentPlanPill: isLandingDark
+      ? 'inline-flex items-center justify-center rounded-xl border border-emerald-700/60 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-200'
+      : 'inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800',
+  }
+
+  async function handleSubscribe() {
     if (!isAuthenticated || !user) {
-      // Redirect to sign-in with return URL
       router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
       return
     }
 
-    setLoading(tier)
+    setLoading('checkout')
     setError(null)
-    
+
     try {
-      // Use session-based checkout (API will validate session)
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier })
+        body: JSON.stringify({
+          planAmountCents: selectedPlanAmountCents,
+          topUpAmountCents,
+          autoTopUpEnabled,
+        }),
       })
 
       const data = await response.json()
-
       if (!response.ok) {
         if (response.status === 401) {
-          // Session expired, redirect to sign-in
           router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
           return
         }
-        setError(data.error || 'Failed to start checkout')
+        setError(data.error || 'Failed to start checkout.')
         return
       }
 
       if (data.url) {
         window.location.href = data.url
-      } else {
-        setError('No checkout URL returned. Please try again.')
+        return
       }
-    } catch (err) {
-      console.error('Checkout error:', err)
+
+      setError('No checkout URL returned. Please try again.')
+    } catch (checkoutError) {
+      console.error('[Pricing] Checkout error:', checkoutError)
       setError('Failed to start checkout. Please try again.')
     } finally {
       setLoading(null)
     }
   }
 
-  const heroMuted = marketingMuted(isLandingDark)
-  const heroTitle = marketingPageTitle(isLandingDark)
-  const cardBase = (highlighted: boolean) =>
-    highlighted
-      ? isLandingDark
-        ? 'relative scale-105 rounded-2xl border-2 border-zinc-100 bg-zinc-900/95 p-8 shadow-xl transition-all duration-300'
-        : 'relative scale-105 rounded-2xl border-2 border-zinc-900 bg-white p-8 shadow-xl transition-all duration-300'
-      : isLandingDark
-        ? 'relative rounded-2xl border border-zinc-700 bg-zinc-900/95 p-8 shadow-lg transition-all duration-300 hover:shadow-xl'
-        : 'relative rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm transition-all duration-300 hover:shadow-md'
-  const tierIconWrap = (highlighted: boolean) =>
-    highlighted
-      ? isLandingDark
-        ? 'rounded-lg bg-zinc-100 p-2 text-zinc-900'
-        : 'rounded-lg bg-zinc-900 p-2 text-white'
-      : isLandingDark
-        ? 'rounded-lg bg-zinc-800 p-2 text-zinc-200'
-        : 'rounded-lg bg-zinc-100 p-2 text-zinc-700'
-  const tierName = heroTitle
-  const tokenSection = isLandingDark
-    ? 'mx-auto mt-16 max-w-3xl rounded-2xl border border-zinc-700 bg-zinc-900/95 p-8 shadow-lg'
-    : 'mx-auto mt-16 max-w-3xl rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm'
-  const faqCard = isLandingDark
-    ? 'rounded-xl border border-zinc-700 bg-zinc-900/95 p-6'
-    : 'rounded-xl border border-zinc-200 bg-white p-6 shadow-sm'
-  const footBorder = isLandingDark ? 'border-zinc-800' : 'border-zinc-200'
-  const footMuted = marketingMuted(isLandingDark)
-  const btnPrimary = isLandingDark
-    ? 'bg-zinc-100 text-zinc-900 hover:opacity-90'
-    : 'bg-zinc-900 text-white hover:opacity-90'
-  const btnSecondary = isLandingDark
-    ? 'border border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
-    : 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200'
-  const btnGhost = isLandingDark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-200 text-zinc-500'
+  async function handleManageBilling() {
+    setLoading('portal')
+    setError(null)
+
+    try {
+      const response = await fetch('/api/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await response.json()
+      if (!response.ok || !data.url) {
+        setError(data.error || 'Failed to open billing portal.')
+        return
+      }
+      window.location.href = data.url
+    } catch (portalError) {
+      console.error('[Pricing] Portal error:', portalError)
+      setError('Failed to open billing portal.')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  async function handleSaveTopUpPreference() {
+    setLoading('topup-settings')
+    setError(null)
+
+    try {
+      const response = await fetch('/api/subscription/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topUpAmountCents,
+          autoTopUpEnabled,
+          grantOffSessionConsent: autoTopUpEnabled,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(data.error || 'Failed to save top-up preference.')
+      }
+    } catch (saveError) {
+      console.error('[Pricing] Top-up settings error:', saveError)
+      setError('Failed to save top-up preference.')
+    } finally {
+      setLoading(null)
+    }
+  }
 
   return (
     <div className="flex min-h-screen w-full flex-col gradient-bg">
@@ -228,225 +244,266 @@ function PricingContent() {
 
       <PageNavbar />
 
-      <main className="relative z-10 flex-1 px-8 py-16">
-        <div className="max-w-7xl mx-auto">
-          {/* Hero */}
-          <div className="text-center mb-16">
-            <h1 className={`text-4xl md:text-5xl font-serif mb-4 ${heroTitle}`}>
-              Simple, transparent pricing
-            </h1>
-            <p className={`text-lg max-w-2xl mx-auto ${heroMuted}`}>
-              Start free, upgrade when you need more, and unlock the tools that match how you work on the web.
+      <main className="relative z-10 flex-1 px-4 py-10 md:px-8 md:py-14">
+        <div className="mx-auto flex max-w-6xl flex-col gap-8">
+          <div className="text-center">
+            <h1 className={`text-3xl font-serif md:text-4xl ${theme.title}`}>Plans</h1>
+            <p className={`mx-auto mt-3 max-w-xl text-base ${theme.muted}`}>
+              Free for core chat and workspace. Paid adds every premium feature—pick a monthly budget ($8–$200).
             </p>
-            
-            {/* Auth status banner */}
-            {!authLoading && !isAuthenticated && (
-              <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-800 rounded-lg text-sm">
-                <span>Sign in to subscribe to a paid plan</span>
+            {!authLoading && !isAuthenticated ? (
+              <div className="mt-6 inline-flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-900">
+                Sign in to start a paid plan.
                 <Link href="/auth/sign-in?redirect=/pricing" className="font-medium underline">
                   Sign in →
                 </Link>
               </div>
-            )}
-            
-            {/* Error message */}
-            {error && (
-              <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-800 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
+            ) : null}
+            {error ? (
+              <div className="mt-6 inline-flex rounded-lg bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div>
+            ) : null}
           </div>
 
-          {/* Pricing Cards */}
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {tiers.map((tier) => {
-              const Icon = tier.icon
-              return (
-                <div key={tier.name} className={cardBase(tier.highlighted)}>
-                  {tier.highlighted && (
-                    <div
-                      className={`absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-medium ${
-                        isLandingDark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white'
-                      }`}
-                    >
-                      Most Popular
-                    </div>
-                  )}
+          <div className="grid gap-6 lg:grid-cols-[0.9fr_1.4fr]">
+            <section className={theme.panel}>
+              <div className="flex items-center gap-3">
+                <div className={theme.iconChip}>
+                  <MessageSquare className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                </div>
+                <div>
+                  <h2 className={`text-xl font-medium ${theme.heading}`}>Free</h2>
+                  <p className={`text-sm ${theme.muted}`}>Auto model and core workspace.</p>
+                </div>
+              </div>
 
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={tierIconWrap(tier.highlighted)}>
-                      <Icon className="w-5 h-5" />
+              <div className="mt-5">
+                <div className={`text-4xl font-serif ${theme.title}`}>$0</div>
+                <p className={`mt-2 text-sm ${theme.body}`}>No card required.</p>
+              </div>
+
+              <ul className="mt-6 space-y-3">
+                {[
+                  'Unlimited Auto model messages',
+                  'Notes, chats, knowledge, projects, and automations',
+                  'Basic AI tools and core workspace flows',
+                  '10 MB of file storage',
+                ].map((feature) => (
+                  <li key={feature} className="flex items-start gap-3">
+                    <Check className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                    <span className={`text-sm ${marketingFeatureText(isLandingDark, true)}`}>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Link
+                href={isAuthenticated ? '/app/chat' : '/auth/sign-in?redirect=%2Fapp%2Fchat'}
+                className={`mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${theme.secondaryButton}`}
+              >
+                Start free
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </section>
+
+            <section className={`${theme.panel} relative overflow-hidden`}>
+              <div className={`pointer-events-none absolute inset-0 ${theme.heroGlow}`} />
+              <div className="absolute right-6 top-6">
+                <div className={`rounded-full px-3 py-1 text-xs font-medium ${theme.badge}`}>All premium features included</div>
+              </div>
+
+              <div className="relative flex items-center gap-3">
+                <div className={theme.iconChip}>
+                  <CreditCard className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                </div>
+                <div>
+                  <h2 className={`text-xl font-medium ${theme.heading}`}>Paid</h2>
+                  <p className={`text-sm ${theme.muted}`}>Full product—you choose the monthly budget.</p>
+                </div>
+              </div>
+
+              <div className="relative mt-8 grid gap-6 md:grid-cols-[1.15fr_0.85fr]">
+                <div>
+                  <div className={theme.elevatedCard}>
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className={`text-5xl font-serif ${theme.title}`}>{formatDollarAmount(selectedPlanAmountCents)}</div>
+                      <div className={`pb-2 text-sm ${theme.muted}`}>per month</div>
                     </div>
-                    <h2 className={`text-xl font-medium ${tierName}`}>{tier.name}</h2>
+                    <p className={`mt-3 max-w-xl text-sm leading-relaxed ${theme.body}`}>
+                      One paid plan, all premium access. The only thing that changes is how much monthly budget and storage you want available.
+                    </p>
                   </div>
 
-                  <div className="mb-4">
-                    <span className={`text-4xl font-serif ${heroTitle}`}>{tier.price}</span>
-                    <span className={heroMuted}>{tier.period}</span>
+                  <div className={`mt-5 ${theme.subtleCard}`}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className={theme.muted}>Choose your monthly budget</span>
+                      <span className={theme.heading}>{formatDollarAmount(selectedPlanAmountCents)}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={PAID_PLAN_MIN_AMOUNT_CENTS / 100}
+                      max={PAID_PLAN_MAX_AMOUNT_CENTS / 100}
+                      step={PAID_PLAN_STEP_AMOUNT_CENTS / 100}
+                      value={selectedPlanDollars}
+                      onChange={(event) => {
+                        setSelectedPlanAmountCents(Math.round(Number(event.target.value) * 100))
+                      }}
+                      className={theme.sliderTrack}
+                    />
+                    <div className={`mt-2 flex items-center justify-between text-xs ${theme.muted}`}>
+                      <span>$8</span>
+                      <span>$200</span>
+                    </div>
                   </div>
 
-                  <p className={`mb-6 text-sm ${heroMuted}`}>{tier.description}</p>
+                  <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                    <div className={theme.elevatedCard}>
+                      <p className={`text-xs uppercase tracking-[0.18em] ${theme.muted}`}>Monthly budget</p>
+                      <p className={`mt-2 text-lg font-medium ${theme.heading}`}>{formatDollarAmount(selectedPlanAmountCents)}</p>
+                    </div>
+                    <div className={theme.elevatedCard}>
+                      <p className={`text-xs uppercase tracking-[0.18em] ${theme.muted}`}>File storage</p>
+                      <p className={`mt-2 text-lg font-medium ${theme.heading}`}>{formatBytes(selectedStorageBytes)}</p>
+                    </div>
+                    <div className={theme.elevatedCard}>
+                      <p className={`text-xs uppercase tracking-[0.18em] ${theme.muted}`}>Top-ups</p>
+                      <p className={`mt-2 text-lg font-medium ${theme.heading}`}>${(topUpAmountCents / 100).toFixed(0)}</p>
+                    </div>
+                  </div>
 
-                  <ul className="space-y-3 mb-8">
-                    {tier.features.map((feature, idx) => (
-                      <li key={idx} className="flex items-start gap-3">
-                        {feature.included ? (
-                          <Check
-                            className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`}
-                          />
-                        ) : (
-                          <X className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-zinc-600' : 'text-zinc-400'}`} />
-                        )}
-                        <span className={`text-sm ${marketingFeatureText(isLandingDark, feature.included)}`}>
-                          {feature.name}
-                          {feature.detail && (
-                            <span className={`ml-1 ${heroMuted}`}>({feature.detail})</span>
-                          )}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="mt-6">
+                    <TopUpPreferenceControl
+                      variant="marketing"
+                      isDark={isLandingDark}
+                      title="Future top-up amount"
+                      description="Set the amount used for future recharges. This is not charged during signup."
+                      amountCents={topUpAmountCents}
+                      minAmountCents={800}
+                      maxAmountCents={20_000}
+                      stepAmountCents={100}
+                      onAmountChange={setTopUpAmountCents}
+                      autoTopUpEnabled={autoTopUpEnabled}
+                      onAutoTopUpEnabledChange={setAutoTopUpEnabled}
+                      checkboxDescription="If enabled, the same amount will recharge automatically whenever your cumulative budget reaches zero."
+                    />
+                  </div>
 
-                  {(() => {
-                    const tierAction = tier.ctaAction?.toLowerCase()
-                    const isCurrentTier = tierAction === currentTier
-                    const isDowngrade = (currentTier === 'max' && tierAction === 'pro') || 
-                                        (currentTier !== 'free' && tier.name === 'Free')
-                    const canUpgrade = tierAction && !isCurrentTier && !isDowngrade
-                    
-                    if (isCurrentTier && isAuthenticated) {
-                      return (
-                        <div
-                          className={`w-full rounded-lg border px-4 py-3 text-center text-sm font-medium ${
-                            isLandingDark
-                              ? 'border-emerald-700/60 bg-emerald-950/50 text-emerald-200'
-                              : 'border-emerald-300 bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          Current Plan ✓
-                        </div>
-                      )
-                    }
-                    
-                    if (isDowngrade && isAuthenticated) {
-                      return (
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                    {currentPlanKind === 'paid' ? (
+                      <>
                         <button
                           type="button"
-                          disabled
-                          className={`block w-full cursor-not-allowed rounded-lg px-4 py-3 text-center text-sm font-medium opacity-60 ${btnGhost}`}
+                          onClick={() => void handleManageBilling()}
+                          disabled={loading === 'portal' || subscriptionLoading}
+                          className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${theme.primaryButton}`}
                         >
-                          Contact support to downgrade
+                          {loading === 'portal'
+                            ? 'Opening billing portal...'
+                            : isCurrentPaidSelection
+                              ? 'Current plan'
+                              : 'Change plan in billing portal'}
                         </button>
-                      )
-                    }
-
-                    if (tier.ctaLink) {
-                      return (
-                        <a
-                          href={tier.ctaLink}
-                          className={`block w-full rounded-lg px-4 py-3 text-center text-sm font-medium transition-all ${
-                            tier.highlighted ? btnPrimary : btnSecondary
-                          }`}
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveTopUpPreference()}
+                          disabled={loading === 'topup-settings' || subscriptionLoading}
+                          className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${theme.secondaryButton}`}
                         >
-                          {tier.cta}
-                        </a>
-                      )
-                    }
-                    
-                    return (
+                          {loading === 'topup-settings' ? 'Saving preference...' : 'Save top-up preference'}
+                        </button>
+                      </>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => handleSubscribe(tier.ctaAction!)}
-                        disabled={loading === tier.ctaAction || subscriptionLoading}
-                        className={`block w-full rounded-lg px-4 py-3 text-center text-sm font-medium transition-all disabled:opacity-50 ${
-                          tier.highlighted ? btnPrimary : btnSecondary
-                        }`}
+                        onClick={() => void handleSubscribe()}
+                        disabled={loading === 'checkout' || subscriptionLoading}
+                        className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${theme.primaryButton}`}
                       >
-                        {loading === tier.ctaAction ? 'Loading...' : 
-                         (canUpgrade && currentTier !== 'free' ? `Upgrade to ${tier.name}` : tier.cta)}
+                        {loading === 'checkout' ? 'Starting checkout...' : `Start ${formatDollarAmount(selectedPlanAmountCents)}/month`}
+                        <ArrowRight className="h-4 w-4" />
                       </button>
-                    )
-                  })()}
+                    )}
+
+                    {currentPlanKind === 'paid' ? (
+                      <div
+                        className={theme.currentPlanPill}
+                      >
+                        Current plan: {formatDollarAmount(currentPlanAmountCents)}/month
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              )
-            })}
-          </div>
 
-          {/* Token Budget Explanation */}
-          <div className="mt-16 max-w-3xl mx-auto">
-            <div className={tokenSection}>
-              <h3 className={`text-xl font-serif mb-4 ${heroTitle}`}>How token budgets work</h3>
-              <div className={`space-y-4 text-sm ${heroMuted}`}>
-                <p>
-                  Premium AI models (Claude, GPT-5, Gemini Pro, etc.) are billed by tokens used.
-                  Your monthly token budget lets you use these models flexibly.
-                </p>
-                <p>
-                  <strong className={heroTitle}>Prompt caching</strong> can reduce costs by up to 90% for repeated context.
-                  We automatically enable caching for all supported models.
-                </p>
-                <p>
-                  <strong className={heroTitle}>Example:</strong> $10 budget ≈ 3.3M input tokens on Claude Sonnet,
-                  or 66M tokens on GPT-OSS-20b with caching.
-                </p>
-                <p>
-                  Token budgets reset at the start of each billing period.
-                </p>
+                <div>
+                  <div className={theme.featurePanel}>
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className={`text-sm font-medium ${theme.heading}`}>Every paid plan includes</h3>
+                      <span className={`rounded-full px-3 py-1 text-[11px] font-medium ${theme.badge}`}>Same access at every level</span>
+                    </div>
+                    <ul className="mt-4 space-y-3">
+                      {[
+                        'Premium chat models',
+                        'Daytona sandboxes',
+                        'Browser tasks',
+                        'Image generation',
+                        'Video generation',
+                        'Advanced agents and premium workflows',
+                        'Future paid features as they launch',
+                      ].map((feature) => (
+                        <li key={feature} className="flex items-start gap-3">
+                          <Check className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                          <span className={`text-sm ${marketingFeatureText(isLandingDark, true)}`}>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               </div>
-            </div>
+            </section>
           </div>
 
-          {/* FAQ Section */}
-          <div className="mt-16 max-w-3xl mx-auto">
-            <h3 className={`text-2xl font-serif text-center mb-8 ${heroTitle}`}>Frequently Asked Questions</h3>
-            <div className="space-y-4">
+          <section className={theme.panel}>
+            <h2 className={`text-sm font-medium ${theme.heading}`}>How billing works</h2>
+            <div className="mt-5 grid gap-4 sm:grid-cols-3">
               {[
                 {
-                  q: 'Can I cancel anytime?',
-                  a: 'Yes! Cancel your subscription at any time. You\'ll keep access until the end of your billing period.'
+                  Icon: Wallet,
+                  label: 'Monthly budget',
+                  hint: 'Your plan amount is what you can spend each cycle.',
                 },
                 {
-                  q: 'What happens to unused tokens?',
-                  a: 'Token budgets reset at the start of each billing period.'
+                  Icon: GaugeCircle,
+                  label: 'Usage draws it down',
+                  hint: 'Priced features use budget with a small markup.',
                 },
                 {
-                  q: 'Which models are included in Free?',
-                  a: 'Free includes standard model access for everyday use. Upgrade for premium model access and more advanced tools.'
+                  Icon: PlusCircle,
+                  label: 'Top up if needed',
+                  hint: 'Add one-time budget from your account anytime.',
                 },
-                {
-                  q: 'Do I need to enter payment info for Free?',
-                  a: 'No. Create an account and start using the web app. Upgrade when you\'re ready.'
-                }
-              ].map((faq, idx) => (
-                <div key={idx} className={faqCard}>
-                  <h4 className={`font-medium mb-2 ${tierName}`}>{faq.q}</h4>
-                  <p className={`text-sm ${heroMuted}`}>{faq.a}</p>
+              ].map(({ Icon, label, hint }) => (
+                <div
+                  key={label}
+                  className={`flex gap-3 ${theme.subtleCard}`}
+                >
+                  <div className={theme.iconChip}>
+                    <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`text-sm font-medium ${theme.heading}`}>{label}</p>
+                    <p className={`mt-1 text-xs leading-relaxed ${theme.muted}`}>{hint}</p>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+            <p className={`mt-5 text-sm ${theme.body}`}>
+              Manage billing in{' '}
+              <Link href="/account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
+                Account
+              </Link>
+              . You can use the same top-up amount there or let it recharge automatically.
+            </p>
+          </section>
         </div>
       </main>
-
-      <footer className={`relative z-10 mt-auto border-t py-8 px-8 ${footBorder}`}>
-        <div className={`max-w-7xl mx-auto flex items-center justify-between text-sm ${footMuted}`}>
-          <p>© 2026 overlay</p>
-          <div className="flex gap-6">
-            <Link
-              href="/terms"
-              className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
-            >
-              Terms
-            </Link>
-            <Link
-              href="/privacy"
-              className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
-            >
-              Privacy
-            </Link>
-          </div>
-        </div>
-      </footer>
     </div>
   )
 }

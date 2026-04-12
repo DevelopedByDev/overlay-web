@@ -231,7 +231,7 @@ async function syncWorkspace(
     lastKnownStoppedAt?: number
   },
 ): Promise<StoredWorkspace | null> {
-  const result = await ctx.runMutation((internal as any).daytona.reconcileWorkspaceByServer, {
+  const result = await ctx.runMutation(internal.daytona.reconcileWorkspaceByServer, {
     userId: params.userId,
     sandboxId: params.sandbox.id,
     sandboxName: params.sandbox.name,
@@ -264,7 +264,7 @@ async function accrueRuntimeWindow(
     }
   }
 
-  return await ctx.runMutation((internal as any).daytona.accrueUsageInternal, {
+  return await ctx.runMutation(internal.daytona.accrueUsageInternal, {
     userId: workspace.userId,
     sandboxId: sandbox.id,
     tier: workspace.tier,
@@ -287,7 +287,7 @@ async function getEntitlements(
   const cached = cache.get(userId)
   if (cached) return cached
 
-  const entitlements = await ctx.runQuery((internal as any).usage.getEntitlementsInternal, { userId }) as Entitlements
+  const entitlements = await ctx.runQuery(internal.usage.getEntitlementsInternal, { userId }) as Entitlements
   cache.set(userId, entitlements)
   return entitlements
 }
@@ -314,7 +314,7 @@ export const runMinuteTick = internalAction({
 
     const now = Date.now()
     const entitlementsCache = new Map<string, Entitlements>()
-    const storedWorkspaces = await ctx.runQuery((internal as any).daytona.listAllWorkspacesInternal, {}) as StoredWorkspace[]
+    const storedWorkspaces = await ctx.runQuery(internal.daytona.listAllWorkspacesInternal, {}) as StoredWorkspace[]
     const storedBySandboxId = new Map(storedWorkspaces.map((workspace) => [workspace.sandboxId, workspace]))
     const storedByUserId = new Map(storedWorkspaces.map((workspace) => [workspace.userId, workspace]))
     const seenLiveSandboxIds = new Set<string>()
@@ -501,7 +501,7 @@ export const runMinuteTick = internalAction({
       }
 
       try {
-        const markedMissing = await ctx.runMutation((internal as any).daytona.reconcileWorkspaceByServer, {
+        const markedMissing = await ctx.runMutation(internal.daytona.reconcileWorkspaceByServer, {
           userId: workspace.userId,
           sandboxId: workspace.sandboxId,
           sandboxName: workspace.sandboxName,

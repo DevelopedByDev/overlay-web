@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Mail, Moon, PanelsLeftRight, Sun } from 'lucide-react'
+import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
 
@@ -90,6 +91,17 @@ function SectionPlaceholder({ title, children }: { title: string; children: Reac
   )
 }
 
+interface BillingSettings {
+  planKind: 'free' | 'paid'
+  autoTopUpEnabled: boolean
+  topUpAmountCents: number
+  autoTopUpAmountCents: number
+  offSessionConsentAt?: number
+  topUpMinAmountCents: number
+  topUpMaxAmountCents: number
+  topUpStepAmountCents: number
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -102,6 +114,10 @@ export default function SettingsPage() {
     isSaving,
     updateSettings,
   } = useAppSettings()
+  const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null)
+  const [billingBusy, setBillingBusy] = useState(false)
+  const [topUpDraftCents, setTopUpDraftCents] = useState(800)
+  const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
 
   const busy = isLoading || isSaving
 
@@ -115,6 +131,53 @@ export default function SettingsPage() {
       router.replace(`/app/settings?section=${section}`)
     }
   }, [rawSection, section, router])
+
+  useEffect(() => {
+    if (section !== 'account') return
+    let active = true
+    void fetch('/api/subscription/settings')
+      .then(async (response) => {
+        if (!response.ok) return null
+        return await response.json()
+      })
+      .then((data) => {
+        if (active && data) {
+          setBillingSettings(data)
+          setTopUpDraftCents(data.topUpAmountCents ?? data.autoTopUpAmountCents ?? data.topUpMinAmountCents ?? 800)
+          setAutoTopUpEnabledDraft(Boolean(data.autoTopUpEnabled))
+        }
+      })
+      .catch(() => {})
+
+    return () => {
+      active = false
+    }
+  }, [section])
+
+  async function updateBillingSettings(next: {
+    autoTopUpEnabled: boolean
+    topUpAmountCents: number
+    grantOffSessionConsent?: boolean
+  }) {
+    setBillingBusy(true)
+    try {
+      const response = await fetch('/api/subscription/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      })
+      if (!response.ok) return
+      const refreshed = await fetch('/api/subscription/settings')
+      if (refreshed.ok) {
+        const data = await refreshed.json()
+        setBillingSettings(data)
+        setTopUpDraftCents(data.topUpAmountCents ?? data.autoTopUpAmountCents ?? data.topUpMinAmountCents ?? 800)
+        setAutoTopUpEnabledDraft(Boolean(data.autoTopUpEnabled))
+      }
+    } finally {
+      setBillingBusy(false)
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
@@ -150,17 +213,54 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'account' && (
-            <SectionPlaceholder title="Account">
-              <p>
-                Manage your profile, billing, and subscription on the account portal.
-              </p>
-              <Link
-                href="/account"
-                className="mt-4 inline-flex text-sm font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
-              >
-                Open account →
-              </Link>
-            </SectionPlaceholder>
+            <>
+              <SectionPlaceholder title="Billing">
+                <p>
+                  {billingSettings?.planKind === 'paid'
+                    ? 'Paid plans unlock premium models, Daytona sandboxes, browser tasks, and generation tools. Adjust your recurring amount in billing, and use auto top-up here for off-session recharges.'
+                    : 'You are currently on the free plan. Upgrade from the pricing page to unlock premium features and budget controls.'}
+                </p>
+                <Link
+                  href="/account"
+                  className="mt-4 inline-flex text-sm font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
+                >
+                  Open account →
+                </Link>
+              </SectionPlaceholder>
+
+              {billingSettings?.planKind === 'paid' ? (
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-sm">
+                  <TopUpPreferenceControl
+                    variant="app"
+                    title="Top-up amount"
+                    description="Use one amount for manual top-ups and future automatic recharges."
+                    amountCents={topUpDraftCents}
+                    minAmountCents={billingSettings.topUpMinAmountCents}
+                    maxAmountCents={billingSettings.topUpMaxAmountCents}
+                    stepAmountCents={billingSettings.topUpStepAmountCents}
+                    onAmountChange={setTopUpDraftCents}
+                    autoTopUpEnabled={autoTopUpEnabledDraft}
+                    onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
+                    checkboxDescription="If enabled, this same amount will recharge automatically whenever your cumulative budget reaches zero."
+                    note="Use Account to run a manual top-up now. Saving here updates the future recharge amount and auto-top-up preference."
+                    footer={
+                      <button
+                        type="button"
+                        disabled={billingBusy}
+                        onClick={() => void updateBillingSettings({
+                          autoTopUpEnabled: autoTopUpEnabledDraft,
+                          topUpAmountCents: topUpDraftCents,
+                          grantOffSessionConsent: autoTopUpEnabledDraft,
+                        })}
+                        className="inline-flex rounded-xl bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-60"
+                      >
+                        {billingBusy ? 'Saving...' : 'Save top-up preference'}
+                      </button>
+                    }
+                  />
+                </div>
+              ) : null}
+            </>
           )}
 
           {!isLoading && section === 'customization' && (

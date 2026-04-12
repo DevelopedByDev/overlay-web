@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import { LANDING_THEME_STORAGE_KEY } from "@/lib/landingThemeConstants";
 
 export type LandingTheme = "light" | "dark";
@@ -13,6 +13,7 @@ type LandingThemeContextValue = {
 };
 
 const LandingThemeContext = createContext<LandingThemeContextValue | null>(null);
+const LANDING_THEME_CHANGE_EVENT = "overlay:landing-theme-change";
 
 function readStoredLandingTheme(): LandingTheme {
   if (typeof window === "undefined") return "light";
@@ -25,29 +26,47 @@ function readStoredLandingTheme(): LandingTheme {
   return "light";
 }
 
+function subscribeToLandingTheme(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  const handleChange = () => {
+    callback();
+  };
+
+  window.addEventListener("storage", handleChange);
+  window.addEventListener(LANDING_THEME_CHANGE_EVENT, handleChange);
+
+  return () => {
+    window.removeEventListener("storage", handleChange);
+    window.removeEventListener(LANDING_THEME_CHANGE_EVENT, handleChange);
+  };
+}
+
+function writeStoredLandingTheme(theme: LandingTheme) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LANDING_THEME_STORAGE_KEY, theme);
+    window.dispatchEvent(new Event(LANDING_THEME_CHANGE_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function LandingThemeProvider({ children }: { children: React.ReactNode }) {
-  const [landingTheme, setLandingThemeState] = useState<LandingTheme>(readStoredLandingTheme);
+  const landingTheme = useSyncExternalStore<LandingTheme>(
+    subscribeToLandingTheme,
+    readStoredLandingTheme,
+    () => "light",
+  );
 
   const setLandingTheme = useCallback((theme: LandingTheme) => {
-    setLandingThemeState(theme);
-    try {
-      window.localStorage.setItem(LANDING_THEME_STORAGE_KEY, theme);
-    } catch {
-      /* ignore */
-    }
+    writeStoredLandingTheme(theme);
   }, []);
 
   const toggleLandingTheme = useCallback(() => {
-    setLandingThemeState((prev) => {
-      const next: LandingTheme = prev === "light" ? "dark" : "light";
-      try {
-        window.localStorage.setItem(LANDING_THEME_STORAGE_KEY, next);
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
+    const nextTheme: LandingTheme = landingTheme === "light" ? "dark" : "light";
+    writeStoredLandingTheme(nextTheme);
+  }, [landingTheme]);
 
   const value = useMemo<LandingThemeContextValue>(
     () => ({
@@ -62,6 +81,7 @@ export function LandingThemeProvider({ children }: { children: React.ReactNode }
   return (
     <LandingThemeContext.Provider value={value}>
       <div
+        suppressHydrationWarning
         data-landing-theme={landingTheme}
         className={
           landingTheme === "dark"

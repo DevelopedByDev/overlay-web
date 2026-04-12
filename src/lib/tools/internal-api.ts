@@ -1,4 +1,5 @@
 import type { OverlayToolsOptions } from './types'
+import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/lib/service-auth'
 
 export function toolAuthBody(options: OverlayToolsOptions): {
   userId: string
@@ -27,17 +28,24 @@ export async function callInternalApi(
   const method = opts?.method ?? 'POST'
   const forwardCookie = opts?.forwardCookie
   const url = baseUrl ? `${baseUrl}${path}` : path
+  const { serverSecret, ...serializedBody } = body
+  const serviceAuthHeader =
+    typeof serverSecret === 'string' && serverSecret && typeof body.userId === 'string'
+      ? await buildServiceAuthToken({
+          userId: body.userId,
+          method,
+          path,
+        })
+      : null
   return fetch(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(typeof body.serverSecret === 'string' && body.serverSecret
-        ? { 'x-internal-api-secret': body.serverSecret }
-        : {}),
+      ...(serviceAuthHeader ? { [getServiceAuthHeaderName()]: serviceAuthHeader } : {}),
       ...(forwardCookie ? { Cookie: forwardCookie } : {}),
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(serializedBody),
   })
 }
 
@@ -50,17 +58,25 @@ export async function callInternalApiGet(
   userId?: string,
 ): Promise<Response> {
   const urlObject = new URL(pathWithQuery, baseUrl ?? 'http://localhost')
-  if (serverSecret && userId && !urlObject.searchParams.has('userId')) {
+  if (userId && !urlObject.searchParams.has('userId')) {
     urlObject.searchParams.set('userId', userId)
   }
   const url = baseUrl
     ? `${baseUrl}${urlObject.pathname}${urlObject.search}`
     : `${urlObject.pathname}${urlObject.search}`
+  const serviceAuthHeader =
+    serverSecret && userId
+      ? await buildServiceAuthToken({
+          userId,
+          method: 'GET',
+          path: urlObject.pathname,
+        })
+      : null
   return fetch(url, {
     method: 'GET',
     headers: {
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(serverSecret ? { 'x-internal-api-secret': serverSecret } : {}),
+      ...(serviceAuthHeader ? { [getServiceAuthHeaderName()]: serviceAuthHeader } : {}),
       ...(forwardCookie ? { Cookie: forwardCookie } : {}),
     },
   })

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PageNavbar } from "@/components/PageNavbar";
 import { LandingThemeProvider, useLandingTheme } from "@/contexts/LandingThemeContext";
+import { sanitizeClientAuthRedirect } from "@/lib/auth-redirect";
 import {
   marketingAuthCard,
   marketingAuthMuted,
@@ -27,7 +28,7 @@ function SignInContent() {
   const [sessionCleared, setSessionCleared] = useState(false);
   const [clearingSession, setClearingSession] = useState(false);
 
-  const redirectUrl = searchParams?.get("redirect") || "/account";
+  const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get("redirect"));
   const forceLogin = searchParams?.get("force") === "true";
   const isDesktopAuth = redirectUrl.startsWith("overlay://");
 

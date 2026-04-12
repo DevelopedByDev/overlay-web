@@ -17,17 +17,13 @@ import {
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { classifyOutputType } from '@/lib/output-types'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import { getSession } from '@/lib/workos-auth'
-import { validateServerSecret } from '../../../../../../convex/lib/auth'
+import type { Entitlements } from '@/lib/app-contracts'
+import { buildInsufficientCreditsPayload, ensureBudgetAvailable, getBudgetTotals, isPaidPlan } from '@/lib/billing-runtime'
 import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl } from '@/lib/r2'
 
 export const maxDuration = 300
-
-interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  creditsUsed: number
-  creditsTotal: number
-}
 
 interface OverlayFileRecord {
   _id: string
@@ -164,7 +160,6 @@ export async function POST(request: NextRequest) {
     turnId,
     userId: requestedUserId,
     accessToken,
-    serverSecret: providedServerSecret,
   }: {
     task?: string
     runtime?: DaytonaRuntime
@@ -176,7 +171,6 @@ export async function POST(request: NextRequest) {
     turnId?: string
     userId?: string
     accessToken?: string
-    serverSecret?: string
   } = await request.json()
 
   if (!task?.trim()) {
@@ -194,18 +188,22 @@ export async function POST(request: NextRequest) {
 
   let userId: string | null = session?.user.id ?? null
   if (!userId) {
-    if (validateServerSecret(providedServerSecret) && typeof requestedUserId === 'string' && requestedUserId.trim()) {
-      userId = requestedUserId.trim()
-    } else {
-      const auth = await resolveAuthenticatedAppUser(request, {
-        accessToken,
-        userId: requestedUserId,
-      })
-      userId = auth?.userId ?? null
-    }
+    const auth = await resolveAuthenticatedAppUser(request, {
+      accessToken,
+      userId: requestedUserId,
+    })
+    userId = auth?.userId ?? null
   }
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const rateLimitResponse = enforceRateLimits(request, [
+    { bucket: 'sandbox:daytona:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
+    { bucket: 'sandbox:daytona:user', key: userId, limit: 10, windowMs: 10 * 60_000 },
+  ])
+  if (rateLimitResponse) {
+    return rateLimitResponse
   }
 
   const serverSecret = getInternalApiSecret()
@@ -220,17 +218,26 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     )
   }
-  if (entitlements.tier === 'free') {
+  if (!isPaidPlan(entitlements)) {
     return NextResponse.json(
-      { error: 'sandbox_not_allowed', message: 'Daytona sandbox execution requires Pro or Max.' },
+      { error: 'sandbox_not_allowed', message: 'Daytona sandbox execution requires a paid plan.' },
       { status: 403 },
     )
   }
-  const creditsTotalCents = entitlements.creditsTotal * 100
-  const remainingCents = creditsTotalCents - entitlements.creditsUsed
-  if (remainingCents <= 0) {
+  let currentEntitlements = entitlements
+  let budget = getBudgetTotals(currentEntitlements)
+  if (budget.remainingCents <= 0) {
+    const autoTopUp = await ensureBudgetAvailable({
+      userId,
+      entitlements: currentEntitlements,
+      minimumRequiredCents: 1,
+    })
+    currentEntitlements = autoTopUp.entitlements
+    budget = getBudgetTotals(currentEntitlements)
+  }
+  if (budget.remainingCents <= 0) {
     return NextResponse.json(
-      { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
+      buildInsufficientCreditsPayload(currentEntitlements, 'No budget remaining. Please top up your account.'),
       { status: 402 },
     )
   }
@@ -244,7 +251,7 @@ export async function POST(request: NextRequest) {
   try {
     workspaceRun = await ensureWorkspaceSandbox({
       userId,
-      tier: entitlements.tier,
+      tier: 'pro',
     })
     workspaceRun = await startIfNeeded(workspaceRun)
     await refreshWorkspaceActivity(workspaceRun)

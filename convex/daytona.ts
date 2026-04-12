@@ -5,6 +5,7 @@ import {
   computeDaytonaRuntimeCost,
   roundCurrencyAmount,
 } from '../src/lib/daytona-pricing'
+import { applyMarkupToCents, centsToDollarAmount } from '../src/lib/billing-pricing'
 import { applyUsageEvents } from './usage'
 
 async function authorizeUserAccess(params: {
@@ -338,12 +339,14 @@ async function accrueUsage(
   }
 
   const durationSeconds = Math.max(0, (args.endedAt - args.startedAt) / 1000)
-  const { costUsd, costCents } = computeDaytonaRuntimeCost({
+  const providerCost = computeDaytonaRuntimeCost({
     cpu: args.cpu,
     memoryGiB: args.memoryGiB,
     diskGiB: args.diskGiB,
     elapsedSeconds: durationSeconds,
   })
+  const costCents = applyMarkupToCents({ providerCostCents: providerCost.costCents })
+  const costUsd = centsToDollarAmount(costCents)
 
   if (durationSeconds > 0) {
     await ctx.db.insert('daytonaUsageLedger', {

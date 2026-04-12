@@ -9,16 +9,17 @@ import { uploadBuffer, keyForOutput } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
 import { deleteObject } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import type { Entitlements } from '@/lib/app-contracts'
+import {
+  buildInsufficientCreditsPayload,
+  billableBudgetCentsFromProviderUsd,
+  ensureBudgetAvailable,
+  getBudgetTotals,
+  isPaidPlan,
+} from '@/lib/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export const maxDuration = 120
-
-interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  creditsUsed: number
-  creditsTotal: number
-  overlayStorageBytesUsed: number
-  overlayStorageBytesLimit: number
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,6 +38,12 @@ export async function POST(request: NextRequest) {
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const rateLimitResponse = enforceRateLimits(request, [
+      { bucket: 'generation:image:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
+      { bucket: 'generation:image:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
@@ -57,24 +64,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { tier, creditsUsed, creditsTotal } = entitlements
-    const creditsTotalCents = creditsTotal * 100
-    const remainingCents = creditsTotalCents - creditsUsed
-    const usedPct = creditsTotalCents > 0 ? ((creditsUsed / creditsTotalCents) * 100).toFixed(2) : '0.00'
-    console.log(`[GenerateImage] 📊 Entitlements: tier=${tier} | used=${creditsUsed}¢ / ${creditsTotalCents}¢ (${usedPct}% used, $${(remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
-    if (tier === 'free') {
+    const providerCostUsd = calculateImageCost(modelId ?? IMAGE_MODELS[0]?.id ?? 'google/imagen-4')
+    const minimumRequiredCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
+    let currentEntitlements = entitlements
+    let budget = getBudgetTotals(currentEntitlements)
+    const usedPct = budget.totalCents > 0 ? ((budget.usedCents / budget.totalCents) * 100).toFixed(2) : '0.00'
+    console.log(`[GenerateImage] 📊 Entitlements: tier=${currentEntitlements.tier} | used=${budget.usedCents}¢ / ${budget.totalCents}¢ (${usedPct}% used, $${(budget.remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
+    if (!isPaidPlan(currentEntitlements)) {
       return NextResponse.json(
-        { error: 'generation_not_allowed', message: 'Image generation requires a Pro subscription.' },
+        { error: 'generation_not_allowed', message: 'Image generation requires a paid plan.' },
         { status: 403 }
       )
     }
-    if (remainingCents <= 0) {
-      return NextResponse.json(
-        { error: 'insufficient_credits', message: 'No credits remaining. Please top up your account.' },
-        { status: 402 }
-      )
+    if (budget.remainingCents < minimumRequiredCents) {
+      const autoTopUp = await ensureBudgetAvailable({
+        userId: auth.userId,
+        entitlements: currentEntitlements,
+        minimumRequiredCents,
+      })
+      currentEntitlements = autoTopUp.entitlements
+      budget = getBudgetTotals(currentEntitlements)
+      if (budget.remainingCents < minimumRequiredCents) {
+        return NextResponse.json(
+          buildInsufficientCreditsPayload(currentEntitlements, 'Not enough budget remaining to generate this image. Please top up your account.'),
+          { status: 402 }
+        )
+      }
     }
-    if (entitlements.overlayStorageBytesUsed >= entitlements.overlayStorageBytesLimit) {
+    if ((currentEntitlements.overlayStorageBytesUsed ?? 0) >= (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
       return NextResponse.json(
         { error: 'storage_limit_exceeded', message: 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.' },
         { status: 403 },
@@ -152,7 +169,7 @@ export async function POST(request: NextRequest) {
     let uploadedR2Key: string | null = null
     try {
       const imageBuffer = Buffer.from(imageBase64!, 'base64')
-      if (entitlements.overlayStorageBytesUsed + imageBuffer.length > entitlements.overlayStorageBytesLimit) {
+      if ((currentEntitlements.overlayStorageBytesUsed ?? 0) + imageBuffer.length > (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
         return NextResponse.json(
           { error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this image.' },
           { status: 403 },
@@ -241,8 +258,8 @@ export async function POST(request: NextRequest) {
 
     // ── Usage tracking ────────────────────────────────────────────────────────
     const costDollars = calculateImageCost(usedModelId)
-    const costCents = Math.round(costDollars * 100)
-    console.log(`[GenerateImage] 💰 Cost: model=${usedModelId} | $${costDollars.toFixed(4)} = ${costCents}¢`)
+    const costCents = billableBudgetCentsFromProviderUsd(costDollars)
+    console.log(`[GenerateImage] 💰 Cost: model=${usedModelId} | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
     if (costCents > 0) {
       const recordResult = await convex.mutation('usage:recordBatch', {
         serverSecret,

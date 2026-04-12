@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { clearSession, getBaseUrl } from '@/lib/workos-auth'
+import { clearSession } from '@/lib/workos-auth'
 
 export async function POST() {
   try {
@@ -11,15 +11,5 @@ export async function POST() {
       { error: 'Failed to sign out' },
       { status: 500 }
     )
-  }
-}
-
-export async function GET() {
-  try {
-    await clearSession()
-    return NextResponse.redirect(`${getBaseUrl()}/`)
-  } catch (error) {
-    console.error('[Auth] Sign-out error:', error)
-    return NextResponse.redirect(`${getBaseUrl()}/`)
   }
 }

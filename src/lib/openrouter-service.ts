@@ -5,7 +5,12 @@
  * full id (e.g. `openrouter/free` — sending `free` alone is invalid).
  */
 
-import type { UIMessage } from 'ai'
+import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  generateId,
+  type UIMessage,
+} from 'ai'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
 
 type OpenRouterContentPart =
@@ -202,11 +207,13 @@ async function resolveApiKey(accessToken?: string): Promise<string | null> {
 export async function streamOpenRouterChat({
   modelId,
   messages,
+  originalMessages,
   accessToken,
   onFinish,
 }: {
   modelId: string
   messages: OpenRouterMessage[]
+  originalMessages?: UIMessage[]
   accessToken?: string
   onFinish?: (
     text: string,
@@ -240,19 +247,19 @@ export async function streamOpenRouterChat({
   }
 
   // Encode stream in Vercel AI SDK UIMessageStream format so useChat can parse it
-  const encoder = new TextEncoder()
   const decoder = new TextDecoder()
-  const messageId = `msg_${Date.now()}`
   let fullText = ''
   let inputTokens = 0
   let outputTokens = 0
   let routedModelId: string | undefined
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      // Message start
-      controller.enqueue(encoder.encode(`f:${JSON.stringify({ messageId })}\n`))
-
+  const stream = createUIMessageStream({
+    originalMessages,
+    execute: async ({ writer }) => {
+      const messageId = generateId()
+      const textId = generateId()
+      let textStarted = false
+      writer.write({ type: 'start', messageId })
       const reader = response.body!.getReader()
       let buffer = ''
 
@@ -275,7 +282,11 @@ export async function streamOpenRouterChat({
               const content = parsed.choices?.[0]?.delta?.content
               if (content) {
                 fullText += content
-                controller.enqueue(encoder.encode(`0:${JSON.stringify(content)}\n`))
+                if (!textStarted) {
+                  writer.write({ type: 'text-start', id: textId })
+                  textStarted = true
+                }
+                writer.write({ type: 'text-delta', id: textId, delta: content })
               }
               if (typeof parsed.model === 'string' && parsed.model) {
                 routedModelId = parsed.model
@@ -290,15 +301,15 @@ export async function streamOpenRouterChat({
           }
         }
 
-        // Finish parts
         const usage = { inputTokens, outputTokens }
-        controller.enqueue(
-          encoder.encode(`e:${JSON.stringify({ finishReason: 'stop', usage, isContinued: false })}\n`)
-        )
-        controller.enqueue(
-          encoder.encode(`d:${JSON.stringify({ finishReason: 'stop', usage })}\n`)
-        )
-        controller.close()
+        if (textStarted) {
+          writer.write({ type: 'text-end', id: textId })
+        }
+        writer.write({
+          type: 'finish',
+          finishReason: 'stop',
+          ...(routedModelId ? { messageMetadata: { routedModelId } } : {}),
+        })
 
         if (onFinish) {
           await onFinish(fullText, usage, routedModelId)
@@ -306,55 +317,55 @@ export async function streamOpenRouterChat({
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error('[OpenRouter] Stream error:', msg)
-        controller.enqueue(encoder.encode(`3:${JSON.stringify(msg)}\n`))
-        controller.close()
+        writer.write({ type: 'error', errorText: msg })
       }
     },
   })
 
-  return new Response(stream, {
+  return createUIMessageStreamResponse({
+    stream,
     headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'X-Vercel-AI-Data-Stream': 'v1',
       'Cache-Control': 'no-cache',
     },
   })
 }
 
-/** Encode plain text as the same Vercel AI data stream format useChat expects. */
+/** Encode plain text as a UI message stream useChat can parse reliably. */
 export function encodeAssistantTextAsUiDataStream(
   fullText: string,
   usage: { inputTokens: number; outputTokens: number },
+  originalMessages?: UIMessage[],
   onFinish?: (
     text: string,
     usage: { inputTokens: number; outputTokens: number },
     routedModelId?: string,
   ) => Promise<void>,
 ): Response {
-  const encoder = new TextEncoder()
-  const messageId = `msg_${Date.now()}`
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      controller.enqueue(encoder.encode(`f:${JSON.stringify({ messageId })}\n`))
-      const chunkSize = 48
-      for (let i = 0; i < fullText.length; i += chunkSize) {
-        const piece = fullText.slice(i, i + chunkSize)
-        controller.enqueue(encoder.encode(`0:${JSON.stringify(piece)}\n`))
+  const stream = createUIMessageStream({
+    originalMessages,
+    execute: async ({ writer }) => {
+      const messageId = generateId()
+      writer.write({ type: 'start', messageId })
+
+      if (fullText.length > 0) {
+        const textId = generateId()
+        writer.write({ type: 'text-start', id: textId })
+        const chunkSize = 48
+        for (let i = 0; i < fullText.length; i += chunkSize) {
+          const piece = fullText.slice(i, i + chunkSize)
+          writer.write({ type: 'text-delta', id: textId, delta: piece })
+        }
+        writer.write({ type: 'text-end', id: textId })
       }
-      controller.enqueue(
-        encoder.encode(`e:${JSON.stringify({ finishReason: 'stop', usage, isContinued: false })}\n`),
-      )
-      controller.enqueue(encoder.encode(`d:${JSON.stringify({ finishReason: 'stop', usage })}\n`))
-      controller.close()
+      writer.write({ type: 'finish', finishReason: 'stop' })
       if (onFinish) {
         await onFinish(fullText, usage)
       }
     },
   })
-  return new Response(stream, {
+  return createUIMessageStreamResponse({
+    stream,
     headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'X-Vercel-AI-Data-Stream': 'v1',
       'Cache-Control': 'no-cache',
     },
   })

@@ -4,6 +4,7 @@ import { convex } from '@/lib/convex'
 import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
 import { deleteObjects } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { isOwnedFileR2Key } from '@/lib/storage-keys'
 
 function storageErrorResponse(error: unknown, fallback = 'Failed to save file') {
   const message = error instanceof Error ? error.message : String(error)
@@ -75,6 +76,9 @@ export async function POST(request: NextRequest) {
     const ids: string[] = []
 
     if (r2Key) {
+      if (typeof r2Key !== 'string' || !isOwnedFileR2Key(auth.userId, r2Key)) {
+        return NextResponse.json({ error: 'Invalid storage key' }, { status: 400 })
+      }
       const { type: _type, ...storageArgs } = args
       void _type
       id = await convex.mutation('files:createWithStorage', {
@@ -162,7 +166,12 @@ export async function DELETE(request: NextRequest) {
       'files:getR2KeysForSubtree',
       { fileId, userId: auth.userId, serverSecret },
     )
-    const r2Keys = (r2Entries ?? []).map((e) => e.r2Key).filter((k): k is string => Boolean(k))
+    const r2Keys = (r2Entries ?? []).flatMap((entry) => {
+      if (!entry.r2Key || !isOwnedFileR2Key(auth.userId, entry.r2Key)) {
+        return []
+      }
+      return [entry.r2Key]
+    })
     if (r2Keys.length > 0) {
       await deleteObjects(r2Keys)
       console.log(`[FilesDelete] Deleted ${r2Keys.length} R2 objects for fileId=${fileId}`)
