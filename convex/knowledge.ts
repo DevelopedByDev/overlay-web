@@ -12,7 +12,7 @@ import { requireAccessToken, validateServerSecret } from './lib/auth'
 export type HybridSearchChunk = {
   text: string
   title?: string
-  sourceKind: 'file' | 'memory'
+  sourceKind: 'file' | 'memory' | 'note' | 'output'
   sourceId: string
   chunkIndex: number
   score: number
@@ -90,7 +90,7 @@ async function embedViaGateway(texts: string[]): Promise<{ vectors: number[][]; 
 
 export const purgeKnowledgeSource = internalMutation({
   args: {
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('note'), v.literal('output')),
     sourceId: v.string(),
   },
   handler: async (ctx, { sourceKind, sourceId }) => {
@@ -113,7 +113,7 @@ export const replaceKnowledgeSource = internalMutation({
   args: {
     userId: v.string(),
     projectId: v.optional(v.string()),
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('note'), v.literal('output')),
     sourceId: v.string(),
     title: v.optional(v.string()),
     segments: v.array(
@@ -193,7 +193,7 @@ export const getMemoryForReindex = internalQuery({
 export const searchChunksLexical = internalQuery({
   args: {
     userId: v.string(),
-    sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
+    sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'), v.literal('note'), v.literal('output'))),
     query: v.string(),
     limit: v.number(),
   },
@@ -216,7 +216,7 @@ export const searchChunksLexical = internalQuery({
 export const embeddingChunkIdsForVectorResults = internalQuery({
   args: {
     embeddingIds: v.array(v.id('knowledgeChunkEmbeddings')),
-    sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
+    sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'), v.literal('note'), v.literal('output'))),
   },
   handler: async (ctx, { embeddingIds, sourceKind }) => {
     const ordered: Array<{ chunkId: Id<'knowledgeChunks'> | null }> = []
@@ -326,6 +326,117 @@ export const reindexMemoryInternal = internalAction({
   },
 })
 
+export const getNoteForReindex = internalQuery({
+  args: { noteId: v.id('notes') },
+  handler: async (ctx, { noteId }) => {
+    const n = await ctx.db.get(noteId)
+    if (!n || n.deletedAt) return null
+    return {
+      userId: n.userId,
+      projectId: n.projectId,
+      title: n.title,
+      content: n.content,
+    }
+  },
+})
+
+export const reindexNoteInternal = internalAction({
+  args: { noteId: v.id('notes') },
+  handler: async (ctx, { noteId }) => {
+    const meta = await ctx.runQuery(internal.knowledge.getNoteForReindex, { noteId })
+    if (!meta) {
+      await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
+        sourceKind: 'note',
+        sourceId: noteId,
+      })
+      return
+    }
+    const text = meta.title ? `${meta.title}\n\n${meta.content}` : meta.content
+    const segments = chunkText(text)
+    if (segments.length === 0) {
+      await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
+        sourceKind: 'note',
+        sourceId: noteId,
+      })
+      return
+    }
+    const { vectors } = await embedViaGateway(segments.map((s) => s.text))
+    await ctx.runMutation(internal.knowledge.replaceKnowledgeSource, {
+      userId: meta.userId,
+      projectId: meta.projectId,
+      sourceKind: 'note',
+      sourceId: noteId,
+      title: meta.title || 'Note',
+      segments: segments.map((s, i) => ({
+        text: s.text,
+        chunkIndex: s.chunkIndex,
+        startOffset: s.startOffset,
+        embedding: vectors[i]!,
+      })),
+    })
+  },
+})
+
+export const getOutputForReindex = internalQuery({
+  args: { outputId: v.id('outputs') },
+  handler: async (ctx, { outputId }) => {
+    const o = await ctx.db.get(outputId)
+    if (!o || o.status !== 'completed') return null
+    return {
+      userId: o.userId,
+      prompt: o.prompt,
+      fileName: o.fileName,
+      type: o.type,
+      source: o.source,
+      modelId: o.modelId,
+    }
+  },
+})
+
+export const reindexOutputInternal = internalAction({
+  args: { outputId: v.id('outputs') },
+  handler: async (ctx, { outputId }) => {
+    const meta = await ctx.runQuery(internal.knowledge.getOutputForReindex, { outputId })
+    if (!meta) {
+      await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
+        sourceKind: 'output',
+        sourceId: outputId,
+      })
+      return
+    }
+    // Build a descriptive text block from available metadata so the output is
+    // semantically searchable (e.g. "find the image I generated of a sunset").
+    const parts: string[] = []
+    if (meta.fileName) parts.push(`File: ${meta.fileName}`)
+    if (meta.type) parts.push(`Type: ${meta.type}`)
+    if (meta.source) parts.push(`Source: ${meta.source}`)
+    parts.push(`Prompt: ${meta.prompt}`)
+    const text = parts.join('\n')
+    const segments = chunkText(text)
+    if (segments.length === 0) {
+      await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
+        sourceKind: 'output',
+        sourceId: outputId,
+      })
+      return
+    }
+    const { vectors } = await embedViaGateway(segments.map((s) => s.text))
+    const title = meta.fileName ?? `${meta.type} output`
+    await ctx.runMutation(internal.knowledge.replaceKnowledgeSource, {
+      userId: meta.userId,
+      sourceKind: 'output',
+      sourceId: outputId,
+      title,
+      segments: segments.map((s, i) => ({
+        text: s.text,
+        chunkIndex: s.chunkIndex,
+        startOffset: s.startOffset,
+        embedding: vectors[i]!,
+      })),
+    })
+  },
+})
+
 function chunkMatchesProject(
   projectId: string | undefined,
   chunkProjectId: string | undefined,
@@ -376,7 +487,7 @@ export const hybridSearch = action({
     serverSecret: v.optional(v.string()),
     query: v.string(),
     projectId: v.optional(v.string()),
-    sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
+    sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'), v.literal('note'), v.literal('output'))),
     kVec: v.optional(v.number()),
     kLex: v.optional(v.number()),
     m: v.optional(v.number()),

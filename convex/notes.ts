@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { internal } from './_generated/api'
 import { mutation, query } from './_generated/server'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import type { Id } from './_generated/dataModel'
@@ -130,7 +131,7 @@ export const create = mutation({
       }
     }
     const now = Date.now()
-    return await ctx.db.insert('notes', {
+    const noteId = await ctx.db.insert('notes', {
       userId: args.userId,
       clientId: args.clientId?.trim() || undefined,
       title: args.title,
@@ -140,6 +141,8 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     })
+    await ctx.scheduler.runAfter(0, internal.knowledge.reindexNoteInternal, { noteId })
+    return noteId
   },
 })
 
@@ -172,6 +175,7 @@ export const update = mutation({
     if (updates.tags !== undefined) patch.tags = updates.tags
     if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     await ctx.db.patch(noteId, patch)
+    await ctx.scheduler.runAfter(0, internal.knowledge.reindexNoteInternal, { noteId })
   },
 })
 
@@ -188,6 +192,10 @@ export const remove = mutation({
     if (!existing || existing.userId !== userId || existing.deletedAt) {
       throw new Error('Unauthorized')
     }
+    await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
+      sourceKind: 'note',
+      sourceId: noteId,
+    })
     await ctx.db.patch(noteId, {
       deletedAt: Date.now(),
       updatedAt: Date.now(),

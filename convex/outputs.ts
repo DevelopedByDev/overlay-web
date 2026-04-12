@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { internal } from './_generated/api'
 import { mutation, query } from './_generated/server'
 import { Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
@@ -109,6 +110,9 @@ export const create = mutation({
     if (sizeBytes > 0) {
       await applyStorageUsageDelta(ctx as never, args.userId, sizeBytes)
     }
+    if (args.status === 'completed') {
+      await ctx.scheduler.runAfter(0, internal.knowledge.reindexOutputInternal, { outputId: id })
+    }
     return id
   },
 })
@@ -184,6 +188,9 @@ export const update = mutation({
     await ctx.db.patch(outputId, updates)
     if (storageDelta !== 0) {
       await applyStorageUsageDelta(ctx as never, userId, storageDelta)
+    }
+    if (status === 'completed') {
+      await ctx.scheduler.runAfter(0, internal.knowledge.reindexOutputInternal, { outputId })
     }
   },
 })
@@ -346,6 +353,10 @@ export const remove = mutation({
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const output = await ctx.db.get(outputId)
     if (!output || output.userId !== userId) throw new Error('Unauthorized')
+    await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
+      sourceKind: 'output',
+      sourceId: outputId,
+    })
     if (output.storageId) {
       await ctx.storage.delete(output.storageId)
     }

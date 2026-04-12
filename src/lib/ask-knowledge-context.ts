@@ -8,8 +8,8 @@ const MIN_USER_CHARS = 8
 const MAX_QUERY_CHARS = 500
 const BLOCK_CHAR_BUDGET = 9000
 
-/** 1-based citation index → notebook file or memory (for UI links). */
-export type SourceCitationMap = Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+/** 1-based citation index → notebook file, memory, note, or output (for UI links). */
+export type SourceCitationMap = Record<string, { kind: 'file' | 'memory' | 'note' | 'output'; sourceId: string }>
 
 export type AutoRetrievalBundle = {
   extension: string
@@ -49,20 +49,33 @@ export async function buildAutoRetrievalBundle(args: {
     const citations: SourceCitationMap = {}
     const lines: string[] = [
       '---',
-      'AUTO_RETRIEVED_KNOWLEDGE (from the user\'s indexed notebook files and saved memories).',
+      'AUTO_RETRIEVED_KNOWLEDGE (from the user\'s indexed notebook files, saved memories, notes, and generated outputs).',
       'Some items may be irrelevant — ignore what does not apply.',
       'If you use any passage below in your answer, end your reply with a **Sources:** line listing only the numbers you used, using ASCII brackets, e.g. `Sources: [1], [2], [3]`.',
       '---',
     ]
 
+    const kindLabel: Record<string, string> = {
+      file: 'file',
+      memory: 'memory',
+      note: 'note',
+      output: 'output',
+    }
+    const kindFallbackTitle: Record<string, string> = {
+      file: 'Notebook file',
+      memory: 'Memory',
+      note: 'Note',
+      output: 'Generated output',
+    }
+
     let used = 0
     for (let i = 0; i < chunks.length; i++) {
       const c = chunks[i]!
-      const kind = c.sourceKind === 'file' ? 'file' : 'memory'
+      const kind = kindLabel[c.sourceKind] ?? c.sourceKind
       const title =
-        (c.title && c.title.trim()) || (kind === 'file' ? 'Notebook file' : 'Memory')
+        (c.title && c.title.trim()) || kindFallbackTitle[c.sourceKind] || kind
       const n = i + 1
-      citations[String(n)] = { kind: c.sourceKind, sourceId: c.sourceId }
+      citations[String(n)] = { kind: c.sourceKind as 'file' | 'memory' | 'note' | 'output', sourceId: c.sourceId }
       const block = `[${n}] (${kind}) ${title}\n${c.text}`
       if (used + block.length > BLOCK_CHAR_BUDGET) break
       lines.push(block, '')

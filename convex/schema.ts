@@ -492,11 +492,11 @@ export default defineSchema({
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
-  // Searchable chunks for hybrid vector + full-text retrieval (files + memories).
+  // Searchable chunks for hybrid vector + full-text retrieval (files, memories, notes, outputs).
   knowledgeChunks: defineTable({
     userId: v.string(),
     projectId: v.optional(v.string()),
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('note'), v.literal('output')),
     sourceId: v.string(),
     chunkIndex: v.number(),
     startOffset: v.number(),
@@ -514,7 +514,7 @@ export default defineSchema({
   knowledgeChunkEmbeddings: defineTable({
     chunkId: v.id('knowledgeChunks'),
     userId: v.string(),
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('note'), v.literal('output')),
     embedding: v.array(v.float64()),
   })
     .index('by_chunkId', ['chunkId'])
