@@ -3232,8 +3232,15 @@ export default function ChatInterface({
     setActiveChatId(chatId)
     syncStandaloneChatUrl(chatId)
     const runtime = ensureConversationRuntime(chatId)
-    const existingChat = chats.find((chat) => chat._id === chatId)
     pendingTitleRef.current = null
+
+    // Fast path: runtime already loaded — switch instantly with no spinner or API calls.
+    if (runtime.hydrated) {
+      applyUiStateToView(runtime.ui)
+      return
+    }
+
+    const existingChat = chats.find((chat) => chat._id === chatId)
     setIsSwitchingChat(true)
     runtime.hydrated = false
     try {
