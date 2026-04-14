@@ -29,10 +29,10 @@ export default function ToolsSidebar() {
   return (
     <div className="flex h-full w-48 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
       <div className="hidden h-16 shrink-0 items-center border-b border-[var(--border)] px-4 md:flex">
-        <span className="text-sm font-medium text-[var(--foreground)]">Extensions</span>
+        <span className="font-serif text-sm font-medium text-[var(--foreground)]">Extensions</span>
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-2 py-3">
+      <nav className="flex-1 space-y-0.5 px-2 py-3 font-serif">
         {NAV_ITEMS.map(({ id, label, icon: Icon, locked }) => {
           const active = !locked && activeView === id
           return (

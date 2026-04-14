@@ -35,7 +35,7 @@ export function PageNavbar() {
 
   return (
     <header className="relative z-10 px-4 py-4 md:px-8 md:py-6">
-      <nav className="mx-auto max-w-6xl">
+      <nav className="mx-auto max-w-6xl font-serif">
         <div className={shellClass}>
           <Link href="/home" className="flex items-center gap-2">
             <Image src="/assets/overlay-logo.png" alt="Overlay" width={22} height={22} />

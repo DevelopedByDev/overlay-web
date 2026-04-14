@@ -146,7 +146,7 @@ export function Navbar({
   )
 
   return (
-    <nav className="fixed left-0 right-0 top-0 z-50 px-4 py-4 md:px-8 md:py-6">
+    <nav className="fixed left-0 right-0 top-0 z-50 px-4 py-4 font-serif md:px-8 md:py-6">
       <div ref={containerRef} className="mx-auto h-10 max-w-6xl md:relative">
         <div className={shellClass}>
           <Link href="/home" className="flex items-center gap-2">
@@ -251,7 +251,7 @@ export function HeroLinks() {
   }, [])
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-[#71717a]">
+    <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 font-serif text-sm text-[#71717a]">
       <Link href="/manifesto" className="transition-colors duration-300 hover:text-[#0a0a0a]">
         manifesto
       </Link>

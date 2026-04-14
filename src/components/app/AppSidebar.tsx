@@ -422,7 +422,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <nav className="shrink-0 space-y-0.5 px-2 py-3">
+        <nav className="shrink-0 space-y-0.5 px-2 py-3 font-serif">
           {NAV_ITEMS.map((item, navIdx) => {
             const { href, label, icon: Icon, disabled } = item
             const active =

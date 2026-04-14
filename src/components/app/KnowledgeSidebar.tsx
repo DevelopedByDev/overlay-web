@@ -53,11 +53,11 @@ export default function KnowledgeSidebar({
   return (
     <div className="flex h-full w-48 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
       <div className="hidden min-h-16 shrink-0 flex-col justify-center gap-0 border-b border-[var(--border)] px-4 py-3 md:flex">
-        <span className="text-sm font-medium text-[var(--foreground)]">Knowledge</span>
+        <span className="font-serif text-sm font-medium text-[var(--foreground)]">Knowledge</span>
         <StorageUsageCaption entitlements={entitlements} />
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-2 py-3">
+      <nav className="flex-1 space-y-0.5 px-2 py-3 font-serif">
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
           const active = activeView === id
           return (
