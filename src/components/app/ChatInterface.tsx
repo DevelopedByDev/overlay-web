@@ -3873,7 +3873,7 @@ async function hydrateCompletedAskTurnFromServer(
             return { ...prev, generationResults: next }
           })
           completeSession(chatId, activeChatIdRef.current === chatId)
-        }, 600)
+        }, 5000)
         return
       }
 

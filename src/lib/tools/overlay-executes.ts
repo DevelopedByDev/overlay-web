@@ -166,9 +166,10 @@ export async function executeGenerateImage(
     prompt: string
     modelId?: string
     aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
+    referenceImageUrl?: string
   },
 ) {
-  const { prompt, modelId, aspectRatio } = input
+  const { prompt, modelId, aspectRatio, referenceImageUrl } = input
   try {
     const res = await callInternalApi(
       '/api/app/generate-image',
@@ -176,6 +177,7 @@ export async function executeGenerateImage(
         prompt,
         modelId,
         aspectRatio,
+        imageUrl: referenceImageUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
         ...toolAuthBody(options),
@@ -214,9 +216,12 @@ export async function executeGenerateVideo(
     modelId?: string
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3'
     duration?: number
+    videoSubMode?: string
+    imageUrl?: string
+    referenceVideoUrl?: string
   },
 ) {
-  const { prompt, modelId, aspectRatio, duration } = input
+  const { prompt, modelId, aspectRatio, duration, videoSubMode, imageUrl, referenceVideoUrl } = input
   try {
     const res = await callInternalApi(
       '/api/app/generate-video',
@@ -225,6 +230,8 @@ export async function executeGenerateVideo(
         modelId,
         aspectRatio,
         duration,
+        videoSubMode,
+        imageUrl: imageUrl ?? referenceVideoUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
         ...toolAuthBody(options),
