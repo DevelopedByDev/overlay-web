@@ -3695,6 +3695,7 @@ async function hydrateCompletedAskTurnFromServer(
     const activeChatTitleSnapshot = activeChatTitle
     const selectedImageModelsSnapshot = [...selectedImageModels]
     const selectedVideoModelsSnapshot = [...selectedVideoModels]
+    const attachedImagesSnapshot = [...attachedImages]
     if (isActiveLoading) return
 
     if (pendingChatDocuments.some((d) => d.status === 'uploading')) {
@@ -3717,6 +3718,7 @@ async function hydrateCompletedAskTurnFromServer(
       const targetRuntime = ensureConversationRuntime(chatId)
 
       setInput('')
+      setAttachedImages([])
       setGenerationChip(null)
       setReplyContext(null)
       const wasFirst = isFirstMessage
@@ -3750,10 +3752,15 @@ async function hydrateCompletedAskTurnFromServer(
         }
       })
 
+      const mediaUserMessageParts: { type: string; text?: string; url?: string; mediaType?: string }[] = []
+      if (text) mediaUserMessageParts.push({ type: 'text', text })
+      for (const img of attachedImagesSnapshot) {
+        mediaUserMessageParts.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType })
+      }
       const mediaUserMessage = {
         id: mediaTurnId,
         role: 'user',
-        parts: [{ type: 'text', text }],
+        parts: mediaUserMessageParts,
         ...(replyCtxSnapshot?.replyToTurnId
           ? {
               metadata: {
@@ -3791,7 +3798,8 @@ async function hydrateCompletedAskTurnFromServer(
       startSession(chatId, mediaSessionMode, activeChatTitleSnapshot ?? '', targetRuntime.askChats[0].messages.length)
 
       if (effectiveGenType === 'image') {
-        const imageUrl = targetRuntime.ui.lastGeneratedImageUrl
+        // Prefer an explicitly attached reference image; fall back to the last generated image
+        const imageUrl = attachedImagesSnapshot[0]?.dataUrl ?? targetRuntime.ui.lastGeneratedImageUrl
         const generationTasks = activeModels.map((modelId, mIdx) =>
           fetch('/api/app/generate-image', {
             method: 'POST',
@@ -4863,6 +4871,18 @@ async function hydrateCompletedAskTurnFromServer(
                       )}
                       <div className="flex justify-end">
                         <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:max-w-[75%] sm:px-4">
+                          {getMessageImages(msg).length > 0 && (
+                            <div className="mb-2 flex flex-wrap gap-1.5">
+                              {getMessageImages(msg).map((imgUrl, imgIdx) => (
+                                <img
+                                  key={imgIdx}
+                                  src={imgUrl}
+                                  alt="Reference image"
+                                  className="max-h-36 rounded-lg object-cover"
+                                />
+                              ))}
+                            </div>
+                          )}
                           <span className="whitespace-pre-wrap">{promptText}</span>
                         </div>
                       </div>
