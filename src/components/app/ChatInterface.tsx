@@ -40,8 +40,10 @@ import {
   getChatModelDisplayName,
   getModel,
   getModelsByIntelligence,
+  getVideoModelsBySubMode,
   type ChatModel,
   type GenerationMode,
+  type VideoSubMode,
 } from '@/lib/models'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
@@ -1742,6 +1744,19 @@ const SELECTED_VIDEO_MODELS_KEY = 'overlay_selected_video_models'
 const ACT_MODEL_KEY = 'overlay_act_model'
 const COMPOSER_MODE_KEY = 'overlay_composer_mode'
 const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
+const VIDEO_SUB_MODE_KEY = 'overlay_video_sub_mode'
+
+const VIDEO_SUB_MODES: { value: VideoSubMode; label: string }[] = [
+  { value: 'text-to-video',      label: 'Text to Video' },
+  { value: 'image-to-video',     label: 'Image to Video' },
+  { value: 'reference-to-video', label: 'Reference to Video' },
+  { value: 'motion-control',     label: 'Motion Control' },
+  { value: 'video-editing',      label: 'Video Editing' },
+]
+const VIDEO_SUB_MODE_LABELS = Object.fromEntries(
+  VIDEO_SUB_MODES.map(({ value, label }) => [value, label])
+) as Record<VideoSubMode, string>
+
 const SUPPORTED_INPUT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 
 interface GenerationResult {
@@ -2259,9 +2274,16 @@ export default function ChatInterface({
   const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
   const [imageModelSelectionMode, setImageModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [videoModelSelectionMode, setVideoModelSelectionMode] = useState<AskModelSelectionMode>('single')
+  const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>(() => {
+    try {
+      const saved = localStorage.getItem(VIDEO_SUB_MODE_KEY)
+      return (saved as VideoSubMode | null) ?? 'text-to-video'
+    } catch { return 'text-to-video' }
+  })
   const lastGeneratedImageUrlRef = useRef<string | null>(null)
 
   const [showModelPicker, setShowModelPicker] = useState(false)
+  const [showVideoSubModePicker, setShowVideoSubModePicker] = useState(false)
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -2356,6 +2378,7 @@ export default function ChatInterface({
   const docInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const modelPickerRef = useRef<HTMLDivElement>(null)
+  const videoSubModePickerRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
   const wasStreamingRef = useRef(false)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
@@ -2879,6 +2902,23 @@ export default function ChatInterface({
   }, [showModelPicker])
 
   useEffect(() => {
+    if (!showVideoSubModePicker) return
+    function handleOutside(e: MouseEvent) {
+      if (videoSubModePickerRef.current && !videoSubModePickerRef.current.contains(e.target as Node))
+        setShowVideoSubModePicker(false)
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowVideoSubModePicker(false)
+    }
+    document.addEventListener('mousedown', handleOutside, true)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside, true)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [showVideoSubModePicker])
+
+  useEffect(() => {
     if (!showAttachMenu) return
     function handleOutside(e: MouseEvent) {
       if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node))
@@ -3092,6 +3132,18 @@ export default function ChatInterface({
     },
     [generationMode, videoModelSelectionMode, isActiveLoading, isFreeTier, selectedVideoModels],
   )
+
+  function handleVideoSubModeChange(subMode: VideoSubMode) {
+    if (isActiveLoading) return
+    setVideoSubMode(subMode)
+    try { localStorage.setItem(VIDEO_SUB_MODE_KEY, subMode) } catch { /* ignore */ }
+    const models = getVideoModelsBySubMode(subMode)
+    const first = models[0]?.id
+    if (first && !models.some((m) => selectedVideoModels.includes(m.id))) {
+      setSelectedVideoModels([first])
+      try { localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify([first])) } catch { /* ignore */ }
+    }
+  }
 
   function toggleImageModelInPicker(modelId: string) {
     if (isActiveLoading) return
@@ -3890,7 +3942,7 @@ async function hydrateCompletedAskTurnFromServer(
           fetch('/api/app/generate-video', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId }),
+            body: JSON.stringify({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId, videoSubMode, imageUrl: attachedImagesSnapshot[0]?.dataUrl ?? null }),
           })
             .then(async (res) => {
               if (!res.ok) {
@@ -4590,6 +4642,36 @@ async function hydrateCompletedAskTurnFromServer(
 
             {/* Model picker + Generation mode */}
             <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-none md:flex-row md:items-center md:gap-2">
+              {generationMode === 'video' && (
+                <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => !isActiveLoading && setShowVideoSubModePicker((v) => !v)}
+                    disabled={isActiveLoading}
+                    className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs md:w-auto md:max-w-[13rem] md:py-1 ${
+                      isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+                    }`}
+                  >
+                    <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
+                    <ChevronDown size={11} className="shrink-0" />
+                  </button>
+                  {showVideoSubModePicker && (
+                    <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
+                      {VIDEO_SUB_MODES.map(({ value, label }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => { handleVideoSubModeChange(value); setShowVideoSubModePicker(false) }}
+                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${videoSubMode === value ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
+                        >
+                          {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div ref={modelPickerRef} className="relative w-full min-w-0 md:w-auto">
                 <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
                   <button
@@ -4630,7 +4712,7 @@ async function hydrateCompletedAskTurnFromServer(
                         )
                       })
                   ) : generationMode === 'video' ? (
-                    VIDEO_MODELS.map((m) => {
+                    getVideoModelsBySubMode(videoSubMode).map((m) => {
                         const isSel = selectedVideoModels.includes(m.id)
                         const isDisabled =
                           videoModelSelectionMode === 'multiple' && !isSel && selectedVideoModels.length >= 4

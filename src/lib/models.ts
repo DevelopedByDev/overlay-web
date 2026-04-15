@@ -1,5 +1,12 @@
 export type GenerationMode = 'text' | 'image' | 'video'
 
+export type VideoSubMode =
+  | 'text-to-video'
+  | 'image-to-video'
+  | 'reference-to-video'
+  | 'motion-control'
+  | 'video-editing'
+
 export interface ChatModel {
   id: string
   name: string
@@ -39,6 +46,7 @@ export interface VideoModel {
   billingUnit: 'per_video' | 'per_second'
   defaultDuration?: number
   defaultAspectRatio?: string
+  subModes: VideoSubMode[]
 }
 
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
@@ -72,7 +80,7 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 1.25, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 
   // OpenRouter (free) — only the auto router; API id stays `openrouter/free` (do not send bare `free`).
-  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Auto', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 ]
 
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
@@ -181,15 +189,29 @@ export function getImageModel(id: string): ImageModel | undefined {
 // ─── Video Models (priority order — top = highest priority fallback) ──────────
 
 export const VIDEO_MODELS: VideoModel[] = [
-  { id: 'google/veo-3.1-generate-001', name: 'Veo 3.1', provider: 'google', description: 'Highest quality', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9' },
-  { id: 'google/veo-3.1-fast-generate-001', name: 'Veo 3.1 Fast', provider: 'google', description: 'Fast generation', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9' },
-  { id: 'bytedance/seedance-v1.5-pro', name: 'Seedance v1.5 Pro', provider: 'bytedance', description: 'Cinematic quality', billingUnit: 'per_second', defaultDuration: 10, defaultAspectRatio: '16:9' },
-  { id: 'xai/grok-imagine-video', name: 'Grok Video', provider: 'xai', description: 'Creative & fast', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9' },
-  { id: 'alibaba/wan-v2.6-t2v', name: 'Wan v2.6', provider: 'alibaba', description: 'Versatile', billingUnit: 'per_second', defaultDuration: 8, defaultAspectRatio: '16:9' },
+  // Text-to-video + Image-to-video
+  { id: 'google/veo-3.1-generate-001', name: 'Veo 3.1', provider: 'google', description: 'Highest quality', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9', subModes: ['text-to-video', 'image-to-video'] },
+  { id: 'google/veo-3.1-fast-generate-001', name: 'Veo 3.1 Fast', provider: 'google', description: 'Fast generation', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9', subModes: ['text-to-video', 'image-to-video'] },
+  { id: 'bytedance/seedance-v1.5-pro', name: 'Seedance v1.5 Pro', provider: 'bytedance', description: 'Cinematic quality', billingUnit: 'per_second', defaultDuration: 10, defaultAspectRatio: '16:9', subModes: ['text-to-video', 'image-to-video'] },
+  { id: 'xai/grok-imagine-video', name: 'Grok Video', provider: 'xai', description: 'Creative & fast', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9', subModes: ['text-to-video', 'image-to-video', 'video-editing'] },
+  // Text-to-video only
+  { id: 'alibaba/wan-v2.6-t2v', name: 'Wan v2.6', provider: 'alibaba', description: 'Versatile', billingUnit: 'per_second', defaultDuration: 8, defaultAspectRatio: '16:9', subModes: ['text-to-video'] },
+  { id: 'klingai/kling-v2.6-t2v', name: 'Kling v2.6', provider: 'klingai', description: 'Cinematic motion', billingUnit: 'per_video', defaultDuration: 5, defaultAspectRatio: '16:9', subModes: ['text-to-video'] },
+  // Image-to-video only
+  { id: 'klingai/kling-v2.6-i2v', name: 'Kling v2.6 I2V', provider: 'klingai', description: 'Animate images', billingUnit: 'per_video', defaultDuration: 5, defaultAspectRatio: '16:9', subModes: ['image-to-video'] },
+  { id: 'alibaba/wan-v2.6-i2v', name: 'Wan v2.6 I2V', provider: 'alibaba', description: 'Image animation', billingUnit: 'per_second', defaultDuration: 5, defaultAspectRatio: '16:9', subModes: ['image-to-video'] },
+  // Reference-to-video
+  { id: 'alibaba/wan-v2.6-r2v', name: 'Wan v2.6 R2V', provider: 'alibaba', description: 'Character references', billingUnit: 'per_second', defaultDuration: 5, defaultAspectRatio: '16:9', subModes: ['reference-to-video'] },
+  // Motion control
+  { id: 'klingai/kling-v2.6-motion-control', name: 'Kling Motion Control', provider: 'klingai', description: 'Transfer motion', billingUnit: 'per_video', defaultDuration: 5, defaultAspectRatio: '16:9', subModes: ['motion-control'] },
 ]
 
 export const DEFAULT_VIDEO_MODEL_ID = 'google/veo-3.1-generate-001'
 
 export function getVideoModel(id: string): VideoModel | undefined {
   return VIDEO_MODELS.find((m) => m.id === id)
+}
+
+export function getVideoModelsBySubMode(subMode: VideoSubMode): VideoModel[] {
+  return VIDEO_MODELS.filter((m) => m.subModes.includes(subMode))
 }
