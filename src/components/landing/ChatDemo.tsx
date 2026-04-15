@@ -99,7 +99,7 @@ export function ChatDemo({ theme }: { theme: "light" | "dark" }) {
         />
         <button
           type="submit"
-          disabled={isStreaming || !input.trim()}
+          disabled={isStreaming || !input?.trim()}
           className={`overlay-interactive inline-flex h-9 w-9 flex-shrink-0 items-center justify-center border disabled:opacity-40 ${
             isDark ? "border-zinc-600 text-zinc-300" : "border-zinc-300 text-zinc-700"
           }`}
