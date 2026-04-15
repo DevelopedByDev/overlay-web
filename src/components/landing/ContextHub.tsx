@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Image from "next/image";
 
 const SPOKES = [
   { label: "files", icon: "📄", angle: -45 },
@@ -109,16 +108,12 @@ export function ContextHub({ theme }: { theme: "light" | "dark" }) {
       <div className="flex w-full max-w-4xl flex-col items-center gap-12 md:flex-row md:justify-center">
         <RadialHub isDark={isDark} />
 
-        {/* Note overlay demo */}
+        {/* Note screen placeholder */}
         <div className="relative w-full max-w-sm md:w-1/2">
-          <div className={`overflow-hidden border ${borderColor}`}>
-            <Image
-              src="/assets/window-screens/note-screen.png"
-              alt="Overlay notes"
-              width={600}
-              height={400}
-              className="w-full"
-            />
+          <div className={`flex h-64 items-center justify-center border border-dashed ${borderColor} ${isDark ? "bg-zinc-900" : "bg-zinc-50"} p-6 text-center`}>
+            <p className={`font-mono text-xs ${muted}`}>
+              [CAPTURE NEEDED] Screenshot: Overlay Notes panel with a formatted markdown note, dark mode, 600×400px. Save as /assets/window-screens/note-screen.png
+            </p>
           </div>
           <motion.div
             initial={{ opacity: 0, x: -20, y: 10 }}
@@ -127,14 +122,10 @@ export function ContextHub({ theme }: { theme: "light" | "dark" }) {
             transition={{ duration: 0.55, delay: 0.45, ease: [0.22, 1, 0.36, 1] }}
             className="absolute -bottom-5 -left-4 w-2/5 max-w-[200px]"
           >
-            <div className={`overflow-hidden border ${borderColor}`}>
-              <Image
-                src="/assets/overlays/note-overlay.png"
-                alt="Note overlay"
-                width={400}
-                height={280}
-                className="w-full"
-              />
+            <div className={`flex h-20 items-center justify-center border border-dashed ${borderColor} ${isDark ? "bg-zinc-900" : "bg-zinc-50"} p-2 text-center`}>
+              <p className={`font-mono text-[8px] leading-tight ${muted}`}>
+                [CAPTURE NEEDED] Floating note overlay, transparent BG PNG. Save as /assets/overlays/note-overlay.png
+              </p>
             </div>
           </motion.div>
         </div>

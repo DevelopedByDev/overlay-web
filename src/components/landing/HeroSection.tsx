@@ -1,21 +1,21 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Github, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
 const MODELS = [
-  "GPT-4o",
-  "Claude Sonnet",
-  "Gemini 2.5",
-  "Grok-3",
-  "Flux",
-  "Sora",
+  "Claude Opus 4.6",
+  "GPT-5.2",
+  "Gemini 3.1 Pro",
+  "Grok 4",
   "Llama 3.3",
-  "Mistral",
-  "DeepSeek R2",
-  "DALL·E 3",
+  "Flux 2 Max",
+  "Veo 3.1",
+  "Kimi K2",
+  "Qwen 3.6",
+  "GLM-5.1",
 ];
 
 const sectionInView = {
@@ -73,19 +73,6 @@ export function HeroSection({
             <Globe className="h-4 w-4" />
             open app
           </Link>
-          <a
-            href="https://github.com/DevelopedByDev/overlay-web"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`overlay-interactive inline-flex items-center justify-center gap-2 border px-7 py-3 text-sm font-medium ${
-              isDark
-                ? "border-zinc-600 text-zinc-300"
-                : "border-zinc-300 text-[#0a0a0a]"
-            }`}
-          >
-            <Github className="h-4 w-4" />
-            view source
-          </a>
         </div>
       </motion.div>
 
@@ -97,15 +84,10 @@ export function HeroSection({
         transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
         className="relative w-full max-w-4xl"
       >
-        <div className={`relative overflow-hidden border ${borderColor}`}>
-          <Image
-            src="/assets/window-screens/chat-screen.png"
-            alt="Overlay chat interface"
-            width={1200}
-            height={750}
-            className="w-full"
-            priority
-          />
+        <div className={`relative flex h-[420px] items-center justify-center border border-dashed ${borderColor} ${isDark ? "bg-zinc-900" : "bg-zinc-50"} p-8 text-center`}>
+          <p className={`font-mono text-xs ${muted}`}>
+            [CAPTURE NEEDED] Screenshot: full Overlay app window, Chat tab open, dark mode, 1400×900px, no OS chrome. Save as /assets/window-screens/chat-screen.png
+          </p>
         </div>
 
         {/* Floating chat overlay */}
@@ -116,14 +98,10 @@ export function HeroSection({
           transition={{ duration: 0.6, delay: 0.55, ease: [0.22, 1, 0.36, 1] }}
           className="absolute -bottom-6 -right-2 w-2/5 max-w-[280px] md:-right-8"
         >
-          <div className={`overflow-hidden border ${borderColor}`}>
-            <Image
-              src="/assets/overlays/chat-overlay.png"
-              alt="Overlay floating panel"
-              width={600}
-              height={400}
-              className="w-full"
-            />
+          <div className={`flex h-28 items-center justify-center border border-dashed ${borderColor} ${isDark ? "bg-zinc-900" : "bg-zinc-50"} p-3 text-center`}>
+            <p className={`font-mono text-[9px] leading-tight ${muted}`}>
+              [CAPTURE NEEDED] Floating Overlay mini-window over a code editor, transparent BG PNG. Save as /assets/overlays/chat-overlay.png
+            </p>
           </div>
         </motion.div>
       </motion.div>

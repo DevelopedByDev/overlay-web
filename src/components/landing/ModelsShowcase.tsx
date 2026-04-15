@@ -1,14 +1,14 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import Image from "next/image";
 import { useEffect, useState } from "react";
+import { ChatDemo } from "./ChatDemo";
 
 const MODELS = [
-  { name: "GPT-4o", color: "#10a37f" },
-  { name: "Claude Sonnet", color: "#d97706" },
-  { name: "Gemini 2.5", color: "#4285f4" },
-  { name: "Grok-3", color: "#7c3aed" },
+  { name: "GPT-5.2", color: "#10a37f" },
+  { name: "Claude Opus 4.6", color: "#d97706" },
+  { name: "Gemini 3.1 Pro", color: "#4285f4" },
+  { name: "Grok 4", color: "#7c3aed" },
   { name: "Llama 3.3", color: "#e85d04" },
 ];
 
@@ -112,17 +112,9 @@ export function ModelsShowcase({ theme }: { theme: "light" | "dark" }) {
           </div>
         </div>
 
-        {/* Chat screenshot */}
+        {/* Live chat demo */}
         <div className="w-full md:w-1/2">
-          <div className={`overflow-hidden border ${borderColor}`}>
-            <Image
-              src="/assets/basic screenshots/chat.jpg"
-              alt="Overlay chat"
-              width={600}
-              height={400}
-              className="w-full"
-            />
-          </div>
+          <ChatDemo theme={theme} />
         </div>
       </div>
     </motion.section>

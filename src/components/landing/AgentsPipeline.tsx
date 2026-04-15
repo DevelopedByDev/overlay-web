@@ -1,28 +1,29 @@
 "use client";
 
 import { motion, useInView } from "framer-motion";
+import { Brain, Check, Clock, Layers, Store, Wrench, Zap } from "lucide-react";
 import { useRef } from "react";
 
 const STEPS = [
-  { label: "trigger", icon: "⚡", color: "#6366f1" },
-  { label: "agent thinks", icon: "🧠", color: "#8b5cf6" },
-  { label: "actions", icon: "🔧", color: "#a855f7" },
-  { label: "result", icon: "✓", color: "#10b981" },
+  { label: "trigger", Icon: Zap },
+  { label: "agent thinks", Icon: Brain },
+  { label: "actions", Icon: Wrench },
+  { label: "result", Icon: Check },
 ];
 
 const CARDS = [
   {
-    icon: "🔀",
+    Icon: Layers,
     title: "multi-step runs",
     desc: "chain tasks across tools in a single instruction",
   },
   {
-    icon: "⏰",
+    Icon: Clock,
     title: "scheduled automations",
     desc: "set it and forget it — agents work on your timeline",
   },
   {
-    icon: "🛍️",
+    Icon: Store,
     title: "agent marketplace",
     desc: "install community-built agents for any workflow",
   },
@@ -41,7 +42,8 @@ export function AgentsPipeline({ theme }: { theme: "light" | "dark" }) {
   const heading = isDark ? "text-zinc-100" : "text-[#0a0a0a]";
   const cardBg = isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200";
   const subText = isDark ? "text-zinc-300" : "text-zinc-700";
-  const pipeBg = isDark ? "bg-zinc-800" : "bg-zinc-200";
+  const fgColor = isDark ? "border-zinc-300 text-zinc-300" : "border-zinc-800 text-zinc-800";
+  const connectorColor = isDark ? "border-zinc-700" : "border-zinc-300";
 
   const pipelineRef = useRef<HTMLDivElement>(null);
   const inView = useInView(pipelineRef, { once: true, amount: 0.4 });
@@ -67,48 +69,22 @@ export function AgentsPipeline({ theme }: { theme: "light" | "dark" }) {
       >
         {STEPS.map((step, i) => (
           <div key={step.label} className="flex flex-1 items-center">
-            {/* Node — square instead of circle */}
+            {/* Node — monochrome square */}
             <motion.div
               initial={{ opacity: 0.2, scale: 0.85 }}
               animate={inView ? { opacity: 1, scale: 1 } : { opacity: 0.2, scale: 0.85 }}
               transition={{ duration: 0.4, delay: i * 0.25, ease: [0.22, 1, 0.36, 1] }}
               className="flex flex-col items-center gap-2"
             >
-              <motion.div
-                animate={
-                  inView
-                    ? {
-                        boxShadow: [
-                          `0 0 0px 0px ${step.color}00`,
-                          `0 0 16px 4px ${step.color}55`,
-                          `0 0 0px 0px ${step.color}00`,
-                        ],
-                      }
-                    : {}
-                }
-                transition={{ duration: 1.2, delay: i * 0.25 + 0.3, repeat: Infinity, repeatDelay: 2 }}
-                className="flex h-12 w-12 items-center justify-center border-2 text-lg"
-                style={{
-                  backgroundColor: inView ? `${step.color}20` : undefined,
-                  borderColor: inView ? step.color : "#6b7280",
-                }}
-              >
-                {step.icon}
-              </motion.div>
+              <div className={`flex h-12 w-12 items-center justify-center border-2 ${fgColor}`}>
+                <step.Icon className="h-5 w-5" />
+              </div>
               <span className={`text-xs font-medium ${muted}`}>{step.label}</span>
             </motion.div>
 
-            {/* Connector */}
+            {/* Connector — plain line */}
             {i < STEPS.length - 1 && (
-              <div className={`mx-1 flex-1 overflow-hidden ${pipeBg} h-0.5`}>
-                <motion.div
-                  initial={{ width: "0%" }}
-                  animate={inView ? { width: "100%" } : { width: "0%" }}
-                  transition={{ duration: 0.4, delay: i * 0.25 + 0.4, ease: "easeOut" }}
-                  className="h-full"
-                  style={{ backgroundColor: STEPS[i + 1].color }}
-                />
-              </div>
+              <div className={`mx-2 flex-1 border-t-2 ${connectorColor}`} />
             )}
           </div>
         ))}
@@ -123,9 +99,9 @@ export function AgentsPipeline({ theme }: { theme: "light" | "dark" }) {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 0.45, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
-            className={`flex flex-col gap-2 p-5 ${cardBg}`}
+            className={`flex flex-col gap-2 p-4 ${cardBg}`}
           >
-            <span className="text-xl">{card.icon}</span>
+            <card.Icon className={`h-4 w-4 ${subText}`} />
             <span className={`text-sm font-medium ${subText}`}>{card.title}</span>
             <span className={`text-xs ${muted}`}>{card.desc}</span>
           </motion.div>

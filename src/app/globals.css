@@ -891,29 +891,14 @@ html {
 
 .overlay-interactive:hover {
   border-radius: 8px;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.06),
-    0 4px 16px rgba(0, 0, 0, 0.12),
-    0 12px 40px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 3px 3px 0 0 var(--foreground);
 }
 
 .overlay-interactive:active {
   border-radius: 6px;
   transform: translateY(1px);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
-
-[data-landing-theme='dark'] .overlay-interactive:hover,
-[data-theme='dark'] .overlay-interactive:hover {
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 4px 20px rgba(0, 0, 0, 0.55),
-    0 12px 40px rgba(0, 0, 0, 0.35);
-}
-
-[data-landing-theme='dark'] .overlay-interactive:active,
-[data-theme='dark'] .overlay-interactive:active {
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 1px 1px 0 0 var(--foreground);
 }
 
 /* Sharp-cornered frame for screenshot/card containers */

@@ -1,7 +1,6 @@
 "use client";
 
-import { useScroll } from "framer-motion";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { AgentsPipeline } from "@/components/landing/AgentsPipeline";
 import { ClosingCTA } from "@/components/landing/ClosingCTA";
@@ -10,37 +9,10 @@ import { CreationBento } from "@/components/landing/CreationBento";
 import { ExtensionsStrip } from "@/components/landing/ExtensionsStrip";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { ModelsShowcase } from "@/components/landing/ModelsShowcase";
-import { LANDING_THEME_STORAGE_KEY } from "@/lib/landingThemeConstants";
 
 export default function HomeLandingPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [landingTheme, setLandingTheme] = useState<"light" | "dark">("light");
-
-  const { scrollYProgress } = useScroll();
-
-  useEffect(() => {
-    try {
-      const t = window.localStorage.getItem(LANDING_THEME_STORAGE_KEY);
-      if (t === "dark" || t === "light") {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- external persisted theme
-        setLandingTheme(t);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const toggleLandingTheme = useCallback(() => {
-    setLandingTheme((prev) => {
-      const next = prev === "light" ? "dark" : "light";
-      try {
-        window.localStorage.setItem(LANDING_THEME_STORAGE_KEY, next);
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,9 +47,8 @@ export default function HomeLandingPage() {
     >
 
       <Navbar
-        scrollYProgress={scrollYProgress}
-        landingTheme={landingTheme}
-        onLandingThemeToggle={toggleLandingTheme}
+        onThemeChange={setLandingTheme}
+        initialTheme={landingTheme}
       />
 
       <HeroSection theme={landingTheme} webAppHref={webAppHref} />
