@@ -1766,6 +1766,7 @@ interface GenerationResult {
   modelUsed?: string
   outputId?: string
   error?: string
+  upgradeRequired?: boolean
 }
 
 type AskModelSelectionMode = 'single' | 'multiple'
@@ -1955,15 +1956,24 @@ function MediaSlotOutput({
               </span>
               <div className="space-y-1">
                 <p className="text-sm font-medium" style={{ color: 'var(--chat-alert-error-text)' }}>
-                  Generation failed
+                  {result.upgradeRequired ? `${genType === 'image' ? 'Image' : 'Video'} generation requires a paid plan` : 'Generation failed'}
                 </p>
-                <p className="text-xs leading-relaxed opacity-90">{result.error ?? 'Please try again.'}</p>
+                {result.upgradeRequired ? (
+                  <p className="text-xs leading-relaxed opacity-90">
+                    <a href="/pricing" className="underline underline-offset-2 hover:opacity-70">Upgrade here</a> to generate {genType === 'image' ? 'images' : 'videos'}.
+                  </p>
+                ) : (
+                  <p className="text-xs leading-relaxed opacity-90">{result.error ?? 'Please try again.'}</p>
+                )}
               </div>
             </div>
           ) : (
             <>
               <AlertCircle size={12} />
-              {result.error ?? 'Failed'}
+              {result.upgradeRequired
+                ? <><span>{genType === 'image' ? 'Image' : 'Video'} generation requires a paid plan. </span><a href="/pricing" className="underline underline-offset-2 hover:opacity-70">Upgrade here</a></>
+                : (result.error ?? 'Failed')
+              }
             </>
           )}
         </div>
@@ -3849,6 +3859,24 @@ async function hydrateCompletedAskTurnFromServer(
       if (wasFirst && text) startFirstMessageRename(chatId, text)
       startSession(chatId, mediaSessionMode, activeChatTitleSnapshot ?? '', targetRuntime.askChats[0].messages.length)
 
+      // ── Block generation for free-tier users ───────────────────────────────
+      if (isFreeTier) {
+        setTimeout(() => {
+          updateRuntimeUiState(chatId, (prev) => {
+            const next = cloneGenerationResultsMap(prev.generationResults)
+            const arr = activeModels.map(() => ({
+              type: effectiveGenType as 'image' | 'video',
+              status: 'failed' as const,
+              upgradeRequired: true,
+            }))
+            next.set(exchIdx, arr)
+            return { ...prev, generationResults: next }
+          })
+          completeSession(chatId, activeChatIdRef.current === chatId)
+        }, 600)
+        return
+      }
+
       if (effectiveGenType === 'image') {
         // Prefer an explicitly attached reference image; fall back to the last generated image
         const imageUrl = attachedImagesSnapshot[0]?.dataUrl ?? targetRuntime.ui.lastGeneratedImageUrl
@@ -5096,7 +5124,7 @@ async function hydrateCompletedAskTurnFromServer(
                     : null
                 const modelLabelSingle =
                   selectedModelId === FREE_TIER_AUTO_MODEL_ID && routedModelName
-                    ? `Auto · ${routedModelName}`
+                    ? `Free · ${routedModelName}`
                     : getChatModelDisplayName(selectedModelId)
                 const modelLabel =
                   exchModelList.length > 1
