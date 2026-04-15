@@ -9,8 +9,7 @@ const MODELS = [
   "Claude Opus 4.6",
   "GPT-5.2",
   "Gemini 3.1 Pro",
-  "Grok 4",
-  "Llama 3.3",
+  "Grok 4.20",
   "Flux 2 Max",
   "Veo 3.1",
   "Kimi K2",
@@ -112,23 +111,19 @@ export function HeroSection({
         whileInView={{ opacity: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className="w-full overflow-hidden pt-4"
+        className={`w-full border-t pt-10 ${borderColor}`}
       >
-        <p className={`mb-3 text-center text-xs font-medium uppercase tracking-widest ${muted}`}>
+        <p className={`mb-4 text-center font-serif text-sm ${muted}`}>
           powered by the world&apos;s best models
         </p>
-        <div className="flex overflow-hidden">
-          <motion.div
-            animate={{ x: ["0%", "-50%"] }}
-            transition={{ duration: 22, repeat: Infinity, ease: "linear" }}
-            className="flex shrink-0 gap-10 whitespace-nowrap"
-          >
+        <div className="overflow-hidden">
+          <div className="flex shrink-0 gap-10 whitespace-nowrap animate-marquee-slow">
             {[...MODELS, ...MODELS].map((m, i) => (
               <span key={i} className={`text-sm font-light ${muted}`}>
                 {m}
               </span>
             ))}
-          </motion.div>
+          </div>
         </div>
       </motion.div>
     </section>

@@ -43,20 +43,7 @@ export function ClosingCTA({
             <Globe className="h-4 w-4" />
             open app
           </Link>
-          <a
-            href="#"
-            className={`overlay-interactive inline-flex items-center justify-center gap-2 border px-8 py-4 text-sm font-medium ${
-              isDark
-                ? "border-zinc-700 text-zinc-300"
-                : "border-zinc-300 text-[#0a0a0a]"
-            }`}
-          >
-            download for mac
-          </a>
         </div>
-        <p className={`text-sm ${isDark ? "text-zinc-600" : "text-zinc-400"}`}>
-          desktop download coming soon
-        </p>
       </div>
 
       <footer className={`mt-auto w-full max-w-4xl self-center border-t pt-12 ${borderColor}`}>

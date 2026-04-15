@@ -234,7 +234,7 @@ function PricingContent() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col" style={{ background: 'var(--background)' }}>
+    <div className="flex min-h-screen w-full flex-col">
       <Suspense fallback={null}>
         <UserIdExtractor />
       </Suspense>

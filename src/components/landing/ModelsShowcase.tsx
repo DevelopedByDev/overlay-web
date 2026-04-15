@@ -8,8 +8,7 @@ const MODELS = [
   { name: "GPT-5.2", color: "#10a37f" },
   { name: "Claude Opus 4.6", color: "#d97706" },
   { name: "Gemini 3.1 Pro", color: "#4285f4" },
-  { name: "Grok 4", color: "#7c3aed" },
-  { name: "Llama 3.3", color: "#e85d04" },
+  { name: "Grok 4.20", color: "#7c3aed" },
 ];
 
 const sectionInView = {
@@ -55,14 +54,14 @@ export function ModelsShowcase({ theme }: { theme: "light" | "dark" }) {
       <div className="flex w-full max-w-3xl flex-col items-center gap-8 md:flex-row md:items-start">
         {/* Model carousel chat bubble */}
         <div className="flex w-full flex-col gap-3 md:w-1/2">
-          {/* Received bubble */}
-          <div className={`self-start border px-4 py-3 ${bubbleBg}`}>
+          {/* User bubble — right aligned */}
+          <div className={`self-end border px-4 py-3 ${bubbleBg}`}>
             <p className={`text-sm ${bubbleText}`}>
               what&apos;s the best approach for this problem?
             </p>
           </div>
-          {/* AI response bubble with animated model badge */}
-          <div className={`relative self-end max-w-[85%] border px-4 py-3 ${bubbleBg}`}>
+          {/* AI response bubble — left aligned */}
+          <div className={`relative self-start max-w-[85%] border px-4 py-3 ${bubbleBg}`}>
             <div className="mb-2 flex items-center gap-2">
               <AnimatePresence mode="wait">
                 <motion.span
@@ -83,12 +82,12 @@ export function ModelsShowcase({ theme }: { theme: "light" | "dark" }) {
               solve each independently, then merge the results.
             </p>
           </div>
-          {/* Another received bubble */}
-          <div className={`self-start border px-4 py-3 ${bubbleBg}`}>
+          {/* User bubble — right aligned */}
+          <div className={`self-end border px-4 py-3 ${bubbleBg}`}>
             <p className={`text-sm ${bubbleText}`}>can you show me with code?</p>
           </div>
-          {/* Another AI response */}
-          <div className={`relative self-end max-w-[85%] border px-4 py-3 ${bubbleBg}`}>
+          {/* AI response — left aligned */}
+          <div className={`relative self-start max-w-[85%] border px-4 py-3 ${bubbleBg}`}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={model.name + "-code"}

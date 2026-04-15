@@ -907,3 +907,15 @@ html {
   border: 1px solid var(--border);
   box-shadow: none;
 }
+
+/* Infinite marquee scroll */
+@keyframes marquee-scroll {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee-scroll 18s linear infinite;
+}
+.animate-marquee-slow {
+  animation: marquee-scroll 22s linear infinite;
+}

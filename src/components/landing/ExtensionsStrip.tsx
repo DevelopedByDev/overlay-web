@@ -45,22 +45,16 @@ export function ExtensionsStrip({ theme }: { theme: "light" | "dark" }) {
 
       {/* Integration marquee — boxy chips */}
       <div className="w-full overflow-hidden">
-        <div className="flex">
-          <motion.div
-            animate={{ x: ["0%", "-50%"] }}
-            transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
-            className="flex shrink-0 gap-px whitespace-nowrap"
-          >
-            {[...INTEGRATIONS, ...INTEGRATIONS].map((item, i) => (
-              <div
-                key={i}
-                className={`overlay-interactive inline-flex items-center gap-2 border px-4 py-2 text-sm ${chipBg} ${chipText}`}
-              >
-                <span>{item.icon}</span>
-                <span>{item.label}</span>
-              </div>
-            ))}
-          </motion.div>
+        <div className="flex shrink-0 gap-px whitespace-nowrap animate-marquee">
+          {[...INTEGRATIONS, ...INTEGRATIONS].map((item, i) => (
+            <div
+              key={i}
+              className={`overlay-interactive inline-flex items-center gap-2 border px-4 py-2 text-sm ${chipBg} ${chipText}`}
+            >
+              <span>{item.icon}</span>
+              <span>{item.label}</span>
+            </div>
+          ))}
         </div>
       </div>
 

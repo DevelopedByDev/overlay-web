@@ -506,7 +506,7 @@ function AccountPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col" style={{ background: 'var(--background)' }}>
+    <div className="flex min-h-screen w-full flex-col">
       {/* Header */}
       <PageNavbar />
 
@@ -976,7 +976,7 @@ export default function AccountPage() {
     <LandingThemeProvider>
       <Suspense
         fallback={
-          <div className="flex min-h-screen items-center justify-center" style={{ background: 'var(--background)' }}>
+          <div className="flex min-h-screen items-center justify-center">
             <div className="relative z-10 text-center">
               <RefreshCw className="mx-auto h-8 w-8 animate-spin text-zinc-400" />
               <p className="mt-4 text-zinc-500">Loading...</p>
