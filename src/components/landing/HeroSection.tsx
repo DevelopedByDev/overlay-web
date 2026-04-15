@@ -35,6 +35,7 @@ export function HeroSection({
   const isDark = theme === "dark";
   const muted = isDark ? "text-zinc-400" : "text-[#71717a]";
   const heading = isDark ? "text-zinc-100" : "text-[#0a0a0a]";
+  const borderColor = isDark ? "border-zinc-800" : "border-zinc-200";
 
   return (
     <section className="relative z-10 flex min-h-screen flex-col items-center justify-center gap-10 px-6 pb-16 pt-32">
@@ -63,11 +64,11 @@ export function HeroSection({
         <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
           <Link
             href={webAppHref}
-            className={
+            className={`overlay-interactive inline-flex items-center justify-center gap-2 border px-7 py-3 text-sm font-medium ${
               isDark
-                ? "inline-flex items-center justify-center gap-2 rounded-full bg-zinc-100 px-7 py-3 text-sm font-medium text-zinc-900 transition-all hover:bg-white"
-                : "inline-flex items-center justify-center gap-2 rounded-full bg-[#0a0a0a] px-7 py-3 text-sm font-medium text-white transition-all hover:bg-[#27272a]"
-            }
+                ? "border-zinc-100 bg-zinc-100 text-zinc-900"
+                : "border-[#0a0a0a] bg-[#0a0a0a] text-white"
+            }`}
           >
             <Globe className="h-4 w-4" />
             open app
@@ -76,11 +77,11 @@ export function HeroSection({
             href="https://github.com/DevelopedByDev/overlay-web"
             target="_blank"
             rel="noopener noreferrer"
-            className={
+            className={`overlay-interactive inline-flex items-center justify-center gap-2 border px-7 py-3 text-sm font-medium ${
               isDark
-                ? "inline-flex items-center justify-center gap-2 rounded-full border border-zinc-600 px-7 py-3 text-sm font-medium text-zinc-300 transition-all hover:bg-zinc-800"
-                : "inline-flex items-center justify-center gap-2 rounded-full border border-[#d4d4d8] px-7 py-3 text-sm font-medium text-[#0a0a0a] transition-all hover:bg-[#f4f4f5]"
-            }
+                ? "border-zinc-600 text-zinc-300"
+                : "border-zinc-300 text-[#0a0a0a]"
+            }`}
           >
             <Github className="h-4 w-4" />
             view source
@@ -96,11 +97,7 @@ export function HeroSection({
         transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
         className="relative w-full max-w-4xl"
       >
-        <div
-          className={`relative overflow-hidden rounded-2xl border shadow-2xl ${
-            isDark ? "border-zinc-700" : "border-zinc-200"
-          }`}
-        >
+        <div className={`relative overflow-hidden border ${borderColor}`}>
           <Image
             src="/assets/window-screens/chat-screen.png"
             alt="Overlay chat interface"
@@ -119,11 +116,7 @@ export function HeroSection({
           transition={{ duration: 0.6, delay: 0.55, ease: [0.22, 1, 0.36, 1] }}
           className="absolute -bottom-6 -right-2 w-2/5 max-w-[280px] md:-right-8"
         >
-          <div
-            className={`overflow-hidden rounded-xl border shadow-2xl ${
-              isDark ? "border-zinc-700" : "border-zinc-200"
-            }`}
-          >
+          <div className={`overflow-hidden border ${borderColor}`}>
             <Image
               src="/assets/overlays/chat-overlay.png"
               alt="Overlay floating panel"

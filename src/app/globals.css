@@ -868,79 +868,57 @@ html {
   animation: pulse-glow 4s ease-in-out infinite;
 }
 
-/* Liquid glass gradient background */
+/* Marketing pages — flat background */
 .gradient-bg {
-  background: linear-gradient(to bottom, #fafafa, #f4f4f5);
+  background: var(--background);
 }
 
-/* Marketing pages — paired with LandingThemeProvider / `data-landing-theme` */
 [data-landing-theme='dark'] .gradient-bg {
-  background: linear-gradient(to bottom, #0a0a0a, #111113);
+  background: var(--background);
 }
 
-.liquid-glass {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
+/* ── Boxy overlay interaction system ─────────────────────────────────────────
+   Idle:   sharp corners, no shadow — element lives in the page surface.
+   Hover:  corners round + all-around shadow — element becomes an overlay.
+   Active: shadow collapses + slight downward shift — element sinks back in.
+   This subliminally reinforces the "overlay" brand on every interaction.
+─────────────────────────────────────────────────────────────────────────── */
+.overlay-interactive {
+  border-radius: 0;
+  box-shadow: none;
+  transition: border-radius 160ms ease, box-shadow 200ms ease, transform 100ms ease;
 }
 
-.liquid-glass::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: 
-    radial-gradient(ellipse 40% 30% at 30% 30%, rgba(200, 200, 220, 0.4), transparent 50%),
-    radial-gradient(ellipse 35% 25% at 70% 20%, rgba(180, 180, 200, 0.35), transparent 50%),
-    radial-gradient(ellipse 45% 35% at 60% 70%, rgba(190, 190, 210, 0.3), transparent 50%),
-    radial-gradient(ellipse 30% 40% at 20% 80%, rgba(170, 170, 190, 0.25), transparent 50%),
-    radial-gradient(ellipse 50% 30% at 80% 50%, rgba(160, 160, 180, 0.2), transparent 50%);
-  animation: liquid-move 20s ease-in-out infinite;
+.overlay-interactive:hover {
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 4px 16px rgba(0, 0, 0, 0.12),
+    0 12px 40px rgba(0, 0, 0, 0.08);
 }
 
-.liquid-glass::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: 
-    radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.8), transparent 40%),
-    radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.6), transparent 40%);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
-  will-change: backdrop-filter;
+.overlay-interactive:active {
+  border-radius: 6px;
+  transform: translateY(1px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-@keyframes liquid-move {
-  0%, 100% {
-    transform: translate(0, 0) rotate(0deg);
-  }
-  25% {
-    transform: translate(2%, 1%) rotate(1deg);
-  }
-  50% {
-    transform: translate(0, 2%) rotate(0deg);
-  }
-  75% {
-    transform: translate(-2%, 1%) rotate(-1deg);
-  }
+[data-landing-theme='dark'] .overlay-interactive:hover,
+[data-theme='dark'] .overlay-interactive:hover {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 4px 20px rgba(0, 0, 0, 0.55),
+    0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
-/* Marketing /home dark — paired with data-landing-theme on root */
-[data-landing-theme='dark'] .liquid-glass::before {
-  background:
-    radial-gradient(ellipse 40% 30% at 30% 30%, rgba(80, 80, 120, 0.35), transparent 50%),
-    radial-gradient(ellipse 35% 25% at 70% 20%, rgba(60, 60, 100, 0.3), transparent 50%),
-    radial-gradient(ellipse 45% 35% at 60% 70%, rgba(50, 50, 90, 0.28), transparent 50%),
-    radial-gradient(ellipse 30% 40% at 20% 80%, rgba(40, 40, 80, 0.25), transparent 50%),
-    radial-gradient(ellipse 50% 30% at 80% 50%, rgba(45, 45, 85, 0.22), transparent 50%);
+[data-landing-theme='dark'] .overlay-interactive:active,
+[data-theme='dark'] .overlay-interactive:active {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
-[data-landing-theme='dark'] .liquid-glass::after {
-  background:
-    radial-gradient(circle at 25% 25%, rgba(40, 40, 55, 0.5), transparent 42%),
-    radial-gradient(circle at 75% 75%, rgba(30, 30, 45, 0.45), transparent 42%);
+/* Sharp-cornered frame for screenshot/card containers */
+.overlay-frame {
+  border-radius: 0;
+  border: 1px solid var(--border);
+  box-shadow: none;
 }

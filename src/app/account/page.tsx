@@ -162,7 +162,7 @@ function AccountPageContent() {
     muted: marketingMuted(isLandingDark),
     body: marketingBody(isLandingDark),
   }
-  const footBorder = isLandingDark ? 'border-zinc-800' : 'border-zinc-200'
+  const footBorder = 'border-[var(--border)]'
   const footMuted = marketingMuted(isLandingDark)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -506,9 +506,7 @@ function AccountPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col gradient-bg">
-      <div className="liquid-glass" />
-
+    <div className="flex min-h-screen w-full flex-col" style={{ background: 'var(--background)' }}>
       {/* Header */}
       <PageNavbar />
 
@@ -518,7 +516,7 @@ function AccountPageContent() {
           {/* Message Banner */}
           {message && (
             <div
-              className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
+              className={`mb-6 flex items-center gap-3 p-4 ${
                 message.type === 'success'
                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                   : 'bg-red-50 text-red-800 border border-red-200'
@@ -535,13 +533,13 @@ function AccountPageContent() {
                   <>
                     <button
                       onClick={handleOpenInApp}
-                      className="rounded-lg bg-emerald-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+                      className="overlay-interactive bg-emerald-600 px-3 py-1 text-sm font-medium text-white transition-colors"
                     >
                       Open in desktop app
                     </button>
                     <button
                       onClick={() => router.push('/app/chat')}
-                      className="rounded-lg border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100/70"
+                      className="overlay-interactive border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors"
                     >
                       Open web app
                     </button>
@@ -573,10 +571,10 @@ function AccountPageContent() {
                 </p>
                 <Link
                   href="/auth/sign-in"
-                  className={`inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-colors ${
+                  className={`overlay-interactive inline-flex items-center gap-2 border px-6 py-3 text-sm font-medium ${
                     isLandingDark
-                      ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-                      : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                      ? 'border-zinc-100 bg-zinc-100 text-zinc-900'
+                      : 'border-zinc-900 bg-zinc-900 text-white'
                   }`}
                 >
                   Sign in
@@ -587,7 +585,7 @@ function AccountPageContent() {
           ) : (
             <div className="space-y-6">
               {entitlementsError && (
-                <div className="p-4 rounded-xl flex items-start gap-3 bg-amber-50 text-amber-900 border border-amber-200">
+                <div className="flex items-start gap-3 border border-amber-200 bg-amber-50 p-4 text-amber-900">
                   <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                   <div className="text-sm space-y-2">
                     <p className="font-medium">Plan information unavailable</p>
@@ -643,10 +641,10 @@ function AccountPageContent() {
                   <button
                     onClick={handleSignOut}
                     disabled={signingOut}
-                    className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
+                    className={`w-full px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
                       isLandingDark
-                        ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
-                        : 'text-red-600 hover:bg-red-50 hover:text-red-700'
+                        ? 'text-red-400 hover:text-red-300'
+                        : 'text-red-600 hover:text-red-700'
                     }`}
                   >
                     {signingOut ? 'Signing out...' : 'Sign out'}
@@ -663,10 +661,10 @@ function AccountPageContent() {
                   <button
                     onClick={handleOpenInApp}
                     disabled={actionLoading === 'openApp'}
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                    className={`overlay-interactive inline-flex items-center justify-center gap-2 border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
                       isLandingDark
-                        ? 'border-zinc-600 text-zinc-200 hover:bg-zinc-800'
-                        : 'border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+                        ? 'border-zinc-600 text-zinc-200'
+                        : 'border-zinc-300 text-zinc-700'
                     }`}
                   >
                     {actionLoading === 'openApp' ? (
@@ -683,10 +681,10 @@ function AccountPageContent() {
                   </button>
                   <Link
                     href="/app/chat"
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                    className={`overlay-interactive inline-flex items-center justify-center gap-2 border px-4 py-2 text-sm font-medium ${
                       isLandingDark
-                        ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-                        : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                        ? 'border-zinc-100 bg-zinc-100 text-zinc-900'
+                        : 'border-zinc-900 bg-zinc-900 text-white'
                     }`}
                   >
                     Open web app
@@ -719,7 +717,7 @@ function AccountPageContent() {
 
                       <div className="flex items-center gap-2">
                         <span
-                          className={`rounded-full px-3 py-1 text-xs font-medium ${
+                          className={`px-3 py-1 text-xs font-medium ${
                             entitlements.status === 'active'
                               ? isLandingDark
                                 ? 'bg-emerald-900/50 text-emerald-200 ring-1 ring-emerald-700/60'
@@ -742,8 +740,8 @@ function AccountPageContent() {
                       {entitlements.planKind === 'free' && (
                         <Link
                           href="/pricing"
-                          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 ${
-                            isLandingDark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white'
+                          className={`overlay-interactive inline-flex items-center gap-2 border px-4 py-2 text-sm font-medium ${
+                            isLandingDark ? 'border-zinc-100 bg-zinc-100 text-zinc-900' : 'border-zinc-900 bg-zinc-900 text-white'
                           }`}
                         >
                           Upgrade to paid
@@ -754,10 +752,10 @@ function AccountPageContent() {
                         <>
                           <Link
                             href="/pricing?intent=change-plan"
-                            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
+                            className={`overlay-interactive border px-4 py-2 text-sm font-medium ${
                               isLandingDark
-                                ? 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
-                                : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                                ? 'border-zinc-600 bg-zinc-900 text-zinc-100'
+                                : 'border-zinc-200 bg-white text-zinc-900'
                             }`}
                           >
                             Change plan
@@ -765,10 +763,10 @@ function AccountPageContent() {
                           <button
                             onClick={handleManageBilling}
                             disabled={actionLoading === 'billing'}
-                            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                            className={`overlay-interactive border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
                               isLandingDark
-                                ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
-                                : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                                ? 'border-zinc-600 bg-zinc-800 text-zinc-100'
+                                : 'border-zinc-200 bg-white text-zinc-900'
                             }`}
                           >
                             {actionLoading === 'billing' ? 'Opening...' : 'Manage billing'}
@@ -792,24 +790,24 @@ function AccountPageContent() {
 
                       <div className="mt-4 grid gap-3 sm:grid-cols-3">
                         <div
-                          className={`rounded-xl border px-4 py-3 ${
-                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
+                          className={`border px-4 py-3 ${
+                            isLandingDark ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'
                           }`}
                         >
                           <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Used</p>
                           <p className={`mt-2 text-lg font-medium ${t.h}`}>${(entitlements.budgetUsedCents / 100).toFixed(2)}</p>
                         </div>
                         <div
-                          className={`rounded-xl border px-4 py-3 ${
-                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
+                          className={`border px-4 py-3 ${
+                            isLandingDark ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'
                           }`}
                         >
                           <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Remaining</p>
                           <p className={`mt-2 text-lg font-medium ${t.h}`}>${(entitlements.budgetRemainingCents / 100).toFixed(2)}</p>
                         </div>
                         <div
-                          className={`rounded-xl border px-4 py-3 ${
-                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
+                          className={`border px-4 py-3 ${
+                            isLandingDark ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'
                           }`}
                         >
                           <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Storage</p>
@@ -853,10 +851,10 @@ function AccountPageContent() {
                                 type="button"
                                 onClick={() => void handleStartTopUp(topUpAmountDraftCents, autoTopUpEnabledDraft)}
                                 disabled={actionLoading === `topup-${topUpAmountDraftCents}`}
-                                className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                                className={`overlay-interactive border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
                                   isLandingDark
-                                    ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
-                                    : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                                    ? 'border-zinc-600 bg-zinc-800 text-zinc-100'
+                                    : 'border-zinc-200 bg-white text-zinc-900'
                                 }`}
                               >
                                 {actionLoading === `topup-${topUpAmountDraftCents}` ? 'Opening…' : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
@@ -865,10 +863,10 @@ function AccountPageContent() {
                                 type="button"
                                 onClick={() => void handleTopUpPreferenceSave()}
                                 disabled={actionLoading === 'topup-settings'}
-                                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                                className={`overlay-interactive border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
                                   isLandingDark
-                                    ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-                                    : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                                    ? 'border-zinc-100 bg-zinc-100 text-zinc-900'
+                                    : 'border-zinc-900 bg-zinc-900 text-white'
                                 }`}
                               >
                                 {actionLoading === 'topup-settings' ? 'Saving...' : 'Save top-up preference'}
@@ -887,8 +885,8 @@ function AccountPageContent() {
                             topUpHistory.slice(0, 6).map((item) => (
                               <div
                                 key={item._id}
-                                className={`flex flex-col gap-2 rounded-xl border px-4 py-3 text-sm md:flex-row md:items-center md:justify-between ${
-                                  isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
+                                className={`flex flex-col gap-2 border px-4 py-3 text-sm md:flex-row md:items-center md:justify-between ${
+                                  isLandingDark ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'
                                 }`}
                               >
                                 <div>
@@ -978,8 +976,7 @@ export default function AccountPage() {
     <LandingThemeProvider>
       <Suspense
         fallback={
-          <div className="flex min-h-screen items-center justify-center gradient-bg">
-            <div className="liquid-glass" />
+          <div className="flex min-h-screen items-center justify-center" style={{ background: 'var(--background)' }}>
             <div className="relative z-10 text-center">
               <RefreshCw className="mx-auto h-8 w-8 animate-spin text-zinc-400" />
               <p className="mt-4 text-zinc-500">Loading...</p>

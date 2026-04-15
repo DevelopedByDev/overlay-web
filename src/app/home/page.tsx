@@ -1,6 +1,6 @@
 "use client";
 
-import { useScroll, useTransform } from "framer-motion";
+import { useScroll } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { AgentsPipeline } from "@/components/landing/AgentsPipeline";
@@ -61,13 +61,8 @@ export default function HomeLandingPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const navLogoOpacity = useTransform(scrollYProgress, [0, 0.08], [0, 1]);
-  const navLogoX = useTransform(scrollYProgress, [0, 0.08], [-12, 0]);
-
   const webAppHref = isAuthenticated ? "/app/chat" : "/auth/sign-in?redirect=%2Fapp%2Fchat";
   const isDark = landingTheme === "dark";
-
-  const dividerClass = isDark ? "border-zinc-800" : "border-zinc-100";
 
   return (
     <div
@@ -78,34 +73,31 @@ export default function HomeLandingPage() {
           : "relative min-h-screen bg-[#fafafa] text-[#0a0a0a]"
       }
     >
-      <div className="liquid-glass" />
 
       <Navbar
         scrollYProgress={scrollYProgress}
         landingTheme={landingTheme}
         onLandingThemeToggle={toggleLandingTheme}
-        navLogoOpacity={navLogoOpacity}
-        navLogoX={navLogoX}
       />
 
       <HeroSection theme={landingTheme} webAppHref={webAppHref} />
 
-      <div className={`mx-auto max-w-4xl border-t ${dividerClass}`} />
+      <div className="border-t border-[var(--border)]" />
       <ModelsShowcase theme={landingTheme} />
 
-      <div className={`mx-auto max-w-4xl border-t ${dividerClass}`} />
+      <div className="border-t border-[var(--border)]" />
       <CreationBento theme={landingTheme} />
 
-      <div className={`mx-auto max-w-4xl border-t ${dividerClass}`} />
+      <div className="border-t border-[var(--border)]" />
       <AgentsPipeline theme={landingTheme} />
 
-      <div className={`mx-auto max-w-4xl border-t ${dividerClass}`} />
+      <div className="border-t border-[var(--border)]" />
       <ContextHub theme={landingTheme} />
 
-      <div className={`mx-auto max-w-4xl border-t ${dividerClass}`} />
+      <div className="border-t border-[var(--border)]" />
       <ExtensionsStrip theme={landingTheme} />
 
-      <div className={`mx-auto max-w-4xl border-t ${dividerClass}`} />
+      <div className="border-t border-[var(--border)]" />
       <ClosingCTA theme={landingTheme} webAppHref={webAppHref} />
     </div>
   );

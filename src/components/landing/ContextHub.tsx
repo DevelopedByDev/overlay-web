@@ -19,7 +19,7 @@ const sectionInView = {
 
 function RadialHub({ isDark }: { isDark: boolean }) {
   const muted = isDark ? "text-zinc-400" : "text-[#71717a]";
-  const nodeBg = isDark ? "bg-zinc-800 border-zinc-700" : "bg-white border-zinc-200";
+  const nodeBg = isDark ? "bg-zinc-900 border-zinc-700" : "bg-white border-zinc-200";
   const coreBg = isDark ? "bg-zinc-900 border-zinc-600" : "bg-white border-zinc-300";
   const spokeLine = isDark ? "stroke-zinc-700" : "stroke-zinc-300";
 
@@ -50,18 +50,18 @@ function RadialHub({ isDark }: { isDark: boolean }) {
         })}
       </svg>
 
-      {/* Center core */}
+      {/* Center core — square */}
       <motion.div
         initial={{ scale: 0.6, opacity: 0 }}
         whileInView={{ scale: 1, opacity: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className={`absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 shadow-md ${coreBg}`}
+        className={`absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center border-2 ${coreBg}`}
       >
         <Image src="/assets/overlay-logo.png" alt="Overlay" width={28} height={28} />
       </motion.div>
 
-      {/* Spoke nodes */}
+      {/* Spoke nodes — square */}
       {SPOKES.map((spoke, i) => {
         const rad = (spoke.angle * Math.PI) / 180;
         const r = 88;
@@ -74,7 +74,7 @@ function RadialHub({ isDark }: { isDark: boolean }) {
             whileInView={{ scale: 1, opacity: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 0.45, delay: 0.1 + i * 0.12, ease: [0.22, 1, 0.36, 1] }}
-            className={`absolute flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-0.5 rounded-xl border shadow-sm ${nodeBg}`}
+            className={`absolute flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-0.5 border ${nodeBg}`}
             style={{ left: cx, top: cy }}
           >
             <span className="text-base leading-none">{spoke.icon}</span>
@@ -90,6 +90,7 @@ export function ContextHub({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark";
   const muted = isDark ? "text-zinc-400" : "text-[#71717a]";
   const heading = isDark ? "text-zinc-100" : "text-[#0a0a0a]";
+  const borderColor = isDark ? "border-zinc-800" : "border-zinc-200";
 
   return (
     <motion.section
@@ -110,11 +111,7 @@ export function ContextHub({ theme }: { theme: "light" | "dark" }) {
 
         {/* Note overlay demo */}
         <div className="relative w-full max-w-sm md:w-1/2">
-          <div
-            className={`overflow-hidden rounded-2xl border shadow-lg ${
-              isDark ? "border-zinc-700" : "border-zinc-200"
-            }`}
-          >
+          <div className={`overflow-hidden border ${borderColor}`}>
             <Image
               src="/assets/window-screens/note-screen.png"
               alt="Overlay notes"
@@ -130,11 +127,7 @@ export function ContextHub({ theme }: { theme: "light" | "dark" }) {
             transition={{ duration: 0.55, delay: 0.45, ease: [0.22, 1, 0.36, 1] }}
             className="absolute -bottom-5 -left-4 w-2/5 max-w-[200px]"
           >
-            <div
-              className={`overflow-hidden rounded-xl border shadow-xl ${
-                isDark ? "border-zinc-700" : "border-zinc-200"
-              }`}
-            >
+            <div className={`overflow-hidden border ${borderColor}`}>
               <Image
                 src="/assets/overlays/note-overlay.png"
                 alt="Note overlay"

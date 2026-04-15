@@ -183,16 +183,14 @@ function ManifestoContent() {
   const body = isLandingDark ? 'text-zinc-400' : 'text-zinc-600'
   const heading = isLandingDark ? 'text-zinc-100' : 'text-zinc-900'
   const sub = isLandingDark ? 'text-zinc-400' : 'text-zinc-500'
-  const footBorder = isLandingDark ? 'border-zinc-800' : 'border-zinc-200'
+  const footBorder = 'border-[var(--border)]'
   const linkHover = isLandingDark ? 'hover:text-zinc-100' : 'hover:text-zinc-900'
-  const divider = isLandingDark ? 'border-zinc-800' : 'border-zinc-200/80'
+  const divider = 'border-[var(--border)]'
 
   const titleClass = `font-serif text-3xl sm:text-4xl md:text-5xl tracking-tight ${heading}`
 
   return (
-    <div className="flex min-h-screen w-full flex-col overflow-x-hidden gradient-bg">
-      <div className="liquid-glass" />
-
+    <div className="flex min-h-screen w-full flex-col overflow-x-hidden" style={{ background: 'var(--background)' }}>
       <PageNavbar />
 
       <main className="relative z-10 flex flex-1 flex-col items-center px-6 py-16 sm:px-8">

@@ -26,7 +26,7 @@ export function ExtensionsStrip({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark";
   const muted = isDark ? "text-zinc-400" : "text-[#71717a]";
   const heading = isDark ? "text-zinc-100" : "text-[#0a0a0a]";
-  const chipBg = isDark ? "bg-zinc-800 border-zinc-700" : "bg-white border-zinc-200";
+  const chipBg = isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200";
   const chipText = isDark ? "text-zinc-300" : "text-zinc-700";
 
   return (
@@ -43,18 +43,18 @@ export function ExtensionsStrip({ theme }: { theme: "light" | "dark" }) {
         </p>
       </div>
 
-      {/* Integration marquee */}
+      {/* Integration marquee — boxy chips */}
       <div className="w-full overflow-hidden">
         <div className="flex">
           <motion.div
             animate={{ x: ["0%", "-50%"] }}
             transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
-            className="flex shrink-0 gap-3 whitespace-nowrap"
+            className="flex shrink-0 gap-px whitespace-nowrap"
           >
             {[...INTEGRATIONS, ...INTEGRATIONS].map((item, i) => (
               <div
                 key={i}
-                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm ${chipBg} ${chipText}`}
+                className={`overlay-interactive inline-flex items-center gap-2 border px-4 py-2 text-sm ${chipBg} ${chipText}`}
               >
                 <span>{item.icon}</span>
                 <span>{item.label}</span>
@@ -68,7 +68,7 @@ export function ExtensionsStrip({ theme }: { theme: "light" | "dark" }) {
         href="https://github.com/DevelopedByDev/overlay-web"
         target="_blank"
         rel="noopener noreferrer"
-        className={`text-sm transition-colors ${muted} hover:${isDark ? "text-zinc-200" : "text-[#0a0a0a]"} underline underline-offset-4`}
+        className={`text-sm underline underline-offset-4 transition-colors ${muted} ${isDark ? "hover:text-zinc-200" : "hover:text-[#0a0a0a]"}`}
       >
         view source on github →
       </a>

@@ -23,8 +23,9 @@ export function ModelsShowcase({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark";
   const muted = isDark ? "text-zinc-400" : "text-[#71717a]";
   const heading = isDark ? "text-zinc-100" : "text-[#0a0a0a]";
-  const bubbleBg = isDark ? "bg-zinc-800 border-zinc-700" : "bg-white border-zinc-200";
+  const bubbleBg = isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200";
   const bubbleText = isDark ? "text-zinc-100" : "text-[#0a0a0a]";
+  const borderColor = isDark ? "border-zinc-800" : "border-zinc-200";
 
   const [modelIdx, setModelIdx] = useState(0);
 
@@ -55,15 +56,13 @@ export function ModelsShowcase({ theme }: { theme: "light" | "dark" }) {
         {/* Model carousel chat bubble */}
         <div className="flex w-full flex-col gap-3 md:w-1/2">
           {/* Received bubble */}
-          <div className={`self-start rounded-2xl rounded-tl-sm border px-4 py-3 shadow-sm ${bubbleBg}`}>
+          <div className={`self-start border px-4 py-3 ${bubbleBg}`}>
             <p className={`text-sm ${bubbleText}`}>
               what&apos;s the best approach for this problem?
             </p>
           </div>
           {/* AI response bubble with animated model badge */}
-          <div
-            className={`relative self-end max-w-[85%] rounded-2xl rounded-tr-sm border px-4 py-3 shadow-sm ${bubbleBg}`}
-          >
+          <div className={`relative self-end max-w-[85%] border px-4 py-3 ${bubbleBg}`}>
             <div className="mb-2 flex items-center gap-2">
               <AnimatePresence mode="wait">
                 <motion.span
@@ -72,7 +71,7 @@ export function ModelsShowcase({ theme }: { theme: "light" | "dark" }) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 8 }}
                   transition={{ duration: 0.28, ease: "easeInOut" }}
-                  className="rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
+                  className="px-2.5 py-0.5 text-xs font-medium text-white"
                   style={{ backgroundColor: model.color }}
                 >
                   {model.name}
@@ -85,15 +84,11 @@ export function ModelsShowcase({ theme }: { theme: "light" | "dark" }) {
             </p>
           </div>
           {/* Another received bubble */}
-          <div className={`self-start rounded-2xl rounded-tl-sm border px-4 py-3 shadow-sm ${bubbleBg}`}>
-            <p className={`text-sm ${bubbleText}`}>
-              can you show me with code?
-            </p>
+          <div className={`self-start border px-4 py-3 ${bubbleBg}`}>
+            <p className={`text-sm ${bubbleText}`}>can you show me with code?</p>
           </div>
           {/* Another AI response */}
-          <div
-            className={`relative self-end max-w-[85%] rounded-2xl rounded-tr-sm border px-4 py-3 shadow-sm ${bubbleBg}`}
-          >
+          <div className={`relative self-end max-w-[85%] border px-4 py-3 ${bubbleBg}`}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={model.name + "-code"}
@@ -104,7 +99,7 @@ export function ModelsShowcase({ theme }: { theme: "light" | "dark" }) {
                 className="mb-2 flex items-center gap-2"
               >
                 <span
-                  className="rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
+                  className="px-2.5 py-0.5 text-xs font-medium text-white"
                   style={{ backgroundColor: model.color }}
                 >
                   {model.name}
@@ -119,11 +114,7 @@ export function ModelsShowcase({ theme }: { theme: "light" | "dark" }) {
 
         {/* Chat screenshot */}
         <div className="w-full md:w-1/2">
-          <div
-            className={`overflow-hidden rounded-2xl border shadow-lg ${
-              isDark ? "border-zinc-700" : "border-zinc-200"
-            }`}
-          >
+          <div className={`overflow-hidden border ${borderColor}`}>
             <Image
               src="/assets/basic screenshots/chat.jpg"
               alt="Overlay chat"
