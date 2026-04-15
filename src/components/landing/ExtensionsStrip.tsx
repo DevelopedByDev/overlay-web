@@ -64,14 +64,6 @@ export function ExtensionsStrip({ theme }: { theme: "light" | "dark" }) {
         </div>
       </div>
 
-      <a
-        href="https://github.com/DevelopedByDev/overlay-web"
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`text-sm underline underline-offset-4 transition-colors ${muted} ${isDark ? "hover:text-zinc-200" : "hover:text-[#0a0a0a]"}`}
-      >
-        view source on github →
-      </a>
     </motion.section>
   );
 }

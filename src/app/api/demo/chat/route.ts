@@ -54,10 +54,9 @@ export async function POST(req: NextRequest) {
   })
 
   const result = streamText({
-    model: openrouter.chat('meta-llama/llama-3.2-3b-instruct:free'),
-    system: 'You are a helpful AI assistant. Be concise and friendly.',
+    model: openrouter.chat('google/gemma-3-4b-it:free'),
     messages: trimmedMessages,
   })
 
-  return result.toDataStreamResponse()
+  return result.toUIMessageStreamResponse({ originalMessages: trimmedMessages })
 }

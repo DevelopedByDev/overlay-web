@@ -85,7 +85,8 @@ export function Navbar({ onThemeChange, initialTheme = 'light' }: NavbarProps) {
     setThemeMode(prev => {
       if (prev === 'light') return 'dark'
       if (prev === 'dark') return 'system'
-      return 'light'
+      // 'system': jump to opposite of current effective so first click is always visible
+      return getEffectiveTheme('system') === 'light' ? 'dark' : 'light'
     })
   }
 

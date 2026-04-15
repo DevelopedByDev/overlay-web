@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Image from "next/image";
 
 const SPOKES = [
   { label: "files", icon: "📄", angle: -45 },
