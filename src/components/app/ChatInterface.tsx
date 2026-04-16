@@ -4199,6 +4199,7 @@ async function hydrateCompletedAskTurnFromServer(
               skipUserMessage: persistedUserMessage || idx !== 0,
               ...(indexedFileNames.length > 0 ? { indexedFileNames } : {}),
               ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
+              ...(settings.experimentalGenerativeUI ? { experimentalGenerativeUI: true } : {}),
             },
           },
         ),

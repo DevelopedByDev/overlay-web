@@ -160,6 +160,7 @@ export default defineSchema({
     userId: v.string(),
     theme: v.union(v.literal('light'), v.literal('dark')),
     useSecondarySidebar: v.boolean(),
+    experimentalGenerativeUI: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),

@@ -49,6 +49,7 @@ const SETTINGS_SECTIONS = [
   { id: 'account', label: 'Account' },
   { id: 'customization', label: 'Customization' },
   { id: 'models', label: 'Models' },
+  { id: 'experimental', label: 'Experimental' },
   { id: 'contact', label: 'Contact' },
 ] as const
 

@@ -15,6 +15,7 @@ export type ThemePreference = 'light' | 'dark'
 export type AppSettings = {
   theme: ThemePreference
   useSecondarySidebar: boolean
+  experimentalGenerativeUI: boolean
 }
 
 type AppSettingsContextValue = {
@@ -28,6 +29,7 @@ type AppSettingsContextValue = {
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: 'light',
   useSecondarySidebar: false,
+  experimentalGenerativeUI: false,
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -40,6 +42,18 @@ function isAppSettings(value: unknown): value is AppSettings {
     (candidate.theme === 'light' || candidate.theme === 'dark') &&
     typeof candidate.useSecondarySidebar === 'boolean'
   )
+}
+
+function hydrateAppSettings(raw: unknown): AppSettings {
+  const base = isAppSettings(raw) ? raw : DEFAULT_APP_SETTINGS
+  return {
+    ...DEFAULT_APP_SETTINGS,
+    ...base,
+    // Coerce optional booleans that older stored values may not have
+    experimentalGenerativeUI: typeof (raw as Partial<AppSettings>).experimentalGenerativeUI === 'boolean'
+      ? (raw as Partial<AppSettings>).experimentalGenerativeUI!
+      : false,
+  }
 }
 
 function readStoredSettings(): AppSettings | null {
@@ -71,17 +85,17 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const refresh = useCallback(async () => {
     const stored = readStoredSettings()
     if (stored) {
-      setSettings(stored)
+      setSettings(hydrateAppSettings(stored))
     }
 
     try {
       const res = await fetch('/api/app/settings', { cache: 'no-store' })
       if (res.ok) {
-        const next = await res.json() as AppSettings
+        const next = hydrateAppSettings(await res.json())
         setSettings(next)
         persistSettings(next)
       } else if (res.status === 401) {
-        setSettings(stored ?? DEFAULT_APP_SETTINGS)
+        setSettings(stored ? hydrateAppSettings(stored) : DEFAULT_APP_SETTINGS)
       }
     } catch {
       if (!stored) {

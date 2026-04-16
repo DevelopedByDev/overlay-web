@@ -42,6 +42,7 @@ import {
   summarizeToolSetForLog,
 } from '@/lib/safe-log'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { buildOpenUISystemPrompt } from '@/lib/openui-library'
 import type { Entitlements } from '@/lib/app-contracts'
 import {
   buildInsufficientCreditsPayload,
@@ -86,6 +87,7 @@ export async function POST(request: NextRequest) {
       replyContextForModel,
       accessToken,
       userId: requestedUserId,
+      experimentalGenerativeUI,
     }: {
       messages: UIMessage[]
       modelId?: string
@@ -101,6 +103,8 @@ export async function POST(request: NextRequest) {
       replyContextForModel?: string
       accessToken?: string
       userId?: string
+      /** When true, append the OpenUI system prompt so the model can generate structured UI blocks. */
+      experimentalGenerativeUI?: boolean
     } = await request.json()
     const auth = await resolveAuthenticatedAppUser(request, {
       accessToken,
@@ -296,6 +300,7 @@ export async function POST(request: NextRequest) {
       memoryContext,
       autoRetrieval,
       indexedNote,
+      experimentalGenerativeUI ? buildOpenUISystemPrompt() : '',
     ].filter(Boolean).join('\n\n')
 
     const browserToolNote =

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Mail, Moon, PanelsLeftRight, Sun } from 'lucide-react'
+import { FlaskConical, Mail, Moon, PanelsLeftRight, Sun } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
@@ -13,6 +13,7 @@ const SECTIONS = [
   { id: 'account', label: 'Account' },
   { id: 'customization', label: 'Customization' },
   { id: 'models', label: 'Models' },
+  { id: 'experimental', label: 'Experimental' },
   { id: 'contact', label: 'Contact' },
 ] as const
 
@@ -282,6 +283,32 @@ export default function SettingsPage() {
                 Go to chat →
               </Link>
             </SectionPlaceholder>
+          )}
+
+          {!isLoading && section === 'experimental' && (
+            <>
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">
+                    <FlaskConical size={18} strokeWidth={1.8} />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-medium text-[var(--foreground)]">Experimental features</h2>
+                    <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">
+                      These features are in active development. Behavior may change or be removed in future releases.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <SettingRow
+                icon={<FlaskConical size={18} strokeWidth={1.8} />}
+                title="Generative UI"
+                description="When enabled, certain responses render as interactive UI components — metrics, tables, and structured data — instead of plain text."
+                checked={settings.experimentalGenerativeUI}
+                disabled={busy}
+                onChange={() => void updateSettings({ experimentalGenerativeUI: !settings.experimentalGenerativeUI })}
+              />
+            </>
           )}
 
           {!isLoading && section === 'contact' && (

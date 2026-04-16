@@ -13,6 +13,8 @@ import { stripThinkingPlaceholderMarkdown } from '@/lib/agent-assistant-text'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { OpenUIRenderer } from './OpenUIRenderer'
+import { isOpenUILang } from '@/lib/openui-parser'
 
 function useDocumentThemeIsDark(): boolean {
   return useSyncExternalStore(
@@ -215,9 +217,15 @@ const mdComponents = {
     const match = /language-(\w+)/.exec(className || '')
     // Block code = has a language class from the fence
     if (match) {
+      const lang = match[1]
+      const codeStr = String(children).replace(/\n$/, '')
+      // Render OpenUI Lang blocks as structured UI
+      if (lang === 'openui' || isOpenUILang(codeStr)) {
+        return <OpenUIRenderer code={codeStr} />
+      }
       return (
-        <CodeBlock language={match[1]}>
-          {String(children).replace(/\n$/, '')}
+        <CodeBlock language={lang}>
+          {codeStr}
         </CodeBlock>
       )
     }
