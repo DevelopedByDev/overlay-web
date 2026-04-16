@@ -283,7 +283,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       prompt: z.string().describe('Detailed description of the video to generate'),
       modelId: z.enum(t2vModelIds).optional().describe('Specific model to use (optional)'),
       aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: 16:9)'),
-      duration: z.number().min(3).max(60).optional().describe('Duration in seconds (default: 8)'),
+      duration: z.number().min(3).max(12).optional().describe('Duration in seconds (default: 8, max 12)'),
     }),
     execute: async (input) => {
       assertOverlayToolAllowedForMode(mode, 'generate_video')

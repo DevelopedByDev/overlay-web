@@ -97,7 +97,22 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        const effectiveDuration = duration ?? 8
+        const rawDuration = duration ?? 8
+        // Clamp duration to model-supported ranges before any cost calculation or API call.
+        // Veo models only accept 4, 6, or 8 seconds for text-to-video.
+        // Seedance v1.5 Pro accepts 4–12 seconds.
+        // Other models: cap at 10 seconds to stay within reasonable API limits.
+        function clampDurationForModel(modelId: string, d: number): number {
+          if (modelId.startsWith('google/veo')) {
+            const veoOptions = [4, 6, 8]
+            return veoOptions.reduce((prev, curr) => Math.abs(curr - d) < Math.abs(prev - d) ? curr : prev)
+          }
+          if (modelId.startsWith('bytedance/seedance')) {
+            return Math.min(12, Math.max(4, d))
+          }
+          return Math.min(10, Math.max(3, d))
+        }
+        const effectiveDuration = clampDurationForModel(modelId ?? getVideoModelsBySubMode(videoSubMode ?? 'text-to-video')[0]?.id ?? 'google/veo-3.1-generate-001', rawDuration)
         const estimatedProviderCostUsd = calculateVideoCost(modelId ?? getVideoModelsBySubMode(videoSubMode ?? 'text-to-video')[0]?.id ?? 'google/veo-3.1-generate-001', effectiveDuration)
         const minimumRequiredCents = billableBudgetCentsFromProviderUsd(estimatedProviderCostUsd)
         let currentEntitlements = entitlements
@@ -184,13 +199,14 @@ export async function POST(request: NextRequest) {
               auth.accessToken || undefined,
             )
 
+            const modelDuration = clampDurationForModel(tryModelId, rawDuration)
             let result: Awaited<ReturnType<typeof generateVideo>>
             if (effectiveSubMode === 'image-to-video') {
               result = await generateVideo({
                 model: videoModel,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 prompt: { text: prompt.trim(), image: imageUrl } as any,
-                duration: effectiveDuration,
+                duration: modelDuration,
                 aspectRatio: (aspectRatio as `${number}:${number}` | undefined) ?? '16:9',
               })
             } else if (effectiveSubMode === 'reference-to-video') {
@@ -220,7 +236,7 @@ export async function POST(request: NextRequest) {
               result = await generateVideo({
                 model: videoModel,
                 prompt: prompt.trim(),
-                duration: effectiveDuration,
+                duration: modelDuration,
                 aspectRatio: (aspectRatio as `${number}:${number}` | undefined) ?? '16:9',
               })
             }

@@ -197,7 +197,6 @@ export async function executeGenerateImage(
     return {
       success: true,
       outputId: data.outputId,
-      url: data.url,
       modelUsed: data.modelUsed,
       message: `Image generated successfully with ${data.modelUsed}. OutputId: ${data.outputId}`,
     }
@@ -293,7 +292,6 @@ export async function executeGenerateVideo(
         success: true,
         status: 'completed',
         outputId: finalResult.outputId,
-        url: finalResult.url,
         modelUsed: finalResult.modelUsed,
         message: `Video generated successfully with ${finalResult.modelUsed}. OutputId: ${finalResult.outputId}`,
       }
