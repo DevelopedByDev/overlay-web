@@ -128,7 +128,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
 
   tools.browser_run_task = tool({
     description:
-      'Browse the web using a remote AI-controlled browser. Use this when you need fresh live data, need to inspect a website directly, or must interact with a real web page.',
+      'Browse the web using a remote AI-controlled browser. ' +
+      'ONLY use this when perplexity_search is unavailable, has already failed to return the information, or the task explicitly requires browser interaction (e.g. logging in, clicking buttons, filling forms, scraping a page that blocks API-level access, or taking a screenshot). ' +
+      'Do NOT use this for general information lookups, current events, or questions that perplexity_search can answer — it is slower and more expensive. ' +
+      'Default to perplexity_search for any web research; escalate to browser_run_task only when interaction or direct page inspection is truly necessary.',
     inputSchema: z.object({
       task: z.string().describe('What to do in the browser — natural language'),
       model: z.enum(['bu-mini', 'bu-max']).optional(),

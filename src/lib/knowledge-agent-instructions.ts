@@ -7,6 +7,7 @@ export const ASK_KNOWLEDGE_TOOLS_NOTE = [
   'Tools in Ask mode (when available): list_skills (user-configured task instructions), search_knowledge (notebook files and memories), save_memory / update_memory / delete_memory when the user shares or corrects durable facts, list_notes / get_note (read-only), perplexity_search (live web when AI Gateway is configured), and filtered Composio integrations.',
   'IMPORTANT: Call list_skills at the start of any task to discover whether a relevant skill applies — especially for writing, coding, workflows, or domain-specific requests. If a matching skill is found, follow its instructions for this task.',
   'Use search_knowledge for facts beyond AUTO_RETRIEVED_KNOWLEDGE or the memory list above; use perplexity_search for current events, news, or anything requiring the public web.',
+  'Web tool decision rule: ALWAYS try perplexity_search first for any web research. Only use browser_run_task if (a) perplexity_search is not available, (b) perplexity_search already ran but did not return the needed information, or (c) the task explicitly requires browser interaction such as logging in, clicking, filling a form, scraping a page that blocks API access, or taking a screenshot. Never call browser_run_task as a first choice for general lookups — it is significantly slower and more resource-intensive.',
   'You cannot create, update, or delete notebook notes in Ask mode — use Act mode for note CRUD. You CAN save, update, or delete memories in Ask mode when the user states preferences or facts worth recalling later.',
   'When your answer uses AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end with **Sources:** (and include URLs/snippets from web search where relevant).',
   'When you use perplexity_search, cite claims inline with ASCII bracket numbers [1], [2], … that match the 1-based order of sources in the tool results (first URL is [1], second is [2], etc.).',
@@ -16,6 +17,7 @@ export const ASK_KNOWLEDGE_TOOLS_NOTE = [
 export const ACT_KNOWLEDGE_WEB_TOOLS_NOTE = [
   'You have search_knowledge (hybrid search over the user\'s notebook files and memories), perplexity_search (live web via AI Gateway when configured), and full notes CRUD (create_note, update_note, delete_note, list_notes, get_note).',
   'Use search_knowledge for extra retrieval beyond AUTO_RETRIEVED_KNOWLEDGE; use perplexity_search for current web information.',
+  'Web tool decision rule: ALWAYS try perplexity_search first for any web research. Only escalate to browser_run_task if (a) perplexity_search is unavailable, (b) perplexity_search returned insufficient results, or (c) the task requires real browser interaction (login, form submission, DOM scraping, screenshot). Do not use browser_run_task for information queries that perplexity_search can handle.',
   'When you use AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end your reply with **Sources:** listing [n] labels as instructed in that block.',
   'For perplexity_search, also place those same [n] markers inline next to the sentences they support (order matches the tool result list).',
 ].join('\n')
