@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import {
+  clearStoredMobilePkceChallenge,
+  getStoredMobilePkceChallenge,
+} from '@/lib/mobile-auth-client'
 
 export default function MobileCompletePage() {
   const [status, setStatus] = useState<'loading' | 'error'>('loading')
@@ -12,9 +16,17 @@ export default function MobileCompletePage() {
 
     async function transferSession() {
       try {
+        const codeChallenge = getStoredMobilePkceChallenge()
+        if (!codeChallenge) {
+          throw new Error(
+            'Missing mobile auth handshake. Open Overlay on your phone and start sign-in from the app.',
+          )
+        }
+
         const response = await fetch('/api/auth/desktop-link', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codeChallenge }),
         })
 
         const data = await response.json().catch(() => ({}))
@@ -22,6 +34,8 @@ export default function MobileCompletePage() {
         if (!response.ok || typeof data.deepLink !== 'string') {
           throw new Error(data.error || 'Failed to hand off session to the app')
         }
+
+        clearStoredMobilePkceChallenge()
 
         if (!cancelled) {
           window.location.replace(data.deepLink)
