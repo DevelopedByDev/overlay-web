@@ -3,7 +3,7 @@ import { experimental_generateVideo as generateVideo } from 'ai'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { getGatewayVideoModel } from '@/lib/ai-gateway'
-import { VIDEO_MODELS } from '@/lib/models'
+import { getVideoModelsBySubMode, type VideoSubMode } from '@/lib/models'
 import { calculateVideoCost } from '@/lib/model-pricing'
 import { uploadBuffer, keyForOutput, deleteObject } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
@@ -25,13 +25,15 @@ function sseChunk(data: Record<string, unknown>): string {
 }
 
 export async function POST(request: NextRequest) {
-  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, accessToken, userId }: {
+  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, accessToken, userId }: {
     prompt: string
     modelId?: string
     aspectRatio?: string
     duration?: number
     conversationId?: string
     turnId?: string
+    videoSubMode?: VideoSubMode
+    imageUrl?: string | null
     accessToken?: string
     userId?: string
   } = await request.json()
@@ -95,8 +97,23 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        const effectiveDuration = duration ?? 8
-        const estimatedProviderCostUsd = calculateVideoCost(modelId ?? VIDEO_MODELS[0]?.id ?? 'google/veo-3-fast', effectiveDuration)
+        const rawDuration = duration ?? 8
+        // Clamp duration to model-supported ranges before any cost calculation or API call.
+        // Veo models only accept 4, 6, or 8 seconds for text-to-video.
+        // Seedance v1.5 Pro accepts 4–12 seconds.
+        // Other models: cap at 10 seconds to stay within reasonable API limits.
+        function clampDurationForModel(modelId: string, d: number): number {
+          if (modelId.startsWith('google/veo')) {
+            const veoOptions = [4, 6, 8]
+            return veoOptions.reduce((prev, curr) => Math.abs(curr - d) < Math.abs(prev - d) ? curr : prev)
+          }
+          if (modelId.startsWith('bytedance/seedance')) {
+            return Math.min(12, Math.max(4, d))
+          }
+          return Math.min(10, Math.max(3, d))
+        }
+        const effectiveDuration = clampDurationForModel(modelId ?? getVideoModelsBySubMode(videoSubMode ?? 'text-to-video')[0]?.id ?? 'google/veo-3.1-generate-001', rawDuration)
+        const estimatedProviderCostUsd = calculateVideoCost(modelId ?? getVideoModelsBySubMode(videoSubMode ?? 'text-to-video')[0]?.id ?? 'google/veo-3.1-generate-001', effectiveDuration)
         const minimumRequiredCents = billableBudgetCentsFromProviderUsd(estimatedProviderCostUsd)
         let currentEntitlements = entitlements
         let budget = getBudgetTotals(currentEntitlements)
@@ -141,7 +158,7 @@ export async function POST(request: NextRequest) {
               source: 'video_generation',
               status: 'pending',
               prompt: prompt.trim(),
-              modelId: modelId ?? VIDEO_MODELS[0].id,
+              modelId: modelId ?? getVideoModelsBySubMode(videoSubMode ?? 'text-to-video')[0]?.id ?? 'google/veo-3.1-generate-001',
               fileName: `overlay-video-${Date.now()}.mp4`,
               mimeType: 'video/mp4',
               ...(conversationId ? { conversationId } : {}),
@@ -166,9 +183,11 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encode(sseChunk({ type: 'started', outputId: persistedOutputId })))
 
         // ── Model fallback chain ────────────────────────────────────────────
+        const effectiveSubMode: VideoSubMode = videoSubMode ?? 'text-to-video'
+        const subModeModels = getVideoModelsBySubMode(effectiveSubMode).map((m) => m.id)
         const priorityList = modelId
-          ? [modelId, ...VIDEO_MODELS.map((m) => m.id).filter((id) => id !== modelId)]
-          : VIDEO_MODELS.map((m) => m.id)
+          ? [modelId, ...subModeModels.filter((id) => id !== modelId)]
+          : subModeModels
 
         let lastError: Error | null = null
         let usedModelId: string | null = null
@@ -179,12 +198,49 @@ export async function POST(request: NextRequest) {
               tryModelId,
               auth.accessToken || undefined,
             )
-            const result = await generateVideo({
-              model: videoModel,
-              prompt: prompt.trim(),
-              duration: effectiveDuration,
-              aspectRatio: (aspectRatio as `${number}:${number}` | undefined) ?? '16:9',
-            })
+
+            const modelDuration = clampDurationForModel(tryModelId, rawDuration)
+            let result: Awaited<ReturnType<typeof generateVideo>>
+            if (effectiveSubMode === 'image-to-video') {
+              result = await generateVideo({
+                model: videoModel,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                prompt: { text: prompt.trim(), image: imageUrl } as any,
+                duration: modelDuration,
+                aspectRatio: (aspectRatio as `${number}:${number}` | undefined) ?? '16:9',
+              })
+            } else if (effectiveSubMode === 'reference-to-video') {
+              result = await generateVideo({
+                model: videoModel,
+                prompt: prompt.trim(),
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                providerOptions: { alibaba: { referenceUrls: imageUrl ? [imageUrl] : [] } } as any,
+              })
+            } else if (effectiveSubMode === 'motion-control') {
+              result = await generateVideo({
+                model: videoModel,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                prompt: { image: imageUrl, text: prompt.trim() } as any,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                providerOptions: { klingai: { videoUrl: imageUrl, characterOrientation: 'video', mode: 'std' } } as any,
+              })
+            } else if (effectiveSubMode === 'video-editing') {
+              result = await generateVideo({
+                model: videoModel,
+                prompt: prompt.trim(),
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                providerOptions: { xai: { videoUrl: imageUrl, pollTimeoutMs: 600000 } } as any,
+              })
+            } else {
+              // text-to-video (default)
+              result = await generateVideo({
+                model: videoModel,
+                prompt: prompt.trim(),
+                duration: modelDuration,
+                aspectRatio: (aspectRatio as `${number}:${number}` | undefined) ?? '16:9',
+              })
+            }
+
             videoBase64 = result.videos[0]?.base64 ?? null
             usedModelId = tryModelId
             break

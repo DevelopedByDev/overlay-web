@@ -1,6 +1,6 @@
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
-import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/models'
+import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/lib/models'
 import {
   executeCreateNote,
   executeDeleteNote,
@@ -178,59 +178,6 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       },
     })
 
-    tools.generate_image = tool({
-      description:
-        'Generate an image from a text prompt using AI image generation models. ' +
-        'Returns a data URL of the generated image. ' +
-        'Tries models in priority order: Gemini Flash Image → GPT Image 1.5 → FLUX 2 Max → Grok Image Pro → Grok Image → FLUX Schnell. ' +
-        'Use this whenever the user asks to create, draw, or generate an image or picture.',
-      inputSchema: z.object({
-        prompt: z.string().describe('Detailed description of the image to generate'),
-        modelId: z
-          .enum(IMAGE_MODELS.map((m) => m.id) as [string, ...string[]])
-          .optional()
-          .describe('Specific image model to use (optional — uses priority fallback by default)'),
-        aspectRatio: z
-          .enum(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'])
-          .optional()
-          .describe('Aspect ratio of the generated image (default: 1:1)'),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'generate_image')
-        return executeGenerateImage(options, input)
-      },
-    })
-
-    tools.generate_video = tool({
-      description:
-        'Generate a video from a text prompt using AI video generation models. ' +
-        'Video generation is asynchronous and can take 1–5 minutes. ' +
-        'Returns immediately with a job ID; the video will appear in the Outputs tab when complete. ' +
-        'Tries models in priority order: Veo 3.1 → Veo 3.1 Fast → Seedance v1.5 Pro → Grok Video → Wan v2.6. ' +
-        'Use this when the user asks to create, animate, or generate a video or clip.',
-      inputSchema: z.object({
-        prompt: z.string().describe('Detailed description of the video to generate'),
-        modelId: z
-          .enum(VIDEO_MODELS.map((m) => m.id) as [string, ...string[]])
-          .optional()
-          .describe('Specific video model to use (optional — uses priority fallback by default)'),
-        aspectRatio: z
-          .enum(['16:9', '9:16', '1:1', '4:3'])
-          .optional()
-          .describe('Aspect ratio of the generated video (default: 16:9)'),
-        duration: z
-          .number()
-          .min(3)
-          .max(60)
-          .optional()
-          .describe('Duration of the video in seconds (default: 8)'),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'generate_video')
-        return executeGenerateVideo(options, input)
-      },
-    })
-
     tools.run_daytona_sandbox = tool({
       description:
         'Run a CLI or script task inside the user’s persistent paid Daytona workspace. ' +
@@ -295,6 +242,131 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       },
     })
   }
+
+  // ── Image & Video generation tools (ask + act) ─────────────────────────────
+
+  tools.generate_image = tool({
+    description:
+      'Generate an image from a text prompt using AI image generation models. ' +
+      'Optionally accepts a reference image URL for editing or style transfer. ' +
+      'Saves the result to Outputs. ' +
+      'Use this whenever the user asks to create, draw, generate, or edit an image or picture.',
+    inputSchema: z.object({
+      prompt: z.string().describe('Detailed description of the image to generate or edit'),
+      modelId: z
+        .enum(IMAGE_MODELS.map((m) => m.id) as [string, ...string[]])
+        .optional()
+        .describe('Specific image model to use (optional — uses priority fallback by default)'),
+      aspectRatio: z
+        .enum(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'])
+        .optional()
+        .describe('Aspect ratio of the generated image (default: 1:1)'),
+      referenceImageUrl: z
+        .string()
+        .optional()
+        .describe('URL or data URL of a reference image to edit or use as style source'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'generate_image')
+      return executeGenerateImage(options, input)
+    },
+  })
+
+  const t2vModelIds = getVideoModelsBySubMode('text-to-video').map((m) => m.id) as [string, ...string[]]
+  tools.generate_video = tool({
+    description:
+      'Generate a video from a text prompt (text-to-video). ' +
+      'Video generation takes 1–5 minutes; saves the result to Outputs. ' +
+      'Supported models: Veo 3.1, Veo 3.1 Fast, Seedance v1.5 Pro, Grok Video, Wan v2.6, Kling v2.6. ' +
+      'Use this when the user asks to create or generate a video clip from a description.',
+    inputSchema: z.object({
+      prompt: z.string().describe('Detailed description of the video to generate'),
+      modelId: z.enum(t2vModelIds).optional().describe('Specific model to use (optional)'),
+      aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: 16:9)'),
+      duration: z.number().min(3).max(12).optional().describe('Duration in seconds (default: 8, max 12)'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'generate_video')
+      return executeGenerateVideo(options, { ...input, videoSubMode: 'text-to-video' })
+    },
+  })
+
+  const i2vModelIds = getVideoModelsBySubMode('image-to-video').map((m) => m.id) as [string, ...string[]]
+  tools.animate_image = tool({
+    description:
+      'Animate a static image into a video (image-to-video). ' +
+      'The source image becomes the video — you are adding motion to that exact scene. ' +
+      'Supported models: Veo 3.1, Grok Video, Seedance v1.5 Pro, Kling v2.6 I2V, Wan v2.6 I2V. ' +
+      'Use this when the user wants to animate, bring to life, or add motion to an existing image.',
+    inputSchema: z.object({
+      prompt: z.string().describe('Description of the motion or animation to apply'),
+      imageUrl: z.string().describe('URL or data URL of the source image to animate'),
+      modelId: z.enum(i2vModelIds).optional().describe('Specific model to use (optional)'),
+      aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: matches input image)'),
+      duration: z.number().min(3).max(15).optional().describe('Duration in seconds (default: 5)'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'animate_image')
+      return executeGenerateVideo(options, { ...input, videoSubMode: 'image-to-video' })
+    },
+  })
+
+  const r2vModelIds = getVideoModelsBySubMode('reference-to-video').map((m) => m.id) as [string, ...string[]]
+  tools.generate_video_with_reference = tool({
+    description:
+      'Generate a new video scene featuring characters from reference images (reference-to-video). ' +
+      'The reference images show what characters look like; your prompt describes a completely new scene. ' +
+      'Use character1, character2, etc. in the prompt to refer to each reference. ' +
+      'Supported model: Wan v2.6 R2V. ' +
+      'Use this when the user wants to place characters from photos into a new video scene.',
+    inputSchema: z.object({
+      prompt: z.string().describe('Scene description using character1, character2, etc. to reference each character'),
+      referenceUrl: z.string().describe('URL of a reference image or video showing the character'),
+      modelId: z.enum(r2vModelIds).optional().describe('Specific model to use (optional)'),
+      duration: z.number().min(2).max(10).optional().describe('Duration in seconds (default: 5)'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'generate_video_with_reference')
+      return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, duration: input.duration, videoSubMode: 'reference-to-video', imageUrl: input.referenceUrl })
+    },
+  })
+
+  const motionModelIds = getVideoModelsBySubMode('motion-control').map((m) => m.id) as [string, ...string[]]
+  tools.apply_motion_control = tool({
+    description:
+      'Transfer motion from a reference video onto a character image (motion control). ' +
+      'The model analyzes movements in the reference video and applies them to the character. ' +
+      'Supported model: Kling v2.6 Motion Control. ' +
+      'Use this when the user wants to make a character perform the same actions as someone in a video.',
+    inputSchema: z.object({
+      prompt: z.string().describe('Optional description of scene elements or camera movement'),
+      characterImageUrl: z.string().describe('URL of the character image to apply motion to'),
+      referenceVideoUrl: z.string().describe('URL of the reference video whose motion to transfer'),
+      modelId: z.enum(motionModelIds).optional().describe('Specific model to use (optional)'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'apply_motion_control')
+      return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'motion-control', imageUrl: input.characterImageUrl, referenceVideoUrl: input.referenceVideoUrl })
+    },
+  })
+
+  const editVideoModelIds = getVideoModelsBySubMode('video-editing').map((m) => m.id) as [string, ...string[]]
+  tools.edit_video = tool({
+    description:
+      'Edit an existing video using a text prompt (video editing). ' +
+      'Describe the changes and the model modifies the video accordingly. ' +
+      'Supported model: Grok Video (max 8.7s input, output up to 720p). ' +
+      'Use this when the user wants to modify, restyle, or transform an existing video.',
+    inputSchema: z.object({
+      prompt: z.string().describe('Description of the edits to apply to the video'),
+      videoUrl: z.string().describe('URL of the source video to edit'),
+      modelId: z.enum(editVideoModelIds).optional().describe('Specific model to use (optional)'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowedForMode(mode, 'edit_video')
+      return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl })
+    },
+  })
 
   return tools
 }

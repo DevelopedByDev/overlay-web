@@ -6,6 +6,15 @@ export const MAX_TOOL_STEPS_ASK = 10
 /** Max model tool rounds for Act mode — act/route.ts ToolLoopAgent uses this. */
 export const MAX_TOOL_STEPS_ACT = 12
 
+const GENERATION_TOOL_IDS = new Set<string>([
+  'generate_image',
+  'generate_video',
+  'animate_image',
+  'generate_video_with_reference',
+  'apply_motion_control',
+  'edit_video',
+])
+
 const OVERLAY_TOOL_IDS_ASK = new Set<string>([
   'search_knowledge',
   'save_memory',
@@ -15,6 +24,7 @@ const OVERLAY_TOOL_IDS_ASK = new Set<string>([
   'list_notes',
   'get_note',
   'list_skills',
+  ...GENERATION_TOOL_IDS,
 ])
 
 const OVERLAY_TOOL_IDS_ACT = new Set<string>([
@@ -23,8 +33,6 @@ const OVERLAY_TOOL_IDS_ACT = new Set<string>([
   'update_memory',
   'delete_memory',
   'browser_run_task',
-  'generate_image',
-  'generate_video',
   'run_daytona_sandbox',
   'list_notes',
   'get_note',
@@ -34,6 +42,7 @@ const OVERLAY_TOOL_IDS_ACT = new Set<string>([
   'list_skills',
   'draft_automation_from_chat',
   'draft_skill_from_chat',
+  ...GENERATION_TOOL_IDS,
 ])
 
 export function overlayToolIdsForMode(mode: ToolMode): ReadonlySet<string> {
