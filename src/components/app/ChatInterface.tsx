@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import posthog from 'posthog-js'
 import {
   Send,
   Plus,
@@ -3193,6 +3194,7 @@ export default function ChatInterface({
       }
       setChats((prev) => [newChat, ...prev])
       dispatchChatCreated({ chat: newChat })
+      posthog.capture('chat_new_chat_created', { mode: composerMode })
       const runtime = ensureConversationRuntime(data.id, {
         composerMode,
         selectedActModel,
@@ -3705,6 +3707,13 @@ async function hydrateCompletedAskTurnFromServer(
       setAttachmentError('Remove failed documents before sending.')
       return
     }
+
+    posthog.capture('chat_message_sent', {
+      mode: composerMode,
+      generation_type: effectiveGenType,
+      has_attachments: attachedImages.length > 0 || pendingChatDocuments.length > 0,
+      is_first_message: isFirstMessage,
+    })
 
     setIsOptimisticLoading(true)
 

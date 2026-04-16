@@ -62,6 +62,7 @@ function uniqueSources(values: Array<string | null | undefined>): string[] {
 function buildConnectSrc(): string[] {
   return uniqueSources([
     "'self'",
+    parseOrigin(process.env.NEXT_PUBLIC_POSTHOG_HOST),
     parseOrigin(process.env.NEXT_PUBLIC_SENTRY_DSN),
     parseOrigin(process.env.SENTRY_DSN),
     parseOrigin(process.env.NEXT_PUBLIC_CONVEX_URL),

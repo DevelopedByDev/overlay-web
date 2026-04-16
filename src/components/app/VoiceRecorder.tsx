@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { Mic, Square, Copy, MessageSquare, BookOpen, Loader2 } from 'lucide-react'
+import posthog from 'posthog-js'
 
 type OutputMode = 'clipboard' | 'chat' | 'note'
 
@@ -35,6 +36,7 @@ export default function VoiceRecorder({ userId: _userId }: { userId: string }) {
       mediaRecorder.start()
       setIsRecording(true)
       setStatus('Recording...')
+      posthog.capture('voice_recording_started', { output_mode: outputMode })
     } catch (err) {
       setStatus('Microphone access denied. Please allow microphone access.')
       console.error('[VoiceRecorder] Start error:', err)
@@ -69,6 +71,10 @@ export default function VoiceRecorder({ userId: _userId }: { userId: string }) {
       }
       const text = data.text || ''
       setTranscript(text)
+      posthog.capture('voice_transcription_completed', {
+        output_mode: outputMode,
+        transcript_length: text.length,
+      })
 
       if (outputMode === 'clipboard') {
         await navigator.clipboard.writeText(text)
@@ -79,6 +85,10 @@ export default function VoiceRecorder({ userId: _userId }: { userId: string }) {
         setStatus('Transcription ready. Send to chat below.')
       }
     } catch (err) {
+      posthog.capture('voice_transcription_error', {
+        output_mode: outputMode,
+        error: err instanceof Error ? err.message : 'unknown',
+      })
       setStatus(err instanceof Error ? err.message : 'Transcription failed. Please try again.')
       console.error('[VoiceRecorder] Transcribe error:', err)
     } finally {
@@ -98,6 +108,7 @@ export default function VoiceRecorder({ userId: _userId }: { userId: string }) {
         }),
       })
       if (res.ok) {
+        posthog.capture('voice_saved_as_note', { transcript_length: text.length })
         setStatus('Saved as note.')
       }
     } catch {
