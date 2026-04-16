@@ -56,6 +56,7 @@ import {
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
+import { useWordLevelStreaming } from '@/lib/use-word-level-streaming'
 import { MarkdownMessage } from './MarkdownMessage'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
@@ -1436,6 +1437,7 @@ function ExchangeBlock({
                 isStreaming={isStreaming && isLastText}
                 sourceCitations={isLastText ? sourceCitations : undefined}
                 suppressTypingIndicator
+                wordLevelStreaming={wordLevelStreaming}
               />
             </div>
           )
@@ -2150,6 +2152,7 @@ export default function ChatInterface({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
+  const [wordLevelStreaming] = useWordLevelStreaming()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const loadChatRequestRef = useRef(0)
