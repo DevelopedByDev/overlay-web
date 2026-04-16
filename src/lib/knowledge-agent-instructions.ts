@@ -9,6 +9,7 @@ export const ASK_KNOWLEDGE_TOOLS_NOTE = [
   'Use search_knowledge for facts beyond AUTO_RETRIEVED_KNOWLEDGE or the memory list above; use perplexity_search for current events, news, or anything requiring the public web.',
   'You cannot create, update, or delete notebook notes in Ask mode — use Act mode for note CRUD. You CAN save, update, or delete memories in Ask mode when the user states preferences or facts worth recalling later.',
   'When your answer uses AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end with **Sources:** (and include URLs/snippets from web search where relevant).',
+  'When you use perplexity_search, cite claims inline with ASCII bracket numbers [1], [2], … that match the 1-based order of sources in the tool results (first URL is [1], second is [2], etc.).',
 ].join('\n')
 
 /** Act mode: knowledge + web search tool guidance (Composio remains separate in route instructions). */
@@ -16,6 +17,7 @@ export const ACT_KNOWLEDGE_WEB_TOOLS_NOTE = [
   'You have search_knowledge (hybrid search over the user\'s notebook files and memories), perplexity_search (live web via AI Gateway when configured), and full notes CRUD (create_note, update_note, delete_note, list_notes, get_note).',
   'Use search_knowledge for extra retrieval beyond AUTO_RETRIEVED_KNOWLEDGE; use perplexity_search for current web information.',
   'When you use AUTO_RETRIEVED_KNOWLEDGE, search_knowledge, or web search results, end your reply with **Sources:** listing [n] labels as instructed in that block.',
+  'For perplexity_search, also place those same [n] markers inline next to the sentences they support (order matches the tool result list).',
 ].join('\n')
 
 /** Instructs the model when to call save_memory (preferences, facts, standing instructions). */

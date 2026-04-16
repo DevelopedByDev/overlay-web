@@ -22,8 +22,7 @@ import {
   ArrowUp,
   Play,
   MessageSquare,
-  Globe,
-  ExternalLink,
+  BookOpen,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
@@ -46,6 +45,7 @@ import {
   type GenerationMode,
 } from '@/lib/models'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
+import type { WebSourceItem } from '@/lib/web-sources'
 import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
 import {
   CHAT_CREATED_EVENT,
@@ -58,6 +58,7 @@ import {
 } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
+import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
@@ -1148,13 +1149,6 @@ function getDraftFromToolBlock(block: ToolVisualBlock):
   return null
 }
 
-type WebSourceItem = {
-  url: string
-  title: string
-  snippet?: string
-  origin: 'web-search' | 'browser'
-}
-
 function safeReadString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
@@ -1261,44 +1255,6 @@ function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): WebSourceI
   return items
 }
 
-function WebSourcesSection({ sources, compact = false }: { sources: WebSourceItem[]; compact?: boolean }) {
-  if (sources.length === 0) return null
-  return (
-    <div className={`w-full px-1 ${compact ? 'py-1' : 'pt-1.5'}`}>
-      <div className="max-w-[min(100%,36rem)]">
-        {!compact ? (
-          <p className="mb-2 text-[11px] uppercase tracking-[0.11em] text-[var(--muted)]">Sources</p>
-        ) : null}
-        <div className="space-y-1.5">
-          {sources.map((source, idx) => (
-            <a
-              key={`${source.url}-${idx}`}
-              href={source.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 transition-colors hover:bg-[var(--surface-subtle)]"
-            >
-              <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#f0f0f0] text-[#666]">
-                <Globe size={11} strokeWidth={1.75} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="line-clamp-1 text-[12px] font-medium text-[var(--foreground)]">{source.title}</span>
-                {source.snippet ? (
-                  <span className="mt-0.5 line-clamp-2 block text-[11px] leading-relaxed text-[var(--muted)]">{source.snippet}</span>
-                ) : null}
-                <span className="mt-0.5 block truncate text-[10px] text-[var(--muted-light)]">{source.url}</span>
-              </span>
-              <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center text-[var(--muted)] transition-colors group-hover:text-[var(--foreground)]">
-                <ExternalLink size={12} strokeWidth={1.75} />
-              </span>
-            </a>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function scrollToExchangeTurn(turnId: string) {
   const safe = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(turnId) : turnId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
   document.querySelector(`[data-exchange-turn="${safe}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1377,13 +1333,17 @@ interface ExchangeBlockProps {
   replyThreadMeta: { replyToTurnId: string; replySnippet: string } | null
   onJumpToReply: (turnId: string) => void
   onOpenDraft: (state: DraftModalState) => void
+  /** Open the shared sources sidebar with these web sources (lifted to ChatInterface). */
+  onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
+  /** Whether the shared sidebar is currently showing this exchange's sources. */
+  isSourcesOpenForThis: boolean
 }
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -1414,7 +1374,7 @@ function ExchangeBlock({
       responseSettled && (assistantPlainText.length > 0 || !!errorMessage || interrupted)
     return (
       <div
-        className={`flex flex-col gap-2 message-appear transition-all duration-300 ease-out ${
+        className={`relative flex flex-col gap-2 message-appear transition-all duration-300 ease-out ${
           isExiting ? 'pointer-events-none opacity-0 -translate-y-1' : 'translate-y-0 opacity-100'
         }`}
         data-exchange-idx={exchIdx}
@@ -1588,13 +1548,12 @@ function ExchangeBlock({
                 text={block.text}
                 isStreaming={isStreaming && isLastText}
                 sourceCitations={isLastText ? sourceCitations : undefined}
+                webSources={isLastText && webSources.length > 0 ? webSources : undefined}
                 suppressTypingIndicator
               />
             </div>
           )
         })}
-
-        {webSources.length > 0 ? <WebSourcesSection sources={webSources} compact /> : null}
 
         {!isStreaming && !errorMessage && automationSuggestion && !hasDraftToolCard ? (
           <DraftSuggestionCard
@@ -1688,11 +1647,27 @@ function ExchangeBlock({
             >
               <Reply size={14} strokeWidth={1.75} />
             </button>
+            {webSources.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => onOpenSources(turnIdForActions ?? userMsgId, webSources)}
+                disabled={isExiting}
+                className={`ml-0.5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 ${
+                  isSourcesOpenForThis
+                    ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                    : 'text-[var(--muted)]'
+                }`}
+                aria-label="Open sources"
+                aria-pressed={isSourcesOpenForThis}
+              >
+                <BookOpen size={14} strokeWidth={1.75} className="shrink-0" />
+                <span className="text-[11px] font-medium">Sources</span>
+              </button>
+            ) : null}
             <span className="ml-2 min-w-0 text-left text-[11px] text-[var(--muted-light)]">{modelLabel}</span>
           </div>
         )}
 
-        {webSources.length > 0 && responseSettled ? <WebSourcesSection sources={webSources} /> : null}
       </div>
     )
 }
@@ -2324,6 +2299,13 @@ export default function ChatInterface({
   const [chats, setChats] = useState<Conversation[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [composerMode, setComposerMode] = useState<'ask' | 'act'>('act')
+  /** Lifted sources-panel state so the sidebar sits beside the chat area and shrinks it,
+   *  matching the AppSidebar width-transition pattern instead of overlaying the composer. */
+  const [sourcesPanel, setSourcesPanel] = useState<{ turnId: string; sources: WebSourceItem[] } | null>(null)
+  const openSourcesPanel = useCallback((turnId: string, sources: WebSourceItem[]) => {
+    setSourcesPanel((prev) => (prev && prev.turnId === turnId ? null : { turnId, sources }))
+  }, [])
+  const closeSourcesPanel = useCallback(() => setSourcesPanel(null), [])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
@@ -3384,6 +3366,7 @@ export default function ChatInterface({
     persistActiveRuntimeUiState()
     clearTransientComposerState()
     setInterruptedExchangeIdx(null)
+    setSourcesPanel(null)
     markRead(chatId)
     activeChatIdRef.current = chatId
     setActiveViewer(chatId)
@@ -5228,6 +5211,11 @@ async function hydrateCompletedAskTurnFromServer(
                     replyThreadMeta={getUserReplyThreadMeta(msg)}
                     onJumpToReply={jumpToReplyTarget}
                     onOpenDraft={setDraftModalState}
+                    onOpenSources={openSourcesPanel}
+                    isSourcesOpenForThis={
+                      !!sourcesPanel &&
+                      sourcesPanel.turnId === (textTurnIdForActions ?? msg.id)
+                    }
                   />
                 )
               }
@@ -5612,6 +5600,11 @@ async function hydrateCompletedAskTurnFromServer(
           </div>
         )}
       </div>
+      <WebSourcesSidebar
+        open={!!sourcesPanel}
+        onClose={closeSourcesPanel}
+        sources={sourcesPanel?.sources ?? []}
+      />
     </div>
   )
 }
