@@ -22,6 +22,8 @@ import {
   ArrowUp,
   Play,
   MessageSquare,
+  Globe,
+  ExternalLink,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
@@ -1146,6 +1148,157 @@ function getDraftFromToolBlock(block: ToolVisualBlock):
   return null
 }
 
+type WebSourceItem = {
+  url: string
+  title: string
+  snippet?: string
+  origin: 'web-search' | 'browser'
+}
+
+function safeReadString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function normalizeWebUrl(raw: string): string | null {
+  try {
+    const normalized = new URL(raw).toString()
+    return normalized
+  } catch {
+    return null
+  }
+}
+
+function pickSourceTitle(entry: Record<string, unknown>, fallbackUrl: string): string {
+  const candidate =
+    safeReadString(entry.title) ??
+    safeReadString(entry.name) ??
+    safeReadString(entry.domain) ??
+    safeReadString(entry.host)
+  if (candidate) return candidate
+  try {
+    const parsed = new URL(fallbackUrl)
+    return parsed.hostname.replace(/^www\./i, '')
+  } catch {
+    return fallbackUrl
+  }
+}
+
+function collectSourceCandidatesFromUnknown(
+  value: unknown,
+  origin: 'web-search' | 'browser',
+  acc: WebSourceItem[],
+  seen: Set<string>,
+  depth = 0,
+) {
+  if (depth > 5) return
+  if (Array.isArray(value)) {
+    for (const item of value) collectSourceCandidatesFromUnknown(item, origin, acc, seen, depth + 1)
+    return
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string') {
+      const urlMatches = value.match(/https?:\/\/[^\s)\]]+/g)
+      if (!urlMatches) return
+      for (const rawUrl of urlMatches) {
+        const normalized = normalizeWebUrl(rawUrl)
+        if (!normalized || seen.has(normalized)) continue
+        seen.add(normalized)
+        acc.push({
+          url: normalized,
+          title: pickSourceTitle({}, normalized),
+          origin,
+        })
+      }
+    }
+    return
+  }
+
+  const rec = value as Record<string, unknown>
+  const possibleUrl =
+    safeReadString(rec.url) ??
+    safeReadString(rec.link) ??
+    safeReadString(rec.href) ??
+    safeReadString(rec.sourceUrl) ??
+    safeReadString(rec.source_url)
+  if (possibleUrl) {
+    const normalized = normalizeWebUrl(possibleUrl)
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized)
+      acc.push({
+        url: normalized,
+        title: pickSourceTitle(rec, normalized),
+        snippet:
+          safeReadString(rec.snippet) ??
+          safeReadString(rec.summary) ??
+          safeReadString(rec.description) ??
+          undefined,
+        origin,
+      })
+    }
+  }
+
+  for (const child of Object.values(rec)) {
+    if (child && (typeof child === 'object' || typeof child === 'string')) {
+      collectSourceCandidatesFromUnknown(child, origin, acc, seen, depth + 1)
+    }
+  }
+}
+
+function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): WebSourceItem[] {
+  const items: WebSourceItem[] = []
+  const seen = new Set<string>()
+  for (const block of blocks) {
+    if (block.kind !== 'tool') continue
+    if (block.state !== 'output-available') continue
+    if (block.name !== 'perplexity_search' && block.name !== 'browser_run_task') continue
+    collectSourceCandidatesFromUnknown(
+      block.toolOutput,
+      block.name === 'perplexity_search' ? 'web-search' : 'browser',
+      items,
+      seen,
+    )
+  }
+  return items
+}
+
+function WebSourcesSection({ sources, compact = false }: { sources: WebSourceItem[]; compact?: boolean }) {
+  if (sources.length === 0) return null
+  return (
+    <div className={`w-full px-1 ${compact ? 'py-1' : 'pt-1.5'}`}>
+      <div className="max-w-[min(100%,36rem)]">
+        {!compact ? (
+          <p className="mb-2 text-[11px] uppercase tracking-[0.11em] text-[var(--muted)]">Sources</p>
+        ) : null}
+        <div className="space-y-1.5">
+          {sources.map((source, idx) => (
+            <a
+              key={`${source.url}-${idx}`}
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 transition-colors hover:bg-[var(--surface-subtle)]"
+            >
+              <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#f0f0f0] text-[#666]">
+                <Globe size={11} strokeWidth={1.75} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="line-clamp-1 text-[12px] font-medium text-[var(--foreground)]">{source.title}</span>
+                {source.snippet ? (
+                  <span className="mt-0.5 line-clamp-2 block text-[11px] leading-relaxed text-[var(--muted)]">{source.snippet}</span>
+                ) : null}
+                <span className="mt-0.5 block truncate text-[10px] text-[var(--muted-light)]">{source.url}</span>
+              </span>
+              <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center text-[var(--muted)] transition-colors group-hover:text-[var(--foreground)]">
+                <ExternalLink size={12} strokeWidth={1.75} />
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function scrollToExchangeTurn(turnId: string) {
   const safe = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(turnId) : turnId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
   document.querySelector(`[data-exchange-turn="${safe}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1249,6 +1402,7 @@ function ExchangeBlock({
       [assistantVisualBlocks],
     )
     const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
+    const webSources = useMemo(() => collectWebSourcesFromBlocks(assistantVisualBlocks), [assistantVisualBlocks])
     const responseSettled = !responseInProgress
     const copyPlainText =
       interrupted && !errorMessage
@@ -1440,6 +1594,8 @@ function ExchangeBlock({
           )
         })}
 
+        {webSources.length > 0 ? <WebSourcesSection sources={webSources} compact /> : null}
+
         {!isStreaming && !errorMessage && automationSuggestion && !hasDraftToolCard ? (
           <DraftSuggestionCard
             title={automationSuggestion.kind === 'automation' ? 'Turn This Into An Automation' : 'Save This As A Skill'}
@@ -1535,6 +1691,8 @@ function ExchangeBlock({
             <span className="ml-2 min-w-0 text-left text-[11px] text-[var(--muted-light)]">{modelLabel}</span>
           </div>
         )}
+
+        {webSources.length > 0 && responseSettled ? <WebSourcesSection sources={webSources} /> : null}
       </div>
     )
 }
