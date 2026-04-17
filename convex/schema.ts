@@ -160,6 +160,7 @@ export default defineSchema({
     userId: v.string(),
     theme: v.union(v.literal('light'), v.literal('dark')),
     useSecondarySidebar: v.boolean(),
+    chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),

@@ -1350,6 +1350,8 @@ function ExchangeBlock({
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onOpenSources, isSourcesOpenForThis,
 }: ExchangeBlockProps) {
+    const { settings: appSettings } = useAppSettings()
+    const streamingMode = appSettings.chatStreamingMode
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const hasDraftToolCard = assistantVisualBlocks.some(
@@ -1555,6 +1557,7 @@ function ExchangeBlock({
                 sourceCitations={isLastText ? sourceCitations : undefined}
                 webSources={isLastText && webSources.length > 0 ? webSources : undefined}
                 suppressTypingIndicator
+                streamingMode={streamingMode}
               />
             </div>
           )
@@ -1595,13 +1598,13 @@ function ExchangeBlock({
           />
         ) : null}
 
-        {responseInProgress && (
+        {responseInProgress && assistantVisualBlocks.length === 0 && (
           <div className="flex items-center px-1 py-2 min-h-7" aria-live="polite" aria-busy="true">
-            <div className="md-typing-indicator" aria-label="Response loading">
-              <span />
-              <span />
-              <span />
-            </div>
+            <span
+              className="overlay-stream-marker overlay-stream-marker--standalone"
+              aria-label="Response loading"
+              role="img"
+            />
           </div>
         )}
 

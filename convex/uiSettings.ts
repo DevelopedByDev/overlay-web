@@ -3,15 +3,18 @@ import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/s
 import { requireServerSecret } from './lib/auth'
 
 const themeValidator = v.union(v.literal('light'), v.literal('dark'))
+const chatStreamingModeValidator = v.union(v.literal('token'), v.literal('chunk'))
 const uiSettingsValidator = v.object({
   theme: themeValidator,
   useSecondarySidebar: v.boolean(),
+  chatStreamingMode: chatStreamingModeValidator,
 })
 
 function defaultUiSettings() {
   return {
     theme: 'light' as const,
     useSecondarySidebar: false,
+    chatStreamingMode: 'token' as const,
   }
 }
 
@@ -38,6 +41,7 @@ export const getByServer = query({
     return {
       theme: existing.theme,
       useSecondarySidebar: existing.useSecondarySidebar,
+      chatStreamingMode: existing.chatStreamingMode ?? 'token',
     }
   },
 })
@@ -48,6 +52,7 @@ export const upsertByServer = mutation({
     serverSecret: v.string(),
     theme: v.optional(themeValidator),
     useSecondarySidebar: v.optional(v.boolean()),
+    chatStreamingMode: v.optional(chatStreamingModeValidator),
   },
   returns: uiSettingsValidator,
   handler: async (ctx, args) => {
@@ -55,8 +60,10 @@ export const upsertByServer = mutation({
     const now = Date.now()
     const existing = await getExistingSettings(ctx, args.userId)
     const next = {
-      theme: args.theme ?? existing?.theme ?? 'light',
+      theme: args.theme ?? existing?.theme ?? 'light' as const,
       useSecondarySidebar: args.useSecondarySidebar ?? existing?.useSecondarySidebar ?? false,
+      chatStreamingMode:
+        args.chatStreamingMode ?? existing?.chatStreamingMode ?? 'token' as const,
     }
 
     if (existing) {
