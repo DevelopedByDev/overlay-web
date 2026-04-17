@@ -4,10 +4,8 @@ import { WorkOS } from '@workos-inc/node'
 const PROVIDER_VAULT_NAMES: Record<string, string> = {
   groq: 'GROQ_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
-  minimax: 'MINIMAX_API_KEY',
   composio: 'COMPOSIO_API_KEY',
   ai_gateway: 'AI_GATEWAY_API_KEY',
-  mixpanel: 'MIXPANEL_TOKEN',
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000

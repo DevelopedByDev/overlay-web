@@ -8,6 +8,10 @@ function deriveAesKey(secret: string): Buffer {
   return createHash('sha256').update(secret).digest()
 }
 
+// Minimum length for a key after .trim(). 32 chars of hex = 128 bits of
+// entropy, which is the floor we accept. Generate with `openssl rand -hex 32`.
+const MIN_KEY_LENGTH = 32
+
 function getRequiredEncryptionSecret(params: {
   primaryEnvVar: string
   legacyEnvVar?: string
@@ -15,18 +19,41 @@ function getRequiredEncryptionSecret(params: {
 }): string {
   const primary = process.env[params.primaryEnvVar]?.trim()
   if (primary) {
+    if (primary.length < MIN_KEY_LENGTH) {
+      throw new Error(
+        `${params.primaryEnvVar} is too short for ${params.purpose} (got ${primary.length} chars, need >= ${MIN_KEY_LENGTH})`,
+      )
+    }
+    // In production, refuse to share the same secret with other domains. This
+    // prevents a single leak from compromising multiple crypto domains.
+    if (process.env.NODE_ENV === 'production' && params.legacyEnvVar) {
+      const legacy = process.env[params.legacyEnvVar]?.trim()
+      if (legacy && legacy === primary) {
+        throw new Error(
+          `${params.primaryEnvVar} must not equal ${params.legacyEnvVar} in production (${params.purpose})`,
+        )
+      }
+    }
+    // Disallow reuse of the internal service-auth secret for session crypto,
+    // regardless of which var it came in under.
+    const internalSecret = process.env['INTERNAL_API_SECRET']?.trim()
+    if (internalSecret && internalSecret === primary) {
+      throw new Error(
+        `${params.primaryEnvVar} must not equal INTERNAL_API_SECRET (${params.purpose})`,
+      )
+    }
     return primary
   }
 
   if (process.env.NODE_ENV !== 'production' && params.legacyEnvVar) {
     const legacy = process.env[params.legacyEnvVar]?.trim()
-    if (legacy) {
+    if (legacy && legacy.length >= MIN_KEY_LENGTH) {
       return legacy
     }
   }
 
   const fallbackMessage = params.legacyEnvVar && process.env.NODE_ENV !== 'production'
-    ? ` or ${params.legacyEnvVar} (dev only)`
+    ? ` or ${params.legacyEnvVar} (dev only, must be >= ${MIN_KEY_LENGTH} chars)`
     : ''
   throw new Error(`${params.primaryEnvVar} is not configured for ${params.purpose}${fallbackMessage}`)
 }
