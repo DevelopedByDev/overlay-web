@@ -411,6 +411,7 @@ export const update = mutation({
       await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
         sourceKind: 'file',
         sourceId: fileId,
+        userId,
       })
     }
     if (shouldReindex) {
@@ -448,6 +449,7 @@ export const remove = mutation({
         await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
           sourceKind: 'file',
           sourceId: id,
+          userId,
         })
       }
       if (file?.storageId) {

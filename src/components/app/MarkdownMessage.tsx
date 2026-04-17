@@ -3,8 +3,6 @@
 import { type ReactNode, useMemo, useState, useSyncExternalStore } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
-import rehypeRaw from 'rehype-raw'
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import type { Pluggable } from 'unified'
@@ -35,15 +33,6 @@ function extractLinkText(node: ReactNode): string {
     return extractLinkText((node as { props: { children?: ReactNode } }).props.children)
   }
   return ''
-}
-
-const mdSanitizeSchema = {
-  ...defaultSchema,
-  tagNames: [...(defaultSchema.tagNames ?? []), 'br'],
-  attributes: {
-    ...defaultSchema.attributes,
-    br: [],
-  },
 }
 
 function stripHtmlishToMarkdown(text: string): string {
@@ -242,11 +231,7 @@ const mdComponents = {
 }
 
 const markdownRemarkPlugins = [remarkGfm, remarkMath]
-const markdownRehypePlugins: Pluggable[] = [
-  rehypeRaw,
-  [rehypeSanitize, mdSanitizeSchema] as Pluggable,
-  rehypeKatex,
-]
+const markdownRehypePlugins: Pluggable[] = [rehypeKatex]
 
 // Find the char position of a safe paragraph boundary in `text`.
 // We only split at \n\n that is NOT inside a code fence, a table, or a math block.

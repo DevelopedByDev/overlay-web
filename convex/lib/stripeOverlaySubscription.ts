@@ -45,8 +45,7 @@ export function mapPriceToTier(priceId?: string): 'free' | 'pro' | 'max' {
   if (priceId === proPriceId) return 'pro'
   if (priceId === maxPriceId) return 'max'
 
-  console.warn(`[Stripe] Unknown price ID: ${priceId}, defaulting to free`)
-  return 'free'
+  throw new Error(`[Stripe] Unknown price ID: ${priceId ?? '(undefined)'}. Add it to STRIPE_*_PRICE_ID env vars or audit the webhook.`)
 }
 
 export function extractCustomerInfo(
