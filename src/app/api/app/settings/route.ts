@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppSettings } from '@overlay/app-core'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-
-type UiSettings = {
-  theme: 'light' | 'dark'
-  useSecondarySidebar: boolean
-  chatStreamingMode: 'token' | 'chunk'
-}
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await resolveAuthenticatedAppUser(request, {})
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const settings = await convex.query<UiSettings>(
+    const settings = await convex.query<AppSettings>(
       'uiSettings:getByServer',
       {
         userId: auth.userId,
@@ -74,7 +69,7 @@ export async function PATCH(request: NextRequest) {
       mutationArgs.chatStreamingMode = body.chatStreamingMode
     }
 
-    const settings = await convex.mutation<UiSettings>(
+    const settings = await convex.mutation<AppSettings>(
       'uiSettings:upsertByServer',
       mutationArgs,
       { throwOnError: true },
