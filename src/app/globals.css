@@ -523,35 +523,124 @@ html {
   margin: 0.25rem 0 1rem;
 }
 
-/* Typing dots for MarkdownMessage buffering state */
-@keyframes typingDot {
-  0%, 60%, 100% { opacity: 0.2; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-3px); }
+/* Streaming marker — pulsing Overlay logo. Used in two places:
+   1. Inline at the tail of the most recent streaming token (token mode).
+   2. Standalone before any tokens exist, as the "thinking" indicator.
+   The same pulse animates opacity and scale so the logo breathes in place. */
+@keyframes overlayStreamMarkerPulse {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
 }
 
-.md-typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 0;
-  height: 1.2rem;
-}
-
-.md-typing-indicator span {
+.overlay-stream-marker {
   display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #3f3f46;
-  animation: typingDot 1.2s ease-in-out infinite;
+  width: 0.95em;
+  height: 0.95em;
+  margin-left: 0.35em;
+  vertical-align: -0.12em;
+  background-image: url('/assets/overlay-logo.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  animation: overlayStreamMarkerPulse 1.3s ease-in-out infinite;
+  pointer-events: none;
+  /* Ensure the marker is visible even on the first frame when the paragraph is empty. */
+  min-width: 14px;
+  min-height: 14px;
 }
 
-.md-typing-indicator span:nth-child(2) {
-  animation-delay: 0.2s;
+/* Standalone variant — the pre-generation "thinking" indicator (used by the bottom-of-
+   exchange loader and any case where the marker stands on its own line). Bigger and
+   centered so it reads clearly without any text alongside it. */
+.overlay-stream-marker--standalone,
+.markdown-content--streaming p:first-child > .overlay-stream-marker:only-child,
+.markdown-content--streaming > .overlay-stream-marker:only-child {
+  margin-left: 0;
+  width: 1.6em;
+  height: 1.6em;
+  min-width: 24px;
+  min-height: 24px;
+  vertical-align: middle;
 }
 
-.md-typing-indicator span:nth-child(3) {
-  animation-delay: 0.4s;
+/* Token-mode streaming: per-character fade-in. A rehype plugin wraps each non-
+   whitespace character in `<span class="md-char">` while streaming; React reconciles
+   by position, so only the newly-arrived characters mount and run this animation —
+   earlier characters stay solid. Combined with the client-side reveal pacer, each
+   character drips onto the page individually and softly fades into view, like it's
+   floating in rather than appearing as word/token chunks. */
+@keyframes overlayStreamCharFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.markdown-content--streaming .md-char {
+  animation: overlayStreamCharFade 380ms cubic-bezier(0.22, 0.7, 0.22, 1) both;
+  will-change: opacity;
+}
+
+/* Softer entrance for newly-mounted block elements (first line of a new paragraph,
+   list item, heading, etc.) so the block boundary doesn't snap in as a hard
+   rectangle behind the per-character fade. Short and translate-free so it doesn't
+   fight the char fade running inside the same block. */
+@keyframes overlayStreamBlockSoften {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.markdown-content--streaming p,
+.markdown-content--streaming li,
+.markdown-content--streaming td,
+.markdown-content--streaming th,
+.markdown-content--streaming h1,
+.markdown-content--streaming h2,
+.markdown-content--streaming h3,
+.markdown-content--streaming h4,
+.markdown-content--streaming h5,
+.markdown-content--streaming h6,
+.markdown-content--streaming blockquote,
+.markdown-content--streaming pre {
+  animation: overlayStreamBlockSoften 260ms ease-out both;
+  will-change: opacity;
+}
+
+/* The marker is its own animation — don't let the block/char fades override it. */
+.markdown-content--streaming .overlay-stream-marker {
+  animation: overlayStreamMarkerPulse 1.3s ease-in-out infinite;
+  opacity: 1;
+}
+
+/* Respect reduced-motion users: skip all streaming fades and just reveal text. */
+@media (prefers-reduced-motion: reduce) {
+  .markdown-content--streaming .md-char,
+  .markdown-content--streaming p,
+  .markdown-content--streaming li,
+  .markdown-content--streaming td,
+  .markdown-content--streaming th,
+  .markdown-content--streaming h1,
+  .markdown-content--streaming h2,
+  .markdown-content--streaming h3,
+  .markdown-content--streaming h4,
+  .markdown-content--streaming h5,
+  .markdown-content--streaming h6,
+  .markdown-content--streaming blockquote,
+  .markdown-content--streaming pre {
+    animation: none;
+  }
 }
 
 /* Message row appear animation */
@@ -835,10 +924,6 @@ html {
 [data-theme='dark'] .app-note-editor .Tiptap-mathematics-editor {
   background: var(--surface-subtle);
   color: var(--foreground);
-}
-
-[data-theme='dark'] .md-typing-indicator span {
-  background: var(--muted-light);
 }
 
 /* Gradient orb animation */

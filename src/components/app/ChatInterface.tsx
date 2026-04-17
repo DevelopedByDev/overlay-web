@@ -23,6 +23,7 @@ import {
   ArrowUp,
   Play,
   MessageSquare,
+  BookOpen,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
@@ -45,6 +46,7 @@ import {
   type GenerationMode,
 } from '@/lib/models'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
+import type { WebSourceItem } from '@/lib/web-sources'
 import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
 import {
   CHAT_CREATED_EVENT,
@@ -57,6 +59,7 @@ import {
 } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
+import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
@@ -565,6 +568,7 @@ function describeComposioIntegrationTool(toolName: string, input?: Record<string
 function getDescriptiveToolLabel(toolName: string, toolInput?: Record<string, unknown>): string {
   const map: Record<string, string> = {
     browser_run_task: 'Browsing the web',
+    interactive_browser_session: 'Browsing the web',
     perplexity_search: 'Searching the web',
     search_knowledge: 'Searching your knowledge',
     list_skills: 'Checking your skills',
@@ -620,7 +624,7 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
       i++
       continue
     }
-    if (b.kind === 'tool' && b.name === 'browser_run_task') {
+    if (b.kind === 'tool' && (b.name === 'browser_run_task' || b.name === 'interactive_browser_session')) {
       out.push({ kind: 'browser', block: b, originIndex: i })
       i++
       continue
@@ -630,7 +634,7 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
       const group: ToolVisualBlock[] = []
       while (i < blocks.length) {
         const t = blocks[i]!
-        if (t.kind !== 'tool' || t.name === 'browser_run_task') break
+        if (t.kind !== 'tool' || t.name === 'browser_run_task' || t.name === 'interactive_browser_session') break
         group.push(t)
         i++
       }
@@ -877,7 +881,7 @@ function BrowserToolBlock({
       ? (block.toolOutput as Record<string, unknown>)
       : undefined
   const liveUrl = typeof toolOutput?.liveUrl === 'string' ? toolOutput.liveUrl : null
-  const label = getDescriptiveToolLabel('browser_run_task', block.toolInput)
+  const label = getDescriptiveToolLabel('interactive_browser_session', block.toolInput)
   const running = !isDone && !isError
   const hasDetails = Boolean(task || liveUrl)
   /** After the tool finishes, details start collapsed; user expands with the chevron. */
@@ -1147,6 +1151,116 @@ function getDraftFromToolBlock(block: ToolVisualBlock):
   return null
 }
 
+function safeReadString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function normalizeWebUrl(raw: string): string | null {
+  try {
+    const normalized = new URL(raw).toString()
+    return normalized
+  } catch {
+    return null
+  }
+}
+
+function pickSourceTitle(entry: Record<string, unknown>, fallbackUrl: string): string {
+  const candidate =
+    safeReadString(entry.title) ??
+    safeReadString(entry.name) ??
+    safeReadString(entry.domain) ??
+    safeReadString(entry.host)
+  if (candidate) return candidate
+  try {
+    const parsed = new URL(fallbackUrl)
+    return parsed.hostname.replace(/^www\./i, '')
+  } catch {
+    return fallbackUrl
+  }
+}
+
+function collectSourceCandidatesFromUnknown(
+  value: unknown,
+  origin: 'web-search' | 'browser',
+  acc: WebSourceItem[],
+  seen: Set<string>,
+  depth = 0,
+) {
+  if (depth > 5) return
+  if (Array.isArray(value)) {
+    for (const item of value) collectSourceCandidatesFromUnknown(item, origin, acc, seen, depth + 1)
+    return
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string') {
+      const urlMatches = value.match(/https?:\/\/[^\s)\]]+/g)
+      if (!urlMatches) return
+      for (const rawUrl of urlMatches) {
+        const normalized = normalizeWebUrl(rawUrl)
+        if (!normalized || seen.has(normalized)) continue
+        seen.add(normalized)
+        acc.push({
+          url: normalized,
+          title: pickSourceTitle({}, normalized),
+          origin,
+        })
+      }
+    }
+    return
+  }
+
+  const rec = value as Record<string, unknown>
+  const possibleUrl =
+    safeReadString(rec.url) ??
+    safeReadString(rec.link) ??
+    safeReadString(rec.href) ??
+    safeReadString(rec.sourceUrl) ??
+    safeReadString(rec.source_url)
+  if (possibleUrl) {
+    const normalized = normalizeWebUrl(possibleUrl)
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized)
+      acc.push({
+        url: normalized,
+        title: pickSourceTitle(rec, normalized),
+        snippet:
+          safeReadString(rec.snippet) ??
+          safeReadString(rec.summary) ??
+          safeReadString(rec.description) ??
+          undefined,
+        origin,
+      })
+    }
+  }
+
+  for (const child of Object.values(rec)) {
+    if (child && (typeof child === 'object' || typeof child === 'string')) {
+      collectSourceCandidatesFromUnknown(child, origin, acc, seen, depth + 1)
+    }
+  }
+}
+
+function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): WebSourceItem[] {
+  const items: WebSourceItem[] = []
+  const seen = new Set<string>()
+  for (const block of blocks) {
+    if (block.kind !== 'tool') continue
+    if (block.state !== 'output-available') continue
+    if (
+      block.name !== 'perplexity_search' &&
+      block.name !== 'browser_run_task' &&
+      block.name !== 'interactive_browser_session'
+    ) continue
+    collectSourceCandidatesFromUnknown(
+      block.toolOutput,
+      block.name === 'perplexity_search' ? 'web-search' : 'browser',
+      items,
+      seen,
+    )
+  }
+  return items
+}
+
 function scrollToExchangeTurn(turnId: string) {
   const safe = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(turnId) : turnId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
   document.querySelector(`[data-exchange-turn="${safe}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1225,14 +1339,20 @@ interface ExchangeBlockProps {
   replyThreadMeta: { replyToTurnId: string; replySnippet: string } | null
   onJumpToReply: (turnId: string) => void
   onOpenDraft: (state: DraftModalState) => void
+  /** Open the shared sources sidebar with these web sources (lifted to ChatInterface). */
+  onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
+  /** Whether the shared sidebar is currently showing this exchange's sources. */
+  isSourcesOpenForThis: boolean
 }
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis,
 }: ExchangeBlockProps) {
+    const { settings: appSettings } = useAppSettings()
+    const streamingMode = appSettings.chatStreamingMode
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const hasDraftToolCard = assistantVisualBlocks.some(
@@ -1250,6 +1370,7 @@ function ExchangeBlock({
       [assistantVisualBlocks],
     )
     const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
+    const webSources = useMemo(() => collectWebSourcesFromBlocks(assistantVisualBlocks), [assistantVisualBlocks])
     const responseSettled = !responseInProgress
     const copyPlainText =
       interrupted && !errorMessage
@@ -1261,7 +1382,7 @@ function ExchangeBlock({
       responseSettled && (assistantPlainText.length > 0 || !!errorMessage || interrupted)
     return (
       <div
-        className={`flex flex-col gap-2 message-appear transition-all duration-300 ease-out ${
+        className={`relative flex flex-col gap-2 message-appear transition-all duration-300 ease-out ${
           isExiting ? 'pointer-events-none opacity-0 -translate-y-1' : 'translate-y-0 opacity-100'
         }`}
         data-exchange-idx={exchIdx}
@@ -1435,7 +1556,9 @@ function ExchangeBlock({
                 text={block.text}
                 isStreaming={isStreaming && isLastText}
                 sourceCitations={isLastText ? sourceCitations : undefined}
+                webSources={isLastText && webSources.length > 0 ? webSources : undefined}
                 suppressTypingIndicator
+                streamingMode={streamingMode}
               />
             </div>
           )
@@ -1476,13 +1599,13 @@ function ExchangeBlock({
           />
         ) : null}
 
-        {responseInProgress && (
+        {responseInProgress && assistantVisualBlocks.length === 0 && (
           <div className="flex items-center px-1 py-2 min-h-7" aria-live="polite" aria-busy="true">
-            <div className="md-typing-indicator" aria-label="Response loading">
-              <span />
-              <span />
-              <span />
-            </div>
+            <span
+              className="overlay-stream-marker overlay-stream-marker--standalone"
+              aria-label="Response loading"
+              role="img"
+            />
           </div>
         )}
 
@@ -1533,9 +1656,27 @@ function ExchangeBlock({
             >
               <Reply size={14} strokeWidth={1.75} />
             </button>
+            {webSources.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => onOpenSources(turnIdForActions ?? userMsgId, webSources)}
+                disabled={isExiting}
+                className={`ml-0.5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 ${
+                  isSourcesOpenForThis
+                    ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                    : 'text-[var(--muted)]'
+                }`}
+                aria-label="Open sources"
+                aria-pressed={isSourcesOpenForThis}
+              >
+                <BookOpen size={14} strokeWidth={1.75} className="shrink-0" />
+                <span className="text-[11px] font-medium">Sources</span>
+              </button>
+            ) : null}
             <span className="ml-2 min-w-0 text-left text-[11px] text-[var(--muted-light)]">{modelLabel}</span>
           </div>
         )}
+
       </div>
     )
 }
@@ -2167,6 +2308,13 @@ export default function ChatInterface({
   const [chats, setChats] = useState<Conversation[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [composerMode, setComposerMode] = useState<'ask' | 'act'>('act')
+  /** Lifted sources-panel state so the sidebar sits beside the chat area and shrinks it,
+   *  matching the AppSidebar width-transition pattern instead of overlaying the composer. */
+  const [sourcesPanel, setSourcesPanel] = useState<{ turnId: string; sources: WebSourceItem[] } | null>(null)
+  const openSourcesPanel = useCallback((turnId: string, sources: WebSourceItem[]) => {
+    setSourcesPanel((prev) => (prev && prev.turnId === turnId ? null : { turnId, sources }))
+  }, [])
+  const closeSourcesPanel = useCallback(() => setSourcesPanel(null), [])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
@@ -2359,6 +2507,8 @@ export default function ChatInterface({
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
   const wasStreamingRef = useRef(false)
+  const ttftSendTimeRef = useRef<number | null>(null)
+  const ttftLoggedRef = useRef(false)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
@@ -2853,6 +3003,26 @@ export default function ChatInterface({
   }, [isActiveLoading, chat0.messages.length])
 
   useEffect(() => {
+    if (process.env.NEXT_PUBLIC_TTFT_DEBUG !== 'true') return
+    if (ttftLoggedRef.current) return
+    if (!isActiveLoading) return
+    if (ttftSendTimeRef.current === null) return
+    const _msgs = composerMode === 'act' ? actChat.messages : chat0.messages
+    const _lastMsg = [..._msgs].reverse().find((m) => m.role === 'assistant')
+    if (!_lastMsg) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _parts = (_lastMsg as any).parts as Array<{ type: string; text?: string }> | undefined
+    const _hasText = _parts?.some((p) => p.type === 'text' && (p.text?.trim().length ?? 0) > 0)
+    if (!_hasText) return
+    ttftLoggedRef.current = true
+    const _ttft = performance.now() - ttftSendTimeRef.current
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _model = composerMode === 'act' ? selectedActModel : (selectedModels[0] ?? '')
+    console.log(`[TTFT][client] first-token | ${_ttft.toFixed(1)}ms | mode=${composerMode} | model=${_model}`)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActiveLoading, chat0.messages, actChat.messages, composerMode])
+
+  useEffect(() => {
     if (shouldScrollRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       shouldScrollRef.current = false
@@ -3228,6 +3398,7 @@ export default function ChatInterface({
     persistActiveRuntimeUiState()
     clearTransientComposerState()
     setInterruptedExchangeIdx(null)
+    setSourcesPanel(null)
     markRead(chatId)
     activeChatIdRef.current = chatId
     setActiveViewer(chatId)
@@ -3697,6 +3868,7 @@ async function hydrateCompletedAskTurnFromServer(
     const activeChatTitleSnapshot = activeChatTitle
     const selectedImageModelsSnapshot = [...selectedImageModels]
     const selectedVideoModelsSnapshot = [...selectedVideoModels]
+    const attachedImagesSnapshot = [...attachedImages]
     if (isActiveLoading) return
 
     if (pendingChatDocuments.some((d) => d.status === 'uploading')) {
@@ -3715,6 +3887,10 @@ async function hydrateCompletedAskTurnFromServer(
       is_first_message: isFirstMessage,
     })
 
+    if (process.env.NEXT_PUBLIC_TTFT_DEBUG === 'true') {
+      ttftSendTimeRef.current = performance.now()
+      ttftLoggedRef.current = false
+    }
     setIsOptimisticLoading(true)
 
     // ── Image / Video generation path ──────────────────────────────────────
@@ -3726,6 +3902,7 @@ async function hydrateCompletedAskTurnFromServer(
       const targetRuntime = ensureConversationRuntime(chatId)
 
       setInput('')
+      setAttachedImages([])
       setGenerationChip(null)
       setReplyContext(null)
       const wasFirst = isFirstMessage
@@ -3759,10 +3936,15 @@ async function hydrateCompletedAskTurnFromServer(
         }
       })
 
+      const mediaUserMessageParts: { type: string; text?: string; url?: string; mediaType?: string }[] = []
+      if (text) mediaUserMessageParts.push({ type: 'text', text })
+      for (const img of attachedImagesSnapshot) {
+        mediaUserMessageParts.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType })
+      }
       const mediaUserMessage = {
         id: mediaTurnId,
         role: 'user',
-        parts: [{ type: 'text', text }],
+        parts: mediaUserMessageParts,
         ...(replyCtxSnapshot?.replyToTurnId
           ? {
               metadata: {
@@ -3800,7 +3982,8 @@ async function hydrateCompletedAskTurnFromServer(
       startSession(chatId, mediaSessionMode, activeChatTitleSnapshot ?? '', targetRuntime.askChats[0].messages.length)
 
       if (effectiveGenType === 'image') {
-        const imageUrl = targetRuntime.ui.lastGeneratedImageUrl
+        // Prefer an explicitly attached reference image; fall back to the last generated image
+        const imageUrl = attachedImagesSnapshot[0]?.dataUrl ?? targetRuntime.ui.lastGeneratedImageUrl
         const generationTasks = activeModels.map((modelId, mIdx) =>
           fetch('/api/app/generate-image', {
             method: 'POST',
@@ -4872,6 +5055,18 @@ async function hydrateCompletedAskTurnFromServer(
                       )}
                       <div className="flex justify-end">
                         <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:max-w-[75%] sm:px-4">
+                          {getMessageImages(msg).length > 0 && (
+                            <div className="mb-2 flex flex-wrap gap-1.5">
+                              {getMessageImages(msg).map((imgUrl, imgIdx) => (
+                                <img
+                                  key={imgIdx}
+                                  src={imgUrl}
+                                  alt="Reference image"
+                                  className="max-h-36 rounded-lg object-cover"
+                                />
+                              ))}
+                            </div>
+                          )}
                           <span className="whitespace-pre-wrap">{promptText}</span>
                         </div>
                       </div>
@@ -5059,6 +5254,11 @@ async function hydrateCompletedAskTurnFromServer(
                     replyThreadMeta={getUserReplyThreadMeta(msg)}
                     onJumpToReply={jumpToReplyTarget}
                     onOpenDraft={setDraftModalState}
+                    onOpenSources={openSourcesPanel}
+                    isSourcesOpenForThis={
+                      !!sourcesPanel &&
+                      sourcesPanel.turnId === (textTurnIdForActions ?? msg.id)
+                    }
                   />
                 )
               }
@@ -5443,6 +5643,11 @@ async function hydrateCompletedAskTurnFromServer(
           </div>
         )}
       </div>
+      <WebSourcesSidebar
+        open={!!sourcesPanel}
+        onClose={closeSourcesPanel}
+        sources={sourcesPanel?.sources ?? []}
+      />
     </div>
   )
 }
