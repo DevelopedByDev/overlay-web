@@ -94,9 +94,15 @@ function addAll(target: Set<string>, toolIds: readonly string[]): void {
 export function allowedOverlayToolIdsForTurn(params: {
   mode: ToolMode
   latestUserText?: string | null
+  /**
+   * When `chrome-extension`, never expose `interactive_browser_session` — the Chrome extension
+   * drives the user’s real tab via Act/local tools; remote browser sessions are redundant and confusing.
+   */
+  clientSurface?: string | null
 }): string[] {
   const text = params.latestUserText?.trim() ?? ''
   const allowed = new Set<string>(params.mode === 'ask' ? ASK_BASE_TOOL_IDS : ACT_BASE_TOOL_IDS)
+  const isExtensionClient = params.clientSurface === 'chrome-extension'
 
   if (isExplicitMemoryMutationRequest(text)) {
     addAll(allowed, MEMORY_MUTATION_TOOL_IDS)
@@ -104,7 +110,7 @@ export function allowedOverlayToolIdsForTurn(params: {
   if (params.mode === 'act' && isExplicitNoteMutationRequest(text)) {
     addAll(allowed, NOTE_MUTATION_TOOL_IDS)
   }
-  if (isExplicitBrowserRequest(text)) {
+  if (isExplicitBrowserRequest(text) && !isExtensionClient) {
     addAll(allowed, BROWSER_TOOL_IDS)
   }
   if (params.mode === 'act' && isExplicitImageRequest(text)) {

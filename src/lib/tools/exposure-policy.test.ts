@@ -16,6 +16,13 @@ test('ask mode keeps browser tool disabled unless the user explicitly requests U
     latestUserText: 'Log into the website and take a screenshot of the billing page',
   })
   assert.equal(browserTools.includes('interactive_browser_session'), true)
+
+  const extensionAsk = allowedOverlayToolIdsForTurn({
+    mode: 'ask',
+    latestUserText: 'Fill out the form on this page and submit it',
+    clientSurface: 'chrome-extension',
+  })
+  assert.equal(extensionAsk.includes('interactive_browser_session'), false)
 })
 
 test('act mode exposes high-risk tools only for explicit matching requests', async () => {

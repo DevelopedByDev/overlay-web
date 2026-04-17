@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
       replyContextForModel,
       accessToken,
       userId: requestedUserId,
+      clientSurface,
     }: {
       messages: UIMessage[]
       modelId?: string
@@ -108,6 +109,8 @@ export async function POST(request: NextRequest) {
       replyContextForModel?: string
       accessToken?: string
       userId?: string
+      /** e.g. `chrome-extension` — omit remote interactive browser tooling. */
+      clientSurface?: string
     } = await request.json()
     const auth = await resolveAuthenticatedAppUser(request, {
       accessToken,
@@ -355,6 +358,7 @@ export async function POST(request: NextRequest) {
     const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
       mode: 'ask',
       latestUserText,
+      clientSurface,
     })
 
     const indexedNote = indexedFilesSystemNote(indexedNames)
@@ -381,8 +385,12 @@ export async function POST(request: NextRequest) {
       indexedNote,
     ].filter(Boolean).join('\n\n')
 
+    const extensionAskNote =
+      '\n\nChrome extension client: The active tab, URL, and page excerpt are already in the user message. Answer from that context. Do not use interactive_browser_session (unavailable here). If the user needs clicks, typing, or multi-step control of the page, tell them to use Act mode in the extension so local browser tools can run on their tab.'
     const browserToolNote =
-      '\n\nYou have an interactive_browser_session tool that drives a real browser. Reserve it strictly for tasks that require UI interaction (login, form submission, JS-heavy scraping, screenshot). For any information lookup or research request, use perplexity_search instead.'
+      clientSurface === 'chrome-extension'
+        ? extensionAskNote
+        : '\n\nYou have an interactive_browser_session tool that drives a real browser. Reserve it strictly for tasks that require UI interaction (login, form submission, JS-heavy scraping, screenshot). For any information lookup or research request, use perplexity_search instead.'
     const knowledgeToolNote =
       '\n\n' +
       ASK_KNOWLEDGE_TOOLS_NOTE +
