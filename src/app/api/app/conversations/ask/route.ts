@@ -203,6 +203,20 @@ export async function POST(request: NextRequest) {
     const cid = conversationId as Id<'conversations'> | undefined
     const tid = turnId?.trim()
 
+    // P3.3: hoist Composio to Wave 1 so it overlaps prep work. Module-level cache makes
+    // repeats ~0ms. The unifiedAskEnabled flag is read once here and re-applied below.
+    const unifiedAskEnabledEarly =
+      process.env.UNIFIED_TOOLS_ASK !== 'false' && process.env.UNIFIED_TOOLS_ASK !== '0'
+    const composioToolsTask: Promise<ToolSet> = unifiedAskEnabledEarly
+      ? createBrowserUnifiedTools({
+          userId,
+          accessToken: auth.accessToken || undefined,
+        }).catch((err) => {
+          console.error('[conversations/ask] Composio tools unavailable:', summarizeErrorForLog(err))
+          return {} as ToolSet
+        })
+      : Promise.resolve({} as ToolSet)
+
     // P3.2 Wave 1: memories + skills + conversation fetch (for projectId) + user-message save.
     // These are all independent; previously each was an await in sequence.
     const saveUserMessageTask: Promise<void> = (async () => {
@@ -426,19 +440,10 @@ export async function POST(request: NextRequest) {
 
     const systemWithTools = baseSystemMessage + knowledgeToolNote
 
-    const unifiedAskEnabled =
-      process.env.UNIFIED_TOOLS_ASK !== 'false' && process.env.UNIFIED_TOOLS_ASK !== '0'
+    const unifiedAskEnabled = unifiedAskEnabledEarly
 
     const [composioRaw, perplexityTool, overlayAskTools] = await Promise.all([
-      unifiedAskEnabled
-        ? createBrowserUnifiedTools({
-            userId,
-            accessToken: auth.accessToken || undefined,
-          }).catch((err) => {
-            console.error('[conversations/ask] Composio tools unavailable:', summarizeErrorForLog(err))
-            return {}
-          })
-        : Promise.resolve({}),
+      composioToolsTask,
       unifiedAskEnabled
         ? getGatewayPerplexitySearchTool(auth.accessToken || undefined, effectiveModelId)
         : Promise.resolve(null),

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { convertToModelMessages, stepCountIs, ToolLoopAgent, type UIMessage } from 'ai'
+import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from 'ai'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { listMemories } from '@/lib/app-store'
@@ -181,6 +181,13 @@ export async function POST(request: NextRequest) {
     const cid = conversationId as Id<'conversations'> | undefined
     const tid = (turnId?.trim() || `act-${Date.now()}`)
 
+    // P3.3: hoist Composio to Wave 1 — start before any await so it overlaps all prep work.
+    // Cache in composio-tools.ts makes this ~0ms on repeat requests within 10 minutes.
+    const composioToolsTask: Promise<ToolSet> = createBrowserUnifiedTools({
+      userId,
+      accessToken: auth.accessToken || undefined,
+    })
+
     // P3.2 Wave 1: user-message save + memories + skills + conversation fetch (for projectId).
     // These are all independent of each other; previously each was an await in sequence.
     const saveUserMessageTask: Promise<void> = (async () => {
@@ -336,7 +343,7 @@ export async function POST(request: NextRequest) {
     )
     if (_ttftDebug) _tPrep = performance.now()
     const [composioRaw, webToolSet, perplexityTool] = await Promise.all([
-      createBrowserUnifiedTools({ userId, accessToken: auth.accessToken || undefined }),
+      composioToolsTask,
       Promise.resolve(
         createWebTools({
           userId,
