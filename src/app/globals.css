@@ -249,16 +249,29 @@ html {
 }
 
 /* Table styling */
+/*
+ * Wrapper is the horizontal scroll container. It is constrained by the
+ * parent (`.markdown-content`'s `min-width: 0`) so the table never bleeds
+ * past the chat column; the table itself is allowed to grow wider than the
+ * wrapper when columns have more natural content than will fit, triggering
+ * the scrollbar instead of squishing each column.
+ */
 .table-wrapper {
   overflow-x: auto;
   margin: 0 0 1em;
+  max-width: 100%;
+  border-radius: 0.5rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .markdown-content table,
 .app-note-editor table {
-  width: 100%;
+  min-width: 100%;
+  width: auto;
+  max-width: none;
   border-collapse: collapse;
   font-size: 0.875rem;
+  table-layout: auto;
 }
 
 .markdown-content th,
@@ -268,6 +281,15 @@ html {
   text-align: left;
   padding: 0.5rem 0.85rem;
   border: 1px solid var(--border);
+  /* Keep column text from getting squished into tiny stacks when there are
+   * many columns; whitespace inside a cell still wraps normally, but each
+   * column reserves enough width to read 1–2 short words on one line. */
+  min-width: 7rem;
+  white-space: normal;
+  /* Override the ancestor `word-break: break-word` so compact header labels
+   * (e.g. "Nick Bostrom") stay on a single line when space is available. */
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 .markdown-content td,
@@ -275,6 +297,10 @@ html {
   padding: 0.45rem 0.85rem;
   border: 1px solid var(--border);
   vertical-align: top;
+  min-width: 7rem;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 /* Keep lists inside a single cell visually grouped (GFM + merged continuations). */
@@ -302,6 +328,36 @@ html {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/*
+ * Secondary-surface markdown: used for reasoning and browser-tool task
+ * descriptions. Visually distinct from the main assistant reply — smaller,
+ * tighter, and already muted by the wrapping div.
+ */
+.reasoning-markdown .markdown-content {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.55;
+  color: inherit;
+}
+.reasoning-markdown .markdown-content p {
+  margin: 0 0 0.5em;
+}
+.reasoning-markdown .markdown-content h1,
+.reasoning-markdown .markdown-content h2,
+.reasoning-markdown .markdown-content h3,
+.reasoning-markdown .markdown-content h4 {
+  font-size: 0.875rem;
+  margin: 0.4em 0 0.25em;
+  font-weight: 600;
+}
+.reasoning-markdown .markdown-content ul,
+.reasoning-markdown .markdown-content ol {
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.1rem;
+}
+.reasoning-markdown .markdown-content li {
+  margin: 0.1em 0;
 }
 
 .app-note-editor {

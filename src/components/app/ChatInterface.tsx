@@ -24,6 +24,7 @@ import {
   Play,
   MessageSquare,
   BookOpen,
+  Search,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
@@ -47,6 +48,7 @@ import {
 } from '@/lib/models'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'
+import { webSourceDisplayKey } from '@/lib/web-sources'
 import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
 import {
   CHAT_CREATED_EVENT,
@@ -63,7 +65,7 @@ import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
-import { useAppSettings } from './AppSettingsProvider'
+import { useAppSettings, type ChatStreamingMode } from './AppSettingsProvider'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
 import {
   buildAutomationDraftFromTurn,
@@ -282,10 +284,6 @@ type AssistantVisualBlock =
       state: string
       toolInput?: Record<string, unknown>
       toolOutput?: unknown
-      /** Model reasoning folded from the following `reasoning` part (see `foldReasoningIntoPrecedingTools`) */
-      reasoningText?: string
-      reasoningState?: string
-      reasoningKey?: string
     }
   | { kind: 'text'; text: string }
   | { kind: 'file'; url: string; mediaType?: string }
@@ -370,49 +368,7 @@ function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVi
       }
     }
   }
-  return foldReasoningIntoPrecedingTools(out)
-}
-
-/**
- * Fold a `reasoning` part that immediately follows one or more `tool` parts onto the last tool
- * in that run so the UI can show it as collapsible “thinking” under that tool row.
- */
-function foldReasoningIntoPrecedingTools(blocks: AssistantVisualBlock[]): AssistantVisualBlock[] {
-  const out: AssistantVisualBlock[] = []
-  let i = 0
-  while (i < blocks.length) {
-    const cur = blocks[i]!
-    if (cur.kind === 'tool') {
-      const run: AssistantVisualBlock[] = []
-      while (i < blocks.length && blocks[i]!.kind === 'tool') {
-        run.push(blocks[i]!)
-        i++
-      }
-      let folded: Extract<AssistantVisualBlock, { kind: 'reasoning' }> | null = null
-      if (i < blocks.length && blocks[i]!.kind === 'reasoning') {
-        folded = blocks[i]! as Extract<AssistantVisualBlock, { kind: 'reasoning' }>
-        i++
-      }
-      const tools = run.map((b) => {
-        const t = b as Extract<AssistantVisualBlock, { kind: 'tool' }>
-        return { ...t }
-      })
-      if (folded && tools.length > 0) {
-        const lastIdx = tools.length - 1
-        const last = tools[lastIdx]!
-        tools[lastIdx] = {
-          ...last,
-          reasoningText: folded.text,
-          reasoningState: folded.state,
-          reasoningKey: folded.key,
-        }
-      }
-      for (const t of tools) out.push(t)
-      continue
-    }
-    out.push(cur)
-    i++
-  }
+  // Reasoning now renders as its own standalone collapsible segment; no folding.
   return out
 }
 
@@ -656,43 +612,11 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
   return out
 }
 
-/**
- * Merge consecutive `tools` segments when only standalone `reasoning` (thinking) appears between them,
- * so a long run of tools without body text becomes one "N tools called" group.
- */
-function mergeConsecutiveToolSegments(segments: AssistantVisualSegment[]): AssistantVisualSegment[] {
-  const out: AssistantVisualSegment[] = []
-  let i = 0
-  while (i < segments.length) {
-    const s = segments[i]!
-    if (s.kind !== 'tools') {
-      out.push(s)
-      i++
-      continue
-    }
-    const merged = [...s.tools]
-    const origin = s.originIndex
-    i++
-    while (i < segments.length) {
-      const next = segments[i]!
-      if (next.kind === 'reasoning') {
-        i++
-        continue
-      }
-      if (next.kind === 'tools') {
-        merged.push(...next.tools)
-        i++
-        continue
-      }
-      break
-    }
-    out.push({ kind: 'tools', tools: merged, originIndex: origin })
-  }
-  return out
-}
-
 function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
-  return mergeConsecutiveToolSegments(buildAssistantVisualSegmentsRaw(blocks))
+  // Reasoning renders as its own first-class segment (see `ReasoningBlock`), so we no longer
+  // collapse reasoning between tool groups; each reasoning chunk stays visible next to the
+  // tools it describes.
+  return buildAssistantVisualSegmentsRaw(blocks)
 }
 
 function isToolChainSegment(seg: AssistantVisualSegment): boolean {
@@ -747,13 +671,206 @@ function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; co
   )
 }
 
-/** Standalone model reasoning while streaming — no text; same chrome as a tool row with shimmer. */
-function ThinkingShimmerRow() {
+/**
+ * Standalone reasoning block: while the reasoning part is actively streaming we auto-expand
+ * and render the text through `MarkdownMessage` (same formatting as the main assistant reply).
+ * Once the reasoning finishes we collapse to a single row with a chevron the user can toggle.
+ */
+function ReasoningBlock({
+  text,
+  streaming,
+  connectTop,
+  connectBottom,
+  streamingMode,
+}: {
+  text: string
+  streaming: boolean
+  connectTop: boolean
+  connectBottom: boolean
+  streamingMode: ChatStreamingMode
+}) {
+  const [userExpanded, setUserExpanded] = useState(false)
+  const hasContent = text.trim().length > 0
+  const label = streaming ? 'Thinking' : 'Thought'
+  const showDetails = streaming ? hasContent : userExpanded && hasContent
+
   return (
     <div className="w-full px-1 py-0.5">
-      <div className="message-appear flex max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug">
-        <ToolLogoColumn connectTop={false} connectBottom={false} />
-        <span className="tool-line-shimmer min-w-0">Thinking</span>
+      <div className="max-w-[min(100%,36rem)]">
+        <div className="flex items-stretch gap-2.5 text-[13px] leading-snug">
+          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
+              <span className={streaming ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>
+                {label}
+              </span>
+              {!streaming && hasContent ? (
+                <button
+                  type="button"
+                  onClick={() => setUserExpanded((open) => !open)}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  aria-label={userExpanded ? 'Collapse reasoning' : 'Expand reasoning'}
+                >
+                  <ChevronDown
+                    size={14}
+                    strokeWidth={1.75}
+                    className={`transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        {hasContent ? (
+          <div
+            className={`ml-[26px] overflow-hidden transition-all duration-300 ${
+              showDetails ? 'max-h-[1200px] pt-1 pb-2' : 'max-h-0'
+            }`}
+          >
+            {showDetails ? (
+              <div className="message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)]">
+                <MarkdownMessage
+                  text={text}
+                  isStreaming={streaming}
+                  suppressTypingIndicator
+                  streamingMode={streamingMode}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Web search tool: shows the query and the top sources in a compact list (favicon + title + host),
+ * inspired by Perplexity/ChatGPT search previews. While the tool runs we auto-expand the details;
+ * once it finishes we collapse to a single row and the user can click the chevron to re-open.
+ */
+function WebSearchToolBlock({
+  block,
+  connectTop,
+  connectBottom,
+}: {
+  block: ToolVisualBlock
+  connectTop: boolean
+  connectBottom: boolean
+}) {
+  const isDone = block.state === 'output-available'
+  const isError = block.state === 'output-error' || block.state === 'output-denied'
+  const running = !isDone && !isError
+  const queryRaw = pickFirstStringFromInput(block.toolInput, ['query', 'q']) ?? ''
+  const query = queryRaw.trim()
+  const label = getDescriptiveToolLabel('perplexity_search', block.toolInput)
+  const [userExpanded, setUserExpanded] = useState(false)
+  const sources = useMemo(() => collectWebSourcesFromSingleBlock(block), [block])
+  const visibleSources = sources.slice(0, 3)
+  const extraCount = Math.max(0, sources.length - visibleSources.length)
+  const hasDetails = query.length > 0 || sources.length > 0
+  const showDetails =
+    (running && hasDetails) || (isDone && userExpanded && hasDetails)
+
+  if (isError) {
+    return (
+      <div className="w-full px-1 py-0.5">
+        <div className="flex max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug">
+          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+          <span className="min-w-0 flex-1 text-red-600">{label} — couldn’t complete</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full px-1 py-0.5">
+      <div className="max-w-[min(100%,36rem)]">
+        <div className="flex items-stretch gap-2.5 text-[13px] leading-snug">
+          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
+              <span className={running ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>
+                {label}
+              </span>
+              {hasDetails && isDone ? (
+                <button
+                  type="button"
+                  onClick={() => setUserExpanded((open) => !open)}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  aria-label={userExpanded ? 'Collapse web search details' : 'Expand web search details'}
+                >
+                  <ChevronDown
+                    size={14}
+                    strokeWidth={1.75}
+                    className={`transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        {hasDetails ? (
+          <div
+            className={`ml-[26px] overflow-hidden transition-all duration-300 ${
+              showDetails ? 'max-h-[600px] pt-1 pb-2' : 'max-h-0'
+            }`}
+          >
+            {showDetails ? (
+              <div className="message-appear flex flex-col gap-1.5">
+                {query ? (
+                  <div className="flex min-w-0 items-center gap-2 text-[12px] leading-snug text-[var(--muted)]">
+                    <Search size={12} strokeWidth={1.75} className="shrink-0 opacity-70" aria-hidden />
+                    <span className="min-w-0 truncate">{query}</span>
+                  </div>
+                ) : null}
+                {visibleSources.length > 0 ? (
+                  <ul className="flex flex-col">
+                    {visibleSources.map((source, idx) => {
+                      const site = webSourceDisplayKey(source.url)
+                      const fav = faviconUrl(source.url)
+                      const host = hostFromUrl(source.url) || site
+                      const titleCandidate = source.title?.trim() || ''
+                      const isTitleJustHost =
+                        !titleCandidate ||
+                        titleCandidate.toLowerCase() === host.toLowerCase() ||
+                        titleCandidate.toLowerCase() === site.toLowerCase()
+                      const displayTitle = isTitleJustHost ? host : titleCandidate
+                      return (
+                        <li key={`${source.url}-${idx}`}>
+                          <a
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group flex min-w-0 items-center gap-2 rounded-md py-0.5 text-[12px] leading-snug transition-colors hover:text-[var(--foreground)]"
+                          >
+                            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--surface-elevated)] ring-1 ring-[var(--border)]">
+                              {fav ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={fav} alt="" className="h-3 w-3" width={12} height={12} />
+                              ) : (
+                                <span className="text-[8px] font-semibold text-[var(--muted)]">
+                                  {site.charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </span>
+                            <span className="min-w-0 truncate text-[var(--muted)] group-hover:text-[var(--foreground)]">
+                              {displayTitle}
+                            </span>
+                            <span className="shrink-0 text-[11px] text-[var(--muted)] opacity-60">{site}</span>
+                          </a>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : null}
+                {extraCount > 0 ? (
+                  <div className="text-[12px] text-[var(--muted)] opacity-70">+{extraCount} more</div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -868,10 +985,12 @@ function BrowserToolBlock({
   block,
   connectTop,
   connectBottom,
+  streamingMode,
 }: {
   block: ToolVisualBlock
   connectTop: boolean
   connectBottom: boolean
+  streamingMode: ChatStreamingMode
 }) {
   const isDone = block.state === 'output-available'
   const isError = block.state === 'output-error' || block.state === 'output-denied'
@@ -932,7 +1051,14 @@ function BrowserToolBlock({
             {showDetails ? (
               <div key={userExpanded ? 'open' : running ? 'streaming' : 'closed'} className="space-y-3 message-appear">
                 {task ? (
-                  <p className="text-[12px] leading-relaxed text-[var(--muted)]">{task}</p>
+                  <div className="reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)]">
+                    <MarkdownMessage
+                      text={task}
+                      isStreaming={running}
+                      suppressTypingIndicator
+                      streamingMode={streamingMode}
+                    />
+                  </div>
                 ) : null}
                 {liveUrl && isDone ? (
                   <iframe
@@ -1261,6 +1387,37 @@ function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): WebSourceI
   return items
 }
 
+/** Extract structured sources from a single tool block (used by the web-search row). */
+function collectWebSourcesFromSingleBlock(block: ToolVisualBlock): WebSourceItem[] {
+  if (block.state !== 'output-available') return []
+  const items: WebSourceItem[] = []
+  const seen = new Set<string>()
+  collectSourceCandidatesFromUnknown(
+    block.toolOutput,
+    block.name === 'perplexity_search' ? 'web-search' : 'browser',
+    items,
+    seen,
+  )
+  return items
+}
+
+function faviconUrl(pageUrl: string): string {
+  try {
+    const host = new URL(pageUrl).hostname
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`
+  } catch {
+    return ''
+  }
+}
+
+function hostFromUrl(pageUrl: string): string {
+  try {
+    return new URL(pageUrl).hostname.replace(/^www\./i, '')
+  } catch {
+    return ''
+  }
+}
+
 function scrollToExchangeTurn(turnId: string) {
   const safe = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(turnId) : turnId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
   document.querySelector(`[data-exchange-turn="${safe}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1460,12 +1617,20 @@ function ExchangeBlock({
         {assistantSegments.map((seg, segIdx) => {
           const chain = toolChainFlags[segIdx]!
           if (seg.kind === 'reasoning') {
+            // Actively streaming = still emitting reasoning deltas (or message-level stream and
+            // this part has not been explicitly marked `done`). Everything else collapses.
             const active =
               seg.block.state === 'streaming' ||
-              (isStreaming && seg.block.state !== 'done')
-            if (!active) return null
+              (isStreaming && seg.block.state !== 'done' && seg.originIndex === assistantVisualBlocks.length - 1)
             return (
-              <ThinkingShimmerRow key={`${exchIdx}-seq-r-${seg.originIndex}-${seg.block.key}`} />
+              <ReasoningBlock
+                key={`${exchIdx}-seq-r-${seg.originIndex}-${seg.block.key}`}
+                text={seg.block.text}
+                streaming={active}
+                connectTop={chain.chainTop}
+                connectBottom={chain.chainBottom}
+                streamingMode={streamingMode}
+              />
             )
           }
           if (seg.kind === 'browser') {
@@ -1475,6 +1640,7 @@ function ExchangeBlock({
                 block={seg.block}
                 connectTop={chain.chainTop}
                 connectBottom={chain.chainBottom}
+                streamingMode={streamingMode}
               />
             )
           }
@@ -1498,6 +1664,16 @@ function ExchangeBlock({
                     onSecondary={() => onOpenDraft(draft.kind === 'automation'
                       ? { kind: 'automation', draft: draft.draft }
                       : { kind: 'skill', draft: draft.draft })}
+                  />
+                )
+              }
+              if (t.name === 'perplexity_search') {
+                return (
+                  <WebSearchToolBlock
+                    key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
+                    block={t}
+                    connectTop={chain.chainTop}
+                    connectBottom={chain.chainBottom}
                   />
                 )
               }
