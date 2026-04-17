@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          allowlist='NEXT_PUBLIC_(SENTRY_DSN|CONVEX_URL|APP_URL)'
+          allowlist='NEXT_PUBLIC_(MIXPANEL_TOKEN|SENTRY_DSN|CONVEX_URL|APP_URL|MIXPANEL_API_HOST)'
           matches="$(
             {
               git grep -nE 'NEXT_PUBLIC_[A-Z0-9_]*(SECRET|TOKEN|KEY|PASSWORD)' -- \

@@ -8,20 +8,15 @@ import {
   planAmountCentsToQuantity,
 } from '../src/lib/billing-pricing'
 
-// Minimum gap between two period-start timestamps that counts as a genuine
-// rollover. Anything smaller is treated as the same billing cycle (repeated
-// webhook delivery, clock skew, Stripe internal updates). Using a meaningful
-// gap prevents a same-day replay from re-resetting creditsUsed to 0.
-const PERIOD_ROLLOVER_MIN_GAP_MS = 60 * 60 * 1000 // 1 hour
-
 // Returns true if the new period start represents a different billing cycle
 // than what is currently stored, indicating credits should be reset.
 function isPeriodRollover(existingPeriodStart: number | undefined, newPeriodStart: number): boolean {
   if (!existingPeriodStart || existingPeriodStart === 0) return false
-  if (!Number.isFinite(newPeriodStart) || newPeriodStart <= 0) return false
-  // Only count forward movement of the period boundary beyond the min gap as a
-  // rollover. Backward or near-equal timestamps are retries/replays.
-  return newPeriodStart - existingPeriodStart >= PERIOD_ROLLOVER_MIN_GAP_MS
+  // Compare calendar dates (YYYY-MM-DD) so that small ms-level differences
+  // from repeated webhook deliveries don't incorrectly trigger a reset.
+  const existingDate = new Date(existingPeriodStart).toISOString().split('T')[0]
+  const newDate = new Date(newPeriodStart).toISOString().split('T')[0]
+  return existingDate !== newDate
 }
 
 function defaultPlanMetadata(args: {
@@ -384,21 +379,6 @@ export const upsertFromStripeInternal = internalMutation({
     currentPeriodEnd: v.number()
   },
   handler: async (ctx, args) => {
-    // Reject if this stripeCustomerId already maps to a different userId.
-    // This prevents a single attacker's Stripe customer from being cross-linked
-    // to multiple Convex accounts via manipulated webhook metadata.
-    const existingByCustomer = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_stripeCustomerId', (q) => q.eq('stripeCustomerId', args.stripeCustomerId))
-      .first()
-    if (existingByCustomer && existingByCustomer.userId !== args.userId) {
-      console.error(
-        `[Stripe Webhook] stripeCustomerId ${args.stripeCustomerId} already belongs to userId ${existingByCustomer.userId}, ` +
-        `refusing to cross-link to ${args.userId}`,
-      )
-      throw new Error('stripeCustomerId already belongs to a different user')
-    }
-
     const existing = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
@@ -732,64 +712,6 @@ export const listBudgetTopUpsByServer = query({
       .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId))
       .order('desc')
       .take(20)
-  },
-})
-
-// Webhook event deduplication. Returns true if this is the first time we've
-// seen the event; returns false if it's a duplicate (and the caller should
-// skip its side-effects entirely). Also enforces a freshness window — events
-// older than MAX_EVENT_AGE_MS are rejected as potential replays.
-const MAX_EVENT_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-
-export const recordWebhookEventIfNew = internalMutation({
-  args: {
-    provider: v.string(),
-    eventId: v.string(),
-    eventType: v.optional(v.string()),
-    eventCreatedMs: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    if (
-      typeof args.eventCreatedMs === 'number' &&
-      Number.isFinite(args.eventCreatedMs) &&
-      args.eventCreatedMs > 0 &&
-      Date.now() - args.eventCreatedMs > MAX_EVENT_AGE_MS
-    ) {
-      return { accepted: false as const, reason: 'event_too_old' as const }
-    }
-    const existing = await ctx.db
-      .query('processedWebhookEvents')
-      .withIndex('by_provider_eventId', (q) =>
-        q.eq('provider', args.provider).eq('eventId', args.eventId),
-      )
-      .first()
-    if (existing) {
-      return { accepted: false as const, reason: 'duplicate' as const }
-    }
-    await ctx.db.insert('processedWebhookEvents', {
-      provider: args.provider,
-      eventId: args.eventId,
-      eventType: args.eventType,
-      processedAt: Date.now(),
-    })
-    return { accepted: true as const }
-  },
-})
-
-export const pruneOldWebhookEvents = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const cutoff = Date.now() - MAX_EVENT_AGE_MS
-    const old = await ctx.db
-      .query('processedWebhookEvents')
-      .withIndex('by_processedAt', (q) => q.lt('processedAt', cutoff))
-      .take(500)
-    let deleted = 0
-    for (const row of old) {
-      await ctx.db.delete(row._id)
-      deleted++
-    }
-    return { deleted }
   },
 })
 

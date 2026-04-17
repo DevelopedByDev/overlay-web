@@ -351,59 +351,6 @@ export const initializeSubscriptionUsageByServer = mutation({
   },
 })
 
-// Free-tier weekly limits (same values as tierDefaults in buildEntitlements).
-const FREE_TIER_WEEKLY_LIMITS = { ask: 15, write: 15, agent: 15 } as const
-
-async function enforceFreeTierUsageLimits(
-  ctx: MutationCtx,
-  userId: string,
-  events: UsageEvent[],
-): Promise<void> {
-  const subscription = await ctx.db
-    .query('subscriptions')
-    .withIndex('by_userId', (q) => q.eq('userId', userId))
-    .first()
-
-  const planKind = derivePlanKind(subscription ?? {})
-  if (planKind !== 'free') return
-
-  const pastWeekDates = getPastWeekDates()
-  const weeklyUsageRecords = await Promise.all(
-    pastWeekDates.map((date) =>
-      ctx.db
-        .query('dailyUsage')
-        .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
-        .first(),
-    ),
-  )
-  const weeklyUsage = weeklyUsageRecords.reduce(
-    (acc, record) => ({
-      ask: acc.ask + (record?.askCount ?? 0),
-      write: acc.write + (record?.writeCount ?? 0),
-      agent: acc.agent + (record?.agentCount ?? 0),
-    }),
-    { ask: 0, write: 0, agent: 0 },
-  )
-
-  let batchAsk = 0, batchWrite = 0, batchAgent = 0
-  for (const event of events) {
-    if (!countsTowardFreeTierMessageLimit(event)) continue
-    if (event.type === 'ask') batchAsk++
-    else if (event.type === 'write') batchWrite++
-    else if (event.type === 'agent') batchAgent++
-  }
-
-  if (weeklyUsage.ask + batchAsk > FREE_TIER_WEEKLY_LIMITS.ask) {
-    throw new Error('free_tier_limit_exceeded: weekly ask limit reached')
-  }
-  if (weeklyUsage.write + batchWrite > FREE_TIER_WEEKLY_LIMITS.write) {
-    throw new Error('free_tier_limit_exceeded: weekly write limit reached')
-  }
-  if (weeklyUsage.agent + batchAgent > FREE_TIER_WEEKLY_LIMITS.agent) {
-    throw new Error('free_tier_limit_exceeded: weekly agent limit reached')
-  }
-}
-
 // Record a batch of usage events — requires valid access token.
 // Accumulates totals from all events and does a single patch to both
 // subscriptions.creditsUsed (enforcement) and tokenUsage (audit log).
@@ -434,7 +381,6 @@ export const recordBatch = mutation({
   },
   handler: async (ctx, { accessToken, serverSecret, userId, events }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
-    await enforceFreeTierUsageLimits(ctx, userId, events)
     return await applyUsageEvents(ctx, userId, events)
   }
 })

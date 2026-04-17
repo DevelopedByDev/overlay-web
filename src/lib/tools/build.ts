@@ -126,9 +126,13 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
     },
   })
 
-  tools.browser_run_task = tool({
+  tools.interactive_browser_session = tool({
     description:
-      'Browse the web using a remote AI-controlled browser. Use this when you need fresh live data, need to inspect a website directly, or must interact with a real web page.',
+      'Remote AI-controlled browser session for INTERACTIVE web tasks only — NOT a search tool. ' +
+      'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through perplexity_search (which supports multi-query, domain filters, and returns ranked URLs with snippets — exactly what source/research requests need). ' +
+      'Permitted ONLY when ALL of the following are true: (1) the task literally cannot be satisfied by search results + URLs, AND (2) it requires driving a real browser — e.g. logging in with credentials, clicking through a UI flow, submitting a form, scraping a page that actively blocks non-browser clients, operating a JS-heavy SPA, or capturing a screenshot of a specific rendered page. ' +
+      'Forbidden examples (use perplexity_search instead): "give me 10 academic sources on X", "find peer-reviewed papers about Y", "cite research on Z", "look up the latest news on …", "find articles about …", "who is …", "what is …", "summarize the state of …". ' +
+      'If perplexity_search ran and returned insufficient or irrelevant results, you may then escalate — but state that in your reasoning. Never call this tool as a first attempt for a research-style question. It is ~10–100× slower and more expensive than perplexity_search.',
     inputSchema: z.object({
       task: z.string().describe('What to do in the browser — natural language'),
       model: z.enum(['bu-mini', 'bu-max']).optional(),
@@ -137,7 +141,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       proxyCountryCode: z.string().optional().describe('2-letter country code for residential proxy'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'browser_run_task')
+      assertOverlayToolAllowedForMode(mode, 'interactive_browser_session')
       return executeBrowserRunTask(options, input)
     },
   })

@@ -62,6 +62,10 @@ function uniqueSources(values: Array<string | null | undefined>): string[] {
 function buildConnectSrc(): string[] {
   return uniqueSources([
     "'self'",
+    'https://api-js.mixpanel.com',
+    'https://api.mixpanel.com',
+    'https://mixpanel.com',
+    parseOrigin(process.env.NEXT_PUBLIC_MIXPANEL_API_HOST),
     parseOrigin(process.env.NEXT_PUBLIC_SENTRY_DSN),
     parseOrigin(process.env.SENTRY_DSN),
     parseOrigin(process.env.NEXT_PUBLIC_CONVEX_URL),

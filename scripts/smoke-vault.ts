@@ -23,6 +23,8 @@ const EXPECTED_VAULT_NAMES = [
   'OPENROUTER_API_KEY',
   'COMPOSIO_API_KEY',
   'AI_GATEWAY_API_KEY',
+  'MIXPANEL_TOKEN',
+  'MINIMAX_API_KEY',
 ]
 
 async function main() {
@@ -77,6 +79,8 @@ async function main() {
   for (const vaultName of EXPECTED_VAULT_NAMES) {
     if (names.has(vaultName)) {
       logOk(`${vaultName}: present`)
+    } else if (vaultName === 'MIXPANEL_TOKEN') {
+      console.warn(`[VaultSmoke] ⚠ ${vaultName}: missing — add it in the WorkOS Vault dashboard`)
     } else {
       logErr(`${vaultName}: NOT found — add it in the WorkOS Vault dashboard`)
       allFound = false

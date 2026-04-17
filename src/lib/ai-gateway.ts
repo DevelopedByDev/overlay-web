@@ -223,7 +223,7 @@ export async function getGatewayPerplexitySearchTool(accessToken?: string, chatM
     console.log('[AI Gateway] perplexity_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)')
     return createPerplexitySearchFunctionTool(accessToken)
   } catch (err) {
-    console.error('[AI Gateway] perplexity_search unavailable — check AI_GATEWAY_API_KEY:', err)
+    console.error('[AI Gateway] perplexity_search unavailable — check AI_GATEWAY_API_KEY / keys:getAPIKey:', err)
     return null
   }
 }

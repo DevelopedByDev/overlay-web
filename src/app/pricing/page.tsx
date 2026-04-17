@@ -32,7 +32,7 @@ function UserIdExtractor() {
   useEffect(() => {
     const userId = searchParams?.get('userId')
     if (userId) {
-      sessionStorage.setItem('userId', userId)
+      localStorage.setItem('userId', userId)
     }
   }, [searchParams])
 

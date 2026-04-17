@@ -9,9 +9,6 @@ export const inspectAccessToken = query({
     userId: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('Auth debug endpoint is disabled in production')
-    }
     requireServerSecret(args.serverSecret)
     return await debugAccessTokenVerification(args.accessToken, args.userId)
   },

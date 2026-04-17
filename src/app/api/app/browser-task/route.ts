@@ -60,12 +60,6 @@ export async function POST(request: NextRequest) {
     if (!task?.trim()) {
       return NextResponse.json({ error: 'Task is required' }, { status: 400 })
     }
-    const MAX_TASK_LENGTH = 4096
-    // eslint-disable-next-line no-control-regex
-    const sanitizedTask = task.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, MAX_TASK_LENGTH)
-    if (!sanitizedTask) {
-      return NextResponse.json({ error: 'Task is required' }, { status: 400 })
-    }
 
     const apiKey = process.env.BROWSER_USE_API_KEY
     if (!apiKey) {
@@ -120,7 +114,7 @@ export async function POST(request: NextRequest) {
       typeof proxyCountryCode === 'string' && /^[a-z]{2}$/i.test(proxyCountryCode)
         ? (proxyCountryCode.toLowerCase() as ProxyCountryCode)
         : undefined
-    const result = await client.run(sanitizedTask, {
+    const result = await client.run(task.trim(), {
       ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
       ...(model ? { model } : {}),
       ...(normalizedProxyCountryCode ? { proxyCountryCode: normalizedProxyCountryCode } : {}),

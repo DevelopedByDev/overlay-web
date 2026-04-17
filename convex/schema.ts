@@ -211,8 +211,7 @@ export default defineSchema({
     fileBandwidthBytesUsed: v.optional(v.number()),
     fileBandwidthPeriodStart: v.optional(v.number()),
   }).index('by_userId', ['userId'])
-    .index('by_email', ['email'])
-    .index('by_stripeCustomerId', ['stripeCustomerId']),
+    .index('by_email', ['email']),
 
   budgetTopUps: defineTable({
     userId: v.string(),
@@ -238,19 +237,6 @@ export default defineSchema({
     .index('by_userId_billingPeriodStart', ['userId', 'billingPeriodStart'])
     .index('by_paymentIntentId', ['stripePaymentIntentId'])
     .index('by_checkoutSessionId', ['stripeCheckoutSessionId']),
-
-  // Webhook event deduplication. Stores processed Stripe event IDs so that a
-  // duplicate delivery (or a replay from a compromised observability path)
-  // is a no-op. TTL cleanup happens via a scheduled job that drops rows older
-  // than 30 days.
-  processedWebhookEvents: defineTable({
-    provider: v.string(),
-    eventId: v.string(),
-    eventType: v.optional(v.string()),
-    processedAt: v.number(),
-  })
-    .index('by_provider_eventId', ['provider', 'eventId'])
-    .index('by_processedAt', ['processedAt']),
 
   // Append-only audit log: one row per billing period per user.
   // Written to on every usage batch for raw token counts and a credit snapshot.

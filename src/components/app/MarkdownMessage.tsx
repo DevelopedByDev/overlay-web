@@ -3,12 +3,16 @@
 import { type ReactNode, useMemo, useState, useSyncExternalStore } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import type { Pluggable } from 'unified'
 import { mergeGfmTableContinuationLines } from '@/lib/markdown-table-fix'
 import { stripThinkingPlaceholderMarkdown } from '@/lib/agent-assistant-text'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
+import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } from '@/lib/web-sources'
+import { WebSourceTooltip } from './WebSourceTooltip'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
@@ -35,6 +39,15 @@ function extractLinkText(node: ReactNode): string {
   return ''
 }
 
+const mdSanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), 'br'],
+  attributes: {
+    ...defaultSchema.attributes,
+    br: [],
+  },
+}
+
 function stripHtmlishToMarkdown(text: string): string {
   return text
     .replace(/<br\s*\/?>/gi, '\n')
@@ -50,6 +63,30 @@ function stripHtmlishToMarkdown(text: string): string {
 /** Models often emit full-width lenticular brackets; normalize to ASCII for **Sources:** lines. */
 function bracketNormalize(text: string): string {
   return text.replace(/【/g, '[').replace(/】/g, ']')
+}
+
+/**
+ * Remove the trailing "Sources: …" prose block models emit at the end of web-search responses.
+ * We surface sources via inline chips + the sources sidebar button, so the plaintext list is redundant.
+ * Conservative: only strips when the block appears near the end of the message.
+ */
+function stripTrailingSourcesBlock(text: string): string {
+  const lines = text.split('\n')
+  // Find last non-empty line that starts a Sources: paragraph.
+  let startIdx = -1
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmed = lines[i]!.trimStart()
+    if (trimmed === '') continue
+    if (/^(\*\*)?\s*(Sources|Citations|References)\s*:?/i.test(trimmed)) {
+      startIdx = i
+    }
+    break
+  }
+  if (startIdx < 0) return text
+  // Strip from the Sources: line through end-of-text (inclusive).
+  const kept = lines.slice(0, startIdx)
+  while (kept.length > 0 && kept[kept.length - 1]!.trim() === '') kept.pop()
+  return kept.join('\n')
 }
 
 /** Turn `[n]` on **Sources:** lines into markdown links to Knowledge (when we have retrieval metadata). */
@@ -76,12 +113,35 @@ function linkifySourceCitations(text: string, citations: SourceCitationMap): str
 
 function normalizeGeneratedMarkdown(
   text: string,
-  options?: { sourceCitations?: SourceCitationMap; linkifyCitations?: boolean },
+  options?: {
+    sourceCitations?: SourceCitationMap
+    linkifyCitations?: boolean
+    webSources?: WebSourceItem[]
+    linkifyWebCitations?: boolean
+  },
 ): string {
   let t = mergeGfmTableContinuationLines(stripHtmlishToMarkdown(stripThinkingPlaceholderMarkdown(text)))
   t = bracketNormalize(t)
-  if (options?.linkifyCitations && options?.sourceCitations && Object.keys(options.sourceCitations).length > 0) {
-    t = linkifySourceCitations(t, options.sourceCitations)
+  const hasKnowledgeCitations =
+    !!(options?.sourceCitations && Object.keys(options.sourceCitations).length > 0)
+  const hasWebSources = !!(options?.webSources && options.webSources.length > 0)
+  // Strip the redundant trailing "Sources:" prose block — we surface web sources via the sidebar
+  // button + inline chips. Keep the block when we only have knowledge citations (those still
+  // rely on the numbered list for Knowledge linkify).
+  if (hasWebSources && !hasKnowledgeCitations) {
+    t = stripTrailingSourcesBlock(t)
+  }
+  if (
+    options?.linkifyWebCitations &&
+    options?.webSources &&
+    options.webSources.length > 0
+  ) {
+    t = linkifyInlineWebCitations(t, options.webSources, {
+      skipKnowledgeSourceLines: hasKnowledgeCitations,
+    })
+  }
+  if (options?.linkifyCitations && hasKnowledgeCitations) {
+    t = linkifySourceCitations(t, options.sourceCitations!)
   }
   return t
 }
@@ -142,7 +202,7 @@ function CodeBlock({ language, children }: { language: string; children: string 
 }
 
 // Stable markdown components — defined outside component to avoid re-creation
-const mdComponents = {
+const baseMdComponents = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   a({ href, children }: any) {
     const linkText = extractLinkText(children as ReactNode).trim()
@@ -231,7 +291,11 @@ const mdComponents = {
 }
 
 const markdownRemarkPlugins = [remarkGfm, remarkMath]
-const markdownRehypePlugins: Pluggable[] = [rehypeKatex]
+const markdownRehypePlugins: Pluggable[] = [
+  rehypeRaw,
+  [rehypeSanitize, mdSanitizeSchema] as Pluggable,
+  rehypeKatex,
+]
 
 // Find the char position of a safe paragraph boundary in `text`.
 // We only split at \n\n that is NOT inside a code fence, a table, or a math block.
@@ -278,6 +342,8 @@ interface Props {
   isStreaming: boolean
   /** From stream metadata — links [n] on **Sources:** lines to Knowledge */
   sourceCitations?: SourceCitationMap
+  /** Web search / browser tool results — inline `[n]` chips + sidebar (parent) */
+  webSources?: WebSourceItem[]
   /**
    * When true, do not render the three-dot typing indicator here (parent shows a single indicator at the bottom).
    * Still renders completed paragraph blocks plus the in-flight tail so text streams without duplicate dots mid-message.
@@ -308,15 +374,99 @@ function splitStreamingMarkdown(text: string): { completedBlocks: string[]; stre
   return { completedBlocks, streamTail: text.slice(offset) }
 }
 
-export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTypingIndicator = false }: Props) {
+export function MarkdownMessage({
+  text,
+  isStreaming,
+  sourceCitations,
+  webSources,
+  suppressTypingIndicator = false,
+}: Props) {
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
+  const hasWebSources = !!(webSources && webSources.length > 0)
   const normalizedDisplay = useMemo(
     () =>
       normalizeGeneratedMarkdown(text, {
         sourceCitations,
         linkifyCitations: !isStreaming && hasCitationMap,
+        webSources,
+        // Linkify web citations even while streaming so inline chips render with the text,
+        // instead of appearing only after completion.
+        linkifyWebCitations: hasWebSources,
       }),
-    [text, sourceCitations, isStreaming, hasCitationMap],
+    [text, sourceCitations, isStreaming, hasCitationMap, webSources, hasWebSources],
+  )
+
+  const mdRenderComponents = useMemo(
+    () => {
+      const chipClass =
+        'overlay-webcite-chip mx-0.5 inline-flex max-w-full cursor-pointer items-baseline rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 align-baseline text-[11px] font-normal leading-none text-[var(--muted)] no-underline! transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]'
+
+      const renderChip = (href: string, label: string, tooltipSources: WebSourceItem[]) => (
+        <WebSourceTooltip sources={tooltipSources}>
+          <a href={href} target="_blank" rel="noopener noreferrer" className={chipClass}>
+            {label}
+          </a>
+        </WebSourceTooltip>
+      )
+
+      return {
+        ...baseMdComponents,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        a(props: any) {
+          const href = props.href
+          const linkText = extractLinkText(props.children as ReactNode).trim()
+
+          // Multi-citation chip: `#overlay-webcite-multi-1-2-3`
+          if (typeof href === 'string' && href.startsWith('#overlay-webcite-multi-')) {
+            const raw = href.slice('#overlay-webcite-multi-'.length)
+            const indices = raw
+              .split('-')
+              .map((s) => parseInt(s, 10))
+              .filter((n) => Number.isFinite(n) && n >= 1 && n <= (webSources?.length ?? 0))
+            const picked = indices.map((i) => webSources![i - 1]!).filter(Boolean)
+            if (picked.length > 0) {
+              // Multi-chip opens the first source on click; tooltip surfaces the rest.
+              return renderChip(picked[0]!.url, linkText || webSourceDisplayKey(picked[0]!.url), picked)
+            }
+            return <span className="mx-0.5 text-[11px] text-[var(--muted)] tabular-nums">[{raw}]</span>
+          }
+
+          // Single citation chip: `#overlay-webcite-N`
+          if (typeof href === 'string' && href.startsWith('#overlay-webcite-')) {
+            const raw = href.slice('#overlay-webcite-'.length)
+            const n = parseInt(raw, 10)
+            const src = webSources?.[n - 1]
+            if (src) {
+              return renderChip(src.url, linkText || webSourceDisplayKey(src.url), [src])
+            }
+            return <span className="mx-0.5 text-[11px] text-[var(--muted)] tabular-nums">[{raw}]</span>
+          }
+
+          // Generic external URL → also render as chip with a tooltip. Skip Connect-service
+          // links (handled by baseMdComponents.a) and internal /app/ / hash / mailto links.
+          if (
+            typeof href === 'string' &&
+            /^https?:\/\//i.test(href) &&
+            !/^connect\s+/i.test(linkText)
+          ) {
+            // Prefer metadata from `webSources` when this URL was one of the collected sources.
+            const matched = webSources?.find((s) => s.url === href)
+            const fallback: WebSourceItem = matched ?? {
+              url: href,
+              title: '',
+              origin: 'web-search',
+            }
+            const isTextJustUrl =
+              !linkText || linkText === href || /^https?:\/\//i.test(linkText)
+            const chipLabel = isTextJustUrl ? webSourceDisplayKey(href) : linkText
+            return renderChip(href, chipLabel, [fallback])
+          }
+
+          return baseMdComponents.a(props)
+        },
+      }
+    },
+    [webSources],
   )
   const { completedBlocks, streamTail } = useMemo(
     () => splitStreamingMarkdown(normalizedDisplay),
@@ -336,7 +486,7 @@ export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTy
           <ReactMarkdown
             remarkPlugins={markdownRemarkPlugins}
             rehypePlugins={markdownRehypePlugins}
-            components={mdComponents}
+            components={mdRenderComponents}
           >
             {block}
           </ReactMarkdown>
@@ -348,7 +498,7 @@ export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTy
           <ReactMarkdown
             remarkPlugins={markdownRemarkPlugins}
             rehypePlugins={markdownRehypePlugins}
-            components={mdComponents}
+            components={mdRenderComponents}
           >
             {trailingBlock}
           </ReactMarkdown>

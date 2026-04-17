@@ -24,8 +24,7 @@ export const CHUNK_OVERLAP = 80
 const RRF_K = 60
 const EMBEDDING_MODEL = 'openai/text-embedding-3-small'
 const EMBEDDING_DIM = 1536
-const GATEWAY_EMBED_URL =
-  process.env.AI_GATEWAY_EMBED_URL?.trim() || 'https://ai-gateway.vercel.sh/v1/embeddings'
+const GATEWAY_EMBED_URL = 'https://ai-gateway.vercel.sh/v1/embeddings'
 
 export function chunkText(full: string): Array<{ text: string; chunkIndex: number; startOffset: number }> {
   const trimmed = full.trim()
@@ -93,15 +92,13 @@ export const purgeKnowledgeSource = internalMutation({
   args: {
     sourceKind: v.union(v.literal('file'), v.literal('memory')),
     sourceId: v.string(),
-    userId: v.optional(v.string()),
   },
-  handler: async (ctx, { sourceKind, sourceId, userId }) => {
+  handler: async (ctx, { sourceKind, sourceId }) => {
     const existing = await ctx.db
       .query('knowledgeChunks')
       .withIndex('by_source', (q) => q.eq('sourceKind', sourceKind).eq('sourceId', sourceId))
       .collect()
     for (const c of existing) {
-      if (userId && c.userId !== userId) continue
       const emb = await ctx.db
         .query('knowledgeChunkEmbeddings')
         .withIndex('by_chunkId', (q) => q.eq('chunkId', c._id))
@@ -258,11 +255,7 @@ export const reindexFileInternal = internalAction({
   handler: async (ctx, { fileId }) => {
     const meta = await ctx.runQuery(internal.knowledge.getFileForReindex, { fileId })
     if (!meta || meta.kind === 'skip') return
-    const { userId, projectId, name } = meta
-    const MAX_INDEXABLE_BYTES = 2 * 1024 * 1024 // 2 MB
-    const content = Buffer.byteLength(meta.content, 'utf8') > MAX_INDEXABLE_BYTES
-      ? meta.content.slice(0, MAX_INDEXABLE_BYTES)
-      : meta.content
+    const { userId, projectId, name, content } = meta
     const segments = chunkText(content)
     if (segments.length === 0) {
       await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
