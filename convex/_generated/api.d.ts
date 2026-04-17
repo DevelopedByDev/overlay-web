@@ -17,7 +17,6 @@ import type * as daytona from "../daytona.js";
 import type * as daytonaReconcile from "../daytonaReconcile.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
-import type * as keys from "../keys.js";
 import type * as knowledge from "../knowledge.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
@@ -54,7 +53,6 @@ declare const fullApi: ApiFromModules<{
   daytonaReconcile: typeof daytonaReconcile;
   files: typeof files;
   http: typeof http;
-  keys: typeof keys;
   knowledge: typeof knowledge;
   "lib/auth": typeof lib_auth;
   "lib/authDebug": typeof lib_authDebug;
