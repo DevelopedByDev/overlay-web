@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
@@ -454,8 +454,11 @@ function useSmoothStreamedText(
   const [display, setDisplay] = useState(() => (isStreaming && enabled ? '' : targetText))
   const targetRef = useRef(targetText)
   const displayRef = useRef(display)
-  targetRef.current = targetText
-  displayRef.current = display
+
+  useLayoutEffect(() => {
+    targetRef.current = targetText
+    displayRef.current = display
+  }, [targetText, display])
 
   useEffect(() => {
     if (!enabled || !isStreaming) {
