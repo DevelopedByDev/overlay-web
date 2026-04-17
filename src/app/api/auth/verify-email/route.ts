@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     const ticketValue = typeof body?.ticket === 'string' ? body.ticket : ''
     const ticket = readEmailVerificationTicket(ticketValue)
 
-    const rateLimitResponse = enforceRateLimits(request, [
+    const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'auth:verify-email:ip', key: getClientIp(request), limit: 10, windowMs: 10 * 60_000 },
       { bucket: 'auth:verify-email:ticket', key: ticket?.userId ?? ticketValue, limit: 8, windowMs: 10 * 60_000 },
       ...(action === 'resend'

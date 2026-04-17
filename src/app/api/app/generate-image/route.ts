@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const rateLimitResponse = enforceRateLimits(request, [
+    const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'generation:image:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
       { bucket: 'generation:image:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
     ])

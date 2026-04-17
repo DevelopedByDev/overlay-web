@@ -4,7 +4,7 @@ import { rateLimitByIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimitResponse = rateLimitByIp(request, 'auth:sign-up', 5, 10 * 60_000)
+    const rateLimitResponse = await rateLimitByIp(request, 'auth:sign-up', 5, 10 * 60_000)
     if (rateLimitResponse) return rateLimitResponse
 
     const body = await request.json()

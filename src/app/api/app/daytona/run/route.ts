@@ -70,7 +70,6 @@ function validateSandboxCommand(command: string): { ok: true } | { ok: false; re
   if (command.length > MAX_COMMAND_LENGTH) {
     return { ok: false, reason: `Command exceeds maximum length of ${MAX_COMMAND_LENGTH} characters.` }
   }
-  // eslint-disable-next-line no-control-regex
   if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(command)) {
     return { ok: false, reason: 'Command contains disallowed control characters.' }
   }
@@ -246,7 +245,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const rateLimitResponse = enforceRateLimits(request, [
+  const rateLimitResponse = await enforceRateLimits(request, [
     { bucket: 'sandbox:daytona:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
     { bucket: 'sandbox:daytona:user', key: userId, limit: 10, windowMs: 10 * 60_000 },
   ])

@@ -1,5 +1,7 @@
 'use client'
 
+import type { AppSettings, ChatStreamingMode, ThemePreference } from '@overlay/app-core'
+import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
 import {
   createContext,
   useCallback,
@@ -10,14 +12,7 @@ import {
   useState,
 } from 'react'
 
-export type ThemePreference = 'light' | 'dark'
-export type ChatStreamingMode = 'token' | 'chunk'
-
-export type AppSettings = {
-  theme: ThemePreference
-  useSecondarySidebar: boolean
-  chatStreamingMode: ChatStreamingMode
-}
+export type { AppSettings, ChatStreamingMode, ThemePreference } from '@overlay/app-core'
 
 type AppSettingsContextValue = {
   settings: AppSettings
@@ -25,12 +20,6 @@ type AppSettingsContextValue = {
   isSaving: boolean
   refresh: () => Promise<void>
   updateSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>
-}
-
-export const DEFAULT_APP_SETTINGS: AppSettings = {
-  theme: 'light',
-  useSecondarySidebar: false,
-  chatStreamingMode: 'token',
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)

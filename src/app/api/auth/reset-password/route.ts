@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     const token = typeof body?.token === 'string' ? body.token.trim() : ''
     const password = typeof body?.password === 'string' ? body.password : ''
 
-    const rateLimitResponse = enforceRateLimits(request, [
+    const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'auth:reset-password:ip', key: getClientIp(request), limit: 8, windowMs: 10 * 60_000 },
       { bucket: 'auth:reset-password:token', key: token, limit: 5, windowMs: 10 * 60_000 },
     ])

@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
           : undefined
 
     const tokenBucketKey = expectedUserId ?? createHash('sha256').update(refreshToken).digest('hex').slice(0, 16)
-    const rateLimitResponse = enforceRateLimits(request, [
+    const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'auth:native-refresh:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
       { bucket: 'auth:native-refresh:user', key: tokenBucketKey, limit: 12, windowMs: 10 * 60_000 },
     ])

@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const rateLimitResponse = enforceRateLimits(request, [
+    const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'browser-task:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
       { bucket: 'browser-task:user', key: auth.userId, limit: 10, windowMs: 10 * 60_000 },
     ])
@@ -61,7 +61,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Task is required' }, { status: 400 })
     }
     const MAX_TASK_LENGTH = 4096
-    // eslint-disable-next-line no-control-regex
     const sanitizedTask = task.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, MAX_TASK_LENGTH)
     if (!sanitizedTask) {
       return NextResponse.json({ error: 'Task is required' }, { status: 400 })

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
+import { hasValidSessionCookieSignature } from '@/lib/session-cookie-signature'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 const CSP_REPORT_PATH = '/api/security/csp-report'
@@ -73,9 +74,10 @@ function buildConnectSrc(): string[] {
 }
 
 function getCspHeaderName(): 'Content-Security-Policy' | 'Content-Security-Policy-Report-Only' {
-  return process.env.SECURITY_CSP_ENFORCE === 'true'
-    ? 'Content-Security-Policy'
-    : 'Content-Security-Policy-Report-Only'
+  const configured = process.env.SECURITY_CSP_ENFORCE?.trim().toLowerCase()
+  if (configured === 'true') return 'Content-Security-Policy'
+  if (configured === 'false') return 'Content-Security-Policy-Report-Only'
+  return IS_DEVELOPMENT ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy'
 }
 
 function buildCspPolicy(nonce: string): string {
@@ -197,8 +199,7 @@ export async function middleware(request: NextRequest) {
       )
     }
 
-    const parts = sessionCookie.value.split('.')
-    if (parts.length < 2 || parts[0].length < 10) {
+    if (!(await hasValidSessionCookieSignature(sessionCookie.value))) {
       if (pathname.startsWith('/api/')) {
         return applyBrowserSecurityHeaders(
           NextResponse.json(

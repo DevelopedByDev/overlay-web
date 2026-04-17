@@ -253,6 +253,16 @@ export default defineSchema({
     .index('by_provider_eventId', ['provider', 'eventId'])
     .index('by_processedAt', ['processedAt']),
 
+  rateLimitWindows: defineTable({
+    bucket: v.string(),
+    bucketKey: v.string(),
+    count: v.number(),
+    resetAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_bucketKey', ['bucketKey'])
+    .index('by_resetAt', ['resetAt']),
+
   // Append-only audit log: one row per billing period per user.
   // Written to on every usage batch for raw token counts and a credit snapshot.
   // Never read for enforcement — use subscriptions.creditsUsed for that.

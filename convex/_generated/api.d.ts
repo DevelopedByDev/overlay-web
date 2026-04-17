@@ -27,6 +27,7 @@ import type * as memories from "../memories.js";
 import type * as notes from "../notes.js";
 import type * as outputs from "../outputs.js";
 import type * as projects from "../projects.js";
+import type * as rateLimits from "../rateLimits.js";
 import type * as sessionTransfer from "../sessionTransfer.js";
 import type * as skills from "../skills.js";
 import type * as storageAdmin from "../storageAdmin.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   notes: typeof notes;
   outputs: typeof outputs;
   projects: typeof projects;
+  rateLimits: typeof rateLimits;
   sessionTransfer: typeof sessionTransfer;
   skills: typeof skills;
   storageAdmin: typeof storageAdmin;
