@@ -18,6 +18,10 @@ import {
 import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 import { buildOverlayToolSet } from '@/lib/tools/build'
+import {
+  allowedOverlayToolIdsForTurn,
+  HIGH_RISK_TOOL_AUTHORIZATION_NOTE,
+} from '@/lib/tools/exposure-policy'
 import { filterComposioToolSet } from '@/lib/tools/composio-filter'
 import { MAX_TOOL_STEPS_ASK } from '@/lib/tools/policy'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
@@ -348,6 +352,10 @@ export async function POST(request: NextRequest) {
     const indexedNames = Array.isArray(indexedFileNames)
       ? indexedFileNames.filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
       : []
+    const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
+      mode: 'ask',
+      latestUserText,
+    })
 
     const indexedNote = indexedFilesSystemNote(indexedNames)
 
@@ -375,7 +383,15 @@ export async function POST(request: NextRequest) {
 
     const browserToolNote =
       '\n\nYou have an interactive_browser_session tool that drives a real browser. Reserve it strictly for tasks that require UI interaction (login, form submission, JS-heavy scraping, screenshot). For any information lookup or research request, use perplexity_search instead.'
-    const knowledgeToolNote = '\n\n' + ASK_KNOWLEDGE_TOOLS_NOTE + browserToolNote + '\n\n' + MEMORY_SAVE_PROTOCOL
+    const knowledgeToolNote =
+      '\n\n' +
+      ASK_KNOWLEDGE_TOOLS_NOTE +
+      browserToolNote +
+      '\n\n' +
+      HIGH_RISK_TOOL_AUTHORIZATION_NOTE +
+      '\nOnly use Composio or other third-party integration tools when the user explicitly asked in this chat to act on that external service or account.' +
+      '\n\n' +
+      MEMORY_SAVE_PROTOCOL
 
     const finishAsk = async (
       text: string,
@@ -456,6 +472,7 @@ export async function POST(request: NextRequest) {
           turnId: tid,
           projectId: conversationProjectId,
           baseUrl: getInternalApiBaseUrl(request),
+          allowedToolIds: allowedOverlayToolIds,
           forwardCookie: request.headers.get('cookie') ?? undefined,
         }),
       ),
@@ -474,6 +491,8 @@ export async function POST(request: NextRequest) {
     console.log(
       '[conversations/ask] tools:',
       summarizeToolSetForLog(askTools),
+      '| allowed_overlay_tools:',
+      allowedOverlayToolIds.join(', ') || '(none)',
       '| perplexity_search:',
       perplexityTool ? 'yes' : 'NO (missing gateway key or init failed — see [AI Gateway] logs)',
       '| unified_ask:',

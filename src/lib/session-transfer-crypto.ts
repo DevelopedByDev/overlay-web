@@ -42,6 +42,12 @@ function getRequiredEncryptionSecret(params: {
         `${params.primaryEnvVar} must not equal INTERNAL_API_SECRET (${params.purpose})`,
       )
     }
+    const internalServiceAuthSecret = process.env['INTERNAL_SERVICE_AUTH_SECRET']?.trim()
+    if (internalServiceAuthSecret && internalServiceAuthSecret === primary) {
+      throw new Error(
+        `${params.primaryEnvVar} must not equal INTERNAL_SERVICE_AUTH_SECRET (${params.purpose})`,
+      )
+    }
     return primary
   }
 

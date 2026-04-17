@@ -30,8 +30,11 @@ import type { OverlayToolsOptions, ToolMode } from './types'
  */
 export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
+  const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
+  const shouldExposeTool = (toolId: string): boolean => !allowedToolIds || allowedToolIds.has(toolId)
 
-  tools.list_skills = tool({
+  if (shouldExposeTool('list_skills')) {
+    tools.list_skills = tool({
     description:
       'List all active skills configured by the user. Skills are custom instructions the user has set up for specific task types. ' +
       'IMPORTANT: Call this before taking action on any task to discover whether a relevant skill applies — especially when the request touches a domain the user may have customized (writing style, workflows, personas, integrations, etc.). ' +
@@ -44,8 +47,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeListSkills(options, input)
     },
   })
+  }
 
-  tools.search_knowledge = tool({
+  if (shouldExposeTool('search_knowledge')) {
+    tools.search_knowledge = tool({
     description:
       'Search the user\'s saved knowledge: notebook files and memories. Uses hybrid semantic + keyword retrieval. ' +
       'Call this when you need facts from their knowledge base, prior notes, or stored context that is not in the chat transcript.',
@@ -61,8 +66,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeSearchKnowledge(options, input)
     },
   })
+  }
 
-  tools.list_notes = tool({
+  if (shouldExposeTool('list_notes')) {
+    tools.list_notes = tool({
     description:
       'List the user\'s notes in Overlay. When the chat is tied to a project, pass projectId from context to scope results.',
     inputSchema: z.object({
@@ -73,8 +80,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeListNotes(options, input)
     },
   })
+  }
 
-  tools.get_note = tool({
+  if (shouldExposeTool('get_note')) {
+    tools.get_note = tool({
     description: 'Load a single note by id (full title, body, tags).',
     inputSchema: z.object({
       noteId: z.string().describe('Convex notes document id'),
@@ -84,8 +93,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeGetNote(options, input)
     },
   })
+  }
 
-  tools.save_memory = tool({
+  if (shouldExposeTool('save_memory')) {
+    tools.save_memory = tool({
     description:
       'Save a durable memory about the user (preferences, facts, standing instructions). ' +
       'You MUST call this when they state personal preferences or long-lived facts (e.g. "I like pasta", "I am vegetarian", "always cite sources"). ' +
@@ -102,8 +113,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeSaveMemory(options, input)
     },
   })
+  }
 
-  tools.update_memory = tool({
+  if (shouldExposeTool('update_memory')) {
+    tools.update_memory = tool({
     description: 'Replace the text of an existing memory by id (use after listing or saving a memory).',
     inputSchema: z.object({
       memoryId: z.string().describe('Convex document id of the memory'),
@@ -114,8 +127,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeUpdateMemory(options, input)
     },
   })
+  }
 
-  tools.delete_memory = tool({
+  if (shouldExposeTool('delete_memory')) {
+    tools.delete_memory = tool({
     description: 'Delete a memory by id.',
     inputSchema: z.object({
       memoryId: z.string().describe('Convex document id of the memory to remove'),
@@ -125,8 +140,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeDeleteMemory(options, input)
     },
   })
+  }
 
-  tools.interactive_browser_session = tool({
+  if (shouldExposeTool('interactive_browser_session')) {
+    tools.interactive_browser_session = tool({
     description:
       'Remote AI-controlled browser session for INTERACTIVE web tasks only — NOT a search tool. ' +
       'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through perplexity_search (which supports multi-query, domain filters, and returns ranked URLs with snippets — exactly what source/research requests need). ' +
@@ -145,9 +162,11 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeBrowserRunTask(options, input)
     },
   })
+  }
 
   if (mode === 'act') {
-    tools.draft_automation_from_chat = tool({
+    if (shouldExposeTool('draft_automation_from_chat')) {
+      tools.draft_automation_from_chat = tool({
       description:
         'Create a draft automation proposal from the current chat turn. ' +
         'Use this when the user is asking for a repeatable or scheduled workflow. ' +
@@ -165,8 +184,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeDraftAutomationFromChat(options, input)
       },
     })
+    }
 
-    tools.draft_skill_from_chat = tool({
+    if (shouldExposeTool('draft_skill_from_chat')) {
+      tools.draft_skill_from_chat = tool({
       description:
         'Create a reusable skill draft from the current chat turn. ' +
         'Use this when the workflow is reusable but not obviously scheduled. ' +
@@ -181,8 +202,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeDraftSkillFromChat(options, input)
       },
     })
+    }
 
-    tools.generate_image = tool({
+    if (shouldExposeTool('generate_image')) {
+      tools.generate_image = tool({
       description:
         'Generate an image from a text prompt using AI image generation models. ' +
         'Returns a data URL of the generated image. ' +
@@ -204,8 +227,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeGenerateImage(options, input)
       },
     })
+    }
 
-    tools.generate_video = tool({
+    if (shouldExposeTool('generate_video')) {
+      tools.generate_video = tool({
       description:
         'Generate a video from a text prompt using AI video generation models. ' +
         'Video generation is asynchronous and can take 1–5 minutes. ' +
@@ -234,8 +259,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeGenerateVideo(options, input)
       },
     })
+    }
 
-    tools.run_daytona_sandbox = tool({
+    if (shouldExposeTool('run_daytona_sandbox')) {
+      tools.run_daytona_sandbox = tool({
       description:
         'Run a CLI or script task inside the user’s persistent paid Daytona workspace. ' +
         'Use this for programmatic workflows like app building, code generation, file transforms, slideshow generation, or media pipelines that should run through command-line tooling rather than browser automation. ' +
@@ -259,8 +286,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeRunDaytonaSandbox(options, input)
       },
     })
+    }
 
-    tools.create_note = tool({
+    if (shouldExposeTool('create_note')) {
+      tools.create_note = tool({
       description: 'Create a new note (title, markdown/plain content, optional tags and project).',
       inputSchema: z.object({
         title: z.string().optional(),
@@ -273,8 +302,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeCreateNote(options, input)
       },
     })
+    }
 
-    tools.update_note = tool({
+    if (shouldExposeTool('update_note')) {
+      tools.update_note = tool({
       description: 'Update an existing note by id (any subset of title, content, tags).',
       inputSchema: z.object({
         noteId: z.string(),
@@ -287,8 +318,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeUpdateNote(options, input)
       },
     })
+    }
 
-    tools.delete_note = tool({
+    if (shouldExposeTool('delete_note')) {
+      tools.delete_note = tool({
       description: 'Delete a note by id.',
       inputSchema: z.object({
         noteId: z.string(),
@@ -298,6 +331,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeDeleteNote(options, input)
       },
     })
+    }
   }
 
   return tools

@@ -9,6 +9,10 @@ import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/models'
 import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
+import {
+  allowedOverlayToolIdsForTurn,
+  HIGH_RISK_TOOL_AUTHORIZATION_NOTE,
+} from '@/lib/tools/exposure-policy'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import {
@@ -326,6 +330,10 @@ export async function POST(request: NextRequest) {
     const indexedNames = Array.isArray(indexedFileNames)
       ? indexedFileNames.filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
       : []
+    const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
+      mode: 'act',
+      latestUserText,
+    })
 
     const indexedNote = indexedFilesSystemNote(indexedNames)
     let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
@@ -353,6 +361,7 @@ export async function POST(request: NextRequest) {
           turnId: tid,
           projectId: conversationProjectId,
           baseUrl: getInternalApiBaseUrl(request),
+          allowedToolIds: allowedOverlayToolIds,
           forwardCookie: request.headers.get('cookie') ?? undefined,
         }),
       ),
@@ -369,6 +378,8 @@ export async function POST(request: NextRequest) {
     console.log(
       '[conversations/act] tools:',
       summarizeToolSetForLog(tools),
+      '| allowed_overlay_tools:',
+      allowedOverlayToolIds.join(', ') || '(none)',
       '| perplexity_search:',
       perplexityTool ? 'yes' : 'NO (missing gateway key or init failed — see [AI Gateway] logs)',
     )
@@ -381,6 +392,10 @@ export async function POST(request: NextRequest) {
       '\nYou also have an interactive_browser_session tool that drives a real browser. Reserve it strictly for tasks that require UI interaction (login, form submission, JS-heavy scraping, screenshot). For any information lookup or research request, use perplexity_search instead.'
     const sandboxToolNote =
       '\nYou also have a run_daytona_sandbox tool for CLI and code execution in the user’s persistent Daytona workspace. When you use it, never invent details about generated files that you did not actually inspect. Only claim filenames, artifact counts, runtime, exit status, or other facts that came directly from the tool result, your own generated code, or a follow-up inspection step.'
+    const toolAuthorizationNote =
+      '\n' +
+      HIGH_RISK_TOOL_AUTHORIZATION_NOTE +
+      '\nOnly use Composio or other third-party integration tools when the user explicitly asked in this chat to act on that external service or account.'
     const knowledgeNote =
       '\n' +
       ACT_KNOWLEDGE_WEB_TOOLS_NOTE +
@@ -400,6 +415,7 @@ export async function POST(request: NextRequest) {
         automationDraftNote +
         browserToolNote +
         sandboxToolNote +
+        toolAuthorizationNote +
         knowledgeNote +
         memoryContext +
         autoRetrieval +
