@@ -26,8 +26,11 @@ function getR2BucketName(): string {
   return requireR2Env('R2_BUCKET_NAME')
 }
 
+const MAX_PRESIGN_TTL_SECONDS = 900 // hard cap: 15 minutes
+
 function getR2PresignTtl(): number {
-  return parseInt(process.env['R2_PRESIGN_TTL_SECONDS'] ?? '300', 10)
+  const configured = parseInt(process.env['R2_PRESIGN_TTL_SECONDS'] ?? '300', 10)
+  return Math.min(Number.isFinite(configured) && configured > 0 ? configured : 300, MAX_PRESIGN_TTL_SECONDS)
 }
 
 export function createR2Client(): S3Client {

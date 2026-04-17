@@ -127,7 +127,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'moonshotai/kimi-k2-0905': { inputPer1M: 0.3827, cachedInputPer1M: 0.1935, outputPer1M: 1.72, isFree: false },
   'moonshotai/kimi-k2-instruct-0905': { inputPer1M: 0.3827, cachedInputPer1M: 0.1935, outputPer1M: 1.72, isFree: false },
   'moonshotai/kimi-k2.5': { inputPer1M: 0.3827, cachedInputPer1M: 0.1935, outputPer1M: 1.72, isFree: false },
-  'minimax/minimax-m2.7': { inputPer1M: 0.3, cachedInputPer1M: 0, outputPer1M: 1.2, isFree: false },
   'z-ai/glm-5.1': { inputPer1M: 1.0, cachedInputPer1M: 0, outputPer1M: 3.2, isFree: false },
   'qwen/qwen3.6-plus': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'zai/glm-5.1': { inputPer1M: 1.0, cachedInputPer1M: 0, outputPer1M: 3.2, isFree: false },

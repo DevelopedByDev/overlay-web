@@ -1,32 +1,11 @@
-import { action } from './_generated/server'
-import { v } from 'convex/values'
-import { requireProviderKeysSecret } from './lib/auth'
-
-const PROVIDER_ENV_VARS: Record<string, string> = {
-  groq: 'GROQ_API_KEY',
-  openrouter: 'OPENROUTER_API_KEY',
-  minimax: 'MINIMAX_API_KEY',
-  composio: 'COMPOSIO_API_KEY',
-  ai_gateway: 'AI_GATEWAY_API_KEY',
-}
-
-export const getAPIKey = action({
-  args: {
-    provider: v.string(),
-    providerKeysSecret: v.string(),
-  },
-  handler: async (_ctx, { provider, providerKeysSecret }) => {
-    requireProviderKeysSecret(providerKeysSecret)
-    const envVarName = PROVIDER_ENV_VARS[provider]
-    if (!envVarName) {
-      return { key: null }
-    }
-
-    const apiKey = process.env[envVarName]
-    if (!apiKey) {
-      return { key: null }
-    }
-
-    return { key: apiKey }
-  }
-})
+// Provider API keys are no longer exposed through a Convex action.
+//
+// Historically this file exported `getAPIKey`, a public action gated only by a
+// shared `PROVIDER_KEYS_SECRET`. Because Convex actions are callable from the
+// browser, a single leak of that secret would exfiltrate every provider key in
+// one request. That endpoint has been removed.
+//
+// Server-side code that needs a provider key should read it directly from
+// `process.env` inside a Next.js route handler, or call
+// `getServerProviderKey(...)` from `src/lib/server-provider-keys`, which keeps
+// the key server-only.
