@@ -65,6 +65,78 @@ export async function getOpenRouterLanguageModel(modelId: string, accessToken?: 
   return openrouter.chat(toOpenRouterApiModelId(modelId))
 }
 
+/**
+ * Like {@link getOpenRouterLanguageModel} but also captures the actual model OpenRouter routes to
+ * (for `openrouter/free` the router picks a free model at runtime). The `onModelCaptured` callback
+ * is invoked as soon as the first SSE chunk with a `model` field arrives, so it is always set
+ * before `ToolLoopAgent.onFinish` is called.
+ */
+export async function getOpenRouterLanguageModelCapturingRoutedModel(
+  modelId: string,
+  accessToken: string | undefined,
+  onModelCaptured: (model: string) => void,
+) {
+  const apiKey = await resolveOpenRouterApiKey(accessToken)
+  if (!apiKey) {
+    throw new Error(
+      'OPENROUTER_API_KEY is not configured. Set it in Convex or the server environment.'
+    )
+  }
+
+  const captureFetch = async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const response = await openRouterFetchWithRetry(url, init)
+    if (!response.body) return response
+    const [primary, capture] = response.body.tee()
+    ;(async () => {
+      const reader = capture.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          const lines = buf.split('\n')
+          buf = lines.pop() ?? ''
+          let stop = false
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') { stop = true; break }
+            try {
+              const chunk = JSON.parse(data) as { model?: string }
+              if (typeof chunk.model === 'string' && chunk.model) {
+                onModelCaptured(chunk.model)
+                stop = true
+                break
+              }
+            } catch { /* ignore parse errors */ }
+          }
+          if (stop) break
+        }
+      } catch { /* ignore read errors */ } finally {
+        reader.cancel().catch(() => {})
+      }
+    })()
+    return new Response(primary, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    })
+  }
+
+  const openrouter = createOpenRouter({
+    apiKey,
+    compatibility: 'strict',
+    headers: {
+      'HTTP-Referer': 'https://getoverlay.io',
+      'X-Title': 'Overlay',
+    },
+    fetch: captureFetch,
+  })
+  return openrouter.chat(toOpenRouterApiModelId(modelId))
+}
+
 export async function getGatewayLanguageModel(modelId: string, accessToken?: string) {
   const model = getModel(modelId)
 

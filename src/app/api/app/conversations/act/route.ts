@@ -3,7 +3,7 @@ import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type 
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { listMemories } from '@/lib/app-store'
-import { getGatewayLanguageModel, getGatewayPerplexitySearchTool } from '@/lib/ai-gateway'
+import { getGatewayLanguageModel, getGatewayPerplexitySearchTool, getOpenRouterLanguageModelCapturingRoutedModel } from '@/lib/ai-gateway'
 import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
@@ -345,10 +345,18 @@ export async function POST(request: NextRequest) {
       : ''
 
     const modelMessages = await convertToModelMessages(messagesForModel)
-    const languageModel = await getGatewayLanguageModel(
-      effectiveModelId,
-      auth.accessToken || undefined,
-    )
+    // Declared before languageModel so the fetch-interceptor callback can set it during LLM calls.
+    let streamedRoutedModelId: string | undefined
+    const languageModel = effectiveModelId === FREE_TIER_AUTO_MODEL_ID
+      ? await getOpenRouterLanguageModelCapturingRoutedModel(
+          effectiveModelId,
+          auth.accessToken || undefined,
+          (model) => { streamedRoutedModelId = model },
+        )
+      : await getGatewayLanguageModel(
+          effectiveModelId,
+          auth.accessToken || undefined,
+        )
     if (_ttftDebug) _tPrep = performance.now()
     const [composioRaw, webToolSet, perplexityTool] = await Promise.all([
       composioToolsTask,
@@ -425,9 +433,6 @@ export async function POST(request: NextRequest) {
     let automationSuggestion:
       | ReturnType<typeof shouldSuggestAutomationFromTurn>
       | undefined
-    // Declared here so onFinish (below) can set it synchronously before the finish
-    // stream event fires — the async result.response path is unreliable for ToolLoopAgent.
-    let streamedRoutedModelId: string | undefined
 
     if (_ttftDebug) _tStreamCall = performance.now()
     const result = await agent.stream({
@@ -474,11 +479,9 @@ export async function POST(request: NextRequest) {
         const totalUsage = event.totalUsage
         const totalInputTokens = totalUsage?.inputTokens ?? 0
         const totalOutputTokens = totalUsage?.outputTokens ?? 0
-        // Set synchronously before the first await so it's ready when the finish
-        // stream event is serialized by toUIMessageStreamResponse below.
-        if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
-          const lastStep = event.steps.at(-1)
-          const rid = lastStep?.response.modelId
+        // Fallback: if the fetch-interceptor did not capture the model yet, try the step response.
+        if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID && !streamedRoutedModelId) {
+          const rid = event.steps.at(-1)?.response.modelId
           if (typeof rid === 'string' && rid) streamedRoutedModelId = rid
         }
         automationSuggestion =
@@ -530,10 +533,9 @@ export async function POST(request: NextRequest) {
           )
 
           if (cid) {
-            const lastStep = event.steps.at(-1)
             const routedModelId =
               effectiveModelId === FREE_TIER_AUTO_MODEL_ID
-                ? lastStep?.response.modelId
+                ? (streamedRoutedModelId || event.steps.at(-1)?.response.modelId)
                 : undefined
             await convex.mutation('conversations:addMessage', {
               conversationId: cid,

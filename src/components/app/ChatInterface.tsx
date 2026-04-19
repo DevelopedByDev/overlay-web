@@ -53,7 +53,7 @@ import { ACT_MODEL_KEY, CHAT_MODEL_KEY, COMPOSER_MODE_KEY } from '@/lib/chat-mod
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { webSourceDisplayKey } from '@/lib/web-sources'
-import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
+import { GenerationModeToggle } from './GenerationModeToggle'
 import {
   CHAT_CREATED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
@@ -88,17 +88,24 @@ function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   return (
     <span className="flex h-5 shrink-0 items-center gap-1">
       {showUpgrade && (
-        <button
-          type="button"
+        <span
+          role="button"
+          tabIndex={0}
           onClick={(e) => {
             e.stopPropagation()
             router.push('/account')
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.stopPropagation()
+              router.push('/account')
+            }
           }}
           className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded"
           style={{ background: 'var(--chat-badge-upgrade-bg)', color: 'var(--chat-badge-upgrade-fg)' }}
         >
           <ArrowUp size={10} strokeWidth={2} />
-        </button>
+        </span>
       )}
       {m.supportsVision && (
         <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
@@ -730,6 +737,12 @@ function ReasoningBlock({
   streamingMode: ChatStreamingMode
 }) {
   const [userExpanded, setUserExpanded] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (streaming && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [text, streaming])
   const hasContent = text.trim().length > 0
   const label = streaming ? 'Thinking' : 'Thought'
   const showDetails = streaming ? hasContent : userExpanded && hasContent
@@ -769,6 +782,7 @@ function ReasoningBlock({
           >
             {showDetails ? (
               <div
+                ref={scrollRef}
                 className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)] ${ASSISTANT_COLLAPSIBLE_BODY_CLASS}`}
               >
                 <MarkdownMessage
@@ -1047,6 +1061,12 @@ function BrowserToolBlock({
   const hasDetails = Boolean(task || liveUrl)
   /** After the tool finishes, details start collapsed; user expands with the chevron. */
   const [userExpanded, setUserExpanded] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (running && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [task, running])
   const showDetails =
     (running && Boolean(task)) || (isDone && userExpanded && hasDetails)
 
@@ -1094,6 +1114,7 @@ function BrowserToolBlock({
           >
             {showDetails ? (
               <div
+                ref={scrollRef}
                 key={userExpanded ? 'open' : running ? 'streaming' : 'closed'}
                 className={`space-y-3 message-appear ${ASSISTANT_COLLAPSIBLE_BODY_CLASS}`}
               >
@@ -5793,11 +5814,6 @@ async function hydrateCompletedAskTurnFromServer(
                   placeholder="Ask anything..."
                   rows={1}
                   onKeyDown={(e) => {
-                    if (e.key === 'Tab' && e.shiftKey) {
-                      e.preventDefault()
-                      handleComposerModeChange(composerMode === 'ask' ? 'act' : 'ask')
-                      return
-                    }
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
                       handleSend()
@@ -5865,15 +5881,6 @@ async function hydrateCompletedAskTurnFromServer(
                     </div>
                   )}
                   </div>
-                  <DelayedTooltip label="Ask / Act (⇧Tab in composer)" side="top">
-                    <span className="inline-flex">
-                      <AskActModeToggle
-                        mode={composerMode}
-                        onChange={handleComposerModeChange}
-                        disabled={isActiveLoading}
-                      />
-                    </span>
-                  </DelayedTooltip>
                   {generationChip && (
                     <div className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--foreground)] px-2 py-1 text-xs font-medium text-[var(--background)]">
                       {generationChip === 'image' ? <ImageIcon size={10} /> : <Video size={10} />}
