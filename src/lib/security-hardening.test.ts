@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-test('service auth tokens are path, method, user, and time bound', async () => {
+test('service auth tokens are path, method, user, time, and replay bound', async () => {
   process.env.INTERNAL_API_SECRET = 'test-internal-secret'
+  process.env.INTERNAL_SERVICE_AUTH_SECRET = 'test-service-auth-secret'
 
   const serviceAuth = await import(new URL('./service-auth.ts', import.meta.url).href)
 
@@ -20,6 +21,26 @@ test('service auth tokens are path, method, user, and time bound', async () => {
       path: '/api/app/notes',
     }),
     { userId: 'user_123' },
+  )
+
+  // Allow the same token to be verified twice for the common middleware + route hop.
+  assert.deepEqual(
+    await serviceAuth.verifyServiceAuthToken(token, {
+      userId: 'user_123',
+      method: 'POST',
+      path: '/api/app/notes',
+    }),
+    { userId: 'user_123' },
+  )
+
+  // Reject further reuse to narrow replay opportunities.
+  assert.equal(
+    await serviceAuth.verifyServiceAuthToken(token, {
+      userId: 'user_123',
+      method: 'POST',
+      path: '/api/app/notes',
+    }),
+    null,
   )
 
   assert.equal(

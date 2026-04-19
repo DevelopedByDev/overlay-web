@@ -50,3 +50,8 @@ plans/*
 
 src/remotion/*
 renders/*
+.env.local
+
+.cursor/*
+.claude/*
+.windsurf/*

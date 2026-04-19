@@ -11,6 +11,8 @@ import {
   FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
+import { useAuth } from '@/contexts/AuthContext'
+import { useGuestGate } from './GuestGateProvider'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { DEFAULT_MODEL_ID } from '@/lib/models'
 import { useAppSettings } from './AppSettingsProvider'
@@ -144,12 +146,17 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
   )
 }
 
-export default function AppSidebar({ user }: { user: AuthUser }) {
+export default function AppSidebar({ user: serverUser }: { user: AuthUser | null }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
-  const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
+  const { requireAuth } = useGuestGate()
+  const { user: authUser, isLoading: authLoading } = useAuth()
+  // Prefer server-resolved user; fall back to client auth. Never gate while loading.
+  const user = serverUser ?? authUser
+  const isGuestConfirmed = !authLoading && !user
+  const displayName = user ? (user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email) : 'Guest'
   const { totalUnread } = useAsyncSessions()
 
   const [pendingNav, setPendingNav] = useState<{ href: string; fromPath: string } | null>(null)
@@ -230,6 +237,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       if (e.code === 'Digit7') {
         e.preventDefault()
         if (pathname.startsWith('/app/settings')) return
+        if (isGuestConfirmed) { requireAuth('settings'); return }
         setMobileMenuOpen(false)
         setPendingNav({ href: '/app/settings', fromPath: pathname })
         router.push('/app/settings')
@@ -242,12 +250,13 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       if (!item || item.disabled || !item.href) return
       e.preventDefault()
       if (pathname.startsWith(item.href)) return
+      if (isGuestConfirmed && item.href !== '/app/chat') { requireAuth('nav'); return }
       setPendingNav({ href: item.href, fromPath: pathname })
       router.push(item.href)
     }
     window.addEventListener('keydown', onNavShortcut, true)
     return () => window.removeEventListener('keydown', onNavShortcut, true)
-  }, [pathname, router])
+  }, [pathname, router, user, isGuestConfirmed, requireAuth])
 
   /** Sub-items only while the settings route is open (avoids orphan dropdown state off-route). */
   const settingsNavExpanded = settingsPathActive
@@ -289,6 +298,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   }
 
   async function handleCreateChat() {
+    if (!user) { requireAuth('send'); return }
     const res = await fetch('/api/app/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -308,6 +318,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   }
 
   async function handleCreateNote() {
+    if (!user) { requireAuth('nav'); return }
     const res = await fetch('/api/app/notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -322,6 +333,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   }
 
   async function handleCreateProject() {
+    if (!user) { requireAuth('nav'); return }
     const res = await fetch('/api/app/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -461,6 +473,10 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   type="button"
                   onClick={() => {
                     if (!href || pathname.startsWith(href)) return
+                    if (isGuestConfirmed && href !== '/app/chat') {
+                      requireAuth('nav')
+                      return
+                    }
                     setMobileMenuOpen(false)
                     setPendingNav({ href, fromPath: pathname })
                     router.push(href)
@@ -600,6 +616,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               type="button"
               onClick={() => {
                 if (settingsPathActive) return
+                if (!user) { requireAuth('settings'); return }
                 setMobileMenuOpen(false)
                 setPendingNav({ href: '/app/settings', fromPath: pathname })
                 router.push('/app/settings')
@@ -788,18 +805,32 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => setAccountMenuOpen((value) => !value)}
-            className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-              sidebarCollapsed ? 'justify-center' : 'gap-2'
-            }`}
-            aria-label="Account menu"
-          >
-            <User size={13} />
-            {!sidebarCollapsed ? <span className="flex-1 truncate text-left">{displayName}</span> : null}
-            {!sidebarCollapsed ? <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} /> : null}
-          </button>
+          {!isGuestConfirmed ? (
+            <button
+              type="button"
+              onClick={() => setAccountMenuOpen((value) => !value)}
+              className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                sidebarCollapsed ? 'justify-center' : 'gap-2'
+              }`}
+              aria-label="Account menu"
+            >
+              <User size={13} />
+              {!sidebarCollapsed ? <span className="flex-1 truncate text-left">{displayName}</span> : null}
+              {!sidebarCollapsed ? <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} /> : null}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => requireAuth('send')}
+              className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                sidebarCollapsed ? 'justify-center' : 'gap-2'
+              }`}
+              aria-label="Sign in"
+            >
+              <User size={13} />
+              {!sidebarCollapsed ? <span className="flex-1 text-left">Sign in</span> : null}
+            </button>
+          )}
         </div>
       </div>
     </>

@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppSettings } from '@overlay/app-core'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-
-type UiSettings = {
-  theme: 'light' | 'dark'
-  useSecondarySidebar: boolean
-}
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await resolveAuthenticatedAppUser(request, {})
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const settings = await convex.query<UiSettings>(
+    const settings = await convex.query<AppSettings>(
       'uiSettings:getByServer',
       {
         userId: auth.userId,
@@ -33,12 +29,20 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json()) as {
       theme?: 'light' | 'dark'
       useSecondarySidebar?: boolean
+      chatStreamingMode?: 'token' | 'chunk'
       accessToken?: string
       userId?: string
     }
 
     if (body.theme !== undefined && body.theme !== 'light' && body.theme !== 'dark') {
       return NextResponse.json({ error: 'Invalid theme' }, { status: 400 })
+    }
+    if (
+      body.chatStreamingMode !== undefined &&
+      body.chatStreamingMode !== 'token' &&
+      body.chatStreamingMode !== 'chunk'
+    ) {
+      return NextResponse.json({ error: 'Invalid chatStreamingMode' }, { status: 400 })
     }
 
     const auth = await resolveAuthenticatedAppUser(request, body)
@@ -49,6 +53,7 @@ export async function PATCH(request: NextRequest) {
       serverSecret: string
       theme?: 'light' | 'dark'
       useSecondarySidebar?: boolean
+      chatStreamingMode?: 'token' | 'chunk'
     } = {
       userId: auth.userId,
       serverSecret: getInternalApiSecret(),
@@ -60,8 +65,11 @@ export async function PATCH(request: NextRequest) {
     if (body.useSecondarySidebar !== undefined) {
       mutationArgs.useSecondarySidebar = body.useSecondarySidebar
     }
+    if (body.chatStreamingMode !== undefined) {
+      mutationArgs.chatStreamingMode = body.chatStreamingMode
+    }
 
-    const settings = await convex.mutation<UiSettings>(
+    const settings = await convex.mutation<AppSettings>(
       'uiSettings:upsertByServer',
       mutationArgs,
       { throwOnError: true },

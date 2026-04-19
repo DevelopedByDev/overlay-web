@@ -160,6 +160,7 @@ export default defineSchema({
     userId: v.string(),
     theme: v.union(v.literal('light'), v.literal('dark')),
     useSecondarySidebar: v.boolean(),
+    chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),
@@ -211,7 +212,8 @@ export default defineSchema({
     fileBandwidthBytesUsed: v.optional(v.number()),
     fileBandwidthPeriodStart: v.optional(v.number()),
   }).index('by_userId', ['userId'])
-    .index('by_email', ['email']),
+    .index('by_email', ['email'])
+    .index('by_stripeCustomerId', ['stripeCustomerId']),
 
   budgetTopUps: defineTable({
     userId: v.string(),
@@ -237,6 +239,29 @@ export default defineSchema({
     .index('by_userId_billingPeriodStart', ['userId', 'billingPeriodStart'])
     .index('by_paymentIntentId', ['stripePaymentIntentId'])
     .index('by_checkoutSessionId', ['stripeCheckoutSessionId']),
+
+  // Webhook event deduplication. Stores processed Stripe event IDs so that a
+  // duplicate delivery (or a replay from a compromised observability path)
+  // is a no-op. TTL cleanup happens via a scheduled job that drops rows older
+  // than 30 days.
+  processedWebhookEvents: defineTable({
+    provider: v.string(),
+    eventId: v.string(),
+    eventType: v.optional(v.string()),
+    processedAt: v.number(),
+  })
+    .index('by_provider_eventId', ['provider', 'eventId'])
+    .index('by_processedAt', ['processedAt']),
+
+  rateLimitWindows: defineTable({
+    bucket: v.string(),
+    bucketKey: v.string(),
+    count: v.number(),
+    resetAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_bucketKey', ['bucketKey'])
+    .index('by_resetAt', ['resetAt']),
 
   // Append-only audit log: one row per billing period per user.
   // Written to on every usage batch for raw token counts and a credit snapshot.

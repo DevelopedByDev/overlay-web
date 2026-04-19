@@ -32,7 +32,7 @@ function UserIdExtractor() {
   useEffect(() => {
     const userId = searchParams?.get('userId')
     if (userId) {
-      localStorage.setItem('userId', userId)
+      sessionStorage.setItem('userId', userId)
     }
   }, [searchParams])
 
@@ -110,34 +110,36 @@ function PricingContent() {
     body: marketingBody(isLandingDark),
     muted: marketingMuted(isLandingDark),
     panel: marketingPanel(isLandingDark),
-    heroGlow: '',
+    heroGlow: isLandingDark
+      ? 'bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_45%)]'
+      : 'bg-[radial-gradient(circle_at_top_left,rgba(10,10,10,0.06),transparent_45%)]',
     primaryButton: isLandingDark
-      ? 'overlay-interactive border border-zinc-100 bg-zinc-100 text-zinc-900'
-      : 'overlay-interactive border border-zinc-900 bg-zinc-900 text-white',
+      ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+      : 'bg-zinc-900 text-white hover:bg-zinc-800',
     secondaryButton: isLandingDark
-      ? 'overlay-interactive border border-zinc-700 bg-zinc-900 text-zinc-100'
-      : 'overlay-interactive border border-zinc-200 bg-white text-zinc-900',
+      ? 'border border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
+      : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50',
     badge: isLandingDark
       ? 'bg-zinc-100 text-zinc-900'
       : 'bg-zinc-900 text-white',
     iconChip: isLandingDark
-      ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center border border-zinc-700 bg-zinc-950 text-zinc-100'
-      : 'inline-flex h-9 w-9 shrink-0 items-center justify-center border border-zinc-200 bg-zinc-50 text-zinc-900',
+      ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 text-zinc-100'
+      : 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-900',
     elevatedCard: isLandingDark
-      ? 'border border-zinc-800 bg-zinc-950 p-4'
-      : 'border border-zinc-200 bg-white p-4',
+      ? 'rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.24)]'
+      : 'rounded-2xl border border-zinc-200 bg-white p-4 shadow-[0_16px_40px_rgba(10,10,10,0.06)]',
     subtleCard: isLandingDark
-      ? 'border border-zinc-800 bg-zinc-950 p-4'
-      : 'border border-zinc-200 bg-zinc-50 p-4',
+      ? 'rounded-2xl border border-zinc-800/90 bg-zinc-950/55 p-4'
+      : 'rounded-2xl border border-zinc-200 bg-zinc-50/90 p-4',
     featurePanel: isLandingDark
-      ? 'border border-zinc-800 bg-zinc-950 p-6'
-      : 'border border-zinc-200 bg-zinc-50 p-6',
+      ? 'rounded-[28px] border border-zinc-800 bg-zinc-950/75 p-6'
+      : 'rounded-[28px] border border-zinc-200 bg-zinc-50/80 p-6',
     sliderTrack: isLandingDark
       ? 'mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-zinc-100'
       : 'mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-200 accent-zinc-900',
     currentPlanPill: isLandingDark
-      ? 'inline-flex items-center justify-center border border-emerald-700/60 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-200'
-      : 'inline-flex items-center justify-center border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800',
+      ? 'inline-flex items-center justify-center rounded-xl border border-emerald-700/60 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-200'
+      : 'inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800',
   }
 
   async function handleSubscribe() {
@@ -234,10 +236,11 @@ function PricingContent() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col">
+    <div className="flex min-h-screen w-full flex-col gradient-bg">
       <Suspense fallback={null}>
         <UserIdExtractor />
       </Suspense>
+      <div className="liquid-glass" />
 
       <PageNavbar />
 
@@ -249,7 +252,7 @@ function PricingContent() {
               Free for core chat and workspace. Paid adds every premium feature—pick a monthly budget ($8–$200).
             </p>
             {!authLoading && !isAuthenticated ? (
-              <div className="mt-6 inline-flex items-center gap-2 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+              <div className="mt-6 inline-flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-900">
                 Sign in to start a paid plan.
                 <Link href="/auth/sign-in?redirect=/pricing" className="font-medium underline">
                   Sign in →
@@ -257,7 +260,7 @@ function PricingContent() {
               </div>
             ) : null}
             {error ? (
-              <div className="mt-6 inline-flex bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div>
+              <div className="mt-6 inline-flex rounded-lg bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div>
             ) : null}
           </div>
 

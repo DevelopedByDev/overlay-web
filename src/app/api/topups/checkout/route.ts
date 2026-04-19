@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    const rateLimitResponse = enforceRateLimits(request, [
+    const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'billing:topup:ip', key: getClientIp(request), limit: 10, windowMs: 10 * 60_000 },
       { bucket: 'billing:topup:user', key: session.user.id, limit: 5, windowMs: 10 * 60_000 },
     ])

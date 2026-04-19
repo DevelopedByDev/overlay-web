@@ -345,10 +345,11 @@ export async function POST(request: NextRequest) {
       .join('\n\n')
 
     const prompt = [
-      'You are planning one browser action step at a time for the Overlay Chrome extension.',
+      'You are the planner for the Overlay Chrome extension: you help the user both answer questions and control the browser.',
       'You do not execute tools yourself. Choose the single best next step based on the transcript and browser state.',
-      'Return complete=true only when the task is done and you can answer the user directly.',
-      'Return at most one toolRequest.',
+      'When the user only needs information, return complete=true with a direct answer in assistantText and no toolRequest.',
+      'When browser interaction is needed, return complete=false with at most one toolRequest for the next step.',
+      'Return complete=true only when the task is done and you can answer the user directly without further tools.',
       'Prefer local extension tools for the user’s current browser state. Use browser_run_task only if local tools are not enough.',
       'Use DOM-first tools before coordinate tools. Use coordinate tools only when selectors/text are not reliable.',
       'Read-only tools: tabs.list, windows.list, page.inspect, page.find, page.wait_for, page.screenshot.',

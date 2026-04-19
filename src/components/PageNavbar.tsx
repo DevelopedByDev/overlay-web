@@ -1,163 +1,389 @@
 "use client";
 
-import { Menu, Monitor, Moon, Star, Sun, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ChevronDown, Menu, MoonStar, SunMedium, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
+import { AUDIENCE_PAGES, getMarketingAppHref, MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/lib/marketing";
 
-function formatStars(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
+const DESKTOP_NAV = [
+  { href: "/home#product", label: "Product", match: (pathname: string) => pathname === "/home" },
+  { href: "/for-business", label: "Enterprise", match: (pathname: string) => pathname === "/for-business" },
+  { href: "/pricing", label: "Pricing", match: (pathname: string) => pathname === "/pricing" },
+  { href: "/manifesto", label: "Manifesto", match: (pathname: string) => pathname === "/manifesto" },
+];
+
+function SolutionsMenu({
+  isDark,
+  currentPath,
+  mobile = false,
+  onNavigate,
+}: {
+  isDark: boolean;
+  currentPath: string;
+  mobile?: boolean;
+  onNavigate?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const isActive = AUDIENCE_PAGES.some((page) => page.href === currentPath);
+  const linkClass = isDark
+    ? "text-zinc-400 hover:text-zinc-100"
+    : "text-zinc-500 hover:text-zinc-950";
+
+  if (mobile) {
+    return (
+      <div
+        className={`rounded-[22px] border p-2 ${
+          isDark ? "border-white/10 bg-white/[0.03]" : "border-black/8 bg-black/[0.02]"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className={`flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-sm transition-colors ${
+            isDark ? "text-zinc-100" : "text-zinc-900"
+          }`}
+        >
+          <span>Solutions</span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+        <AnimatePresence initial={false}>
+          {open ? (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="overflow-hidden"
+            >
+              <div className="grid gap-1 px-1 pb-1 pt-2">
+                {AUDIENCE_PAGES.map((page) => (
+                  <Link
+                    key={page.href}
+                    href={page.href}
+                    onClick={onNavigate}
+                    className={`rounded-2xl px-3 py-2 text-sm transition-colors ${
+                      currentPath === page.href
+                        ? isDark
+                          ? "bg-white/8 text-zinc-100"
+                          : "bg-black/[0.045] text-zinc-950"
+                        : `${linkClass}`
+                    }`}
+                  >
+                    <span className="block">{page.label}</span>
+                    <span className={`mt-0.5 block text-xs ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>
+                      {page.summary}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={`inline-flex items-center gap-1.5 text-sm transition-colors ${
+          isActive
+            ? isDark
+              ? "text-zinc-100"
+              : "text-zinc-950"
+            : linkClass
+        }`}
+      >
+        <span>Solutions</span>
+        <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className={`absolute left-1/2 top-full mt-3 w-[320px] -translate-x-1/2 overflow-hidden rounded-[28px] border backdrop-blur-xl ${
+              isDark
+                ? "border-white/10 bg-[#0d0d10]/96 shadow-[0_24px_60px_rgba(0,0,0,0.45)]"
+                : "border-black/8 bg-white/96 shadow-[0_24px_60px_rgba(15,23,42,0.10)]"
+            }`}
+          >
+            <div className="grid gap-1 p-2">
+              {AUDIENCE_PAGES.map((page) => (
+                <Link
+                  key={page.href}
+                  href={page.href}
+                  className={`rounded-[22px] px-4 py-3 transition-colors ${
+                    currentPath === page.href
+                      ? isDark
+                        ? "bg-white/8"
+                        : "bg-black/[0.04]"
+                      : isDark
+                        ? "hover:bg-white/6"
+                        : "hover:bg-black/[0.025]"
+                  }`}
+                >
+                  <span className={`block text-sm ${isDark ? "text-zinc-100" : "text-zinc-950"}`}>
+                    {page.label}
+                  </span>
+                  <span className={`mt-1 block text-xs leading-relaxed ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>
+                    {page.summary}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 export function PageNavbar() {
+  const pathname = usePathname() ?? "";
   const { isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [stars, setStars] = useState<number | null>(null);
   const landing = useLandingThemeOptional();
   const isDark = landing?.isLandingDark ?? false;
+  const appHref = getMarketingAppHref(isAuthenticated);
 
-  // GitHub stars
-  useEffect(() => {
-    fetch("https://api.github.com/repos/DevelopedByDev/overlay-web")
-      .then((r) => r.json())
-      .then((d) => {
-        if (typeof d.stargazers_count === "number") setStars(d.stargazers_count);
-      })
-      .catch(() => {});
-  }, []);
-
-  const navBg = isDark ? "bg-[#0a0a0a]" : "bg-[#fafafa]";
-  const borderColor = isDark ? "border-zinc-800" : "border-zinc-200";
-  const linkClass = isDark
-    ? "text-sm text-zinc-400 transition-colors hover:text-zinc-100"
-    : "text-sm text-zinc-500 transition-colors hover:text-zinc-900";
-  const logoClass = isDark
-    ? "font-serif text-lg text-zinc-100"
-    : "font-serif text-lg text-zinc-900";
-  const iconClass = isDark ? "h-4 w-4 text-zinc-400" : "h-4 w-4 text-zinc-500";
-
-  const appHref = isAuthenticated
-    ? "/app/chat"
-    : "/auth/sign-in?redirect=%2Fapp%2Fchat";
-
-  const navLinks = [
-    { href: appHref, label: "app" },
-    { href: "/manifesto", label: "manifesto" },
-    { href: "/pricing", label: "pricing" },
-    {
-      href: isAuthenticated ? "/account" : "/auth/sign-in",
-      label: isAuthenticated ? "account" : "sign in",
-    },
-  ];
-
-  const ThemeIcon = isDark ? Moon : Sun;
+  const shellClass = isDark
+    ? "border-white/10 bg-[#111113]/96 text-zinc-100"
+    : "border-black/8 bg-[#fbfbfa]/96 text-zinc-950";
+  const mutedLinkClass = isDark ? "text-zinc-400 hover:text-zinc-100" : "text-zinc-500 hover:text-zinc-950";
+  const mobilePanelClass = isDark
+    ? "border-white/10 bg-[#111113]/98"
+    : "border-black/8 bg-[#fbfbfa]/98";
 
   return (
-    <nav
-      className={`sticky top-0 z-50 border-b ${borderColor} ${navBg} font-serif`}
-    >
-      {/* Desktop */}
-      <div className="relative mx-auto hidden max-w-6xl items-center justify-between px-8 py-4 md:flex">
-        {/* Left: Logo */}
-        <Link href="/home" className="flex items-center gap-2.5">
-          <Image src="/assets/overlay-logo.png" alt="Overlay" width={22} height={22} />
-          <span className={logoClass}>overlay</span>
-        </Link>
-
-        {/* Center: Nav links (absolutely centered) */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-6">
-          {navLinks.map(({ href, label }) => (
-            <Link key={label} href={href} className={linkClass}>
-              {label}
+    <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-4 py-4 md:px-8 md:py-5">
+      <div className="mx-auto max-w-7xl">
+        <div
+          className={`pointer-events-auto rounded-[22px] border transition-colors ${shellClass}`}
+        >
+          <nav className="flex items-center justify-between gap-4 px-4 py-3 md:px-5">
+            <Link href="/home" className="flex min-w-0 items-center gap-3" onClick={() => setMobileMenuOpen(false)}>
+              <Image src="/assets/overlay-logo.png" alt="Overlay" width={26} height={26} className="shrink-0" />
+              <span className="truncate text-lg tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>
+                overlay
+              </span>
             </Link>
-          ))}
-        </div>
 
-        {/* Right: GitHub stars + theme toggle */}
-        <div className="flex items-center gap-2">
-          <a
-            href="https://github.com/DevelopedByDev/overlay-web"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`overlay-interactive inline-flex items-center gap-1.5 border px-3 py-1.5 ${borderColor} ${linkClass}`}
-          >
-            <Star className={iconClass} />
-            {stars !== null && (
-              <span className="text-xs">{formatStars(stars)}</span>
-            )}
-          </a>
-          {landing && (
-            <button
-              type="button"
-              onClick={landing.toggleLandingTheme}
-              aria-label="Toggle theme"
-              className={`overlay-interactive inline-flex items-center justify-center border p-2 ${borderColor}`}
-            >
-              <ThemeIcon className={iconClass} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile top bar */}
-      <div className="flex items-center justify-between px-4 py-3 md:hidden">
-        <Link href="/home" className="flex items-center gap-2">
-          <Image src="/assets/overlay-logo.png" alt="Overlay" width={20} height={20} />
-          <span className={logoClass}>overlay</span>
-        </Link>
-        <div className="flex items-center gap-2">
-          {landing && (
-            <button
-              type="button"
-              onClick={landing.toggleLandingTheme}
-              aria-label="Toggle theme"
-              className={`overlay-interactive inline-flex items-center justify-center border p-2 ${borderColor}`}
-            >
-              <ThemeIcon className={iconClass} />
-            </button>
-          )}
-          <button
-            type="button"
-            aria-expanded={mobileMenuOpen}
-            aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
-            onClick={() => setMobileMenuOpen((v) => !v)}
-            className={`overlay-interactive inline-flex h-9 w-9 items-center justify-center border ${borderColor} ${isDark ? "text-zinc-300" : "text-zinc-600"}`}
-          >
-            {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-          </button>
-        </div>
-      </div>
-
-      {/* Mobile dropdown */}
-      {mobileMenuOpen && (
-        <div className={`border-t ${borderColor} ${navBg} md:hidden`}>
-          <div className="flex flex-col px-4 py-2">
-            {navLinks.map(({ href, label }) => (
-              <Link
-                key={label}
-                href={href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`border-b py-3 text-base ${borderColor} ${isDark ? "text-zinc-300 hover:text-zinc-100" : "text-zinc-600 hover:text-zinc-900"} transition-colors`}
+            <div className="hidden items-center gap-6 md:flex">
+              {DESKTOP_NAV.slice(0, 1).map((item) => {
+                const active = item.match(pathname);
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    className={`text-sm transition-colors ${
+                      active
+                        ? isDark
+                          ? "text-zinc-100"
+                          : "text-zinc-950"
+                        : mutedLinkClass
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+              <SolutionsMenu key={`desktop-${pathname}`} isDark={isDark} currentPath={pathname} />
+              {DESKTOP_NAV.slice(1).map((item) => {
+                const active = item.match(pathname);
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    className={`text-sm transition-colors ${
+                      active
+                        ? isDark
+                          ? "text-zinc-100"
+                          : "text-zinc-950"
+                        : mutedLinkClass
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+              <a
+                href={MARKETING_GITHUB_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`text-sm transition-colors ${mutedLinkClass}`}
               >
-                {label}
+                GitHub
+              </a>
+            </div>
+
+            <div className="hidden items-center gap-2 md:flex">
+              <a
+                href={MARKETING_SALES_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center rounded-full px-4 py-2 text-sm transition-colors ${
+                  isDark
+                    ? "text-zinc-300 hover:bg-white/7 hover:text-zinc-100"
+                    : "text-zinc-700 hover:bg-black/[0.045] hover:text-zinc-950"
+                }`}
+              >
+                Contact sales
+              </a>
+              <Link
+                href={appHref}
+                className={`inline-flex items-center rounded-full px-4 py-2 text-sm transition-colors ${
+                  isDark
+                    ? "bg-zinc-100 text-zinc-950 hover:bg-white"
+                    : "bg-zinc-950 text-white hover:bg-zinc-800"
+                }`}
+              >
+                Open app
               </Link>
-            ))}
-            <a
-              href="https://github.com/DevelopedByDev/overlay-web"
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`flex items-center gap-2 py-3 text-base ${isDark ? "text-zinc-300 hover:text-zinc-100" : "text-zinc-600 hover:text-zinc-900"} transition-colors`}
+            </div>
+
+            <button
+              type="button"
+              aria-expanded={mobileMenuOpen}
+              aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+              onClick={() => setMobileMenuOpen((value) => !value)}
+              className={`pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border md:hidden ${
+                isDark
+                  ? "border-white/10 bg-white/5 text-zinc-100"
+                  : "border-black/8 bg-white text-zinc-950"
+              }`}
             >
-              <Star className="h-4 w-4" />
-              {stars !== null ? `${formatStars(stars)} stars` : "github"}
-            </a>
-          </div>
+              {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </button>
+          </nav>
         </div>
-      )}
-    </nav>
+
+        <AnimatePresence initial={false}>
+          {mobileMenuOpen ? (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className={`pointer-events-auto mt-3 overflow-hidden rounded-[24px] border p-3 md:hidden ${mobilePanelClass}`}
+            >
+              <div className="grid gap-2">
+                <Link
+                  href="/home#product"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`rounded-[22px] px-4 py-3 text-sm transition-colors ${
+                    pathname === "/home"
+                      ? isDark
+                        ? "bg-white/8 text-zinc-100"
+                        : "bg-black/[0.045] text-zinc-950"
+                      : mutedLinkClass
+                  }`}
+                >
+                  Product
+                </Link>
+                <SolutionsMenu
+                  key={`mobile-${pathname}`}
+                  isDark={isDark}
+                  currentPath={pathname}
+                  mobile
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
+                <Link
+                  href="/for-business"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`rounded-[22px] px-4 py-3 text-sm transition-colors ${
+                    pathname === "/for-business"
+                      ? isDark
+                        ? "bg-white/8 text-zinc-100"
+                        : "bg-black/[0.045] text-zinc-950"
+                      : mutedLinkClass
+                  }`}
+                >
+                  Enterprise
+                </Link>
+                <Link
+                  href="/pricing"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`rounded-[22px] px-4 py-3 text-sm transition-colors ${mutedLinkClass}`}
+                >
+                  Pricing
+                </Link>
+                <Link
+                  href="/manifesto"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`rounded-[22px] px-4 py-3 text-sm transition-colors ${mutedLinkClass}`}
+                >
+                  Manifesto
+                </Link>
+                <a
+                  href={MARKETING_GITHUB_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`rounded-[22px] px-4 py-3 text-sm transition-colors ${mutedLinkClass}`}
+                >
+                  GitHub
+                </a>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <a
+                    href={MARKETING_SALES_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`inline-flex items-center justify-center rounded-full px-4 py-3 text-sm transition-colors ${
+                      isDark
+                        ? "border border-white/10 bg-white/5 text-zinc-100"
+                        : "border border-black/8 bg-white text-zinc-950"
+                    }`}
+                  >
+                    Contact sales
+                  </a>
+                  <Link
+                    href={appHref}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`inline-flex items-center justify-center rounded-full px-4 py-3 text-sm transition-colors ${
+                      isDark
+                        ? "bg-zinc-100 text-zinc-950"
+                        : "bg-zinc-950 text-white"
+                    }`}
+                  >
+                    Open app
+                  </Link>
+                </div>
+                {landing ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      landing.toggleLandingTheme();
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`mt-2 inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm ${
+                      isDark ? "text-zinc-300" : "text-zinc-700"
+                    }`}
+                  >
+                    {landing.landingTheme === "light" ? <MoonStar className="h-4 w-4" /> : <SunMedium className="h-4 w-4" />}
+                    <span>{landing.landingTheme === "light" ? "Dark theme" : "Light theme"}</span>
+                  </button>
+                ) : null}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+    </header>
   );
 }

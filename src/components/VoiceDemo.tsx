@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import posthog from "posthog-js";
 
 const WAVEFORM_BAR_COUNT = 7;
 const WAVEFORM_BAR_WIDTH = 3;
@@ -103,6 +104,7 @@ export function VoiceDemo({ scrollProgress = 0, isActive = false }: VoiceDemoPro
       // Check for Option/Alt + Space
       if (e.altKey && e.code === "Space" && !isRecording && !isProcessing) {
         e.preventDefault();
+        posthog.capture('voice_demo_interacted', { trigger: 'keyboard' });
         setHasUserActivated(true);
         setIsRecording(true);
         recordingStartTime.current = Date.now();
@@ -350,6 +352,7 @@ export function VoiceDemo({ scrollProgress = 0, isActive = false }: VoiceDemoPro
                   to{" "}
                   <button
                     onClick={() => {
+                      posthog.capture('voice_demo_interacted', { trigger: 'click' });
                       setHasUserActivated(true);
                       setIsRecording(true);
                       recordingStartTime.current = Date.now();

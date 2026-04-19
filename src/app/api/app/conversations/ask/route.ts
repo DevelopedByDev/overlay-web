@@ -18,6 +18,10 @@ import {
 import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 import { buildOverlayToolSet } from '@/lib/tools/build'
+import {
+  allowedOverlayToolIdsForTurn,
+  HIGH_RISK_TOOL_AUTHORIZATION_NOTE,
+} from '@/lib/tools/exposure-policy'
 import { filterComposioToolSet } from '@/lib/tools/composio-filter'
 import { MAX_TOOL_STEPS_ASK } from '@/lib/tools/policy'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
@@ -73,6 +77,9 @@ const MATH_FORMAT_INSTRUCTION = [
 
 export async function POST(request: NextRequest) {
   try {
+    const _ttftDebug = process.env.TTFT_DEBUG === 'true'
+    let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
+    if (_ttftDebug) _t0 = performance.now()
     const {
       messages,
       modelId,
@@ -86,6 +93,7 @@ export async function POST(request: NextRequest) {
       replyContextForModel,
       accessToken,
       userId: requestedUserId,
+      clientSurface,
     }: {
       messages: UIMessage[]
       modelId?: string
@@ -101,6 +109,8 @@ export async function POST(request: NextRequest) {
       replyContextForModel?: string
       accessToken?: string
       userId?: string
+      /** e.g. `chrome-extension` — omit remote interactive browser tooling. */
+      clientSurface?: string
     } = await request.json()
     const auth = await resolveAuthenticatedAppUser(request, {
       accessToken,
@@ -171,6 +181,7 @@ export async function POST(request: NextRequest) {
         )
       }
     }
+    if (_ttftDebug) _tAuth = performance.now()
 
     const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')
     const latestUserText = latestUserMessage?.parts
@@ -199,81 +210,156 @@ export async function POST(request: NextRequest) {
     const cid = conversationId as Id<'conversations'> | undefined
     const tid = turnId?.trim()
 
-    let conversationProjectId: string | undefined
-    let projectInstructions = ''
-    if (cid) {
+    // P3.3: hoist Composio to Wave 1 so it overlaps prep work. Module-level cache makes
+    // repeats ~0ms. The unifiedAskEnabled flag is read once here and re-applied below.
+    const unifiedAskEnabledEarly =
+      process.env.UNIFIED_TOOLS_ASK !== 'false' && process.env.UNIFIED_TOOLS_ASK !== '0'
+    const composioToolsTask: Promise<ToolSet> = unifiedAskEnabledEarly
+      ? createBrowserUnifiedTools({
+          userId,
+          accessToken: auth.accessToken || undefined,
+        }).catch((err) => {
+          console.error('[conversations/ask] Composio tools unavailable:', summarizeErrorForLog(err))
+          return {} as ToolSet
+        })
+      : Promise.resolve({} as ToolSet)
+
+    // P3.2 Wave 1: memories + skills + conversation fetch (for projectId) + user-message save.
+    // These are all independent; previously each was an await in sequence.
+    const saveUserMessageTask: Promise<void> = (async () => {
+      if (!cid || !tid || !latestUserContent || skipUserMessage) return
       try {
-        const conv = await convex.query<{ projectId?: string } | null>('conversations:get', {
+        await convex.mutation('conversations:addMessage', {
+          serverSecret,
+          conversationId: cid,
+          userId,
+          turnId: tid,
+          role: 'user',
+          mode: 'ask',
+          content: latestUserText || latestUserContent,
+          contentType: 'text',
+          parts: sanitizeMessagePartsForPersistence(latestUserParts, {
+            attachmentNames,
+          }),
+          modelId: effectiveModelId,
+        })
+      } catch (err) {
+        console.error('[conversations/ask] Failed to save user message:', summarizeErrorForLog(err))
+      }
+    })()
+
+    const memoriesTask: Promise<Array<{ content: string }>> = (async () => {
+      try {
+        const memories = await convex.query<Array<{ content: string }>>('memories:list', {
+          serverSecret,
+          userId,
+        })
+        return memories || listMemories(userId)
+      } catch {
+        return []
+      }
+    })()
+
+    type SkillRow = { name: string; instructions: string; enabled?: boolean }
+    const skillsTask: Promise<SkillRow[]> = (async () => {
+      try {
+        const allSkills = await convex.query<SkillRow[]>('skills:list', {
+          serverSecret,
+          userId,
+        })
+        return (allSkills ?? []).filter((s) => s.enabled !== false && s.instructions?.trim())
+      } catch {
+        return []
+      }
+    })()
+
+    const conversationTask: Promise<{ projectId?: string } | null> = (async () => {
+      if (!cid) return null
+      try {
+        return await convex.query<{ projectId?: string } | null>('conversations:get', {
           serverSecret,
           conversationId: cid,
           userId,
         })
-        conversationProjectId = conv?.projectId
-        if (conv?.projectId) {
-          const project = await convex.query<{ instructions?: string } | null>('projects:get', {
-            projectId: conv.projectId as Id<'projects'>,
-            userId,
-            serverSecret,
-          })
-          projectInstructions = project?.instructions?.trim() || ''
-        }
       } catch {
-        // optional
+        return null
       }
-    }
+    })()
+
+    const [, effectiveMemories, enabledSkills, conv] = await Promise.all([
+      saveUserMessageTask,
+      memoriesTask,
+      skillsTask,
+      conversationTask,
+    ])
 
     let memoryContext = ''
-    try {
-      const memories = await convex.query<Array<{ content: string }>>('memories:list', {
-        serverSecret,
-        userId,
-      })
-      const effectiveMemories = memories || listMemories(userId)
-      if (effectiveMemories.length > 0) {
-        memoryContext = '\n\nRelevant user memories:\n' + effectiveMemories.slice(0, 10).map((m) => `- ${m.content}`).join('\n')
-      }
-    } catch {
-      // optional
+    if (effectiveMemories.length > 0) {
+      memoryContext =
+        '\n\nRelevant user memories:\n' +
+        effectiveMemories.slice(0, 10).map((m) => `- ${m.content}`).join('\n')
     }
 
     let skillsContext = ''
-    try {
-      const allSkills = await convex.query<Array<{ name: string; instructions: string; enabled?: boolean }>>('skills:list', {
-        serverSecret,
-        userId,
-      })
-      const enabledSkills = (allSkills ?? []).filter((s) => s.enabled !== false && s.instructions?.trim())
-      if (enabledSkills.length > 0) {
-        skillsContext =
-          'IMPORTANT — User-configured skills below. Before responding, check whether any skill is relevant to this request and follow its instructions if so. You can also call list_skills to search them at runtime.\n' +
-          '<skills>\n' +
-          enabledSkills.map((s) => `## ${s.name}\n${s.instructions.trim()}`).join('\n\n') +
-          '\n</skills>'
-      }
-    } catch {
-      // optional
+    if (enabledSkills.length > 0) {
+      skillsContext =
+        'IMPORTANT — User-configured skills below. Before responding, check whether any skill is relevant to this request and follow its instructions if so. You can also call list_skills to search them at runtime.\n' +
+        '<skills>\n' +
+        enabledSkills.map((s) => `## ${s.name}\n${s.instructions.trim()}`).join('\n\n') +
+        '\n</skills>'
     }
 
-    let autoRetrieval = ''
-    let sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> = {}
-    try {
-      if (auth.accessToken) {
+    // Wave 2: project fetch + auto-retrieval. Both depend on projectId resolved in Wave 1.
+    const conversationProjectId: string | undefined = conv?.projectId
+    const projectTask: Promise<string> = (async () => {
+      if (!conversationProjectId) return ''
+      try {
+        const project = await convex.query<{ instructions?: string } | null>('projects:get', {
+          projectId: conversationProjectId as Id<'projects'>,
+          userId,
+          serverSecret,
+        })
+        return project?.instructions?.trim() || ''
+      } catch {
+        return ''
+      }
+    })()
+
+    type AutoRetrievalResult = {
+      extension: string
+      citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+    }
+    const autoRetrievalTask: Promise<AutoRetrievalResult> = (async () => {
+      if (!auth.accessToken) return { extension: '', citations: {} }
+      try {
         const bundle = await buildAutoRetrievalBundle({
           userMessage: latestUserText ?? '',
           userId,
           accessToken: auth.accessToken,
           projectId: conversationProjectId,
         })
-        autoRetrieval = bundle.extension
-        sourceCitationMap = bundle.citations
+        return { extension: bundle.extension, citations: bundle.citations }
+      } catch {
+        return { extension: '', citations: {} }
       }
-    } catch {
-      // optional
-    }
+    })()
+
+    const [projectInstructions, autoRetrievalBundle] = await Promise.all([
+      projectTask,
+      autoRetrievalTask,
+    ])
+    const autoRetrieval: string = autoRetrievalBundle.extension
+    const sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> =
+      autoRetrievalBundle.citations
 
     const indexedNames = Array.isArray(indexedFileNames)
       ? indexedFileNames.filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
       : []
+    const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
+      mode: 'ask',
+      latestUserText,
+      clientSurface,
+    })
 
     const indexedNote = indexedFilesSystemNote(indexedNames)
 
@@ -281,6 +367,7 @@ export async function POST(request: NextRequest) {
     let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
     messagesForModel = sanitizeUiMessagesForModelApi(messagesForModel)
+    if (_ttftDebug) _tPrep = performance.now()
 
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
     const projectInstructionsExtension = projectInstructions
@@ -298,26 +385,21 @@ export async function POST(request: NextRequest) {
       indexedNote,
     ].filter(Boolean).join('\n\n')
 
+    const extensionAskNote =
+      '\n\nChrome extension client: The active tab, URL, and page excerpt are already in the user message. Answer from that context. Do not use interactive_browser_session (unavailable here). If the user needs clicks, typing, or multi-step control of the page, tell them to use Act mode in the extension so local browser tools can run on their tab.'
     const browserToolNote =
-      '\n\nYou have a browser_run_task tool to browse the web with a real browser. Use it when you need fresh live data or need to interact with a website.'
-    const knowledgeToolNote = '\n\n' + ASK_KNOWLEDGE_TOOLS_NOTE + browserToolNote + '\n\n' + MEMORY_SAVE_PROTOCOL
-
-    if (cid && tid && latestUserContent && !skipUserMessage) {
-      await convex.mutation('conversations:addMessage', {
-        serverSecret,
-        conversationId: cid,
-        userId,
-        turnId: tid,
-        role: 'user',
-        mode: 'ask',
-        content: latestUserText || latestUserContent,
-        contentType: 'text',
-        parts: sanitizeMessagePartsForPersistence(latestUserParts, {
-          attachmentNames,
-        }),
-        modelId: effectiveModelId,
-      })
-    }
+      clientSurface === 'chrome-extension'
+        ? extensionAskNote
+        : '\n\nYou have an interactive_browser_session tool that drives a real browser. Reserve it strictly for tasks that require UI interaction (login, form submission, JS-heavy scraping, screenshot). For any information lookup or research request, use perplexity_search instead.'
+    const knowledgeToolNote =
+      '\n\n' +
+      ASK_KNOWLEDGE_TOOLS_NOTE +
+      browserToolNote +
+      '\n\n' +
+      HIGH_RISK_TOOL_AUTHORIZATION_NOTE +
+      '\nOnly use Composio or other third-party integration tools when the user explicitly asked in this chat to act on that external service or account.' +
+      '\n\n' +
+      MEMORY_SAVE_PROTOCOL
 
     const finishAsk = async (
       text: string,
@@ -382,19 +464,10 @@ export async function POST(request: NextRequest) {
 
     const systemWithTools = baseSystemMessage + knowledgeToolNote
 
-    const unifiedAskEnabled =
-      process.env.UNIFIED_TOOLS_ASK !== 'false' && process.env.UNIFIED_TOOLS_ASK !== '0'
+    const unifiedAskEnabled = unifiedAskEnabledEarly
 
     const [composioRaw, perplexityTool, overlayAskTools] = await Promise.all([
-      unifiedAskEnabled
-        ? createBrowserUnifiedTools({
-            userId,
-            accessToken: auth.accessToken || undefined,
-          }).catch((err) => {
-            console.error('[conversations/ask] Composio tools unavailable:', summarizeErrorForLog(err))
-            return {}
-          })
-        : Promise.resolve({}),
+      composioToolsTask,
       unifiedAskEnabled
         ? getGatewayPerplexitySearchTool(auth.accessToken || undefined, effectiveModelId)
         : Promise.resolve(null),
@@ -407,10 +480,12 @@ export async function POST(request: NextRequest) {
           turnId: tid,
           projectId: conversationProjectId,
           baseUrl: getInternalApiBaseUrl(request),
+          allowedToolIds: allowedOverlayToolIds,
           forwardCookie: request.headers.get('cookie') ?? undefined,
         }),
       ),
     ])
+    if (_ttftDebug) _tTools = performance.now()
     const composioAsk = filterComposioToolSet(composioRaw, 'ask')
 
     const askTools = unifiedAskEnabled
@@ -424,6 +499,8 @@ export async function POST(request: NextRequest) {
     console.log(
       '[conversations/ask] tools:',
       summarizeToolSetForLog(askTools),
+      '| allowed_overlay_tools:',
+      allowedOverlayToolIds.join(', ') || '(none)',
       '| perplexity_search:',
       perplexityTool ? 'yes' : 'NO (missing gateway key or init failed — see [AI Gateway] logs)',
       '| unified_ask:',
@@ -437,6 +514,9 @@ export async function POST(request: NextRequest) {
       )
       const modelMessages = await convertToModelMessages(messagesForModel)
 
+      if (_ttftDebug) _tStreamCall = performance.now()
+      let _firstDeltaLogged = false
+      let _firstEventAt = 0
       const result = streamText({
         model: languageModel,
         system: systemWithTools,
@@ -480,6 +560,24 @@ export async function POST(request: NextRequest) {
             durationMs,
             error,
           })
+        },
+        onChunk: ({ chunk }) => {
+          if (!_ttftDebug) return
+          if (_firstEventAt === 0) _firstEventAt = performance.now()
+          if (!_firstDeltaLogged && chunk.type === 'text-delta') {
+            _firstDeltaLogged = true
+            const _tDelta = performance.now()
+            console.log('[TTFT][ask]', {
+              model: effectiveModelId,
+              total_ms: +(_tDelta - _t0).toFixed(1),
+              auth_ms: +(_tAuth - _t0).toFixed(1),
+              prep_ms: +(_tPrep - _tAuth).toFixed(1),
+              tools_ms: +(_tTools - _tPrep).toFixed(1),
+              streamCall_ms: +(_tStreamCall - _tTools).toFixed(1),
+              firstEvent_ms: +(_firstEventAt - _tStreamCall).toFixed(1),
+              firstDelta_ms: +(_tDelta - _tStreamCall).toFixed(1),
+            })
+          }
         },
         onFinish: async (event) => {
           const inTok = event.totalUsage?.inputTokens ?? event.usage?.inputTokens ?? 0

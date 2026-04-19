@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 export default async function ToolsPage() {
   const session = await getSession()
   if (!session) {
-    redirect('/auth/sign-in?redirect=%2Fapp%2Ftools')
+    redirect('/app/chat?signin=nav')
   }
   return <ToolsView userId={session.user.id} />
 }

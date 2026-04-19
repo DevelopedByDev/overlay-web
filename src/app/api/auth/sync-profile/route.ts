@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
+import { getPostHogClient } from '@/lib/posthog-server'
 
 export async function POST() {
   try {
@@ -28,6 +29,37 @@ export async function POST() {
         { error: 'Failed to sync profile' },
         { status: 502 }
       )
+    }
+
+    const posthog = getPostHogClient()
+    if (posthog) {
+      if (result.isNewUser) {
+        posthog.capture({
+          distinctId: session.user.id,
+          event: 'user_signed_up',
+          properties: {
+            email: session.user.email,
+            first_name: session.user.firstName,
+            last_name: session.user.lastName,
+          },
+        })
+      } else {
+        posthog.capture({
+          distinctId: session.user.id,
+          event: 'user_signed_in',
+          properties: {
+            email: session.user.email,
+          },
+        })
+      }
+      posthog.identify({
+        distinctId: session.user.id,
+        properties: {
+          email: session.user.email,
+          first_name: session.user.firstName,
+          last_name: session.user.lastName,
+        },
+      })
     }
 
     return NextResponse.json({

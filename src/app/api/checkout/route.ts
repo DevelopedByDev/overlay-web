@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { user } = session
-    const rateLimitResponse = enforceRateLimits(request, [
+    const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'billing:checkout:ip', key: getClientIp(request), limit: 10, windowMs: 10 * 60_000 },
       { bucket: 'billing:checkout:user', key: user.id, limit: 5, windowMs: 10 * 60_000 },
     ])

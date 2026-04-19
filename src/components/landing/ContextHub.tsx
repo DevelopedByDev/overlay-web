@@ -1,76 +1,49 @@
 "use client";
 
-import { Brain, FileText, Link2, StickyNote } from "lucide-react";
 import { motion } from "framer-motion";
+import { ContextCanvas } from "@/components/landing/ProductCanvases";
 
-const FEATURES = [
-  {
-    Icon: FileText,
-    label: "files",
-    desc: "upload docs, images, and code — reference them in any conversation",
-  },
-  {
-    Icon: Brain,
-    label: "memories",
-    desc: "the ai learns your preferences and context across every session",
-  },
-  {
-    Icon: StickyNote,
-    label: "notes",
-    desc: "capture ideas inline — formatted, linked, and always searchable",
-  },
-  {
-    Icon: Link2,
-    label: "integrations",
-    desc: "connect your stack — gmail, slack, github, notion and more",
-  },
+const CONTEXT_ITEMS = [
+  { label: "Notes", value: "voice notes, drafts, scratchpads" },
+  { label: "Knowledge", value: "files, memories, outputs" },
+  { label: "Integrations", value: "Gmail, GitHub, Calendar, MCPs" },
+  { label: "Projects", value: "shared context across workstreams" },
 ];
-
-const sectionInView = {
-  initial: { opacity: 0, y: 28 },
-  whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true, amount: 0.2 },
-  transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
-};
 
 export function ContextHub({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark";
-  const muted = isDark ? "text-zinc-400" : "text-[#71717a]";
-  const heading = isDark ? "text-zinc-100" : "text-[#0a0a0a]";
-  const cardBg = isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200";
-  const iconColor = isDark ? "text-zinc-400" : "text-zinc-600";
+  const muted = isDark ? "text-zinc-400" : "text-zinc-600";
+  const heading = isDark ? "text-zinc-100" : "text-zinc-950";
+  const border = isDark ? "border-white/10" : "border-black/8";
 
   return (
     <motion.section
-      {...sectionInView}
-      className="relative z-10 flex min-h-[70vh] flex-col items-center justify-center gap-12 px-6 py-20"
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.2 }}
+      transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
+      className="relative z-10 px-6 py-20 md:px-8 md:py-24"
     >
-      <div className="flex flex-col items-center gap-3 text-center">
-        <h2 className={`font-serif text-4xl md:text-5xl lg:text-6xl ${heading}`}>
-          all your context, always there
-        </h2>
-        <p className={`max-w-md text-base md:text-lg ${muted}`}>
-          files, memories, notes, integrations — the ai remembers so you don&apos;t have to
-        </p>
-      </div>
+      <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[minmax(0,0.88fr)_minmax(420px,1.12fr)] lg:items-center">
+        <div>
+          <p className={`text-xs uppercase tracking-[0.24em] ${muted}`}>Have all your context in one place</p>
+          <h2 className={`mt-4 max-w-sm text-4xl tracking-tight md:text-5xl ${heading}`} style={{ fontFamily: "var(--font-serif)" }}>
+            The workspace remembers what matters.
+          </h2>
+          <p className={`mt-5 max-w-lg text-base leading-7 ${muted}`}>
+            Overlay keeps your notes, files, memories, and integrations in one surface so every new task starts with real context instead of a blank prompt.
+          </p>
+          <div className={`mt-10 grid gap-5 border-t pt-6 ${border}`}>
+            {CONTEXT_ITEMS.map((item) => (
+              <div key={item.label} className="grid gap-1 md:grid-cols-[140px_minmax(0,1fr)]">
+                <p className={`text-sm ${heading}`}>{item.label}</p>
+                <p className={`text-sm leading-6 ${muted}`}>{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
 
-      <div className="grid w-full max-w-2xl grid-cols-2 gap-px border border-[var(--border)]">
-        {FEATURES.map((f, i) => (
-          <motion.div
-            key={f.label}
-            initial={{ opacity: 0, y: 12 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 0.4, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
-            className={`flex flex-col gap-3 p-6 ${cardBg}`}
-          >
-            <f.Icon className={`h-5 w-5 ${iconColor}`} />
-            <div>
-              <p className={`text-sm font-medium ${heading}`}>{f.label}</p>
-              <p className={`mt-1 text-sm leading-relaxed ${muted}`}>{f.desc}</p>
-            </div>
-          </motion.div>
-        ))}
+        <ContextCanvas isDark={isDark} />
       </div>
     </motion.section>
   );

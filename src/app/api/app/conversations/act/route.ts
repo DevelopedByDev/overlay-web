@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { convertToModelMessages, stepCountIs, ToolLoopAgent, type UIMessage } from 'ai'
+import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from 'ai'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { listMemories } from '@/lib/app-store'
@@ -9,6 +9,10 @@ import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/models'
 import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
+import {
+  allowedOverlayToolIdsForTurn,
+  HIGH_RISK_TOOL_AUTHORIZATION_NOTE,
+} from '@/lib/tools/exposure-policy'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import {
@@ -59,6 +63,9 @@ export const maxDuration = 120
 
 export async function POST(request: NextRequest) {
   try {
+    const _ttftDebug = process.env.TTFT_DEBUG === 'true'
+    let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
+    if (_ttftDebug) _t0 = performance.now()
     const {
       messages,
       systemPrompt,
@@ -151,6 +158,7 @@ export async function POST(request: NextRequest) {
         )
       }
     }
+    if (_ttftDebug) _tAuth = performance.now()
 
     const latestUserMessage = [...messages].reverse().find((m) => m.role === 'user')
     const latestUserText = latestUserMessage?.parts
@@ -177,7 +185,17 @@ export async function POST(request: NextRequest) {
     const cid = conversationId as Id<'conversations'> | undefined
     const tid = (turnId?.trim() || `act-${Date.now()}`)
 
-    if (cid && latestUserContent) {
+    // P3.3: hoist Composio to Wave 1 — start before any await so it overlaps all prep work.
+    // Cache in composio-tools.ts makes this ~0ms on repeat requests within 10 minutes.
+    const composioToolsTask: Promise<ToolSet> = createBrowserUnifiedTools({
+      userId,
+      accessToken: auth.accessToken || undefined,
+    })
+
+    // P3.2 Wave 1: user-message save + memories + skills + conversation fetch (for projectId).
+    // These are all independent of each other; previously each was an await in sequence.
+    const saveUserMessageTask: Promise<void> = (async () => {
+      if (!cid || !latestUserContent) return
       try {
         await convex.mutation('conversations:addMessage', {
           conversationId: cid,
@@ -204,87 +222,118 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         console.error('[conversations/act] Failed to save user message:', summarizeErrorForLog(err))
       }
-    }
+    })()
 
-    let memoryContext = ''
-    try {
-      const memories = await convex.query<Array<{ content: string }>>('memories:list', {
-        userId,
-        serverSecret,
-      })
-      const effectiveMemories = memories || listMemories(userId)
-      if (effectiveMemories.length > 0) {
-        memoryContext =
-          '\n\nUser context:\n' +
-          effectiveMemories
-            .slice(0, 10)
-            .map((m) => `- ${m.content}`)
-            .join('\n')
-      }
-    } catch {
-      // optional
-    }
-
-    let skillsContext = ''
-    try {
-      const allSkills = await convex.query<Array<{ name: string; instructions: string; enabled?: boolean }>>('skills:list', {
-        serverSecret,
-        userId,
-      })
-      const enabledSkills = (allSkills ?? []).filter((s) => s.enabled !== false && s.instructions?.trim())
-      if (enabledSkills.length > 0) {
-        skillsContext =
-          '\n\nIMPORTANT — User-configured skills below. Before acting, check whether any skill applies to this task and follow its instructions. You can also call list_skills to search them at runtime.\n<skills>\n' +
-          enabledSkills.map((s) => `## ${s.name}\n${s.instructions.trim()}`).join('\n\n') +
-          '\n</skills>'
-      }
-    } catch {
-      // optional
-    }
-
-    let conversationProjectId: string | undefined
-    let projectInstructions = ''
-    if (cid) {
+    const memoriesTask: Promise<Array<{ content: string }>> = (async () => {
       try {
-        const conv = await convex.query<{ projectId?: string } | null>('conversations:get', {
+        const memories = await convex.query<Array<{ content: string }>>('memories:list', {
+          userId,
+          serverSecret,
+        })
+        return memories || listMemories(userId)
+      } catch {
+        return []
+      }
+    })()
+
+    type SkillRow = { name: string; instructions: string; enabled?: boolean }
+    const skillsTask: Promise<SkillRow[]> = (async () => {
+      try {
+        const allSkills = await convex.query<SkillRow[]>('skills:list', {
+          serverSecret,
+          userId,
+        })
+        return (allSkills ?? []).filter((s) => s.enabled !== false && s.instructions?.trim())
+      } catch {
+        return []
+      }
+    })()
+
+    const conversationTask: Promise<{ projectId?: string } | null> = (async () => {
+      if (!cid) return null
+      try {
+        return await convex.query<{ projectId?: string } | null>('conversations:get', {
           conversationId: cid,
           userId,
           serverSecret,
         })
-        conversationProjectId = conv?.projectId
-        if (conv?.projectId) {
-          const project = await convex.query<{ instructions?: string } | null>('projects:get', {
-            projectId: conv.projectId as Id<'projects'>,
-            userId,
-            serverSecret,
-          })
-          projectInstructions = project?.instructions?.trim() || ''
-        }
       } catch {
-        // optional
+        return null
       }
+    })()
+
+    const [, effectiveMemories, enabledSkills, conv] = await Promise.all([
+      saveUserMessageTask,
+      memoriesTask,
+      skillsTask,
+      conversationTask,
+    ])
+
+    let memoryContext = ''
+    if (effectiveMemories.length > 0) {
+      memoryContext =
+        '\n\nUser context:\n' +
+        effectiveMemories.slice(0, 10).map((m) => `- ${m.content}`).join('\n')
     }
 
-    let autoRetrieval = ''
-    let sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> = {}
-    try {
-      if (auth.accessToken) {
+    let skillsContext = ''
+    if (enabledSkills.length > 0) {
+      skillsContext =
+        '\n\nIMPORTANT — User-configured skills below. Before acting, check whether any skill applies to this task and follow its instructions. You can also call list_skills to search them at runtime.\n<skills>\n' +
+        enabledSkills.map((s) => `## ${s.name}\n${s.instructions.trim()}`).join('\n\n') +
+        '\n</skills>'
+    }
+
+    // Wave 2: project fetch + auto-retrieval. Both depend on the projectId resolved above.
+    const conversationProjectId: string | undefined = conv?.projectId
+    const projectTask: Promise<string> = (async () => {
+      if (!conversationProjectId) return ''
+      try {
+        const project = await convex.query<{ instructions?: string } | null>('projects:get', {
+          projectId: conversationProjectId as Id<'projects'>,
+          userId,
+          serverSecret,
+        })
+        return project?.instructions?.trim() || ''
+      } catch {
+        return ''
+      }
+    })()
+
+    type AutoRetrievalResult = {
+      extension: string
+      citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+    }
+    const autoRetrievalTask: Promise<AutoRetrievalResult> = (async () => {
+      if (!auth.accessToken) return { extension: '', citations: {} }
+      try {
         const bundle = await buildAutoRetrievalBundle({
           userMessage: latestUserText ?? '',
           userId,
           accessToken: auth.accessToken,
           projectId: conversationProjectId,
         })
-        autoRetrieval = bundle.extension
-        sourceCitationMap = bundle.citations
+        return { extension: bundle.extension, citations: bundle.citations }
+      } catch {
+        return { extension: '', citations: {} }
       }
-    } catch {
-      // optional
-    }
+    })()
+
+    const [projectInstructions, autoRetrievalBundle] = await Promise.all([
+      projectTask,
+      autoRetrievalTask,
+    ])
+    const autoRetrieval: string = autoRetrievalBundle.extension
+    const sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> =
+      autoRetrievalBundle.citations
 
     const indexedNames = Array.isArray(indexedFileNames)
       ? indexedFileNames.filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
       : []
+    const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
+      mode: 'act',
+      latestUserText,
+    })
 
     const indexedNote = indexedFilesSystemNote(indexedNames)
     let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
@@ -300,8 +349,9 @@ export async function POST(request: NextRequest) {
       effectiveModelId,
       auth.accessToken || undefined,
     )
+    if (_ttftDebug) _tPrep = performance.now()
     const [composioRaw, webToolSet, perplexityTool] = await Promise.all([
-      createBrowserUnifiedTools({ userId, accessToken: auth.accessToken || undefined }),
+      composioToolsTask,
       Promise.resolve(
         createWebTools({
           userId,
@@ -311,11 +361,13 @@ export async function POST(request: NextRequest) {
           turnId: tid,
           projectId: conversationProjectId,
           baseUrl: getInternalApiBaseUrl(request),
+          allowedToolIds: allowedOverlayToolIds,
           forwardCookie: request.headers.get('cookie') ?? undefined,
         }),
       ),
       getGatewayPerplexitySearchTool(auth.accessToken || undefined, effectiveModelId),
     ])
+    if (_ttftDebug) _tTools = performance.now()
     const composioTools = filterComposioToolSet(composioRaw, 'act')
     const tools = {
       ...composioTools,
@@ -326,6 +378,8 @@ export async function POST(request: NextRequest) {
     console.log(
       '[conversations/act] tools:',
       summarizeToolSetForLog(tools),
+      '| allowed_overlay_tools:',
+      allowedOverlayToolIds.join(', ') || '(none)',
       '| perplexity_search:',
       perplexityTool ? 'yes' : 'NO (missing gateway key or init failed — see [AI Gateway] logs)',
     )
@@ -335,9 +389,13 @@ export async function POST(request: NextRequest) {
     const automationDraftNote =
       '\nYou also have draft_automation_from_chat and draft_skill_from_chat. Use them only when the user is clearly asking for a repeatable workflow, recurring task, or reusable procedure. These tools only draft suggestions and never create live automations or skills.'
     const browserToolNote =
-      '\nYou also have a browser_run_task tool to browse the web with a real browser. Use it when you need fresh live data or need to interact with a website.'
+      '\nYou also have an interactive_browser_session tool that drives a real browser. Reserve it strictly for tasks that require UI interaction (login, form submission, JS-heavy scraping, screenshot). For any information lookup or research request, use perplexity_search instead.'
     const sandboxToolNote =
       '\nYou also have a run_daytona_sandbox tool for CLI and code execution in the user’s persistent Daytona workspace. When you use it, never invent details about generated files that you did not actually inspect. Only claim filenames, artifact counts, runtime, exit status, or other facts that came directly from the tool result, your own generated code, or a follow-up inspection step.'
+    const toolAuthorizationNote =
+      '\n' +
+      HIGH_RISK_TOOL_AUTHORIZATION_NOTE +
+      '\nOnly use Composio or other third-party integration tools when the user explicitly asked in this chat to act on that external service or account.'
     const knowledgeNote =
       '\n' +
       ACT_KNOWLEDGE_WEB_TOOLS_NOTE +
@@ -357,6 +415,7 @@ export async function POST(request: NextRequest) {
         automationDraftNote +
         browserToolNote +
         sandboxToolNote +
+        toolAuthorizationNote +
         knowledgeNote +
         memoryContext +
         autoRetrieval +
@@ -367,6 +426,7 @@ export async function POST(request: NextRequest) {
       | ReturnType<typeof shouldSuggestAutomationFromTurn>
       | undefined
 
+    if (_ttftDebug) _tStreamCall = performance.now()
     const result = await agent.stream({
       messages: modelMessages,
       experimental_onToolCallStart: ({ toolCall }) => {
@@ -501,7 +561,7 @@ export async function POST(request: NextRequest) {
       })()
     }
 
-    return result.toUIMessageStreamResponse({
+    const _uiResp = result.toUIMessageStreamResponse({
       originalMessages: messages,
       onError: (error: unknown) => userFacingOpenRouterError(error),
       messageMetadata: ({ part }) => {
@@ -523,6 +583,54 @@ export async function POST(request: NextRequest) {
         return Object.keys(metadata).length > 0 ? metadata : undefined
       },
     })
+    if (_ttftDebug && _uiResp.body) {
+      const _decoder = new TextDecoder()
+      let _buf = ''
+      let _firstByteAt = 0
+      let _firstEventAt = 0
+      let _deltaLogged = false
+      const _transform = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          if (!_deltaLogged) {
+            if (_firstByteAt === 0) _firstByteAt = performance.now()
+            _buf += _decoder.decode(chunk, { stream: true })
+            // First meaningful UI-message-stream frame: tool-*, text*, or reasoning*
+            // (skips the initial "start" and "start-step" scaffolding frames).
+            if (_firstEventAt === 0 && /"type"\s*:\s*"(tool-|text|reasoning)/.test(_buf)) {
+              _firstEventAt = performance.now()
+            }
+            // First actual text frame ("text" or "text-delta") — true first-token moment.
+            if (/"type"\s*:\s*"text(?:-delta)?"/.test(_buf)) {
+              _deltaLogged = true
+              _buf = '' // release
+              const _tDelta = performance.now()
+              console.log('[TTFT][act]', {
+                model: effectiveModelId,
+                total_ms: +(_tDelta - _t0).toFixed(1),
+                auth_ms: +(_tAuth - _t0).toFixed(1),
+                prep_ms: +(_tPrep - _tAuth).toFixed(1),
+                tools_ms: +(_tTools - _tPrep).toFixed(1),
+                streamCall_ms: +(_tStreamCall - _tTools).toFixed(1),
+                firstByte_ms: +(_firstByteAt - _tStreamCall).toFixed(1),
+                firstEvent_ms: _firstEventAt
+                  ? +(_firstEventAt - _tStreamCall).toFixed(1)
+                  : null,
+                firstDelta_ms: +(_tDelta - _tStreamCall).toFixed(1),
+              })
+            } else if (_buf.length > 8192) {
+              // Keep only the tail so the regex can still match across chunks without unbounded growth.
+              _buf = _buf.slice(-1024)
+            }
+          }
+          controller.enqueue(chunk)
+        },
+      })
+      return new Response(_uiResp.body.pipeThrough(_transform), {
+        status: _uiResp.status,
+        headers: _uiResp.headers,
+      })
+    }
+    return _uiResp
   } catch (error) {
     console.error('[conversations/act] Error:', summarizeErrorForLog(error))
     return NextResponse.json(

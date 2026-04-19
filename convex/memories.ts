@@ -87,6 +87,10 @@ export const add = mutation({
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    const MAX_MEMORY_BYTES = 50 * 1024 // 50 KB
+    if (Buffer.byteLength(args.content, 'utf8') > MAX_MEMORY_BYTES) {
+      throw new Error(`Memory content exceeds size limit (max ${MAX_MEMORY_BYTES / 1024} KB)`)
+    }
     if (args.clientId?.trim()) {
       const existing = await ctx.db
         .query('memories')
@@ -155,6 +159,10 @@ export const update = mutation({
     if (!existing || existing.userId !== userId || existing.deletedAt) {
       throw new Error('Unauthorized')
     }
+    const MAX_MEMORY_BYTES = 50 * 1024
+    if (updates.content !== undefined && Buffer.byteLength(updates.content, 'utf8') > MAX_MEMORY_BYTES) {
+      throw new Error(`Memory content exceeds size limit (max ${MAX_MEMORY_BYTES / 1024} KB)`)
+    }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (updates.content !== undefined) patch.content = updates.content
     if (updates.source !== undefined) patch.source = updates.source
@@ -189,6 +197,7 @@ export const remove = mutation({
     await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
       sourceKind: 'memory',
       sourceId: memoryId,
+      userId,
     })
     await ctx.db.patch(memoryId, {
       deletedAt: Date.now(),

@@ -20,7 +20,7 @@ export function toolCostBucketForId(toolId: string): ToolCostBucket {
   if (toolId === 'perplexity_search') return 'perplexity'
   if (toolId === 'generate_image') return 'image'
   if (toolId === 'generate_video') return 'video'
-  if (toolId === 'browser_run_task') return 'browser'
+  if (toolId === 'browser_run_task' || toolId === 'interactive_browser_session') return 'browser'
   if (toolId === 'run_daytona_sandbox') return 'daytona'
   if (INTERNAL_TOOL_IDS.has(toolId)) return 'internal'
   return 'composio'

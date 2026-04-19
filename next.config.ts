@@ -30,6 +30,7 @@ const staticSecurityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["@overlay/app-core"],
   async headers() {
     return [
       {

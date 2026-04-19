@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const rateLimitResponse = enforceRateLimits(request, [
+    const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'generation:image:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
       { bucket: 'generation:image:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
     ])
@@ -98,12 +98,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── Build provider-specific options (image editing support) ─────────────
-    // Extract base64 from data URL if provided
-    const referenceBase64 = imageUrl?.startsWith('data:')
-      ? imageUrl.split(',')[1]
-      : undefined
-    const referenceUrl = imageUrl && !imageUrl.startsWith('data:') ? imageUrl : undefined
+    // ── Build reference image for editing (if provided) ──────────────────────
+    // Accept data URLs (base64) or plain https URLs
+    const referenceImage: string | undefined = imageUrl || undefined
 
     // ── Model selection: when user picks a model, use only that model ─────────
     // Fall back through all models only when no model is specified
@@ -119,29 +116,16 @@ export async function POST(request: NextRequest) {
       try {
         const imageModel = await getGatewayImageModel(tryModelId, auth.accessToken || undefined)
 
-        // Build providerOptions for image editing when a reference image is supplied
-        // Each provider has a different key — we try the most common patterns
-        const providerKey = tryModelId.split('/')[0] // e.g. 'openai', 'google', 'bfl'
-        const providerOptions = (referenceBase64 || referenceUrl)
-          ? {
-              [providerKey]: {
-                // OpenAI gpt-image: pass as input image for editing
-                ...(referenceBase64 ? { image: referenceBase64 } : {}),
-                ...(referenceUrl ? { imageUrl: referenceUrl } : {}),
-              },
-            }
-          : undefined
-
-        // Build a contextual prompt for follow-up requests
-        const finalPrompt = imageUrl
-          ? `Based on the previous image, ${prompt.trim()}`
+        // Use the AI SDK prompt-with-images format for image editing
+        // When no reference image is provided, pass a plain string prompt
+        const finalPrompt = referenceImage
+          ? { text: prompt.trim(), images: [referenceImage] }
           : prompt.trim()
 
         const result = await generateImage({
           model: imageModel,
           prompt: finalPrompt,
           aspectRatio: (aspectRatio as `${number}:${number}` | undefined) ?? '1:1',
-          providerOptions,
         })
         imageBase64 = result.image.base64
         usedModelId = tryModelId

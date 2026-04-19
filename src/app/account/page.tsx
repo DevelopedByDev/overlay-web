@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense, useCallback } from 'react'
+import { useState, useEffect, Suspense, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
@@ -162,7 +162,7 @@ function AccountPageContent() {
     muted: marketingMuted(isLandingDark),
     body: marketingBody(isLandingDark),
   }
-  const footBorder = 'border-[var(--border)]'
+  const footBorder = isLandingDark ? 'border-zinc-800' : 'border-zinc-200'
   const footMuted = marketingMuted(isLandingDark)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -172,6 +172,9 @@ function AccountPageContent() {
   const topUpSuccessParam = searchParams?.get('topup_success')
   const topUpSessionId = searchParams?.get('topup_session_id') ?? null
   const desktopCodeChallenge = searchParams?.get('desktop_code_challenge')?.trim() || ''
+  const extensionHandoff = searchParams?.get('extension_handoff') === '1'
+  const chromeExtensionIdRaw = searchParams?.get('chrome_extension_id')?.trim() || ''
+  const extensionHandoffSentRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   /** Set when /api/entitlements fails (e.g. Convex cannot verify WorkOS JWT) — avoids showing fake "free" defaults. */
@@ -211,6 +214,93 @@ function AccountPageContent() {
     checkSession()
     return () => { mounted = false }
   }, [isAuthenticated, authLoading, refreshSession])
+
+  useEffect(() => {
+    if (!extensionHandoff || !chromeExtensionIdRaw || !desktopCodeChallenge) return
+    if (!isAuthenticated || !currentUserId || !sessionCheckComplete) return
+    if (extensionHandoffSentRef.current) return
+    if (!/^[a-p]{32}$/.test(chromeExtensionIdRaw)) return
+
+    extensionHandoffSentRef.current = true
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/auth/desktop-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codeChallenge: desktopCodeChallenge }),
+        })
+        if (cancelled || !response.ok) {
+          extensionHandoffSentRef.current = false
+          return
+        }
+        const json = (await response.json()) as { deepLink?: string }
+        const deepLink = typeof json.deepLink === 'string' ? json.deepLink : ''
+        const tokenMatch = deepLink.match(/[?&]token=([^&]+)/)
+        const rawToken = tokenMatch?.[1]
+        const token = rawToken ? decodeURIComponent(rawToken) : ''
+        if (!token || cancelled) {
+          extensionHandoffSentRef.current = false
+          return
+        }
+
+        const chromeRuntime = (
+          typeof window !== 'undefined'
+            ? (
+                window as unknown as {
+                  chrome?: {
+                    runtime?: {
+                      sendMessage: (extId: string, msg: unknown, cb?: () => void) => void
+                      lastError?: { message: string }
+                    }
+                  }
+                }
+              ).chrome?.runtime
+            : undefined
+        )
+        if (!chromeRuntime?.sendMessage) {
+          extensionHandoffSentRef.current = false
+          return
+        }
+
+        chromeRuntime.sendMessage(
+          chromeExtensionIdRaw,
+          { type: 'overlay.extension.auth.handoff', token },
+          () => {
+            void chromeRuntime.lastError
+          },
+        )
+        setMessage({
+          type: 'success',
+          text: 'Chrome extension connected. You can return to the side panel and press Refresh if needed.',
+        })
+      } catch (e) {
+        console.error('[Account] Extension handoff error:', e)
+        extensionHandoffSentRef.current = false
+      } finally {
+        if (!cancelled && typeof window !== 'undefined') {
+          const next = new URL(window.location.href)
+          next.searchParams.delete('extension_handoff')
+          next.searchParams.delete('chrome_extension_id')
+          next.searchParams.delete('desktop_code_challenge')
+          router.replace(`${next.pathname}${next.search}`, { scroll: false })
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    chromeExtensionIdRaw,
+    currentUserId,
+    desktopCodeChallenge,
+    extensionHandoff,
+    isAuthenticated,
+    router,
+    sessionCheckComplete,
+  ])
 
   const handleSignOut = async () => {
     setSigningOut(true)
@@ -506,7 +596,9 @@ function AccountPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col">
+    <div className="flex min-h-screen w-full flex-col gradient-bg">
+      <div className="liquid-glass" />
+
       {/* Header */}
       <PageNavbar />
 
@@ -516,7 +608,7 @@ function AccountPageContent() {
           {/* Message Banner */}
           {message && (
             <div
-              className={`mb-6 flex items-center gap-3 p-4 ${
+              className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
                 message.type === 'success'
                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                   : 'bg-red-50 text-red-800 border border-red-200'
@@ -533,13 +625,13 @@ function AccountPageContent() {
                   <>
                     <button
                       onClick={handleOpenInApp}
-                      className="overlay-interactive bg-emerald-600 px-3 py-1 text-sm font-medium text-white transition-colors"
+                      className="rounded-lg bg-emerald-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
                     >
                       Open in desktop app
                     </button>
                     <button
                       onClick={() => router.push('/app/chat')}
-                      className="overlay-interactive border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors"
+                      className="rounded-lg border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100/70"
                     >
                       Open web app
                     </button>
@@ -571,10 +663,10 @@ function AccountPageContent() {
                 </p>
                 <Link
                   href="/auth/sign-in"
-                  className={`overlay-interactive inline-flex items-center gap-2 border px-6 py-3 text-sm font-medium ${
+                  className={`inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-colors ${
                     isLandingDark
-                      ? 'border-zinc-100 bg-zinc-100 text-zinc-900'
-                      : 'border-zinc-900 bg-zinc-900 text-white'
+                      ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                      : 'bg-zinc-900 text-white hover:bg-zinc-800'
                   }`}
                 >
                   Sign in
@@ -585,7 +677,7 @@ function AccountPageContent() {
           ) : (
             <div className="space-y-6">
               {entitlementsError && (
-                <div className="flex items-start gap-3 border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                <div className="p-4 rounded-xl flex items-start gap-3 bg-amber-50 text-amber-900 border border-amber-200">
                   <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                   <div className="text-sm space-y-2">
                     <p className="font-medium">Plan information unavailable</p>
@@ -641,10 +733,10 @@ function AccountPageContent() {
                   <button
                     onClick={handleSignOut}
                     disabled={signingOut}
-                    className={`w-full px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
+                    className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
                       isLandingDark
-                        ? 'text-red-400 hover:text-red-300'
-                        : 'text-red-600 hover:text-red-700'
+                        ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
+                        : 'text-red-600 hover:bg-red-50 hover:text-red-700'
                     }`}
                   >
                     {signingOut ? 'Signing out...' : 'Sign out'}
@@ -661,10 +753,10 @@ function AccountPageContent() {
                   <button
                     onClick={handleOpenInApp}
                     disabled={actionLoading === 'openApp'}
-                    className={`overlay-interactive inline-flex items-center justify-center gap-2 border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
                       isLandingDark
-                        ? 'border-zinc-600 text-zinc-200'
-                        : 'border-zinc-300 text-zinc-700'
+                        ? 'border-zinc-600 text-zinc-200 hover:bg-zinc-800'
+                        : 'border-zinc-300 text-zinc-700 hover:bg-zinc-50'
                     }`}
                   >
                     {actionLoading === 'openApp' ? (
@@ -681,10 +773,10 @@ function AccountPageContent() {
                   </button>
                   <Link
                     href="/app/chat"
-                    className={`overlay-interactive inline-flex items-center justify-center gap-2 border px-4 py-2 text-sm font-medium ${
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                       isLandingDark
-                        ? 'border-zinc-100 bg-zinc-100 text-zinc-900'
-                        : 'border-zinc-900 bg-zinc-900 text-white'
+                        ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                        : 'bg-zinc-900 text-white hover:bg-zinc-800'
                     }`}
                   >
                     Open web app
@@ -717,7 +809,7 @@ function AccountPageContent() {
 
                       <div className="flex items-center gap-2">
                         <span
-                          className={`px-3 py-1 text-xs font-medium ${
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${
                             entitlements.status === 'active'
                               ? isLandingDark
                                 ? 'bg-emerald-900/50 text-emerald-200 ring-1 ring-emerald-700/60'
@@ -740,8 +832,8 @@ function AccountPageContent() {
                       {entitlements.planKind === 'free' && (
                         <Link
                           href="/pricing"
-                          className={`overlay-interactive inline-flex items-center gap-2 border px-4 py-2 text-sm font-medium ${
-                            isLandingDark ? 'border-zinc-100 bg-zinc-100 text-zinc-900' : 'border-zinc-900 bg-zinc-900 text-white'
+                          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 ${
+                            isLandingDark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white'
                           }`}
                         >
                           Upgrade to paid
@@ -752,10 +844,10 @@ function AccountPageContent() {
                         <>
                           <Link
                             href="/pricing?intent=change-plan"
-                            className={`overlay-interactive border px-4 py-2 text-sm font-medium ${
+                            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
                               isLandingDark
-                                ? 'border-zinc-600 bg-zinc-900 text-zinc-100'
-                                : 'border-zinc-200 bg-white text-zinc-900'
+                                ? 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
+                                : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
                             }`}
                           >
                             Change plan
@@ -763,10 +855,10 @@ function AccountPageContent() {
                           <button
                             onClick={handleManageBilling}
                             disabled={actionLoading === 'billing'}
-                            className={`overlay-interactive border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
+                            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
                               isLandingDark
-                                ? 'border-zinc-600 bg-zinc-800 text-zinc-100'
-                                : 'border-zinc-200 bg-white text-zinc-900'
+                                ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                                : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
                             }`}
                           >
                             {actionLoading === 'billing' ? 'Opening...' : 'Manage billing'}
@@ -790,24 +882,24 @@ function AccountPageContent() {
 
                       <div className="mt-4 grid gap-3 sm:grid-cols-3">
                         <div
-                          className={`border px-4 py-3 ${
-                            isLandingDark ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'
+                          className={`rounded-xl border px-4 py-3 ${
+                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
                           }`}
                         >
                           <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Used</p>
                           <p className={`mt-2 text-lg font-medium ${t.h}`}>${(entitlements.budgetUsedCents / 100).toFixed(2)}</p>
                         </div>
                         <div
-                          className={`border px-4 py-3 ${
-                            isLandingDark ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'
+                          className={`rounded-xl border px-4 py-3 ${
+                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
                           }`}
                         >
                           <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Remaining</p>
                           <p className={`mt-2 text-lg font-medium ${t.h}`}>${(entitlements.budgetRemainingCents / 100).toFixed(2)}</p>
                         </div>
                         <div
-                          className={`border px-4 py-3 ${
-                            isLandingDark ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'
+                          className={`rounded-xl border px-4 py-3 ${
+                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
                           }`}
                         >
                           <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Storage</p>
@@ -851,10 +943,10 @@ function AccountPageContent() {
                                 type="button"
                                 onClick={() => void handleStartTopUp(topUpAmountDraftCents, autoTopUpEnabledDraft)}
                                 disabled={actionLoading === `topup-${topUpAmountDraftCents}`}
-                                className={`overlay-interactive border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
+                                className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
                                   isLandingDark
-                                    ? 'border-zinc-600 bg-zinc-800 text-zinc-100'
-                                    : 'border-zinc-200 bg-white text-zinc-900'
+                                    ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                                    : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
                                 }`}
                               >
                                 {actionLoading === `topup-${topUpAmountDraftCents}` ? 'Opening…' : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
@@ -863,10 +955,10 @@ function AccountPageContent() {
                                 type="button"
                                 onClick={() => void handleTopUpPreferenceSave()}
                                 disabled={actionLoading === 'topup-settings'}
-                                className={`overlay-interactive border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
+                                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
                                   isLandingDark
-                                    ? 'border-zinc-100 bg-zinc-100 text-zinc-900'
-                                    : 'border-zinc-900 bg-zinc-900 text-white'
+                                    ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                                    : 'bg-zinc-900 text-white hover:bg-zinc-800'
                                 }`}
                               >
                                 {actionLoading === 'topup-settings' ? 'Saving...' : 'Save top-up preference'}
@@ -885,8 +977,8 @@ function AccountPageContent() {
                             topUpHistory.slice(0, 6).map((item) => (
                               <div
                                 key={item._id}
-                                className={`flex flex-col gap-2 border px-4 py-3 text-sm md:flex-row md:items-center md:justify-between ${
-                                  isLandingDark ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'
+                                className={`flex flex-col gap-2 rounded-xl border px-4 py-3 text-sm md:flex-row md:items-center md:justify-between ${
+                                  isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
                                 }`}
                               >
                                 <div>
@@ -976,7 +1068,8 @@ export default function AccountPage() {
     <LandingThemeProvider>
       <Suspense
         fallback={
-          <div className="flex min-h-screen items-center justify-center">
+          <div className="flex min-h-screen items-center justify-center gradient-bg">
+            <div className="liquid-glass" />
             <div className="relative z-10 text-center">
               <RefreshCw className="mx-auto h-8 w-8 animate-spin text-zinc-400" />
               <p className="mt-4 text-zinc-500">Loading...</p>

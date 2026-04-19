@@ -46,8 +46,8 @@ export function marketingDividerLabel(isDark: boolean): string {
 /** Account / pricing cards — do not use `glass-dark` (it follows app `data-theme`, not landing theme). */
 export function marketingPanel(isLandingDark: boolean): string {
   return isLandingDark
-    ? "border border-zinc-700 bg-zinc-900 p-6"
-    : "border border-zinc-200 bg-white p-6";
+    ? "rounded-2xl border border-zinc-700 bg-zinc-900/95 p-6 shadow-lg"
+    : "rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm";
 }
 
 export function marketingPanelLg(isLandingDark: boolean): string {

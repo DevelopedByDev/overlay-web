@@ -2,7 +2,7 @@ import { logAuthDebug, summarizeEnvResolutionForLog, summarizeJwtForLog } from '
 
 /** Canonical WorkOS issuer; tokens may use a trailing slash (e.g. AuthKit defaults). */
 const WORKOS_ISSUER_PRIMARY = 'https://api.workos.com'
-const JWKS_CACHE_TTL_MS = 10 * 60 * 1000
+const JWKS_CACHE_TTL_MS = 2 * 60 * 1000
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
@@ -138,7 +138,8 @@ async function fetchJwks(clientId: string, forceRefresh = false): Promise<WorkOs
   }
 
   const apiKey = process.env.WORKOS_API_KEY || process.env.DEV_WORKOS_API_KEY
-  const response = await fetch(`https://api.workos.com/sso/jwks/${clientId}`, {
+  const jwksBase = (process.env.WORKOS_JWKS_BASE_URL?.trim() || 'https://api.workos.com').replace(/\/$/, '')
+  const response = await fetch(`${jwksBase}/sso/jwks/${clientId}`, {
     headers: apiKey
       ? { Authorization: `Bearer ${apiKey}` }
       : undefined,
