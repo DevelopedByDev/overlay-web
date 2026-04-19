@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
-import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { PageNavbar } from '@/components/PageNavbar'
@@ -153,6 +152,7 @@ function ProgressBar({
 }
 
 function AccountPageContent() {
+  const topUpQuickPicks = [800, 2_400, 9_400] as const
   const { isLandingDark } = useLandingTheme()
   const panel = marketingPanel(isLandingDark)
   const panelLg = marketingPanelLg(isLandingDark)
@@ -184,6 +184,7 @@ function AccountPageContent() {
   const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null)
   const [topUpHistory, setTopUpHistory] = useState<TopUpHistoryItem[]>([])
   const [topUpAmountDraftCents, setTopUpAmountDraftCents] = useState(800)
+  const [topUpAmountMode, setTopUpAmountMode] = useState<'8' | '24' | '94' | 'custom'>('8')
   const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
 
   // Get userId from AuthContext (session-based)
@@ -327,7 +328,13 @@ function AccountPageContent() {
     if (settingsResponse.ok) {
       const settingsData = await settingsResponse.json()
       setBillingSettings(settingsData)
-      setTopUpAmountDraftCents(settingsData.topUpAmountCents ?? settingsData.autoTopUpAmountCents ?? settingsData.topUpMinAmountCents ?? 800)
+      const resolvedTopUpAmountCents =
+        settingsData.topUpAmountCents ?? settingsData.autoTopUpAmountCents ?? settingsData.topUpMinAmountCents ?? 800
+      setTopUpAmountDraftCents(resolvedTopUpAmountCents)
+      if (resolvedTopUpAmountCents === 800) setTopUpAmountMode('8')
+      else if (resolvedTopUpAmountCents === 2_400) setTopUpAmountMode('24')
+      else if (resolvedTopUpAmountCents === 9_400) setTopUpAmountMode('94')
+      else setTopUpAmountMode('custom')
       setAutoTopUpEnabledDraft(Boolean(settingsData.autoTopUpEnabled))
     }
 
@@ -499,7 +506,13 @@ function AccountPageContent() {
         if (settingsResponse.ok) {
           const settingsData = await settingsResponse.json()
           setBillingSettings(settingsData)
-          setTopUpAmountDraftCents(settingsData.topUpAmountCents ?? settingsData.autoTopUpAmountCents ?? settingsData.topUpMinAmountCents ?? 800)
+          const resolvedTopUpAmountCents =
+            settingsData.topUpAmountCents ?? settingsData.autoTopUpAmountCents ?? settingsData.topUpMinAmountCents ?? 800
+          setTopUpAmountDraftCents(resolvedTopUpAmountCents)
+          if (resolvedTopUpAmountCents === 800) setTopUpAmountMode('8')
+          else if (resolvedTopUpAmountCents === 2_400) setTopUpAmountMode('24')
+          else if (resolvedTopUpAmountCents === 9_400) setTopUpAmountMode('94')
+          else setTopUpAmountMode('custom')
           setAutoTopUpEnabledDraft(Boolean(settingsData.autoTopUpEnabled))
         }
 
@@ -915,57 +928,141 @@ function AccountPageContent() {
                     <div className={panel}>
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div>
-                          <h2 className={`text-lg font-medium ${t.h}`}>Top-ups and billing controls</h2>
+                          <h2 className={`text-lg font-medium ${t.h}`}>Extra usage + auto recharge</h2>
                           <p className={`mt-1 text-sm ${t.muted}`}>
-                            Use one top-up amount everywhere. Add it once now, or save it for future automatic recharges.
+                            Purchase extra usage instantly, and optionally keep auto recharge on so the same amount refills when your budget reaches $0.
                           </p>
                         </div>
                       </div>
 
-                      <div className="mt-5">
-                        <TopUpPreferenceControl
-                          variant="marketing"
-                          isDark={isLandingDark}
-                          title="Top-up amount"
-                          description="The same amount is used for manual top-ups and, if enabled, future automatic recharges."
-                          amountCents={topUpAmountDraftCents}
-                          minAmountCents={billingSettings?.topUpMinAmountCents ?? 800}
-                          maxAmountCents={billingSettings?.topUpMaxAmountCents ?? 20_000}
-                          stepAmountCents={billingSettings?.topUpStepAmountCents ?? 100}
-                          onAmountChange={setTopUpAmountDraftCents}
-                          autoTopUpEnabled={autoTopUpEnabledDraft}
-                          onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
-                          checkboxDescription="If enabled, this same amount will recharge automatically whenever your cumulative budget reaches zero."
-                          note="Saving or checking the box authorizes off-session recharges for the selected amount."
-                          footer={
-                            <>
+                      <div className={`mt-5 rounded-2xl border p-5 ${isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50/80'}`}>
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <h3 className={`text-base font-medium ${t.h}`}>Purchase extra usage</h3>
+                            <p className={`mt-1 text-sm ${t.muted}`}>Use one amount for manual purchases and optional auto recharge.</p>
+                          </div>
+                          <div className="text-left md:text-right">
+                            <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Selected amount</p>
+                            <p className={`mt-1 text-2xl font-medium ${t.h}`}>${(topUpAmountDraftCents / 100).toFixed(0)}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          {topUpQuickPicks.map((amountCents) => {
+                            const isSelected = topUpAmountDraftCents === amountCents && topUpAmountMode !== 'custom'
+                            return (
                               <button
+                                key={amountCents}
                                 type="button"
-                                onClick={() => void handleStartTopUp(topUpAmountDraftCents, autoTopUpEnabledDraft)}
-                                disabled={actionLoading === `topup-${topUpAmountDraftCents}`}
-                                className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
-                                  isLandingDark
-                                    ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
-                                    : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                                onClick={() => {
+                                  setTopUpAmountDraftCents(amountCents)
+                                  if (amountCents === 800) setTopUpAmountMode('8')
+                                  else if (amountCents === 2_400) setTopUpAmountMode('24')
+                                  else setTopUpAmountMode('94')
+                                }}
+                                className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                                  isSelected
+                                    ? isLandingDark
+                                      ? 'border-zinc-100 bg-zinc-900 text-zinc-100'
+                                      : 'border-zinc-900 bg-zinc-900 text-white'
+                                    : isLandingDark
+                                      ? 'border-zinc-700 bg-zinc-950 text-zinc-200 hover:bg-zinc-900'
+                                      : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
                                 }`}
                               >
-                                {actionLoading === `topup-${topUpAmountDraftCents}` ? 'Opening…' : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
+                                <p className="text-xl font-medium">${(amountCents / 100).toFixed(0)}</p>
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleTopUpPreferenceSave()}
-                                disabled={actionLoading === 'topup-settings'}
-                                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
-                                  isLandingDark
+                            )
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => setTopUpAmountMode('custom')}
+                            className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                              topUpAmountMode === 'custom'
+                                ? isLandingDark
+                                  ? 'border-zinc-100 bg-zinc-900 text-zinc-100'
+                                  : 'border-zinc-900 bg-zinc-900 text-white'
+                                : isLandingDark
+                                  ? 'border-zinc-700 bg-zinc-950 text-zinc-200 hover:bg-zinc-900'
+                                  : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                            }`}
+                          >
+                            <p className="text-xl font-medium">Custom</p>
+                          </button>
+                        </div>
+
+                        {topUpAmountMode === 'custom' ? (
+                          <div className="mt-5">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className={t.muted}>Custom amount</span>
+                              <span className={t.h}>${(topUpAmountDraftCents / 100).toFixed(0)}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={(billingSettings?.topUpMinAmountCents ?? 800) / 100}
+                              max={(billingSettings?.topUpMaxAmountCents ?? 20_000) / 100}
+                              step={(billingSettings?.topUpStepAmountCents ?? 100) / 100}
+                              value={topUpAmountDraftCents / 100}
+                              onChange={(event) => setTopUpAmountDraftCents(Math.round(Number(event.target.value) * 100))}
+                              className={`mt-3 h-2 w-full cursor-pointer appearance-none rounded-full ${isLandingDark ? 'bg-zinc-800 accent-zinc-100' : 'bg-zinc-200 accent-zinc-900'}`}
+                            />
+                          </div>
+                        ) : null}
+
+                        <div className={`mt-5 rounded-xl border px-4 py-4 ${isLandingDark ? 'border-zinc-700 bg-zinc-900/60' : 'border-zinc-200 bg-white'}`}>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className={`text-base font-medium ${t.h}`}>
+                                Auto recharge is {autoTopUpEnabledDraft ? 'on' : 'off'}
+                              </p>
+                              <p className={`mt-1 text-sm ${t.muted}`}>
+                                When enabled, Overlay recharges ${(topUpAmountDraftCents / 100).toFixed(0)} automatically whenever your budget reaches $0.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setAutoTopUpEnabledDraft((value) => !value)}
+                              className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                                autoTopUpEnabledDraft
+                                  ? isLandingDark
                                     ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
                                     : 'bg-zinc-900 text-white hover:bg-zinc-800'
-                                }`}
-                              >
-                                {actionLoading === 'topup-settings' ? 'Saving...' : 'Save top-up preference'}
-                              </button>
-                            </>
-                          }
-                        />
+                                  : isLandingDark
+                                    ? 'border border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
+                                    : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                              }`}
+                            >
+                              {autoTopUpEnabledDraft ? 'Disable' : 'Enable'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                          <button
+                            type="button"
+                            onClick={() => void handleStartTopUp(topUpAmountDraftCents, autoTopUpEnabledDraft)}
+                            disabled={actionLoading === `topup-${topUpAmountDraftCents}`}
+                            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                              isLandingDark
+                                ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                                : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                            }`}
+                          >
+                            {actionLoading === `topup-${topUpAmountDraftCents}` ? 'Opening…' : `Purchase $${(topUpAmountDraftCents / 100).toFixed(0)} usage`}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleTopUpPreferenceSave()}
+                            disabled={actionLoading === 'topup-settings'}
+                            className={`rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                              isLandingDark
+                                ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                                : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                            }`}
+                          >
+                            {actionLoading === 'topup-settings' ? 'Saving...' : 'Save auto recharge'}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="mt-6">

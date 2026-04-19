@@ -4,7 +4,6 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, CreditCard, GaugeCircle, MessageSquare, PlusCircle, Wallet } from 'lucide-react'
-import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { PageNavbar } from '@/components/PageNavbar'
 import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
@@ -40,15 +39,17 @@ function UserIdExtractor() {
 }
 
 function PricingContent() {
+  const planQuickPicks = [800, 2_400, 9_400] as const
   const router = useRouter()
   const { isLandingDark } = useLandingTheme()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-  const [selectedPlanAmountCents, setSelectedPlanAmountCents] = useState(2_000)
+  const [selectedPlanAmountCents, setSelectedPlanAmountCents] = useState(2_400)
+  const [selectedPlanPreset, setSelectedPlanPreset] = useState<'8' | '24' | '94' | 'custom'>('24')
   const [topUpAmountCents, setTopUpAmountCents] = useState(800)
   const [autoTopUpEnabled, setAutoTopUpEnabled] = useState(false)
   const [currentPlanKind, setCurrentPlanKind] = useState<'free' | 'paid'>('free')
   const [currentPlanAmountCents, setCurrentPlanAmountCents] = useState(0)
-  const [loading, setLoading] = useState<'checkout' | 'portal' | 'topup-settings' | null>(null)
+  const [loading, setLoading] = useState<'checkout' | 'portal' | null>(null)
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -77,6 +78,10 @@ function PricingContent() {
           setCurrentPlanAmountCents(planAmountCents)
           if (planKind === 'paid' && planAmountCents >= PAID_PLAN_MIN_AMOUNT_CENTS) {
             setSelectedPlanAmountCents(planAmountCents)
+            if (planAmountCents === 800) setSelectedPlanPreset('8')
+            else if (planAmountCents === 2_400) setSelectedPlanPreset('24')
+            else if (planAmountCents === 9_400) setSelectedPlanPreset('94')
+            else setSelectedPlanPreset('custom')
           }
         }
         if (settingsData) {
@@ -209,32 +214,6 @@ function PricingContent() {
     }
   }
 
-  async function handleSaveTopUpPreference() {
-    setLoading('topup-settings')
-    setError(null)
-
-    try {
-      const response = await fetch('/api/subscription/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topUpAmountCents,
-          autoTopUpEnabled,
-          grantOffSessionConsent: autoTopUpEnabled,
-        }),
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        setError(data.error || 'Failed to save top-up preference.')
-      }
-    } catch (saveError) {
-      console.error('[Pricing] Top-up settings error:', saveError)
-      setError('Failed to save top-up preference.')
-    } finally {
-      setLoading(null)
-    }
-  }
-
   return (
     <div className="flex min-h-screen w-full flex-col gradient-bg">
       <Suspense fallback={null}>
@@ -316,7 +295,7 @@ function PricingContent() {
                 </div>
                 <div>
                   <h2 className={`text-xl font-medium ${theme.heading}`}>Paid</h2>
-                  <p className={`text-sm ${theme.muted}`}>Full product—you choose the monthly budget.</p>
+                  <p className={`text-sm ${theme.muted}`}>Full product—pick a plan in one tap, or choose custom.</p>
                 </div>
               </div>
 
@@ -333,25 +312,78 @@ function PricingContent() {
                   </div>
 
                   <div className={`mt-5 ${theme.subtleCard}`}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className={theme.muted}>Choose your monthly budget</span>
-                      <span className={theme.heading}>{formatDollarAmount(selectedPlanAmountCents)}</span>
+                    <p className={`text-sm ${theme.muted}`}>Choose your monthly budget</p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {planQuickPicks.map((amountCents) => {
+                        const isSelected = selectedPlanAmountCents === amountCents && selectedPlanPreset !== 'custom'
+                        return (
+                          <button
+                            key={amountCents}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPlanAmountCents(amountCents)
+                              if (amountCents === 800) setSelectedPlanPreset('8')
+                              else if (amountCents === 2_400) setSelectedPlanPreset('24')
+                              else setSelectedPlanPreset('94')
+                            }}
+                            className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                              isSelected
+                                ? isLandingDark
+                                  ? 'border-zinc-100 bg-zinc-900 text-zinc-100'
+                                  : 'border-zinc-900 bg-zinc-900 text-white'
+                                : isLandingDark
+                                  ? 'border-zinc-700 bg-zinc-950/50 text-zinc-200 hover:bg-zinc-900'
+                                  : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                            }`}
+                          >
+                            <p className="text-xl font-medium">{formatDollarAmount(amountCents)}</p>
+                            <p className={`mt-1 text-xs ${isSelected ? (isLandingDark ? 'text-zinc-300' : 'text-zinc-200') : theme.muted}`}>per month</p>
+                          </button>
+                        )
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPlanPreset('custom')}
+                        className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                          selectedPlanPreset === 'custom'
+                            ? isLandingDark
+                              ? 'border-zinc-100 bg-zinc-900 text-zinc-100'
+                              : 'border-zinc-900 bg-zinc-900 text-white'
+                            : isLandingDark
+                              ? 'border-zinc-700 bg-zinc-950/50 text-zinc-200 hover:bg-zinc-900'
+                              : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                        }`}
+                      >
+                        <p className="text-xl font-medium">Custom</p>
+                        <p className={`mt-1 text-xs ${selectedPlanPreset === 'custom' ? (isLandingDark ? 'text-zinc-300' : 'text-zinc-200') : theme.muted}`}>
+                          Use slider
+                        </p>
+                      </button>
                     </div>
-                    <input
-                      type="range"
-                      min={PAID_PLAN_MIN_AMOUNT_CENTS / 100}
-                      max={PAID_PLAN_MAX_AMOUNT_CENTS / 100}
-                      step={PAID_PLAN_STEP_AMOUNT_CENTS / 100}
-                      value={selectedPlanDollars}
-                      onChange={(event) => {
-                        setSelectedPlanAmountCents(Math.round(Number(event.target.value) * 100))
-                      }}
-                      className={theme.sliderTrack}
-                    />
-                    <div className={`mt-2 flex items-center justify-between text-xs ${theme.muted}`}>
-                      <span>$8</span>
-                      <span>$200</span>
-                    </div>
+
+                    {selectedPlanPreset === 'custom' ? (
+                      <>
+                        <div className="mt-5 flex items-center justify-between text-sm">
+                          <span className={theme.muted}>Custom monthly budget</span>
+                          <span className={theme.heading}>{formatDollarAmount(selectedPlanAmountCents)}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={PAID_PLAN_MIN_AMOUNT_CENTS / 100}
+                          max={PAID_PLAN_MAX_AMOUNT_CENTS / 100}
+                          step={PAID_PLAN_STEP_AMOUNT_CENTS / 100}
+                          value={selectedPlanDollars}
+                          onChange={(event) => {
+                            setSelectedPlanAmountCents(Math.round(Number(event.target.value) * 100))
+                          }}
+                          className={theme.sliderTrack}
+                        />
+                        <div className={`mt-2 flex items-center justify-between text-xs ${theme.muted}`}>
+                          <span>$8</span>
+                          <span>$200</span>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
 
                   <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -364,26 +396,12 @@ function PricingContent() {
                       <p className={`mt-2 text-lg font-medium ${theme.heading}`}>{formatBytes(selectedStorageBytes)}</p>
                     </div>
                     <div className={theme.elevatedCard}>
-                      <p className={`text-xs uppercase tracking-[0.18em] ${theme.muted}`}>Top-ups</p>
-                      <p className={`mt-2 text-lg font-medium ${theme.heading}`}>${(topUpAmountCents / 100).toFixed(0)}</p>
+                      <p className={`text-xs uppercase tracking-[0.18em] ${theme.muted}`}>Auto recharge</p>
+                      <p className={`mt-2 text-lg font-medium ${theme.heading}`}>
+                        {autoTopUpEnabled ? `$${(topUpAmountCents / 100).toFixed(0)}` : 'Off'}
+                      </p>
+                      <p className={`mt-1 text-xs ${theme.muted}`}>Manage in Account</p>
                     </div>
-                  </div>
-
-                  <div className="mt-6">
-                    <TopUpPreferenceControl
-                      variant="marketing"
-                      isDark={isLandingDark}
-                      title="Future top-up amount"
-                      description="Set the amount used for future recharges. This is not charged during signup."
-                      amountCents={topUpAmountCents}
-                      minAmountCents={800}
-                      maxAmountCents={20_000}
-                      stepAmountCents={100}
-                      onAmountChange={setTopUpAmountCents}
-                      autoTopUpEnabled={autoTopUpEnabled}
-                      onAutoTopUpEnabledChange={setAutoTopUpEnabled}
-                      checkboxDescription="If enabled, the same amount will recharge automatically whenever your cumulative budget reaches zero."
-                    />
                   </div>
 
                   <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -403,11 +421,11 @@ function PricingContent() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleSaveTopUpPreference()}
-                          disabled={loading === 'topup-settings' || subscriptionLoading}
+                          onClick={() => router.push('/account')}
+                          disabled={subscriptionLoading}
                           className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${theme.secondaryButton}`}
                         >
-                          {loading === 'topup-settings' ? 'Saving preference...' : 'Save top-up preference'}
+                          Manage auto recharge
                         </button>
                       </>
                     ) : (
