@@ -10,16 +10,29 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "overlay",
-  description: "your all-in-one AI platform. every model. every medium. your context. one surface.",
-  keywords: ["AI platform", "productivity", "AI assistant", "overlay", "desktop app", "macOS", "GPT-4o", "Claude", "Gemini"],
+  description:
+    "Overlay is the unified AI interaction layer: chat, voice notes, browser tasks, agents, automations, context, and content generation in one open-source workspace.",
+  keywords: [
+    "AI workspace",
+    "AI interaction layer",
+    "open source AI",
+    "AI agents",
+    "browser agent",
+    "voice notes",
+    "Overlay",
+    "ChatGPT alternative",
+    "Claude alternative",
+    "Perplexity alternative",
+  ],
   icons: {
     icon: [
       { url: "/icon.png", sizes: "64x64", type: "image/png" },
     ],
   },
   openGraph: {
-    title: "overlay — personal computing, reimagined",
-    description: "your all-in-one AI platform. every model. every medium. one surface.",
+    title: "overlay — the unified AI interaction layer",
+    description:
+      "Open-source AI workspace for chat, voice notes, browser tasks, agents, automations, context, and content generation.",
     type: "website",
     url: "https://getoverlay.io",
     images: [
@@ -33,8 +46,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "overlay — personal computing, reimagined",
-    description: "your all-in-one AI platform. every model. every medium. one surface.",
+    title: "overlay — the unified AI interaction layer",
+    description:
+      "Open-source AI workspace for chat, voice notes, browser tasks, agents, automations, context, and content generation.",
     images: ["https://getoverlay.io/assets/overlay-logo.png"],
   },
 };

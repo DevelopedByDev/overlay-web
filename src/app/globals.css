@@ -1009,14 +1009,27 @@ html {
   animation: pulse-glow 4s ease-in-out infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .animate-pulse-glow {
+    animation: none;
+  }
+
+  .liquid-glass::before {
+    animation: none;
+  }
+}
+
 /* Liquid glass gradient background */
 .gradient-bg {
-  background: linear-gradient(to bottom, #fafafa, #f4f4f5);
+  background:
+    linear-gradient(to bottom, #fbfbfa 0%, #f7f6f3 100%);
 }
 
 /* Marketing pages — paired with LandingThemeProvider / `data-landing-theme` */
 [data-landing-theme='dark'] .gradient-bg {
-  background: linear-gradient(to bottom, #0a0a0a, #111113);
+  background:
+    linear-gradient(to bottom, #0f0f10 0%, #141416 100%);
 }
 
 .liquid-glass {
@@ -1052,7 +1065,6 @@ html {
     radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.6), transparent 40%);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
-  will-change: backdrop-filter;
 }
 
 @keyframes liquid-move {

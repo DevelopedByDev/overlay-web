@@ -1,29 +1,20 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Github, Globe } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { WorkspaceCanvas } from "@/components/landing/ProductCanvases";
+import { MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/lib/marketing";
 
-const MODELS = [
-  "GPT-4o",
-  "Claude Sonnet",
-  "Gemini 2.5",
-  "Grok-3",
-  "Flux",
-  "Sora",
-  "Llama 3.3",
-  "Mistral",
-  "DeepSeek R2",
-  "DALL·E 3",
+const HERO_LABELS = [
+  "chat",
+  "notes",
+  "knowledge",
+  "extensions",
+  "projects",
+  "automations",
 ];
-
-const sectionInView = {
-  initial: { opacity: 0, y: 28 },
-  whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true, amount: 0.25 },
-  transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
-};
 
 export function HeroSection({
   theme,
@@ -33,133 +24,99 @@ export function HeroSection({
   webAppHref: string;
 }) {
   const isDark = theme === "dark";
-  const muted = isDark ? "text-zinc-400" : "text-[#71717a]";
-  const heading = isDark ? "text-zinc-100" : "text-[#0a0a0a]";
+  const muted = isDark ? "text-zinc-400" : "text-zinc-600";
+  const heading = isDark ? "text-zinc-100" : "text-zinc-950";
+  const border = isDark ? "border-white/10" : "border-black/8";
 
   return (
-    <section className="relative z-10 flex min-h-screen flex-col items-center justify-center gap-10 px-6 pb-16 pt-32">
-      {/* Text block */}
-      <motion.div {...sectionInView} className="flex flex-col items-center gap-4 text-center">
-        <div className="-mb-2">
-          <Image
-            src="/assets/overlay-logo.png"
-            alt="Overlay"
-            width={100}
-            height={100}
-            className="drop-shadow-2xl"
-            priority
-          />
-        </div>
-        <h1
-          className={`font-serif text-5xl leading-tight tracking-tight md:text-7xl lg:text-8xl ${heading}`}
-        >
-          your all-in-one
-          <br />
-          ai platform
-        </h1>
-        <p className={`max-w-xl text-base font-light tracking-wide md:text-lg ${muted}`}>
-          every model. every medium. your context. one surface.
-        </p>
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href={webAppHref}
-            className={
-              isDark
-                ? "inline-flex items-center justify-center gap-2 rounded-full bg-zinc-100 px-7 py-3 text-sm font-medium text-zinc-900 transition-all hover:bg-white"
-                : "inline-flex items-center justify-center gap-2 rounded-full bg-[#0a0a0a] px-7 py-3 text-sm font-medium text-white transition-all hover:bg-[#27272a]"
-            }
-          >
-            <Globe className="h-4 w-4" />
-            open app
-          </Link>
-          <a
-            href="https://github.com/DevelopedByDev/overlay-web"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={
-              isDark
-                ? "inline-flex items-center justify-center gap-2 rounded-full border border-zinc-600 px-7 py-3 text-sm font-medium text-zinc-300 transition-all hover:bg-zinc-800"
-                : "inline-flex items-center justify-center gap-2 rounded-full border border-[#d4d4d8] px-7 py-3 text-sm font-medium text-[#0a0a0a] transition-all hover:bg-[#f4f4f5]"
-            }
-          >
-            <Github className="h-4 w-4" />
-            view source
-          </a>
-        </div>
-      </motion.div>
-
-      {/* Product screenshot */}
-      <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.15 }}
-        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-        className="relative w-full max-w-4xl"
-      >
-        <div
-          className={`relative overflow-hidden rounded-2xl border shadow-2xl ${
-            isDark ? "border-zinc-700" : "border-zinc-200"
-          }`}
-        >
-          <Image
-            src="/assets/window-screens/chat-screen.png"
-            alt="Overlay chat interface"
-            width={1200}
-            height={750}
-            className="w-full"
-            priority
-          />
-        </div>
-
-        {/* Floating chat overlay */}
+    <section className="relative overflow-hidden px-6 pb-16 pt-28 md:px-8 md:pb-24 md:pt-32">
+      <div className="mx-auto grid min-h-[calc(100svh-6.5rem)] max-w-7xl items-center gap-12 lg:grid-cols-[minmax(0,0.76fr)_minmax(540px,1.24fr)]">
         <motion.div
-          initial={{ opacity: 0, x: 30, y: 10 }}
-          whileInView={{ opacity: 1, x: 0, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, delay: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          className="absolute -bottom-6 -right-2 w-2/5 max-w-[280px] md:-right-8"
+          initial={{ opacity: 0, y: 22 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="max-w-2xl"
         >
-          <div
-            className={`overflow-hidden rounded-xl border shadow-2xl ${
-              isDark ? "border-zinc-700" : "border-zinc-200"
-            }`}
+          <div className="flex items-center gap-3">
+            <Image src="/assets/overlay-logo.png" alt="Overlay" width={34} height={34} />
+            <span className={`text-sm uppercase tracking-[0.28em] ${muted}`}>overlay</span>
+          </div>
+          <h1
+            className={`mt-8 max-w-[10ch] text-5xl leading-[0.94] tracking-tight md:text-7xl xl:text-[5.4rem] ${heading}`}
+            style={{ fontFamily: "var(--font-serif)" }}
           >
-            <Image
-              src="/assets/overlays/chat-overlay.png"
-              alt="Overlay floating panel"
-              width={600}
-              height={400}
-              className="w-full"
-            />
+            the all-in-one AI workspace.
+          </h1>
+          <p className={`mt-6 max-w-xl text-base leading-7 md:text-lg ${muted}`}>
+            one layer for every serious AI workflow.
+          </p>
+          <p className={`mt-6 max-w-xl text-sm leading-6 md:text-base ${muted}`}>
+            Open-source alternative to ChatGPT, Claude, Perplexity, Computer Use, and Copilot-style assistants.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Link
+              href={webAppHref}
+              className={
+                isDark
+                  ? "inline-flex items-center rounded-full bg-zinc-100 px-5 py-3 text-sm text-zinc-950 transition-colors hover:bg-white"
+                  : "inline-flex items-center rounded-full bg-zinc-950 px-5 py-3 text-sm text-white transition-colors hover:bg-zinc-800"
+              }
+            >
+              Open app
+            </Link>
+            <a
+              href={MARKETING_SALES_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`inline-flex items-center gap-2 rounded-full border px-5 py-3 text-sm transition-colors ${
+                isDark
+                  ? "border-white/10 text-zinc-100 hover:bg-white/5"
+                  : "border-black/8 text-zinc-950 hover:bg-black/[0.03]"
+              }`}
+            >
+              <span>Contact sales</span>
+              <ArrowUpRight className="h-4 w-4" />
+            </a>
+            <a
+              href={MARKETING_GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`inline-flex items-center rounded-full px-3 py-3 text-sm transition-colors ${
+                isDark ? "text-zinc-400 hover:text-zinc-100" : "text-zinc-600 hover:text-zinc-950"
+              }`}
+            >
+              View source
+            </a>
           </div>
         </motion.div>
-      </motion.div>
 
-      {/* Model trust strip */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-        className="w-full overflow-hidden pt-4"
-      >
-        <p className={`mb-3 text-center text-xs font-medium uppercase tracking-widest ${muted}`}>
-          powered by the world&apos;s best models
-        </p>
-        <div className="flex overflow-hidden">
-          <motion.div
-            animate={{ x: ["0%", "-50%"] }}
-            transition={{ duration: 22, repeat: Infinity, ease: "linear" }}
-            className="flex shrink-0 gap-10 whitespace-nowrap"
-          >
-            {[...MODELS, ...MODELS].map((m, i) => (
-              <span key={i} className={`text-sm font-light ${muted}`}>
-                {m}
-              </span>
-            ))}
-          </motion.div>
-        </div>
-      </motion.div>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.985, y: 24 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+          className="relative"
+        >
+          <div className={`overflow-hidden rounded-[28px] border ${border} ${isDark ? "bg-[#111113]" : "bg-[#fcfcfb]"} shadow-[0_18px_48px_rgba(15,23,42,0.06)]`}>
+            <div className={`border-b px-5 py-4 ${border}`}>
+              <div className="flex flex-wrap gap-1.5">
+                {HERO_LABELS.map((label) => (
+                  <span
+                    key={label}
+                    className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] ${
+                      isDark ? "border-white/10 text-zinc-400" : "border-black/8 text-zinc-500"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="p-3">
+              <WorkspaceCanvas isDark={isDark} />
+            </div>
+          </div>
+        </motion.div>
+      </div>
     </section>
   );
 }
