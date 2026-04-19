@@ -425,6 +425,9 @@ export async function POST(request: NextRequest) {
     let automationSuggestion:
       | ReturnType<typeof shouldSuggestAutomationFromTurn>
       | undefined
+    // Declared here so onFinish (below) can set it synchronously before the finish
+    // stream event fires — the async result.response path is unreliable for ToolLoopAgent.
+    let streamedRoutedModelId: string | undefined
 
     if (_ttftDebug) _tStreamCall = performance.now()
     const result = await agent.stream({
@@ -471,6 +474,13 @@ export async function POST(request: NextRequest) {
         const totalUsage = event.totalUsage
         const totalInputTokens = totalUsage?.inputTokens ?? 0
         const totalOutputTokens = totalUsage?.outputTokens ?? 0
+        // Set synchronously before the first await so it's ready when the finish
+        // stream event is serialized by toUIMessageStreamResponse below.
+        if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
+          const lastStep = event.steps.at(-1)
+          const rid = lastStep?.response.modelId
+          if (typeof rid === 'string' && rid) streamedRoutedModelId = rid
+        }
         automationSuggestion =
           shouldSuggestAutomationFromTurn({
             userText: latestUserText ?? '',
@@ -547,19 +557,6 @@ export async function POST(request: NextRequest) {
     })
 
     const hasCitations = Object.keys(sourceCitationMap).length > 0
-    let streamedRoutedModelId: string | undefined
-    if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
-      void (async () => {
-        try {
-          const response = await result.response
-          if (typeof response.modelId === 'string' && response.modelId) {
-            streamedRoutedModelId = response.modelId
-          }
-        } catch {
-          // Ignore metadata propagation failures; the persisted message still carries the routed model id.
-        }
-      })()
-    }
 
     const _uiResp = result.toUIMessageStreamResponse({
       originalMessages: messages,

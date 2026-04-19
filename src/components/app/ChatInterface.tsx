@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import posthog from 'posthog-js'
 import {
@@ -40,12 +40,16 @@ import {
   VIDEO_MODELS,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
+  costToBarFill5,
   getChatModelDisplayName,
   getModel,
   getModelsByIntelligence,
+  intelligenceToBarFill5,
+  speedTierToBarFill5,
   type ChatModel,
   type GenerationMode,
 } from '@/lib/models'
+import { ACT_MODEL_KEY, CHAT_MODEL_KEY, COMPOSER_MODE_KEY } from '@/lib/chat-model-prefs'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { webSourceDisplayKey } from '@/lib/web-sources'
@@ -67,6 +71,7 @@ import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
 import { useAppSettings, type ChatStreamingMode } from './AppSettingsProvider'
 import { useGuestGate } from './GuestGateProvider'
+import { useAuth } from '@/contexts/AuthContext'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
 import {
   buildAutomationDraftFromTurn,
@@ -76,63 +81,70 @@ import {
   type SkillDraftSummary,
 } from '@/lib/automation-drafts'
 
-function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: boolean; isFreeTier: boolean }) {
+function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   const router = useRouter()
   const showUpgrade = isFreeTier && m.cost > 0
 
-  if (isHovered) {
-    return (
-      <span className="flex items-center gap-1 shrink-0 h-5">
-        {showUpgrade && (
-          <span
-            onClick={(e) => { e.stopPropagation(); router.push('/account') }}
-            className="inline-flex items-center h-5 px-1.5 rounded-full text-[9px] font-semibold leading-none cursor-pointer transition-colors"
-            style={{
-              background: 'var(--chat-badge-upgrade-bg)',
-              color: 'var(--chat-badge-upgrade-fg)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--chat-badge-upgrade-hover)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'var(--chat-badge-upgrade-bg)'
-            }}
-          >
-            Upgrade
-          </span>
-        )}
-        <span className={`inline-flex items-center h-5 px-1.5 rounded-full text-[9px] font-semibold leading-none tracking-tight ${
-          m.cost === 0 ? '' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
-        }`}
-        style={m.cost === 0 ? { background: 'var(--chat-badge-free-bg)', color: 'var(--chat-badge-free-fg)' } : undefined}
-        >
-          {m.cost === 0 ? 'Free' : '$'.repeat(m.cost)}
-        </span>
-      </span>
-    )
-  }
-
   return (
-    <span className="flex items-center gap-1 shrink-0 h-5">
+    <span className="flex h-5 shrink-0 items-center gap-1">
       {showUpgrade && (
-        <span
-          className="inline-flex items-center justify-center w-5 h-5 rounded"
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            router.push('/account')
+          }}
+          className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded"
           style={{ background: 'var(--chat-badge-upgrade-bg)', color: 'var(--chat-badge-upgrade-fg)' }}
         >
           <ArrowUp size={10} strokeWidth={2} />
-        </span>
+        </button>
       )}
       {m.supportsVision && (
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
           <ImageIcon size={10} strokeWidth={1.75} />
         </span>
       )}
       {m.supportsReasoning && (
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
           <BrainCircuit size={10} strokeWidth={1.75} />
         </span>
       )}
     </span>
+  )
+}
+
+function QualBarRow({ label, filled, hint }: { label: string; filled: number; hint?: string }) {
+  const segments = 4
+  const lit = Math.min(segments, Math.max(0, Math.round((filled / 5) * segments)))
+  return (
+    <div className="flex flex-col gap-px">
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[8px] font-medium uppercase tracking-wide text-[var(--muted-light)]">{label}</span>
+        {hint ? <span className="text-[8px] tabular-nums text-[var(--muted)]">{hint}</span> : null}
+      </div>
+      <div className="flex gap-px">
+        {Array.from({ length: segments }, (_, i) => (
+          <span
+            key={i}
+            className={`h-1 min-w-0 flex-1 rounded-[1px] ${i < lit ? 'bg-[var(--foreground)]' : 'bg-[var(--border)]'}`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ModelQualitiesPanel({ modelId }: { modelId: string }) {
+  const m = getModel(modelId)
+  if (!m) return null
+  const priceHint = m.cost === 0 ? 'Free' : '$'.repeat(m.cost)
+  return (
+    <div className="pointer-events-none flex flex-col gap-1.5">
+      <QualBarRow label="Speed" filled={speedTierToBarFill5(m.speedTier)} />
+      <QualBarRow label="Price" filled={costToBarFill5(m.cost)} hint={priceHint} />
+      <QualBarRow label="Intel" filled={intelligenceToBarFill5(m)} />
+    </div>
   )
 }
 
@@ -370,6 +382,29 @@ function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVi
     }
   }
   // Reasoning now renders as its own standalone collapsible segment; no folding.
+
+  // Fix word-split artifact: some reasoning models (e.g. routed by openrouter/free) emit
+  // the first word(s) of the response as thinking tokens. The AI SDK puts these in a
+  // `reasoning` part and the text part starts mid-word with an apostrophe (e.g.
+  // reasoning="I don", text="'t have..."). Detect this pattern and move the trailing
+  // word fragment from the reasoning block into the text block.
+  for (let i = 0; i < out.length - 1; i++) {
+    const rBlk = out[i]
+    const tBlk = out[i + 1]
+    if (
+      rBlk?.kind === 'reasoning' &&
+      tBlk?.kind === 'text' &&
+      /^'[a-zA-Z]/.test(tBlk.text)
+    ) {
+      const lastWordMatch = rBlk.text.match(/(\S+)$/)
+      if (lastWordMatch) {
+        const word = lastWordMatch[1]!
+        rBlk.text = rBlk.text.slice(0, rBlk.text.length - word.length).trim()
+        tBlk.text = word + tBlk.text
+      }
+    }
+  }
+
   return out
 }
 
@@ -645,6 +680,10 @@ function ToolLineLogo() {
   )
 }
 
+/** Long reasoning / tool metadata: cap height so the thread stays usable; scroll inside. */
+const ASSISTANT_COLLAPSIBLE_BODY_CLASS =
+  'max-h-[min(42vh,300px)] overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin]'
+
 /** Vertical connector between consecutive tool rows (logo stays top-aligned; line in logo column). */
 function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; connectBottom: boolean }) {
   const showLine = connectTop || connectBottom
@@ -724,12 +763,14 @@ function ReasoningBlock({
         </div>
         {hasContent ? (
           <div
-            className={`ml-[26px] overflow-hidden transition-all duration-300 ${
-              showDetails ? 'max-h-[1200px] pt-1 pb-2' : 'max-h-0'
+            className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
+              showDetails ? 'max-h-[min(42vh,304px)] pt-1 pb-2' : 'max-h-0'
             }`}
           >
             {showDetails ? (
-              <div className="message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)]">
+              <div
+                className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)] ${ASSISTANT_COLLAPSIBLE_BODY_CLASS}`}
+              >
                 <MarkdownMessage
                   text={text}
                   isStreaming={streaming}
@@ -813,12 +854,12 @@ function WebSearchToolBlock({
         </div>
         {hasDetails ? (
           <div
-            className={`ml-[26px] overflow-hidden transition-all duration-300 ${
-              showDetails ? 'max-h-[600px] pt-1 pb-2' : 'max-h-0'
+            className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
+              showDetails ? 'max-h-[min(42vh,304px)] pt-1 pb-2' : 'max-h-0'
             }`}
           >
             {showDetails ? (
-              <div className="message-appear flex flex-col gap-1.5">
+              <div className={`message-appear flex flex-col gap-1.5 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS}`}>
                 {query ? (
                   <div className="flex min-w-0 items-center gap-2 text-[12px] leading-snug text-[var(--muted)]">
                     <Search size={12} strokeWidth={1.75} className="shrink-0 opacity-70" aria-hidden />
@@ -1047,10 +1088,15 @@ function BrowserToolBlock({
         </div>
         {hasDetails ? (
           <div
-            className={`ml-[26px] overflow-hidden transition-all duration-300 ${showDetails ? 'max-h-[520px] pt-2' : 'max-h-0'}`}
+            className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
+              showDetails ? 'max-h-[min(42vh,304px)] pt-2' : 'max-h-0'
+            }`}
           >
             {showDetails ? (
-              <div key={userExpanded ? 'open' : running ? 'streaming' : 'closed'} className="space-y-3 message-appear">
+              <div
+                key={userExpanded ? 'open' : running ? 'streaming' : 'closed'}
+                className={`space-y-3 message-appear ${ASSISTANT_COLLAPSIBLE_BODY_CLASS}`}
+              >
                 {task ? (
                   <div className="reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)]">
                     <MarkdownMessage
@@ -2052,14 +2098,11 @@ function sanitizeEmptyChatStarters(prompts: string[], firstName?: string): strin
 }
 
 const DEFAULT_CHAT_TITLE = 'New Chat'
-const CHAT_MODEL_KEY = 'overlay_chat_model'
 const ASK_MODEL_SELECTION_MODE_KEY = 'overlay_ask_model_selection_mode'
 const IMAGE_MODEL_SELECTION_MODE_KEY = 'overlay_image_model_selection_mode'
 const VIDEO_MODEL_SELECTION_MODE_KEY = 'overlay_video_model_selection_mode'
 const SELECTED_IMAGE_MODELS_KEY = 'overlay_selected_image_models'
 const SELECTED_VIDEO_MODELS_KEY = 'overlay_selected_video_models'
-const ACT_MODEL_KEY = 'overlay_act_model'
-const COMPOSER_MODE_KEY = 'overlay_composer_mode'
 const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
 const SUPPORTED_INPUT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 
@@ -2468,6 +2511,7 @@ export default function ChatInterface({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
+  const { user: authUser } = useAuth()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const loadChatRequestRef = useRef(0)
@@ -2589,6 +2633,8 @@ export default function ChatInterface({
 
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
+  /** Viewport position for the fixed model-qualities flyout (tracks hovered row). */
+  const [modelQualitiesPos, setModelQualitiesPos] = useState<{ x: number; y: number } | null>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const dragCounterRef = useRef(0)
@@ -2689,7 +2735,22 @@ export default function ChatInterface({
   const docInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const modelPickerRef = useRef<HTMLDivElement>(null)
+  const modelPickerListScrollRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
+
+  const syncModelQualitiesPosition = useCallback((modelId: string | null) => {
+    if (typeof document === 'undefined' || !modelId || !modelPickerRef.current) {
+      setModelQualitiesPos(null)
+      return
+    }
+    const row = modelPickerRef.current.querySelector(`[data-model-row="${CSS.escape(modelId)}"]`)
+    if (!row || !(row instanceof HTMLElement)) {
+      setModelQualitiesPos(null)
+      return
+    }
+    const r = row.getBoundingClientRect()
+    setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
+  }, [])
   const wasStreamingRef = useRef(false)
   const ttftSendTimeRef = useRef<number | null>(null)
   const ttftLoggedRef = useRef(false)
@@ -3216,6 +3277,7 @@ export default function ChatInterface({
   useEffect(() => {
     if (!showModelPicker) {
       setHoveredModelId(null)
+      setModelQualitiesPos(null)
       return
     }
     function handleOutside(e: MouseEvent) {
@@ -3232,6 +3294,37 @@ export default function ChatInterface({
       document.removeEventListener('keydown', handleEscape)
     }
   }, [showModelPicker])
+
+  useLayoutEffect(() => {
+    if (!showModelPicker || generationMode !== 'text' || !hoveredModelId) {
+      setModelQualitiesPos(null)
+      return
+    }
+    syncModelQualitiesPosition(hoveredModelId)
+  }, [
+    showModelPicker,
+    generationMode,
+    hoveredModelId,
+    selectedModels,
+    selectedActModel,
+    composerMode,
+    syncModelQualitiesPosition,
+  ])
+
+  useEffect(() => {
+    const el = modelPickerListScrollRef.current
+    if (!el || !showModelPicker || !hoveredModelId) return
+    const onScroll = () => syncModelQualitiesPosition(hoveredModelId)
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [showModelPicker, hoveredModelId, syncModelQualitiesPosition])
+
+  useEffect(() => {
+    if (!showModelPicker || !hoveredModelId) return
+    const onResize = () => syncModelQualitiesPosition(hoveredModelId)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [showModelPicker, hoveredModelId, syncModelQualitiesPosition])
 
   useEffect(() => {
     if (!showAttachMenu) return
@@ -4045,7 +4138,7 @@ async function hydrateCompletedAskTurnFromServer(
   const { requireAuth } = useGuestGate()
 
   async function handleSend() {
-    if (!userId) {
+    if (!userId && !authUser) {
       try { sessionStorage.setItem('overlay:guest-draft', input) } catch { /* ignore */ }
       requireAuth('send')
       return
@@ -4965,6 +5058,15 @@ async function hydrateCompletedAskTurnFromServer(
 
             {/* Model picker + Generation mode */}
             <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-none md:flex-row md:items-center md:gap-2">
+              {isFreeTier && (
+                <Link
+                  href="/pricing"
+                  className="hidden shrink-0 items-center gap-1 rounded-md border border-[#fde68a] bg-[#fffbeb] px-2.5 py-1 text-[11px] font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] md:flex"
+                >
+                  <ArrowUp size={10} />
+                  Upgrade
+                </Link>
+              )}
               <div ref={modelPickerRef} className="relative w-full min-w-0 md:w-auto">
                 <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
                   <button
@@ -4980,11 +5082,28 @@ async function hydrateCompletedAskTurnFromServer(
                   </button>
                 </DelayedTooltip>
                 {showModelPicker && (
+                  <>
+                  {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
+                    <div
+                      aria-hidden
+                      className="pointer-events-none fixed z-[100] hidden w-[6rem] rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 shadow-md md:block"
+                      style={{
+                        left: modelQualitiesPos.x,
+                        top: modelQualitiesPos.y,
+                        transform: 'translate(calc(-100% - 6px), -50%)',
+                      }}
+                    >
+                      <ModelQualitiesPanel modelId={hoveredModelId} />
+                    </div>
+                  ) : null}
                   <div
-                    className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64"
-                    onMouseLeave={() => setHoveredModelId(null)}
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+                    onMouseLeave={() => {
+                      setHoveredModelId(null)
+                      setModelQualitiesPos(null)
+                    }}
                   >
-                  <div className="max-h-72 overflow-y-auto">
+                  <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
                   {generationMode === 'image' ? (
                     IMAGE_MODELS.map((m) => {
                         const isSel = selectedImageModels.includes(m.id)
@@ -5029,12 +5148,18 @@ async function hydrateCompletedAskTurnFromServer(
                       return (
                         <button
                           key={m.id}
+                          type="button"
+                          data-model-row={m.id}
                           onClick={() => {
                             setSelectedActModel(m.id)
                             localStorage.setItem(ACT_MODEL_KEY, m.id)
                             setShowModelPicker(false)
                           }}
-                          onMouseEnter={() => setHoveredModelId(m.id)}
+                          onMouseEnter={(e) => {
+                            setHoveredModelId(m.id)
+                            const r = e.currentTarget.getBoundingClientRect()
+                            setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
+                          }}
                           className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[var(--surface-muted)] ${
                             isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'
                           }`}
@@ -5043,7 +5168,7 @@ async function hydrateCompletedAskTurnFromServer(
                             {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
                             {m.name}
                           </span>
-                          <ModelBadges m={m} isHovered={hoveredModelId === m.id} isFreeTier={isFreeTier} />
+                          <ModelBadges m={m} isFreeTier={isFreeTier} />
                         </button>
                       )
                     })
@@ -5054,9 +5179,16 @@ async function hydrateCompletedAskTurnFromServer(
                       return (
                         <button
                           key={m.id}
+                          type="button"
+                          data-model-row={m.id}
                           onClick={() => toggleModel(m.id)}
                           disabled={isDisabled}
-                          onMouseEnter={() => !isDisabled && setHoveredModelId(m.id)}
+                          onMouseEnter={(e) => {
+                            if (isDisabled) return
+                            setHoveredModelId(m.id)
+                            const r = e.currentTarget.getBoundingClientRect()
+                            setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
+                          }}
                           className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
                             isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
                           } ${isSelected ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}
@@ -5065,7 +5197,7 @@ async function hydrateCompletedAskTurnFromServer(
                             {isSelected ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
                             {m.name}
                           </span>
-                          <ModelBadges m={m} isHovered={hoveredModelId === m.id} isFreeTier={isFreeTier} />
+                          <ModelBadges m={m} isFreeTier={isFreeTier} />
                         </button>
                       )
                     })
@@ -5149,7 +5281,8 @@ async function hydrateCompletedAskTurnFromServer(
                       </div>
                     </div>
                   )}
-                </div>
+                  </div>
+                  </>
               )}
             </div>
             <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
@@ -5389,7 +5522,7 @@ async function hydrateCompletedAskTurnFromServer(
                     : null
                 const modelLabelSingle =
                   selectedModelId === FREE_TIER_AUTO_MODEL_ID && routedModelName
-                    ? `Auto · ${routedModelName}`
+                    ? `Free · ${routedModelName}`
                     : getChatModelDisplayName(selectedModelId)
                 const modelLabel =
                   exchModelList.length > 1

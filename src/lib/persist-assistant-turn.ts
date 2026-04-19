@@ -115,5 +115,31 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   if (parts.length === 0) {
     parts.push({ type: 'text', text: content })
   }
+
+  // Fix word-split artifact: some reasoning models emit the first word(s) of the
+  // response as thinking tokens (e.g. reasoningText="I don", text="'t have...").
+  // Detect when a text part starts with an apostrophe continuation and move the
+  // trailing word from the preceding reasoning part into the text part.
+  for (let i = 0; i < parts.length - 1; i++) {
+    const rPart = parts[i]
+    const tPart = parts[i + 1]
+    if (
+      rPart?.type === 'reasoning' &&
+      tPart?.type === 'text' &&
+      typeof rPart.text === 'string' &&
+      typeof tPart.text === 'string' &&
+      /^'[a-zA-Z]/.test(tPart.text as string)
+    ) {
+      const rText = rPart.text as string
+      const tText = tPart.text as string
+      const lastWordMatch = rText.match(/(\S+)$/)
+      if (lastWordMatch) {
+        const word = lastWordMatch[1]!
+        rPart.text = rText.slice(0, rText.length - word.length).trim()
+        tPart.text = word + tText
+      }
+    }
+  }
+
   return { content, parts }
 }

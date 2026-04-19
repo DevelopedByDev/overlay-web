@@ -7,7 +7,7 @@ import {
   BookOpen, FileText, Upload, FolderPlus, Loader2, Trash2, ArrowLeft,
 } from 'lucide-react'
 import { CHAT_TITLE_UPDATED_EVENT, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
-import { DEFAULT_MODEL_ID } from '@/lib/models'
+import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
 import { getFileType } from './FileViewer'
 
 /** Align chevron column + icon column across folders, chats, notes, and files */
@@ -569,15 +569,16 @@ export default function ProjectsSidebar() {
   async function handleNewChat() {
     if (!selectedProject) return
     setAddMenuOpen(false)
+    const models = readNewChatModelFieldsFromStorage()
     const res = await fetch('/api/app/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: 'New Chat',
         projectId: selectedProject._id,
-        askModelIds: [DEFAULT_MODEL_ID],
-        actModelId: DEFAULT_MODEL_ID,
-        lastMode: 'act',
+        askModelIds: models.askModelIds,
+        actModelId: models.actModelId,
+        lastMode: models.lastMode,
       }),
     })
     if (res.ok) {

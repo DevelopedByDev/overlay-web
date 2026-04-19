@@ -14,7 +14,7 @@ import type { AuthUser } from '@/lib/workos-auth'
 import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from './GuestGateProvider'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
-import { DEFAULT_MODEL_ID } from '@/lib/models'
+import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
 import { useAppSettings } from './AppSettingsProvider'
 import {
   ChatInlinePanel,
@@ -210,11 +210,13 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   }, [])
 
   useEffect(() => {
+    void loadEntitlements()
+  }, [loadEntitlements])
+
+  useEffect(() => {
     if (!accountMenuOpen && !mobileAccountOpen && !knowledgeOpen) return
-    const initialId = window.setTimeout(() => { void loadEntitlements() }, 0)
     const intervalId = window.setInterval(() => { void loadEntitlements() }, 30_000)
     return () => {
-      window.clearTimeout(initialId)
       window.clearInterval(intervalId)
     }
   }, [accountMenuOpen, mobileAccountOpen, knowledgeOpen, loadEntitlements])
@@ -299,14 +301,15 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
 
   async function handleCreateChat() {
     if (!user) { requireAuth('send'); return }
+    const models = readNewChatModelFieldsFromStorage()
     const res = await fetch('/api/app/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: 'New Chat',
-        askModelIds: [DEFAULT_MODEL_ID],
-        actModelId: DEFAULT_MODEL_ID,
-        lastMode: 'act',
+        askModelIds: models.askModelIds,
+        actModelId: models.actModelId,
+        lastMode: models.lastMode,
       }),
     })
     if (!res.ok) return
@@ -396,7 +399,8 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false)
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('')
 
-  const showUpgradeCta = !entitlements || entitlements.tier === 'free'
+  /** Hide until loaded so paid users never see a flash of the upgrade CTA. */
+  const showUpgradeCta = entitlements !== null && entitlements.tier === 'free'
   const contextualAction = inlineSecondaryDisabled
     ? chatOpen
       ? { label: 'New chat', onClick: handleCreateChat }
@@ -736,6 +740,18 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       </div>
 
       <div className={`space-y-3 border-t border-[var(--border)] py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
+        {showUpgradeCta && !isGuestConfirmed && (
+          <Link
+            href="/pricing"
+            title="Upgrade to Pro"
+            className={`flex w-full items-center gap-2 rounded-md border border-[#fde68a] bg-[#fffbeb] px-2.5 py-1.5 text-xs font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] ${
+              sidebarCollapsed ? 'justify-center' : ''
+            }`}
+          >
+            <ArrowUp size={13} className="shrink-0" />
+            {!sidebarCollapsed && <span className="truncate">Upgrade to Pro</span>}
+          </Link>
+        )}
         <div ref={menuRef} className="relative">
           {accountMenuOpen && (
             <div
