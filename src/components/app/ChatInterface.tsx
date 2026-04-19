@@ -3282,7 +3282,6 @@ export default function ChatInterface({
     if (!_hasText) return
     ttftLoggedRef.current = true
     const _ttft = performance.now() - ttftSendTimeRef.current
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _model = composerMode === 'act' ? selectedActModel : (selectedModels[0] ?? '')
     console.log(`[TTFT][client] first-token | ${_ttft.toFixed(1)}ms | mode=${composerMode} | model=${_model}`)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3496,23 +3495,6 @@ export default function ChatInterface({
       setIsDraftSaving(false)
     }
   }, [embedProjectId])
-
-  const handleComposerModeChange = useCallback((next: 'ask' | 'act') => {
-    if (next === 'act') {
-      // Keep Act aligned with the primary Ask slot so the picker does not jump to a different model.
-      const primary = selectedModels[0] ?? selectedActModel
-      setSelectedActModel(primary)
-      localStorage.setItem(ACT_MODEL_KEY, primary)
-    } else {
-      const nextAsk =
-        selectedModels.length <= 1
-          ? [selectedActModel]
-          : [selectedActModel, ...selectedModels.slice(1)].slice(0, 4)
-      setSelectedModels(nextAsk)
-      localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(nextAsk))
-    }
-    setComposerMode(next)
-  }, [selectedModels, selectedActModel])
 
   const handleAskModelSelectionModeChange = useCallback((next: AskModelSelectionMode) => {
     if (isActiveLoading || composerMode !== 'ask') return
