@@ -37,16 +37,11 @@ export function GuestGateProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
   const searchParams = useSearchParams()
   const [modalReason, setModalReason] = useState<GateReason | null>(null)
-  const [cornerDismissed, setCornerDismissed] = useState(true)
-
-  useEffect(() => {
-    // eslint-disable-next-line react-compiler/react-compiler
-    setCornerDismissed(readCornerDismissed())
-  }, [])
+  const [cornerDismissed, setCornerDismissed] = useState(readCornerDismissed)
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && searchParams?.get('signin') === 'nav') {
-      // eslint-disable-next-line react-compiler/react-compiler
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setModalReason('nav')
     }
   }, [isLoading, isAuthenticated, searchParams])
