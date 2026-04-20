@@ -1,5 +1,6 @@
 'use client'
 
+import { useLayoutEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { SignInForm } from '@/components/auth/SignInForm'
 import type { GateReason } from './GuestGateProvider'
@@ -14,18 +15,31 @@ const REASON_TITLES: Record<GateReason, string> = {
 interface Props {
   reason: GateReason
   onClose: () => void
+  isClosing?: boolean
 }
 
-export function SignInFullScreenModal({ reason, onClose }: Props) {
+export function SignInFullScreenModal({ reason, onClose, isClosing = false }: Props) {
   const pathname = usePathname() ?? '/app/chat'
   const redirectTo = pathname.replace(/[?#].*$/, '')
+  const [mounted, setMounted] = useState(false)
+
+  useLayoutEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  const visible = mounted && !isClosing
 
   return (
     <div
+      style={{ opacity: visible ? 1 : 0, transition: 'opacity 200ms ease' }}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="relative w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 shadow-2xl">
+      <div
+        style={{ transform: visible ? 'scale(1) translateY(0)' : 'scale(0.97) translateY(4px)', transition: 'transform 200ms ease' }}
+        className="relative w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 shadow-2xl"
+      >
         <button
           type="button"
           onClick={onClose}

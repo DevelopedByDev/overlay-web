@@ -488,6 +488,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                   }}
                   title={shortcut ? `${label} · ⌥${shortcut}` : label}
                   aria-label={label}
+                  data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/knowledge' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : href === '/app/automations' ? 'nav-automations' : undefined}
                   className={commonClass}
                 >
                   {sidebarCollapsed && isPending ? (

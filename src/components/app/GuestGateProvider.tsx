@@ -33,11 +33,15 @@ function readCornerDismissed(): boolean {
   }
 }
 
+const FADE_MS = 200
+
 export function GuestGateProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
   const searchParams = useSearchParams()
   const [modalReason, setModalReason] = useState<GateReason | null>(null)
+  const [modalClosing, setModalClosing] = useState(false)
   const [cornerDismissed, setCornerDismissed] = useState(readCornerDismissed)
+  const [cornerClosing, setCornerClosing] = useState(false)
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && searchParams?.get('signin') === 'nav') {
@@ -53,15 +57,21 @@ export function GuestGateProvider({ children }: { children: ReactNode }) {
     [isLoading, isAuthenticated],
   )
 
-  const closeModal = useCallback(() => setModalReason(null), [])
+  const closeModal = useCallback(() => {
+    setModalClosing(true)
+    setTimeout(() => {
+      setModalReason(null)
+      setModalClosing(false)
+    }, FADE_MS)
+  }, [])
 
   const dismissCorner = useCallback(() => {
-    try {
-      sessionStorage.setItem(CORNER_DISMISSED_KEY, '1')
-    } catch {
-      // ignore
-    }
-    setCornerDismissed(true)
+    setCornerClosing(true)
+    setTimeout(() => {
+      try { sessionStorage.setItem(CORNER_DISMISSED_KEY, '1') } catch { /* ignore */ }
+      setCornerDismissed(true)
+      setCornerClosing(false)
+    }, FADE_MS)
   }, [])
 
   const showCorner =
@@ -70,12 +80,16 @@ export function GuestGateProvider({ children }: { children: ReactNode }) {
   return (
     <GuestGateContext.Provider value={{ requireAuth, isModalOpen: !!modalReason }}>
       {children}
-      {!isLoading && !isAuthenticated && modalReason && (
-        <SignInFullScreenModal reason={modalReason} onClose={closeModal} />
-      )}
-      {showCorner && (
-        <SignInCornerPopover onDismiss={dismissCorner} />
-      )}
+      {(!isLoading && !isAuthenticated && !!modalReason) || modalClosing ? (
+        <SignInFullScreenModal
+          reason={modalReason ?? 'nav'}
+          onClose={closeModal}
+          isClosing={modalClosing}
+        />
+      ) : null}
+      {(showCorner || cornerClosing) ? (
+        <SignInCornerPopover onDismiss={dismissCorner} isClosing={cornerClosing} />
+      ) : null}
     </GuestGateContext.Provider>
   )
 }

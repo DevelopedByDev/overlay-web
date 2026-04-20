@@ -206,6 +206,8 @@ export default defineSchema({
     /** Personalized empty-state prompts; refreshed daily (UTC) via /api/app/chat-suggestions. */
     chatStarterPrompts: v.optional(v.array(v.string())),
     chatStarterDay: v.optional(v.string()),
+    // Onboarding tour state
+    hasSeenOnboarding: v.optional(v.boolean()),
     // Legacy fields kept only so older rows continue to validate during deploys.
     autoRefillEnabled: v.optional(v.boolean()),
     overlayStorageBytesUsed: v.optional(v.number()),

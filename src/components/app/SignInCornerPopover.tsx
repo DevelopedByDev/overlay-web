@@ -1,5 +1,6 @@
 'use client'
 
+import { useLayoutEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
@@ -7,13 +8,23 @@ import { SignInForm } from '@/components/auth/SignInForm'
 
 interface Props {
   onDismiss: () => void
+  isClosing?: boolean
 }
 
-export function SignInCornerPopover({ onDismiss }: Props) {
+export function SignInCornerPopover({ onDismiss, isClosing = false }: Props) {
   const pathname = usePathname() ?? '/app/chat'
+  const [mounted, setMounted] = useState(false)
+
+  useLayoutEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  const visible = mounted && !isClosing
 
   return (
     <div
+      style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(6px)', transition: 'opacity 200ms ease, transform 200ms ease' }}
       className="fixed bottom-5 right-5 z-50 w-[320px] rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl"
       role="dialog"
       aria-label="Sign in to overlay"

@@ -5,6 +5,7 @@ import { AsyncSessionsProvider } from '@/lib/async-sessions-store'
 import BackgroundPollManager from '@/components/app/BackgroundPollManager'
 import { NavigationProgressProvider, NavigationProgressBar } from '@/lib/navigation-progress'
 import { GuestGateProvider } from '@/components/app/GuestGateProvider'
+import { OnboardingProvider } from '@/components/app/OnboardingProvider'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -18,8 +19,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {user && <BackgroundPollManager />}
           <Suspense fallback={null}>
             <GuestGateProvider>
-              <AppSidebar user={user} />
-              <main className="flex-1 overflow-auto pt-14 md:pt-0">{children}</main>
+              <OnboardingProvider>
+                <AppSidebar user={user} />
+                <main className="flex-1 overflow-auto pt-14 md:pt-0">{children}</main>
+              </OnboardingProvider>
             </GuestGateProvider>
           </Suspense>
         </NavigationProgressProvider>

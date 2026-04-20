@@ -3347,6 +3347,17 @@ export default function ChatInterface({
   }, [showModelPicker, hoveredModelId, syncModelQualitiesPosition])
 
   useEffect(() => {
+    function openPicker() { setShowModelPicker(true) }
+    function closePicker() { setShowModelPicker(false) }
+    window.addEventListener('overlay:tour:open-model-picker', openPicker)
+    window.addEventListener('overlay:tour:close-model-picker', closePicker)
+    return () => {
+      window.removeEventListener('overlay:tour:open-model-picker', openPicker)
+      window.removeEventListener('overlay:tour:close-model-picker', closePicker)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!showAttachMenu) return
     function handleOutside(e: MouseEvent) {
       if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node))
@@ -5070,7 +5081,7 @@ async function hydrateCompletedAskTurnFromServer(
                   Upgrade
                 </Link>
               )}
-              <div ref={modelPickerRef} className="relative w-full min-w-0 md:w-auto">
+              <div ref={modelPickerRef} data-tour="model-picker" className="relative w-full min-w-0 md:w-auto">
                 <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
                   <button
                     type="button"
@@ -5100,6 +5111,7 @@ async function hydrateCompletedAskTurnFromServer(
                     </div>
                   ) : null}
                   <div
+                    data-tour="model-picker"
                     className="absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
                     onMouseLeave={() => {
                       setHoveredModelId(null)
@@ -5298,7 +5310,7 @@ async function hydrateCompletedAskTurnFromServer(
                     layout="stretch"
                   />
                 </span>
-                <span className="hidden md:inline-flex">
+                <span data-tour="generation-mode-toggle" className="hidden md:inline-flex">
                   <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
                 </span>
               </span>

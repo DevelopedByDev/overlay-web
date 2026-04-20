@@ -64,7 +64,7 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20', provider: 'xai', description: 'Flagship reasoning', intelligence: 1.8, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
   // Other frontier / open models
-  { id: 'moonshotai/kimi-k2.5', name: 'Kimi K2.5', provider: 'moonshotai', description: 'Multimodal long-context', intelligence: 1.7, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', description: 'Multimodal long-context', intelligence: 1.7, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'zai', description: 'Long-horizon coding', intelligence: 1.55, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'qwen/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Agentic coding', intelligence: 1.6, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 
@@ -87,7 +87,7 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'gpt-5.4',
   'claude-sonnet-4-6',
   'xai/grok-4.20-reasoning',
-  'moonshotai/kimi-k2.5',
+  'moonshotai/kimi-k2.6',
   'qwen/qwen3.6-plus',
   'gemini-3-flash-preview',
   'openai/gpt-5.4-mini',
@@ -112,8 +112,9 @@ export function pickBestModelForAct(selectedAskModelIds: string[]): string {
 /** Persisted UI / Convex rows may still reference retired ids. */
 const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'claude-opus-4-6': 'anthropic/claude-opus-4.7',
-  'moonshotai/kimi-k2-instruct-0905': 'moonshotai/kimi-k2.5',
-  'moonshotai/kimi-k2-0905': 'moonshotai/kimi-k2.5',
+  'moonshotai/kimi-k2.5': 'moonshotai/kimi-k2.6',
+  'moonshotai/kimi-k2-instruct-0905': 'moonshotai/kimi-k2.6',
+  'moonshotai/kimi-k2-0905': 'moonshotai/kimi-k2.6',
   'gpt-5.2-pro-2025-12-11': 'gpt-5.4',
   'gpt-5.2-2025-12-11': 'gpt-5.4',
   'gpt-5-mini-2025-08-07': 'openai/gpt-5.4-mini',

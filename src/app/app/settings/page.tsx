@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Gauge, Mail, Moon, PanelsLeftRight, Sun } from 'lucide-react'
+import { Gauge, Mail, Moon, PanelsLeftRight, Sun, Play } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
@@ -304,6 +304,24 @@ export default function SettingsPage() {
                 disabled={busy}
                 onChange={(next) => void updateSettings({ chatStreamingMode: next })}
               />
+              <div className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">
+                    <Play size={18} strokeWidth={1.8} />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-medium text-[var(--foreground)]">Onboarding tour</h2>
+                    <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">Replay the guided walkthrough that highlights the key features of the app.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { void fetch('/api/app/onboarding/reset', { method: 'POST' }).then(() => router.push('/app/chat?tour=replay')) }}
+                  className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)]"
+                >
+                  Replay tour
+                </button>
+              </div>
             </>
           )}
 
