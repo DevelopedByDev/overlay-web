@@ -7,6 +7,10 @@ import { PageNavbar } from "@/components/PageNavbar";
 import { LandingThemeProvider, useLandingTheme } from "@/contexts/LandingThemeContext";
 import { sanitizeClientAuthRedirect } from "@/lib/auth-redirect";
 import {
+  persistMobilePkceChallengeFromUrl,
+  resolveCodeChallengeForSso,
+} from "@/lib/mobile-auth-client";
+import {
   marketingAuthCard,
   marketingAuthMuted,
   marketingDividerLabel,
@@ -37,6 +41,10 @@ function SignInContent() {
     if (errorParam) {
       setError(decodeURIComponent(errorParam));
     }
+  }, [searchParams]);
+
+  useEffect(() => {
+    persistMobilePkceChallengeFromUrl(searchParams);
   }, [searchParams]);
 
   useEffect(() => {
@@ -97,7 +105,11 @@ function SignInContent() {
   const handleSSO = (provider: "google" | "apple" | "microsoft") => {
     setSsoLoading(provider);
     const forceParam = isDesktopAuth || forceLogin ? "&force=true" : "";
-    const ssoUrl = `/api/auth/sso/${provider}?redirect=${encodeURIComponent(redirectUrl)}${forceParam}`;
+    const codeChallenge = resolveCodeChallengeForSso(searchParams);
+    const pkceParam = codeChallenge
+      ? `&codeChallenge=${encodeURIComponent(codeChallenge)}`
+      : "";
+    const ssoUrl = `/api/auth/sso/${provider}?redirect=${encodeURIComponent(redirectUrl)}${forceParam}${pkceParam}`;
     window.location.href = ssoUrl;
   };
 

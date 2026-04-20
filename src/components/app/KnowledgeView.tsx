@@ -8,6 +8,7 @@ import {
   LayoutList, LayoutGrid, RefreshCw, SquareMousePointer,
 } from 'lucide-react'
 import { FileTreeSkeleton, KnowledgeListSkeleton } from '@/components/ui/Skeleton'
+import posthog from 'posthog-js'
 import { FileViewerPanel, getFileType, isEditableType } from './FileViewer'
 import OutputsView from './OutputsView'
 
@@ -495,7 +496,13 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, type: dialog.type, parentId: dialog.parentId }),
       })
-      if (res.ok) { setDialogName(''); setDialog(null); await loadFiles() }
+      if (res.ok) {
+        posthog.capture('knowledge_file_created', { file_name: name, type: dialog.type })
+        if (dialog.type === 'folder') {
+          posthog.capture('knowledge_folder_created', { folder_name: name })
+        }
+        setDialogName(''); setDialog(null); await loadFiles()
+      }
     } finally { setIsCreating(false) }
   }
 
@@ -506,7 +513,11 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
 
   async function handleDeleteNode(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    await fetch(`/api/app/files?fileId=${id}`, { method: 'DELETE' })
+    const node = files.find((f) => f._id === id)
+    const res = await fetch(`/api/app/files?fileId=${id}`, { method: 'DELETE' })
+    if (res.ok && node) {
+      posthog.capture('knowledge_file_deleted', { file_name: node.name, type: node.type })
+    }
     if (selectedFile?._id === id) {
       setSelectedFile(null)
       setFileContent('')

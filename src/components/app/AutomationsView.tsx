@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { AutomationListSkeleton, RunDetailSkeleton } from '@/components/ui/Skeleton'
+import posthog from 'posthog-js'
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getChatModelDisplayName } from '@/lib/models'
 import {
   formatAutomationSchedule,
@@ -586,6 +587,21 @@ function AutomationDialog({
           scheduleConfig: payload.scheduleConfig,
           updatedAt: Date.now(),
         } as AutomationSummary)
+        posthog.capture('automation_updated', {
+          automation_id: initial!._id,
+          title: payload.title,
+          schedule_kind: payload.scheduleKind,
+          mode: payload.mode,
+          source_type: payload.sourceType,
+          status: payload.status,
+        })
+        if (initial!.status !== payload.status) {
+          posthog.capture('automation_status_toggled', {
+            automation_id: initial!._id,
+            previous_status: initial!.status,
+            new_status: payload.status,
+          })
+        }
       } else {
         const data = (await res.json()) as { id: string }
         onSaved({
@@ -605,6 +621,14 @@ function AutomationDialog({
           createdAt: Date.now(),
           updatedAt: Date.now(),
         } as AutomationSummary)
+        posthog.capture('automation_created', {
+          automation_id: data.id,
+          title: payload.title,
+          schedule_kind: payload.scheduleKind,
+          mode: payload.mode,
+          source_type: payload.sourceType,
+          status: payload.status,
+        })
       }
       onClose()
     } finally {
@@ -626,6 +650,7 @@ function AutomationDialog({
         method: 'DELETE',
       })
       if (!res.ok) return
+      posthog.capture('automation_deleted', { automation_id: initial!._id, title: initial!.title })
       onDeleted(initial!._id)
       onClose()
     } finally {
@@ -1122,6 +1147,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
     try {
       const res = await fetch(`/api/app/automations?automationId=${encodeURIComponent(automationId)}`, { method: 'DELETE' })
       if (!res.ok) return
+      posthog.capture('automation_deleted', { automation_id: automationId })
       handleDeleted(automationId)
     } finally {
       setDeletingIds((prev) => ({ ...prev, [automationId]: false }))
@@ -1130,6 +1156,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
 
   async function handleRunNow(automationId: string) {
     setRunningIds((prev) => ({ ...prev, [automationId]: true }))
+    posthog.capture('automation_run_triggered', { automation_id: automationId })
     try {
       const res = await fetch('/api/app/automations/run-now', {
         method: 'POST',

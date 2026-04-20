@@ -10,8 +10,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "overlay",
-  description: "An OS-level, hotkey-activated overlay that moves execution into overlays where intent first appears. Voice-to-text, notes, AI chat, and browsing — all without leaving your flow.",
-  keywords: ["productivity", "voice-to-text", "AI assistant", "overlay", "desktop app", "macOS"],
+  description: "your all-in-one AI platform. every model. every medium. your context. one surface.",
+  keywords: ["AI platform", "productivity", "AI assistant", "overlay", "desktop app", "macOS", "GPT-4o", "Claude", "Gemini"],
   icons: {
     icon: [
       { url: "/icon.png", sizes: "64x64", type: "image/png" },
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "overlay — personal computing, reimagined",
-    description: "the computer, at the speed of human thought.",
+    description: "your all-in-one AI platform. every model. every medium. one surface.",
     type: "website",
     url: "https://getoverlay.io",
     images: [
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary",
     title: "overlay — personal computing, reimagined",
-    description: "the computer, at the speed of human thought.",
+    description: "your all-in-one AI platform. every model. every medium. one surface.",
     images: ["https://getoverlay.io/assets/overlay-logo.png"],
   },
 };

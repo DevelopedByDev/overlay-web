@@ -1,11 +1,15 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { PageNavbar } from '@/components/PageNavbar'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { sanitizeClientAuthRedirect } from '@/lib/auth-redirect'
+import {
+  persistMobilePkceChallengeFromUrl,
+  resolveCodeChallengeForSso,
+} from '@/lib/mobile-auth-client'
 import {
   marketingAuthCard,
   marketingAuthMuted,
@@ -43,6 +47,10 @@ function SignUpContent() {
 
   // Get redirect URL from params (for desktop app auth)
   const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get('redirect'))
+
+  useEffect(() => {
+    persistMobilePkceChallengeFromUrl(searchParams)
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -149,7 +157,11 @@ function SignUpContent() {
 
   const handleSSO = (provider: 'google' | 'apple' | 'microsoft') => {
     setSsoLoading(provider)
-    const ssoUrl = `/api/auth/sso/${provider}?redirect=${encodeURIComponent(redirectUrl)}`
+    const codeChallenge = resolveCodeChallengeForSso(searchParams)
+    const pkceParam = codeChallenge
+      ? `&codeChallenge=${encodeURIComponent(codeChallenge)}`
+      : ''
+    const ssoUrl = `/api/auth/sso/${provider}?redirect=${encodeURIComponent(redirectUrl)}${pkceParam}`
     window.location.href = ssoUrl
   }
 

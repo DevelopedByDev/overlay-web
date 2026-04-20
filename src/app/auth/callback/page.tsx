@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
+import posthog from "posthog-js";
 
 // Always use overlay:// for deep links (registered in WorkOS for both environments)
 const APP_PROTOCOL = 'overlay';
@@ -31,18 +32,24 @@ function AuthCallbackContent() {
 
   useEffect(() => {
     if (code && !error) {
+      posthog.capture('auth_callback_success');
       // Redirect to the Electron app via deep link (electron:// in dev, overlay:// in prod)
       const deepLink = `${APP_PROTOCOL}://auth/callback?code=${encodeURIComponent(code)}`;
       window.location.href = deepLink;
-      
+
       // Show success message after a short delay
       const timer = setTimeout(() => {
         setHasRedirected(true);
       }, 1000);
-      
+
       return () => clearTimeout(timer);
+    } else if (error || !code) {
+      posthog.capture('auth_callback_error', {
+        error: error ?? 'missing_code',
+        error_description: errorDescription ?? undefined,
+      });
     }
-  }, [code, error]);
+  }, [code, error, errorDescription]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#fafafa] flex items-center justify-center px-6">

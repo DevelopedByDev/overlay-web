@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { notifyOpenerIntegrationsChanged } from '@/lib/integrations-events'
+import posthog from 'posthog-js'
 
 function CallbackContent() {
   const searchParams = useSearchParams()
@@ -13,19 +14,25 @@ function CallbackContent() {
   const isSuccess = status === 'success' && !error
 
   useEffect(() => {
-    if (!isSuccess) return
-    notifyOpenerIntegrationsChanged()
-    const interval = setInterval(() => {
-      setCountdown((n) => {
-        if (n <= 1) {
-          clearInterval(interval)
-          window.close()
-        }
-        return n - 1
+    if (isSuccess) {
+      posthog.capture('integration_connect_completed')
+      notifyOpenerIntegrationsChanged()
+      const interval = setInterval(() => {
+        setCountdown((n) => {
+          if (n <= 1) {
+            clearInterval(interval)
+            window.close()
+          }
+          return n - 1
+        })
+      }, 1000)
+      return () => clearInterval(interval)
+    } else {
+      posthog.capture('integration_connect_failed', {
+        error: error ?? 'unknown',
       })
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [isSuccess])
+    }
+  }, [isSuccess, error])
 
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-white">

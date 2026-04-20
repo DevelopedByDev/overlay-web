@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import posthog from 'posthog-js'
 
 export interface AuthUser {
   id: string
@@ -50,7 +51,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
+      posthog.capture('user_signed_out')
       await fetch('/api/auth/sign-out', { method: 'POST' })
+      posthog.reset()
       setUser(null)
       window.location.href = '/'
     } catch (error) {
