@@ -56,7 +56,7 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'gpt-4.1-2025-04-14', name: 'GPT-4.1', provider: 'openai', description: 'Reliable', intelligence: 1.5, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
   // Anthropic Models
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'anthropic', description: 'Most capable', intelligence: 2, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', provider: 'openrouter', description: 'Most capable', intelligence: 2, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', description: 'Best balance', intelligence: 1.75, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', description: 'Fast & light', intelligence: 1.25, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
@@ -82,7 +82,7 @@ export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
  * selection and when synthesizing a shared prior thread for newly added chat models.
  */
 export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
-  'claude-opus-4-6',
+  'anthropic/claude-opus-4.7',
   'gemini-3.1-pro-preview',
   'gpt-5.4',
   'claude-sonnet-4-6',
@@ -111,6 +111,7 @@ export function pickBestModelForAct(selectedAskModelIds: string[]): string {
 
 /** Persisted UI / Convex rows may still reference retired ids. */
 const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
+  'claude-opus-4-6': 'anthropic/claude-opus-4.7',
   'moonshotai/kimi-k2-instruct-0905': 'moonshotai/kimi-k2.5',
   'moonshotai/kimi-k2-0905': 'moonshotai/kimi-k2.5',
   'gpt-5.2-pro-2025-12-11': 'gpt-5.4',
@@ -198,6 +199,8 @@ export const IMAGE_MODELS: ImageModel[] = [
   { id: 'xai/grok-imagine-image', name: 'Grok Image', provider: 'xai', description: 'Fast & creative', defaultAspectRatio: '1:1' },
   { id: 'bfl/flux-2-max', name: 'FLUX 2 Max', provider: 'bfl', description: 'Premium quality', defaultAspectRatio: '1:1' },
   { id: 'prodia/flux-fast-schnell', name: 'FLUX Schnell', provider: 'prodia', description: 'Ultra-fast, low cost', defaultAspectRatio: '1:1' },
+  { id: 'bytedance/seedream-5.0-lite', name: 'Seedream 5.0 Lite', provider: 'bytedance', description: 'Fast generation', defaultAspectRatio: '1:1' },
+  { id: 'bytedance/seedream-4.5', name: 'Seedream 4.5', provider: 'bytedance', description: 'Balanced quality', defaultAspectRatio: '1:1' },
 ]
 
 export const DEFAULT_IMAGE_MODEL_ID = 'openai/gpt-image-1.5'
@@ -211,6 +214,8 @@ export function getImageModel(id: string): ImageModel | undefined {
 export const VIDEO_MODELS: VideoModel[] = [
   { id: 'google/veo-3.1-generate-001', name: 'Veo 3.1', provider: 'google', description: 'Highest quality', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9' },
   { id: 'google/veo-3.1-fast-generate-001', name: 'Veo 3.1 Fast', provider: 'google', description: 'Fast generation', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9' },
+  { id: 'bytedance/seedance-2.0', name: 'Seedance 2.0', provider: 'bytedance', description: 'Latest generation', billingUnit: 'per_second', defaultDuration: 8, defaultAspectRatio: '16:9' },
+  { id: 'bytedance/seedance-2.0-fast', name: 'Seedance 2.0 Fast', provider: 'bytedance', description: 'Fast generation', billingUnit: 'per_second', defaultDuration: 8, defaultAspectRatio: '16:9' },
   { id: 'bytedance/seedance-v1.5-pro', name: 'Seedance v1.5 Pro', provider: 'bytedance', description: 'Cinematic quality', billingUnit: 'per_second', defaultDuration: 10, defaultAspectRatio: '16:9' },
   { id: 'xai/grok-imagine-video', name: 'Grok Video', provider: 'xai', description: 'Creative & fast', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9' },
   { id: 'alibaba/wan-v2.6-t2v', name: 'Wan v2.6', provider: 'alibaba', description: 'Versatile', billingUnit: 'per_second', defaultDuration: 8, defaultAspectRatio: '16:9' },

@@ -115,13 +115,9 @@ export async function POST(request: NextRequest) {
     for (const tryModelId of priorityList) {
       try {
         const imageModel = await getGatewayImageModel(tryModelId, auth.accessToken || undefined)
-
-        // Use the AI SDK prompt-with-images format for image editing
-        // When no reference image is provided, pass a plain string prompt
         const finalPrompt = referenceImage
           ? { text: prompt.trim(), images: [referenceImage] }
           : prompt.trim()
-
         const result = await generateImage({
           model: imageModel,
           prompt: finalPrompt,

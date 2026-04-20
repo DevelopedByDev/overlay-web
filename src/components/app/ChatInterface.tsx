@@ -689,7 +689,7 @@ function ToolLineLogo() {
 
 /** Long reasoning / tool metadata: cap height so the thread stays usable; scroll inside. */
 const ASSISTANT_COLLAPSIBLE_BODY_CLASS =
-  'max-h-[min(42vh,300px)] overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin]'
+  'max-h-[min(42vh,300px)] overflow-y-auto overflow-x-hidden overscroll-contain'
 
 /** Vertical connector between consecutive tool rows (logo stays top-aligned; line in logo column). */
 function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; connectBottom: boolean }) {
@@ -783,7 +783,7 @@ function ReasoningBlock({
             {showDetails ? (
               <div
                 ref={scrollRef}
-                className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)] ${ASSISTANT_COLLAPSIBLE_BODY_CLASS}`}
+                className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)] ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${streaming ? '[scrollbar-width:none]' : '[scrollbar-width:thin]'}`}
               >
                 <MarkdownMessage
                   text={text}
@@ -873,7 +873,7 @@ function WebSearchToolBlock({
             }`}
           >
             {showDetails ? (
-              <div className={`message-appear flex flex-col gap-1.5 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS}`}>
+              <div className={`message-appear flex flex-col gap-1.5 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} [scrollbar-width:thin]`}>
                 {query ? (
                   <div className="flex min-w-0 items-center gap-2 text-[12px] leading-snug text-[var(--muted)]">
                     <Search size={12} strokeWidth={1.75} className="shrink-0 opacity-70" aria-hidden />
@@ -1116,7 +1116,7 @@ function BrowserToolBlock({
               <div
                 ref={scrollRef}
                 key={userExpanded ? 'open' : running ? 'streaming' : 'closed'}
-                className={`space-y-3 message-appear ${ASSISTANT_COLLAPSIBLE_BODY_CLASS}`}
+                className={`space-y-3 message-appear ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${running ? '[scrollbar-width:none]' : '[scrollbar-width:thin]'}`}
               >
                 {task ? (
                   <div className="reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)]">
