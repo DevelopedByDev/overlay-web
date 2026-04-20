@@ -298,6 +298,11 @@ interface Props {
    * Still renders completed paragraph blocks plus the in-flight tail so text streams without duplicate dots mid-message.
    */
   suppressTypingIndicator?: boolean
+  /**
+   * When true, render the in-flight stream tail as plain pre-wrap text with a blinking cursor instead of hiding it
+   * behind three dots. Defaults to false (paragraph-chunk mode).
+   */
+  wordLevelStreaming?: boolean
 }
 
 function splitStreamingMarkdown(text: string): { completedBlocks: string[]; streamTail: string } {
@@ -323,7 +328,13 @@ function splitStreamingMarkdown(text: string): { completedBlocks: string[]; stre
   return { completedBlocks, streamTail: text.slice(offset) }
 }
 
-export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTypingIndicator = false }: Props) {
+export function MarkdownMessage({
+  text,
+  isStreaming,
+  sourceCitations,
+  suppressTypingIndicator = false,
+  wordLevelStreaming = false,
+}: Props) {
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const normalizedDisplay = useMemo(
     () =>
@@ -338,7 +349,9 @@ export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTy
     [normalizedDisplay],
   )
   const trailingBlock = !isStreaming && streamTail.trim() ? streamTail.trim() : ''
-  const showInlineTypingDots = isStreaming && !suppressTypingIndicator
+  // Show dots only when: streaming, not suppressed, and either paragraph mode OR no text yet in word mode
+  const showInlineTypingDots =
+    isStreaming && !suppressTypingIndicator && (!wordLevelStreaming || !normalizedDisplay.trim())
 
   if (!normalizedDisplay.trim() && !isStreaming) {
     return null
@@ -367,6 +380,13 @@ export function MarkdownMessage({ text, isStreaming, sourceCitations, suppressTy
           >
             {trailingBlock}
           </ReactMarkdown>
+        </div>
+      ) : null}
+
+      {isStreaming && wordLevelStreaming && streamTail ? (
+        <div className="md-stream-tail" style={{ whiteSpace: 'pre-wrap' }}>
+          {streamTail}
+          <span className="md-stream-cursor" aria-hidden />
         </div>
       ) : null}
 

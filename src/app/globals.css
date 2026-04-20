@@ -554,6 +554,52 @@ html {
   animation-delay: 0.4s;
 }
 
+/* Word-level streaming tail */
+.md-stream-tail {
+  animation: md-tail-fade 0.15s ease-out;
+}
+@keyframes md-tail-fade {
+  from { opacity: 0.6; }
+  to { opacity: 1; }
+}
+
+/* Blinking text cursor at end of stream tail */
+.md-stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: currentColor;
+  opacity: 0.5;
+  animation: cursor-blink 1s step-end infinite;
+  vertical-align: text-bottom;
+  margin-left: 1px;
+}
+@keyframes cursor-blink {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0; }
+}
+
+/* Overlay logo pulse — inline loading state */
+.overlay-pulse {
+  animation: overlay-pulse 1.2s ease-in-out infinite;
+}
+@keyframes overlay-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.7; }
+}
+
+/* Accessibility: no motion */
+@media (prefers-reduced-motion: reduce) {
+  .overlay-pulse {
+    animation: none;
+    opacity: 0.5;
+  }
+  .md-stream-cursor {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
 /* Message row appear animation */
 @keyframes messageAppear {
   from {

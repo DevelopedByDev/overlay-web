@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Mail, Moon, PanelsLeftRight, Sun } from 'lucide-react'
+import { AlignLeft, Mail, Moon, PanelsLeftRight, Sun } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
+import { useWordLevelStreaming } from '@/lib/use-word-level-streaming'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
 
 const SECTIONS = [
@@ -114,6 +115,7 @@ export default function SettingsPage() {
     isSaving,
     updateSettings,
   } = useAppSettings()
+  const [wordLevelStreaming, setWordLevelStreaming] = useWordLevelStreaming()
   const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null)
   const [billingBusy, setBillingBusy] = useState(false)
   const [topUpDraftCents, setTopUpDraftCents] = useState(800)
@@ -189,7 +191,7 @@ export default function SettingsPage() {
       <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
           {isLoading ? (
-            <SettingsSectionSkeleton rows={section === 'general' ? 2 : 1} />
+            <SettingsSectionSkeleton rows={section === 'general' ? 3 : 1} />
           ) : null}
           {!isLoading && section === 'general' && (
             <>
@@ -208,6 +210,13 @@ export default function SettingsPage() {
                 checked={settings.useSecondarySidebar}
                 disabled={busy}
                 onChange={() => void updateSettings({ useSecondarySidebar: !settings.useSecondarySidebar })}
+              />
+              <SettingRow
+                icon={<AlignLeft size={18} strokeWidth={1.8} />}
+                title="Word-level streaming"
+                description="Show AI responses word-by-word as they arrive instead of waiting for each paragraph to complete."
+                checked={wordLevelStreaming}
+                onChange={() => setWordLevelStreaming(!wordLevelStreaming)}
               />
             </>
           )}
