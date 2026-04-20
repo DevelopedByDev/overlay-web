@@ -23,7 +23,6 @@ const EXPECTED_VAULT_NAMES = [
   'OPENROUTER_API_KEY',
   'COMPOSIO_API_KEY',
   'AI_GATEWAY_API_KEY',
-  'MINIMAX_API_KEY',
 ]
 
 async function main() {
