@@ -1,6 +1,6 @@
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
-import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/lib/models'
+import { IMAGE_MODELS, VIDEO_MODELS, getVideoModelsBySubMode } from '@/lib/models'
 import {
   executeCreateNote,
   executeDeleteNote,
@@ -30,8 +30,11 @@ import type { OverlayToolsOptions, ToolMode } from './types'
  */
 export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
+  const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
+  const shouldExposeTool = (toolId: string): boolean => !allowedToolIds || allowedToolIds.has(toolId)
 
-  tools.list_skills = tool({
+  if (shouldExposeTool('list_skills')) {
+    tools.list_skills = tool({
     description:
       'List all active skills configured by the user. Skills are custom instructions the user has set up for specific task types. ' +
       'IMPORTANT: Call this before taking action on any task to discover whether a relevant skill applies — especially when the request touches a domain the user may have customized (writing style, workflows, personas, integrations, etc.). ' +
@@ -44,8 +47,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeListSkills(options, input)
     },
   })
+  }
 
-  tools.search_knowledge = tool({
+  if (shouldExposeTool('search_knowledge')) {
+    tools.search_knowledge = tool({
     description:
       'Search the user\'s saved knowledge: notebook files and memories. Uses hybrid semantic + keyword retrieval. ' +
       'Call this when you need facts from their knowledge base, prior notes, or stored context that is not in the chat transcript.',
@@ -61,8 +66,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeSearchKnowledge(options, input)
     },
   })
+  }
 
-  tools.list_notes = tool({
+  if (shouldExposeTool('list_notes')) {
+    tools.list_notes = tool({
     description:
       'List the user\'s notes in Overlay. When the chat is tied to a project, pass projectId from context to scope results.',
     inputSchema: z.object({
@@ -73,8 +80,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeListNotes(options, input)
     },
   })
+  }
 
-  tools.get_note = tool({
+  if (shouldExposeTool('get_note')) {
+    tools.get_note = tool({
     description: 'Load a single note by id (full title, body, tags).',
     inputSchema: z.object({
       noteId: z.string().describe('Convex notes document id'),
@@ -84,8 +93,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeGetNote(options, input)
     },
   })
+  }
 
-  tools.save_memory = tool({
+  if (shouldExposeTool('save_memory')) {
+    tools.save_memory = tool({
     description:
       'Save a durable memory about the user (preferences, facts, standing instructions). ' +
       'You MUST call this when they state personal preferences or long-lived facts (e.g. "I like pasta", "I am vegetarian", "always cite sources"). ' +
@@ -102,8 +113,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeSaveMemory(options, input)
     },
   })
+  }
 
-  tools.update_memory = tool({
+  if (shouldExposeTool('update_memory')) {
+    tools.update_memory = tool({
     description: 'Replace the text of an existing memory by id (use after listing or saving a memory).',
     inputSchema: z.object({
       memoryId: z.string().describe('Convex document id of the memory'),
@@ -114,8 +127,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeUpdateMemory(options, input)
     },
   })
+  }
 
-  tools.delete_memory = tool({
+  if (shouldExposeTool('delete_memory')) {
+    tools.delete_memory = tool({
     description: 'Delete a memory by id.',
     inputSchema: z.object({
       memoryId: z.string().describe('Convex document id of the memory to remove'),
@@ -125,10 +140,16 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeDeleteMemory(options, input)
     },
   })
+  }
 
-  tools.browser_run_task = tool({
+  if (shouldExposeTool('interactive_browser_session')) {
+    tools.interactive_browser_session = tool({
     description:
-      'Browse the web using a remote AI-controlled browser. Use this when you need fresh live data, need to inspect a website directly, or must interact with a real web page.',
+      'Remote AI-controlled browser session for INTERACTIVE web tasks only — NOT a search tool. ' +
+      'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through perplexity_search (which supports multi-query, domain filters, and returns ranked URLs with snippets — exactly what source/research requests need). ' +
+      'Permitted ONLY when ALL of the following are true: (1) the task literally cannot be satisfied by search results + URLs, AND (2) it requires driving a real browser — e.g. logging in with credentials, clicking through a UI flow, submitting a form, scraping a page that actively blocks non-browser clients, operating a JS-heavy SPA, or capturing a screenshot of a specific rendered page. ' +
+      'Forbidden examples (use perplexity_search instead): "give me 10 academic sources on X", "find peer-reviewed papers about Y", "cite research on Z", "look up the latest news on …", "find articles about …", "who is …", "what is …", "summarize the state of …". ' +
+      'If perplexity_search ran and returned insufficient or irrelevant results, you may then escalate — but state that in your reasoning. Never call this tool as a first attempt for a research-style question. It is ~10–100× slower and more expensive than perplexity_search.',
     inputSchema: z.object({
       task: z.string().describe('What to do in the browser — natural language'),
       model: z.enum(['bu-mini', 'bu-max']).optional(),
@@ -137,13 +158,15 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       proxyCountryCode: z.string().optional().describe('2-letter country code for residential proxy'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'browser_run_task')
+      assertOverlayToolAllowedForMode(mode, 'interactive_browser_session')
       return executeBrowserRunTask(options, input)
     },
   })
+  }
 
   if (mode === 'act') {
-    tools.draft_automation_from_chat = tool({
+    if (shouldExposeTool('draft_automation_from_chat')) {
+      tools.draft_automation_from_chat = tool({
       description:
         'Create a draft automation proposal from the current chat turn. ' +
         'Use this when the user is asking for a repeatable or scheduled workflow. ' +
@@ -161,8 +184,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeDraftAutomationFromChat(options, input)
       },
     })
+    }
 
-    tools.draft_skill_from_chat = tool({
+    if (shouldExposeTool('draft_skill_from_chat')) {
+      tools.draft_skill_from_chat = tool({
       description:
         'Create a reusable skill draft from the current chat turn. ' +
         'Use this when the workflow is reusable but not obviously scheduled. ' +
@@ -177,8 +202,67 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeDraftSkillFromChat(options, input)
       },
     })
+    }
 
-    tools.run_daytona_sandbox = tool({
+    if (shouldExposeTool('generate_image')) {
+      tools.generate_image = tool({
+      description:
+        'Generate an image from a text prompt using AI image generation models. ' +
+        'Returns a data URL of the generated image. ' +
+        'Tries models in priority order: Gemini Flash Image → GPT Image 1.5 → FLUX 2 Max → Grok Image Pro → Grok Image → FLUX Schnell. ' +
+        'Use this whenever the user asks to create, draw, or generate an image or picture.',
+      inputSchema: z.object({
+        prompt: z.string().describe('Detailed description of the image to generate'),
+        modelId: z
+          .enum(IMAGE_MODELS.map((m) => m.id) as [string, ...string[]])
+          .optional()
+          .describe('Specific image model to use (optional — uses priority fallback by default)'),
+        aspectRatio: z
+          .enum(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'])
+          .optional()
+          .describe('Aspect ratio of the generated image (default: 1:1)'),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowedForMode(mode, 'generate_image')
+        return executeGenerateImage(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('generate_video')) {
+      tools.generate_video = tool({
+      description:
+        'Generate a video from a text prompt using AI video generation models. ' +
+        'Video generation is asynchronous and can take 1–5 minutes. ' +
+        'Returns immediately with a job ID; the video will appear in the Outputs tab when complete. ' +
+        'Tries models in priority order: Veo 3.1 → Veo 3.1 Fast → Seedance v1.5 Pro → Grok Video → Wan v2.6. ' +
+        'Use this when the user asks to create, animate, or generate a video or clip.',
+      inputSchema: z.object({
+        prompt: z.string().describe('Detailed description of the video to generate'),
+        modelId: z
+          .enum(VIDEO_MODELS.map((m) => m.id) as [string, ...string[]])
+          .optional()
+          .describe('Specific video model to use (optional — uses priority fallback by default)'),
+        aspectRatio: z
+          .enum(['16:9', '9:16', '1:1', '4:3'])
+          .optional()
+          .describe('Aspect ratio of the generated video (default: 16:9)'),
+        duration: z
+          .number()
+          .min(3)
+          .max(60)
+          .optional()
+          .describe('Duration of the video in seconds (default: 8)'),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowedForMode(mode, 'generate_video')
+        return executeGenerateVideo(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('run_daytona_sandbox')) {
+      tools.run_daytona_sandbox = tool({
       description:
         'Run a CLI or script task inside the user’s persistent paid Daytona workspace. ' +
         'Use this for programmatic workflows like app building, code generation, file transforms, slideshow generation, or media pipelines that should run through command-line tooling rather than browser automation. ' +
@@ -202,8 +286,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeRunDaytonaSandbox(options, input)
       },
     })
+    }
 
-    tools.create_note = tool({
+    if (shouldExposeTool('create_note')) {
+      tools.create_note = tool({
       description: 'Create a new note (title, markdown/plain content, optional tags and project).',
       inputSchema: z.object({
         title: z.string().optional(),
@@ -216,8 +302,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeCreateNote(options, input)
       },
     })
+    }
 
-    tools.update_note = tool({
+    if (shouldExposeTool('update_note')) {
+      tools.update_note = tool({
       description: 'Update an existing note by id (any subset of title, content, tags).',
       inputSchema: z.object({
         noteId: z.string(),
@@ -230,8 +318,10 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeUpdateNote(options, input)
       },
     })
+    }
 
-    tools.delete_note = tool({
+    if (shouldExposeTool('delete_note')) {
+      tools.delete_note = tool({
       description: 'Delete a note by id.',
       inputSchema: z.object({
         noteId: z.string(),
@@ -241,6 +331,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         return executeDeleteNote(options, input)
       },
     })
+    }
   }
 
   // ── Image & Video generation tools (ask + act) ─────────────────────────────

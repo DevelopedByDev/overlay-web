@@ -41,6 +41,7 @@
     "billing:audit:stripe": "node --experimental-strip-types scripts/stripe-dynamic-pricing-audit.ts"
   },
   "dependencies": {
+    "@overlay/app-core": "file:./packages/overlay-app-core",
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/google": "^3.0.43",
     "@ai-sdk/groq": "^3.0.29",
@@ -95,10 +96,11 @@
     "lowlight": "^3.3.0",
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.0",
-    "mixpanel-browser": "^2.77.0",
     "next": "^15.5.15",
     "pdf-parse": "^1.1.1",
     "picomatch": "^2.3.2",
+    "posthog-js": "^1.369.0",
+    "posthog-node": "^5.29.2",
     "proxy-from-env": "^2.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -124,5 +126,9 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vercel": "^50.44.0"
+  },
+  "overrides": {
+    "follow-redirects": "1.16.0",
+    "protobufjs": "7.5.5"
   }
 }

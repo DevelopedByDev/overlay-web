@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomBytes } from 'node:crypto'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
@@ -42,10 +43,22 @@ export async function POST(request: NextRequest) {
 
     await checkGlobalR2Budget(normalizedSizeBytes)
 
+    const resolvedMime = (mimeType ?? 'application/octet-stream').toLowerCase().split(';')[0]!.trim()
+    const BLOCKED_MIME_TYPES = new Set([
+      'image/svg+xml',
+      'text/html',
+      'application/xhtml+xml',
+      'application/javascript',
+      'text/javascript',
+    ])
+    if (BLOCKED_MIME_TYPES.has(resolvedMime)) {
+      return NextResponse.json({ error: `File type not allowed: ${resolvedMime}` }, { status: 415 })
+    }
+
     const fileName = name ?? `upload-${Date.now()}`
-    const fileIdPlaceholder = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const fileIdPlaceholder = `tmp-${Date.now()}-${randomBytes(9).toString('base64url')}`
     const r2Key = keyForFile(userId, fileIdPlaceholder, fileName)
-    const uploadUrl = await generatePresignedUploadUrl(r2Key, mimeType ?? 'application/octet-stream')
+    const uploadUrl = await generatePresignedUploadUrl(r2Key, resolvedMime)
 
     return NextResponse.json({ uploadUrl, r2Key })
   } catch (error) {

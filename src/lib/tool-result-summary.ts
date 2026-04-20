@@ -67,7 +67,7 @@ export function summarizeToolResultForTranscript(params: {
     if (status === 'failed') return toolError || 'Video generation failed.'
   }
 
-  if (toolName === 'browser_run_task') {
+  if (toolName === 'browser_run_task' || toolName === 'interactive_browser_session') {
     return toolMessage || (output?.success === true ? 'Browser task completed successfully.' : toolError || 'Browser task failed.')
   }
 

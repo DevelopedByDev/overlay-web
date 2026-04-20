@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import posthog from 'posthog-js'
 import {
   Send,
   Plus,
@@ -22,6 +23,8 @@ import {
   ArrowUp,
   Play,
   MessageSquare,
+  BookOpen,
+  Search,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
@@ -37,16 +40,22 @@ import {
   VIDEO_MODELS,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
+  costToBarFill5,
   getChatModelDisplayName,
   getModel,
   getModelsByIntelligence,
   getVideoModelsBySubMode,
+  intelligenceToBarFill5,
+  speedTierToBarFill5,
   type ChatModel,
   type GenerationMode,
   type VideoSubMode,
 } from '@/lib/models'
+import { ACT_MODEL_KEY, CHAT_MODEL_KEY, COMPOSER_MODE_KEY } from '@/lib/chat-model-prefs'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
-import { AskActModeToggle, GenerationModeToggle } from './GenerationModeToggle'
+import type { WebSourceItem } from '@/lib/web-sources'
+import { webSourceDisplayKey } from '@/lib/web-sources'
+import { GenerationModeToggle } from './GenerationModeToggle'
 import {
   CHAT_CREATED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
@@ -58,10 +67,13 @@ import {
 } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
+import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
-import { useAppSettings } from './AppSettingsProvider'
+import { useAppSettings, type ChatStreamingMode } from './AppSettingsProvider'
+import { useGuestGate } from './GuestGateProvider'
+import { useAuth } from '@/contexts/AuthContext'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
 import {
   buildAutomationDraftFromTurn,
@@ -71,63 +83,77 @@ import {
   type SkillDraftSummary,
 } from '@/lib/automation-drafts'
 
-function ModelBadges({ m, isHovered, isFreeTier }: { m: ChatModel; isHovered: boolean; isFreeTier: boolean }) {
+function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   const router = useRouter()
   const showUpgrade = isFreeTier && m.cost > 0
 
-  if (isHovered) {
-    return (
-      <span className="flex items-center gap-1 shrink-0 h-5">
-        {showUpgrade && (
-          <span
-            onClick={(e) => { e.stopPropagation(); router.push('/account') }}
-            className="inline-flex items-center h-5 px-1.5 rounded-full text-[9px] font-semibold leading-none cursor-pointer transition-colors"
-            style={{
-              background: 'var(--chat-badge-upgrade-bg)',
-              color: 'var(--chat-badge-upgrade-fg)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--chat-badge-upgrade-hover)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'var(--chat-badge-upgrade-bg)'
-            }}
-          >
-            Upgrade
-          </span>
-        )}
-        <span className={`inline-flex items-center h-5 px-1.5 rounded-full text-[9px] font-semibold leading-none tracking-tight ${
-          m.cost === 0 ? '' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
-        }`}
-        style={m.cost === 0 ? { background: 'var(--chat-badge-free-bg)', color: 'var(--chat-badge-free-fg)' } : undefined}
-        >
-          {m.cost === 0 ? 'Free' : '$'.repeat(m.cost)}
-        </span>
-      </span>
-    )
-  }
-
   return (
-    <span className="flex items-center gap-1 shrink-0 h-5">
+    <span className="flex h-5 shrink-0 items-center gap-1">
       {showUpgrade && (
         <span
-          className="inline-flex items-center justify-center w-5 h-5 rounded"
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation()
+            router.push('/account')
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.stopPropagation()
+              router.push('/account')
+            }
+          }}
+          className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded"
           style={{ background: 'var(--chat-badge-upgrade-bg)', color: 'var(--chat-badge-upgrade-fg)' }}
         >
           <ArrowUp size={10} strokeWidth={2} />
         </span>
       )}
       {m.supportsVision && (
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
           <ImageIcon size={10} strokeWidth={1.75} />
         </span>
       )}
       {m.supportsReasoning && (
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
           <BrainCircuit size={10} strokeWidth={1.75} />
         </span>
       )}
     </span>
+  )
+}
+
+function QualBarRow({ label, filled, hint }: { label: string; filled: number; hint?: string }) {
+  const segments = 4
+  const lit = Math.min(segments, Math.max(0, Math.round((filled / 5) * segments)))
+  return (
+    <div className="flex flex-col gap-px">
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[8px] font-medium uppercase tracking-wide text-[var(--muted-light)]">{label}</span>
+        {hint ? <span className="text-[8px] tabular-nums text-[var(--muted)]">{hint}</span> : null}
+      </div>
+      <div className="flex gap-px">
+        {Array.from({ length: segments }, (_, i) => (
+          <span
+            key={i}
+            className={`h-1 min-w-0 flex-1 rounded-[1px] ${i < lit ? 'bg-[var(--foreground)]' : 'bg-[var(--border)]'}`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ModelQualitiesPanel({ modelId }: { modelId: string }) {
+  const m = getModel(modelId)
+  if (!m) return null
+  const priceHint = m.cost === 0 ? 'Free' : '$'.repeat(m.cost)
+  return (
+    <div className="pointer-events-none flex flex-col gap-1.5">
+      <QualBarRow label="Speed" filled={speedTierToBarFill5(m.speedTier)} />
+      <QualBarRow label="Price" filled={costToBarFill5(m.cost)} hint={priceHint} />
+      <QualBarRow label="Intel" filled={intelligenceToBarFill5(m)} />
+    </div>
   )
 }
 
@@ -280,10 +306,6 @@ type AssistantVisualBlock =
       state: string
       toolInput?: Record<string, unknown>
       toolOutput?: unknown
-      /** Model reasoning folded from the following `reasoning` part (see `foldReasoningIntoPrecedingTools`) */
-      reasoningText?: string
-      reasoningState?: string
-      reasoningKey?: string
     }
   | { kind: 'text'; text: string }
   | { kind: 'file'; url: string; mediaType?: string }
@@ -368,49 +390,30 @@ function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVi
       }
     }
   }
-  return foldReasoningIntoPrecedingTools(out)
-}
+  // Reasoning now renders as its own standalone collapsible segment; no folding.
 
-/**
- * Fold a `reasoning` part that immediately follows one or more `tool` parts onto the last tool
- * in that run so the UI can show it as collapsible “thinking” under that tool row.
- */
-function foldReasoningIntoPrecedingTools(blocks: AssistantVisualBlock[]): AssistantVisualBlock[] {
-  const out: AssistantVisualBlock[] = []
-  let i = 0
-  while (i < blocks.length) {
-    const cur = blocks[i]!
-    if (cur.kind === 'tool') {
-      const run: AssistantVisualBlock[] = []
-      while (i < blocks.length && blocks[i]!.kind === 'tool') {
-        run.push(blocks[i]!)
-        i++
+  // Fix word-split artifact: some reasoning models (e.g. routed by openrouter/free) emit
+  // the first word(s) of the response as thinking tokens. The AI SDK puts these in a
+  // `reasoning` part and the text part starts mid-word with an apostrophe (e.g.
+  // reasoning="I don", text="'t have..."). Detect this pattern and move the trailing
+  // word fragment from the reasoning block into the text block.
+  for (let i = 0; i < out.length - 1; i++) {
+    const rBlk = out[i]
+    const tBlk = out[i + 1]
+    if (
+      rBlk?.kind === 'reasoning' &&
+      tBlk?.kind === 'text' &&
+      /^'[a-zA-Z]/.test(tBlk.text)
+    ) {
+      const lastWordMatch = rBlk.text.match(/(\S+)$/)
+      if (lastWordMatch) {
+        const word = lastWordMatch[1]!
+        rBlk.text = rBlk.text.slice(0, rBlk.text.length - word.length).trim()
+        tBlk.text = word + tBlk.text
       }
-      let folded: Extract<AssistantVisualBlock, { kind: 'reasoning' }> | null = null
-      if (i < blocks.length && blocks[i]!.kind === 'reasoning') {
-        folded = blocks[i]! as Extract<AssistantVisualBlock, { kind: 'reasoning' }>
-        i++
-      }
-      const tools = run.map((b) => {
-        const t = b as Extract<AssistantVisualBlock, { kind: 'tool' }>
-        return { ...t }
-      })
-      if (folded && tools.length > 0) {
-        const lastIdx = tools.length - 1
-        const last = tools[lastIdx]!
-        tools[lastIdx] = {
-          ...last,
-          reasoningText: folded.text,
-          reasoningState: folded.state,
-          reasoningKey: folded.key,
-        }
-      }
-      for (const t of tools) out.push(t)
-      continue
     }
-    out.push(cur)
-    i++
   }
+
   return out
 }
 
@@ -566,6 +569,7 @@ function describeComposioIntegrationTool(toolName: string, input?: Record<string
 function getDescriptiveToolLabel(toolName: string, toolInput?: Record<string, unknown>): string {
   const map: Record<string, string> = {
     browser_run_task: 'Browsing the web',
+    interactive_browser_session: 'Browsing the web',
     perplexity_search: 'Searching the web',
     search_knowledge: 'Searching your knowledge',
     list_skills: 'Checking your skills',
@@ -621,7 +625,7 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
       i++
       continue
     }
-    if (b.kind === 'tool' && b.name === 'browser_run_task') {
+    if (b.kind === 'tool' && (b.name === 'browser_run_task' || b.name === 'interactive_browser_session')) {
       out.push({ kind: 'browser', block: b, originIndex: i })
       i++
       continue
@@ -631,7 +635,7 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
       const group: ToolVisualBlock[] = []
       while (i < blocks.length) {
         const t = blocks[i]!
-        if (t.kind !== 'tool' || t.name === 'browser_run_task') break
+        if (t.kind !== 'tool' || t.name === 'browser_run_task' || t.name === 'interactive_browser_session') break
         group.push(t)
         i++
       }
@@ -653,43 +657,11 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
   return out
 }
 
-/**
- * Merge consecutive `tools` segments when only standalone `reasoning` (thinking) appears between them,
- * so a long run of tools without body text becomes one "N tools called" group.
- */
-function mergeConsecutiveToolSegments(segments: AssistantVisualSegment[]): AssistantVisualSegment[] {
-  const out: AssistantVisualSegment[] = []
-  let i = 0
-  while (i < segments.length) {
-    const s = segments[i]!
-    if (s.kind !== 'tools') {
-      out.push(s)
-      i++
-      continue
-    }
-    const merged = [...s.tools]
-    const origin = s.originIndex
-    i++
-    while (i < segments.length) {
-      const next = segments[i]!
-      if (next.kind === 'reasoning') {
-        i++
-        continue
-      }
-      if (next.kind === 'tools') {
-        merged.push(...next.tools)
-        i++
-        continue
-      }
-      break
-    }
-    out.push({ kind: 'tools', tools: merged, originIndex: origin })
-  }
-  return out
-}
-
 function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
-  return mergeConsecutiveToolSegments(buildAssistantVisualSegmentsRaw(blocks))
+  // Reasoning renders as its own first-class segment (see `ReasoningBlock`), so we no longer
+  // collapse reasoning between tool groups; each reasoning chunk stays visible next to the
+  // tools it describes.
+  return buildAssistantVisualSegmentsRaw(blocks)
 }
 
 function isToolChainSegment(seg: AssistantVisualSegment): boolean {
@@ -716,6 +688,10 @@ function ToolLineLogo() {
     />
   )
 }
+
+/** Long reasoning / tool metadata: cap height so the thread stays usable; scroll inside. */
+const ASSISTANT_COLLAPSIBLE_BODY_CLASS =
+  'max-h-[min(42vh,300px)] overflow-y-auto overflow-x-hidden overscroll-contain'
 
 /** Vertical connector between consecutive tool rows (logo stays top-aligned; line in logo column). */
 function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; connectBottom: boolean }) {
@@ -744,13 +720,215 @@ function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; co
   )
 }
 
-/** Standalone model reasoning while streaming — no text; same chrome as a tool row with shimmer. */
-function ThinkingShimmerRow() {
+/**
+ * Standalone reasoning block: while the reasoning part is actively streaming we auto-expand
+ * and render the text through `MarkdownMessage` (same formatting as the main assistant reply).
+ * Once the reasoning finishes we collapse to a single row with a chevron the user can toggle.
+ */
+function ReasoningBlock({
+  text,
+  streaming,
+  connectTop,
+  connectBottom,
+  streamingMode,
+}: {
+  text: string
+  streaming: boolean
+  connectTop: boolean
+  connectBottom: boolean
+  streamingMode: ChatStreamingMode
+}) {
+  const [userExpanded, setUserExpanded] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (streaming && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [text, streaming])
+  const hasContent = text.trim().length > 0
+  const label = streaming ? 'Thinking' : 'Thought'
+  const showDetails = streaming ? hasContent : userExpanded && hasContent
+
   return (
     <div className="w-full px-1 py-0.5">
-      <div className="message-appear flex max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug">
-        <ToolLogoColumn connectTop={false} connectBottom={false} />
-        <span className="tool-line-shimmer min-w-0">Thinking</span>
+      <div className="max-w-[min(100%,36rem)]">
+        <div className="flex items-stretch gap-2.5 text-[13px] leading-snug">
+          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
+              <span className={streaming ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>
+                {label}
+              </span>
+              {!streaming && hasContent ? (
+                <button
+                  type="button"
+                  onClick={() => setUserExpanded((open) => !open)}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  aria-label={userExpanded ? 'Collapse reasoning' : 'Expand reasoning'}
+                >
+                  <ChevronDown
+                    size={14}
+                    strokeWidth={1.75}
+                    className={`transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        {hasContent ? (
+          <div
+            className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
+              showDetails ? 'max-h-[min(42vh,304px)] pt-1 pb-2' : 'max-h-0'
+            }`}
+          >
+            {showDetails ? (
+              <div
+                ref={scrollRef}
+                className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)] ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${streaming ? '[scrollbar-width:none]' : '[scrollbar-width:thin]'}`}
+              >
+                <MarkdownMessage
+                  text={text}
+                  isStreaming={streaming}
+                  suppressTypingIndicator
+                  streamingMode={streamingMode}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Web search tool: shows the query and the top sources in a compact list (favicon + title + host),
+ * inspired by Perplexity/ChatGPT search previews. While the tool runs we auto-expand the details;
+ * once it finishes we collapse to a single row and the user can click the chevron to re-open.
+ */
+function WebSearchToolBlock({
+  block,
+  connectTop,
+  connectBottom,
+}: {
+  block: ToolVisualBlock
+  connectTop: boolean
+  connectBottom: boolean
+}) {
+  const isDone = block.state === 'output-available'
+  const isError = block.state === 'output-error' || block.state === 'output-denied'
+  const running = !isDone && !isError
+  const queryRaw = pickFirstStringFromInput(block.toolInput, ['query', 'q']) ?? ''
+  const query = queryRaw.trim()
+  const label = getDescriptiveToolLabel('perplexity_search', block.toolInput)
+  const [userExpanded, setUserExpanded] = useState(false)
+  const sources = useMemo(() => collectWebSourcesFromSingleBlock(block), [block])
+  const visibleSources = sources.slice(0, 3)
+  const extraCount = Math.max(0, sources.length - visibleSources.length)
+  const hasDetails = query.length > 0 || sources.length > 0
+  const showDetails =
+    (running && hasDetails) || (isDone && userExpanded && hasDetails)
+
+  if (isError) {
+    return (
+      <div className="w-full px-1 py-0.5">
+        <div className="flex max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug">
+          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+          <span className="min-w-0 flex-1 text-red-600">{label} — couldn’t complete</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full px-1 py-0.5">
+      <div className="max-w-[min(100%,36rem)]">
+        <div className="flex items-stretch gap-2.5 text-[13px] leading-snug">
+          <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
+              <span className={running ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>
+                {label}
+              </span>
+              {hasDetails && isDone ? (
+                <button
+                  type="button"
+                  onClick={() => setUserExpanded((open) => !open)}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  aria-label={userExpanded ? 'Collapse web search details' : 'Expand web search details'}
+                >
+                  <ChevronDown
+                    size={14}
+                    strokeWidth={1.75}
+                    className={`transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        {hasDetails ? (
+          <div
+            className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
+              showDetails ? 'max-h-[min(42vh,304px)] pt-1 pb-2' : 'max-h-0'
+            }`}
+          >
+            {showDetails ? (
+              <div className={`message-appear flex flex-col gap-1.5 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} [scrollbar-width:thin]`}>
+                {query ? (
+                  <div className="flex min-w-0 items-center gap-2 text-[12px] leading-snug text-[var(--muted)]">
+                    <Search size={12} strokeWidth={1.75} className="shrink-0 opacity-70" aria-hidden />
+                    <span className="min-w-0 truncate">{query}</span>
+                  </div>
+                ) : null}
+                {visibleSources.length > 0 ? (
+                  <ul className="flex flex-col">
+                    {visibleSources.map((source, idx) => {
+                      const site = webSourceDisplayKey(source.url)
+                      const fav = faviconUrl(source.url)
+                      const host = hostFromUrl(source.url) || site
+                      const titleCandidate = source.title?.trim() || ''
+                      const isTitleJustHost =
+                        !titleCandidate ||
+                        titleCandidate.toLowerCase() === host.toLowerCase() ||
+                        titleCandidate.toLowerCase() === site.toLowerCase()
+                      const displayTitle = isTitleJustHost ? host : titleCandidate
+                      return (
+                        <li key={`${source.url}-${idx}`}>
+                          <a
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group flex min-w-0 items-center gap-2 rounded-md py-0.5 text-[12px] leading-snug transition-colors hover:text-[var(--foreground)]"
+                          >
+                            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--surface-elevated)] ring-1 ring-[var(--border)]">
+                              {fav ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={fav} alt="" className="h-3 w-3" width={12} height={12} />
+                              ) : (
+                                <span className="text-[8px] font-semibold text-[var(--muted)]">
+                                  {site.charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </span>
+                            <span className="min-w-0 truncate text-[var(--muted)] group-hover:text-[var(--foreground)]">
+                              {displayTitle}
+                            </span>
+                            <span className="shrink-0 text-[11px] text-[var(--muted)] opacity-60">{site}</span>
+                          </a>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : null}
+                {extraCount > 0 ? (
+                  <div className="text-[12px] text-[var(--muted)] opacity-70">+{extraCount} more</div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -865,10 +1043,12 @@ function BrowserToolBlock({
   block,
   connectTop,
   connectBottom,
+  streamingMode,
 }: {
   block: ToolVisualBlock
   connectTop: boolean
   connectBottom: boolean
+  streamingMode: ChatStreamingMode
 }) {
   const isDone = block.state === 'output-available'
   const isError = block.state === 'output-error' || block.state === 'output-denied'
@@ -878,11 +1058,17 @@ function BrowserToolBlock({
       ? (block.toolOutput as Record<string, unknown>)
       : undefined
   const liveUrl = typeof toolOutput?.liveUrl === 'string' ? toolOutput.liveUrl : null
-  const label = getDescriptiveToolLabel('browser_run_task', block.toolInput)
+  const label = getDescriptiveToolLabel('interactive_browser_session', block.toolInput)
   const running = !isDone && !isError
   const hasDetails = Boolean(task || liveUrl)
   /** After the tool finishes, details start collapsed; user expands with the chevron. */
   const [userExpanded, setUserExpanded] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (running && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [task, running])
   const showDetails =
     (running && Boolean(task)) || (isDone && userExpanded && hasDetails)
 
@@ -924,12 +1110,25 @@ function BrowserToolBlock({
         </div>
         {hasDetails ? (
           <div
-            className={`ml-[26px] overflow-hidden transition-all duration-300 ${showDetails ? 'max-h-[520px] pt-2' : 'max-h-0'}`}
+            className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
+              showDetails ? 'max-h-[min(42vh,304px)] pt-2' : 'max-h-0'
+            }`}
           >
             {showDetails ? (
-              <div key={userExpanded ? 'open' : running ? 'streaming' : 'closed'} className="space-y-3 message-appear">
+              <div
+                ref={scrollRef}
+                key={userExpanded ? 'open' : running ? 'streaming' : 'closed'}
+                className={`space-y-3 message-appear ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${running ? '[scrollbar-width:none]' : '[scrollbar-width:thin]'}`}
+              >
                 {task ? (
-                  <p className="text-[12px] leading-relaxed text-[var(--muted)]">{task}</p>
+                  <div className="reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)]">
+                    <MarkdownMessage
+                      text={task}
+                      isStreaming={running}
+                      suppressTypingIndicator
+                      streamingMode={streamingMode}
+                    />
+                  </div>
                 ) : null}
                 {liveUrl && isDone ? (
                   <iframe
@@ -1148,6 +1347,147 @@ function getDraftFromToolBlock(block: ToolVisualBlock):
   return null
 }
 
+function safeReadString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function normalizeWebUrl(raw: string): string | null {
+  try {
+    const normalized = new URL(raw).toString()
+    return normalized
+  } catch {
+    return null
+  }
+}
+
+function pickSourceTitle(entry: Record<string, unknown>, fallbackUrl: string): string {
+  const candidate =
+    safeReadString(entry.title) ??
+    safeReadString(entry.name) ??
+    safeReadString(entry.domain) ??
+    safeReadString(entry.host)
+  if (candidate) return candidate
+  try {
+    const parsed = new URL(fallbackUrl)
+    return parsed.hostname.replace(/^www\./i, '')
+  } catch {
+    return fallbackUrl
+  }
+}
+
+function collectSourceCandidatesFromUnknown(
+  value: unknown,
+  origin: 'web-search' | 'browser',
+  acc: WebSourceItem[],
+  seen: Set<string>,
+  depth = 0,
+) {
+  if (depth > 5) return
+  if (Array.isArray(value)) {
+    for (const item of value) collectSourceCandidatesFromUnknown(item, origin, acc, seen, depth + 1)
+    return
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string') {
+      const urlMatches = value.match(/https?:\/\/[^\s)\]]+/g)
+      if (!urlMatches) return
+      for (const rawUrl of urlMatches) {
+        const normalized = normalizeWebUrl(rawUrl)
+        if (!normalized || seen.has(normalized)) continue
+        seen.add(normalized)
+        acc.push({
+          url: normalized,
+          title: pickSourceTitle({}, normalized),
+          origin,
+        })
+      }
+    }
+    return
+  }
+
+  const rec = value as Record<string, unknown>
+  const possibleUrl =
+    safeReadString(rec.url) ??
+    safeReadString(rec.link) ??
+    safeReadString(rec.href) ??
+    safeReadString(rec.sourceUrl) ??
+    safeReadString(rec.source_url)
+  if (possibleUrl) {
+    const normalized = normalizeWebUrl(possibleUrl)
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized)
+      acc.push({
+        url: normalized,
+        title: pickSourceTitle(rec, normalized),
+        snippet:
+          safeReadString(rec.snippet) ??
+          safeReadString(rec.summary) ??
+          safeReadString(rec.description) ??
+          undefined,
+        origin,
+      })
+    }
+  }
+
+  for (const child of Object.values(rec)) {
+    if (child && (typeof child === 'object' || typeof child === 'string')) {
+      collectSourceCandidatesFromUnknown(child, origin, acc, seen, depth + 1)
+    }
+  }
+}
+
+function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): WebSourceItem[] {
+  const items: WebSourceItem[] = []
+  const seen = new Set<string>()
+  for (const block of blocks) {
+    if (block.kind !== 'tool') continue
+    if (block.state !== 'output-available') continue
+    if (
+      block.name !== 'perplexity_search' &&
+      block.name !== 'browser_run_task' &&
+      block.name !== 'interactive_browser_session'
+    ) continue
+    collectSourceCandidatesFromUnknown(
+      block.toolOutput,
+      block.name === 'perplexity_search' ? 'web-search' : 'browser',
+      items,
+      seen,
+    )
+  }
+  return items
+}
+
+/** Extract structured sources from a single tool block (used by the web-search row). */
+function collectWebSourcesFromSingleBlock(block: ToolVisualBlock): WebSourceItem[] {
+  if (block.state !== 'output-available') return []
+  const items: WebSourceItem[] = []
+  const seen = new Set<string>()
+  collectSourceCandidatesFromUnknown(
+    block.toolOutput,
+    block.name === 'perplexity_search' ? 'web-search' : 'browser',
+    items,
+    seen,
+  )
+  return items
+}
+
+function faviconUrl(pageUrl: string): string {
+  try {
+    const host = new URL(pageUrl).hostname
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`
+  } catch {
+    return ''
+  }
+}
+
+function hostFromUrl(pageUrl: string): string {
+  try {
+    return new URL(pageUrl).hostname.replace(/^www\./i, '')
+  } catch {
+    return ''
+  }
+}
+
 function scrollToExchangeTurn(turnId: string) {
   const safe = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(turnId) : turnId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
   document.querySelector(`[data-exchange-turn="${safe}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1226,14 +1566,20 @@ interface ExchangeBlockProps {
   replyThreadMeta: { replyToTurnId: string; replySnippet: string } | null
   onJumpToReply: (turnId: string) => void
   onOpenDraft: (state: DraftModalState) => void
+  /** Open the shared sources sidebar with these web sources (lifted to ChatInterface). */
+  onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
+  /** Whether the shared sidebar is currently showing this exchange's sources. */
+  isSourcesOpenForThis: boolean
 }
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis,
 }: ExchangeBlockProps) {
+    const { settings: appSettings } = useAppSettings()
+    const streamingMode = appSettings.chatStreamingMode
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const hasDraftToolCard = assistantVisualBlocks.some(
@@ -1251,6 +1597,7 @@ function ExchangeBlock({
       [assistantVisualBlocks],
     )
     const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
+    const webSources = useMemo(() => collectWebSourcesFromBlocks(assistantVisualBlocks), [assistantVisualBlocks])
     const responseSettled = !responseInProgress
     const copyPlainText =
       interrupted && !errorMessage
@@ -1262,7 +1609,7 @@ function ExchangeBlock({
       responseSettled && (assistantPlainText.length > 0 || !!errorMessage || interrupted)
     return (
       <div
-        className={`flex flex-col gap-2 message-appear transition-all duration-300 ease-out ${
+        className={`relative flex flex-col gap-2 message-appear transition-all duration-300 ease-out ${
           isExiting ? 'pointer-events-none opacity-0 -translate-y-1' : 'translate-y-0 opacity-100'
         }`}
         data-exchange-idx={exchIdx}
@@ -1340,12 +1687,20 @@ function ExchangeBlock({
         {assistantSegments.map((seg, segIdx) => {
           const chain = toolChainFlags[segIdx]!
           if (seg.kind === 'reasoning') {
+            // Actively streaming = still emitting reasoning deltas (or message-level stream and
+            // this part has not been explicitly marked `done`). Everything else collapses.
             const active =
               seg.block.state === 'streaming' ||
-              (isStreaming && seg.block.state !== 'done')
-            if (!active) return null
+              (isStreaming && seg.block.state !== 'done' && seg.originIndex === assistantVisualBlocks.length - 1)
             return (
-              <ThinkingShimmerRow key={`${exchIdx}-seq-r-${seg.originIndex}-${seg.block.key}`} />
+              <ReasoningBlock
+                key={`${exchIdx}-seq-r-${seg.originIndex}-${seg.block.key}`}
+                text={seg.block.text}
+                streaming={active}
+                connectTop={chain.chainTop}
+                connectBottom={chain.chainBottom}
+                streamingMode={streamingMode}
+              />
             )
           }
           if (seg.kind === 'browser') {
@@ -1355,6 +1710,7 @@ function ExchangeBlock({
                 block={seg.block}
                 connectTop={chain.chainTop}
                 connectBottom={chain.chainBottom}
+                streamingMode={streamingMode}
               />
             )
           }
@@ -1378,6 +1734,16 @@ function ExchangeBlock({
                     onSecondary={() => onOpenDraft(draft.kind === 'automation'
                       ? { kind: 'automation', draft: draft.draft }
                       : { kind: 'skill', draft: draft.draft })}
+                  />
+                )
+              }
+              if (t.name === 'perplexity_search') {
+                return (
+                  <WebSearchToolBlock
+                    key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
+                    block={t}
+                    connectTop={chain.chainTop}
+                    connectBottom={chain.chainBottom}
                   />
                 )
               }
@@ -1436,7 +1802,9 @@ function ExchangeBlock({
                 text={block.text}
                 isStreaming={isStreaming && isLastText}
                 sourceCitations={isLastText ? sourceCitations : undefined}
+                webSources={isLastText && webSources.length > 0 ? webSources : undefined}
                 suppressTypingIndicator
+                streamingMode={streamingMode}
               />
             </div>
           )
@@ -1477,13 +1845,13 @@ function ExchangeBlock({
           />
         ) : null}
 
-        {responseInProgress && (
+        {responseInProgress && assistantVisualBlocks.length === 0 && (
           <div className="flex items-center px-1 py-2 min-h-7" aria-live="polite" aria-busy="true">
-            <div className="md-typing-indicator" aria-label="Response loading">
-              <span />
-              <span />
-              <span />
-            </div>
+            <span
+              className="overlay-stream-marker overlay-stream-marker--standalone"
+              aria-label="Response loading"
+              role="img"
+            />
           </div>
         )}
 
@@ -1534,9 +1902,27 @@ function ExchangeBlock({
             >
               <Reply size={14} strokeWidth={1.75} />
             </button>
+            {webSources.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => onOpenSources(turnIdForActions ?? userMsgId, webSources)}
+                disabled={isExiting}
+                className={`ml-0.5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 ${
+                  isSourcesOpenForThis
+                    ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                    : 'text-[var(--muted)]'
+                }`}
+                aria-label="Open sources"
+                aria-pressed={isSourcesOpenForThis}
+              >
+                <BookOpen size={14} strokeWidth={1.75} className="shrink-0" />
+                <span className="text-[11px] font-medium">Sources</span>
+              </button>
+            ) : null}
             <span className="ml-2 min-w-0 text-left text-[11px] text-[var(--muted-light)]">{modelLabel}</span>
           </div>
         )}
+
       </div>
     )
 }
@@ -1735,14 +2121,11 @@ function sanitizeEmptyChatStarters(prompts: string[], firstName?: string): strin
 }
 
 const DEFAULT_CHAT_TITLE = 'New Chat'
-const CHAT_MODEL_KEY = 'overlay_chat_model'
 const ASK_MODEL_SELECTION_MODE_KEY = 'overlay_ask_model_selection_mode'
 const IMAGE_MODEL_SELECTION_MODE_KEY = 'overlay_image_model_selection_mode'
 const VIDEO_MODEL_SELECTION_MODE_KEY = 'overlay_video_model_selection_mode'
 const SELECTED_IMAGE_MODELS_KEY = 'overlay_selected_image_models'
 const SELECTED_VIDEO_MODELS_KEY = 'overlay_selected_video_models'
-const ACT_MODEL_KEY = 'overlay_act_model'
-const COMPOSER_MODE_KEY = 'overlay_composer_mode'
 const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
 const VIDEO_SUB_MODE_KEY = 'overlay_video_sub_mode'
 
@@ -2165,7 +2548,7 @@ export default function ChatInterface({
   hideSidebar,
   projectName,
 }: {
-  userId: string
+  userId: string | null
   firstName?: string
   hideSidebar?: boolean
   projectName?: string
@@ -2174,6 +2557,7 @@ export default function ChatInterface({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
+  const { user: authUser } = useAuth()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const loadChatRequestRef = useRef(0)
@@ -2191,6 +2575,13 @@ export default function ChatInterface({
   const [chats, setChats] = useState<Conversation[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [composerMode, setComposerMode] = useState<'ask' | 'act'>('act')
+  /** Lifted sources-panel state so the sidebar sits beside the chat area and shrinks it,
+   *  matching the AppSidebar width-transition pattern instead of overlaying the composer. */
+  const [sourcesPanel, setSourcesPanel] = useState<{ turnId: string; sources: WebSourceItem[] } | null>(null)
+  const openSourcesPanel = useCallback((turnId: string, sources: WebSourceItem[]) => {
+    setSourcesPanel((prev) => (prev && prev.turnId === turnId ? null : { turnId, sources }))
+  }, [])
+  const closeSourcesPanel = useCallback(() => setSourcesPanel(null), [])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
@@ -2295,10 +2686,19 @@ export default function ChatInterface({
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showVideoSubModePicker, setShowVideoSubModePicker] = useState(false)
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
+  /** Viewport position for the fixed model-qualities flyout (tracks hovered row). */
+  const [modelQualitiesPos, setModelQualitiesPos] = useState<{ x: number; y: number } | null>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const dragCounterRef = useRef(0)
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    try {
+      const draft = sessionStorage.getItem('overlay:guest-draft')
+      if (draft) { sessionStorage.removeItem('overlay:guest-draft'); return draft }
+    } catch { /* ignore */ }
+    return ''
+  })
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
@@ -2389,8 +2789,25 @@ export default function ChatInterface({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const videoSubModePickerRef = useRef<HTMLDivElement>(null)
+  const modelPickerListScrollRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
+
+  const syncModelQualitiesPosition = useCallback((modelId: string | null) => {
+    if (typeof document === 'undefined' || !modelId || !modelPickerRef.current) {
+      setModelQualitiesPos(null)
+      return
+    }
+    const row = modelPickerRef.current.querySelector(`[data-model-row="${CSS.escape(modelId)}"]`)
+    if (!row || !(row instanceof HTMLElement)) {
+      setModelQualitiesPos(null)
+      return
+    }
+    const r = row.getBoundingClientRect()
+    setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
+  }, [])
   const wasStreamingRef = useRef(false)
+  const ttftSendTimeRef = useRef<number | null>(null)
+  const ttftLoggedRef = useRef(false)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
@@ -2885,6 +3302,25 @@ export default function ChatInterface({
   }, [isActiveLoading, chat0.messages.length])
 
   useEffect(() => {
+    if (process.env.NEXT_PUBLIC_TTFT_DEBUG !== 'true') return
+    if (ttftLoggedRef.current) return
+    if (!isActiveLoading) return
+    if (ttftSendTimeRef.current === null) return
+    const _msgs = composerMode === 'act' ? actChat.messages : chat0.messages
+    const _lastMsg = [..._msgs].reverse().find((m) => m.role === 'assistant')
+    if (!_lastMsg) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _parts = (_lastMsg as any).parts as Array<{ type: string; text?: string }> | undefined
+    const _hasText = _parts?.some((p) => p.type === 'text' && (p.text?.trim().length ?? 0) > 0)
+    if (!_hasText) return
+    ttftLoggedRef.current = true
+    const _ttft = performance.now() - ttftSendTimeRef.current
+    const _model = composerMode === 'act' ? selectedActModel : (selectedModels[0] ?? '')
+    console.log(`[TTFT][client] first-token | ${_ttft.toFixed(1)}ms | mode=${composerMode} | model=${_model}`)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActiveLoading, chat0.messages, actChat.messages, composerMode])
+
+  useEffect(() => {
     if (shouldScrollRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       shouldScrollRef.current = false
@@ -2894,6 +3330,7 @@ export default function ChatInterface({
   useEffect(() => {
     if (!showModelPicker) {
       setHoveredModelId(null)
+      setModelQualitiesPos(null)
       return
     }
     function handleOutside(e: MouseEvent) {
@@ -2910,6 +3347,48 @@ export default function ChatInterface({
       document.removeEventListener('keydown', handleEscape)
     }
   }, [showModelPicker])
+
+  useLayoutEffect(() => {
+    if (!showModelPicker || generationMode !== 'text' || !hoveredModelId) {
+      setModelQualitiesPos(null)
+      return
+    }
+    syncModelQualitiesPosition(hoveredModelId)
+  }, [
+    showModelPicker,
+    generationMode,
+    hoveredModelId,
+    selectedModels,
+    selectedActModel,
+    composerMode,
+    syncModelQualitiesPosition,
+  ])
+
+  useEffect(() => {
+    const el = modelPickerListScrollRef.current
+    if (!el || !showModelPicker || !hoveredModelId) return
+    const onScroll = () => syncModelQualitiesPosition(hoveredModelId)
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [showModelPicker, hoveredModelId, syncModelQualitiesPosition])
+
+  useEffect(() => {
+    if (!showModelPicker || !hoveredModelId) return
+    const onResize = () => syncModelQualitiesPosition(hoveredModelId)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [showModelPicker, hoveredModelId, syncModelQualitiesPosition])
+
+  useEffect(() => {
+    function openPicker() { setShowModelPicker(true) }
+    function closePicker() { setShowModelPicker(false) }
+    window.addEventListener('overlay:tour:open-model-picker', openPicker)
+    window.addEventListener('overlay:tour:close-model-picker', closePicker)
+    return () => {
+      window.removeEventListener('overlay:tour:open-model-picker', openPicker)
+      window.removeEventListener('overlay:tour:close-model-picker', closePicker)
+    }
+  }, [])
 
   useEffect(() => {
     if (!showVideoSubModePicker) return
@@ -3078,23 +3557,6 @@ export default function ChatInterface({
     }
   }, [embedProjectId])
 
-  const handleComposerModeChange = useCallback((next: 'ask' | 'act') => {
-    if (next === 'act') {
-      // Keep Act aligned with the primary Ask slot so the picker does not jump to a different model.
-      const primary = selectedModels[0] ?? selectedActModel
-      setSelectedActModel(primary)
-      localStorage.setItem(ACT_MODEL_KEY, primary)
-    } else {
-      const nextAsk =
-        selectedModels.length <= 1
-          ? [selectedActModel]
-          : [selectedActModel, ...selectedModels.slice(1)].slice(0, 4)
-      setSelectedModels(nextAsk)
-      localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(nextAsk))
-    }
-    setComposerMode(next)
-  }, [selectedModels, selectedActModel])
-
   const handleAskModelSelectionModeChange = useCallback((next: AskModelSelectionMode) => {
     if (isActiveLoading || composerMode !== 'ask') return
     if (next === askModelSelectionMode) return
@@ -3255,6 +3717,7 @@ export default function ChatInterface({
       }
       setChats((prev) => [newChat, ...prev])
       dispatchChatCreated({ chat: newChat })
+      posthog.capture('chat_new_chat_created', { mode: composerMode })
       const runtime = ensureConversationRuntime(data.id, {
         composerMode,
         selectedActModel,
@@ -3288,6 +3751,7 @@ export default function ChatInterface({
     persistActiveRuntimeUiState()
     clearTransientComposerState()
     setInterruptedExchangeIdx(null)
+    setSourcesPanel(null)
     markRead(chatId)
     activeChatIdRef.current = chatId
     setActiveViewer(chatId)
@@ -3747,7 +4211,14 @@ async function hydrateCompletedAskTurnFromServer(
     }
   }
 
+  const { requireAuth } = useGuestGate()
+
   async function handleSend() {
+    if (!userId && !authUser) {
+      try { sessionStorage.setItem('overlay:guest-draft', input) } catch { /* ignore */ }
+      requireAuth('send')
+      return
+    }
     const replyCtxSnapshot = replyContext
     const text = input.trim()
     const hasReadyDocs = pendingChatDocuments.some((d) => d.status === 'ready')
@@ -3769,6 +4240,17 @@ async function hydrateCompletedAskTurnFromServer(
       return
     }
 
+    posthog.capture('chat_message_sent', {
+      mode: composerMode,
+      generation_type: effectiveGenType,
+      has_attachments: attachedImages.length > 0 || pendingChatDocuments.length > 0,
+      is_first_message: isFirstMessage,
+    })
+
+    if (process.env.NEXT_PUBLIC_TTFT_DEBUG === 'true') {
+      ttftSendTimeRef.current = performance.now()
+      ttftLoggedRef.current = false
+    }
     setIsOptimisticLoading(true)
 
     // ── Image / Video generation path ──────────────────────────────────────
@@ -4700,7 +5182,16 @@ async function hydrateCompletedAskTurnFromServer(
                   )}
                 </div>
               )}
-              <div ref={modelPickerRef} className="relative w-full min-w-0 md:w-auto">
+              {isFreeTier && (
+                <Link
+                  href="/pricing"
+                  className="hidden shrink-0 items-center gap-1 rounded-md border border-[#fde68a] bg-[#fffbeb] px-2.5 py-1 text-[11px] font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] md:flex"
+                >
+                  <ArrowUp size={10} />
+                  Upgrade
+                </Link>
+              )}
+              <div ref={modelPickerRef} data-tour="model-picker" className="relative w-full min-w-0 md:w-auto">
                 <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
                   <button
                     type="button"
@@ -4715,11 +5206,29 @@ async function hydrateCompletedAskTurnFromServer(
                   </button>
                 </DelayedTooltip>
                 {showModelPicker && (
+                  <>
+                  {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
+                    <div
+                      aria-hidden
+                      className="pointer-events-none fixed z-[100] hidden w-[6rem] rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 shadow-md md:block"
+                      style={{
+                        left: modelQualitiesPos.x,
+                        top: modelQualitiesPos.y,
+                        transform: 'translate(calc(-100% - 6px), -50%)',
+                      }}
+                    >
+                      <ModelQualitiesPanel modelId={hoveredModelId} />
+                    </div>
+                  ) : null}
                   <div
-                    className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64"
-                    onMouseLeave={() => setHoveredModelId(null)}
+                    data-tour="model-picker"
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+                    onMouseLeave={() => {
+                      setHoveredModelId(null)
+                      setModelQualitiesPos(null)
+                    }}
                   >
-                  <div className="max-h-72 overflow-y-auto">
+                  <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
                   {generationMode === 'image' ? (
                     IMAGE_MODELS.map((m) => {
                         const isSel = selectedImageModels.includes(m.id)
@@ -4764,12 +5273,18 @@ async function hydrateCompletedAskTurnFromServer(
                       return (
                         <button
                           key={m.id}
+                          type="button"
+                          data-model-row={m.id}
                           onClick={() => {
                             setSelectedActModel(m.id)
                             localStorage.setItem(ACT_MODEL_KEY, m.id)
                             setShowModelPicker(false)
                           }}
-                          onMouseEnter={() => setHoveredModelId(m.id)}
+                          onMouseEnter={(e) => {
+                            setHoveredModelId(m.id)
+                            const r = e.currentTarget.getBoundingClientRect()
+                            setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
+                          }}
                           className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[var(--surface-muted)] ${
                             isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'
                           }`}
@@ -4778,7 +5293,7 @@ async function hydrateCompletedAskTurnFromServer(
                             {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
                             {m.name}
                           </span>
-                          <ModelBadges m={m} isHovered={hoveredModelId === m.id} isFreeTier={isFreeTier} />
+                          <ModelBadges m={m} isFreeTier={isFreeTier} />
                         </button>
                       )
                     })
@@ -4789,9 +5304,16 @@ async function hydrateCompletedAskTurnFromServer(
                       return (
                         <button
                           key={m.id}
+                          type="button"
+                          data-model-row={m.id}
                           onClick={() => toggleModel(m.id)}
                           disabled={isDisabled}
-                          onMouseEnter={() => !isDisabled && setHoveredModelId(m.id)}
+                          onMouseEnter={(e) => {
+                            if (isDisabled) return
+                            setHoveredModelId(m.id)
+                            const r = e.currentTarget.getBoundingClientRect()
+                            setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
+                          }}
                           className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
                             isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
                           } ${isSelected ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}
@@ -4800,7 +5322,7 @@ async function hydrateCompletedAskTurnFromServer(
                             {isSelected ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
                             {m.name}
                           </span>
-                          <ModelBadges m={m} isHovered={hoveredModelId === m.id} isFreeTier={isFreeTier} />
+                          <ModelBadges m={m} isFreeTier={isFreeTier} />
                         </button>
                       )
                     })
@@ -4884,7 +5406,8 @@ async function hydrateCompletedAskTurnFromServer(
                       </div>
                     </div>
                   )}
-                </div>
+                  </div>
+                  </>
               )}
             </div>
             <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
@@ -4897,7 +5420,7 @@ async function hydrateCompletedAskTurnFromServer(
                     layout="stretch"
                   />
                 </span>
-                <span className="hidden md:inline-flex">
+                <span data-tour="generation-mode-toggle" className="hidden md:inline-flex">
                   <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
                 </span>
               </span>
@@ -5180,6 +5703,11 @@ async function hydrateCompletedAskTurnFromServer(
                     replyThreadMeta={getUserReplyThreadMeta(msg)}
                     onJumpToReply={jumpToReplyTarget}
                     onOpenDraft={setDraftModalState}
+                    onOpenSources={openSourcesPanel}
+                    isSourcesOpenForThis={
+                      !!sourcesPanel &&
+                      sourcesPanel.turnId === (textTurnIdForActions ?? msg.id)
+                    }
                   />
                 )
               }
@@ -5390,11 +5918,6 @@ async function hydrateCompletedAskTurnFromServer(
                   placeholder="Ask anything..."
                   rows={1}
                   onKeyDown={(e) => {
-                    if (e.key === 'Tab' && e.shiftKey) {
-                      e.preventDefault()
-                      handleComposerModeChange(composerMode === 'ask' ? 'act' : 'ask')
-                      return
-                    }
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
                       handleSend()
@@ -5462,15 +5985,6 @@ async function hydrateCompletedAskTurnFromServer(
                     </div>
                   )}
                   </div>
-                  <DelayedTooltip label="Ask / Act (⇧Tab in composer)" side="top">
-                    <span className="inline-flex">
-                      <AskActModeToggle
-                        mode={composerMode}
-                        onChange={handleComposerModeChange}
-                        disabled={isActiveLoading}
-                      />
-                    </span>
-                  </DelayedTooltip>
                   {generationChip && (
                     <div className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--foreground)] px-2 py-1 text-xs font-medium text-[var(--background)]">
                       {generationChip === 'image' ? <ImageIcon size={10} /> : <Video size={10} />}
@@ -5564,6 +6078,11 @@ async function hydrateCompletedAskTurnFromServer(
           </div>
         )}
       </div>
+      <WebSourcesSidebar
+        open={!!sourcesPanel}
+        onClose={closeSourcesPanel}
+        sources={sourcesPanel?.sources ?? []}
+      />
     </div>
   )
 }

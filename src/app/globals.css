@@ -249,16 +249,29 @@ html {
 }
 
 /* Table styling */
+/*
+ * Wrapper is the horizontal scroll container. It is constrained by the
+ * parent (`.markdown-content`'s `min-width: 0`) so the table never bleeds
+ * past the chat column; the table itself is allowed to grow wider than the
+ * wrapper when columns have more natural content than will fit, triggering
+ * the scrollbar instead of squishing each column.
+ */
 .table-wrapper {
   overflow-x: auto;
   margin: 0 0 1em;
+  max-width: 100%;
+  border-radius: 0.5rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .markdown-content table,
 .app-note-editor table {
-  width: 100%;
+  min-width: 100%;
+  width: auto;
+  max-width: none;
   border-collapse: collapse;
   font-size: 0.875rem;
+  table-layout: auto;
 }
 
 .markdown-content th,
@@ -268,6 +281,15 @@ html {
   text-align: left;
   padding: 0.5rem 0.85rem;
   border: 1px solid var(--border);
+  /* Keep column text from getting squished into tiny stacks when there are
+   * many columns; whitespace inside a cell still wraps normally, but each
+   * column reserves enough width to read 1–2 short words on one line. */
+  min-width: 7rem;
+  white-space: normal;
+  /* Override the ancestor `word-break: break-word` so compact header labels
+   * (e.g. "Nick Bostrom") stay on a single line when space is available. */
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 .markdown-content td,
@@ -275,6 +297,10 @@ html {
   padding: 0.45rem 0.85rem;
   border: 1px solid var(--border);
   vertical-align: top;
+  min-width: 7rem;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 /* Keep lists inside a single cell visually grouped (GFM + merged continuations). */
@@ -302,6 +328,36 @@ html {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/*
+ * Secondary-surface markdown: used for reasoning and browser-tool task
+ * descriptions. Visually distinct from the main assistant reply — smaller,
+ * tighter, and already muted by the wrapping div.
+ */
+.reasoning-markdown .markdown-content {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.55;
+  color: inherit;
+}
+.reasoning-markdown .markdown-content p {
+  margin: 0 0 0.5em;
+}
+.reasoning-markdown .markdown-content h1,
+.reasoning-markdown .markdown-content h2,
+.reasoning-markdown .markdown-content h3,
+.reasoning-markdown .markdown-content h4 {
+  font-size: 0.875rem;
+  margin: 0.4em 0 0.25em;
+  font-weight: 600;
+}
+.reasoning-markdown .markdown-content ul,
+.reasoning-markdown .markdown-content ol {
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.1rem;
+}
+.reasoning-markdown .markdown-content li {
+  margin: 0.1em 0;
 }
 
 .app-note-editor {
@@ -523,35 +579,124 @@ html {
   margin: 0.25rem 0 1rem;
 }
 
-/* Typing dots for MarkdownMessage buffering state */
-@keyframes typingDot {
-  0%, 60%, 100% { opacity: 0.2; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-3px); }
+/* Streaming marker — pulsing Overlay logo. Used in two places:
+   1. Inline at the tail of the most recent streaming token (token mode).
+   2. Standalone before any tokens exist, as the "thinking" indicator.
+   The same pulse animates opacity and scale so the logo breathes in place. */
+@keyframes overlayStreamMarkerPulse {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
 }
 
-.md-typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 0;
-  height: 1.2rem;
-}
-
-.md-typing-indicator span {
+.overlay-stream-marker {
   display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #3f3f46;
-  animation: typingDot 1.2s ease-in-out infinite;
+  width: 0.95em;
+  height: 0.95em;
+  margin-left: 0.35em;
+  vertical-align: -0.12em;
+  background-image: url('/assets/overlay-logo.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  animation: overlayStreamMarkerPulse 1.3s ease-in-out infinite;
+  pointer-events: none;
+  /* Ensure the marker is visible even on the first frame when the paragraph is empty. */
+  min-width: 14px;
+  min-height: 14px;
 }
 
-.md-typing-indicator span:nth-child(2) {
-  animation-delay: 0.2s;
+/* Standalone variant — the pre-generation "thinking" indicator (used by the bottom-of-
+   exchange loader and any case where the marker stands on its own line). Bigger and
+   centered so it reads clearly without any text alongside it. */
+.overlay-stream-marker--standalone,
+.markdown-content--streaming p:first-child > .overlay-stream-marker:only-child,
+.markdown-content--streaming > .overlay-stream-marker:only-child {
+  margin-left: 0;
+  width: 1.6em;
+  height: 1.6em;
+  min-width: 24px;
+  min-height: 24px;
+  vertical-align: middle;
 }
 
-.md-typing-indicator span:nth-child(3) {
-  animation-delay: 0.4s;
+/* Token-mode streaming: per-character fade-in. A rehype plugin wraps each non-
+   whitespace character in `<span class="md-char">` while streaming; React reconciles
+   by position, so only the newly-arrived characters mount and run this animation —
+   earlier characters stay solid. Combined with the client-side reveal pacer, each
+   character drips onto the page individually and softly fades into view, like it's
+   floating in rather than appearing as word/token chunks. */
+@keyframes overlayStreamCharFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.markdown-content--streaming .md-char {
+  animation: overlayStreamCharFade 380ms cubic-bezier(0.22, 0.7, 0.22, 1) both;
+  will-change: opacity;
+}
+
+/* Softer entrance for newly-mounted block elements (first line of a new paragraph,
+   list item, heading, etc.) so the block boundary doesn't snap in as a hard
+   rectangle behind the per-character fade. Short and translate-free so it doesn't
+   fight the char fade running inside the same block. */
+@keyframes overlayStreamBlockSoften {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.markdown-content--streaming p,
+.markdown-content--streaming li,
+.markdown-content--streaming td,
+.markdown-content--streaming th,
+.markdown-content--streaming h1,
+.markdown-content--streaming h2,
+.markdown-content--streaming h3,
+.markdown-content--streaming h4,
+.markdown-content--streaming h5,
+.markdown-content--streaming h6,
+.markdown-content--streaming blockquote,
+.markdown-content--streaming pre {
+  animation: overlayStreamBlockSoften 260ms ease-out both;
+  will-change: opacity;
+}
+
+/* The marker is its own animation — don't let the block/char fades override it. */
+.markdown-content--streaming .overlay-stream-marker {
+  animation: overlayStreamMarkerPulse 1.3s ease-in-out infinite;
+  opacity: 1;
+}
+
+/* Respect reduced-motion users: skip all streaming fades and just reveal text. */
+@media (prefers-reduced-motion: reduce) {
+  .markdown-content--streaming .md-char,
+  .markdown-content--streaming p,
+  .markdown-content--streaming li,
+  .markdown-content--streaming td,
+  .markdown-content--streaming th,
+  .markdown-content--streaming h1,
+  .markdown-content--streaming h2,
+  .markdown-content--streaming h3,
+  .markdown-content--streaming h4,
+  .markdown-content--streaming h5,
+  .markdown-content--streaming h6,
+  .markdown-content--streaming blockquote,
+  .markdown-content--streaming pre {
+    animation: none;
+  }
 }
 
 /* Message row appear animation */
@@ -837,10 +982,6 @@ html {
   color: var(--foreground);
 }
 
-[data-theme='dark'] .md-typing-indicator span {
-  background: var(--muted-light);
-}
-
 /* Gradient orb animation */
 @keyframes float {
   0%, 100% {
@@ -868,14 +1009,27 @@ html {
   animation: pulse-glow 4s ease-in-out infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .animate-pulse-glow {
+    animation: none;
+  }
+
+  .liquid-glass::before {
+    animation: none;
+  }
+}
+
 /* Liquid glass gradient background */
 .gradient-bg {
-  background: linear-gradient(to bottom, #fafafa, #f4f4f5);
+  background:
+    linear-gradient(to bottom, #fbfbfa 0%, #f7f6f3 100%);
 }
 
 /* Marketing pages — paired with LandingThemeProvider / `data-landing-theme` */
 [data-landing-theme='dark'] .gradient-bg {
-  background: linear-gradient(to bottom, #0a0a0a, #111113);
+  background:
+    linear-gradient(to bottom, #0f0f10 0%, #141416 100%);
 }
 
 .liquid-glass {
@@ -911,7 +1065,6 @@ html {
     radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.6), transparent 40%);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
-  will-change: backdrop-filter;
 }
 
 @keyframes liquid-move {

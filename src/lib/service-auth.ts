@@ -1,6 +1,9 @@
 const SERVICE_AUTH_HEADER = 'x-overlay-service-auth'
 const SERVICE_AUTH_AUDIENCE = 'overlay-internal-api'
+const SERVICE_AUTH_ISSUER = 'overlay-nextjs'
 const DEFAULT_SERVICE_AUTH_TTL_MS = 60_000
+const MAX_SERVICE_AUTH_CLOCK_SKEW_MS = 5_000
+const MAX_SERVICE_AUTH_VERIFICATIONS_PER_TOKEN = 2
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
@@ -8,17 +11,31 @@ type ServiceAuthPayload = {
   aud: string
   exp: number
   iat: number
+  iss: string
+  jti: string
   method: string
   path: string
   sub: string
 }
 
 function getServiceAuthSecret(): string {
-  const secret = process.env.INTERNAL_API_SECRET?.trim()
-  if (!secret) {
-    throw new Error('INTERNAL_API_SECRET is not configured')
+  const dedicatedSecret = process.env.INTERNAL_SERVICE_AUTH_SECRET?.trim()
+  const rootSecret = process.env.INTERNAL_API_SECRET?.trim()
+
+  if (dedicatedSecret) {
+    if (process.env.NODE_ENV === 'production' && dedicatedSecret === rootSecret) {
+      throw new Error('INTERNAL_SERVICE_AUTH_SECRET must not equal INTERNAL_API_SECRET in production')
+    }
+    return dedicatedSecret
   }
-  return secret
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('INTERNAL_SERVICE_AUTH_SECRET is required in production')
+  }
+  if (!rootSecret) {
+    throw new Error('INTERNAL_SERVICE_AUTH_SECRET or INTERNAL_API_SECRET is not configured')
+  }
+  return rootSecret
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -77,6 +94,9 @@ function isValidServiceAuthPayload(value: unknown): value is ServiceAuthPayload 
   const payload = value as Partial<ServiceAuthPayload>
   return (
     payload.aud === SERVICE_AUTH_AUDIENCE &&
+    payload.iss === SERVICE_AUTH_ISSUER &&
+    typeof payload.jti === 'string' &&
+    payload.jti.trim().length > 0 &&
     typeof payload.sub === 'string' &&
     payload.sub.trim().length > 0 &&
     typeof payload.method === 'string' &&
@@ -94,6 +114,43 @@ export function getServiceAuthHeaderName(): string {
   return SERVICE_AUTH_HEADER
 }
 
+type SeenServiceAuthToken = {
+  count: number
+  expiresAt: number
+}
+
+const seenServiceAuthTokens = new Map<string, SeenServiceAuthToken>()
+
+function cleanupSeenServiceAuthTokens(now: number): void {
+  for (const [jti, record] of seenServiceAuthTokens.entries()) {
+    if (record.expiresAt <= now) {
+      seenServiceAuthTokens.delete(jti)
+    }
+  }
+}
+
+function recordServiceAuthVerification(jti: string, expiresAt: number): boolean {
+  const now = Date.now()
+  cleanupSeenServiceAuthTokens(now)
+
+  const existing = seenServiceAuthTokens.get(jti)
+  if (existing) {
+    if (existing.count >= MAX_SERVICE_AUTH_VERIFICATIONS_PER_TOKEN) {
+      return false
+    }
+    existing.count += 1
+    existing.expiresAt = Math.max(existing.expiresAt, expiresAt)
+    seenServiceAuthTokens.set(jti, existing)
+    return true
+  }
+
+  seenServiceAuthTokens.set(jti, {
+    count: 1,
+    expiresAt,
+  })
+  return true
+}
+
 export async function buildServiceAuthToken(params: {
   userId: string
   method: string
@@ -103,6 +160,8 @@ export async function buildServiceAuthToken(params: {
   const now = Date.now()
   const payload: ServiceAuthPayload = {
     aud: SERVICE_AUTH_AUDIENCE,
+    iss: SERVICE_AUTH_ISSUER,
+    jti: crypto.randomUUID(),
     sub: params.userId.trim(),
     method: normalizeMethod(params.method),
     path: normalizePath(params.path),
@@ -164,9 +223,11 @@ export async function verifyServiceAuthToken(
   if (!verified) return null
 
   if (payload.exp < Date.now()) return null
+  if (payload.iat > Date.now() + MAX_SERVICE_AUTH_CLOCK_SKEW_MS) return null
   if (payload.method !== normalizeMethod(params.method)) return null
   if (payload.path !== normalizePath(params.path)) return null
   if (params.userId && payload.sub !== params.userId.trim()) return null
+  if (!recordServiceAuthVerification(payload.jti, payload.exp)) return null
 
   return { userId: payload.sub }
 }

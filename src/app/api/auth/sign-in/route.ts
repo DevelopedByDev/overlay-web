@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateWithPassword } from '@/lib/workos-auth'
-import { rateLimitByIp } from '@/lib/rate-limit'
+import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimitResponse = rateLimitByIp(request, 'auth:sign-in', 10, 60_000)
-    if (rateLimitResponse) return rateLimitResponse
+    // First-line reject: per-IP limit (cheap, runs before body parse).
+    const ipLimitResponse = await rateLimitByIp(request, 'auth:sign-in:ip', 10, 60_000)
+    if (ipLimitResponse) return ipLimitResponse
 
     const body = await request.json()
     const { email, password } = body
@@ -16,6 +17,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Per-email limit: defeats distributed credential stuffing (botnet spreading
+    // attempts across IPs against a single account). 5 failures per 15 minutes.
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
+    const emailLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'auth:sign-in:email', key: normalizedEmail, limit: 5, windowMs: 15 * 60_000 },
+      // Re-check IP as part of the combined rule for security logging consistency.
+      { bucket: 'auth:sign-in:ip-combined', key: getClientIp(request), limit: 20, windowMs: 60_000 },
+    ])
+    if (emailLimitResponse) return emailLimitResponse
 
     const result = await authenticateWithPassword(email, password)
 

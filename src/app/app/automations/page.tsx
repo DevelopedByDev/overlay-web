@@ -5,7 +5,7 @@ import { getSession } from '@/lib/workos-auth'
 export default async function AutomationsPage() {
   const session = await getSession()
   if (!session) {
-    redirect('/auth/sign-in?redirect=%2Fapp%2Fautomations')
+    redirect('/app/chat?signin=nav')
   }
   return <AutomationsView userId={session.user.id} />
 }

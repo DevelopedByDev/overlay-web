@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    let isNewUser = false
     try {
       if (session?.accessToken) {
         logAuthDebug('/api/auth/callback syncUserProfile start', {
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
           session: summarizeSessionForLog(session),
           convexInspection: await inspectAccessToken(session.accessToken, result.user.id),
         })
-        await serverConvex.mutation('users:syncUserProfileByServer', {
+        const syncResult = await serverConvex.mutation<{ success: boolean; isNewUser: boolean }>('users:syncUserProfileByServer', {
           serverSecret: getInternalApiSecret(),
           userId: result.user.id,
           email: result.user.email,
@@ -117,10 +118,12 @@ export async function GET(request: NextRequest) {
           lastName: result.user.lastName,
           profilePictureUrl: result.user.profilePictureUrl,
         }, { throwOnError: true })
+        isNewUser = syncResult?.isNewUser ?? false
         logAuthDebug('/api/auth/callback syncUserProfile success', {
           callbackUserId: result.user.id,
+          isNewUser,
         })
-        console.log('[Auth] User profile synced to Convex:', result.user.id)
+        console.log('[Auth] User profile synced to Convex:', result.user.id, { isNewUser })
       }
     } catch (syncError) {
       logAuthDebug('/api/auth/callback syncUserProfile error', {
@@ -177,7 +180,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.redirect(new URL(redirectTo, getBaseUrl()))
+    const finalRedirect = new URL(redirectTo, getBaseUrl())
+    if (isNewUser) {
+      finalRedirect.searchParams.set('onboarding', '1')
+    }
+    return NextResponse.redirect(finalRedirect)
   } catch (error) {
     console.error('[Auth] Callback error:', error)
     return NextResponse.redirect(`${getBaseUrl()}/auth/sign-in?error=Authentication failed`)

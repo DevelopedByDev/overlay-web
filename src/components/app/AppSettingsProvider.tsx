@@ -1,5 +1,7 @@
 'use client'
 
+import type { AppSettings, ChatStreamingMode, ThemePreference } from '@overlay/app-core'
+import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
 import {
   createContext,
   useCallback,
@@ -10,12 +12,7 @@ import {
   useState,
 } from 'react'
 
-export type ThemePreference = 'light' | 'dark'
-
-export type AppSettings = {
-  theme: ThemePreference
-  useSecondarySidebar: boolean
-}
+export type { AppSettings, ChatStreamingMode, ThemePreference } from '@overlay/app-core'
 
 type AppSettingsContextValue = {
   settings: AppSettings
@@ -25,20 +22,25 @@ type AppSettingsContextValue = {
   updateSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>
 }
 
-export const DEFAULT_APP_SETTINGS: AppSettings = {
-  theme: 'light',
-  useSecondarySidebar: false,
-}
-
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
 const APP_SETTINGS_STORAGE_KEY = 'overlay.app.settings'
 
-function isAppSettings(value: unknown): value is AppSettings {
+function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<AppSettings>
+  if (candidate.theme !== undefined && candidate.theme !== 'light' && candidate.theme !== 'dark') return false
+  if (candidate.useSecondarySidebar !== undefined && typeof candidate.useSecondarySidebar !== 'boolean') return false
+  if (
+    candidate.chatStreamingMode !== undefined &&
+    candidate.chatStreamingMode !== 'token' &&
+    candidate.chatStreamingMode !== 'chunk'
+  ) {
+    return false
+  }
   return (
-    (candidate.theme === 'light' || candidate.theme === 'dark') &&
-    typeof candidate.useSecondarySidebar === 'boolean'
+    typeof candidate.theme === 'string' ||
+    typeof candidate.useSecondarySidebar === 'boolean' ||
+    typeof candidate.chatStreamingMode === 'string'
   )
 }
 
@@ -48,7 +50,10 @@ function readStoredSettings(): AppSettings | null {
     const raw = window.localStorage.getItem(APP_SETTINGS_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as unknown
-    return isAppSettings(parsed) ? parsed : null
+    if (!isAppSettingsPayload(parsed)) return null
+    // Back-fill defaults for fields added in later releases so older cached payloads
+    // don't lock the user into stale settings.
+    return { ...DEFAULT_APP_SETTINGS, ...parsed }
   } catch {
     return null
   }

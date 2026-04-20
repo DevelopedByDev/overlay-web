@@ -14,10 +14,10 @@ export interface ChatModel {
     | 'openai'
     | 'anthropic'
     | 'google'
+    | 'minimax'
     | 'groq'
     | 'xai'
     | 'openrouter'
-    | 'minimax'
     | 'moonshotai'
     | 'zai'
     | 'alibaba'
@@ -25,6 +25,8 @@ export interface ChatModel {
   intelligence: number
   /** 0 = free, 1 = cheap, 2 = mid, 3 = expensive */
   cost: 0 | 1 | 2 | 3
+  /** Relative latency: 1 = heavier/slower, 3 = faster/lighter (for model picker UI). */
+  speedTier: 1 | 2 | 3
   supportsVision: boolean
   supportsReasoning: boolean
   supportsSearch: boolean
@@ -53,34 +55,34 @@ export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
 
 export const AVAILABLE_MODELS: ChatModel[] = [
   // Google Models
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'google', description: 'Most capable', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'google', description: 'Fast & efficient', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'google/gemma-4-26b-a4b-it', name: 'Gemma 4 26B A4B', provider: 'google', description: 'Efficient open model', intelligence: 1.1, cost: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'google', description: 'Most capable', intelligence: 2, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'google', description: 'Fast & efficient', intelligence: 1.5, cost: 2, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'google/gemma-4-26b-a4b-it', name: 'Gemma 4 26B A4B', provider: 'google', description: 'Efficient open model', intelligence: 1.1, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
   // OpenAI Models
-  { id: 'gpt-5.4', name: 'GPT-5.4', provider: 'openai', description: 'Powerful', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai', description: 'Compact', intelligence: 1.45, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'gpt-4.1-2025-04-14', name: 'GPT-4.1', provider: 'openai', description: 'Reliable', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'gpt-5.4', name: 'GPT-5.4', provider: 'openai', description: 'Powerful', intelligence: 2, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai', description: 'Compact', intelligence: 1.45, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'gpt-4.1-2025-04-14', name: 'GPT-4.1', provider: 'openai', description: 'Reliable', intelligence: 1.5, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
   // Anthropic Models
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'anthropic', description: 'Most capable', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', description: 'Best balance', intelligence: 1.75, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', description: 'Fast & light', intelligence: 1.25, cost: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', provider: 'openrouter', description: 'Most capable', intelligence: 2, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', description: 'Best balance', intelligence: 1.75, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', description: 'Fast & light', intelligence: 1.25, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
   // xAI Models
-  { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20', provider: 'xai', description: 'Flagship reasoning', intelligence: 1.8, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20', provider: 'xai', description: 'Flagship reasoning', intelligence: 1.8, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
   // Other frontier / open models
-  { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', description: 'Strong agentic coding', intelligence: 1.85, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', description: 'Multimodal long-context', intelligence: 1.7, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'zai', description: 'Long-horizon coding', intelligence: 1.55, cost: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'qwen/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Agentic coding', intelligence: 1.6, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', description: 'Strong agentic coding', intelligence: 1.85, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', description: 'Multimodal long-context', intelligence: 1.7, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'zai', description: 'Long-horizon coding', intelligence: 1.55, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'qwen/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Agentic coding', intelligence: 1.6, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 
   // Groq Models
-  { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 1.25, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 1.25, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 
   // OpenRouter (free) — only the auto router; API id stays `openrouter/free` (do not send bare `free`).
-  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 ]
 
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
@@ -90,10 +92,9 @@ export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
  * selection and when synthesizing a shared prior thread for newly added chat models.
  */
 export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
-  'claude-opus-4-6',
+  'anthropic/claude-opus-4.7',
   'gemini-3.1-pro-preview',
   'gpt-5.4',
-  'minimax/minimax-m2.7',
   'claude-sonnet-4-6',
   'xai/grok-4.20-reasoning',
   'moonshotai/kimi-k2.6',
@@ -120,6 +121,7 @@ export function pickBestModelForAct(selectedAskModelIds: string[]): string {
 
 /** Persisted UI / Convex rows may still reference retired ids. */
 const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
+  'claude-opus-4-6': 'anthropic/claude-opus-4.7',
   'moonshotai/kimi-k2.5': 'moonshotai/kimi-k2.6',
   'moonshotai/kimi-k2-instruct-0905': 'moonshotai/kimi-k2.6',
   'moonshotai/kimi-k2-0905': 'moonshotai/kimi-k2.6',
@@ -138,6 +140,35 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
 export function getModel(id: string): ChatModel | undefined {
   const resolved = LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id
   return AVAILABLE_MODELS.find((m) => m.id === resolved)
+}
+
+/** 1–5 segments for relative response latency (higher = faster). */
+export function speedTierToBarFill5(tier: ChatModel['speedTier']): number {
+  return tier === 1 ? 2 : tier === 2 ? 3 : 5
+}
+
+/** 1–5 segments for relative $ (higher = pricier). Free tier uses 1. */
+export function costToBarFill5(cost: ChatModel['cost']): number {
+  if (cost === 0) return 1
+  if (cost === 1) return 2
+  if (cost === 2) return 3
+  return 5
+}
+
+let _intelRange: { min: number; max: number } | null = null
+function intelligenceRange(): { min: number; max: number } {
+  if (_intelRange) return _intelRange
+  const vals = AVAILABLE_MODELS.map((m) => m.intelligence)
+  _intelRange = { min: Math.min(...vals), max: Math.max(...vals) }
+  return _intelRange
+}
+
+/** 1–5 segments for relative intelligence score. */
+export function intelligenceToBarFill5(m: ChatModel): number {
+  const { min, max } = intelligenceRange()
+  if (max <= min) return 3
+  const n = Math.round(((m.intelligence - min) / (max - min)) * 4) + 1
+  return Math.min(5, Math.max(1, n))
 }
 
 /** True when completions are served via the OpenRouter HTTP API (incl. Qwen catalog ids). */
@@ -179,6 +210,8 @@ export const IMAGE_MODELS: ImageModel[] = [
   { id: 'xai/grok-imagine-image', name: 'Grok Image', provider: 'xai', description: 'Fast & creative', defaultAspectRatio: '1:1' },
   { id: 'bfl/flux-2-max', name: 'FLUX 2 Max', provider: 'bfl', description: 'Premium quality', defaultAspectRatio: '1:1' },
   { id: 'prodia/flux-fast-schnell', name: 'FLUX Schnell', provider: 'prodia', description: 'Ultra-fast, low cost', defaultAspectRatio: '1:1' },
+  { id: 'bytedance/seedream-5.0-lite', name: 'Seedream 5.0 Lite', provider: 'bytedance', description: 'Fast generation', defaultAspectRatio: '1:1' },
+  { id: 'bytedance/seedream-4.5', name: 'Seedream 4.5', provider: 'bytedance', description: 'Balanced quality', defaultAspectRatio: '1:1' },
 ]
 
 export const DEFAULT_IMAGE_MODEL_ID = 'openai/gpt-image-1.5'

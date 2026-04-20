@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense, useCallback } from 'react'
+import { useState, useEffect, Suspense, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
@@ -172,6 +172,9 @@ function AccountPageContent() {
   const topUpSuccessParam = searchParams?.get('topup_success')
   const topUpSessionId = searchParams?.get('topup_session_id') ?? null
   const desktopCodeChallenge = searchParams?.get('desktop_code_challenge')?.trim() || ''
+  const extensionHandoff = searchParams?.get('extension_handoff') === '1'
+  const chromeExtensionIdRaw = searchParams?.get('chrome_extension_id')?.trim() || ''
+  const extensionHandoffSentRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   /** Set when /api/entitlements fails (e.g. Convex cannot verify WorkOS JWT) — avoids showing fake "free" defaults. */
@@ -211,6 +214,93 @@ function AccountPageContent() {
     checkSession()
     return () => { mounted = false }
   }, [isAuthenticated, authLoading, refreshSession])
+
+  useEffect(() => {
+    if (!extensionHandoff || !chromeExtensionIdRaw || !desktopCodeChallenge) return
+    if (!isAuthenticated || !currentUserId || !sessionCheckComplete) return
+    if (extensionHandoffSentRef.current) return
+    if (!/^[a-p]{32}$/.test(chromeExtensionIdRaw)) return
+
+    extensionHandoffSentRef.current = true
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/auth/desktop-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codeChallenge: desktopCodeChallenge }),
+        })
+        if (cancelled || !response.ok) {
+          extensionHandoffSentRef.current = false
+          return
+        }
+        const json = (await response.json()) as { deepLink?: string }
+        const deepLink = typeof json.deepLink === 'string' ? json.deepLink : ''
+        const tokenMatch = deepLink.match(/[?&]token=([^&]+)/)
+        const rawToken = tokenMatch?.[1]
+        const token = rawToken ? decodeURIComponent(rawToken) : ''
+        if (!token || cancelled) {
+          extensionHandoffSentRef.current = false
+          return
+        }
+
+        const chromeRuntime = (
+          typeof window !== 'undefined'
+            ? (
+                window as unknown as {
+                  chrome?: {
+                    runtime?: {
+                      sendMessage: (extId: string, msg: unknown, cb?: () => void) => void
+                      lastError?: { message: string }
+                    }
+                  }
+                }
+              ).chrome?.runtime
+            : undefined
+        )
+        if (!chromeRuntime?.sendMessage) {
+          extensionHandoffSentRef.current = false
+          return
+        }
+
+        chromeRuntime.sendMessage(
+          chromeExtensionIdRaw,
+          { type: 'overlay.extension.auth.handoff', token },
+          () => {
+            void chromeRuntime.lastError
+          },
+        )
+        setMessage({
+          type: 'success',
+          text: 'Chrome extension connected. You can return to the side panel and press Refresh if needed.',
+        })
+      } catch (e) {
+        console.error('[Account] Extension handoff error:', e)
+        extensionHandoffSentRef.current = false
+      } finally {
+        if (!cancelled && typeof window !== 'undefined') {
+          const next = new URL(window.location.href)
+          next.searchParams.delete('extension_handoff')
+          next.searchParams.delete('chrome_extension_id')
+          next.searchParams.delete('desktop_code_challenge')
+          router.replace(`${next.pathname}${next.search}`, { scroll: false })
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    chromeExtensionIdRaw,
+    currentUserId,
+    desktopCodeChallenge,
+    extensionHandoff,
+    isAuthenticated,
+    router,
+    sessionCheckComplete,
+  ])
 
   const handleSignOut = async () => {
     setSigningOut(true)

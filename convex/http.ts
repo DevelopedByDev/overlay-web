@@ -1,5 +1,6 @@
-import { httpRouter } from 'convex/server'
+import { httpRouter, type GenericActionCtx } from 'convex/server'
 import { components, internal } from './_generated/api'
+import type { DataModel } from './_generated/dataModel'
 import { registerRoutes } from '@convex-dev/stripe'
 import type Stripe from 'stripe'
 import {
@@ -23,12 +24,33 @@ function readNumberMetadata(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
 }
 
+// Returns true if this is a new event and handlers should run, false if the
+// event is a duplicate / stale replay and handlers must be a no-op. `ctx` is
+// the handler context provided by @convex-dev/stripe.
+async function recordAndCheckEvent(
+  ctx: Pick<GenericActionCtx<DataModel>, 'runMutation'>,
+  event: Stripe.Event,
+): Promise<boolean> {
+  const result = await ctx.runMutation(internal.subscriptions.recordWebhookEventIfNew, {
+    provider: 'stripe',
+    eventId: event.id,
+    eventType: event.type,
+    eventCreatedMs: event.created ? event.created * 1000 : undefined,
+  })
+  if (!result.accepted) {
+    console.warn(`[Stripe Webhook] Skipping event ${event.id} (${event.type}): ${result.reason}`)
+    return false
+  }
+  return true
+}
+
 // Register Stripe webhook handler using @convex-dev/stripe component
 registerRoutes(http, components.stripe, {
   webhookPath: '/stripe/webhook',
   events: {
     // Sync subscription changes to our custom subscriptions table
     'customer.subscription.created': async (ctx, event: Stripe.CustomerSubscriptionCreatedEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
       const subscription = event.data.object
 
       const userId = subscription.metadata?.userId
@@ -70,6 +92,7 @@ registerRoutes(http, components.stripe, {
     },
 
     'customer.subscription.updated': async (ctx, event: Stripe.CustomerSubscriptionUpdatedEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
       const subscription = event.data.object
       const userId = subscription.metadata?.userId
 
@@ -110,6 +133,7 @@ registerRoutes(http, components.stripe, {
     },
 
     'customer.subscription.deleted': async (ctx, event: Stripe.CustomerSubscriptionDeletedEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
       const subscription = event.data.object
 
       const userId = subscription.metadata?.userId
@@ -124,6 +148,7 @@ registerRoutes(http, components.stripe, {
     },
 
     'invoice.payment_failed': async (ctx, event: Stripe.InvoicePaymentFailedEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
       const invoice = event.data.object
 
       console.log(`[HTTP] invoice.payment_failed: invoiceId=${invoice.id}`)
@@ -142,12 +167,41 @@ registerRoutes(http, components.stripe, {
     },
 
     'checkout.session.completed': async (ctx, event: Stripe.CheckoutSessionCompletedEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
       const session = event.data.object
       console.log(`[Stripe Webhook] Checkout completed: ${session.id}, mode: ${session.mode}`)
       if (session.metadata?.kind === 'budget_topup' && session.payment_status === 'paid' && session.metadata.userId) {
+        // Derive the top-up amount from Stripe's authoritative paid total, NOT
+        // from client-set metadata. `session.amount_total` is what Stripe
+        // actually charged; `metadata.amountCents` is advisory and untrusted.
+        const authoritativeAmountCents =
+          typeof session.amount_total === 'number' && Number.isFinite(session.amount_total) && session.amount_total > 0
+            ? session.amount_total
+            : 0
+
+        if (authoritativeAmountCents <= 0) {
+          console.error(`[Stripe Webhook] checkout.session.completed ${session.id} has no amount_total; skipping top-up`)
+          return
+        }
+
+        // Cross-check metadata agrees with the paid amount. If it doesn't,
+        // trust Stripe but log it — mismatch indicates either a bug in the
+        // checkout flow or an attempted manipulation.
+        const metadataAmountCents = Number.parseInt(session.metadata.amountCents ?? '0', 10)
+        if (
+          Number.isFinite(metadataAmountCents) &&
+          metadataAmountCents > 0 &&
+          metadataAmountCents !== authoritativeAmountCents
+        ) {
+          console.error(
+            `[Stripe Webhook] top-up amount mismatch for session ${session.id}: ` +
+              `metadata=${metadataAmountCents}, amount_total=${authoritativeAmountCents}. Using amount_total.`,
+          )
+        }
+
         await ctx.runMutation(internal.subscriptions.recordBudgetTopUpInternal, {
           userId: session.metadata.userId,
-          amountCents: Number.parseInt(session.metadata.amountCents ?? '0', 10) || 0,
+          amountCents: authoritativeAmountCents,
           source: 'manual',
           stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
           stripeCheckoutSessionId: session.id,
@@ -157,7 +211,7 @@ registerRoutes(http, components.stripe, {
         await ctx.runMutation(internal.subscriptions.updateBillingPreferencesInternal, {
           userId: session.metadata.userId,
           autoTopUpEnabled: session.metadata.autoTopUpEnabled === 'true',
-          topUpAmountCents: Number.parseInt(session.metadata.amountCents ?? '0', 10) || undefined,
+          topUpAmountCents: authoritativeAmountCents,
           grantOffSessionConsent: session.metadata.autoTopUpEnabled === 'true',
         })
       }

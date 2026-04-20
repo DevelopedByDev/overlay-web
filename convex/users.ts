@@ -282,6 +282,50 @@ export const getChatStartersByServer = query({
   },
 })
 
+/** Mark that a user has completed (or dismissed) the onboarding tour. */
+export const markOnboardingComplete = mutation({
+  args: { serverSecret: v.string(), userId: v.string() },
+  handler: async (ctx, { serverSecret, userId }) => {
+    requireServerSecret(serverSecret)
+    const sub = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    if (!sub) return { ok: false as const }
+    await ctx.db.patch(sub._id, { hasSeenOnboarding: true })
+    return { ok: true as const }
+  },
+})
+
+/** Reset the onboarding flag so the tour replays on the next page load. */
+export const resetOnboarding = mutation({
+  args: { serverSecret: v.string(), userId: v.string() },
+  handler: async (ctx, { serverSecret, userId }) => {
+    requireServerSecret(serverSecret)
+    const sub = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    if (!sub) return { ok: false as const }
+    await ctx.db.patch(sub._id, { hasSeenOnboarding: false })
+    return { ok: true as const }
+  },
+})
+
+/** Return whether the authenticated user has seen the onboarding tour. */
+export const getOnboardingStatus = query({
+  args: { serverSecret: v.string(), userId: v.string() },
+  handler: async (ctx, { serverSecret, userId }) => {
+    requireServerSecret(serverSecret)
+    const sub = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    if (!sub) return { hasSeenOnboarding: false }
+    return { hasSeenOnboarding: sub.hasSeenOnboarding ?? false }
+  },
+})
+
 /** Server-only: persist starters after generation (one row per user in subscriptions). */
 export const setChatStartersByServer = mutation({
   args: {

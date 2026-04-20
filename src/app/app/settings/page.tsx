@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Mail, Moon, PanelsLeftRight, Sun } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import { Gauge, Mail, Moon, PanelsLeftRight, Sun, Play } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
@@ -82,6 +83,83 @@ function SettingRow({
   )
 }
 
+function SettingsSegmented<T extends string>({
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  value: T
+  options: ReadonlyArray<{ value: T; label: string }>
+  disabled?: boolean
+  onChange: (next: T) => void
+}) {
+  return (
+    <div
+      className={`inline-flex shrink-0 items-center rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] p-0.5 ${
+        disabled ? 'cursor-wait opacity-70' : ''
+      }`}
+      role="radiogroup"
+    >
+      {options.map((option) => {
+        const active = option.value === value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            disabled={disabled}
+            onClick={() => {
+              if (!active) onChange(option.value)
+            }}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              active
+                ? 'bg-[var(--foreground)] text-[var(--background)] shadow-sm'
+                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function SegmentedSettingRow<T extends string>({
+  icon,
+  title,
+  description,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  icon: React.ReactNode
+  title: string
+  description: string
+  value: T
+  options: ReadonlyArray<{ value: T; label: string }>
+  disabled?: boolean
+  onChange: (next: T) => void
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <h2 className="text-sm font-medium text-[var(--foreground)]">{title}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{description}</p>
+        </div>
+      </div>
+      <SettingsSegmented value={value} options={options} disabled={disabled} onChange={onChange} />
+    </div>
+  )
+}
+
 function SectionPlaceholder({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-sm">
@@ -107,6 +185,11 @@ export default function SettingsPage() {
   const searchParams = useSearchParams()
   const rawSection = searchParams?.get('section') ?? 'general'
   const section: SectionId = SECTION_IDS.has(rawSection) ? (rawSection as SectionId) : 'general'
+
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) router.replace('/app/chat?signin=nav')
+  }, [authLoading, isAuthenticated, router])
 
   const {
     settings,
@@ -209,6 +292,36 @@ export default function SettingsPage() {
                 disabled={busy}
                 onChange={() => void updateSettings({ useSecondarySidebar: !settings.useSecondarySidebar })}
               />
+              <SegmentedSettingRow
+                icon={<Gauge size={18} strokeWidth={1.8} />}
+                title="Streaming"
+                description="Token-by-token renders each word as it arrives (default). Chunk-based waits for complete paragraphs — steadier but slower to appear."
+                value={settings.chatStreamingMode}
+                options={[
+                  { value: 'token', label: 'Token' },
+                  { value: 'chunk', label: 'Chunk' },
+                ]}
+                disabled={busy}
+                onChange={(next) => void updateSettings({ chatStreamingMode: next })}
+              />
+              <div className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">
+                    <Play size={18} strokeWidth={1.8} />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-medium text-[var(--foreground)]">Onboarding tour</h2>
+                    <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">Replay the guided walkthrough that highlights the key features of the app.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { void fetch('/api/app/onboarding/reset', { method: 'POST' }).then(() => router.push('/app/chat?tour=replay')) }}
+                  className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)]"
+                >
+                  Replay tour
+                </button>
+              </div>
             </>
           )}
 

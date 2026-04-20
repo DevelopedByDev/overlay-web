@@ -11,8 +11,10 @@ import {
   FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
+import { useAuth } from '@/contexts/AuthContext'
+import { useGuestGate } from './GuestGateProvider'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
-import { DEFAULT_MODEL_ID } from '@/lib/models'
+import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
 import { useAppSettings } from './AppSettingsProvider'
 import {
   ChatInlinePanel,
@@ -144,12 +146,17 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
   )
 }
 
-export default function AppSidebar({ user }: { user: AuthUser }) {
+export default function AppSidebar({ user: serverUser }: { user: AuthUser | null }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
-  const displayName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email
+  const { requireAuth } = useGuestGate()
+  const { user: authUser, isLoading: authLoading } = useAuth()
+  // Prefer server-resolved user; fall back to client auth. Never gate while loading.
+  const user = serverUser ?? authUser
+  const isGuestConfirmed = !authLoading && !user
+  const displayName = user ? (user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email) : 'Guest'
   const { totalUnread } = useAsyncSessions()
 
   const [pendingNav, setPendingNav] = useState<{ href: string; fromPath: string } | null>(null)
@@ -203,11 +210,14 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadEntitlements()
+  }, [loadEntitlements])
+
+  useEffect(() => {
     if (!accountMenuOpen && !mobileAccountOpen && !knowledgeOpen) return
-    const initialId = window.setTimeout(() => { void loadEntitlements() }, 0)
     const intervalId = window.setInterval(() => { void loadEntitlements() }, 30_000)
     return () => {
-      window.clearTimeout(initialId)
       window.clearInterval(intervalId)
     }
   }, [accountMenuOpen, mobileAccountOpen, knowledgeOpen, loadEntitlements])
@@ -230,6 +240,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       if (e.code === 'Digit7') {
         e.preventDefault()
         if (pathname.startsWith('/app/settings')) return
+        if (isGuestConfirmed) { requireAuth('settings'); return }
         setMobileMenuOpen(false)
         setPendingNav({ href: '/app/settings', fromPath: pathname })
         router.push('/app/settings')
@@ -242,12 +253,13 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       if (!item || item.disabled || !item.href) return
       e.preventDefault()
       if (pathname.startsWith(item.href)) return
+      if (isGuestConfirmed && item.href !== '/app/chat') { requireAuth('nav'); return }
       setPendingNav({ href: item.href, fromPath: pathname })
       router.push(item.href)
     }
     window.addEventListener('keydown', onNavShortcut, true)
     return () => window.removeEventListener('keydown', onNavShortcut, true)
-  }, [pathname, router])
+  }, [pathname, router, user, isGuestConfirmed, requireAuth])
 
   /** Sub-items only while the settings route is open (avoids orphan dropdown state off-route). */
   const settingsNavExpanded = settingsPathActive
@@ -289,14 +301,16 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   }
 
   async function handleCreateChat() {
+    if (!user) { requireAuth('send'); return }
+    const models = readNewChatModelFieldsFromStorage()
     const res = await fetch('/api/app/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: 'New Chat',
-        askModelIds: [DEFAULT_MODEL_ID],
-        actModelId: DEFAULT_MODEL_ID,
-        lastMode: 'act',
+        askModelIds: models.askModelIds,
+        actModelId: models.actModelId,
+        lastMode: models.lastMode,
       }),
     })
     if (!res.ok) return
@@ -308,6 +322,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   }
 
   async function handleCreateNote() {
+    if (!user) { requireAuth('nav'); return }
     const res = await fetch('/api/app/notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -322,6 +337,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   }
 
   async function handleCreateProject() {
+    if (!user) { requireAuth('nav'); return }
     const res = await fetch('/api/app/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -384,7 +400,8 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
   const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false)
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('')
 
-  const showUpgradeCta = !entitlements || entitlements.tier === 'free'
+  /** Hide until loaded so paid users never see a flash of the upgrade CTA. */
+  const showUpgradeCta = entitlements !== null && entitlements.tier === 'free'
   const contextualAction = inlineSecondaryDisabled
     ? chatOpen
       ? { label: 'New chat', onClick: handleCreateChat }
@@ -461,12 +478,17 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
                   type="button"
                   onClick={() => {
                     if (!href || pathname.startsWith(href)) return
+                    if (isGuestConfirmed && href !== '/app/chat') {
+                      requireAuth('nav')
+                      return
+                    }
                     setMobileMenuOpen(false)
                     setPendingNav({ href, fromPath: pathname })
                     router.push(href)
                   }}
                   title={shortcut ? `${label} · ⌥${shortcut}` : label}
                   aria-label={label}
+                  data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/knowledge' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : href === '/app/automations' ? 'nav-automations' : undefined}
                   className={commonClass}
                 >
                   {sidebarCollapsed && isPending ? (
@@ -600,6 +622,7 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
               type="button"
               onClick={() => {
                 if (settingsPathActive) return
+                if (!user) { requireAuth('settings'); return }
                 setMobileMenuOpen(false)
                 setPendingNav({ href: '/app/settings', fromPath: pathname })
                 router.push('/app/settings')
@@ -719,6 +742,18 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
       </div>
 
       <div className={`space-y-3 border-t border-[var(--border)] py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
+        {showUpgradeCta && !isGuestConfirmed && (
+          <Link
+            href="/pricing"
+            title="Upgrade to Pro"
+            className={`flex w-full items-center gap-2 rounded-md border border-[#fde68a] bg-[#fffbeb] px-2.5 py-1.5 text-xs font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] ${
+              sidebarCollapsed ? 'justify-center' : ''
+            }`}
+          >
+            <ArrowUp size={13} className="shrink-0" />
+            {!sidebarCollapsed && <span className="truncate">Upgrade to Pro</span>}
+          </Link>
+        )}
         <div ref={menuRef} className="relative">
           {accountMenuOpen && (
             <div
@@ -788,18 +823,32 @@ export default function AppSidebar({ user }: { user: AuthUser }) {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => setAccountMenuOpen((value) => !value)}
-            className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-              sidebarCollapsed ? 'justify-center' : 'gap-2'
-            }`}
-            aria-label="Account menu"
-          >
-            <User size={13} />
-            {!sidebarCollapsed ? <span className="flex-1 truncate text-left">{displayName}</span> : null}
-            {!sidebarCollapsed ? <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} /> : null}
-          </button>
+          {!isGuestConfirmed ? (
+            <button
+              type="button"
+              onClick={() => setAccountMenuOpen((value) => !value)}
+              className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                sidebarCollapsed ? 'justify-center' : 'gap-2'
+              }`}
+              aria-label="Account menu"
+            >
+              <User size={13} />
+              {!sidebarCollapsed ? <span className="flex-1 truncate text-left">{displayName}</span> : null}
+              {!sidebarCollapsed ? <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} /> : null}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => requireAuth('send')}
+              className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                sidebarCollapsed ? 'justify-center' : 'gap-2'
+              }`}
+              aria-label="Sign in"
+            >
+              <User size={13} />
+              {!sidebarCollapsed ? <span className="flex-1 text-left">Sign in</span> : null}
+            </button>
+          )}
         </div>
       </div>
     </>

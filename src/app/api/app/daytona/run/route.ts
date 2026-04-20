@@ -42,6 +42,45 @@ interface SandboxArtifactResponse {
   type: string
 }
 
+// LLM-composed commands are structurally untrusted: the agent may have been
+// steered by prompt injection in a note, shared doc, or knowledge chunk. We
+// cannot sanitize the command string perfectly, so the primary defense is
+// Daytona-side isolation (egress allowlist, no secret env, no host access).
+// These app-side checks are defense-in-depth: they block obviously-abusive
+// payloads before they ever reach the sandbox.
+const MAX_COMMAND_LENGTH = 4096
+
+// Target hosts that indicate attempted egress to cloud metadata services or
+// RFC1918 / loopback / link-local address space. If any of these appear in a
+// command string, something is almost certainly wrong.
+const BANNED_COMMAND_HOSTS: RegExp[] = [
+  /\b169\.254\./, // AWS/GCP IMDS + link-local
+  /\bmetadata\.google\.internal\b/i,
+  /\bmetadata\.goog\b/i,
+  /\binstance-data\b/i,
+  /\b127\.0\.0\.1\b/,
+  /\blocalhost\b/i,
+  /\b0\.0\.0\.0\b/,
+  /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
+  /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
+  /\b172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}\b/,
+]
+
+function validateSandboxCommand(command: string): { ok: true } | { ok: false; reason: string } {
+  if (command.length > MAX_COMMAND_LENGTH) {
+    return { ok: false, reason: `Command exceeds maximum length of ${MAX_COMMAND_LENGTH} characters.` }
+  }
+  if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(command)) {
+    return { ok: false, reason: 'Command contains disallowed control characters.' }
+  }
+  for (const pattern of BANNED_COMMAND_HOSTS) {
+    if (pattern.test(command)) {
+      return { ok: false, reason: 'Command references an internal or metadata endpoint.' }
+    }
+  }
+  return { ok: true }
+}
+
 function sanitizeFileName(name: string, fallback: string): string {
   const normalized = name
     .trim()
@@ -182,6 +221,14 @@ export async function POST(request: NextRequest) {
   if (!command?.trim()) {
     return NextResponse.json({ error: 'command is required' }, { status: 400 })
   }
+  const commandValidation = validateSandboxCommand(command.trim())
+  if (!commandValidation.ok) {
+    console.warn('[Daytona] rejected command', { reason: commandValidation.reason })
+    return NextResponse.json(
+      { error: 'invalid_command', message: commandValidation.reason },
+      { status: 400 },
+    )
+  }
   if (!Array.isArray(expectedOutputs) || expectedOutputs.length === 0) {
     return NextResponse.json({ error: 'expectedOutputs must include at least one path' }, { status: 400 })
   }
@@ -198,7 +245,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const rateLimitResponse = enforceRateLimits(request, [
+  const rateLimitResponse = await enforceRateLimits(request, [
     { bucket: 'sandbox:daytona:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
     { bucket: 'sandbox:daytona:user', key: userId, limit: 10, windowMs: 10 * 60_000 },
   ])

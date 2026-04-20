@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import { cookies } from 'next/headers'
 import { WorkOS } from '@workos-inc/node'
+import { getVerifiedAccessTokenClaims } from '../../convex/lib/auth'
 import {
   decryptSessionCookiePayload,
   encryptSessionCookiePayload,
@@ -658,6 +659,15 @@ async function refreshAccessTokenDeduped(session: AuthSession): Promise<AuthSess
   return promise
 }
 
+async function locallyExtendSessionCookie(session: AuthSession): Promise<AuthSession> {
+  const extendedSession: AuthSession = {
+    ...session,
+    expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+  }
+  await createSession(extendedSession)
+  return extendedSession
+}
+
 export async function getSession(): Promise<AuthSession | null> {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)
@@ -702,28 +712,58 @@ export async function getSession(): Promise<AuthSession | null> {
       return null
     }
 
-    const needsJwtRefresh = shouldRefreshAccessToken(session.accessToken)
+    const claims = await getVerifiedAccessTokenClaims(session.accessToken)
+    const accessTokenMatchesSessionUser = claims?.sub === session.user.id
+    const needsJwtRefresh = !claims || shouldRefreshAccessToken(session.accessToken)
     const cookieExpiringSoon = session.expiresAt <= Date.now() + COOKIE_REFRESH_WITHIN_MS
     logAuthDebug('getSession refresh evaluation', {
+      accessTokenMatchesSessionUser,
+      hasVerifiedClaims: Boolean(claims),
       needsJwtRefresh,
       cookieExpiringSoon,
       accessToken: summarizeJwtForLog(session.accessToken),
       session: summarizeSessionForLog(session),
     })
 
-    if (needsJwtRefresh || cookieExpiringSoon) {
+    if (!accessTokenMatchesSessionUser) {
       if (!workosApiKey || !clientId) {
-        logAuthDebug('getSession cannot refresh due to missing WorkOS config', {
+        logAuthDebug('getSession rejecting session with invalid access token and no WorkOS refresh path', {
+          env: summarizeEnvResolutionForLog(),
+          session: summarizeSessionForLog(session),
+        })
+        await clearSession()
+        return null
+      }
+      const refreshed = await refreshAccessTokenDeduped(session)
+      if (!refreshed) {
+        logAuthDebug('getSession refresh failed for invalid access token; clearing session', summarizeSessionForLog(session))
+        await clearSession()
+        return null
+      }
+      logAuthDebug('getSession recovered invalid access token via refresh', summarizeSessionForLog(refreshed))
+      return refreshed
+    }
+
+    if (needsJwtRefresh || cookieExpiringSoon) {
+      if (!needsJwtRefresh && cookieExpiringSoon) {
+        const extended = await locallyExtendSessionCookie(session)
+        logAuthDebug('getSession locally extended cookie-backed session', summarizeSessionForLog(extended))
+        return extended
+      }
+      if (!workosApiKey || !clientId) {
+        logAuthDebug('getSession cannot refresh access token due to missing WorkOS config; clearing session', {
           needsJwtRefresh,
           cookieExpiringSoon,
           env: summarizeEnvResolutionForLog(),
         })
-        return session
+        await clearSession()
+        return null
       }
       const refreshed = await refreshAccessTokenDeduped(session)
       if (!refreshed) {
-        logAuthDebug('getSession refresh failed', summarizeSessionForLog(session))
-        return session
+        logAuthDebug('getSession refresh failed; clearing session', summarizeSessionForLog(session))
+        await clearSession()
+        return null
       }
       logAuthDebug('getSession returning refreshed session', summarizeSessionForLog(refreshed))
       return refreshed

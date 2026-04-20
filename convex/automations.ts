@@ -11,6 +11,7 @@ import {
   AUTOMATION_RETRY_DELAY_MS,
   MAX_AUTOMATION_ATTEMPTS,
   MAX_AUTOMATION_FAILURE_STREAK,
+  MAX_AUTOMATIONS_PER_USER,
   MAX_RUNNING_AUTOMATIONS_PER_USER,
   isDeterministicAutomationFailure,
   shouldPauseAutomationAfterFailure,
@@ -364,6 +365,15 @@ export const create = mutation({
     validateAutomationSource(args)
     validateSchedule(args)
     await ensureSkillOwnership(ctx, args.userId, args.skillId)
+
+    const activeCount = await ctx.db
+      .query('automations')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .filter((q) => q.eq(q.field('deletedAt'), undefined))
+      .collect()
+    if (activeCount.length >= MAX_AUTOMATIONS_PER_USER) {
+      throw new Error(`Automation limit reached (max ${MAX_AUTOMATIONS_PER_USER} per user)`)
+    }
 
     const now = Date.now()
     const readiness = deriveAutomationReadiness({

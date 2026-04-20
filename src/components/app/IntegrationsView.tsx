@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, UIEvent } from 'react'
 import { Loader2, Plus, X, Search } from 'lucide-react'
 import { IntegrationDialogRowSkeleton, IntegrationListSkeleton } from '@/components/ui/Skeleton'
+import posthog from 'posthog-js'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/lib/integrations-events'
 
 interface Integration {
@@ -473,6 +474,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
         if (res.ok) {
           setConnected((prev) => { const next = new Set(prev); next.delete(integration.composioId); return next })
           notifyIntegrationsChanged()
+          posthog.capture('integration_disconnected', { integration: integration.composioId, integration_name: integration.name })
         } else {
           const data = await res.json().catch(() => ({}))
           setConnectError(data.error || 'Failed to disconnect')
@@ -490,6 +492,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
         } else if (data.redirectUrl) {
           if (oauthTab) oauthTab.location.href = data.redirectUrl
           else window.open(data.redirectUrl, '_blank')
+          posthog.capture('integration_connect_initiated', { integration: integration.composioId, integration_name: integration.name })
         } else {
           oauthTab?.close()
           setConnectError('No OAuth URL returned — this integration may require manual setup')
@@ -523,10 +526,12 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
         else window.open(data.redirectUrl, '_blank')
         setConnected((prev) => new Set([...prev, slug]))
         notifyIntegrationsChanged()
+        posthog.capture('integration_connect_initiated', { integration: slug })
       } else if (data.connectionId) {
         oauthTab?.close()
         setConnected((prev) => new Set([...prev, slug]))
         notifyIntegrationsChanged()
+        posthog.capture('integration_connect_initiated', { integration: slug })
       } else {
         oauthTab?.close()
         throw new Error('No OAuth URL returned')
@@ -546,6 +551,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
     if (!res.ok) throw new Error('Failed to disconnect')
     setConnected((prev) => { const next = new Set(prev); next.delete(slug); return next })
     notifyIntegrationsChanged()
+    posthog.capture('integration_disconnected', { integration: slug })
   }, [])
 
   const integrationForSlug = useCallback(
