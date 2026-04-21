@@ -603,7 +603,7 @@ function AccountPageContent() {
       <PageNavbar />
 
       {/* Main Content */}
-      <main className="relative z-10 flex-1 px-4 py-10 md:px-8 md:py-14">
+      <main className="relative z-10 flex-1 px-4 pb-10 pt-28 md:px-8 md:pb-14 md:pt-32">
         <div className="max-w-4xl mx-auto">
           {/* Message Banner */}
           {message && (

@@ -168,6 +168,7 @@ export function PageNavbar() {
   const mobilePanelClass = isDark
     ? "border-white/10 bg-[#111113]/98"
     : "border-black/8 bg-[#fbfbfa]/98";
+  const accountIsActive = pathname === "/account";
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-4 py-4 md:px-8 md:py-5">
@@ -229,6 +230,20 @@ export function PageNavbar() {
               >
                 GitHub
               </a>
+              {isAuthenticated ? (
+                <Link
+                  href="/account"
+                  className={`text-sm transition-colors ${
+                    accountIsActive
+                      ? isDark
+                        ? "text-zinc-100"
+                        : "text-zinc-950"
+                      : mutedLinkClass
+                  }`}
+                >
+                  Account
+                </Link>
+              ) : null}
             </div>
 
             <div className="hidden items-center gap-2 md:flex">
@@ -338,6 +353,21 @@ export function PageNavbar() {
                 >
                   GitHub
                 </a>
+                {isAuthenticated ? (
+                  <Link
+                    href="/account"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`rounded-[22px] px-4 py-3 text-sm transition-colors ${
+                      accountIsActive
+                        ? isDark
+                          ? "bg-white/8 text-zinc-100"
+                          : "bg-black/[0.045] text-zinc-950"
+                        : mutedLinkClass
+                    }`}
+                  >
+                    Account
+                  </Link>
+                ) : null}
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <a
                     href={MARKETING_SALES_URL}

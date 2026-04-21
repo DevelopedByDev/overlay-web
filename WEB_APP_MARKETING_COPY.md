@@ -17,6 +17,22 @@ Overlay turns a browser tab into a persistent AI workspace that can:
 - capture voice and turn speech into usable work
 - connect to external apps
 
+## The clearest value proposition
+
+If you need the shortest, sharpest explanation of Overlay, it is this:
+
+1. Work with the best models in one place.
+Overlay is model-agnostic by design. Instead of committing to ChatGPT, Claude, or another single interface, users can route work across top models inside one workspace and choose the right model for the task.
+
+2. Keep all your context in one system.
+Overlay combines persistent memory, file storage, notes, projects, and connected apps into one context layer. That means users do not have to rebuild context from scratch every time they switch tools or start a new conversation.
+
+3. Move from answers to execution.
+Overlay is not limited to chat. Users can run agents, browser tasks, and automations, so the product can help both think through work and carry work forward.
+
+4. Start lower and scale on your terms.
+Overlay starts at $8 per month, with custom usage-based budget selection built into the product. That creates a strong wedge against standard $20/month starting plans like ChatGPT Plus and Claude Pro, especially for users who want flexibility instead of fixed pricing.
+
 ## A unified AI workspace, not a collection of isolated features
 
 Most AI products force a tradeoff: chat is separate from documents, documents are separate from memory, memory is separate from tools, tools are separate from automation, and automation is separate from your actual work context.
@@ -40,7 +56,7 @@ Users can choose the right model for the job instead of committing to one vendor
 - vision-capable models for image-aware tasks
 - auto-routed free usage on the free tier
 
-This lets Overlay position intelligence as a configurable layer rather than a fixed backend choice.
+This lets Overlay position intelligence as a configurable layer rather than a fixed backend choice. The product benefit is simple: the best models, all in one place.
 
 ### 2. Switch between Ask and Act
 
@@ -63,6 +79,16 @@ Overlay is built around persistent context. Conversations can draw from:
 - prior messages in the same thread
 
 This means users do not need to keep re-explaining themselves. Overlay can search across the user’s knowledge base, retrieve relevant information, and ground responses in material the user already saved inside the workspace.
+
+Just as importantly, Overlay can unify context from multiple sources at once:
+
+- memories
+- files and folders
+- notes
+- project history
+- connected apps and integrations
+
+That makes the product feel less like isolated chat sessions and more like a durable working memory for the user or team.
 
 ### 4. Save memory that compounds over time
 
@@ -203,7 +229,21 @@ And the integration picker is designed to search beyond a short hardcoded list, 
 
 This matters because it lets Overlay move from pure generation into actual operations, whether that means drafting emails, working with calendars, reading files, or triggering downstream tasks in connected systems.
 
-### 13. Browse the live web through AI browser tasks
+### 13. Run agents and automations
+
+Overlay is built to support more than manual prompting. The app includes dedicated automations and execution flows so users can turn repeated work into reusable runs.
+
+That includes product surfaces for:
+
+- Ask and Act operating modes
+- browser-based agent tasks
+- scheduled automations
+- run history and retry flows
+- execution tied to project and workspace context
+
+This is a major value proposition for outreach because it moves Overlay out of the “chat app” bucket and into the “AI operating system for recurring work” bucket.
+
+### 14. Browse the live web through AI browser tasks
 
 Overlay’s web app can launch remote browser tasks using a browser automation layer. This gives users a way to request live web work in natural language instead of only receiving static answers.
 
@@ -217,11 +257,26 @@ That includes workflows such as:
 
 This expands Overlay beyond retrieval and into real web execution.
 
-### 14. Maintain long-running context across devices and sessions
+### 15. Maintain long-running context across devices and sessions
 
 Because Overlay’s web app combines conversations, notes, memories, outputs, and project context in one account-based system, users get continuity over time. A conversation does not need to start from zero. A generated asset can remain attached to the broader workspace. A note can later become knowledge. A memory can later shape a future answer.
 
 That continuity is a major product differentiator.
+
+### 16. Offer flexible pricing instead of forcing one fixed subscription
+
+Overlay’s paid product starts at $8 per month, and the billing model is designed around a configurable monthly usage budget rather than a one-size-fits-all plan.
+
+That pricing story matters for two reasons:
+
+- it lowers the barrier to trying a serious AI workspace
+- it lets users choose how much premium usage they actually want
+
+Instead of forcing every paid user into a standard $20 entry tier, Overlay can be positioned as:
+
+- more flexible than a fixed-seat subscription
+- more cost-efficient for lighter but serious users
+- easier to justify for teams experimenting with AI workflows
 
 ## Why Overlay feels different from a normal AI chat app
 
@@ -245,9 +300,11 @@ That gives the product a broader value story than “ask a model a question.”
 
 Overlay is built so that useful information can be stored, organized, retrieved, and reused. That makes it suitable for recurring work, not just isolated prompts.
 
+That persistent layer spans memory, files, projects, and connectors, which is why “unified context” is one of the strongest ways to explain the product.
+
 ### Action is built in
 
-With Ask and Act modes, browser tasks, and integrations, Overlay is designed for execution as much as ideation.
+With Ask and Act modes, browser tasks, integrations, agents, and automations, Overlay is designed for execution as much as ideation.
 
 ### Creative production is native
 
@@ -319,6 +376,7 @@ A user can start with one quick transcription, move into a note, ask a model to 
 - integration management inside the app
 - Composio-backed connector model
 - external app connectivity
+- automation management and run history
 - live browser tasks
 - action-oriented AI workflows
 
@@ -326,15 +384,48 @@ A user can start with one quick transcription, move into a note, ask a model to 
 
 ### Short product description
 
-Overlay is an AI workspace that combines chat, notes, memory, knowledge, media generation, integrations, and voice in one connected web app.
+Overlay is a model-agnostic AI workspace that combines chat, memory, knowledge, media generation, integrations, automations, and voice in one connected web app.
 
 ### Mid-length product description
 
-Overlay is a full-stack AI workspace for thinking, creating, and acting. Users can chat with top models, write in a built-in notebook, store long-term memory, search their own knowledge base, organize work by project, generate images and videos, connect external apps, transcribe voice, and browse the live web with AI.
+Overlay is a full-stack AI workspace for thinking, creating, and acting. Users can work with top models in one place, write in a built-in notebook, store long-term memory, search their own knowledge base, organize work by project, generate images and videos, connect external apps, run agents and automations, transcribe voice, and browse the live web with AI.
 
 ### Long-form product description
 
-Overlay turns AI from a single prompt box into a connected operating environment for real work. The web app combines multi-model chat, Ask and Act workflows, rich notes, persistent memories, searchable files, project-based organization, image and video generation, voice transcription, external integrations, and browser automation. Every part of the product is designed to share context, so users can move from idea to execution inside one workspace instead of stitching together separate tools.
+Overlay turns AI from a single prompt box into a connected operating environment for real work. The web app combines multi-model chat, Ask and Act workflows, rich notes, persistent memories, searchable files, project-based organization, image and video generation, voice transcription, external integrations, browser automation, and automations. Every part of the product is designed to share context, so users can move from idea to execution inside one workspace instead of stitching together separate tools. The result is a model-agnostic system where users can keep unified context, run work, and choose pricing that matches how much usage they actually need.
+
+## Cold outreach angles
+
+These are the strongest value-prop angles for outbound messaging:
+
+- Best models in one place: use the strongest model for each task instead of getting locked into ChatGPT or Claude alone.
+- Unified context: memory, file storage, notes, projects, and connectors live in one workspace instead of being scattered across tabs.
+- Agents and automations: Overlay helps teams move from asking questions to running work.
+- Pricing wedge: paid plans start at $8, with configurable monthly usage budgets instead of a fixed $20 starting point.
+
+## Cold outreach copy you can reuse
+
+### Version 1
+
+Overlay gives you the best AI models in one place, with persistent memory, file storage, connected apps, and automations in the same workspace. Instead of paying $20 just to get into one assistant, Overlay starts at $8 and lets you choose the usage budget that fits how your team actually works.
+
+### Version 2
+
+Most teams are stitching together ChatGPT, Claude, Perplexity, and a pile of notes and connectors. Overlay replaces that with one model-agnostic workspace: top models, unified context, agents, automations, and flexible pricing starting at $8.
+
+### Version 3
+
+If your team is using AI seriously, the problem is no longer access to a model. The problem is fragmented context and fragmented workflows. Overlay solves that by giving you one workspace for the best models, persistent memory, connected files and tools, and automations that can actually run the work.
+
+## Pricing-led comparison copy
+
+Overlay has an especially strong story for users who feel overcharged by fixed-seat AI subscriptions:
+
+- ChatGPT Plus: $20/month entry tier
+- Claude Pro: $20/month entry tier
+- Overlay: starts at $8/month
+
+That does not just make Overlay cheaper. It makes it more adaptable. Users can start small, scale usage as needed, and avoid overpaying for a fixed plan when what they actually want is a flexible AI workspace.
 
 ## Category framing
 
