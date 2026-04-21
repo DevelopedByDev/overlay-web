@@ -218,6 +218,70 @@ function isPerplexityErrorOutput(
  *    `providerExecuted: true`. The AI SDK multi-step loop then exits immediately (no client tool calls and
  *    no pending deferred results), so the model never runs a second step to turn search hits into an answer.
  */
+/**
+ * Runs the same Perplexity round-trip as `perplexity_search` tool `execute` (Gateway inner generateText).
+ * Used to recover when a weak model prints fake tool JSON instead of invoking tools.
+ */
+export async function runPerplexitySearchDirectForRepair(
+  accessToken: string | undefined,
+  query: string | string[],
+): Promise<unknown> {
+  return executeGatewayPerplexitySearch(accessToken, query)
+}
+
+async function executeGatewayPerplexitySearch(
+  accessToken: string | undefined,
+  query: string | string[],
+): Promise<unknown> {
+  const apiKey = await resolveGatewayApiKey(accessToken)
+  if (!apiKey) {
+    throw new Error('AI Gateway API key is not configured (needed for web search)')
+  }
+  const gw = createGateway({ apiKey })
+  const perplexityTool = gw.tools.perplexitySearch({
+    maxResults: 8,
+    maxTokens: 50_000,
+    maxTokensPerPage: 2048,
+    searchRecencyFilter: 'day',
+  })
+  const payload = { query }
+  const prompt = `Call perplexity_search exactly once with this JSON input and no other tools:\n${JSON.stringify(payload)}`
+
+  console.log('[AI Gateway] perplexity_search inner generateText start')
+  const result = await generateText({
+    model: gw(PERPLEXITY_PROXY_LANGUAGE_MODEL_ID),
+    tools: { perplexity_search: perplexityTool },
+    toolChoice: { type: 'tool', toolName: 'perplexity_search' },
+    prompt,
+    stopWhen: stepCountIs(2),
+  })
+
+  for (const step of result.steps) {
+    for (const tr of step.toolResults) {
+      if (tr.toolName !== 'perplexity_search' || tr.type !== 'tool-result') continue
+      const out = tr.output
+      if (isPerplexityErrorOutput(out)) {
+        throw new Error(out.message || out.error || 'Perplexity search returned an error')
+      }
+      console.log('[AI Gateway] perplexity_search inner generateText OK')
+      return out
+    }
+    for (const part of step.content) {
+      if (part.type === 'tool-error' && part.toolName === 'perplexity_search') {
+        throw new Error(
+          part.error instanceof Error ? part.error.message : String(part.error),
+        )
+      }
+    }
+  }
+
+  console.error('[AI Gateway] perplexity_search inner generateText missing tool result', {
+    finishReason: result.finishReason,
+    steps: result.steps.length,
+  })
+  throw new Error('Web search did not return results — check AI Gateway / Perplexity billing and logs')
+}
+
 function createPerplexitySearchFunctionTool(accessToken?: string) {
   return tool({
     description:
@@ -228,55 +292,7 @@ function createPerplexitySearchFunctionTool(accessToken?: string) {
         .union([z.string().min(1), z.array(z.string().min(1)).max(5)])
         .describe('Search query string, or up to 5 queries to combine results'),
     }),
-    execute: async (input) => {
-      const apiKey = await resolveGatewayApiKey(accessToken)
-      if (!apiKey) {
-        throw new Error('AI Gateway API key is not configured (needed for web search)')
-      }
-      const gw = createGateway({ apiKey })
-      const perplexityTool = gw.tools.perplexitySearch({
-        maxResults: 8,
-        maxTokens: 50_000,
-        maxTokensPerPage: 2048,
-        searchRecencyFilter: 'day',
-      })
-      const payload = { query: input.query }
-      const prompt = `Call perplexity_search exactly once with this JSON input and no other tools:\n${JSON.stringify(payload)}`
-
-      console.log('[AI Gateway] perplexity_search inner generateText start')
-      const result = await generateText({
-        model: gw(PERPLEXITY_PROXY_LANGUAGE_MODEL_ID),
-        tools: { perplexity_search: perplexityTool },
-        toolChoice: { type: 'tool', toolName: 'perplexity_search' },
-        prompt,
-        stopWhen: stepCountIs(2),
-      })
-
-      for (const step of result.steps) {
-        for (const tr of step.toolResults) {
-          if (tr.toolName !== 'perplexity_search' || tr.type !== 'tool-result') continue
-          const out = tr.output
-          if (isPerplexityErrorOutput(out)) {
-            throw new Error(out.message || out.error || 'Perplexity search returned an error')
-          }
-          console.log('[AI Gateway] perplexity_search inner generateText OK')
-          return out
-        }
-        for (const part of step.content) {
-          if (part.type === 'tool-error' && part.toolName === 'perplexity_search') {
-            throw new Error(
-              part.error instanceof Error ? part.error.message : String(part.error),
-            )
-          }
-        }
-      }
-
-      console.error('[AI Gateway] perplexity_search inner generateText missing tool result', {
-        finishReason: result.finishReason,
-        steps: result.steps.length,
-      })
-      throw new Error('Web search did not return results — check AI Gateway / Perplexity billing and logs')
-    },
+    execute: async (input) => executeGatewayPerplexitySearch(accessToken, input.query),
   })
 }
 

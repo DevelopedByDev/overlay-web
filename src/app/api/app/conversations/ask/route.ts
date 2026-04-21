@@ -34,6 +34,7 @@ import {
 } from '@/lib/knowledge-agent-instructions'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
+import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
 import { buildSecondarySystemPromptExtension } from '@/lib/operator-system-prompt'
@@ -411,11 +412,11 @@ export async function POST(request: NextRequest) {
       usage: { inputTokens: number; outputTokens: number },
       steps?: StepResult<ToolSet>[],
       routedModelId?: string,
+      persistOverride?: { content: string; parts: Array<Record<string, unknown>> },
     ) => {
-      const { content: persistContent, parts: persistParts } = buildAssistantPersistenceFromSteps(
-        steps,
-        text,
-      )
+      const { content: persistContent, parts: persistParts } = persistOverride
+        ? persistOverride
+        : buildAssistantPersistenceFromSteps(steps, text)
       const providerCostUsd = calculateTokenCost(
         effectiveModelId,
         usage.inputTokens,
@@ -467,7 +468,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const systemWithTools = baseSystemMessage + knowledgeToolNote
+    const FREE_TIER_TOOL_LEAK_NOTE =
+      '\n\n(Free tier) Never print tool calls as plain text. Do not output JSON, prefixes like OLCALL>, TOOLCALL, or fenced tool blocks for perplexity_search. When you need web search, use the real tool-calling channel only—do not paste tool names, schemas, or arguments in your visible reply.'
+
+    const systemWithTools =
+      baseSystemMessage +
+      knowledgeToolNote +
+      (effectiveModelId === FREE_TIER_AUTO_MODEL_ID ? FREE_TIER_TOOL_LEAK_NOTE : '')
 
     const unifiedAskEnabled = unifiedAskEnabledEarly
 
@@ -592,11 +599,31 @@ export async function POST(request: NextRequest) {
             effectiveModelId === FREE_TIER_AUTO_MODEL_ID
               ? lastStep?.response.modelId
               : undefined
+          let finalText = event.text
+          let persistOverride:
+            | { content: string; parts: Array<Record<string, unknown>> }
+            | undefined
+          if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
+            const repaired = await maybeRepairFreeTierLeakedPerplexityText({
+              modelId: effectiveModelId,
+              steps: event.steps,
+              text: event.text,
+              accessToken: auth.accessToken,
+            })
+            if (repaired) {
+              finalText = repaired
+              persistOverride = {
+                content: repaired,
+                parts: [{ type: 'text', text: repaired }],
+              }
+            }
+          }
           await finishAsk(
-            event.text,
+            finalText,
             { inputTokens: inTok, outputTokens: outTok },
             event.steps,
             routedModelId,
+            persistOverride,
           )
         },
       })

@@ -26,6 +26,7 @@ import { filterComposioToolSet } from '@/lib/tools/composio-filter'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
+import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
 import { buildSecondarySystemPromptExtension } from '@/lib/operator-system-prompt'
@@ -414,6 +415,9 @@ export async function POST(request: NextRequest) {
       '\n\nYou also have save_memory, update_memory, and delete_memory.\n\n' +
       MEMORY_SAVE_PROTOCOL
 
+    const FREE_TIER_TOOL_LEAK_NOTE =
+      '\n\n(Free tier) Never print tool calls as plain text. Do not output JSON, prefixes like OLCALL>, TOOLCALL, or fenced tool blocks for perplexity_search. When you need web search, use the real tool-calling channel only—do not paste tool names, schemas, or arguments in your visible reply.'
+
     const agent = new ToolLoopAgent({
       model: languageModel,
       tools,
@@ -431,7 +435,8 @@ export async function POST(request: NextRequest) {
         knowledgeNote +
         memoryContext +
         autoRetrieval +
-        indexedNote,
+        indexedNote +
+        (effectiveModelId === FREE_TIER_AUTO_MODEL_ID ? FREE_TIER_TOOL_LEAK_NOTE : ''),
     })
 
     let automationSuggestion:
@@ -531,10 +536,26 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          const { content: persistContent, parts: persistParts } = buildAssistantPersistenceFromSteps(
-            event.steps,
-            event.text,
-          )
+          let persistOverride:
+            | { content: string; parts: Array<Record<string, unknown>> }
+            | undefined
+          if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
+            const repaired = await maybeRepairFreeTierLeakedPerplexityText({
+              modelId: effectiveModelId,
+              steps: event.steps,
+              text: event.text,
+              accessToken: auth.accessToken,
+            })
+            if (repaired) {
+              persistOverride = {
+                content: repaired,
+                parts: [{ type: 'text', text: repaired }],
+              }
+            }
+          }
+          const { content: persistContent, parts: persistParts } = persistOverride
+            ? persistOverride
+            : buildAssistantPersistenceFromSteps(event.steps, event.text)
 
           if (cid) {
             const routedModelId =
