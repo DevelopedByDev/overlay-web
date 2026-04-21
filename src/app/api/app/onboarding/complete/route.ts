@@ -12,6 +12,7 @@ export async function POST() {
   const result = await convex.mutation('users:markOnboardingComplete', {
     serverSecret: getInternalApiSecret(),
     userId: session.user.id,
+    email: session.user.email ?? undefined,
   })
 
   return NextResponse.json(result ?? { ok: false })

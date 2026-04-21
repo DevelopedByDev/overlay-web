@@ -284,16 +284,39 @@ export const getChatStartersByServer = query({
 
 /** Mark that a user has completed (or dismissed) the onboarding tour. */
 export const markOnboardingComplete = mutation({
-  args: { serverSecret: v.string(), userId: v.string() },
-  handler: async (ctx, { serverSecret, userId }) => {
+  args: { serverSecret: v.string(), userId: v.string(), email: v.optional(v.string()) },
+  handler: async (ctx, { serverSecret, userId, email }) => {
     requireServerSecret(serverSecret)
     const sub = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
-    if (!sub) return { ok: false as const }
-    await ctx.db.patch(sub._id, { hasSeenOnboarding: true })
-    return { ok: true as const }
+    if (sub) {
+      await ctx.db.patch(sub._id, { hasSeenOnboarding: true })
+      return { ok: true as const }
+    }
+    // Subscription row is normally created by syncUserProfile; if missing, bootstrap
+    // a free-tier row so onboarding completion can persist.
+    const safeEmail = email?.trim() || `${userId}@users.overlay.onboarding`
+    const now = Date.now()
+    await ctx.db.insert('subscriptions', {
+      userId,
+      email: safeEmail,
+      name: safeEmail.split('@')[0] || 'User',
+      tier: 'free',
+      planKind: 'free',
+      planVersion: 'variable_v2',
+      planAmountCents: 0,
+      markupBasisPoints: DEFAULT_MARKUP_BASIS_POINTS,
+      status: 'active',
+      currentPeriodStart: now,
+      currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
+      creditsUsed: 0,
+      autoTopUpEnabled: false,
+      lastLoginAt: now,
+      hasSeenOnboarding: true,
+    })
+    return { ok: true as const, bootstrappedSubscription: true as const }
   },
 })
 

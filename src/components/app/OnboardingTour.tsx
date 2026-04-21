@@ -8,7 +8,64 @@ import {
   useCallback,
   type CSSProperties,
 } from 'react'
-import { X, ArrowRight } from 'lucide-react'
+import { X, ArrowRight, Copy, Check, Plus, Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { IntegrationsDialog } from '@/components/app/IntegrationsDialog'
+import { notifyIntegrationsChanged } from '@/lib/integrations-events'
+
+/** Paste in ChatGPT, Claude, etc., then paste the reply into Overlay to save as memories. */
+export const ONBOARDING_IMPORT_MEMORY_PROMPT =
+  'Tell me everything you know about me, list every memory you have.'
+
+/** Popular connectors shown as cards on the post-tour “Connect your tools” step (Composio slugs). */
+const ONBOARDING_CONNECTOR_CARDS: ReadonlyArray<{
+  slug: string
+  name: string
+  description: string
+  icon: string
+}> = [
+  {
+    slug: 'googledrive',
+    name: 'Google Drive',
+    description: 'Search and manage Drive files',
+    icon: '📁',
+  },
+  {
+    slug: 'notion',
+    name: 'Notion',
+    description: 'Create pages and manage workspace',
+    icon: '📝',
+  },
+  {
+    slug: 'gmail',
+    name: 'Gmail',
+    description: 'Compose, send, and search emails',
+    icon: '📧',
+  },
+  {
+    slug: 'googlecalendar',
+    name: 'Google Calendar',
+    description: 'Read and create calendar events',
+    icon: '📅',
+  },
+  {
+    slug: 'outlook',
+    name: 'Outlook',
+    description: 'Send emails and manage calendar',
+    icon: '📨',
+  },
+  {
+    slug: 'googlesheets',
+    name: 'Google Sheets',
+    description: 'Read, update, and create spreadsheets',
+    icon: '📊',
+  },
+]
+
+const DIALOG_SECONDARY_CLASS =
+  'rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]'
+const DIALOG_PRIMARY_CLASS =
+  'rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-40'
 
 export interface TourStep {
   /** data-tour attribute value of the target element */
@@ -171,6 +228,8 @@ function computeTooltipStyle(
 
 interface Frame { rect: Rect | null; stepIndex: number; spotlightRect: Rect | null }
 
+type PostTourPhase = null | 'import-memories' | 'connectors'
+
 export function OnboardingTour({
   steps,
   currentStep,
@@ -180,7 +239,15 @@ export function OnboardingTour({
   onDone,
   isClosing = false,
 }: Props) {
+  const router = useRouter()
   const step = steps[currentStep]
+  const [postTourPhase, setPostTourPhase] = useState<PostTourPhase>(null)
+  const [importPaste, setImportPaste] = useState('')
+  const [memoryPromptCopied, setMemoryPromptCopied] = useState(false)
+  const [connectorConnectingSlug, setConnectorConnectingSlug] = useState<string | null>(null)
+  const [integrationsPickerOpen, setIntegrationsPickerOpen] = useState(false)
+  const [isImportSaving, setIsImportSaving] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
   const [frame, setFrame] = useState<Frame>({ rect: null, stepIndex: -1, spotlightRect: null })
   const [backdropReady, setBackdropReady] = useState(false)
   const rafRef = useRef<number | null>(null)
@@ -197,7 +264,7 @@ export function OnboardingTour({
   }, [])
 
   useLayoutEffect(() => {
-    if (!step) return
+    if (!step || postTourPhase) return
 
     const idx = currentStep
     const target = step.target
@@ -225,7 +292,7 @@ export function OnboardingTour({
       observerRef.current?.disconnect()
       window.removeEventListener('resize', onResize)
     }
-  }, [currentStep, step, measure])
+  }, [currentStep, step, measure, postTourPhase])
 
   // Open/close the model picker when step 0 is active
   useEffect(() => {
@@ -244,19 +311,328 @@ export function OnboardingTour({
     }
   }, [currentStep, isClosing, measure, steps])
 
+  const finishPostTour = useCallback(() => {
+    setPostTourPhase(null)
+    setImportPaste('')
+    setImportError(null)
+    setIntegrationsPickerOpen(false)
+    onDone()
+  }, [onDone])
+
+  const dialogConnect = useCallback(async (slug: string) => {
+    const oauthTab = window.open('about:blank', '_blank')
+    try {
+      const res = await fetch('/api/app/integrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'connect', toolkit: slug }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { redirectUrl?: string; connectionId?: string; error?: string }
+      if (!res.ok) {
+        oauthTab?.close()
+        throw new Error(data.error || 'Failed to initiate connection')
+      }
+      if (data.redirectUrl) {
+        if (oauthTab) oauthTab.location.href = data.redirectUrl
+        else window.open(data.redirectUrl, '_blank')
+        notifyIntegrationsChanged()
+      } else if (data.connectionId) {
+        oauthTab?.close()
+        notifyIntegrationsChanged()
+      } else {
+        oauthTab?.close()
+        throw new Error('No OAuth URL returned')
+      }
+    } catch (err) {
+      oauthTab?.close()
+      throw err
+    }
+  }, [])
+
+  const dialogDisconnect = useCallback(async (slug: string) => {
+    const res = await fetch('/api/app/integrations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'disconnect', toolkit: slug }),
+    })
+    if (!res.ok) throw new Error('Failed to disconnect')
+    notifyIntegrationsChanged()
+  }, [])
+
+  const connectPopularConnector = useCallback(
+    async (slug: string) => {
+      if (connectorConnectingSlug) return
+      setConnectorConnectingSlug(slug)
+      try {
+        await dialogConnect(slug)
+      } catch {
+        // Shows in OAuth / popup flow; user can retry or use Add to search
+      } finally {
+        setConnectorConnectingSlug(null)
+      }
+    },
+    [connectorConnectingSlug, dialogConnect],
+  )
+
+  const goToConnectorsStep = useCallback(() => {
+    setImportPaste('')
+    setImportError(null)
+    setPostTourPhase('connectors')
+  }, [])
+
+  const saveImportedMemories = useCallback(async () => {
+    const text = importPaste.trim()
+    if (!text || isImportSaving) return
+    setIsImportSaving(true)
+    setImportError(null)
+    try {
+      const res = await fetch('/api/app/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: text,
+          source: 'manual',
+          actor: 'user',
+          status: 'approved',
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to save' }))
+        setImportError((err as { error?: string }).error ?? 'Failed to save memories')
+        return
+      }
+      goToConnectorsStep()
+    } finally {
+      setIsImportSaving(false)
+    }
+  }, [importPaste, isImportSaving, goToConnectorsStep])
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (postTourPhase === 'import-memories') {
+        if (e.key === 'Escape') goToConnectorsStep()
+        return
+      }
+      if (postTourPhase === 'connectors') {
+        if (e.key === 'Escape') finishPostTour()
+        return
+      }
       if (e.key === 'Escape') onSkip()
       if (e.key === 'ArrowRight' || e.key === 'Enter') {
         if (currentStep < steps.length - 1) onNext()
-        else onDone()
+        else {
+          setPostTourPhase('import-memories')
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [currentStep, steps.length, onNext, onDone, onSkip])
+  }, [
+    currentStep,
+    steps.length,
+    onNext,
+    onSkip,
+    postTourPhase,
+    goToConnectorsStep,
+    finishPostTour,
+  ])
 
   if (!step) return null
+
+  if (postTourPhase === 'import-memories') {
+    return (
+      <div
+        className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
+        onClick={(e) => { if (e.target === e.currentTarget) goToConnectorsStep() }}
+      >
+        <div
+          role="dialog"
+          aria-labelledby="onboarding-import-title"
+          className="w-[min(540px,92vw)] max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <h2 id="onboarding-import-title" className="text-base font-semibold text-[var(--foreground)]">
+              Import memories from other assistants
+            </h2>
+            <button
+              type="button"
+              onClick={goToConnectorsStep}
+              className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              aria-label="Skip import"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <p className="mb-6 text-xs text-[var(--muted)]">
+            Optional — bring over context from ChatGPT, Claude, or other tools. Copy the prompt, paste it there, then paste the reply below. We&apos;ll save it into your Overlay memories.
+          </p>
+
+          <div className="relative mb-6 flex gap-3">
+            <div className="flex flex-col items-center">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-semibold text-[var(--background)]">
+                1
+              </span>
+              <div className="mt-1 w-px flex-1 min-h-[24px] bg-[var(--border)]" aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
+                Copy this prompt into a chat with your other AI provider
+              </p>
+              <div className="relative rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 pb-10 pt-3">
+                <p className="text-xs leading-relaxed text-[var(--foreground)]">{ONBOARDING_IMPORT_MEMORY_PROMPT}</p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(ONBOARDING_IMPORT_MEMORY_PROMPT)
+                    setMemoryPromptCopied(true)
+                    window.setTimeout(() => setMemoryPromptCopied(false), 2000)
+                  }}
+                  className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+                >
+                  {memoryPromptCopied ? <Check size={11} /> : <Copy size={11} />}
+                  {memoryPromptCopied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-semibold text-[var(--background)]">
+              2
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
+                Paste results below to add to Overlay memories
+              </p>
+              <textarea
+                value={importPaste}
+                onChange={(e) => setImportPaste(e.target.value)}
+                placeholder="Paste your memory details here"
+                rows={6}
+                className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-xs text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted)] focus:border-[var(--muted)]"
+              />
+              {importError ? (
+                <p className="mt-2 text-xs text-red-500">{importError}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+            <button type="button" onClick={goToConnectorsStep} className={DIALOG_SECONDARY_CLASS}>
+              Skip
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveImportedMemories()}
+              disabled={!importPaste.trim() || isImportSaving}
+              className={DIALOG_PRIMARY_CLASS}
+            >
+              {isImportSaving ? 'Saving…' : 'Add to memory'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (postTourPhase === 'connectors') {
+    return (
+      <>
+        <div
+          className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) finishPostTour() }}
+        >
+          <div
+            role="dialog"
+            aria-labelledby="onboarding-connectors-title"
+            className="w-[min(520px,94vw)] max-h-[min(90vh,840px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <h2 id="onboarding-connectors-title" className="text-base font-semibold text-[var(--foreground)]">
+                Connect your tools
+              </h2>
+              <button
+                type="button"
+                onClick={finishPostTour}
+                className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="mb-4 text-xs leading-relaxed text-[var(--muted)]">
+              Optional — connect apps you use with Overlay. Use Connect on a card below (same OAuth flow as Extensions), or{' '}
+              <span className="text-[var(--foreground)]">Add</span> to search the full integration catalog.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+              {ONBOARDING_CONNECTOR_CARDS.map((c) => {
+                const busy = connectorConnectingSlug === c.slug
+                const anyBusy = connectorConnectingSlug !== null
+                return (
+                  <div
+                    key={c.slug}
+                    className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 shadow-sm"
+                  >
+                    <span className="mb-1.5 text-xl leading-none" aria-hidden>{c.icon}</span>
+                    <p className="text-xs font-semibold text-[var(--foreground)]">{c.name}</p>
+                    <p className="mb-2.5 mt-0.5 line-clamp-3 flex-1 text-[10px] leading-snug text-[var(--muted)]">
+                      {c.description}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void connectPopularConnector(c.slug)}
+                      disabled={anyBusy}
+                      className="mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-50"
+                    >
+                      {busy ? (
+                        <Loader2 size={12} className="animate-spin" aria-hidden />
+                      ) : null}
+                      Connect
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIntegrationsPickerOpen(true)}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)]/60 py-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+            >
+              <Plus size={16} strokeWidth={2} className="text-[var(--muted)]" aria-hidden />
+              Add integration
+            </button>
+
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+              <button type="button" onClick={finishPostTour} className={DIALOG_SECONDARY_CLASS}>
+                Skip
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  router.push('/app/tools')
+                  finishPostTour()
+                }}
+                className={`${DIALOG_PRIMARY_CLASS} flex items-center gap-1.5`}
+              >
+                Open Extensions
+              </button>
+            </div>
+          </div>
+        </div>
+        <IntegrationsDialog
+          isOpen={integrationsPickerOpen}
+          onClose={() => setIntegrationsPickerOpen(false)}
+          onConnect={dialogConnect}
+          onDisconnect={dialogDisconnect}
+          overlayClassName="fixed inset-0 z-[10060] flex items-center justify-center bg-[var(--overlay-scrim)] p-5"
+        />
+      </>
+    )
+  }
 
   const rect = frame.stepIndex === currentStep ? frame.rect : null
   const spotlightRect = frame.spotlightRect
@@ -363,7 +739,7 @@ export function OnboardingTour({
               )}
               <button
                 type="button"
-                onClick={isLast ? onDone : onNext}
+                onClick={isLast ? () => setPostTourPhase('import-memories') : onNext}
                 className="flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)]"
               >
                 {isLast ? (
