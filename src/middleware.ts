@@ -5,7 +5,6 @@ import { hasValidSessionCookieSignature } from '@/lib/session-cookie-signature'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 const CSP_REPORT_PATH = '/api/security/csp-report'
-const CSP_NONCE_HEADER = 'x-csp-nonce'
 const IS_DEVELOPMENT = process.env.NODE_ENV !== 'production'
 
 // '/app' is intentionally public so guests can view the shell; all writes are gated at /api/app/*
@@ -30,18 +29,6 @@ function isProtectedRoute(pathname: string): boolean {
   return PROTECTED_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(route + '/')
   )
-}
-
-function createCspNonce(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-
-  let binary = ''
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-
-  return btoa(binary)
 }
 
 function parseOrigin(value: string | undefined): string | null {
@@ -90,11 +77,13 @@ function getCspHeaderName(): 'Content-Security-Policy' | 'Content-Security-Polic
   return IS_DEVELOPMENT ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy'
 }
 
-function buildCspPolicy(nonce: string): string {
+function buildCspPolicy(): string {
   const scriptSrc = uniqueSources([
     "'self'",
-    `'nonce-${nonce}'`,
-    "'strict-dynamic'",
+    // Keep Next.js framework/runtime scripts working on statically prerendered pages.
+    // A nonce-based strict CSP only works when Next can inject the nonce during SSR;
+    // our marketing pages are static, so strict-dynamic blocks hydration in production.
+    "'unsafe-inline'",
     IS_DEVELOPMENT ? "'unsafe-eval'" : null,
     'https://va.vercel-scripts.com',
   ])
@@ -151,11 +140,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const nonce = createCspNonce()
   const cspHeaderName = getCspHeaderName()
-  const cspPolicy = buildCspPolicy(nonce)
+  const cspPolicy = buildCspPolicy()
   const requestHeaders = new Headers(request.headers)
-  requestHeaders.set(CSP_NONCE_HEADER, nonce)
   requestHeaders.set(cspHeaderName, cspPolicy)
 
   const nextResponse = () =>
