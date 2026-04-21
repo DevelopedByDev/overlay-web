@@ -61,6 +61,14 @@ function uniqueSources(values: Array<string | null | undefined>): string[] {
   )
 }
 
+function getR2CspOrigin(): string | null {
+  const s3Api = process.env.S3_API?.trim()
+  if (s3Api) return parseOrigin(s3Api)
+  const accountId = process.env.R2_ACCOUNT_ID?.trim()
+  if (accountId) return `https://${accountId}.r2.cloudflarestorage.com`
+  return null
+}
+
 function buildConnectSrc(): string[] {
   return uniqueSources([
     "'self'",
@@ -69,6 +77,7 @@ function buildConnectSrc(): string[] {
     parseOrigin(process.env.SENTRY_DSN),
     parseOrigin(process.env.NEXT_PUBLIC_CONVEX_URL),
     parseOrigin(process.env.DEV_NEXT_PUBLIC_CONVEX_URL),
+    getR2CspOrigin(),
     IS_DEVELOPMENT ? 'ws:' : null,
     IS_DEVELOPMENT ? 'wss:' : null,
   ])
