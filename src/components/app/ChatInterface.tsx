@@ -17,6 +17,7 @@ import {
   Video,
   Download,
   Copy,
+  RotateCw,
   Reply,
   Pencil,
   BrainCircuit,
@@ -1309,6 +1310,25 @@ function messageMatchesLocalTurn(msg: { id?: string; turnId?: string }, turnId: 
   return localId === turnId || localId.startsWith(`${turnId}::`)
 }
 
+/** Remove assistant (and any non-user tail) after the given user turn so the exchange can be re-streamed. */
+function stripAssistantAfterUserTurn(messages: UIMessage[], turnId: string): UIMessage[] {
+  let userIdx = -1
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i] as UIMessage & { id?: string }
+    if (m.role === 'user' && messageMatchesLocalTurn(m, turnId)) {
+      userIdx = i
+      break
+    }
+  }
+  if (userIdx < 0) return messages
+  let end = userIdx + 1
+  while (end < messages.length && messages[end]!.role !== 'user') {
+    end++
+  }
+  if (end === userIdx + 1) return messages
+  return [...messages.slice(0, userIdx + 1), ...messages.slice(end)]
+}
+
 function replaceAssistantForTurn(
   messages: UIMessage[],
   turnId: string,
@@ -1573,13 +1593,15 @@ interface ExchangeBlockProps {
   onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
   /** Whether the shared sidebar is currently showing this exchange's sources. */
   isSourcesOpenForThis: boolean
+  onRetry?: () => void
+  retryDisabled?: boolean
 }
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onOpenSources, isSourcesOpenForThis,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true,
 }: ExchangeBlockProps) {
     const { settings: appSettings } = useAppSettings()
     const streamingMode = appSettings.chatStreamingMode
@@ -1887,6 +1909,18 @@ function ExchangeBlock({
               disabled={copyPlainText.length === 0 || isExiting}
               ariaLabel="Copy response"
             />
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                disabled={retryDisabled}
+                className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Regenerate response"
+                title="Regenerate response"
+              >
+                <RotateCw size={14} strokeWidth={1.75} />
+              </button>
+            )}
             <button
               type="button"
               onClick={onDeleteTurn}
@@ -4071,6 +4105,145 @@ export default function ChatInterface({
     }
   }
 
+  const handleRetryExchange = useCallback(
+    async (
+      userMsg: UIMessage,
+      exchIdx: number,
+      isActExch: boolean,
+      exchModelList: string[],
+    ) => {
+      const chatId = activeChatIdRef.current ?? activeChatId
+      if (!chatId || isActiveLoading) return
+      const turnId = getUserTurnId(userMsg)
+      if (!turnId) return
+
+      posthog.capture('chat_response_retry_clicked', {
+        exchange_index: exchIdx,
+        mode: isActExch ? 'act' : 'ask',
+      })
+
+      const runtime = ensureConversationRuntime(chatId)
+      shouldScrollRef.current = true
+
+      runtime.askChats.forEach((c) => c.stop())
+      runtime.actChat.stop()
+
+      const meta = userMsg.metadata as ChatMessageMetadata | undefined
+      const indexedFileNames = meta?.indexedDocuments ?? []
+      const indexedAttachments = meta?.indexedAttachments ?? []
+      const partsForModel =
+        userMsg.parts?.filter((p) => p.type === 'text' || p.type === 'file') ?? []
+      const replyExtra =
+        meta?.replyToTurnId && meta?.replySnippet
+          ? String(meta.replySnippet).slice(0, 16000)
+          : undefined
+
+      if (isActExch) {
+        runtime.actChat.messages = stripAssistantAfterUserTurn(runtime.actChat.messages, turnId)
+        runtime.askChats[0].messages = stripAssistantAfterUserTurn(runtime.askChats[0].messages, turnId)
+        const modelId = exchModelList[0] ?? selectedActModel
+        const msgCountBeforeSend = runtime.askChats[0].messages.length
+        startSession(chatId, 'act', activeChatTitle ?? '', msgCountBeforeSend)
+
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        void runtime.actChat
+          .sendMessage(
+            {
+              role: 'user',
+              parts: partsForModel as any,
+              messageId: turnId,
+              ...(meta && Object.keys(meta).length > 0 ? { metadata: meta } : {}),
+            } as any,
+            {
+              body: {
+                conversationId: chatId,
+                turnId,
+                modelId,
+                ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
+                ...(replyExtra ? { replyContextForModel: replyExtra } : {}),
+              },
+            },
+          )
+          /* eslint-enable @typescript-eslint/no-explicit-any */
+          .then(() => {
+            completeSession(chatId, activeChatIdRef.current === chatId)
+            loadChats()
+            loadSubscription()
+          })
+          .catch((err) => {
+            console.error('[ChatInterface] Act retry sendMessage failed', err)
+            completeSession(chatId, activeChatIdRef.current === chatId)
+            if (activeChatIdRef.current === chatId) {
+              setComposerNotice(
+                err instanceof Error ? err.message : 'Could not retry. Try again.',
+              )
+              window.setTimeout(() => setComposerNotice(null), 8000)
+            }
+          })
+        return
+      }
+
+      const n = exchModelList.length
+      if (n === 0) return
+      for (let idx = 0; idx < n; idx++) {
+        const ch = runtime.askChats[idx]
+        if (ch) ch.messages = stripAssistantAfterUserTurn(ch.messages, turnId)
+      }
+
+      const msgCountBeforeSend = runtime.askChats[0].messages.length
+      startSession(chatId, 'ask', activeChatTitle ?? '', msgCountBeforeSend)
+
+      const multiAsk = n > 1
+
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      void Promise.all(
+        exchModelList.map((modelId, idx) =>
+          runtime.askChats[idx].sendMessage(
+            {
+              role: 'user',
+              parts: partsForModel as any,
+              messageId: multiAsk ? `${turnId}::v${idx}` : turnId,
+              ...(meta && Object.keys(meta).length > 0 ? { metadata: meta } : {}),
+            } as any,
+            {
+              body: {
+                modelId,
+                conversationId: chatId,
+                turnId,
+                variantIndex: idx,
+                skipUserMessage: true,
+                ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
+                ...(replyExtra ? { replyContextForModel: replyExtra } : {}),
+              },
+            },
+          ),
+        ),
+      )
+        /* eslint-enable @typescript-eslint/no-explicit-any */
+        .then(async () => {
+          await hydrateCompletedAskTurnFromServer(chatId, turnId, exchModelList)
+          completeSession(chatId, activeChatIdRef.current === chatId)
+          loadChats()
+          loadSubscription()
+        })
+        .catch((err) => {
+          console.error('[ChatInterface] Ask retry failed', err)
+          completeSession(chatId, activeChatIdRef.current === chatId)
+        })
+    },
+    [
+      activeChatId,
+      activeChatTitle,
+      ensureConversationRuntime,
+      completeSession,
+      loadChats,
+      loadSubscription,
+      selectedActModel,
+      startSession,
+      isActiveLoading,
+    ],
+  )
+
   async function deleteChat(chatId: string, e: React.MouseEvent) {
     e.stopPropagation()
     await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
@@ -5731,6 +5904,20 @@ async function hydrateCompletedAskTurnFromServer(
                     isSourcesOpenForThis={
                       !!sourcesPanel &&
                       sourcesPanel.turnId === (textTurnIdForActions ?? msg.id)
+                    }
+                    onRetry={() =>
+                      void handleRetryExchange(
+                        msg as UIMessage,
+                        curExchIdx,
+                        isActExch,
+                        exchModelList,
+                      )
+                    }
+                    retryDisabled={
+                      !textTurnIdForActions ||
+                      textIsExiting ||
+                      (isLatest && isActiveLoading) ||
+                      instLoading
                     }
                   />
                 )

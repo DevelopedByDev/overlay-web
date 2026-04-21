@@ -67,6 +67,37 @@ const DIALOG_SECONDARY_CLASS =
 const DIALOG_PRIMARY_CLASS =
   'rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-40'
 
+/** Logos from GET /api/app/integrations?action=search (Composio catalog), with emoji fallback. */
+function OnboardingConnectorCardLogo({
+  name,
+  fallbackEmoji,
+  logoUrl,
+}: {
+  name: string
+  fallbackEmoji: string
+  logoUrl: string | null | undefined
+}) {
+  const [imgFailed, setImgFailed] = useState(false)
+  const showImage = Boolean(logoUrl) && !imgFailed
+
+  return (
+    <span className="mb-2 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+      {showImage ? (
+        <img
+          src={logoUrl!}
+          alt={name}
+          width={28}
+          height={28}
+          className="h-7 w-7 object-contain"
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        <span className="text-lg leading-none" aria-hidden>{fallbackEmoji}</span>
+      )}
+    </span>
+  )
+}
+
 export interface TourStep {
   /** data-tour attribute value of the target element */
   target: string
@@ -245,6 +276,7 @@ export function OnboardingTour({
   const [importPaste, setImportPaste] = useState('')
   const [memoryPromptCopied, setMemoryPromptCopied] = useState(false)
   const [connectorConnectingSlug, setConnectorConnectingSlug] = useState<string | null>(null)
+  const [connectorLogos, setConnectorLogos] = useState<Record<string, string | null>>({})
   const [integrationsPickerOpen, setIntegrationsPickerOpen] = useState(false)
   const [isImportSaving, setIsImportSaving] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
@@ -311,11 +343,36 @@ export function OnboardingTour({
     }
   }, [currentStep, isClosing, measure, steps])
 
+  // Same catalog fetch as Extensions → loadCatalog (Composio logos per toolkit slug).
+  useEffect(() => {
+    if (postTourPhase !== 'connectors') return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/app/integrations?action=search&limit=100')
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as { items?: Array<{ slug: string; logoUrl?: string | null }> }
+        const items = Array.isArray(data.items) ? data.items : []
+        const next: Record<string, string | null> = {}
+        for (const item of items) {
+          next[item.slug] = item.logoUrl ?? null
+        }
+        if (!cancelled) setConnectorLogos(next)
+      } catch {
+        // keep emoji fallbacks
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [postTourPhase])
+
   const finishPostTour = useCallback(() => {
     setPostTourPhase(null)
     setImportPaste('')
     setImportError(null)
     setIntegrationsPickerOpen(false)
+    setConnectorLogos({})
     onDone()
   }, [onDone])
 
@@ -576,7 +633,11 @@ export function OnboardingTour({
                     key={c.slug}
                     className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 shadow-sm"
                   >
-                    <span className="mb-1.5 text-xl leading-none" aria-hidden>{c.icon}</span>
+                    <OnboardingConnectorCardLogo
+                      name={c.name}
+                      fallbackEmoji={c.icon}
+                      logoUrl={connectorLogos[c.slug]}
+                    />
                     <p className="text-xs font-semibold text-[var(--foreground)]">{c.name}</p>
                     <p className="mb-2.5 mt-0.5 line-clamp-3 flex-1 text-[10px] leading-snug text-[var(--muted)]">
                       {c.description}

@@ -16,6 +16,10 @@ import { OnboardingTour, type TourStep } from './OnboardingTour'
 /** Client hint when server onboarding flag could not be persisted (cross-tab UX). */
 const ONBOARDING_COMPLETE_LS_KEY = 'overlay:onboarding-completed'
 
+function onboardingCompleteLsKey(userId: string) {
+  return `${ONBOARDING_COMPLETE_LS_KEY}:${userId}`
+}
+
 const TOUR_STEPS: TourStep[] = [
   {
     target: 'model-picker',
@@ -59,14 +63,19 @@ export function useOnboarding(): OnboardingContextType {
   return ctx
 }
 
-async function markComplete() {
+async function markComplete(userId: string | undefined) {
   try {
-    const res = await fetch('/api/app/onboarding/complete', { method: 'POST' })
+    const res = await fetch('/api/app/onboarding/complete', {
+      method: 'POST',
+      credentials: 'include',
+    })
     if (!res.ok) return
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean }
     if (data.ok === false) return
+    if (!userId) return
     try {
-      localStorage.setItem(ONBOARDING_COMPLETE_LS_KEY, '1')
+      localStorage.setItem(onboardingCompleteLsKey(userId), '1')
+      localStorage.removeItem(ONBOARDING_COMPLETE_LS_KEY)
     } catch {
       // ignore
     }
@@ -106,7 +115,7 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
 }
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, user } = useAuth()
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
@@ -115,6 +124,14 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [currentStep, setCurrentStep] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
   const checkedRef = useRef(false)
+  const prevUserIdRef = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    if (user?.id !== prevUserIdRef.current) {
+      prevUserIdRef.current = user?.id
+      checkedRef.current = false
+    }
+  }, [user?.id])
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)')
@@ -126,10 +143,11 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (isLoading || !isAuthenticated || checkedRef.current) return
+    if (isLoading || !isAuthenticated || !user?.id || checkedRef.current) return
     checkedRef.current = true
 
     const fromCallback = searchParams?.get('onboarding') === '1'
+    const uid = user.id
 
     if (fromCallback) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -139,6 +157,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     }
 
     try {
+      if (localStorage.getItem(onboardingCompleteLsKey(uid)) === '1') {
+        return
+      }
       if (localStorage.getItem(ONBOARDING_COMPLETE_LS_KEY) === '1') {
         return
       }
@@ -149,12 +170,13 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     // Check server flag for returning users on fresh page loads
     void (async () => {
       try {
-        const res = await fetch('/api/app/onboarding/status')
+        const res = await fetch('/api/app/onboarding/status', { credentials: 'include' })
         if (!res.ok) return
         const data = await res.json() as { hasSeenOnboarding: boolean }
         if (data.hasSeenOnboarding) {
           try {
-            localStorage.setItem(ONBOARDING_COMPLETE_LS_KEY, '1')
+            localStorage.setItem(onboardingCompleteLsKey(uid), '1')
+            localStorage.removeItem(ONBOARDING_COMPLETE_LS_KEY)
           } catch {
             // ignore
           }
@@ -166,7 +188,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         // non-fatal
       }
     })()
-  }, [isLoading, isAuthenticated, searchParams])
+  }, [isLoading, isAuthenticated, user?.id, searchParams])
 
   // Replay from settings: ?tour=replay can arrive at any time (no checkedRef guard)
   useEffect(() => {
@@ -186,12 +208,12 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new Event('overlay:tour:close-model-picker'))
     }
     setIsClosing(true)
-    void markComplete()
+    void markComplete(user?.id)
     setTimeout(() => {
       setActive(false)
       setIsClosing(false)
     }, 220)
-  }, [currentStep])
+  }, [currentStep, user?.id])
 
   // Steps 0 and 1 require /app/chat (model picker + generation mode toggle).
   const CHAT_PATH = '/app/chat'
