@@ -21,11 +21,14 @@ function HomeLandingContent() {
 
   return (
     <div className="gradient-bg">
+      <div className="liquid-glass" />
       <PageNavbar />
       <main className="relative z-10 flex flex-col">
-        <HeroSection theme={landingTheme} webAppHref={webAppHref} />
-        <ExtensionsStrip theme={landingTheme} />
-        <ContextHub theme={landingTheme} />
+        <section id="product">
+          <HeroSection theme={landingTheme} webAppHref={webAppHref} />
+          <ExtensionsStrip theme={landingTheme} />
+          <ContextHub theme={landingTheme} />
+        </section>
         <ModelsShowcase theme={landingTheme} />
         <AgentsPipeline theme={landingTheme} />
         <CreationBento theme={landingTheme} />

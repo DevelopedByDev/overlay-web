@@ -160,6 +160,11 @@ function PricingContent() {
       : 'inline-flex w-full items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800',
   }
 
+  function tierCardClass(tier: TierId) {
+    const selected = selectedTier === tier
+    return `${theme.tierCard} transition-all duration-200 ${selected ? 'ring-2 ring-zinc-900/15 dark:ring-white/15' : ''}`
+  }
+
   function selectTier(tier: TierId, amountCents?: number) {
     setSelectedTier(tier)
     if (tier === 'free') return
@@ -390,9 +395,7 @@ function PricingContent() {
             </section>
 
             {/* Starter */}
-            <section
-              className={`${theme.tierCard} ${selectedTier === 'starter' ? 'ring-2 ring-zinc-900/15 dark:ring-white/15' : ''}`}
-            >
+            <section className={tierCardClass('starter')} onClick={() => selectTier('starter')}>
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className={`text-lg font-semibold ${theme.heading}`}>Starter</h2>
@@ -421,9 +424,7 @@ function PricingContent() {
             </section>
 
             {/* Pro */}
-            <section
-              className={`${theme.tierCard} ${selectedTier === 'pro' ? 'ring-2 ring-zinc-900/15 dark:ring-white/15' : ''}`}
-            >
+            <section className={tierCardClass('pro')} onClick={() => selectTier('pro')}>
               <div>
                 <h2 className={`text-lg font-semibold ${theme.heading}`}>Pro</h2>
                 <p className={`text-xs ${theme.muted}`}>24 × $1 budget units / mo</p>
@@ -450,9 +451,7 @@ function PricingContent() {
             </section>
 
             {/* Max */}
-            <section
-              className={`${theme.tierCard} ${selectedTier === 'max' ? 'ring-2 ring-zinc-900/15 dark:ring-white/15' : ''}`}
-            >
+            <section className={tierCardClass('max')} onClick={() => selectTier('max')}>
               <div>
                 <h2 className={`text-lg font-semibold ${theme.heading}`}>Max</h2>
                 <p className={`text-xs ${theme.muted}`}>94 × $1 budget units / mo</p>
@@ -479,9 +478,7 @@ function PricingContent() {
             </section>
 
             {/* Choose your own */}
-            <section
-              className={`${theme.tierCard} relative overflow-hidden ${selectedTier === 'custom' ? 'ring-2 ring-zinc-900/15 dark:ring-white/15' : ''}`}
-            >
+            <section className={`${tierCardClass('custom')} relative overflow-hidden`} onClick={() => selectTier('custom')}>
               <div className={`pointer-events-none absolute inset-0 ${theme.heroGlow}`} />
               <div className="relative flex items-center gap-3">
                 <div className={theme.iconChip}>
@@ -517,6 +514,7 @@ function PricingContent() {
                     const next = Math.round(Number(event.target.value) * 100)
                     selectTier('custom', next)
                   }}
+                  aria-label="Choose monthly budget"
                   onPointerDown={() => {
                     if (selectedTier !== 'custom') selectTier('custom', selectedPlanAmountCents)
                   }}

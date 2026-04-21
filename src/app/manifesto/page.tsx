@@ -196,7 +196,7 @@ function ManifestoContent() {
       <PageNavbar />
 
       <main className="relative z-10 flex flex-1 flex-col items-center px-6 py-16 sm:px-8">
-        <div className="mx-auto w-full max-w-2xl translate-x-3 text-left sm:translate-x-8 md:translate-x-16 lg:translate-x-28 xl:translate-x-40 2xl:translate-x-48">
+        <div className="mx-auto w-full max-w-3xl text-left">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

@@ -101,6 +101,7 @@ function AudiencePageInner({
 
   return (
     <div className="gradient-bg">
+      <div className="liquid-glass" />
       <PageNavbar />
       <main className="relative z-10 flex flex-col">
         <section className="px-6 pb-20 pt-32 md:px-8 md:pb-28 md:pt-36">

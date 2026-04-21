@@ -34,6 +34,7 @@ import {
 } from '@/lib/knowledge-agent-instructions'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
 import { MATH_FORMAT_INSTRUCTION } from '@/lib/math-format-instructions'
+import { TABLE_FORMAT_INSTRUCTION } from '@/lib/markdown-table-instructions'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
 import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
 import { getInternalApiBaseUrl } from '@/lib/url'
@@ -379,6 +380,7 @@ export async function POST(request: NextRequest) {
       projectInstructionsExtension,
       skillsContext,
       MATH_FORMAT_INSTRUCTION,
+      TABLE_FORMAT_INSTRUCTION,
       memoryContext,
       autoRetrieval,
       indexedNote,
