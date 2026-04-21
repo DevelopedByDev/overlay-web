@@ -33,6 +33,7 @@ import {
   parseIndexedAttachmentsFromRequest,
 } from '@/lib/knowledge-agent-instructions'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
+import { MATH_FORMAT_INSTRUCTION } from '@/lib/math-format-instructions'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
 import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
 import { getInternalApiBaseUrl } from '@/lib/url'
@@ -68,14 +69,6 @@ function summarizeToolOutputForLog(output: unknown): string {
   }
   return typeof output
 }
-
-const MATH_FORMAT_INSTRUCTION = [
-  'Formatting requirements for math output:',
-  '- If you include any mathematical expression or equation, wrap it in double dollar delimiters: $$...$$.',
-  '- Use $$...$$ for both inline and display math.',
-  '- Do not use single-dollar math, \\(...\\), or \\[...\\].',
-  '- Keep explanatory prose outside the $$ delimiters.',
-].join('\n')
 
 export async function POST(request: NextRequest) {
   try {

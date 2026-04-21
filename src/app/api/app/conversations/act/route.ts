@@ -25,6 +25,7 @@ import {
 import { filterComposioToolSet } from '@/lib/tools/composio-filter'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
+import { MATH_FORMAT_INSTRUCTION } from '@/lib/math-format-instructions'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
 import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
 import { getInternalApiBaseUrl } from '@/lib/url'
@@ -436,6 +437,8 @@ export async function POST(request: NextRequest) {
         memoryContext +
         autoRetrieval +
         indexedNote +
+        '\n\n' +
+        MATH_FORMAT_INSTRUCTION +
         (effectiveModelId === FREE_TIER_AUTO_MODEL_ID ? FREE_TIER_TOOL_LEAK_NOTE : ''),
     })
 

@@ -13,6 +13,7 @@ import { stripThinkingPlaceholderMarkdown } from '@/lib/agent-assistant-text'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } from '@/lib/web-sources'
 import { shimIncompleteMarkdown } from '@/lib/shim-incomplete-markdown'
+import { normalizeLatexDelimiters } from '@/lib/math-markdown-normalize'
 import type { ChatStreamingMode } from './AppSettingsProvider'
 import { WebSourceTooltip } from './WebSourceTooltip'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -157,6 +158,7 @@ function normalizeGeneratedMarkdown(
 ): string {
   let t = mergeGfmTableContinuationLines(stripHtmlishToMarkdown(stripThinkingPlaceholderMarkdown(text)))
   t = bracketNormalize(t)
+  t = normalizeLatexDelimiters(t)
   const hasKnowledgeCitations =
     !!(options?.sourceCitations && Object.keys(options.sourceCitations).length > 0)
   const hasWebSources = !!(options?.webSources && options.webSources.length > 0)
