@@ -18,6 +18,7 @@ import {
   executeListSkills,
   executeRunDaytonaSandbox,
   executeSaveMemory,
+  executeSearchInFiles,
   executeSearchKnowledge,
   executeUpdateMemory,
 } from './overlay-executes'
@@ -66,6 +67,29 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       return executeSearchKnowledge(options, input)
     },
   })
+  }
+
+  if (shouldExposeTool('search_in_files')) {
+    tools.search_in_files = tool({
+      description:
+        'Lexical (substring) search over the user\'s own notebook file rows by Convex file id. Case-insensitive phrase matching with context snippets — works immediately even while vector embeddings are still building. ' +
+        'For a document split into multiple parts, pass every part id in order (see system hint for this turn). ' +
+        'Use this for exact phrases, names, and codes; use search_knowledge for broader semantic retrieval across the notebook.',
+      inputSchema: z.object({
+        fileIds: z
+          .array(z.string())
+          .min(1)
+          .describe('Ordered Convex file ids to search (include all part ids for a split upload).'),
+        query: z
+          .string()
+          .min(1)
+          .describe('Phrase or keywords to find (case-insensitive substring; not regex).'),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowedForMode(mode, 'search_in_files')
+        return executeSearchInFiles(options, input)
+      },
+    })
   }
 
   if (shouldExposeTool('list_notes')) {

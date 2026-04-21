@@ -2,6 +2,7 @@ export type ToolCostBucket = 'perplexity' | 'image' | 'video' | 'browser' | 'day
 
 const INTERNAL_TOOL_IDS = new Set<string>([
   'search_knowledge',
+  'search_in_files',
   'save_memory',
   'update_memory',
   'delete_memory',

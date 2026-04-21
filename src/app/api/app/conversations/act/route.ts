@@ -20,6 +20,7 @@ import {
   MEMORY_SAVE_PROTOCOL,
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
+  parseIndexedAttachmentsFromRequest,
 } from '@/lib/knowledge-agent-instructions'
 import { filterComposioToolSet } from '@/lib/tools/composio-filter'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
       turnId,
       modelId,
       indexedFileNames,
+      indexedAttachments: rawIndexedAttachments,
       attachmentNames,
       replyContextForModel,
       accessToken,
@@ -84,6 +86,7 @@ export async function POST(request: NextRequest) {
       turnId?: string
       modelId?: string
       indexedFileNames?: string[]
+      indexedAttachments?: unknown
       attachmentNames?: string[]
       replyContextForModel?: string
       accessToken?: string
@@ -327,16 +330,17 @@ export async function POST(request: NextRequest) {
     const sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> =
       autoRetrievalBundle.citations
 
-    const indexedNames = Array.isArray(indexedFileNames)
-      ? indexedFileNames.filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
-      : []
+    const indexedAttachmentList = parseIndexedAttachmentsFromRequest({
+      indexedAttachments: rawIndexedAttachments,
+      indexedFileNames,
+    })
     const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
       mode: 'act',
       latestUserText,
     })
 
-    const indexedNote = indexedFilesSystemNote(indexedNames)
-    let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
+    const indexedNote = indexedFilesSystemNote(indexedAttachmentList)
+    let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedAttachmentList)
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
     messagesForModel = sanitizeUiMessagesForModelApi(messagesForModel)
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)

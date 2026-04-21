@@ -2,6 +2,7 @@ import type { ToolMode } from './types'
 
 const ASK_BASE_TOOL_IDS = [
   'search_knowledge',
+  'search_in_files',
   'save_memory',
   'list_notes',
   'get_note',
@@ -10,6 +11,7 @@ const ASK_BASE_TOOL_IDS = [
 
 const ACT_BASE_TOOL_IDS = [
   'search_knowledge',
+  'search_in_files',
   'save_memory',
   'list_notes',
   'get_note',

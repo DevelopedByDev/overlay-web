@@ -258,6 +258,8 @@ interface AttachedImage {
 interface PendingChatDocument {
   clientId: string
   name: string
+  /** Convex file row ids (all parts when a long upload was split). */
+  fileIds: string[]
   status: 'uploading' | 'ready' | 'error'
   error?: string
 }
@@ -1211,6 +1213,7 @@ function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; med
 
 type ChatMessageMetadata = {
   indexedDocuments?: string[]
+  indexedAttachments?: { name: string; fileIds: string[] }[]
   replyToTurnId?: string
   replySnippet?: string
   sourceCitations?: SourceCitationMap
@@ -4096,7 +4099,10 @@ export default function ChatInterface({
   function queueDocumentUpload(file: File) {
     const clientId = crypto.randomUUID()
     setAttachmentError(null)
-    setPendingChatDocuments((prev) => [...prev, { clientId, name: file.name, status: 'uploading' }])
+    setPendingChatDocuments((prev) => [
+      ...prev,
+      { clientId, name: file.name, fileIds: [], status: 'uploading' },
+    ])
     const form = new FormData()
     form.append('file', file)
     if (embedProjectId) form.append('projectId', embedProjectId)
@@ -4117,8 +4123,19 @@ export default function ChatInterface({
           )
           return
         }
+        const data = (await res.json().catch(() => ({}))) as {
+          ids?: string[]
+          name?: string
+        }
+        const fileIds = Array.isArray(data.ids) ? data.ids.map((id) => String(id)) : []
+        const resolvedName =
+          typeof data.name === 'string' && data.name.trim().length > 0 ? data.name.trim() : file.name
         setPendingChatDocuments((prev) =>
-          prev.map((d) => (d.clientId === clientId ? { ...d, status: 'ready' as const } : d)),
+          prev.map((d) =>
+            d.clientId === clientId
+              ? { ...d, status: 'ready' as const, fileIds, name: resolvedName }
+              : d,
+          ),
         )
       })
       .catch(() => {
@@ -4564,9 +4581,9 @@ async function hydrateCompletedAskTurnFromServer(
     if (attachedImages.length === 0 && !text && !hasReadyDocs) return
     if (isSendBlocked) return
 
-    const indexedFileNames = pendingChatDocuments
-      .filter((d) => d.status === 'ready')
-      .map((d) => d.name)
+    const readyDocs = pendingChatDocuments.filter((d) => d.status === 'ready')
+    const indexedAttachments = readyDocs.map((d) => ({ name: d.name, fileIds: d.fileIds }))
+    const indexedFileNames = readyDocs.map((d) => d.name)
 
     // Capture before any await — isFirstMessage is true for the first message of a new/fresh chat
     const wasFirst = isFirstMessage
@@ -4603,7 +4620,10 @@ async function hydrateCompletedAskTurnFromServer(
     }
 
     const userMeta: ChatMessageMetadata = {}
-    if (indexedFileNames.length > 0) userMeta.indexedDocuments = indexedFileNames
+    if (indexedFileNames.length > 0) {
+      userMeta.indexedDocuments = indexedFileNames
+      userMeta.indexedAttachments = indexedAttachments
+    }
     if (replyCtxSnapshot?.replyToTurnId) {
       userMeta.replyToTurnId = replyCtxSnapshot.replyToTurnId
       userMeta.replySnippet = replyCtxSnapshot.snippet
@@ -4665,7 +4685,9 @@ async function hydrateCompletedAskTurnFromServer(
             conversationId: chatId,
             turnId: textTurnId,
             modelId: selectedActModelSnapshot,
-            ...(indexedFileNames.length > 0 ? { indexedFileNames } : {}),
+            ...(indexedFileNames.length > 0
+              ? { indexedFileNames, indexedAttachments }
+              : {}),
             ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
           },
         },
@@ -4758,7 +4780,9 @@ async function hydrateCompletedAskTurnFromServer(
               turnId: textTurnId,
               variantIndex: idx,
               skipUserMessage: persistedUserMessage || idx !== 0,
-              ...(indexedFileNames.length > 0 ? { indexedFileNames } : {}),
+              ...(indexedFileNames.length > 0
+                ? { indexedFileNames, indexedAttachments }
+                : {}),
               ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
             },
           },

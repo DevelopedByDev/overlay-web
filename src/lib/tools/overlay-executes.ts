@@ -37,6 +37,45 @@ export async function executeSearchKnowledge(
   }
 }
 
+export async function executeSearchInFiles(
+  options: OverlayToolsOptions,
+  input: { fileIds: string[]; query: string },
+) {
+  const { fileIds, query } = input
+  try {
+    const res = await callInternalApi(
+      '/api/app/files/search-text',
+      {
+        fileIds,
+        query,
+        ...toolAuthBody(options),
+      },
+      options.accessToken,
+      options.baseUrl,
+      { forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Search failed' }))
+      return { success: false, error: (err as { error?: string }).error ?? 'Search in files failed' }
+    }
+    const data = (await res.json()) as {
+      success?: boolean
+      matches?: Array<Record<string, unknown>>
+      truncated?: boolean
+    }
+    return {
+      success: true as const,
+      matches: data.matches ?? [],
+      truncated: Boolean(data.truncated),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Search in files failed',
+    }
+  }
+}
+
 export async function executeSaveMemory(
   options: OverlayToolsOptions,
   input: { content: string; source?: 'chat' | 'note' | 'manual' },

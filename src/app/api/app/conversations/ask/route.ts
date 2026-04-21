@@ -30,6 +30,7 @@ import {
   MEMORY_SAVE_PROTOCOL,
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
+  parseIndexedAttachmentsFromRequest,
 } from '@/lib/knowledge-agent-instructions'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
       systemPrompt,
       skipUserMessage,
       indexedFileNames,
+      indexedAttachments: rawIndexedAttachments,
       attachmentNames,
       replyContextForModel,
       accessToken,
@@ -102,8 +104,10 @@ export async function POST(request: NextRequest) {
       variantIndex?: number
       systemPrompt?: string
       skipUserMessage?: boolean
-      /** Notebook files just indexed from chat attachments (this turn). */
+      /** @deprecated Legacy; prefer indexedAttachments */
       indexedFileNames?: string[]
+      /** Notebook files just indexed from chat attachments (this turn), with Convex file ids when known. */
+      indexedAttachments?: unknown
       attachmentNames?: string[]
       /** Thread reply context appended to last user turn for the model only. */
       replyContextForModel?: string
@@ -352,19 +356,20 @@ export async function POST(request: NextRequest) {
     const sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> =
       autoRetrievalBundle.citations
 
-    const indexedNames = Array.isArray(indexedFileNames)
-      ? indexedFileNames.filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
-      : []
+    const indexedAttachmentList = parseIndexedAttachmentsFromRequest({
+      indexedAttachments: rawIndexedAttachments,
+      indexedFileNames,
+    })
     const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
       mode: 'ask',
       latestUserText,
       clientSurface,
     })
 
-    const indexedNote = indexedFilesSystemNote(indexedNames)
+    const indexedNote = indexedFilesSystemNote(indexedAttachmentList)
 
     /** Model sees indexed + optional reply context in the user turn; request `messages` stay unchanged for persistence. */
-    let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedNames)
+    let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedAttachmentList)
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
     messagesForModel = sanitizeUiMessagesForModelApi(messagesForModel)
     if (_ttftDebug) _tPrep = performance.now()

@@ -25,6 +25,7 @@
     "test:automations": "node --test --experimental-strip-types src/lib/automations.test.ts",
     "test:billing": "node --test --experimental-strip-types src/lib/billing-pricing.test.ts",
     "test:chat-history": "node --test --experimental-strip-types src/lib/chat-history-persistence.test.ts",
+    "test:file-text-search": "node --test --experimental-strip-types src/lib/file-text-search.test.ts",
     "test:daytona:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-tool-smoke.ts",
     "test:daytona:reconcile:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-reconcile-smoke.ts",
     "test:unified-tools": "node --experimental-strip-types scripts/unified-tools-sanity.ts",
