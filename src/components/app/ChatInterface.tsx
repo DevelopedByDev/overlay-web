@@ -69,7 +69,11 @@ import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
 import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { DelayedTooltip } from './DelayedTooltip'
-import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
+import {
+  normalizeAgentAssistantText,
+  redactOpaqueNotebookFileIdsInVisibleText,
+  splitRedactedThinkingSegments,
+} from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
 import { useAppSettings } from './AppSettingsProvider'
 import { useGuestGate } from './GuestGateProvider'
@@ -308,13 +312,33 @@ function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVi
       continue
     }
     if (pt.type === 'text' && typeof pt.text === 'string') {
-      const merged = normalizeAgentAssistantText(pt.text)
-      if (!merged) continue
-      const prev = out[out.length - 1]
-      if (prev?.kind === 'text') {
-        prev.text = normalizeAgentAssistantText(`${prev.text}\n\n${merged}`)
-      } else {
-        out.push({ kind: 'text', text: merged })
+      const segList = splitRedactedThinkingSegments(pt.text)
+      for (const seg of segList) {
+        if (seg.kind === 'text') {
+          const merged = normalizeAgentAssistantText(seg.text)
+          if (!merged) continue
+          const prev = out[out.length - 1]
+          if (prev?.kind === 'text') {
+            prev.text = normalizeAgentAssistantText(`${prev.text}\n\n${merged}`)
+          } else {
+            out.push({ kind: 'text', text: merged })
+          }
+        } else {
+          const merged = redactOpaqueNotebookFileIdsInVisibleText(seg.text.trim())
+          if (!merged) continue
+          const prev = out[out.length - 1]
+          if (prev?.kind === 'reasoning') {
+            prev.text = redactOpaqueNotebookFileIdsInVisibleText(
+              `${prev.text}\n\n${merged}`.trim(),
+            )
+          } else {
+            out.push({
+              kind: 'reasoning',
+              key: `reasoning-${out.length}`,
+              text: merged,
+            })
+          }
+        }
       }
     }
   }

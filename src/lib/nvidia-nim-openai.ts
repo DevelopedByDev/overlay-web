@@ -16,8 +16,8 @@ export const NVIDIA_NIM_BASE_URL = 'https://integrate.api.nvidia.com/v1' as cons
  */
 export const FREE_TIER_NVIDIA_PREFERRED_MODEL_ORDER = [
   'minimaxai/minimax-m2.7',
-  'moonshotai/kimi-k2-thinking',
   'deepseek-ai/deepseek-v3.2',
+  'moonshotai/kimi-k2-thinking',
 ] as const
 
 export async function resolveNvidiaApiKey(accessToken?: string): Promise<string | null> {

@@ -18,7 +18,10 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import type { Pluggable } from 'unified'
 import { mergeGfmTableContinuationLines } from '@/lib/markdown-table-fix'
-import { stripThinkingPlaceholderMarkdown } from '@/lib/agent-assistant-text'
+import {
+  normalizeAgentAssistantText,
+  stripThinkingPlaceholderMarkdown,
+} from '@/lib/agent-assistant-text'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } from '@/lib/web-sources'
 import { shimIncompleteMarkdown } from '@/lib/shim-incomplete-markdown'
@@ -442,9 +445,15 @@ export function MarkdownMessage({
 }: Props) {
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const hasWebSources = !!(webSources && webSources.length > 0)
+  // Defense in depth: every assistant markdown path (including any stream shape) strips NIM
+  // preambles and instruction echoes before GFM + citation post-processing.
+  const assistantStripped = useMemo(
+    () => stripThinkingPlaceholderMarkdown(normalizeAgentAssistantText(text)),
+    [text],
+  )
   const normalizedDisplay = useMemo(
     () =>
-      normalizeGeneratedMarkdown(text, {
+      normalizeGeneratedMarkdown(assistantStripped, {
         sourceCitations,
         linkifyCitations: !isStreaming && hasCitationMap,
         webSources,
@@ -452,7 +461,7 @@ export function MarkdownMessage({
         // instead of appearing only after completion.
         linkifyWebCitations: hasWebSources,
       }),
-    [text, sourceCitations, isStreaming, hasCitationMap, webSources, hasWebSources],
+    [assistantStripped, sourceCitations, isStreaming, hasCitationMap, webSources, hasWebSources],
   )
 
   const mdRenderComponents = useMemo(

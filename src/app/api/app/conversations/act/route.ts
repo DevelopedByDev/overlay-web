@@ -41,6 +41,7 @@ import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-m
 import { MATH_FORMAT_INSTRUCTION } from '@/lib/math-format-instructions'
 import { TABLE_FORMAT_INSTRUCTION } from '@/lib/markdown-table-instructions'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
+import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
@@ -477,7 +478,7 @@ export async function POST(request: NextRequest) {
       MEMORY_SAVE_PROTOCOL
 
     const freeTierModelLeakNote =
-      '\n\n(Free tier) Never print tool calls as plain text. Do not output JSON, prefixes like OLCALL>, TOOLCALL, or fenced tool blocks for perplexity_search or parallel_search. When you need web search, use the real tool-calling channel only—do not paste tool names, schemas, or arguments in your visible reply.'
+      '\n\n(Free tier — user-visible reply) Do not show chain-of-thought, step plans, or tool narration in the main body. If you must include planning, put it only inside `<think>...</think>` (shown as thinking, not the answer). Write only the final answer in the main text. When notebook or PDF files are attached in this turn, **zero** user-visible characters may appear before the first `search_in_files` or `search_knowledge` tool call: no intro, no checklist, no “I will search…”. Never mention internal file ids, “Convex”, backend storage names, or that you are “searching the knowledge” in prose—use tools quietly. Never print tool calls as JSON or prefixes (OLCALL, TOOLCALL) or tool names on their own lines. When you need web search, use the real tool-calling channel only. For attached PDFs, try search_in_files with short distinctive queries and search_knowledge by file name; if text is not available yet, say so in one short sentence without naming implementation details.'
 
     const multiCompareSlotNote = isMultiModelFollowUpSlot
       ? "\n\n(Parallel model comparison slot) Composio and other third-party account action tools are not in your tool set for this run. Another parallel model may have them. Use only the tools you actually have. Answer using reasoning and the tools still available (e.g. search, memory, image/video, sandbox, browser, if present). Do not try to use integrations you cannot call."
@@ -630,9 +631,10 @@ export async function POST(request: NextRequest) {
               accessToken: auth.accessToken,
             })
             if (repaired) {
+              const cleaned = normalizeAgentAssistantText(repaired)
               persistOverride = {
-                content: repaired,
-                parts: [{ type: 'text', text: repaired }],
+                content: cleaned,
+                parts: [{ type: 'text', text: cleaned }],
               }
             }
           }
