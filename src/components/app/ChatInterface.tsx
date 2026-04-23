@@ -34,7 +34,6 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import {
-  CHAT_MODEL_QUALITY_PRIORITY,
   DEFAULT_MODEL_ID,
   FREE_TIER_AUTO_MODEL_ID,
   IMAGE_MODELS,
@@ -52,7 +51,7 @@ import {
   type GenerationMode,
   type VideoSubMode,
 } from '@/lib/models'
-import { ACT_MODEL_KEY, CHAT_MODEL_KEY, COMPOSER_MODE_KEY } from '@/lib/chat-model-prefs'
+import { ACT_MODEL_KEY, CHAT_MODEL_KEY } from '@/lib/chat-model-prefs'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { webSourceDisplayKey } from '@/lib/web-sources'
@@ -158,87 +157,12 @@ function ModelQualitiesPanel({ modelId }: { modelId: string }) {
   )
 }
 
-function getAssistantAfterUserExchangeIndex(msgs: UIMessage[], exchIdx: number): UIMessage | null {
-  let uCount = 0
-  for (let i = 0; i < msgs.length; i++) {
-    if (msgs[i].role === 'user') {
-      if (uCount === exchIdx) {
-        for (let j = i + 1; j < msgs.length; j++) {
-          if (msgs[j].role === 'assistant') return msgs[j]
-          if (msgs[j].role === 'user') break
-        }
-        return null
-      }
-      uCount++
-    }
-  }
-  return null
-}
-
 function cloneUiMessageForThread(msg: UIMessage): UIMessage {
   try {
     return structuredClone(msg) as UIMessage
   } catch {
     return JSON.parse(JSON.stringify(msg)) as UIMessage
   }
-}
-
-/** Assistants for exchange `k` from prior picker models, best-first then remaining prev order. */
-function collectAssistantsForExchangeSorted(
-  prevOrder: string[],
-  snapshots: UIMessage[][],
-  qualityPriority: readonly string[],
-  k: number,
-): UIMessage[] {
-  const bySlotModel = new Map<string, UIMessage[]>()
-  prevOrder.forEach((id, j) => {
-    bySlotModel.set(id, snapshots[j] ?? [])
-  })
-  const prevSet = new Set(prevOrder)
-  const orderedIds: string[] = []
-  for (const pid of qualityPriority) {
-    if (prevSet.has(pid) && !orderedIds.includes(pid)) orderedIds.push(pid)
-  }
-  for (const id of prevOrder) {
-    if (!orderedIds.includes(id)) orderedIds.push(id)
-  }
-  const out: UIMessage[] = []
-  for (const id of orderedIds) {
-    const thread = bySlotModel.get(id)
-    if (!thread) continue
-    const a = getAssistantAfterUserExchangeIndex(thread, k)
-    if (a) out.push(a)
-  }
-  return out
-}
-
-/**
- * Prior context for a **new** picker model: same user turns as slot 0, then per-turn assistant chosen
- * from prior models so each physical slot gets a different answer when multiple variants existed
- * (slot index rotates through quality-sorted candidates). Avoids every chip sharing one "best" reply.
- */
-function buildSynthesizedThreadForPickerSlot(
-  prevOrder: string[],
-  snapshots: UIMessage[][],
-  qualityPriority: readonly string[],
-  physicalSlotIndex: number,
-): UIMessage[] {
-  const primary = snapshots[0] ?? []
-  const userMsgs: UIMessage[] = []
-  for (const m of primary) {
-    if (m.role === 'user') userMsgs.push(m)
-  }
-  if (userMsgs.length === 0) return []
-
-  const out: UIMessage[] = []
-  for (let k = 0; k < userMsgs.length; k++) {
-    out.push(cloneUiMessageForThread(userMsgs[k]!))
-    const candidates = collectAssistantsForExchangeSorted(prevOrder, snapshots, qualityPriority, k)
-    if (candidates.length === 0) continue
-    const pick = candidates[physicalSlotIndex % candidates.length]!
-    out.push(cloneUiMessageForThread(pick))
-  }
-  return out
 }
 
 interface Conversation {
@@ -574,6 +498,7 @@ function getDescriptiveToolLabel(toolName: string, toolInput?: Record<string, un
     browser_run_task: 'Browsing the web',
     interactive_browser_session: 'Browsing the web',
     perplexity_search: 'Searching the web',
+    parallel_search: 'Deep web research',
     search_knowledge: 'Searching your knowledge',
     list_skills: 'Checking your skills',
     list_notes: 'Listing your notes',
@@ -603,6 +528,14 @@ function getDescriptiveToolLabel(toolName: string, toolInput?: Record<string, un
     if (q) {
       const clipped = q.length > 72 ? `${q.slice(0, 72)}…` : q
       return `Searching the web for “${clipped}”`
+    }
+  }
+
+  if (toolName === 'parallel_search' && toolInput) {
+    const o = pickFirstStringFromInput(toolInput, ['objective'])
+    if (o) {
+      const clipped = o.length > 72 ? `${o.slice(0, 72)}…` : o
+      return `Researching: “${clipped}”`
     }
   }
 
@@ -822,9 +755,10 @@ function WebSearchToolBlock({
   const isDone = block.state === 'output-available'
   const isError = block.state === 'output-error' || block.state === 'output-denied'
   const running = !isDone && !isError
-  const queryRaw = pickFirstStringFromInput(block.toolInput, ['query', 'q']) ?? ''
+  const queryRaw =
+    pickFirstStringFromInput(block.toolInput, ['query', 'q', 'objective']) ?? ''
   const query = queryRaw.trim()
-  const label = getDescriptiveToolLabel('perplexity_search', block.toolInput)
+  const label = getDescriptiveToolLabel(block.name, block.toolInput)
   const [userExpanded, setUserExpanded] = useState(false)
   const sources = useMemo(() => collectWebSourcesFromSingleBlock(block), [block])
   const visibleSources = sources.slice(0, 3)
@@ -1444,6 +1378,7 @@ function collectSourceCandidatesFromUnknown(
         title: pickSourceTitle(rec, normalized),
         snippet:
           safeReadString(rec.snippet) ??
+          safeReadString(rec.excerpt) ??
           safeReadString(rec.summary) ??
           safeReadString(rec.description) ??
           undefined,
@@ -1467,12 +1402,13 @@ function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): WebSourceI
     if (block.state !== 'output-available') continue
     if (
       block.name !== 'perplexity_search' &&
+      block.name !== 'parallel_search' &&
       block.name !== 'browser_run_task' &&
       block.name !== 'interactive_browser_session'
     ) continue
     collectSourceCandidatesFromUnknown(
       block.toolOutput,
-      block.name === 'perplexity_search' ? 'web-search' : 'browser',
+      block.name === 'perplexity_search' || block.name === 'parallel_search' ? 'web-search' : 'browser',
       items,
       seen,
     )
@@ -1487,7 +1423,7 @@ function collectWebSourcesFromSingleBlock(block: ToolVisualBlock): WebSourceItem
   const seen = new Set<string>()
   collectSourceCandidatesFromUnknown(
     block.toolOutput,
-    block.name === 'perplexity_search' ? 'web-search' : 'browser',
+    block.name === 'perplexity_search' || block.name === 'parallel_search' ? 'web-search' : 'browser',
     items,
     seen,
   )
@@ -1595,13 +1531,15 @@ interface ExchangeBlockProps {
   isSourcesOpenForThis: boolean
   onRetry?: () => void
   retryDisabled?: boolean
+  /** Free plan: show upgrade hint in the response column (not the composer). */
+  showFreePlanCapabilitiesHint?: boolean
 }
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, showFreePlanCapabilitiesHint = false,
 }: ExchangeBlockProps) {
     const { settings: appSettings } = useAppSettings()
     const streamingMode = appSettings.chatStreamingMode
@@ -1762,7 +1700,7 @@ function ExchangeBlock({
                   />
                 )
               }
-              if (t.name === 'perplexity_search') {
+              if (t.name === 'perplexity_search' || t.name === 'parallel_search') {
                 return (
                   <WebSearchToolBlock
                     key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
@@ -1834,6 +1772,20 @@ function ExchangeBlock({
             </div>
           )
         })}
+
+        {showFreePlanCapabilitiesHint && responseSettled && !errorMessage && (
+          <div className="w-full px-1 pt-1">
+            <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-[11px] leading-relaxed text-[var(--muted)]">
+              Web search, remote browser, and workspace are available on a paid plan.{' '}
+              <Link
+                href="/pricing"
+                className="font-medium text-[var(--foreground)] underline underline-offset-2 hover:opacity-80"
+              >
+                Upgrade
+              </Link>
+            </p>
+          </div>
+        )}
 
         {!isStreaming && !errorMessage && automationSuggestion && !hasDraftToolCard ? (
           <DraftSuggestionCard
@@ -2081,7 +2033,7 @@ function DraftReviewModal({
                 <p className="text-sm font-medium text-[var(--foreground)]">{state.draft.title}</p>
                 <p className="mt-1 text-[12px] text-[var(--muted)]">{state.draft.description}</p>
                 <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
-                  <p>Mode: {state.draft.mode === 'act' ? 'Act' : 'Ask'}</p>
+                  <p>Agent</p>
                   <p>Model: {getChatModelDisplayName(state.draft.modelId)}</p>
                   <p>Confidence: {state.draft.confidence}</p>
                   <p>Integrations: {state.draft.detectedIntegrations.join(', ') || 'None detected'}</p>
@@ -2158,7 +2110,6 @@ function sanitizeEmptyChatStarters(prompts: string[], firstName?: string): strin
 }
 
 const DEFAULT_CHAT_TITLE = 'New Chat'
-const ASK_MODEL_SELECTION_MODE_KEY = 'overlay_ask_model_selection_mode'
 const IMAGE_MODEL_SELECTION_MODE_KEY = 'overlay_image_model_selection_mode'
 const VIDEO_MODEL_SELECTION_MODE_KEY = 'overlay_video_model_selection_mode'
 const SELECTED_IMAGE_MODELS_KEY = 'overlay_selected_image_models'
@@ -2192,7 +2143,6 @@ interface GenerationResult {
 type AskModelSelectionMode = 'single' | 'multiple'
 
 interface ConversationUiState {
-  composerMode: 'ask' | 'act'
   selectedActModel: string
   selectedModels: string[]
   askModelSelectionMode: AskModelSelectionMode
@@ -2234,7 +2184,6 @@ function cloneOrphanModelThreadsMap(source: Map<string, UIMessage[]>): Map<strin
 
 function cloneConversationUiState(state: ConversationUiState): ConversationUiState {
   return {
-    composerMode: state.composerMode,
     selectedActModel: state.selectedActModel,
     selectedModels: [...state.selectedModels],
     askModelSelectionMode: state.askModelSelectionMode,
@@ -2254,7 +2203,6 @@ function createConversationUiState(
   overrides: Partial<ConversationUiState> = {},
 ): ConversationUiState {
   return {
-    composerMode: overrides.composerMode ?? 'act',
     selectedActModel: overrides.selectedActModel ?? DEFAULT_MODEL_ID,
     selectedModels: [...(overrides.selectedModels ?? [DEFAULT_MODEL_ID])],
     askModelSelectionMode: overrides.askModelSelectionMode ?? 'single',
@@ -2278,22 +2226,23 @@ function createConversationRuntime(
   chatId: string,
   uiOverrides: Partial<ConversationUiState> = {},
 ): ConversationRuntime {
+  const actTransport = '/api/app/conversations/act'
   const askChats: ConversationRuntime['askChats'] = [
     new Chat({
       id: `${chatId}:ask:0`,
-      transport: new DefaultChatTransport({ api: '/api/app/conversations/ask' }),
+      transport: new DefaultChatTransport({ api: actTransport }),
     }),
     new Chat({
       id: `${chatId}:ask:1`,
-      transport: new DefaultChatTransport({ api: '/api/app/conversations/ask' }),
+      transport: new DefaultChatTransport({ api: actTransport }),
     }),
     new Chat({
       id: `${chatId}:ask:2`,
-      transport: new DefaultChatTransport({ api: '/api/app/conversations/ask' }),
+      transport: new DefaultChatTransport({ api: actTransport }),
     }),
     new Chat({
       id: `${chatId}:ask:3`,
-      transport: new DefaultChatTransport({ api: '/api/app/conversations/ask' }),
+      transport: new DefaultChatTransport({ api: actTransport }),
     }),
   ]
 
@@ -2611,7 +2560,6 @@ export default function ChatInterface({
 
   const [chats, setChats] = useState<Conversation[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
-  const [composerMode, setComposerMode] = useState<'ask' | 'act'>('act')
   /** Lifted sources-panel state so the sidebar sits beside the chat area and shrinks it,
    *  matching the AppSidebar width-transition pattern instead of overlaying the composer. */
   const [sourcesPanel, setSourcesPanel] = useState<{ turnId: string; sources: WebSourceItem[] } | null>(null)
@@ -2644,18 +2592,11 @@ export default function ChatInterface({
         setSelectedModels(restoredSelectedModels)
       }
     }
-    const savedAskSelectionMode = localStorage.getItem(ASK_MODEL_SELECTION_MODE_KEY)
-    if (savedAskSelectionMode === 'single' || savedAskSelectionMode === 'multiple') {
-      setAskModelSelectionMode(savedAskSelectionMode)
-    } else if ((restoredSelectedModels?.length ?? 1) > 1) {
+    if ((restoredSelectedModels?.length ?? 1) > 1) {
       setAskModelSelectionMode('multiple')
     }
     const savedAct = localStorage.getItem(ACT_MODEL_KEY)
     if (savedAct) setSelectedActModel(savedAct)
-    const savedComposerMode = localStorage.getItem(COMPOSER_MODE_KEY)
-    if (savedComposerMode === 'ask' || savedComposerMode === 'act') {
-      setComposerMode(savedComposerMode)
-    }
     const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
     if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
 
@@ -2868,7 +2809,6 @@ export default function ChatInterface({
   }, [])
 
   const applyUiStateToView = useCallback((ui: ConversationUiState) => {
-    setComposerMode(ui.composerMode)
     setSelectedActModel(ui.selectedActModel)
     setSelectedModels([...ui.selectedModels])
     setAskModelSelectionMode(ui.askModelSelectionMode)
@@ -2885,7 +2825,6 @@ export default function ChatInterface({
   const buildActiveUiStateSnapshot = useCallback((): ConversationUiState => {
     const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : null
     return createConversationUiState({
-      composerMode,
       selectedActModel,
       selectedModels,
       askModelSelectionMode,
@@ -2902,7 +2841,6 @@ export default function ChatInterface({
   }, [
     activeChatId,
     activeChatTitle,
-    composerMode,
     ensureConversationRuntime,
     exchangeGenTypes,
     exchangeModels,
@@ -2981,47 +2919,6 @@ export default function ChatInterface({
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
   const activeAskChats = activeRuntime.askChats
 
-  const remapChatSlotsForNewModelOrder = useCallback((prevOrder: string[], nextOrder: string[]) => {
-    const snapshots = activeAskChats.map((chat) => [...chat.messages])
-    const byModel = new Map<string, UIMessage[]>()
-    prevOrder.forEach((id, j) => {
-      byModel.set(id, snapshots[j]!)
-    })
-    const orphan = activeRuntime.ui.orphanModelThreads
-    for (const id of prevOrder) {
-      if (!nextOrder.includes(id)) {
-        const j = prevOrder.indexOf(id)
-        const snap = j >= 0 ? snapshots[j] : undefined
-        if (snap) orphan.set(id, [...snap])
-      }
-    }
-    for (let i = 0; i < 4; i++) {
-      if (i < nextOrder.length) {
-        const mid = nextOrder[i]!
-        let thread = byModel.get(mid)
-        if (!thread) {
-          const o = orphan.get(mid)
-          if (o) {
-            thread = [...o]
-            orphan.delete(mid)
-          }
-        }
-        if (thread) activeAskChats[i].messages = thread
-        else {
-          const synth = buildSynthesizedThreadForPickerSlot(
-            prevOrder,
-            snapshots,
-            CHAT_MODEL_QUALITY_PRIORITY,
-            i,
-          )
-          activeAskChats[i].messages = synth
-        }
-      } else {
-        activeAskChats[i].messages = []
-      }
-    }
-  }, [activeAskChats, activeRuntime.ui.orphanModelThreads])
-
   const isActiveLoading =
     activeAskChats
       .slice(0, selectedModels.length)
@@ -3029,17 +2926,11 @@ export default function ChatInterface({
     actChat.status === 'streaming' ||
     actChat.status === 'submitted'
 
-  const supportsVision =
-    composerMode === 'act'
-      ? (getModel(selectedActModel)?.supportsVision ?? false)
-      : selectedModels.every((id) => getModel(id)?.supportsVision ?? false)
+  const supportsVision = getModel(selectedActModel)?.supportsVision ?? false
 
   const isFreeTier = (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'free'
   const premiumModelBlocked =
-    isFreeTier &&
-    (composerMode === 'act'
-      ? selectedActModel !== FREE_TIER_AUTO_MODEL_ID
-      : selectedModels.some((id) => id !== FREE_TIER_AUTO_MODEL_ID))
+    isFreeTier && selectedActModel !== FREE_TIER_AUTO_MODEL_ID
   const creditsExhausted =
     !isFreeTier &&
     entitlements != null &&
@@ -3053,22 +2944,14 @@ export default function ChatInterface({
 
   useEffect(() => {
     if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
-    const askAlreadyAuto =
-      selectedModels.length === 1 && selectedModels[0] === FREE_TIER_AUTO_MODEL_ID
-    const actAlreadyAuto = selectedActModel === FREE_TIER_AUTO_MODEL_ID
-    if (askAlreadyAuto && actAlreadyAuto) return
+    if (selectedActModel === FREE_TIER_AUTO_MODEL_ID) return
 
     setSelectedModels([FREE_TIER_AUTO_MODEL_ID])
     setAskModelSelectionMode('single')
     setSelectedActModel(FREE_TIER_AUTO_MODEL_ID)
     localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_AUTO_MODEL_ID]))
-    localStorage.setItem(ASK_MODEL_SELECTION_MODE_KEY, 'single')
     localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_AUTO_MODEL_ID)
-  }, [chatPrefsHydrated, activeChatId, isFreeTier, selectedActModel, selectedModels])
-
-  useEffect(() => {
-    localStorage.setItem(COMPOSER_MODE_KEY, composerMode)
-  }, [composerMode])
+  }, [chatPrefsHydrated, activeChatId, isFreeTier, selectedActModel])
 
   // ── data loading ──────────────────────────────────────────────────────────
 
@@ -3328,14 +3211,14 @@ export default function ChatInterface({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversationId: activeChatId,
-          lastMode: composerMode,
+          lastMode: 'act',
           askModelIds: selectedModels,
           actModelId: selectedActModel,
         }),
       })
     }, 600)
     return () => clearTimeout(t)
-  }, [composerMode, selectedModels, selectedActModel, activeChatId])
+  }, [selectedModels, selectedActModel, activeChatId])
 
   // Auto-load a specific chat when embedded in project view (`id` = conversation)
   const showOwnSidebar = !hideSidebar && settings.useSecondarySidebar
@@ -3372,7 +3255,7 @@ export default function ChatInterface({
     if (ttftLoggedRef.current) return
     if (!isActiveLoading) return
     if (ttftSendTimeRef.current === null) return
-    const _msgs = composerMode === 'act' ? actChat.messages : chat0.messages
+    const _msgs = actChat.messages
     const _lastMsg = [..._msgs].reverse().find((m) => m.role === 'assistant')
     if (!_lastMsg) return
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3381,10 +3264,10 @@ export default function ChatInterface({
     if (!_hasText) return
     ttftLoggedRef.current = true
     const _ttft = performance.now() - ttftSendTimeRef.current
-    const _model = composerMode === 'act' ? selectedActModel : (selectedModels[0] ?? '')
-    console.log(`[TTFT][client] first-token | ${_ttft.toFixed(1)}ms | mode=${composerMode} | model=${_model}`)
+    const _model = selectedActModel
+    console.log(`[TTFT][client] first-token | ${_ttft.toFixed(1)}ms | mode=act | model=${_model}`)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActiveLoading, chat0.messages, actChat.messages, composerMode])
+  }, [isActiveLoading, chat0.messages, actChat.messages, selectedActModel])
 
   useEffect(() => {
     if (shouldScrollRef.current) {
@@ -3426,7 +3309,6 @@ export default function ChatInterface({
     hoveredModelId,
     selectedModels,
     selectedActModel,
-    composerMode,
     syncModelQualitiesPosition,
   ])
 
@@ -3494,8 +3376,14 @@ export default function ChatInterface({
 
   // ── response lookup ────────────────────────────────────────────────────────
 
-  function getResponseForExchangeForModel(modelId: string, exchIdx: number): UIMessage | null {
-    const liveIdx = selectedModels.indexOf(modelId)
+  function getResponseForExchangeForModel(
+    modelId: string,
+    exchIdx: number,
+    /** For Act multi-compare, slot order is the exchange's model list, not the global picker. */
+    slotOrder?: string[],
+  ): UIMessage | null {
+    const order = slotOrder && slotOrder.length > 0 ? slotOrder : selectedModels
+    const liveIdx = order.indexOf(modelId)
     const msgs =
       liveIdx >= 0
         ? activeAskChats[liveIdx].messages
@@ -3623,22 +3511,6 @@ export default function ChatInterface({
     }
   }, [embedProjectId])
 
-  const handleAskModelSelectionModeChange = useCallback((next: AskModelSelectionMode) => {
-    if (isActiveLoading || composerMode !== 'ask') return
-    if (next === askModelSelectionMode) return
-
-    localStorage.setItem(ASK_MODEL_SELECTION_MODE_KEY, next)
-    setAskModelSelectionMode(next)
-
-    if (next === 'single' && selectedModels.length > 1) {
-      const prev = [...selectedModels]
-      const nextModels = [prev[0]!]
-      remapChatSlotsForNewModelOrder(prev, nextModels)
-      setSelectedModels(nextModels)
-      localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(nextModels))
-    }
-  }, [askModelSelectionMode, composerMode, isActiveLoading, remapChatSlotsForNewModelOrder, selectedModels])
-
   const handleImageModelSelectionModeChange = useCallback(
     (next: AskModelSelectionMode) => {
       if (isActiveLoading || generationMode !== 'image') return
@@ -3731,6 +3603,62 @@ export default function ChatInterface({
     }
   }
 
+  const handleTextModelSelectionModeChange = useCallback(
+    (next: AskModelSelectionMode) => {
+      if (isActiveLoading || generationMode !== 'text') return
+      if (next === askModelSelectionMode) return
+      if (isFreeTier && next === 'multiple') return
+      setAskModelSelectionMode(next)
+      if (next === 'single' && selectedModels.length > 1) {
+        const one = [selectedModels[0]!]
+        setSelectedModels(one)
+        setSelectedActModel(one[0]!)
+        localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(one))
+        localStorage.setItem(ACT_MODEL_KEY, one[0]!)
+      } else if (next === 'multiple' && selectedModels.length > 0) {
+        setSelectedActModel(selectedModels[0]!)
+        localStorage.setItem(ACT_MODEL_KEY, selectedModels[0]!)
+      }
+    },
+    [generationMode, askModelSelectionMode, isActiveLoading, isFreeTier, selectedModels],
+  )
+
+  function toggleTextModelInPicker(modelId: string) {
+    if (isActiveLoading) return
+    if (askModelSelectionMode === 'single') {
+      if (selectedActModel === modelId && selectedModels.length === 1) return
+      const next = [modelId]
+      setSelectedActModel(modelId)
+      setSelectedModels(next)
+      try {
+        localStorage.setItem(ACT_MODEL_KEY, modelId)
+        localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(next))
+      } catch { /* ignore */ }
+      setShowModelPicker(false)
+      return
+    }
+    const isSel = selectedModels.includes(modelId)
+    if (isSel) {
+      if (selectedModels.length === 1) return
+      const next = selectedModels.filter((x) => x !== modelId)
+      setSelectedModels(next)
+      if (!next.includes(selectedActModel)) {
+        setSelectedActModel(next[0]!)
+        try { localStorage.setItem(ACT_MODEL_KEY, next[0]!) } catch { /* ignore */ }
+      }
+      try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+    } else {
+      if (selectedModels.length >= 4) return
+      const next = [...selectedModels, modelId]
+      setSelectedModels(next)
+      if (next.length === 1) {
+        setSelectedActModel(modelId)
+        try { localStorage.setItem(ACT_MODEL_KEY, modelId) } catch { /* ignore */ }
+      }
+      try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+    }
+  }
+
   // ── chat management ────────────────────────────────────────────────────────
 
   function clearTransientComposerState() {
@@ -3766,7 +3694,7 @@ export default function ChatInterface({
         title: DEFAULT_CHAT_TITLE,
         askModelIds: selectedModels,
         actModelId: selectedActModel,
-        lastMode: composerMode,
+        lastMode: 'act',
         ...(embedProjectId ? { projectId: embedProjectId } : {}),
       }),
     })
@@ -3777,26 +3705,24 @@ export default function ChatInterface({
         _id: data.id,
         title: DEFAULT_CHAT_TITLE,
         lastModified: Date.now(),
-        lastMode: composerMode,
+        lastMode: 'act',
         askModelIds: selectedModels,
         actModelId: selectedActModel,
       }
       setChats((prev) => [newChat, ...prev])
       dispatchChatCreated({ chat: newChat })
-      posthog.capture('chat_new_chat_created', { mode: composerMode })
+      posthog.capture('chat_new_chat_created', { mode: 'act' })
       const runtime = ensureConversationRuntime(data.id, {
-        composerMode,
         selectedActModel,
-        selectedModels,
-        askModelSelectionMode,
+        selectedModels: [selectedActModel],
+        askModelSelectionMode: 'single',
         activeChatTitle: DEFAULT_CHAT_TITLE,
         isFirstMessage: true,
       })
       resetRuntimeState(runtime, {
-        composerMode,
         selectedActModel,
-        selectedModels,
-        askModelSelectionMode,
+        selectedModels: [selectedActModel],
+        askModelSelectionMode: 'single',
         activeChatTitle: DEFAULT_CHAT_TITLE,
         isFirstMessage: true,
       })
@@ -3898,7 +3824,6 @@ export default function ChatInterface({
 
       const hasUserMessages = rawMessages.some((msg) => msg.role === 'user')
       let resolvedTitle = existingChat?.title ?? null
-      let resolvedComposerMode = existingChat?.lastMode ?? composerMode
       let resolvedSelectedModels = existingChat?.askModelIds?.slice(0, 4) ?? selectedModels
       let resolvedActModel = existingChat?.actModelId ?? selectedActModel
       if (metaRes.ok) {
@@ -3910,7 +3835,6 @@ export default function ChatInterface({
         }
         if (requestId !== loadChatRequestRef.current) return
         if (meta.title) resolvedTitle = meta.title
-        if (meta.lastMode) resolvedComposerMode = meta.lastMode
         if (meta.askModelIds?.length) {
           resolvedSelectedModels = meta.askModelIds.slice(0, 4)
           localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(resolvedSelectedModels))
@@ -4024,13 +3948,8 @@ export default function ChatInterface({
           const msgs: RawMsg[] = []
           for (const ex of exchanges) {
             msgs.push(ex.userMsg)
-            if (ex.mode === 'act') {
-              const r = ex.responses[0]
-              if (r && r.model === modelId) msgs.push(r.msg)
-            } else {
-              const r = ex.responses.find((x) => x.model === modelId)
-              if (r) msgs.push(r.msg)
-            }
+            const r = ex.responses.find((x) => x.model === modelId)
+            if (r) msgs.push(r.msg)
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           runtime.askChats[slotIdx].messages = msgs as any
@@ -4075,10 +3994,9 @@ export default function ChatInterface({
       }
 
       runtime.ui = createConversationUiState({
-        composerMode: resolvedComposerMode,
         selectedActModel: resolvedActModel,
         selectedModels: resolvedSelectedModels,
-        askModelSelectionMode: resolvedSelectedModels.length > 1 ? 'multiple' : askModelSelectionMode,
+        askModelSelectionMode: resolvedSelectedModels.length > 1 ? 'multiple' : 'single',
         exchangeModes: exchangeModesFromServer,
         exchangeModels: restoredExchangeModels,
         selectedTabPerExchange: exchanges.map(() => 0),
@@ -4145,10 +4063,11 @@ export default function ChatInterface({
       if (!chatId || isActiveLoading) return
       const turnId = getUserTurnId(userMsg)
       if (!turnId) return
+      if (!isActExch) return
 
       posthog.capture('chat_response_retry_clicked', {
         exchange_index: exchIdx,
-        mode: isActExch ? 'act' : 'ask',
+        mode: 'act',
       })
 
       const runtime = ensureConversationRuntime(chatId)
@@ -4167,14 +4086,69 @@ export default function ChatInterface({
           ? String(meta.replySnippet).slice(0, 16000)
           : undefined
 
-      if (isActExch) {
+      const multiRetry = exchModelList.length > 1
+      const retrySlots = Math.min(4, exchModelList.length)
+      if (multiRetry) {
+        for (let s = 0; s < retrySlots; s++) {
+          runtime.askChats[s].messages = stripAssistantAfterUserTurn(
+            runtime.askChats[s].messages,
+            turnId,
+          )
+        }
+        runtime.actChat.messages = stripAssistantAfterUserTurn(runtime.actChat.messages, turnId)
+      } else {
         runtime.actChat.messages = stripAssistantAfterUserTurn(runtime.actChat.messages, turnId)
         runtime.askChats[0].messages = stripAssistantAfterUserTurn(runtime.askChats[0].messages, turnId)
-        const modelId = exchModelList[0] ?? selectedActModel
-        const msgCountBeforeSend = runtime.askChats[0].messages.length
-        startSession(chatId, 'act', activeChatTitle ?? '', msgCountBeforeSend)
+      }
+      const modelId = exchModelList[0] ?? selectedActModel
+      const msgCountBeforeSend = runtime.askChats[0].messages.length
+      startSession(chatId, 'act', activeChatTitle ?? '', msgCountBeforeSend)
 
-        /* eslint-disable @typescript-eslint/no-explicit-any */
+      const baseBody = {
+        conversationId: chatId,
+        turnId,
+        ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
+        ...(replyExtra ? { replyContextForModel: replyExtra } : {}),
+      }
+
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      if (multiRetry) {
+        const sends = exchModelList.slice(0, retrySlots).map((mid, slotIdx) =>
+          runtime.askChats[slotIdx]!.sendMessage(
+            {
+              role: 'user',
+              parts: partsForModel as any,
+              messageId: turnId,
+              ...(meta && Object.keys(meta).length > 0 ? { metadata: meta } : {}),
+            } as any,
+            {
+              body: {
+                ...baseBody,
+                modelId: mid,
+                multiModelSlotIndex: slotIdx,
+                multiModelTotal: retrySlots,
+              },
+            },
+          ),
+        )
+        void Promise.all(sends)
+          .then(() => {
+            runtime.actChat.messages = [...runtime.askChats[0]!.messages]
+            completeSession(chatId, activeChatIdRef.current === chatId)
+            loadChats()
+            loadSubscription()
+          })
+          .catch((err) => {
+            console.error('[ChatInterface] Act multi retry sendMessage failed', err)
+            completeSession(chatId, activeChatIdRef.current === chatId)
+            if (activeChatIdRef.current === chatId) {
+              setComposerNotice(
+                err instanceof Error ? err.message : 'Could not retry. Try again.',
+              )
+              window.setTimeout(() => setComposerNotice(null), 8000)
+            }
+          })
+      } else {
         void runtime.actChat
           .sendMessage(
             {
@@ -4185,15 +4159,11 @@ export default function ChatInterface({
             } as any,
             {
               body: {
-                conversationId: chatId,
-                turnId,
+                ...baseBody,
                 modelId,
-                ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
-                ...(replyExtra ? { replyContextForModel: replyExtra } : {}),
               },
             },
           )
-          /* eslint-enable @typescript-eslint/no-explicit-any */
           .then(() => {
             completeSession(chatId, activeChatIdRef.current === chatId)
             loadChats()
@@ -4209,56 +4179,8 @@ export default function ChatInterface({
               window.setTimeout(() => setComposerNotice(null), 8000)
             }
           })
-        return
       }
-
-      const n = exchModelList.length
-      if (n === 0) return
-      for (let idx = 0; idx < n; idx++) {
-        const ch = runtime.askChats[idx]
-        if (ch) ch.messages = stripAssistantAfterUserTurn(ch.messages, turnId)
-      }
-
-      const msgCountBeforeSend = runtime.askChats[0].messages.length
-      startSession(chatId, 'ask', activeChatTitle ?? '', msgCountBeforeSend)
-
-      const multiAsk = n > 1
-
-      /* eslint-disable @typescript-eslint/no-explicit-any */
-      void Promise.all(
-        exchModelList.map((modelId, idx) =>
-          runtime.askChats[idx].sendMessage(
-            {
-              role: 'user',
-              parts: partsForModel as any,
-              messageId: multiAsk ? `${turnId}::v${idx}` : turnId,
-              ...(meta && Object.keys(meta).length > 0 ? { metadata: meta } : {}),
-            } as any,
-            {
-              body: {
-                modelId,
-                conversationId: chatId,
-                turnId,
-                variantIndex: idx,
-                skipUserMessage: true,
-                ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
-                ...(replyExtra ? { replyContextForModel: replyExtra } : {}),
-              },
-            },
-          ),
-        ),
-      )
-        /* eslint-enable @typescript-eslint/no-explicit-any */
-        .then(async () => {
-          await hydrateCompletedAskTurnFromServer(chatId, turnId, exchModelList)
-          completeSession(chatId, activeChatIdRef.current === chatId)
-          loadChats()
-          loadSubscription()
-        })
-        .catch((err) => {
-          console.error('[ChatInterface] Ask retry failed', err)
-          completeSession(chatId, activeChatIdRef.current === chatId)
-        })
+      /* eslint-enable @typescript-eslint/no-explicit-any */
     },
     [
       activeChatId,
@@ -4282,7 +4204,6 @@ export default function ChatInterface({
       activeChatIdRef.current = null
       pendingTitleRef.current = null
       applyUiStateToView(createConversationUiState({
-        composerMode,
         selectedActModel,
         selectedModels,
         askModelSelectionMode,
@@ -4386,50 +4307,6 @@ export default function ChatInterface({
 
   const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
 
-async function hydrateCompletedAskTurnFromServer(
-    chatId: string,
-    turnId: string,
-    modelIds: string[],
-  ) {
-    try {
-      const res = await fetch(`/api/app/conversations?conversationId=${encodeURIComponent(chatId)}&messages=true`)
-      if (!res.ok) return
-
-      const data = await res.json() as { messages?: ServerConversationMessage[] }
-      const allMessages = Array.isArray(data.messages) ? data.messages : []
-      const assistantsByModel = new Map<string, ServerConversationMessage>()
-      const assistantsInTurn: ServerConversationMessage[] = []
-
-      for (const msg of allMessages) {
-        if (msg.role !== 'assistant') continue
-        if (!messageMatchesLocalTurn(msg, turnId)) continue
-        assistantsInTurn.push(msg)
-        const modelKey = msg.model?.trim()
-        if (!modelKey) continue
-        assistantsByModel.set(modelKey, msg)
-      }
-
-      if (assistantsInTurn.length === 0) return
-
-      const runtime = ensureConversationRuntime(chatId)
-      const usedAssistantIds = new Set<string>()
-      modelIds.forEach((modelId, idx) => {
-        const chat = runtime.askChats[idx]
-        if (!chat) return
-
-        let serverAssistant = assistantsByModel.get(modelId)
-        if (!serverAssistant) {
-          serverAssistant = assistantsInTurn.find((msg) => !usedAssistantIds.has(msg.id))
-        }
-        if (!serverAssistant) return
-        usedAssistantIds.add(serverAssistant.id)
-        chat.messages = replaceAssistantForTurn(chat.messages, turnId, serverAssistant)
-      })
-    } catch (err) {
-      console.error('[ChatInterface] Failed to hydrate completed assistant turn', err)
-    }
-  }
-
   const { requireAuth } = useGuestGate()
 
   async function handleSend() {
@@ -4441,9 +4318,9 @@ async function hydrateCompletedAskTurnFromServer(
     const replyCtxSnapshot = replyContext
     const text = input.trim()
     const hasReadyDocs = pendingChatDocuments.some((d) => d.status === 'ready')
-    const composerModeSnapshot = composerMode
-    const selectedModelsSnapshot = [...selectedModels]
     const selectedActModelSnapshot = selectedActModel
+    const textModelsForTurn =
+      askModelSelectionMode === 'multiple' ? selectedModels.slice(0, 4) : [selectedActModel]
     const activeChatTitleSnapshot = activeChatTitle
     const selectedImageModelsSnapshot = [...selectedImageModels]
     const selectedVideoModelsSnapshot = [...selectedVideoModels]
@@ -4460,7 +4337,7 @@ async function hydrateCompletedAskTurnFromServer(
     }
 
     posthog.capture('chat_message_sent', {
-      mode: composerMode,
+      mode: 'act',
       generation_type: effectiveGenType,
       has_attachments: attachedImages.length > 0 || pendingChatDocuments.length > 0,
       is_first_message: isFirstMessage,
@@ -4492,7 +4369,7 @@ async function hydrateCompletedAskTurnFromServer(
         replyCtxSnapshot?.bodyForModel && text
           ? `${text}\n\n---\n[User is replying in thread to prior content]\n${replyCtxSnapshot.bodyForModel}`
           : text
-      const mediaSessionMode = composerModeSnapshot === 'act' ? 'act' : 'ask'
+      const mediaSessionMode = 'act'
 
       // Inject a placeholder user message into the primary chat slot so the exchange renders
       const exchIdx = targetRuntime.ui.exchangeModels.length
@@ -4506,7 +4383,7 @@ async function hydrateCompletedAskTurnFromServer(
         )
         return {
           ...prev,
-          exchangeModes: [...prev.exchangeModes, composerModeSnapshot],
+          exchangeModes: [...prev.exchangeModes, 'act'],
           exchangeModels: [...prev.exchangeModels, [...activeModels]],
           selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
           exchangeGenTypes: [...prev.exchangeGenTypes, effectiveGenType],
@@ -4533,7 +4410,8 @@ async function hydrateCompletedAskTurnFromServer(
             }
           : {}),
       }
-      targetRuntime.askChats.slice(0, selectedModelsSnapshot.length).forEach((chat) => {
+      const mediaSlotCount = Math.max(1, activeModels.length)
+      targetRuntime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
         chat.messages = [
           ...chat.messages,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4546,11 +4424,11 @@ async function hydrateCompletedAskTurnFromServer(
         body: JSON.stringify({
           conversationId: chatId,
           turnId: mediaTurnId,
-          mode: composerModeSnapshot,
+          mode: 'act',
           role: 'user',
           content: text,
           parts: [{ type: 'text', text }],
-          modelId: selectedModelsSnapshot[0],
+          modelId: activeModels[0],
           ...(replyCtxSnapshot?.replyToTurnId
             ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
             : {}),
@@ -4639,7 +4517,7 @@ async function hydrateCompletedAskTurnFromServer(
             role: 'assistant',
             parts: [{ type: 'text', text: summary }],
           }
-          targetRuntime.askChats.slice(0, selectedModelsSnapshot.length).forEach((chat) => {
+          targetRuntime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
             chat.messages = [
               ...chat.messages,
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4652,7 +4530,7 @@ async function hydrateCompletedAskTurnFromServer(
             body: JSON.stringify({
               conversationId: chatId,
               turnId: mediaTurnId,
-              mode: composerModeSnapshot,
+              mode: 'act',
               role: 'assistant',
               content: summary,
               contentType: 'text',
@@ -4748,7 +4626,7 @@ async function hydrateCompletedAskTurnFromServer(
             role: 'assistant',
             parts: [{ type: 'text', text: summary }],
           }
-          targetRuntime.askChats.slice(0, selectedModelsSnapshot.length).forEach((chat) => {
+          targetRuntime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
             chat.messages = [
               ...chat.messages,
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4761,7 +4639,7 @@ async function hydrateCompletedAskTurnFromServer(
             body: JSON.stringify({
               conversationId: chatId,
               turnId: mediaTurnId,
-              mode: composerModeSnapshot,
+              mode: 'act',
               role: 'assistant',
               content: summary,
               contentType: 'text',
@@ -4846,35 +4724,87 @@ async function hydrateCompletedAskTurnFromServer(
     const msgCountBeforeSend = targetRuntime.askChats[0].messages.length
     activeChatIdRef.current = chatId
 
-    if (composerModeSnapshot === 'act') {
-      updateRuntimeUiState(chatId, (prev) => ({
-        ...prev,
-        exchangeModes: [...prev.exchangeModes, 'act'],
-        exchangeModels: [...prev.exchangeModels, [selectedActModelSnapshot]],
-        selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
-        exchangeGenTypes: [...prev.exchangeGenTypes, 'text'],
-        isFirstMessage: false,
-      }))
+    const multiText = textModelsForTurn.length > 1
+    const textSlotCount = Math.min(4, textModelsForTurn.length)
 
-      startSession(chatId, 'act', activeChatTitleSnapshot ?? '', msgCountBeforeSend)
+    updateRuntimeUiState(chatId, (prev) => ({
+      ...prev,
+      exchangeModes: [...prev.exchangeModes, 'act'],
+      exchangeModels: [...prev.exchangeModels, [...textModelsForTurn]],
+      selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
+      exchangeGenTypes: [...prev.exchangeGenTypes, 'text'],
+      isFirstMessage: false,
+    }))
 
-      targetRuntime.askChats[0].messages = [
-        ...targetRuntime.askChats[0].messages,
+    startSession(chatId, 'act', activeChatTitleSnapshot ?? '', msgCountBeforeSend)
+
+    for (let s = 0; s < textSlotCount; s++) {
+      targetRuntime.askChats[s].messages = [
+        ...targetRuntime.askChats[s].messages,
         userUIMessage as UIMessage,
       ]
+    }
+    if (!multiText) {
       targetRuntime.actChat.messages = [
         ...targetRuntime.actChat.messages,
         userUIMessage as UIMessage,
       ]
+    }
 
-      setInput('')
-      setAttachedImages([])
-      setPendingChatDocuments([])
-      setAttachmentError(null)
-      setReplyContext(null)
-      setIsFirstMessage(false)
+    setInput('')
+    setAttachedImages([])
+    setPendingChatDocuments([])
+    setAttachmentError(null)
+    setReplyContext(null)
+    setIsFirstMessage(false)
 
-      /* eslint-disable @typescript-eslint/no-explicit-any -- UIMessage / sendMessage payload */
+    const commonActBody = {
+      conversationId: chatId,
+      turnId: textTurnId,
+      ...(indexedFileNames.length > 0
+        ? { indexedFileNames, indexedAttachments: indexedAttachments }
+        : {}),
+      ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
+    }
+
+    /* eslint-disable @typescript-eslint/no-explicit-any -- UIMessage / sendMessage payload */
+    if (multiText) {
+      const sends = textModelsForTurn.map((modelId, slotIdx) =>
+        targetRuntime.askChats[slotIdx]!.sendMessage(
+          {
+            role: 'user',
+            parts: partsForModel as any,
+            messageId: textTurnId,
+            ...(userMetadata ? { metadata: userMetadata } : {}),
+          } as any,
+          {
+            body: {
+              ...commonActBody,
+              modelId,
+              multiModelSlotIndex: slotIdx,
+              multiModelTotal: textSlotCount,
+            },
+          },
+        ),
+      )
+      void Promise.all(sends)
+        .then(() => {
+          targetRuntime.actChat.messages = [...targetRuntime.askChats[0]!.messages]
+          completeSession(chatId, activeChatIdRef.current === chatId)
+          loadChats()
+          loadSubscription()
+        })
+        .catch((err) => {
+          console.error('[ChatInterface] Act multi sendMessage failed', err)
+          completeSession(chatId, activeChatIdRef.current === chatId)
+          if (activeChatIdRef.current === chatId) {
+            setComposerNotice(
+              err instanceof Error ? err.message : 'Could not complete Act request. Try again.',
+            )
+            window.setTimeout(() => setComposerNotice(null), 8000)
+          }
+        })
+    } else {
       void targetRuntime.actChat.sendMessage(
         {
           role: 'user',
@@ -4884,13 +4814,8 @@ async function hydrateCompletedAskTurnFromServer(
         } as any,
         {
           body: {
-            conversationId: chatId,
-            turnId: textTurnId,
+            ...commonActBody,
             modelId: selectedActModelSnapshot,
-            ...(indexedFileNames.length > 0
-              ? { indexedFileNames, indexedAttachments }
-              : {}),
-            ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
           },
         },
       )
@@ -4909,93 +4834,7 @@ async function hydrateCompletedAskTurnFromServer(
             window.setTimeout(() => setComposerNotice(null), 8000)
           }
         })
-      /* eslint-enable @typescript-eslint/no-explicit-any */
-      return
     }
-
-    updateRuntimeUiState(chatId, (prev) => ({
-      ...prev,
-      exchangeModes: [...prev.exchangeModes, 'ask'],
-      exchangeModels: [...prev.exchangeModels, [...selectedModelsSnapshot]],
-      selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
-      exchangeGenTypes: [...prev.exchangeGenTypes, 'text'],
-      isFirstMessage: false,
-    }))
-
-    startSession(chatId, 'ask', activeChatTitleSnapshot ?? '', msgCountBeforeSend)
-
-    const multiAsk = selectedModelsSnapshot.length > 1
-    selectedModelsSnapshot.forEach((_, idx) => {
-      const variantUserId = multiAsk ? `${textTurnId}::v${idx}` : textTurnId
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const u = { ...userUIMessage, id: variantUserId } as any
-      targetRuntime.askChats[idx].messages = [...targetRuntime.askChats[idx].messages, u]
-    })
-
-    setInput('')
-    setAttachedImages([])
-    setPendingChatDocuments([])
-    setAttachmentError(null)
-    setReplyContext(null)
-    setIsFirstMessage(false)
-
-    let persistedUserMessage = false
-    try {
-      const persistRes = await fetch('/api/app/conversations/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: chatId,
-          turnId: textTurnId,
-          mode: 'ask',
-          role: 'user',
-          content: persistedContent,
-          parts: partsForPersist,
-          modelId: selectedModelsSnapshot[0],
-          ...(replyCtxSnapshot?.replyToTurnId
-            ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
-            : {}),
-        }),
-      })
-      persistedUserMessage = persistRes.ok
-      if (!persistRes.ok) {
-        console.error('[ChatInterface] Failed to persist user message', await persistRes.text())
-      }
-    } catch (err) {
-      console.error('[ChatInterface] Failed to persist user message', err)
-    }
-
-    /* eslint-disable @typescript-eslint/no-explicit-any -- UIMessage / sendMessage payload */
-    void Promise.all(
-      selectedModelsSnapshot.map((modelId, idx) =>
-        targetRuntime.askChats[idx].sendMessage(
-          {
-            role: 'user',
-            parts: partsForModel as any,
-            messageId: multiAsk ? `${textTurnId}::v${idx}` : textTurnId,
-            ...(userMetadata ? { metadata: userMetadata } : {}),
-          } as any,
-          {
-            body: {
-              modelId,
-              conversationId: chatId,
-              turnId: textTurnId,
-              variantIndex: idx,
-              skipUserMessage: persistedUserMessage || idx !== 0,
-              ...(indexedFileNames.length > 0
-                ? { indexedFileNames, indexedAttachments }
-                : {}),
-              ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
-            },
-          },
-        ),
-      ),
-    ).then(async () => {
-      await hydrateCompletedAskTurnFromServer(chatId, textTurnId, selectedModelsSnapshot)
-      completeSession(chatId, activeChatIdRef.current === chatId)
-      loadChats()
-      loadSubscription()
-    })
     /* eslint-enable @typescript-eslint/no-explicit-any */
   }
 
@@ -5046,41 +4885,11 @@ async function hydrateCompletedAskTurnFromServer(
     return () => window.removeEventListener('keydown', onGlobalKeyDown, true)
   }, [])
 
-  function toggleModel(modelId: string) {
-    if (isActiveLoading || composerMode === 'act') return
-    if (askModelSelectionMode === 'single') {
-      if (selectedModels[0] === modelId && selectedModels.length === 1) return
-      const prev = [...selectedModels]
-      const newModels = [modelId]
-      remapChatSlotsForNewModelOrder(prev, newModels)
-      setSelectedModels(newModels)
-      localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(newModels))
-      setShowModelPicker(false)
-      return
-    }
-    const isSelected = selectedModels.includes(modelId)
-    if (isSelected) {
-      if (selectedModels.length === 1) return
-      const prev = [...selectedModels]
-      const newModels = prev.filter((id) => id !== modelId)
-      remapChatSlotsForNewModelOrder(prev, newModels)
-      setSelectedModels(newModels)
-      localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(newModels))
-    } else {
-      if (selectedModels.length >= 4) return
-      const prev = [...selectedModels]
-      const newModels = [...prev, modelId]
-      remapChatSlotsForNewModelOrder(prev, newModels)
-      setSelectedModels(newModels)
-      localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(newModels))
-    }
-  }
-
   function stopActiveChat() {
     if (!isActiveLoading) return
     const userTurns = chat0.messages.filter((m) => m.role === 'user').length
     const idx = userTurns > 0 ? userTurns - 1 : -1
-    activeAskChats.slice(0, selectedModels.length).forEach((chat) => chat.stop())
+    activeAskChats.forEach((chat) => chat.stop())
     activeRuntime.actChat.stop()
     if (idx >= 0) setInterruptedExchangeIdx(idx)
   }
@@ -5092,11 +4901,9 @@ async function hydrateCompletedAskTurnFromServer(
     ? (selectedImageModels.length === 1 ? (IMAGE_MODELS.find((m) => m.id === selectedImageModels[0])?.name ?? 'Select model') : `${selectedImageModels.length} models`)
     : generationMode === 'video'
     ? (selectedVideoModels.length === 1 ? (VIDEO_MODELS.find((m) => m.id === selectedVideoModels[0])?.name ?? 'Select model') : `${selectedVideoModels.length} models`)
-    : composerMode === 'act'
-    ? (getChatModelDisplayName(selectedActModel) || 'Select model')
-    : selectedModels.length === 1
-    ? (getChatModelDisplayName(selectedModels[0] ?? '') || 'Select model')
-    : `${selectedModels.length} models`
+    : (askModelSelectionMode === 'multiple' && selectedModels.length > 1
+      ? `${selectedModels.length} models`
+      : (getChatModelDisplayName(selectedActModel) || 'Select model'))
 
   const primaryMessages = chat0.messages
   const hasMessages = primaryMessages.some((m) => m.role === 'user')
@@ -5527,27 +5334,29 @@ async function hydrateCompletedAskTurnFromServer(
                           </button>
                         )
                       })
-                  ) : composerMode === 'act' ? (
+                  ) : (
                     getModelsByIntelligence(isFreeTier).map((m) => {
-                      const isSel = m.id === selectedActModel
+                      const isSel =
+                        askModelSelectionMode === 'single'
+                          ? m.id === selectedActModel
+                          : selectedModels.includes(m.id)
+                      const isDisabled =
+                        askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
                       return (
                         <button
                           key={m.id}
                           type="button"
                           data-model-row={m.id}
-                          onClick={() => {
-                            setSelectedActModel(m.id)
-                            localStorage.setItem(ACT_MODEL_KEY, m.id)
-                            setShowModelPicker(false)
-                          }}
+                          disabled={isDisabled}
+                          onClick={() => toggleTextModelInPicker(m.id)}
                           onMouseEnter={(e) => {
                             setHoveredModelId(m.id)
                             const r = e.currentTarget.getBoundingClientRect()
                             setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
                           }}
-                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[var(--surface-muted)] ${
-                            isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'
-                          }`}
+                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
+                            isDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
+                          } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}
                         >
                           <span className="flex items-center gap-2">
                             {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
@@ -5557,63 +5366,8 @@ async function hydrateCompletedAskTurnFromServer(
                         </button>
                       )
                     })
-                  ) : (
-                    getModelsByIntelligence(isFreeTier).map((m) => {
-                      const isSelected = selectedModels.includes(m.id)
-                      const isDisabled = askModelSelectionMode === 'multiple' && !isSelected && selectedModels.length >= 4
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          data-model-row={m.id}
-                          onClick={() => toggleModel(m.id)}
-                          disabled={isDisabled}
-                          onMouseEnter={(e) => {
-                            if (isDisabled) return
-                            setHoveredModelId(m.id)
-                            const r = e.currentTarget.getBoundingClientRect()
-                            setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
-                          }}
-                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                            isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
-                          } ${isSelected ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}
-                        >
-                          <span className="flex items-center gap-2">
-                            {isSelected ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                            {m.name}
-                          </span>
-                          <ModelBadges m={m} isFreeTier={isFreeTier} />
-                        </button>
-                      )
-                    })
                   )}
                   </div>
-                  {generationMode === 'text' && composerMode === 'ask' && (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((mode) => {
-                          const isActive = askModelSelectionMode === mode
-                          return (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => handleAskModelSelectionModeChange(mode)}
-                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${
-                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
-                              }`}
-                            >
-                              {mode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
                   {generationMode === 'image' && (
                     <div className="border-t border-[var(--border)] px-2 py-2">
                       <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
@@ -5650,6 +5404,32 @@ async function hydrateCompletedAskTurnFromServer(
                               key={mode}
                               type="button"
                               onClick={() => handleVideoModelSelectionModeChange(mode)}
+                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
+                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+                                isActive
+                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
+                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                              } ${
+                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
+                              }`}
+                            >
+                              {mode}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {generationMode === 'text' && (
+                    <div className="border-t border-[var(--border)] px-2 py-2">
+                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
+                        {(['single', 'multiple'] as const).map((mode) => {
+                          const isActive = askModelSelectionMode === mode
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => handleTextModelSelectionModeChange(mode)}
                               disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
                               className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
                                 isActive
@@ -5848,16 +5628,26 @@ async function hydrateCompletedAskTurnFromServer(
                 const selectedModelId = exchModelList[selectedTab] ?? selectedModels[0] ?? ''
                 const isLatest = curExchIdx === latestExchIdx
                 const isActExch = (exchangeModes[curExchIdx] ?? 'ask') === 'act'
-                const streamSlotIdx =
-                  !isActExch && selectedModelId ? selectedModels.indexOf(selectedModelId) : -1
+                const isMultiAct = isActExch && exchModelList.length > 1
+                const streamSlotIdx = !selectedModelId
+                  ? -1
+                  : isMultiAct
+                    ? exchModelList.indexOf(selectedModelId)
+                    : isActExch
+                      ? -1
+                      : selectedModels.indexOf(selectedModelId)
                 const slotInst =
                   streamSlotIdx >= 0 ? chatInstances[streamSlotIdx] : null
 
-                let responseMsg = getResponseForExchangeForModel(selectedModelId, curExchIdx)
+                let responseMsg = getResponseForExchangeForModel(
+                  selectedModelId,
+                  curExchIdx,
+                  isMultiAct ? exchModelList : undefined,
+                )
                 let responseText = responseMsg ? getMessageText(responseMsg) : ''
 
-                // Act: assistant streams only into actChat; align with chat0 user index (see resolveActAssistant).
-                if (isActExch) {
+                // Act (single): assistant streams into actChat; align with chat0 user index (see resolveActAssistant).
+                if (isActExch && !isMultiAct) {
                   const paired = resolveActAssistant(chat0.messages, actChat.messages, msg.id)
                   if (paired) {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -5870,13 +5660,24 @@ async function hydrateCompletedAskTurnFromServer(
                   }
                 }
 
+                const multiActInst = streamSlotIdx >= 0 ? chatInstances[streamSlotIdx] : null
                 const instLoading = isLatest && (
                   (isActExch
-                    ? (actChat.status === 'streaming' || actChat.status === 'submitted')
+                    ? (isMultiAct
+                        ? (multiActInst?.status === 'streaming' || multiActInst?.status === 'submitted')
+                        : (actChat.status === 'streaming' || actChat.status === 'submitted'))
                     : !!slotInst && (slotInst.status === 'streaming' || slotInst.status === 'submitted'))
                   || isOptimisticLoading
                 )
-                const instError = isLatest ? (isActExch ? actChat.error : slotInst?.error ?? null) : null
+                const instError = isLatest
+                  ? (isActExch
+                      ? (isMultiAct && streamSlotIdx >= 0
+                          ? (chatInstances[streamSlotIdx]?.error ?? null)
+                          : isMultiAct
+                            ? null
+                            : actChat.error)
+                      : (slotInst?.error ?? null))
+                  : null
 
                 const responseParts =
                   responseMsg && 'parts' in responseMsg && Array.isArray((responseMsg as { parts?: unknown[] }).parts)
@@ -5928,6 +5729,10 @@ async function hydrateCompletedAskTurnFromServer(
                       ? 'Response was interrupted.'
                       : assistantPlainForReply
 
+                const textGenForEx = exchangeGenTypes[curExchIdx] ?? 'text'
+                const showFreePlanHintInResponse =
+                  isFreeTier && textGenForEx === 'text' && isActExch
+
                 blocks.push(
                   <ExchangeBlock
                     key={msg.id}
@@ -5948,6 +5753,7 @@ async function hydrateCompletedAskTurnFromServer(
                     responseInProgress={instLoading}
                     sourceCitations={sourceCitations}
                     automationSuggestion={automationSuggestion}
+                    showFreePlanCapabilitiesHint={showFreePlanHintInResponse}
                     turnIdForActions={textTurnIdForActions}
                     modelLabel={modelLabel}
                     onDeleteTurn={() => {
@@ -6012,6 +5818,17 @@ async function hydrateCompletedAskTurnFromServer(
                 <p className="text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
                   {greetingLine}
                 </p>
+                {isFreeTier && generationMode === 'text' && (
+                  <p className="mx-auto mt-4 max-w-md text-[11px] leading-relaxed text-[var(--muted)]">
+                    Web search, remote browser, and workspace are available on a paid plan.{' '}
+                    <Link
+                      href="/pricing"
+                      className="font-medium text-[var(--foreground)] underline underline-offset-2 hover:opacity-80"
+                    >
+                      Upgrade
+                    </Link>
+                  </p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

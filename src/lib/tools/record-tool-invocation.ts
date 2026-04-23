@@ -6,7 +6,7 @@ export function fireAndForgetRecordToolInvocation(args: {
   serverSecret?: string
   userId: string
   toolName: string
-  mode: 'ask' | 'act'
+  mode: 'act'
   modelId?: string
   conversationId?: string
   turnId?: string

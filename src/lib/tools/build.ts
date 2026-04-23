@@ -1,6 +1,6 @@
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
-import { IMAGE_MODELS, VIDEO_MODELS, getVideoModelsBySubMode } from '@/lib/models'
+import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/lib/models'
 import {
   executeCreateNote,
   executeDeleteNote,
@@ -22,17 +22,17 @@ import {
   executeSearchKnowledge,
   executeUpdateMemory,
 } from './overlay-executes'
-import { assertOverlayToolAllowedForMode } from './policy'
-import type { OverlayToolsOptions, ToolMode } from './types'
+import { assertOverlayToolAllowed } from './policy'
+import type { OverlayToolsOptions } from './types'
 
 /**
- * Overlay-defined tools only (no Composio, no Gateway perplexity).
- * Ask: knowledge + memory writes + notes read. Act: full mutations + media.
+ * Overlay-defined tools only (no Composio, no Gateway perplexity). Act agent: full tool surface.
  */
-export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions): ToolSet {
+export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
   const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
   const shouldExposeTool = (toolId: string): boolean => !allowedToolIds || allowedToolIds.has(toolId)
+  const includePaidOnlyOverlay = options.includePaidOnlyOverlayTools !== false
 
   if (shouldExposeTool('list_skills')) {
     tools.list_skills = tool({
@@ -44,7 +44,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       query: z.string().optional().describe('Optional keyword to filter skills by name, description, or instructions'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'list_skills')
+      assertOverlayToolAllowed('list_skills')
       return executeListSkills(options, input)
     },
   })
@@ -63,7 +63,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         .describe('Limit to files only or memories only (omit to search both)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'search_knowledge')
+      assertOverlayToolAllowed('search_knowledge')
       return executeSearchKnowledge(options, input)
     },
   })
@@ -86,7 +86,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
           .describe('Phrase or keywords to find (case-insensitive substring; not regex).'),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'search_in_files')
+        assertOverlayToolAllowed('search_in_files')
         return executeSearchInFiles(options, input)
       },
     })
@@ -100,7 +100,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       projectId: z.string().optional().describe('Only notes in this project (omit for general notes tab)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'list_notes')
+      assertOverlayToolAllowed('list_notes')
       return executeListNotes(options, input)
     },
   })
@@ -113,7 +113,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       noteId: z.string().describe('Convex notes document id'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'get_note')
+      assertOverlayToolAllowed('get_note')
       return executeGetNote(options, input)
     },
   })
@@ -133,7 +133,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         .describe('How the memory was captured (default: chat when learning from conversation)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'save_memory')
+      assertOverlayToolAllowed('save_memory')
       return executeSaveMemory(options, input)
     },
   })
@@ -147,7 +147,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       content: z.string().describe('New full text for the memory'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'update_memory')
+      assertOverlayToolAllowed('update_memory')
       return executeUpdateMemory(options, input)
     },
   })
@@ -160,20 +160,20 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       memoryId: z.string().describe('Convex document id of the memory to remove'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'delete_memory')
+      assertOverlayToolAllowed('delete_memory')
       return executeDeleteMemory(options, input)
     },
   })
   }
 
-  if (shouldExposeTool('interactive_browser_session')) {
+  if (includePaidOnlyOverlay && shouldExposeTool('interactive_browser_session')) {
     tools.interactive_browser_session = tool({
     description:
       'Remote AI-controlled browser session for INTERACTIVE web tasks only — NOT a search tool. ' +
-      'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through perplexity_search (which supports multi-query, domain filters, and returns ranked URLs with snippets — exactly what source/research requests need). ' +
+      'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through perplexity_search and/or parallel_search (multi-query + domain/recency filters; deep research with long excerpts and includeDomains). ' +
       'Permitted ONLY when ALL of the following are true: (1) the task literally cannot be satisfied by search results + URLs, AND (2) it requires driving a real browser — e.g. logging in with credentials, clicking through a UI flow, submitting a form, scraping a page that actively blocks non-browser clients, operating a JS-heavy SPA, or capturing a screenshot of a specific rendered page. ' +
-      'Forbidden examples (use perplexity_search instead): "give me 10 academic sources on X", "find peer-reviewed papers about Y", "cite research on Z", "look up the latest news on …", "find articles about …", "who is …", "what is …", "summarize the state of …". ' +
-      'If perplexity_search ran and returned insufficient or irrelevant results, you may then escalate — but state that in your reasoning. Never call this tool as a first attempt for a research-style question. It is ~10–100× slower and more expensive than perplexity_search.',
+      'Forbidden examples (use perplexity_search / parallel_search instead): "give me 10 academic sources on X", "find peer-reviewed papers about Y", "cite research on Z", "look up the latest news on …", "find articles about …", "who is …", "what is …", "summarize the state of …". ' +
+      'If both web tools ran and returned insufficient or irrelevant results, you may then escalate — but state that in your reasoning. Never call this tool as a first attempt for a research-style question. It is ~10–100× slower and more expensive than web search tools.',
     inputSchema: z.object({
       task: z.string().describe('What to do in the browser — natural language'),
       model: z.enum(['bu-mini', 'bu-max']).optional(),
@@ -182,14 +182,13 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       proxyCountryCode: z.string().optional().describe('2-letter country code for residential proxy'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'interactive_browser_session')
+      assertOverlayToolAllowed('interactive_browser_session')
       return executeBrowserRunTask(options, input)
     },
   })
   }
 
-  if (mode === 'act') {
-    if (shouldExposeTool('draft_automation_from_chat')) {
+  if (shouldExposeTool('draft_automation_from_chat')) {
       tools.draft_automation_from_chat = tool({
       description:
         'Create a draft automation proposal from the current chat turn. ' +
@@ -200,11 +199,11 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         assistantText: z.string().optional().describe('Optional assistant summary of the workflow'),
         toolNames: z.array(z.string()).optional().describe('Tool names used in the workflow'),
         reason: z.string().optional().describe('Why this should become an automation'),
-        mode: z.enum(['ask', 'act']).optional(),
+        mode: z.literal('act').optional(),
         modelId: z.string().optional(),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'draft_automation_from_chat')
+        assertOverlayToolAllowed('draft_automation_from_chat')
         return executeDraftAutomationFromChat(options, input)
       },
     })
@@ -222,70 +221,13 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         reason: z.string().optional().describe('Why this should become a saved skill'),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'draft_skill_from_chat')
+        assertOverlayToolAllowed('draft_skill_from_chat')
         return executeDraftSkillFromChat(options, input)
       },
     })
     }
 
-    if (shouldExposeTool('generate_image')) {
-      tools.generate_image = tool({
-      description:
-        'Generate an image from a text prompt using AI image generation models. ' +
-        'Returns a data URL of the generated image. ' +
-        'Tries models in priority order: Gemini Flash Image → GPT Image 1.5 → FLUX 2 Max → Grok Image Pro → Grok Image → FLUX Schnell. ' +
-        'Use this whenever the user asks to create, draw, or generate an image or picture.',
-      inputSchema: z.object({
-        prompt: z.string().describe('Detailed description of the image to generate'),
-        modelId: z
-          .enum(IMAGE_MODELS.map((m) => m.id) as [string, ...string[]])
-          .optional()
-          .describe('Specific image model to use (optional — uses priority fallback by default)'),
-        aspectRatio: z
-          .enum(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'])
-          .optional()
-          .describe('Aspect ratio of the generated image (default: 1:1)'),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'generate_image')
-        return executeGenerateImage(options, input)
-      },
-    })
-    }
-
-    if (shouldExposeTool('generate_video')) {
-      tools.generate_video = tool({
-      description:
-        'Generate a video from a text prompt using AI video generation models. ' +
-        'Video generation is asynchronous and can take 1–5 minutes. ' +
-        'Returns immediately with a job ID; the video will appear in the Outputs tab when complete. ' +
-        'Tries models in priority order: Veo 3.1 → Veo 3.1 Fast → Seedance v1.5 Pro → Grok Video → Wan v2.6. ' +
-        'Use this when the user asks to create, animate, or generate a video or clip.',
-      inputSchema: z.object({
-        prompt: z.string().describe('Detailed description of the video to generate'),
-        modelId: z
-          .enum(VIDEO_MODELS.map((m) => m.id) as [string, ...string[]])
-          .optional()
-          .describe('Specific video model to use (optional — uses priority fallback by default)'),
-        aspectRatio: z
-          .enum(['16:9', '9:16', '1:1', '4:3'])
-          .optional()
-          .describe('Aspect ratio of the generated video (default: 16:9)'),
-        duration: z
-          .number()
-          .min(3)
-          .max(60)
-          .optional()
-          .describe('Duration of the video in seconds (default: 8)'),
-      }),
-      execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'generate_video')
-        return executeGenerateVideo(options, input)
-      },
-    })
-    }
-
-    if (shouldExposeTool('run_daytona_sandbox')) {
+  if (includePaidOnlyOverlay && shouldExposeTool('run_daytona_sandbox')) {
       tools.run_daytona_sandbox = tool({
       description:
         'Run a CLI or script task inside the user’s persistent paid Daytona workspace. ' +
@@ -306,7 +248,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
           .describe('File paths relative to the sandbox workspace that should be imported back into Outputs after execution'),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'run_daytona_sandbox')
+        assertOverlayToolAllowed('run_daytona_sandbox')
         return executeRunDaytonaSandbox(options, input)
       },
     })
@@ -322,7 +264,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         projectId: z.string().optional(),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'create_note')
+        assertOverlayToolAllowed('create_note')
         return executeCreateNote(options, input)
       },
     })
@@ -338,7 +280,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         tags: z.array(z.string()).optional(),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'update_note')
+        assertOverlayToolAllowed('update_note')
         return executeUpdateNote(options, input)
       },
     })
@@ -351,14 +293,13 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         noteId: z.string(),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowedForMode(mode, 'delete_note')
+        assertOverlayToolAllowed('delete_note')
         return executeDeleteNote(options, input)
       },
     })
     }
-  }
 
-  // ── Image & Video generation tools (ask + act) ─────────────────────────────
+  // ── Image & Video generation tools ─────────────────────────────────────────
 
   tools.generate_image = tool({
     description:
@@ -382,7 +323,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
         .describe('URL or data URL of a reference image to edit or use as style source'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'generate_image')
+      assertOverlayToolAllowed('generate_image')
       return executeGenerateImage(options, input)
     },
   })
@@ -401,7 +342,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       duration: z.number().min(3).max(12).optional().describe('Duration in seconds (default: 8, max 12)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'generate_video')
+      assertOverlayToolAllowed('generate_video')
       return executeGenerateVideo(options, { ...input, videoSubMode: 'text-to-video' })
     },
   })
@@ -421,7 +362,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       duration: z.number().min(3).max(15).optional().describe('Duration in seconds (default: 5)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'animate_image')
+      assertOverlayToolAllowed('animate_image')
       return executeGenerateVideo(options, { ...input, videoSubMode: 'image-to-video' })
     },
   })
@@ -441,7 +382,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       duration: z.number().min(2).max(10).optional().describe('Duration in seconds (default: 5)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'generate_video_with_reference')
+      assertOverlayToolAllowed('generate_video_with_reference')
       return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, duration: input.duration, videoSubMode: 'reference-to-video', imageUrl: input.referenceUrl })
     },
   })
@@ -460,7 +401,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       modelId: z.enum(motionModelIds).optional().describe('Specific model to use (optional)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'apply_motion_control')
+      assertOverlayToolAllowed('apply_motion_control')
       return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'motion-control', imageUrl: input.characterImageUrl, referenceVideoUrl: input.referenceVideoUrl })
     },
   })
@@ -478,7 +419,7 @@ export function buildOverlayToolSet(mode: ToolMode, options: OverlayToolsOptions
       modelId: z.enum(editVideoModelIds).optional().describe('Specific model to use (optional)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowedForMode(mode, 'edit_video')
+      assertOverlayToolAllowed('edit_video')
       return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl })
     },
   })

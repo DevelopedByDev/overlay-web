@@ -1,15 +1,4 @@
-import type { ToolMode } from './types'
-
-const ASK_BASE_TOOL_IDS = [
-  'search_knowledge',
-  'search_in_files',
-  'save_memory',
-  'list_notes',
-  'get_note',
-  'list_skills',
-] as const
-
-const ACT_BASE_TOOL_IDS = [
+const DEFAULT_BASE_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
   'save_memory',
@@ -94,7 +83,6 @@ function addAll(target: Set<string>, toolIds: readonly string[]): void {
 }
 
 export function allowedOverlayToolIdsForTurn(params: {
-  mode: ToolMode
   latestUserText?: string | null
   /**
    * When `chrome-extension`, never expose `interactive_browser_session` — the Chrome extension
@@ -103,31 +91,31 @@ export function allowedOverlayToolIdsForTurn(params: {
   clientSurface?: string | null
 }): string[] {
   const text = params.latestUserText?.trim() ?? ''
-  const allowed = new Set<string>(params.mode === 'ask' ? ASK_BASE_TOOL_IDS : ACT_BASE_TOOL_IDS)
+  const allowed = new Set<string>(DEFAULT_BASE_TOOL_IDS)
   const isExtensionClient = params.clientSurface === 'chrome-extension'
 
   if (isExplicitMemoryMutationRequest(text)) {
     addAll(allowed, MEMORY_MUTATION_TOOL_IDS)
   }
-  if (params.mode === 'act' && isExplicitNoteMutationRequest(text)) {
+  if (isExplicitNoteMutationRequest(text)) {
     addAll(allowed, NOTE_MUTATION_TOOL_IDS)
   }
   if (isExplicitBrowserRequest(text) && !isExtensionClient) {
     addAll(allowed, BROWSER_TOOL_IDS)
   }
-  if (params.mode === 'act' && isExplicitImageRequest(text)) {
+  if (isExplicitImageRequest(text)) {
     addAll(allowed, IMAGE_TOOL_IDS)
   }
-  if (params.mode === 'act' && isExplicitVideoRequest(text)) {
+  if (isExplicitVideoRequest(text)) {
     addAll(allowed, VIDEO_TOOL_IDS)
   }
-  if (params.mode === 'act' && isExplicitDaytonaRequest(text)) {
+  if (isExplicitDaytonaRequest(text)) {
     addAll(allowed, DAYTONA_TOOL_IDS)
   }
-  if (params.mode === 'act' && isExplicitAutomationDraftRequest(text)) {
+  if (isExplicitAutomationDraftRequest(text)) {
     addAll(allowed, AUTOMATION_DRAFT_TOOL_IDS)
   }
-  if (params.mode === 'act' && isExplicitSkillDraftRequest(text)) {
+  if (isExplicitSkillDraftRequest(text)) {
     addAll(allowed, SKILL_DRAFT_TOOL_IDS)
   }
 

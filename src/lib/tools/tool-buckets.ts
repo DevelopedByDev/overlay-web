@@ -18,7 +18,7 @@ const INTERNAL_TOOL_IDS = new Set<string>([
 
 /** Maps tool name → Convex toolInvocations.costBucket. */
 export function toolCostBucketForId(toolId: string): ToolCostBucket {
-  if (toolId === 'perplexity_search') return 'perplexity'
+  if (toolId === 'perplexity_search' || toolId === 'parallel_search') return 'perplexity'
   if (toolId === 'generate_image') return 'image'
   if (toolId === 'generate_video') return 'video'
   if (toolId === 'browser_run_task' || toolId === 'interactive_browser_session') return 'browser'

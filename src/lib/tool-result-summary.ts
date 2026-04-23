@@ -73,7 +73,14 @@ export function summarizeToolResultForTranscript(params: {
 
   if (toolName === 'perplexity_search') {
     const query = readString(input?.query)
-    return query ? `Searched the web for: ${query}.` : 'Completed a web search.'
+    if (query) return `Searched the web for: ${query}.`
+    return 'Completed a web search.'
+  }
+
+  if (toolName === 'parallel_search') {
+    const objective = readString(input?.objective)
+    if (objective) return `Deep web research: ${objective.length > 120 ? `${objective.slice(0, 120)}…` : objective}`
+    return 'Completed deep web research.'
   }
 
   if (toolMessage) return toolMessage

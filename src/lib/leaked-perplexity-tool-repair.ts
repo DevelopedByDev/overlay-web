@@ -1,9 +1,5 @@
 import type { StepResult, ToolSet } from 'ai'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/models'
-import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
-import { runPerplexitySearchDirectForRepair } from '@/lib/ai-gateway'
-import { ensureAssistantPersistContent } from '@/lib/persist-assistant-turn'
-import { summarizeErrorForLog } from '@/lib/safe-log'
 
 function stepsHavePerplexitySearchWithOutput(
   steps: StepResult<ToolSet>[] | undefined,
@@ -195,68 +191,16 @@ export function extractPerplexityQueryFromLeakedAssistantText(text: string): str
   return null
 }
 
-function formatPerplexityToolOutputForAssistantText(out: unknown): string {
-  if (typeof out === 'string') return out.trim()
-  if (out && typeof out === 'object') {
-    const o = out as Record<string, unknown>
-    const direct =
-      o.answer ?? o.text ?? o.content ?? o.summary ?? o.response
-    if (typeof direct === 'string' && direct.trim()) return direct.trim()
-    const results = o.results
-    if (Array.isArray(results) && results.length > 0) {
-      const lines = results.map((r, i) => {
-        if (r && typeof r === 'object') {
-          const e = r as Record<string, unknown>
-          const title = typeof e.title === 'string' ? e.title : ''
-          const url = typeof e.url === 'string' ? e.url : ''
-          const snippet = typeof e.snippet === 'string' ? e.snippet : ''
-          const head = title || url || `Source ${i + 1}`
-          const body = [snippet, url].filter(Boolean).join('\n')
-          return body ? `${head}\n${body}` : head
-        }
-        return String(r)
-      })
-      return lines.join('\n\n')
-    }
-  }
-  try {
-    const s = JSON.stringify(out, null, 2)
-    return s.length > 16_000 ? `${s.slice(0, 16_000)}\n…` : s
-  } catch {
-    return String(out)
-  }
-}
-
 export async function maybeRepairFreeTierLeakedPerplexityText(params: {
   modelId: string
   steps: StepResult<ToolSet>[] | undefined
   text: string
   accessToken: string | undefined
 }): Promise<string | null> {
-  const { modelId, steps, text, accessToken } = params
+  const { modelId, steps, text } = params
   if (modelId !== FREE_TIER_AUTO_MODEL_ID) return null
   if (stepsHavePerplexitySearchWithOutput(steps)) return null
   if (!looksLikeLeakedPerplexityToolSyntax(text)) return null
-
-  const query = extractPerplexityQueryFromLeakedAssistantText(text)
-  if (!query) {
-    console.warn('[leaked-perplexity-tool-repair] Leaked syntax detected but could not parse query')
-    return null
-  }
-
-  try {
-    const raw = await runPerplexitySearchDirectForRepair(accessToken, query)
-    const body = formatPerplexityToolOutputForAssistantText(raw)
-    const header =
-      typeof query === 'string'
-        ? `**Web search** (${query})\n\n`
-        : `**Web search** (${query.join(' · ')})\n\n`
-    const combined = normalizeAgentAssistantText(header + body)
-    const out = ensureAssistantPersistContent(combined)
-    console.log('[leaked-perplexity-tool-repair] Repaired leaked perplexity_search JSON with direct Gateway search')
-    return out
-  } catch (err) {
-    console.error('[leaked-perplexity-tool-repair] Direct repair failed:', summarizeErrorForLog(err))
-    return null
-  }
+  // Free tier has no real web search tool; do not call Gateway to backfill (cost + product mismatch).
+  return null
 }

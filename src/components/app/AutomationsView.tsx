@@ -52,7 +52,6 @@ type FormState = {
   sourceType: 'skill' | 'inline'
   skillId: string
   instructionsMarkdown: string
-  mode: 'ask' | 'act'
   modelId: string
   status: 'active' | 'paused' | 'archived'
   timezone: string
@@ -202,7 +201,6 @@ function buildFormState(automation?: AutomationSummary): FormState {
     sourceType: automation?.sourceType ?? 'skill',
     skillId: automation?.skillId ?? '',
     instructionsMarkdown: automation?.instructionsMarkdown ?? '',
-    mode: automation?.mode ?? 'act',
     modelId: automation?.modelId ?? DEFAULT_MODEL_ID,
     status: automation?.status ?? 'active',
     timezone: automation?.timezone ?? fallbackTimezone,
@@ -569,7 +567,7 @@ function AutomationDialog({
         sourceType: form.sourceType,
         skillId: form.sourceType === 'skill' ? form.skillId || undefined : undefined,
         instructionsMarkdown: form.sourceType === 'inline' ? form.instructionsMarkdown : undefined,
-        mode: form.mode,
+        mode: 'act' as const,
         modelId: form.modelId,
         status: statusOverride ?? form.status,
         timezone: form.timezone,
@@ -747,30 +745,17 @@ function AutomationDialog({
                 />
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Mode</label>
-                  <select
-                    value={form.mode}
-                    onChange={(e) => setForm((current) => ({ ...current, mode: e.target.value as 'ask' | 'act' }))}
-                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-                  >
-                    <option value="act">Act</option>
-                    <option value="ask">Ask</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Status</label>
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm((current) => ({ ...current, status: e.target.value as FormState['status'] }))}
-                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-                  >
-                    <option value="active">Active</option>
-                    <option value="paused">Paused</option>
-                    <option value="archived">Archived</option>
-                  </select>
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">Status</label>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm((current) => ({ ...current, status: e.target.value as FormState['status'] }))}
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+                >
+                  <option value="active">Active</option>
+                  <option value="paused">Paused</option>
+                  <option value="archived">Archived</option>
+                </select>
               </div>
 
               <div ref={sourceSectionRef} data-automation-source className="space-y-1.5">
@@ -934,7 +919,7 @@ function AutomationDialog({
                 <div className="mt-3 space-y-1 text-[12px]">
                   <p>Schedule: {scheduleLabel}</p>
                   <p>Status: {getAutomationStatusLabel(form.status)}</p>
-                  <p>Mode: {form.mode === 'act' ? 'Act' : 'Ask'}</p>
+                  <p>Agent mode</p>
                   <p>Model: {getChatModelDisplayName(form.modelId)}</p>
                   {initial?.readinessState ? <p>Readiness: {initial.readinessState}</p> : null}
                 </div>

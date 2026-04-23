@@ -4,7 +4,7 @@ import React, { createContext, useContext, useReducer, useMemo, useCallback } fr
 
 interface StreamingSession {
   id: string
-  mode: 'ask' | 'act'
+  mode: 'act'
   title: string
   startedAt: number
   messageCountAtStart: number
@@ -18,7 +18,7 @@ interface AsyncSessionsState {
 }
 
 type Action =
-  | { type: 'START_SESSION'; id: string; mode: 'ask' | 'act'; title: string; messageCountAtStart: number }
+  | { type: 'START_SESSION'; id: string; mode: 'act'; title: string; messageCountAtStart: number }
   | { type: 'COMPLETE_SESSION'; id: string; isActive: boolean }
   | { type: 'MARK_READ'; id: string }
   | { type: 'SET_ACTIVE_VIEWER'; id: string | null }
@@ -71,7 +71,7 @@ function reducer(state: AsyncSessionsState, action: Action): AsyncSessionsState 
 }
 
 interface AsyncSessionsContextValue {
-  startSession(id: string, mode: 'ask' | 'act', title: string, messageCountAtStart: number): void
+  startSession(id: string, mode: 'act', title: string, messageCountAtStart: number): void
   completeSession(id: string, isActive: boolean): void
   markRead(id: string): void
   setActiveViewer(id: string | null): void
@@ -92,7 +92,7 @@ const INITIAL_STATE: AsyncSessionsState = {
 export function AsyncSessionsProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
 
-  const startSession = useCallback((id: string, mode: 'ask' | 'act', title: string, messageCountAtStart: number) => {
+  const startSession = useCallback((id: string, mode: 'act', title: string, messageCountAtStart: number) => {
     dispatch({ type: 'START_SESSION', id, mode, title, messageCountAtStart })
   }, [])
 

@@ -1,9 +1,4 @@
-import type { ToolMode } from './types'
-
-/** Max model tool rounds (steps) for Ask mode (streamText / agent). */
-export const MAX_TOOL_STEPS_ASK = 10
-
-/** Max model tool rounds for Act mode — act/route.ts ToolLoopAgent uses this. */
+/** Max model tool rounds — ToolLoopAgent (act) uses this. */
 export const MAX_TOOL_STEPS_ACT = 12
 
 const GENERATION_TOOL_IDS = new Set<string>([
@@ -15,20 +10,7 @@ const GENERATION_TOOL_IDS = new Set<string>([
   'edit_video',
 ])
 
-const OVERLAY_TOOL_IDS_ASK = new Set<string>([
-  'search_knowledge',
-  'search_in_files',
-  'save_memory',
-  'update_memory',
-  'delete_memory',
-  'interactive_browser_session',
-  'list_notes',
-  'get_note',
-  'list_skills',
-  ...GENERATION_TOOL_IDS,
-])
-
-const OVERLAY_TOOL_IDS_ACT = new Set<string>([
+const OVERLAY_TOOL_IDS = new Set<string>([
   'search_knowledge',
   'search_in_files',
   'save_memory',
@@ -48,14 +30,13 @@ const OVERLAY_TOOL_IDS_ACT = new Set<string>([
   ...GENERATION_TOOL_IDS,
 ])
 
-export function overlayToolIdsForMode(mode: ToolMode): ReadonlySet<string> {
-  return mode === 'ask' ? OVERLAY_TOOL_IDS_ASK : OVERLAY_TOOL_IDS_ACT
+export function overlayToolIdSet(): ReadonlySet<string> {
+  return OVERLAY_TOOL_IDS
 }
 
-/** Defense in depth: ensure a tool id is registered for this mode before execute. */
-export function assertOverlayToolAllowedForMode(mode: ToolMode, toolId: string): void {
-  const allowed = mode === 'ask' ? OVERLAY_TOOL_IDS_ASK : OVERLAY_TOOL_IDS_ACT
-  if (!allowed.has(toolId)) {
-    throw new Error(`[tools] Tool "${toolId}" is not allowed in ${mode} mode`)
+/** Defense in depth: ensure a tool id is registered before execute. */
+export function assertOverlayToolAllowed(toolId: string): void {
+  if (!OVERLAY_TOOL_IDS.has(toolId)) {
+    throw new Error(`[tools] Tool "${toolId}" is not allowed`)
   }
 }

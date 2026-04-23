@@ -1,18 +1,15 @@
-import {
-  convertToModelMessages,
-  generateText,
-  stepCountIs,
-  ToolLoopAgent,
-  type LanguageModelUsage,
-} from 'ai'
+import { convertToModelMessages, stepCountIs, ToolLoopAgent, type LanguageModelUsage } from 'ai'
 import { convex } from '@/lib/convex'
-import { getGatewayLanguageModel, getGatewayPerplexitySearchTool } from '@/lib/ai-gateway'
+import {
+  getGatewayLanguageModel,
+  getGatewayParallelSearchTool,
+  getGatewayPerplexitySearchTool,
+} from '@/lib/ai-gateway'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
-import { buildOverlayToolSet } from '@/lib/tools/build'
 import { filterComposioToolSet } from '@/lib/tools/composio-filter'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
-import { MAX_TOOL_STEPS_ACT, MAX_TOOL_STEPS_ASK } from '@/lib/tools/policy'
+import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
 import { calculateTokenCost } from '@/lib/model-pricing'
 import { billableBudgetCentsFromProviderUsd } from '@/lib/billing-runtime'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
@@ -73,14 +70,6 @@ function buildActInstructions(): string {
     'Execute the requested workflow exactly once for this run.',
     'Use tools when needed, keep side effects intentional, and finish with a concise summary of what completed and what still needs attention.',
     'If the workflow cannot be completed, explain the blocker clearly instead of pretending success.',
-  ].join('\n\n')
-}
-
-function buildAskInstructions(): string {
-  return [
-    'You are Overlay’s automation assistant.',
-    'Answer or research the requested workflow carefully and finish with a concise summary suitable for an automation run log.',
-    'Never pretend external actions succeeded if you cannot verify them.',
   ].join('\n\n')
 }
 
@@ -152,7 +141,7 @@ async function logToolFinish(args: {
     serverSecret,
     userId,
     toolName: event.toolCall.toolName,
-    mode: automation.mode,
+    mode: 'act',
     modelId: automation.modelId,
     conversationId,
     turnId,
@@ -217,7 +206,7 @@ export async function executeAutomationConversationTurn(
       serverSecret,
       turnId,
       role: 'user',
-      mode: automation.mode,
+      mode: automation.mode === 'ask' ? 'act' : automation.mode,
       content: prompt,
       contentType: 'text',
       parts: [{ type: 'text', text: prompt }],
@@ -228,28 +217,23 @@ export async function executeAutomationConversationTurn(
 
   const languageModel = await getGatewayLanguageModel(automation.modelId)
   const composioRaw = await createBrowserUnifiedTools({ userId })
-  const perplexityTool = await getGatewayPerplexitySearchTool(undefined, automation.modelId)
-  const overlayTools =
-    automation.mode === 'act'
-      ? createWebTools({
-          userId,
-          serverSecret,
-          conversationId,
-          turnId,
-          baseUrl,
-        })
-      : buildOverlayToolSet('ask', {
-          userId,
-          serverSecret,
-          conversationId,
-          turnId,
-          baseUrl,
-        })
-  const composioTools = filterComposioToolSet(composioRaw, automation.mode)
+  const [perplexityTool, parallelTool] = await Promise.all([
+    getGatewayPerplexitySearchTool(undefined, automation.modelId),
+    getGatewayParallelSearchTool(undefined, automation.modelId),
+  ])
+  const overlayTools = createWebTools({
+    userId,
+    serverSecret,
+    conversationId,
+    turnId,
+    baseUrl,
+  })
+  const composioTools = filterComposioToolSet(composioRaw)
   const tools = {
     ...composioTools,
     ...overlayTools,
     ...(perplexityTool ? { perplexity_search: perplexityTool } : {}),
+    ...(parallelTool ? { parallel_search: parallelTool } : {}),
   }
 
   const modelMessages = await convertToModelMessages([buildAutomationUserMessage(prompt, turnId)])
@@ -261,49 +245,28 @@ export async function executeAutomationConversationTurn(
     metadata: { requestId, executor },
   })
 
-  let result: Awaited<ReturnType<typeof generateText>> | Awaited<ReturnType<ToolLoopAgent['generate']>>
+  let result: Awaited<ReturnType<ToolLoopAgent['generate']>>
   try {
-    result =
-      automation.mode === 'act'
-        ? await new ToolLoopAgent({
-            model: languageModel,
-            tools,
-            stopWhen: stepCountIs(MAX_TOOL_STEPS_ACT),
-            instructions: buildActInstructions(),
-          }).generate({
-            messages: modelMessages,
-            experimental_onToolCallFinish: async (event) =>
-              logToolFinish({
-                event,
-                automation,
-                conversationId,
-                turnId,
-                userId,
-                serverSecret,
-                onEvent,
-                onHeartbeat,
-              }),
-            onStepFinish: async (step) => logStepFinish({ step, onEvent, onHeartbeat }),
-          })
-        : await generateText({
-            model: languageModel,
-            system: buildAskInstructions(),
-            messages: modelMessages,
-            tools,
-            stopWhen: stepCountIs(MAX_TOOL_STEPS_ASK),
-            experimental_onToolCallFinish: async (event) =>
-              logToolFinish({
-                event,
-                automation,
-                conversationId,
-                turnId,
-                userId,
-                serverSecret,
-                onEvent,
-                onHeartbeat,
-              }),
-            onStepFinish: async (step) => logStepFinish({ step, onEvent, onHeartbeat }),
-          })
+    result = await new ToolLoopAgent({
+      model: languageModel,
+      tools,
+      stopWhen: stepCountIs(MAX_TOOL_STEPS_ACT),
+      instructions: buildActInstructions(),
+    }).generate({
+      messages: modelMessages,
+      experimental_onToolCallFinish: async (event) =>
+        logToolFinish({
+          event,
+          automation,
+          conversationId,
+          turnId,
+          userId,
+          serverSecret,
+          onEvent,
+          onHeartbeat,
+        }),
+      onStepFinish: async (step) => logStepFinish({ step, onEvent, onHeartbeat }),
+    })
   } catch (error) {
     throw automationExecutionError(clampErrorMessage(error), 'execute_model', turnId)
   }
@@ -326,7 +289,7 @@ export async function executeAutomationConversationTurn(
         serverSecret,
         turnId,
         role: 'assistant',
-        mode: automation.mode,
+        mode: automation.mode === 'ask' ? 'act' : automation.mode,
         content,
         contentType: 'text',
         parts: parts as never,

@@ -5,9 +5,8 @@ import type { OverlayToolsOptions } from '@/lib/tools/types'
 export type { OverlayToolsOptions as WebToolsOptions }
 
 /**
- * Act-mode overlay tools (knowledge, memory CRUD, image/video generation).
- * Prefer importing buildOverlayToolSet(mode, options) from @/lib/tools/build when mode varies.
+ * Overlay agent tools (knowledge, memory CRUD, browser, image/video generation).
  */
 export function createWebTools(options: OverlayToolsOptions): ToolSet {
-  return buildOverlayToolSet('act', options)
+  return buildOverlayToolSet(options)
 }

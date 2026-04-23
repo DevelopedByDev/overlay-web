@@ -427,7 +427,7 @@ export async function executeDraftAutomationFromChat(
     assistantText?: string
     toolNames?: string[]
     reason?: string
-    mode?: 'ask' | 'act'
+    mode?: 'act'
     modelId?: string
   },
 ) {

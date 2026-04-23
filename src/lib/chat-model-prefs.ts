@@ -3,8 +3,6 @@ import { DEFAULT_MODEL_ID, getModel } from '@/lib/models'
 /** Persisted chat model selection — shared with ChatInterface and sidebar "new chat" actions. */
 export const CHAT_MODEL_KEY = 'overlay_chat_model'
 export const ACT_MODEL_KEY = 'overlay_act_model'
-export const COMPOSER_MODE_KEY = 'overlay_composer_mode'
-
 function normalizeAskIds(raw: string[]): string[] {
   const seen = new Set<string>()
   const out: string[] = []
@@ -53,26 +51,15 @@ export function readStoredActModelId(): string {
   return readStoredAskModelIds()[0] ?? DEFAULT_MODEL_ID
 }
 
-export function readStoredComposerMode(): 'ask' | 'act' {
-  if (typeof window === 'undefined') return 'act'
-  try {
-    const m = localStorage.getItem(COMPOSER_MODE_KEY)
-    if (m === 'ask' || m === 'act') return m
-  } catch {
-    /* ignore */
-  }
-  return 'act'
-}
-
 /** Body fields for POST /api/app/conversations from sidebar — server clamps models for free tier. */
 export function readNewChatModelFieldsFromStorage(): {
   askModelIds: string[]
   actModelId: string
-  lastMode: 'ask' | 'act'
+  lastMode: 'act'
 } {
   return {
     askModelIds: readStoredAskModelIds(),
     actModelId: readStoredActModelId(),
-    lastMode: readStoredComposerMode(),
+    lastMode: 'act',
   }
 }

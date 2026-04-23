@@ -1,16 +1,8 @@
 /**
- * Unified overlay-native tools (Ask ⊂ Act). See build.ts for composition.
+ * Unified overlay-native tools (Act agent). See build.ts for composition.
  *
- * Phase 0 inventory:
- * - search_knowledge: ask + act (hybrid search via /api/app/knowledge/search)
- * - search_in_files: ask + act (lexical search via /api/app/files/search-text)
- * - list_notes, get_note: ask + act; create/update/delete_note: act only
- * - save_memory, update_memory, delete_memory: ask + act (/api/app/memory)
- * - generate_image, generate_video: act only (/api/app/generate-*)
- * Composio: act + filtered ask (unchanged in composio-tools); merged in routes.
+ * Composio tools are merged in act/route.ts (full set for paid; filtered for free tier).
  */
-
-export type ToolMode = 'ask' | 'act'
 
 export type ToolCategory = 'knowledge' | 'memory' | 'media' | 'notes'
 
@@ -25,4 +17,9 @@ export interface OverlayToolsOptions {
   allowedToolIds?: readonly string[]
   /** Original browser Cookie header — required for server-side tool `fetch` to `/api/app/*` (middleware expects session cookie). */
   forwardCookie?: string
+  /**
+   * When `false`, omits paid-only tools (remote browser session, Daytona workspace sandbox). Default: include them.
+   * Free tier should pass `false`.
+   */
+  includePaidOnlyOverlayTools?: boolean
 }

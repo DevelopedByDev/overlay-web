@@ -1,7 +1,7 @@
-import { createGateway, generateText, stepCountIs, tool } from 'ai'
+import { createGateway, generateText, type ToolSet, stepCountIs, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
-import { getModel } from '@/lib/models'
+import { FREE_TIER_AUTO_MODEL_ID, getModel, modelUsesOpenRouterTransport } from '@/lib/models'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
 
@@ -194,8 +194,40 @@ export async function getGatewayVideoModel(modelId: string, accessToken?: string
   return gateway.video(modelId)
 }
 
-/** Cheap Gateway model to force a real provider `perplexity_search` round-trip (OpenRouter cannot send provider tools). */
-const PERPLEXITY_PROXY_LANGUAGE_MODEL_ID = 'openai/gpt-oss-20b'
+/**
+ * Small but reliable Gateway model to force a real provider tool round-trip (OpenRouter cannot send provider tools).
+ * gpt-4.1-mini follows forced tool-calling more reliably than ultra-small OSS models.
+ */
+const GATEWAY_TOOL_PROXY_MODEL_ID = 'openai/gpt-4.1-mini'
+
+/**
+ * Model for the inner `generateText` pass that must call Gateway provider tools (Perplexity / Parallel).
+ * Prefer the same chat model as the user when it is available on the AI Gateway; otherwise a small
+ * reliable OpenAI model (OpenRouter-only and free-router ids cannot run provider tools on Gateway).
+ */
+export function resolveGatewayProviderToolProxyModelId(chatModelId: string): string {
+  if (!getModel(chatModelId)) {
+    return GATEWAY_TOOL_PROXY_MODEL_ID
+  }
+  if (chatModelId === FREE_TIER_AUTO_MODEL_ID || modelUsesOpenRouterTransport(chatModelId)) {
+    return GATEWAY_TOOL_PROXY_MODEL_ID
+  }
+  return getGatewayModelId(chatModelId)
+}
+
+const PERPLEXITY_DEFAULTS = {
+  maxResults: 10,
+  maxTokens: 50_000,
+  maxTokensPerPage: 2048,
+  /** Bias toward research-quality results; use `day`/`week` only for breaking news. */
+  searchRecencyFilter: 'year' as const,
+}
+
+const PARALLEL_DEFAULTS = {
+  mode: 'one-shot' as const,
+  maxResults: 10,
+  excerpts: { maxCharsPerResult: 5000, maxCharsTotal: 80_000 },
+}
 
 function isPerplexityErrorOutput(
   out: unknown,
@@ -208,9 +240,35 @@ function isPerplexityErrorOutput(
   )
 }
 
+function isParallelErrorOutput(
+  out: unknown,
+): out is { error: string; message?: string } {
+  return (
+    typeof out === 'object' &&
+    out != null &&
+    'error' in out &&
+    typeof (out as { error: unknown }).error === 'string'
+  )
+}
+
+export type GatewayPerplexitySearchParams = {
+  query: string | string[]
+  maxResults?: number
+  maxTokensPerPage?: number
+  maxTokens?: number
+  country?: string
+  searchDomainFilter?: string[]
+  searchLanguageFilter?: string[]
+  searchAfterDate?: string
+  searchBeforeDate?: string
+  lastUpdatedAfterFilter?: string
+  lastUpdatedBeforeFilter?: string
+  searchRecencyFilter?: 'day' | 'week' | 'month' | 'year'
+}
+
 /**
  * Perplexity as a normal function `tool()` whose `execute` runs the real Gateway provider tool via a tiny
- * `generateText` pass on `openai/gpt-oss-20b`.
+ * `generateText` pass on a Gateway model.
  *
  * We always use this wrapper (not `gateway.tools.perplexitySearch()` directly on the chat model) because:
  * 1. OpenRouter's adapter only sends `type: "function"` tools — provider tools are dropped.
@@ -225,13 +283,137 @@ function isPerplexityErrorOutput(
 export async function runPerplexitySearchDirectForRepair(
   accessToken: string | undefined,
   query: string | string[],
+  options?: Partial<Omit<GatewayPerplexitySearchParams, 'query'>>,
+  innerProxyModelId: string = GATEWAY_TOOL_PROXY_MODEL_ID,
 ): Promise<unknown> {
-  return executeGatewayPerplexitySearch(accessToken, query)
+  return executeGatewayPerplexitySearch(accessToken, { query, ...options }, innerProxyModelId)
 }
 
-async function executeGatewayPerplexitySearch(
+/** Build Perplexity provider tool input (snake_case) for the inner tool call. */
+function buildPerplexityProviderPayload(
+  p: GatewayPerplexitySearchParams,
+): Record<string, unknown> {
+  const recency = p.searchRecencyFilter ?? PERPLEXITY_DEFAULTS.searchRecencyFilter
+  const hasDateRange = Boolean(
+    p.searchAfterDate ||
+      p.searchBeforeDate ||
+      p.lastUpdatedAfterFilter ||
+      p.lastUpdatedBeforeFilter,
+  )
+  const out: Record<string, unknown> = {
+    query: p.query,
+    max_results: p.maxResults ?? PERPLEXITY_DEFAULTS.maxResults,
+    max_tokens_per_page: p.maxTokensPerPage ?? PERPLEXITY_DEFAULTS.maxTokensPerPage,
+    max_tokens: p.maxTokens ?? PERPLEXITY_DEFAULTS.maxTokens,
+  }
+  if (p.country) out.country = p.country
+  if (p.searchDomainFilter?.length) out.search_domain_filter = p.searchDomainFilter
+  if (p.searchLanguageFilter?.length) out.search_language_filter = p.searchLanguageFilter
+  if (p.searchAfterDate) out.search_after_date = p.searchAfterDate
+  if (p.searchBeforeDate) out.search_before_date = p.searchBeforeDate
+  if (p.lastUpdatedAfterFilter) out.last_updated_after_filter = p.lastUpdatedAfterFilter
+  if (p.lastUpdatedBeforeFilter) out.last_updated_before_filter = p.lastUpdatedBeforeFilter
+  if (!hasDateRange) {
+    out.search_recency_filter = recency
+  }
+  return out
+}
+
+async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'parallel_search'>(params: {
+  toolName: T
+  tool: NonNullable<ToolSet[string]>
+  prompt: string
+  gw: ReturnType<typeof createGateway>
+  /** AI Gateway id for the model that will emit the (forced) provider tool call, e.g. `anthropic/claude-3-5-sonnet-...` */
+  innerProxyModelId: string
+  maxAttempts: number
+}): Promise<ReturnType<typeof generateText>> {
+  const { toolName, tool, prompt, gw, innerProxyModelId, maxAttempts } = params
+  let last: Awaited<ReturnType<typeof generateText>> | undefined
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`[AI Gateway] ${toolName} inner generateText start (attempt ${attempt}/${maxAttempts})`, {
+      innerProxyModelId,
+    })
+    const tools: ToolSet =
+      toolName === 'perplexity_search'
+        ? { perplexity_search: tool }
+        : { parallel_search: tool }
+    last = await generateText({
+      model: gw(innerProxyModelId),
+      tools,
+      toolChoice: { type: 'tool', toolName },
+      prompt,
+      stopWhen: stepCountIs(2),
+    })
+    const hasResult = last.steps?.some((step) =>
+      step.toolResults?.some(
+        (tr) => tr.toolName === toolName && tr.type === 'tool-result',
+      ),
+    )
+    if (hasResult) return last
+    console.warn(`[AI Gateway] ${toolName} missing tool result, retrying`, {
+      attempt,
+      finishReason: last.finishReason,
+      stepCount: last.steps?.length,
+    })
+  }
+  return last!
+}
+
+function extractPerplexityOutputFromResult(
+  result: Awaited<ReturnType<typeof generateText>>,
+  toolName: 'perplexity_search',
+): unknown {
+  for (const step of result.steps) {
+    for (const tr of step.toolResults) {
+      if (tr.toolName !== toolName || tr.type !== 'tool-result') continue
+      const out = tr.output
+      if (isPerplexityErrorOutput(out)) {
+        throw new Error(out.message || out.error || 'Perplexity search returned an error')
+      }
+      return out
+    }
+    for (const part of step.content) {
+      if (part.type === 'tool-error' && part.toolName === toolName) {
+        throw new Error(
+          part.error instanceof Error ? part.error.message : String(part.error),
+        )
+      }
+    }
+  }
+  return undefined
+}
+
+function extractParallelOutputFromResult(
+  result: Awaited<ReturnType<typeof generateText>>,
+  toolName: 'parallel_search',
+): unknown {
+  for (const step of result.steps) {
+    for (const tr of step.toolResults) {
+      if (tr.toolName !== toolName || tr.type !== 'tool-result') continue
+      const out = tr.output
+      if (isParallelErrorOutput(out)) {
+        throw new Error(out.message || out.error || 'Parallel search returned an error')
+      }
+      return out
+    }
+    for (const part of step.content) {
+      if (part.type === 'tool-error' && part.toolName === toolName) {
+        throw new Error(
+          part.error instanceof Error ? part.error.message : String(part.error),
+        )
+      }
+    }
+  }
+  return undefined
+}
+
+const INNER_TOOL_ATTEMPTS = 3
+
+export async function executeGatewayPerplexitySearch(
   accessToken: string | undefined,
-  query: string | string[],
+  params: GatewayPerplexitySearchParams,
+  innerProxyModelId: string = GATEWAY_TOOL_PROXY_MODEL_ID,
 ): Promise<unknown> {
   const apiKey = await resolveGatewayApiKey(accessToken)
   if (!apiKey) {
@@ -239,40 +421,25 @@ async function executeGatewayPerplexitySearch(
   }
   const gw = createGateway({ apiKey })
   const perplexityTool = gw.tools.perplexitySearch({
-    maxResults: 8,
-    maxTokens: 50_000,
-    maxTokensPerPage: 2048,
-    searchRecencyFilter: 'day',
+    maxResults: PERPLEXITY_DEFAULTS.maxResults,
+    maxTokens: PERPLEXITY_DEFAULTS.maxTokens,
+    maxTokensPerPage: PERPLEXITY_DEFAULTS.maxTokensPerPage,
   })
-  const payload = { query }
+  const payload = buildPerplexityProviderPayload(params)
   const prompt = `Call perplexity_search exactly once with this JSON input and no other tools:\n${JSON.stringify(payload)}`
 
-  console.log('[AI Gateway] perplexity_search inner generateText start')
-  const result = await generateText({
-    model: gw(PERPLEXITY_PROXY_LANGUAGE_MODEL_ID),
-    tools: { perplexity_search: perplexityTool },
-    toolChoice: { type: 'tool', toolName: 'perplexity_search' },
+  const result = await runInnerGenerateTextWithTool({
+    toolName: 'perplexity_search',
+    tool: perplexityTool,
     prompt,
-    stopWhen: stepCountIs(2),
+    gw,
+    innerProxyModelId,
+    maxAttempts: INNER_TOOL_ATTEMPTS,
   })
-
-  for (const step of result.steps) {
-    for (const tr of step.toolResults) {
-      if (tr.toolName !== 'perplexity_search' || tr.type !== 'tool-result') continue
-      const out = tr.output
-      if (isPerplexityErrorOutput(out)) {
-        throw new Error(out.message || out.error || 'Perplexity search returned an error')
-      }
-      console.log('[AI Gateway] perplexity_search inner generateText OK')
-      return out
-    }
-    for (const part of step.content) {
-      if (part.type === 'tool-error' && part.toolName === 'perplexity_search') {
-        throw new Error(
-          part.error instanceof Error ? part.error.message : String(part.error),
-        )
-      }
-    }
+  const extracted = extractPerplexityOutputFromResult(result, 'perplexity_search')
+  if (extracted !== undefined) {
+    console.log('[AI Gateway] perplexity_search inner generateText OK')
+    return extracted
   }
 
   console.error('[AI Gateway] perplexity_search inner generateText missing tool result', {
@@ -282,17 +449,194 @@ async function executeGatewayPerplexitySearch(
   throw new Error('Web search did not return results — check AI Gateway / Perplexity billing and logs')
 }
 
-function createPerplexitySearchFunctionTool(accessToken?: string) {
+export type GatewayParallelSearchParams = {
+  objective: string
+  searchQueries?: string[]
+  mode?: 'one-shot' | 'agentic'
+  maxResults?: number
+  includeDomains?: string[]
+  excludeDomains?: string[]
+  afterDate?: string
+  maxCharsPerResult?: number
+  maxCharsTotal?: number
+  maxAgeSeconds?: number
+}
+
+function buildParallelProviderPayload(
+  p: GatewayParallelSearchParams,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    objective: p.objective,
+    mode: p.mode ?? PARALLEL_DEFAULTS.mode,
+    max_results: p.maxResults ?? PARALLEL_DEFAULTS.maxResults,
+  }
+  if (p.searchQueries?.length) out.search_queries = p.searchQueries
+  const sp: Record<string, unknown> = {}
+  if (p.includeDomains?.length) sp.include_domains = p.includeDomains
+  if (p.excludeDomains?.length) sp.exclude_domains = p.excludeDomains
+  if (p.afterDate) sp.after_date = p.afterDate
+  if (Object.keys(sp).length) out.source_policy = sp
+  const ex: Record<string, unknown> = {}
+  const mcr = p.maxCharsPerResult ?? PARALLEL_DEFAULTS.excerpts.maxCharsPerResult
+  const mct = p.maxCharsTotal ?? PARALLEL_DEFAULTS.excerpts.maxCharsTotal
+  if (mcr) ex.max_chars_per_result = mcr
+  if (mct) ex.max_chars_total = mct
+  if (Object.keys(ex).length) out.excerpts = ex
+  if (p.maxAgeSeconds != null) {
+    out.fetch_policy = { max_age_seconds: p.maxAgeSeconds }
+  }
+  return out
+}
+
+export async function executeGatewayParallelSearch(
+  accessToken: string | undefined,
+  params: GatewayParallelSearchParams,
+  innerProxyModelId: string = GATEWAY_TOOL_PROXY_MODEL_ID,
+): Promise<unknown> {
+  const apiKey = await resolveGatewayApiKey(accessToken)
+  if (!apiKey) {
+    throw new Error('AI Gateway API key is not configured (needed for web search)')
+  }
+  const gw = createGateway({ apiKey })
+  const parallelTool = gw.tools.parallelSearch({
+    mode: PARALLEL_DEFAULTS.mode,
+    maxResults: PARALLEL_DEFAULTS.maxResults,
+    excerpts: PARALLEL_DEFAULTS.excerpts,
+  })
+  const payload = buildParallelProviderPayload(params)
+  const prompt = `Call parallel_search exactly once with this JSON input and no other tools:\n${JSON.stringify(payload)}`
+
+  const result = await runInnerGenerateTextWithTool({
+    toolName: 'parallel_search',
+    tool: parallelTool,
+    prompt,
+    gw,
+    innerProxyModelId,
+    maxAttempts: INNER_TOOL_ATTEMPTS,
+  })
+  const extracted = extractParallelOutputFromResult(result, 'parallel_search')
+  if (extracted !== undefined) {
+    console.log('[AI Gateway] parallel_search inner generateText OK')
+    return extracted
+  }
+
+  console.error('[AI Gateway] parallel_search inner generateText missing tool result', {
+    finishReason: result.finishReason,
+    steps: result.steps.length,
+  })
+  throw new Error('Deep web search did not return results — check AI Gateway / Parallel billing and logs')
+}
+
+const searchRecencyEnum = z.enum(['day', 'week', 'month', 'year'])
+
+const perplexitySearchInputSchema = z.object({
+  query: z
+    .union([z.string().min(1), z.array(z.string().min(1)).max(5)])
+    .describe('Search query or up to 5 queries to merge'),
+  maxResults: z.number().int().min(1).max(20).optional(),
+  maxTokensPerPage: z.number().int().min(256).max(2048).optional(),
+  maxTokens: z.number().int().min(1000).max(1_000_000).optional(),
+  country: z
+    .string()
+    .length(2)
+    .optional()
+    .describe("ISO 3166-1 alpha-2 (e.g. 'US')"),
+  searchDomainFilter: z
+    .array(z.string().min(1))
+    .max(20)
+    .optional()
+    .describe("Allowlist e.g. arxiv.org, pubmed.ncbi.nlm.nih.gov — or '-reddit.com' to exclude (max 20)"),
+  searchLanguageFilter: z.array(z.string().min(2).max(2)).max(10).optional(),
+  searchAfterDate: z
+    .string()
+    .optional()
+    .describe("MM/DD/YYYY; cannot be combined with searchRecencyFilter in the same call"),
+  searchBeforeDate: z.string().optional(),
+  lastUpdatedAfterFilter: z.string().optional(),
+  lastUpdatedBeforeFilter: z.string().optional(),
+  searchRecencyFilter: searchRecencyEnum
+    .optional()
+    .describe('Relative time window. Default year. Use day/week for news'),
+})
+
+const parallelSearchInputSchema = z.object({
+  objective: z
+    .string()
+    .min(1)
+    .max(5000)
+    .describe(
+      'Natural-language research goal; for academic work say so and name domains (e.g. arxiv, PubMed).',
+    ),
+  searchQueries: z
+    .array(z.string().min(1).max(200))
+    .max(8)
+    .optional()
+    .describe('Optional keyword queries to supplement the objective'),
+  mode: z.enum(['one-shot', 'agentic']).optional(),
+  maxResults: z.number().int().min(1).max(20).optional(),
+  includeDomains: z.array(z.string().min(1)).optional(),
+  excludeDomains: z.array(z.string().min(1)).optional(),
+  afterDate: z
+    .string()
+    .optional()
+    .describe('ISO 8601 date; only include sources published after this date'),
+  maxCharsPerResult: z.number().int().min(200).max(20_000).optional(),
+  maxCharsTotal: z.number().int().min(2000).max(200_000).optional(),
+  maxAgeSeconds: z.number().int().min(0).optional(),
+})
+
+function createPerplexitySearchFunctionTool(accessToken: string | undefined, innerProxyModelId: string) {
   return tool({
     description:
-      'Search the public web for current information, news, and real-time facts (Perplexity via Vercel AI Gateway). ' +
-      'Use for anything that needs the live web.',
-    inputSchema: z.object({
-      query: z
-        .union([z.string().min(1), z.array(z.string().min(1)).max(5)])
-        .describe('Search query string, or up to 5 queries to combine results'),
-    }),
-    execute: async (input) => executeGatewayPerplexitySearch(accessToken, input.query),
+      'Search the public web (Perplexity via Vercel AI Gateway). Use for quick lookups, news, and general web search. ' +
+      'Supports up to 5 batched queries, domain allow/deny (e.g. arxiv.org, pubmed), language and recency filters. ' +
+      'For heavy academic / multi-source research with long excerpts, prefer parallel_search.',
+    inputSchema: perplexitySearchInputSchema,
+    execute: async (input) => {
+      const p: GatewayPerplexitySearchParams = {
+        query: input.query,
+        maxResults: input.maxResults,
+        maxTokensPerPage: input.maxTokensPerPage,
+        maxTokens: input.maxTokens,
+        country: input.country,
+        searchDomainFilter: input.searchDomainFilter,
+        searchLanguageFilter: input.searchLanguageFilter,
+        searchAfterDate: input.searchAfterDate,
+        searchBeforeDate: input.searchBeforeDate,
+        lastUpdatedAfterFilter: input.lastUpdatedAfterFilter,
+        lastUpdatedBeforeFilter: input.lastUpdatedBeforeFilter,
+        searchRecencyFilter: input.searchRecencyFilter,
+      }
+      return executeGatewayPerplexitySearch(accessToken, p, innerProxyModelId)
+    },
+  })
+}
+
+function createParallelSearchFunctionTool(accessToken: string | undefined, innerProxyModelId: string) {
+  return tool({
+    description:
+      'Deep web research (Parallel AI via Vercel AI Gateway): LLM-optimized excerpts, strong for synthesis, ' +
+      'citations, and domain-scoped research (e.g. include arxiv.org, nature.com). Use when the user needs ' +
+      'high-quality sources, long snippets, or academic-style review — after quick perplexity_search if needed.',
+    inputSchema: parallelSearchInputSchema,
+    execute: async (input) => {
+      return executeGatewayParallelSearch(
+        accessToken,
+        {
+          objective: input.objective,
+          searchQueries: input.searchQueries,
+          mode: input.mode,
+          maxResults: input.maxResults,
+          includeDomains: input.includeDomains,
+          excludeDomains: input.excludeDomains,
+          afterDate: input.afterDate,
+          maxCharsPerResult: input.maxCharsPerResult,
+          maxCharsTotal: input.maxCharsTotal,
+          maxAgeSeconds: input.maxAgeSeconds,
+        },
+        innerProxyModelId,
+      )
+    },
   })
 }
 
@@ -303,15 +647,36 @@ function createPerplexitySearchFunctionTool(accessToken?: string) {
  * Always returns a **function** `tool()` wrapper so `streamText` performs client-side `execute`, which keeps
  * the tool loop alive for a follow-up model turn (see `createPerplexitySearchFunctionTool`).
  *
- * @param chatModelId — Logged for debugging only.
+ * @param chatModelId — Used to pick the inner Gateway model for forced provider tool calls (aligns with user’s selected model when possible).
  */
 export async function getGatewayPerplexitySearchTool(accessToken?: string, chatModelId?: string) {
   try {
     await getOrCreateGateway(accessToken)
-    console.log('[AI Gateway] perplexity_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)')
-    return createPerplexitySearchFunctionTool(accessToken)
+    const innerProxyModelId = chatModelId
+      ? resolveGatewayProviderToolProxyModelId(chatModelId)
+      : GATEWAY_TOOL_PROXY_MODEL_ID
+    console.log('[AI Gateway] perplexity_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
+      innerProxyModelId,
+    })
+    return createPerplexitySearchFunctionTool(accessToken, innerProxyModelId)
   } catch (err) {
     console.error('[AI Gateway] perplexity_search unavailable — check AI_GATEWAY_API_KEY:', err)
+    return null
+  }
+}
+
+export async function getGatewayParallelSearchTool(accessToken?: string, chatModelId?: string) {
+  try {
+    await getOrCreateGateway(accessToken)
+    const innerProxyModelId = chatModelId
+      ? resolveGatewayProviderToolProxyModelId(chatModelId)
+      : GATEWAY_TOOL_PROXY_MODEL_ID
+    console.log('[AI Gateway] parallel_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
+      innerProxyModelId,
+    })
+    return createParallelSearchFunctionTool(accessToken, innerProxyModelId)
+  } catch (err) {
+    console.error('[AI Gateway] parallel_search unavailable — check AI_GATEWAY_API_KEY:', err)
     return null
   }
 }

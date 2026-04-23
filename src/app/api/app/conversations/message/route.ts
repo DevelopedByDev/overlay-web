@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const mode = body.mode ?? 'ask'
+    const mode = body.mode ?? 'act'
     const contentType = body.contentType ?? 'text'
     const modelId = body.modelId ?? body.model
     const serverSecret = getInternalApiSecret()
