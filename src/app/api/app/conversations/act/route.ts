@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from 'ai'
+import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { listMemories } from '@/lib/app-store'
@@ -54,6 +55,12 @@ import {
   summarizeToolInputForLog,
   summarizeToolSetForLog,
 } from '@/lib/safe-log'
+import {
+  createNvidiaNimChatLanguageModel,
+  FREE_TIER_NVIDIA_PREFERRED_MODEL_ORDER,
+  isRetryableFreeTierPrimaryModelError,
+  resolveNvidiaApiKey,
+} from '@/lib/nvidia-nim-openai'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import type { Entitlements } from '@/lib/app-contracts'
 import {
@@ -383,18 +390,15 @@ export async function POST(request: NextRequest) {
       : ''
 
     const modelMessages = await convertToModelMessages(messagesForModel)
-    // Declared before languageModel so the fetch-interceptor callback can set it during LLM calls.
+    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
     let streamedRoutedModelId: string | undefined
-    const languageModel = effectiveModelId === FREE_TIER_AUTO_MODEL_ID
-      ? await getOpenRouterLanguageModelCapturingRoutedModel(
-          effectiveModelId,
-          auth.accessToken || undefined,
-          (model) => { streamedRoutedModelId = model },
-        )
-      : await getGatewayLanguageModel(
-          effectiveModelId,
-          auth.accessToken || undefined,
-        )
+    let payTierLanguageModel: Awaited<ReturnType<typeof getGatewayLanguageModel>> | null = null
+    if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID) {
+      payTierLanguageModel = await getGatewayLanguageModel(
+        effectiveModelId,
+        auth.accessToken || undefined,
+      )
+    }
     if (_ttftDebug) _tPrep = performance.now()
     const [composioRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
       composioToolsTask,
@@ -483,6 +487,7 @@ export async function POST(request: NextRequest) {
       ? "You are Overlay’s assistant in a parallel model-comparison run. You do not have Composio or third-party account actions in this run; focus on a strong answer with the tools you have."
       : "You are Overlay’s browser agent. Use the available Composio tools to complete the user’s task."
 
+    const runActStream = async (languageModel: LanguageModelV3) => {
     const agent = new ToolLoopAgent({
       model: languageModel,
       tools,
@@ -733,6 +738,37 @@ export async function POST(request: NextRequest) {
       })
     }
     return _uiResp
+    }
+
+    if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
+      const nvidiaKey = await resolveNvidiaApiKey(auth.accessToken)
+      for (const modelId of FREE_TIER_NVIDIA_PREFERRED_MODEL_ORDER) {
+        if (!nvidiaKey) break
+        streamedRoutedModelId = modelId
+        try {
+          return await runActStream(createNvidiaNimChatLanguageModel(modelId, nvidiaKey))
+        } catch (e) {
+          const retryable = isRetryableFreeTierPrimaryModelError(e)
+          console.warn(
+            retryable
+              ? `[conversations/act] free tier NIM failed (${modelId}), trying next`
+              : `[conversations/act] free tier NIM error (${modelId}), trying next`,
+            summarizeErrorForLog(e),
+          )
+        }
+      }
+      streamedRoutedModelId = undefined
+      const openRouterModel = await getOpenRouterLanguageModelCapturingRoutedModel(
+        FREE_TIER_AUTO_MODEL_ID,
+        auth.accessToken || undefined,
+        (m) => { streamedRoutedModelId = m },
+      )
+      return await runActStream(openRouterModel)
+    }
+    if (!payTierLanguageModel) {
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+    }
+    return await runActStream(payTierLanguageModel)
   } catch (error) {
     console.error('[conversations/act] Error:', summarizeErrorForLog(error))
     return NextResponse.json(
