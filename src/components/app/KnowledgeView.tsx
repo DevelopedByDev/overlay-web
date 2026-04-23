@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   Brain, Trash2, Plus, X, FilePlus, FolderPlus, FolderInput, Copy, Check,
   ChevronRight, ChevronDown, FileText, Folder, FolderOpen, Search,
-  LayoutList, LayoutGrid, RefreshCw, SquareMousePointer,
+  LayoutList, LayoutGrid, RefreshCw, SquareMousePointer, Loader2,
 } from 'lucide-react'
 import { FileTreeSkeleton, KnowledgeListSkeleton } from '@/components/ui/Skeleton'
 import posthog from 'posthog-js'
@@ -250,10 +250,16 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   const [showAddMemory, setShowAddMemory] = useState(false)
   const [addText, setAddText] = useState('')
   const [isSavingMemory, setIsSavingMemory] = useState(false)
+  const [memorySaveError, setMemorySaveError] = useState<string | null>(null)
+  const [memorySavePendingPreview, setMemorySavePendingPreview] = useState<string | null>(null)
   const [showImportMemory, setShowImportMemory] = useState(false)
   const [importText, setImportText] = useState('')
   const [isImporting, setIsImporting] = useState(false)
+  const [importMemoryError, setImportMemoryError] = useState<string | null>(null)
+  const [importPendingPreview, setImportPendingPreview] = useState<string | null>(null)
   const [importPromptCopied, setImportPromptCopied] = useState(false)
+  const [fileUploadPending, setFileUploadPending] = useState<{ label: string } | null>(null)
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null)
 
   // ── File system state ──
   const [files, setFiles] = useState<FileNode[]>([])
@@ -429,34 +435,68 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     const text = addText.trim()
     if (!text || isSavingMemory) return
     setIsSavingMemory(true)
+    setMemorySaveError(null)
+    const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text
+    setMemorySavePendingPreview(preview)
     try {
       const res = await fetch('/api/app/memory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: text, source: 'manual' }),
+        body: JSON.stringify({
+          content: text,
+          source: 'manual',
+          type: 'fact',
+          importance: 3,
+          actor: 'user',
+          status: 'approved',
+        }),
       })
-      if (!res.ok) return
+      const data = (await res.json().catch(() => null)) as { error?: string } | null
+      if (!res.ok) {
+        setMemorySaveError(typeof data?.error === 'string' ? data.error : 'Could not save memory')
+        return
+      }
       setAddText('')
       setShowAddMemory(false)
       await loadMemories()
-    } finally { setIsSavingMemory(false) }
+    } finally {
+      setMemorySavePendingPreview(null)
+      setIsSavingMemory(false)
+    }
   }
 
   async function handleImportMemory() {
     const text = importText.trim()
     if (!text || isImporting) return
     setIsImporting(true)
+    setImportMemoryError(null)
+    const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text
+    setImportPendingPreview(preview)
     try {
       const res = await fetch('/api/app/memory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: text, source: 'manual' }),
+        body: JSON.stringify({
+          content: text,
+          source: 'manual',
+          type: 'fact',
+          importance: 3,
+          actor: 'user',
+          status: 'approved',
+        }),
       })
-      if (!res.ok) return
+      const data = (await res.json().catch(() => null)) as { error?: string } | null
+      if (!res.ok) {
+        setImportMemoryError(typeof data?.error === 'string' ? data.error : 'Could not import memory')
+        return
+      }
       setImportText('')
       setShowImportMemory(false)
       await loadMemories()
-    } finally { setIsImporting(false) }
+    } finally {
+      setImportPendingPreview(null)
+      setIsImporting(false)
+    }
   }
 
   async function handleDeleteMemory(memoryId: string) {
@@ -542,71 +582,100 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     }, 800)
   }
 
-  async function uploadSingleFile(file: File, parentId: string | null) {
-    const fileType = getFileType(file.name)
-    const isText = fileType === 'text' || fileType === 'markdown' || fileType === 'csv'
-    if (isText) {
-      const content = await file.text()
-      await fetch('/api/app/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, type: 'file', parentId, content }),
-      })
-    } else {
+  async function uploadSingleFile(file: File, parentId: string | null): Promise<boolean> {
+    try {
+      const fileType = getFileType(file.name)
+      const isText = fileType === 'text' || fileType === 'markdown' || fileType === 'csv'
+      if (isText) {
+        const content = await file.text()
+        const res = await fetch('/api/app/files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: file.name, type: 'file', parentId, content }),
+        })
+        return res.ok
+      }
       const urlRes = await fetch('/api/app/files/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sizeBytes: file.size, name: file.name, mimeType: file.type || undefined }),
       })
-      if (!urlRes.ok) return
+      if (!urlRes.ok) return false
       const { uploadUrl, r2Key } = await urlRes.json() as { uploadUrl: string; r2Key: string }
       const uploadRes = await fetch(uploadUrl, {
         method: 'PUT',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
       })
-      if (!uploadRes.ok) return
-      await fetch('/api/app/files', {
+      if (!uploadRes.ok) return false
+      const createRes = await fetch('/api/app/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: file.name, type: 'file', parentId, r2Key, sizeBytes: file.size }),
       })
+      return createRes.ok
+    } catch {
+      return false
     }
   }
 
   async function handleUploadFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    await uploadSingleFile(file, null)
-    await loadFiles()
-    e.target.value = ''
+    setFileUploadError(null)
+    setFileUploadPending({ label: file.name })
+    try {
+      const ok = await uploadSingleFile(file, null)
+      if (!ok) {
+        setFileUploadError('Upload failed. Check the file and try again.')
+        return
+      }
+      await loadFiles()
+    } finally {
+      setFileUploadPending(null)
+      e.target.value = ''
+    }
   }
 
   async function handleUploadFolder(e: React.ChangeEvent<HTMLInputElement>) {
     const uploadedFiles = e.target.files
     if (!uploadedFiles) return
-    const folders = new Map<string, string>()
-    for (const file of Array.from(uploadedFiles)) {
-      const parts = file.webkitRelativePath.split('/')
-      for (let i = 0; i < parts.length - 1; i++) {
-        const folderPath = parts.slice(0, i + 1).join('/')
-        if (!folders.has(folderPath)) {
-          const parentPath = i === 0 ? null : parts.slice(0, i).join('/')
-          const parentId = parentPath ? (folders.get(parentPath) ?? null) : null
-          const res = await fetch('/api/app/files', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: parts[i], type: 'folder', parentId }),
-          })
-          if (res.ok) { const { id } = await res.json(); folders.set(folderPath, id) }
+    const list = Array.from(uploadedFiles)
+    setFileUploadError(null)
+    setFileUploadPending({ label: list.length === 1 ? list[0]!.name : `Folder · ${list.length} files` })
+    try {
+      const folders = new Map<string, string>()
+      for (const file of list) {
+        const parts = file.webkitRelativePath.split('/')
+        for (let i = 0; i < parts.length - 1; i++) {
+          const folderPath = parts.slice(0, i + 1).join('/')
+          if (!folders.has(folderPath)) {
+            const parentPath = i === 0 ? null : parts.slice(0, i).join('/')
+            const parentId = parentPath ? (folders.get(parentPath) ?? null) : null
+            const res = await fetch('/api/app/files', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: parts[i], type: 'folder', parentId }),
+            })
+            if (res.ok) {
+              const { id } = await res.json() as { id: string }
+              folders.set(folderPath, id)
+            }
+          }
+        }
+        const parentFolderPath = parts.slice(0, -1).join('/')
+        const parentId = folders.get(parentFolderPath) ?? null
+        const ok = await uploadSingleFile(file, parentId)
+        if (!ok) {
+          setFileUploadError('One or more files failed to upload.')
+          break
         }
       }
-      const parentFolderPath = parts.slice(0, -1).join('/')
-      const parentId = folders.get(parentFolderPath) ?? null
-      await uploadSingleFile(file, parentId)
+      await loadFiles()
+    } finally {
+      setFileUploadPending(null)
+      e.target.value = ''
     }
-    await loadFiles()
-    e.target.value = ''
   }
 
   const filesFiltered = useMemo(() => {
@@ -650,12 +719,21 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       {showAddMemory && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
-          onClick={(e) => { if (e.target === e.currentTarget) { setShowAddMemory(false); setAddText('') } }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowAddMemory(false)
+              setAddText('')
+              setMemorySaveError(null)
+            }
+          }}
         >
           <div className="w-[480px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
-              <button onClick={() => { setShowAddMemory(false); setAddText('') }} className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] transition-colors">
+              <button
+                onClick={() => { setShowAddMemory(false); setAddText(''); setMemorySaveError(null) }}
+                className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] transition-colors"
+              >
                 <X size={14} />
               </button>
             </div>
@@ -671,9 +749,12 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
             <p className="mt-2 text-[11px] leading-snug text-[var(--muted)]">
               Long memories stay as one saved item; the list shows short previews so you can scan them quickly.
             </p>
+            {memorySaveError ? (
+              <p className="mt-3 text-xs text-red-400" role="alert">{memorySaveError}</p>
+            ) : null}
             <div className="flex gap-2 mt-3 justify-end">
               <button
-                onClick={() => { setShowAddMemory(false); setAddText('') }}
+                onClick={() => { setShowAddMemory(false); setAddText(''); setMemorySaveError(null) }}
                 className={DIALOG_ACTION_BUTTON_CLASS}
               >Cancel</button>
               <button
@@ -690,12 +771,21 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       {showImportMemory && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
-          onClick={(e) => { if (e.target === e.currentTarget) { setShowImportMemory(false); setImportText('') } }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowImportMemory(false)
+              setImportText('')
+              setImportMemoryError(null)
+            }
+          }}
         >
           <div className="w-[540px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-sm font-medium text-[var(--foreground)]">Import memory</h3>
-              <button onClick={() => { setShowImportMemory(false); setImportText('') }} className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] transition-colors">
+              <button
+                onClick={() => { setShowImportMemory(false); setImportText(''); setImportMemoryError(null) }}
+                className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] transition-colors"
+              >
                 <X size={14} />
               </button>
             </div>
@@ -733,8 +823,16 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
                 />
               </div>
             </div>
+            {importMemoryError ? (
+              <p className="mb-3 text-xs text-red-400" role="alert">{importMemoryError}</p>
+            ) : null}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowImportMemory(false); setImportText('') }} className={DIALOG_ACTION_BUTTON_CLASS}>Cancel</button>
+              <button
+                onClick={() => { setShowImportMemory(false); setImportText(''); setImportMemoryError(null) }}
+                className={DIALOG_ACTION_BUTTON_CLASS}
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleImportMemory}
                 disabled={!importText.trim() || isImporting}
@@ -1035,7 +1133,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               </button>
               <button
                 type="button"
-                onClick={() => setShowImportMemory(true)}
+                onClick={() => { setShowImportMemory(true); setImportMemoryError(null) }}
                 className={TOOLBAR_FILLED_BUTTON_CLASS}
               >
                 <FolderInput size={13} />
@@ -1043,7 +1141,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               </button>
               <button
                 type="button"
-                onClick={() => setShowAddMemory(true)}
+                onClick={() => { setShowAddMemory(true); setMemorySaveError(null) }}
                 className={TOOLBAR_FILLED_BUTTON_CLASS}
               >
                 <Plus size={13} />
@@ -1100,14 +1198,32 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           />
         )}
 
+        {activeTab === 'memories' && (memorySavePendingPreview || importPendingPreview) && (
+          <div
+            className="mx-auto mb-4 flex max-w-3xl items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3"
+            aria-busy
+            aria-live="polite"
+          >
+            <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-[var(--foreground)]">
+                {memorySavePendingPreview ? 'Saving memory…' : 'Importing memory…'}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">
+                {memorySavePendingPreview ?? importPendingPreview}
+              </p>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'memories' && memoriesLoading && <KnowledgeListSkeleton rows={10} />}
-        {activeTab === 'memories' && !memoriesLoading && memories.length === 0 && (
+        {activeTab === 'memories' && !memoriesLoading && memories.length === 0 && !memorySavePendingPreview && !importPendingPreview && (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
             <Brain size={32} strokeWidth={1} className="opacity-40" />
             <p className="text-sm">No memories yet</p>
             <button
               type="button"
-              onClick={() => setShowAddMemory(true)}
+              onClick={() => { setShowAddMemory(true); setMemorySaveError(null) }}
               className="text-xs text-[var(--foreground)] underline underline-offset-2"
             >
               Add your first memory
@@ -1200,6 +1316,25 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               )
             })}
           </div>
+        )}
+
+        {activeTab === 'files' && fileUploadPending && (
+          <div
+            className="mx-auto mb-4 flex max-w-3xl items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3"
+            aria-busy
+            aria-live="polite"
+          >
+            <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-[var(--foreground)]">Uploading…</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">{fileUploadPending.label}</p>
+            </div>
+          </div>
+        )}
+        {activeTab === 'files' && fileUploadError && (
+          <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
+            {fileUploadError}
+          </p>
         )}
 
         {activeTab === 'files' && filesLoading && <FileTreeSkeleton rows={10} />}

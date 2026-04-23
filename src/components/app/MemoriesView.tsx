@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Brain, CheckSquare, Copy, Plus, Square, Trash2, X } from 'lucide-react'
+import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'lucide-react'
 
 interface MemoryListItem {
   key: string
@@ -94,6 +94,8 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
   const [addType, setAddType] = useState<Memory['type']>('fact')
   const [addImportance, setAddImportance] = useState('3')
   const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [pendingSavePreview, setPendingSavePreview] = useState<string | null>(null)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const actionButtonClass =
@@ -125,8 +127,11 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
     const text = addText.trim()
     if (!text || isSaving) return
     setIsSaving(true)
+    setSaveError(null)
+    const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text
+    setPendingSavePreview(preview)
     try {
-      await fetch('/api/app/memory', {
+      const res = await fetch('/api/app/memory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -138,12 +143,18 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
           status: 'approved',
         }),
       })
+      const data = (await res.json().catch(() => null)) as { error?: string } | null
+      if (!res.ok) {
+        setSaveError(typeof data?.error === 'string' ? data.error : 'Could not save memory')
+        return
+      }
       setAddText('')
       setAddType('fact')
       setAddImportance('3')
       setShowAdd(false)
       await loadMemories()
     } finally {
+      setPendingSavePreview(null)
       setIsSaving(false)
     }
   }
@@ -222,7 +233,7 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
             </button>
           )}
           <button
-            onClick={() => setShowAdd(true)}
+            onClick={() => { setShowAdd(true); setSaveError(null) }}
             className={actionButtonClass}
           >
             <Plus size={12} />
@@ -242,7 +253,7 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
               <button
-                onClick={() => setShowAdd(false)}
+                onClick={() => { setShowAdd(false); setSaveError(null) }}
                 className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
               >
                 <X size={14} />
@@ -293,9 +304,14 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
               Saved memories stay as a single record, but the knowledge sidebar can still preview
               them in short segments for easier scanning.
             </p>
+            {saveError ? (
+              <p className="mt-3 text-xs text-red-400" role="alert">
+                {saveError}
+              </p>
+            ) : null}
             <div className="mt-4 flex justify-end gap-2">
               <button
-                onClick={() => setShowAdd(false)}
+                onClick={() => { setShowAdd(false); setSaveError(null) }}
                 className={dialogButtonClass}
               >
                 Cancel
@@ -317,7 +333,7 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
           <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
             Loading...
           </div>
-        ) : memories.length === 0 ? (
+        ) : memories.length === 0 && !pendingSavePreview ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-[var(--muted)]">
             <Brain size={40} strokeWidth={1} className="opacity-40" />
             <p className="text-sm">No memories yet</p>
@@ -330,6 +346,21 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-6 px-6 py-4">
+            {pendingSavePreview ? (
+              <div
+                className="flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3"
+                aria-busy
+                aria-live="polite"
+              >
+                <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-[var(--foreground)]">Saving memory…</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">
+                    {pendingSavePreview}
+                  </p>
+                </div>
+              </div>
+            ) : null}
             {groupLabels.map((label) => (
               <div key={label}>
                 <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">

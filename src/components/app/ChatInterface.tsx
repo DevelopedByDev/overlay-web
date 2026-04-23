@@ -3241,10 +3241,34 @@ export default function ChatInterface({
     setEditingChatTitle(title)
   }, [])
 
+  const headerTitleInputRef = useRef<HTMLInputElement>(null)
+
+  const beginHeaderChatRename = useCallback(() => {
+    if (!activeChatId) return
+    const title =
+      activeChatTitle ??
+      chats.find((c) => c._id === activeChatId)?.title ??
+      DEFAULT_CHAT_TITLE
+    setEditingChatId(activeChatId)
+    setEditingChatTitle(title)
+  }, [activeChatId, activeChatTitle, chats])
+
+  useEffect(() => {
+    if (!activeChatId || editingChatId !== activeChatId) return
+    const el = headerTitleInputRef.current
+    if (!el) return
+    el.focus()
+    el.select()
+  }, [activeChatId, editingChatId])
+
   const cancelChatRename = useCallback(() => {
     setEditingChatId(null)
     setEditingChatTitle('')
   }, [])
+
+  useEffect(() => {
+    cancelChatRename()
+  }, [activeChatId, cancelChatRename])
 
   const commitChatRename = useCallback(async (chatId: string) => {
     const previousTitle =
@@ -3270,6 +3294,11 @@ export default function ChatInterface({
       void loadChats()
     }
   }, [activeChatTitle, applyChatTitleUpdate, cancelChatRename, chats, editingChatTitle, loadChats])
+
+  /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
+  const activeChatHydrated = Boolean(
+    activeChatId && runtimesRef.current.get(activeChatId)?.hydrated,
+  )
 
   // Called on the first message of a new chat. Immediately shows a fallback title,
   // then replaces it with the GPT OSS 20B-generated title once it arrives.
@@ -5330,14 +5359,48 @@ async function hydrateCompletedAskTurnFromServer(
         )}
         {/* Sticky header — md: h-16 aligns with AppSidebar brand row border; stack on narrow screens */}
         <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:py-0 md:px-4">
-            <div className="flex min-w-0 items-center gap-2">
-              <h2 className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--foreground)] md:max-w-[min(100%,20rem)] md:truncate lg:max-w-[24rem]">
-                <span className="line-clamp-2 md:line-clamp-1 md:truncate">
-                  {activeChatTitle ?? activeChat?.title ?? 'New conversation'}
-                </span>
-              </h2>
-              {isSwitchingChat && (
-                <div className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" />
+            <div className="group/header-title flex min-w-0 items-center gap-2">
+              {activeChatId && editingChatId === activeChatId ? (
+                <input
+                  ref={headerTitleInputRef}
+                  className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
+                  value={editingChatTitle}
+                  onChange={(e) => setEditingChatTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void commitChatRename(activeChatId)
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      cancelChatRename()
+                    }
+                  }}
+                  onBlur={() => void commitChatRename(activeChatId)}
+                />
+              ) : (
+                <div className="flex min-w-0 items-center gap-1">
+                  <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] lg:max-w-[24rem] md:truncate">
+                    <span className="line-clamp-2 md:line-clamp-1 md:truncate">
+                      {activeChatTitle ?? activeChat?.title ?? 'New conversation'}
+                    </span>
+                  </h2>
+                  {isSwitchingChat ? (
+                    <div
+                      className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin"
+                      aria-label="Loading chat"
+                    />
+                  ) : activeChatId && activeChatHydrated ? (
+                    <button
+                      type="button"
+                      onClick={beginHeaderChatRename}
+                      className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-[var(--foreground)] group-hover/header-title:opacity-100 focus-visible:opacity-100"
+                      aria-label="Rename chat"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  ) : null}
+                </div>
               )}
               {projectName && (
                 <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">

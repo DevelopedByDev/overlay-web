@@ -4,9 +4,11 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Plus, FolderOpen, Folder, ChevronRight, MessageSquare,
-  BookOpen, FileText, Upload, FolderPlus, Loader2, Trash2, ArrowLeft,
+  BookOpen, FileText, Upload, FolderPlus, Loader2, Trash2, ArrowLeft, Pencil,
 } from 'lucide-react'
 import { CHAT_TITLE_UPDATED_EVENT, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
+
+const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
 import { getFileType } from './FileViewer'
 
@@ -163,7 +165,17 @@ function ProjectFileTreeNode({
 // ─── Project tree node ────────────────────────────────────────────────────────
 
 function ProjectNode({
-  project, allProjects, depth, selectedId, expandedIds, onNavigate, onToggle, onDelete, onNavigateItem, onDeleteItem,
+  project,
+  allProjects,
+  depth,
+  selectedId,
+  expandedIds,
+  onNavigate,
+  onToggle,
+  onDelete,
+  onNavigateItem,
+  onDeleteItem,
+  onProjectRenamed,
 }: {
   project: Project
   allProjects: Project[]
@@ -175,7 +187,11 @@ function ProjectNode({
   onDelete: (id: string, e: React.MouseEvent) => void
   onNavigateItem: (project: Project, view: string, id: string) => void
   onDeleteItem: (type: 'chat' | 'note', id: string, e: React.MouseEvent) => void
+  onProjectRenamed: (projectId: string, name: string) => void
 }) {
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+
   const children = allProjects.filter((p) => p.parentId === project._id)
   const isOpen = expandedIds.has(project._id)
   const isSelected = project._id === selectedId
@@ -236,6 +252,29 @@ function ProjectNode({
       return a.name.localeCompare(b.name)
     }) ?? []
 
+  async function commitProjectRowRename() {
+    if (renamingProjectId !== project._id) return
+    const name = renameDraft.trim()
+    setRenamingProjectId(null)
+    if (!name || name === project.name) return
+    try {
+      const res = await fetch('/api/app/projects', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project._id, name }),
+      })
+      if (!res.ok) return
+      const data = (await res.json().catch(() => ({}))) as { project?: Project }
+      const finalName = data.project?.name?.trim() || name
+      onProjectRenamed(project._id, finalName)
+      window.dispatchEvent(
+        new CustomEvent(PROJECT_META_UPDATED_EVENT, { detail: { projectId: project._id, name: finalName } }),
+      )
+    } catch {
+      /* keep UI name */
+    }
+  }
+
   return (
     <div>
       <div
@@ -243,7 +282,10 @@ function ProjectNode({
           isSelected ? 'bg-[#e8e8e8] text-[#0a0a0a]' : 'text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a]'
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: '8px' }}
-        onClick={() => onNavigate(project)}
+        onClick={() => {
+          if (renamingProjectId === project._id) return
+          onNavigate(project)
+        }}
       >
         <button
           type="button"
@@ -255,7 +297,40 @@ function ProjectNode({
         {isOpen
           ? <FolderOpen size={12} className="shrink-0 text-[#888]" />
           : <Folder size={12} className="shrink-0 text-[#888]" />}
-        <span className="flex-1 truncate">{project.name}</span>
+        {renamingProjectId === project._id ? (
+          <input
+            className="min-w-0 flex-1 rounded border border-[#ccc] bg-white px-1 py-0.5 text-xs text-[#0a0a0a] outline-none"
+            value={renameDraft}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setRenameDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void commitProjectRowRename()
+              }
+              if (e.key === 'Escape') {
+                setRenamingProjectId(null)
+                setRenameDraft('')
+              }
+            }}
+            onBlur={() => void commitProjectRowRename()}
+            autoFocus
+          />
+        ) : (
+          <span className="flex-1 truncate">{project.name}</span>
+        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setRenamingProjectId(project._id)
+            setRenameDraft(project.name)
+          }}
+          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
+          aria-label="Rename project"
+        >
+          <Pencil size={10} />
+        </button>
         <button
           type="button"
           onClick={(e) => onDelete(project._id, e)}
@@ -280,6 +355,7 @@ function ProjectNode({
               onDelete={onDelete}
               onNavigateItem={onNavigateItem}
               onDeleteItem={onDeleteItem}
+              onProjectRenamed={onProjectRenamed}
             />
           ))}
 
@@ -496,6 +572,11 @@ export default function ProjectsSidebar() {
     setProjects((prev) => prev.filter((p) => p._id !== id))
   }
 
+  function handleProjectRenamed(projectId: string, name: string) {
+    setProjects((prev) => prev.map((p) => (p._id === projectId ? { ...p, name } : p)))
+    setSelectedProject((prev) => (prev && prev._id === projectId ? { ...prev, name } : prev))
+  }
+
   async function handleSaveProjectMeta() {
     if (!selectedProject || isSavingProjectMeta) return
     const name = projectDraftName.trim()
@@ -534,7 +615,9 @@ export default function ProjectsSidebar() {
   }
 
   function handleNavigate(project: Project) {
-    setSelectedProject(project)
+    const pn = encodeURIComponent(project.name)
+    router.push(`/app/projects?projectId=${encodeURIComponent(project._id)}&projectName=${pn}`)
+    setSelectedProject(null)
     setExpandedIds((prev) => new Set([...prev, project._id]))
   }
 
@@ -1020,6 +1103,7 @@ export default function ProjectsSidebar() {
                   onDelete={handleDeleteProject}
                   onNavigateItem={handleNavigateItem}
                   onDeleteItem={handleDeleteItem}
+                  onProjectRenamed={handleProjectRenamed}
                 />
               ))}
             </div>

@@ -24,6 +24,8 @@ import {
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
 
+const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
+
 type Conversation = { _id: string; title: string; lastModified: number }
 type Note = { _id: string; title: string; updatedAt: number }
 type Project = { _id: string; name: string; parentId: string | null }
@@ -330,9 +332,11 @@ function ProjectBranch({
   items,
   itemsLoading,
   onToggle,
+  onOpenProject,
   onNavigateItem,
   onDeleteProject,
   onDeleteItem,
+  onProjectRenamed,
 }: {
   project: Project
   allProjects: Project[]
@@ -342,10 +346,15 @@ function ProjectBranch({
   items: Record<string, { chats: ProjectChat[]; notes: ProjectNote[]; files: ProjectFile[] }>
   itemsLoading: Set<string>
   onToggle: (projectId: string) => void
+  onOpenProject: (project: Project) => void
   onNavigateItem: (project: Project, view: 'chat' | 'note' | 'file', id: string) => void
   onDeleteProject: (projectId: string, event: MouseEvent) => void
   onDeleteItem: (type: 'chat' | 'note', id: string, event: MouseEvent) => void
+  onProjectRenamed: (projectId: string, name: string) => void
 }) {
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+
   const children = allProjects.filter((candidate) => candidate.parentId === project._id)
   const open = expanded.has(project._id)
   const projectItems = items[project._id]
@@ -356,16 +365,94 @@ function ProjectBranch({
       return a.name.localeCompare(b.name)
     }), [projectItems])
 
+  async function commitProjectRowRename() {
+    if (renamingProjectId !== project._id) return
+    const name = renameDraft.trim()
+    setRenamingProjectId(null)
+    if (!name || name === project.name) return
+    try {
+      const res = await fetch('/api/app/projects', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project._id, name }),
+      })
+      if (!res.ok) return
+      const data = (await res.json().catch(() => ({}))) as { project?: Project }
+      const finalName = data.project?.name?.trim() || name
+      onProjectRenamed(project._id, finalName)
+      window.dispatchEvent(
+        new CustomEvent(PROJECT_META_UPDATED_EVENT, { detail: { projectId: project._id, name: finalName } }),
+      )
+    } catch {
+      /* keep previous name in UI */
+    }
+  }
+
   return (
     <div>
       <div
-        onClick={() => onToggle(project._id)}
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          if (renamingProjectId === project._id) return
+          onOpenProject(project)
+        }}
+        onKeyDown={(e) => {
+          if (renamingProjectId === project._id) return
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onOpenProject(project)
+          }
+        }}
         className={`${panelItemClass} cursor-pointer ${activeProjectId === project._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
         style={{ paddingLeft: `${10 + depth * 14}px` }}
       >
-        <ChevronRight size={11} className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggle(project._id)
+          }}
+          className="shrink-0 rounded p-0.5 text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+          aria-label={open ? 'Collapse project' : 'Expand project'}
+        >
+          <ChevronRight size={11} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+        </button>
         {open ? <FolderOpen size={12} className="shrink-0" /> : <Folder size={12} className="shrink-0" />}
-        <span className="min-w-0 flex-1 truncate">{project.name}</span>
+        {renamingProjectId === project._id ? (
+          <input
+            className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-1 py-0.5 text-xs text-[var(--foreground)] outline-none"
+            value={renameDraft}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setRenameDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void commitProjectRowRename()
+              }
+              if (e.key === 'Escape') {
+                setRenamingProjectId(null)
+                setRenameDraft('')
+              }
+            }}
+            onBlur={() => void commitProjectRowRename()}
+            autoFocus
+          />
+        ) : (
+          <span className="min-w-0 flex-1 truncate">{project.name}</span>
+        )}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            setRenamingProjectId(project._id)
+            setRenameDraft(project.name)
+          }}
+          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+          aria-label="Rename project"
+        >
+          <Pencil size={11} />
+        </button>
         <button
           type="button"
           onClick={(event) => onDeleteProject(project._id, event)}
@@ -388,9 +475,11 @@ function ProjectBranch({
               items={items}
               itemsLoading={itemsLoading}
               onToggle={onToggle}
+              onOpenProject={onOpenProject}
               onNavigateItem={onNavigateItem}
               onDeleteProject={onDeleteProject}
               onDeleteItem={onDeleteItem}
+              onProjectRenamed={onProjectRenamed}
             />
           ))}
 
@@ -535,6 +624,13 @@ export function ProjectsInlinePanel({
     onNavigate?.()
   }
 
+  function openProjectHub(project: Project) {
+    router.push(
+      `/app/projects?projectId=${encodeURIComponent(project._id)}&projectName=${encodeURIComponent(project.name)}`,
+    )
+    onNavigate?.()
+  }
+
   async function deleteProject(projectId: string, event: MouseEvent) {
     event.stopPropagation()
     await fetch(`/api/app/projects?projectId=${projectId}`, { method: 'DELETE' })
@@ -544,6 +640,10 @@ export function ProjectsInlinePanel({
       delete next[projectId]
       return next
     })
+  }
+
+  function handleProjectRenamed(projectId: string, name: string) {
+    setProjects((prev) => prev.map((p) => (p._id === projectId ? { ...p, name } : p)))
   }
 
   async function deleteItem(type: 'chat' | 'note', id: string, event: MouseEvent) {
@@ -588,9 +688,11 @@ export function ProjectsInlinePanel({
           items={itemsByProject}
           itemsLoading={itemsLoading}
           onToggle={toggleProject}
+          onOpenProject={openProjectHub}
           onNavigateItem={navigateItem}
           onDeleteProject={deleteProject}
           onDeleteItem={deleteItem}
+          onProjectRenamed={handleProjectRenamed}
         />
       ))}
     </div>

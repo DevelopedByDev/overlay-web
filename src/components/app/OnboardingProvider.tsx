@@ -89,7 +89,7 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.55)' }}
-      onClick={onDismiss}
+      aria-hidden
     >
       <div
         onClick={(e) => e.stopPropagation()}

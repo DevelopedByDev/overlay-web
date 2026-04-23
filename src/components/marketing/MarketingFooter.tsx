@@ -4,7 +4,7 @@ import { MoonStar, SunMedium } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
-import { MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/lib/marketing";
+import { MARKETING_GITHUB_URL } from "@/lib/marketing";
 
 export function MarketingFooter() {
   const landing = useLandingThemeOptional();
@@ -23,15 +23,15 @@ export function MarketingFooter() {
           <div>
             <p className={`text-sm ${isDark ? "text-zinc-100" : "text-zinc-950"}`}>overlay</p>
             <p className={`text-xs ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>
-              one layer for every serious AI workflow.
+              the AI workspace that does the work.
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
-          <a href={MARKETING_SALES_URL} target="_blank" rel="noopener noreferrer" className={`transition-colors ${linkClass}`}>
-            Contact sales
-          </a>
+          <Link href="/pricing" className={`transition-colors ${linkClass}`}>
+            Pricing
+          </Link>
           <a href={MARKETING_GITHUB_URL} target="_blank" rel="noopener noreferrer" className={`transition-colors ${linkClass}`}>
             GitHub
           </a>

@@ -737,14 +737,15 @@ export function OnboardingTour({
         )}
         {spotlightRect && (
           <>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: spotlightRect.top, pointerEvents: 'auto' }} onClick={onSkip} />
-            <div style={{ position: 'absolute', top: spotlightRect.top + spotlightRect.height, left: 0, right: 0, bottom: 0, pointerEvents: 'auto' }} onClick={onSkip} />
-            <div style={{ position: 'absolute', top: spotlightRect.top, left: 0, width: spotlightRect.left, height: spotlightRect.height, pointerEvents: 'auto' }} onClick={onSkip} />
-            <div style={{ position: 'absolute', top: spotlightRect.top, left: spotlightRect.left + spotlightRect.width, right: 0, height: spotlightRect.height, pointerEvents: 'auto' }} onClick={onSkip} />
+            {/* Block clicks to the app behind the tour; do not dismiss on backdrop (Skip / X only). */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: spotlightRect.top, pointerEvents: 'auto' }} />
+            <div style={{ position: 'absolute', top: spotlightRect.top + spotlightRect.height, left: 0, right: 0, bottom: 0, pointerEvents: 'auto' }} />
+            <div style={{ position: 'absolute', top: spotlightRect.top, left: 0, width: spotlightRect.left, height: spotlightRect.height, pointerEvents: 'auto' }} />
+            <div style={{ position: 'absolute', top: spotlightRect.top, left: spotlightRect.left + spotlightRect.width, right: 0, height: spotlightRect.height, pointerEvents: 'auto' }} />
           </>
         )}
         {!spotlightRect && (
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'auto' }} onClick={onSkip} />
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'auto' }} />
         )}
       </div>
 

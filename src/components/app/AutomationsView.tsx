@@ -43,7 +43,7 @@ type Skill = {
 }
 
 type DialogState =
-  | { mode: 'create' }
+  | { mode: 'create'; projectId?: string }
   | { mode: 'edit'; automation: AutomationSummary }
 
 type FormState = {
@@ -560,7 +560,10 @@ function AutomationDialog({
     setSaving(true)
     try {
       const payload = {
-        ...(isEdit ? { automationId: initial!._id } : {}),
+        ...(isEdit ? { automationId: initial!._id, projectId: initial?.projectId?.trim() || undefined } : {}),
+        ...(!isEdit && state.mode === 'create' && state.projectId?.trim()
+          ? { projectId: state.projectId.trim() }
+          : {}),
         title: form.title || 'Untitled automation',
         description: form.description,
         sourceType: form.sourceType,
@@ -607,6 +610,7 @@ function AutomationDialog({
         onSaved({
           _id: data.id,
           userId: '',
+          projectId: payload.projectId,
           title: payload.title,
           description: payload.description,
           sourceType: payload.sourceType,
@@ -1070,6 +1074,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const layout = searchParams?.get('layout') === 'list' ? 'list' : 'cards'
+  const filterProjectId = searchParams?.get('projectId')?.trim() || undefined
 
   const [automations, setAutomations] = useState<AutomationSummary[]>([])
   const [skills, setSkills] = useState<Skill[]>([])
@@ -1089,13 +1094,15 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
   }, [pathname, router, searchParams])
 
   const loadAutomations = useCallback(async () => {
+    setLoading(true)
     try {
-      const res = await fetch('/api/app/automations')
+      const q = filterProjectId ? `?projectId=${encodeURIComponent(filterProjectId)}` : ''
+      const res = await fetch(`/api/app/automations${q}`)
       if (res.ok) setAutomations(await res.json())
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [filterProjectId])
 
   const loadSkills = useCallback(async () => {
     const res = await fetch('/api/app/skills')
@@ -1116,6 +1123,21 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
     void loadAutomations()
     void loadSkills()
   }, [loadAutomations, loadSkills])
+
+  const createParamConsumedRef = useRef(false)
+  useEffect(() => {
+    if (searchParams?.get('create') !== '1') {
+      createParamConsumedRef.current = false
+      return
+    }
+    if (createParamConsumedRef.current) return
+    createParamConsumedRef.current = true
+    setDialog({ mode: 'create', projectId: filterProjectId })
+    const p = new URLSearchParams(searchParams.toString())
+    p.delete('create')
+    const qs = p.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname)
+  }, [searchParams, pathname, router, filterProjectId])
 
   useEffect(() => {
     if (dialog?.mode === 'edit') {
@@ -1249,7 +1271,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
           </div>
           <button
             type="button"
-            onClick={() => setDialog({ mode: 'create' })}
+            onClick={() => setDialog({ mode: 'create', projectId: filterProjectId })}
             className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
           >
             <Plus size={12} />
@@ -1269,7 +1291,7 @@ export default function AutomationsView({ userId: _userId }: { userId: string })
           </div>
           <button
             type="button"
-            onClick={() => setDialog({ mode: 'create' })}
+            onClick={() => setDialog({ mode: 'create', projectId: filterProjectId })}
             className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
           >
             <Plus size={14} />
