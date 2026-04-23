@@ -1,7 +1,7 @@
 'use client'
 
-import type { ComponentType } from 'react'
-import { MessageSquare, ImageIcon, Video } from 'lucide-react'
+import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { MessageSquare, ImageIcon, Video, ChevronDown, Check } from 'lucide-react'
 import type { GenerationMode } from '@/lib/models'
 
 interface GenerationModeToggleProps {
@@ -57,6 +57,91 @@ export function GenerationModeToggle({
           </button>
         )
       })}
+    </div>
+  )
+}
+
+/** Compact dropdown for mobile headers (replaces the segmented control). */
+export function GenerationModeSelect({
+  mode,
+  onChange,
+  disabled,
+  className = '',
+}: {
+  mode: GenerationMode
+  onChange: (mode: GenerationMode) => void
+  disabled?: boolean
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const current = MODES.find((m) => m.value === mode) ?? MODES[0]!
+  const CurrentIcon = current.Icon
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc, true)
+    document.addEventListener('keydown', onEsc)
+    return () => {
+      document.removeEventListener('mousedown', onDoc, true)
+      document.removeEventListener('keydown', onEsc)
+    }
+  }, [open])
+
+  return (
+    <div ref={rootRef} className={`relative shrink-0 ${className}`}>
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen((o) => !o)}
+        disabled={disabled}
+        className={`flex h-8 min-h-8 max-w-[7.5rem] min-w-0 items-center justify-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 text-xs leading-none text-[var(--muted)] transition-colors ${
+          disabled
+            ? 'cursor-not-allowed opacity-50'
+            : 'hover:border-[var(--foreground)]/20 hover:text-[var(--foreground)]'
+        }`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <CurrentIcon size={12} className="shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-left text-[10px] font-medium leading-none sm:text-xs">
+          {current.label}
+        </span>
+        <ChevronDown size={10} className="shrink-0 opacity-70" />
+      </button>
+      {open && (
+        <ul
+          role="listbox"
+          className="absolute right-0 top-full z-30 mt-1 min-w-[7.5rem] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+        >
+          {MODES.map(({ value, label, Icon }) => {
+            const active = mode === value
+            return (
+              <li key={value} role="option" aria-selected={active}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(value)
+                    setOpen(false)
+                  }}
+                  className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs ${
+                    active ? 'bg-[var(--surface-muted)] font-medium text-[var(--foreground)]' : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)]'
+                  }`}
+                >
+                  {active ? <Check size={10} className="shrink-0" /> : <span className="inline-block w-[10px] shrink-0" />}
+                  <Icon size={12} className="shrink-0" />
+                  {label}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }

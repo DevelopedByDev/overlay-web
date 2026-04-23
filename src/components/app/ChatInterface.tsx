@@ -55,7 +55,7 @@ import { ACT_MODEL_KEY, CHAT_MODEL_KEY } from '@/lib/chat-model-prefs'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { webSourceDisplayKey } from '@/lib/web-sources'
-import { GenerationModeToggle } from './GenerationModeToggle'
+import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
 import {
   CHAT_CREATED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
@@ -5197,9 +5197,15 @@ export default function ChatInterface({
             </div>
           </div>
         )}
-        {/* Sticky header — md: h-16 aligns with AppSidebar brand row border; stack on narrow screens */}
-        <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:py-0 md:px-4">
-            <div className="group/header-title flex min-w-0 items-center gap-2">
+        {/* Sticky header — md: h-16 aligns with AppSidebar brand row border; mobile: no title; model left + mode menu right */}
+        <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:py-0 md:px-4">
+            <div
+              className={`group/header-title min-w-0 items-center gap-2 ${
+                activeChatId && editingChatId === activeChatId
+                  ? 'flex w-full'
+                  : 'hidden min-[768px]:flex'
+              }`}
+            >
               {activeChatId && editingChatId === activeChatId ? (
                 <input
                   ref={headerTitleInputRef}
@@ -5220,7 +5226,7 @@ export default function ChatInterface({
                 />
               ) : (
                 <div className="flex min-w-0 items-center gap-1">
-                  <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] lg:max-w-[24rem] md:truncate">
+                  <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] md:truncate lg:max-w-[24rem]">
                     <span className="line-clamp-2 md:line-clamp-1 md:truncate">
                       {activeChatTitle ?? activeChat?.title ?? 'New conversation'}
                     </span>
@@ -5250,15 +5256,15 @@ export default function ChatInterface({
               )}
             </div>
 
-            {/* Model picker + Generation mode */}
-            <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-none md:flex-row md:items-center md:gap-2">
+            {/* Model picker + Generation mode (mobile: one row, model left / mode select right) */}
+            <div className="flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2">
               {generationMode === 'video' && (
                 <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
                   <button
                     type="button"
                     onClick={() => !isActiveLoading && setShowVideoSubModePicker((v) => !v)}
                     disabled={isActiveLoading}
-                    className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs md:w-auto md:max-w-[13rem] md:py-1 ${
+                    className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1 ${
                       isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
                     }`}
                   >
@@ -5291,13 +5297,14 @@ export default function ChatInterface({
                   Upgrade
                 </Link>
               )}
-              <div ref={modelPickerRef} data-tour="model-picker" className="relative w-full min-w-0 md:w-auto">
+              <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
+                <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
                 <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
                   <button
                     type="button"
                     onClick={() => !isActiveLoading && setShowModelPicker((v) => !v)}
                     disabled={isActiveLoading}
-                    className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs md:w-auto md:max-w-[13rem] md:py-1 ${
+                    className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1 ${
                       isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
                     }`}
                   >
@@ -5483,19 +5490,16 @@ export default function ChatInterface({
                   </>
               )}
             </div>
+                <GenerationModeSelect
+                  mode={generationMode}
+                  onChange={handleModeChange}
+                  disabled={isActiveLoading}
+                  className="md:hidden"
+                />
+              </div>
             <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
-              <span className="block w-full md:inline-flex md:w-auto">
-                <span className="block w-full md:hidden">
-                  <GenerationModeToggle
-                    mode={generationMode}
-                    onChange={handleModeChange}
-                    disabled={isActiveLoading}
-                    layout="stretch"
-                  />
-                </span>
-                <span data-tour="generation-mode-toggle" className="hidden md:inline-flex">
-                  <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
-                </span>
+              <span data-tour="generation-mode-toggle" className="hidden md:inline-flex">
+                <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
               </span>
             </DelayedTooltip>
           </div>
@@ -5828,11 +5832,11 @@ export default function ChatInterface({
         </div>
         )}
 
-        {/* Input — centered on empty text chat; docks to bottom once there is history */}
+        {/* Input — empty chat: mobile = greeting centered, composer at bottom, no suggestions; md+ = legacy centered stack */}
         <div
-          className={`flex flex-col ${showCenteredEmptyChat ? 'flex-1 min-h-0 justify-center' : 'shrink-0'} ${
-            !showCenteredEmptyChat ? 'px-3 pb-3 sm:px-4 sm:pb-4' : 'px-4 pb-4'
-          }`}
+          className={`flex min-h-0 flex-col ${
+            showCenteredEmptyChat ? 'min-h-0 flex-1 md:justify-center' : 'shrink-0'
+          } ${!showCenteredEmptyChat ? 'px-3 pb-3 sm:px-4 sm:pb-4' : 'px-4 pb-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))]'}`}
         >
           <AnimatePresence initial={false}>
             {showCenteredEmptyChat && (
@@ -5841,7 +5845,7 @@ export default function ChatInterface({
                 initial={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                className="mb-8 text-center"
+                className="text-center max-md:min-h-0 max-md:flex-1 max-md:flex max-md:flex-col max-md:items-center max-md:justify-center md:mb-8"
               >
                 <p className="text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
                   {greetingLine}
@@ -5851,7 +5855,7 @@ export default function ChatInterface({
           </AnimatePresence>
           {/* Use CSS max-width (not motion maxWidth) so the composer column is always capped; framer omitted maxWidth on first paint and chips could span full viewport. */}
           <div
-            className={`mx-auto w-full min-w-0 transition-[max-width] duration-[780ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            className={`mx-auto w-full min-w-0 shrink-0 transition-[max-width] duration-[780ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
               showCenteredEmptyChat ? 'max-w-[36rem]' : 'max-w-[56rem]'
             }`}
           >
@@ -6143,7 +6147,7 @@ export default function ChatInterface({
                 initial={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.12 }}
-                className="mx-auto mt-6 w-full max-w-[36rem] min-w-0 px-0"
+                className="mx-auto mt-6 hidden w-full max-w-[36rem] min-w-0 px-0 md:mt-6 md:block"
               >
                 <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
                   {emptyChatStarters.map((prompt, idx) => (
