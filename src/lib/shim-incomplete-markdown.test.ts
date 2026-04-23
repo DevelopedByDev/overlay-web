@@ -30,6 +30,19 @@ test('closes an unclosed $$ math block', () => {
   assert.ok(result.endsWith('\n$$'))
 })
 
+test('closes a one-line tail that opened $$ without a closing pair', () => {
+  const input = 'QR step: $$A_{k+1} = R_k Q_k'
+  const result = shimIncompleteMarkdown(input)
+  assert.ok(result.endsWith('$$'))
+  assert.equal((result.match(/\$\$/g) ?? []).length, 2)
+})
+
+test('does not count $$ inside a fenced code block', () => {
+  const input = '```\n$$\n```\nStill open: $$\\frac12'
+  const result = shimIncompleteMarkdown(input)
+  assert.ok(result.endsWith('$$'))
+})
+
 test('adds a synthetic separator for an unclosed table header', () => {
   const input = '| Name | Value |\n| Alice'
   const result = shimIncompleteMarkdown(input)

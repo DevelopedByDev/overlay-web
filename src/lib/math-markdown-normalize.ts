@@ -137,3 +137,78 @@ export function normalizeParenDelimitedLatex(text: string): string {
 export function normalizeLatexDelimiters(text: string): string {
   return normalizeParenDelimitedLatex(normalizeBracketDelimitedLatex(text))
 }
+
+/**
+ * remark-math only uses true display (block) math when the opening `$$` is in the
+ * "flow" position (see micromark-extension-math): `$$\n...\n$$`. A heavy matrix on one
+ * line mid-paragraph (`$$\begin{bmatrix}...\end{bmatrix}$$`) is parsed as *inline* math,
+ * which is smaller, easier to break, and more likely to hit KaTeX edge cases.
+ *
+ * Rewrite those spans into flow fences so rehype-katex gets `displayMode: true`.
+ */
+export function promoteHeavyInlineMathToFlowBlocks(text: string): string {
+  let i = 0
+  let out = ''
+  let inFence = false
+
+  while (i < text.length) {
+    if (!inFence && text.startsWith('```', i)) {
+      inFence = true
+      out += '```'
+      i += 3
+      continue
+    }
+    if (inFence) {
+      if (text.startsWith('```', i)) {
+        inFence = false
+        out += '```'
+        i += 3
+      } else {
+        out += text[i]!
+        i += 1
+      }
+      continue
+    }
+
+    if (text[i] === '$' && text[i + 1] === '$') {
+      const close = text.indexOf('$$', i + 2)
+      if (close < 0) {
+        out += text.slice(i)
+        break
+      }
+      const inner = text.slice(i + 2, close)
+      const trimmed = inner.trim()
+
+      const lineStart = text.lastIndexOf('\n', i - 1) + 1
+      const beforeOnLine = text.slice(lineStart, i)
+      const opensAtLineStart = /^\s*$/.test(beforeOnLine)
+
+      // Already a normal flow block: `$$\n...\n$$` with nothing else on the opening line.
+      const looksLikeFlowBlock = opensAtLineStart && inner.startsWith('\n')
+
+      const backslashRuns = trimmed.match(/\\\\/g) ?? []
+      const heavy =
+        /\\begin\{/.test(trimmed) ||
+        backslashRuns.length >= 2 ||
+        trimmed.length > 96
+
+      if (heavy && !looksLikeFlowBlock) {
+        out += `\n\n$$\n${trimmed}\n$$\n\n`
+      } else {
+        out += text.slice(i, close + 2)
+      }
+      i = close + 2
+      continue
+    }
+
+    out += text[i]!
+    i += 1
+  }
+
+  return out
+}
+
+/** Full math-oriented markdown normalization (delimiters + display promotion). */
+export function normalizeAssistantMathMarkdown(text: string): string {
+  return promoteHeavyInlineMathToFlowBlocks(normalizeLatexDelimiters(text))
+}

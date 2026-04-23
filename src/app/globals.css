@@ -449,10 +449,17 @@ html {
 }
 
 .markdown-content .katex-display {
-  margin: 0.45em 0 1em;
+  display: block;
+  margin: 0.85em auto 1.1em;
+  padding: 0.35em 0 0.5rem;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 0.1rem;
+  text-align: center;
+  font-size: 1.12em;
+}
+
+.markdown-content .katex-display > .katex {
+  font-size: 1.2em;
 }
 
 .markdown-content pre,
