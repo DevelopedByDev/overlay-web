@@ -632,30 +632,8 @@ html {
   vertical-align: middle;
 }
 
-/* Token-mode streaming: per-character fade-in. A rehype plugin wraps each non-
-   whitespace character in `<span class="md-char">` while streaming; React reconciles
-   by position, so only the newly-arrived characters mount and run this animation —
-   earlier characters stay solid. Combined with the client-side reveal pacer, each
-   character drips onto the page individually and softly fades into view, like it's
-   floating in rather than appearing as word/token chunks. */
-@keyframes overlayStreamCharFade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.markdown-content--streaming .md-char {
-  animation: overlayStreamCharFade 380ms cubic-bezier(0.22, 0.7, 0.22, 1) both;
-  will-change: opacity;
-}
-
-/* Softer entrance for newly-mounted block elements (first line of a new paragraph,
-   list item, heading, etc.) so the block boundary doesn't snap in as a hard
-   rectangle behind the per-character fade. Short and translate-free so it doesn't
-   fight the char fade running inside the same block. */
+/* Softer entrance for newly-mounted block elements while streaming so boundaries
+   don't snap in as hard rectangles. Short and translate-free. */
 @keyframes overlayStreamBlockSoften {
   from {
     opacity: 0.4;
@@ -681,7 +659,7 @@ html {
   will-change: opacity;
 }
 
-/* The marker is its own animation — don't let the block/char fades override it. */
+/* The marker is its own animation — don't let block soften override it. */
 .markdown-content--streaming .overlay-stream-marker {
   animation: overlayStreamMarkerPulse 1.3s ease-in-out infinite;
   opacity: 1;
@@ -689,7 +667,6 @@ html {
 
 /* Respect reduced-motion users: skip all streaming fades and just reveal text. */
 @media (prefers-reduced-motion: reduce) {
-  .markdown-content--streaming .md-char,
   .markdown-content--streaming p,
   .markdown-content--streaming li,
   .markdown-content--streaming td,

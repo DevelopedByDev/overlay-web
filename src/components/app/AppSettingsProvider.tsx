@@ -44,6 +44,13 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   )
 }
 
+function coerceChatStreamingMode(settings: AppSettings): AppSettings {
+  // Older cached payloads may still have `chunk`; normalize for the token-only contract.
+  const mode = settings.chatStreamingMode as AppSettings['chatStreamingMode'] | 'chunk'
+  if (mode === 'token') return settings
+  return { ...settings, chatStreamingMode: 'token' }
+}
+
 function readStoredSettings(): AppSettings | null {
   if (typeof window === 'undefined') return null
   try {
@@ -53,7 +60,7 @@ function readStoredSettings(): AppSettings | null {
     if (!isAppSettingsPayload(parsed)) return null
     // Back-fill defaults for fields added in later releases so older cached payloads
     // don't lock the user into stale settings.
-    return { ...DEFAULT_APP_SETTINGS, ...parsed }
+    return coerceChatStreamingMode({ ...DEFAULT_APP_SETTINGS, ...parsed })
   } catch {
     return null
   }
@@ -82,7 +89,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     try {
       const res = await fetch('/api/app/settings', { cache: 'no-store' })
       if (res.ok) {
-        const next = await res.json() as AppSettings
+        const next = coerceChatStreamingMode(await res.json() as AppSettings)
         setSettings(next)
         persistSettings(next)
       } else if (res.status === 401) {
@@ -108,7 +115,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   }, [settings.theme])
 
   const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
-    const optimistic = { ...settings, ...patch }
+    const optimistic = coerceChatStreamingMode({ ...settings, ...patch })
     setSettings(optimistic)
     persistSettings(optimistic)
     setIsSaving(true)
@@ -122,7 +129,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         console.warn('Failed to save settings to server; using local state')
         return optimistic
       }
-      const saved = await res.json() as AppSettings
+      const saved = coerceChatStreamingMode(await res.json() as AppSettings)
       setSettings(saved)
       persistSettings(saved)
       return saved

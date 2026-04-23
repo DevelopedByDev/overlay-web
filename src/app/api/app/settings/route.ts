@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
       },
       { throwOnError: true },
     )
-    return NextResponse.json(settings)
+    return NextResponse.json({ ...settings, chatStreamingMode: 'token' as const })
   } catch (error) {
     console.error('[app/settings] GET error:', error)
     return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 })
@@ -29,6 +29,7 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json()) as {
       theme?: 'light' | 'dark'
       useSecondarySidebar?: boolean
+      /** @deprecated Only `token` is supported; `chunk` is accepted for compatibility and normalized away. */
       chatStreamingMode?: 'token' | 'chunk'
       accessToken?: string
       userId?: string
@@ -53,7 +54,6 @@ export async function PATCH(request: NextRequest) {
       serverSecret: string
       theme?: 'light' | 'dark'
       useSecondarySidebar?: boolean
-      chatStreamingMode?: 'token' | 'chunk'
     } = {
       userId: auth.userId,
       serverSecret: getInternalApiSecret(),
@@ -65,16 +65,13 @@ export async function PATCH(request: NextRequest) {
     if (body.useSecondarySidebar !== undefined) {
       mutationArgs.useSecondarySidebar = body.useSecondarySidebar
     }
-    if (body.chatStreamingMode !== undefined) {
-      mutationArgs.chatStreamingMode = body.chatStreamingMode
-    }
 
     const settings = await convex.mutation<AppSettings>(
       'uiSettings:upsertByServer',
       mutationArgs,
       { throwOnError: true },
     )
-    return NextResponse.json(settings)
+    return NextResponse.json({ ...settings, chatStreamingMode: 'token' as const })
   } catch (error) {
     console.error('[app/settings] PATCH error:', error)
     return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 })

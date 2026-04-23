@@ -1,6 +1,15 @@
 'use client'
 
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  type ReactNode,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
@@ -14,7 +23,6 @@ import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } from '@/lib/web-sources'
 import { shimIncompleteMarkdown } from '@/lib/shim-incomplete-markdown'
 import { normalizeAssistantMathMarkdown } from '@/lib/math-markdown-normalize'
-import type { ChatStreamingMode } from './AppSettingsProvider'
 import { WebSourceTooltip } from './WebSourceTooltip'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -48,13 +56,8 @@ const mdSanitizeSchema = {
   attributes: {
     ...defaultSchema.attributes,
     br: [],
-    // Only allow the precise span classes used for the streaming indicator and the
-    // per-character fade-in wrappers. rehype-sanitize will drop any other class or
-    // attribute, preventing abuse of arbitrary inline HTML.
-    span: [
-      ['className', 'overlay-stream-marker', 'md-char'],
-      'aria-hidden',
-    ],
+    // Only allow the streaming indicator span class. rehype-sanitize drops other classes.
+    span: [['className', 'overlay-stream-marker'], 'aria-hidden'],
   },
 }
 
@@ -339,118 +342,14 @@ const markdownRehypePlugins: Pluggable[] = [
 ]
 
 /**
- * rehype plugin: wrap each non-whitespace character in a `<span class="md-char">` so
- * a CSS animation can fade each character in individually. Skips code / pre / math
- * subtrees (and the overlay-stream-marker) to avoid breaking their rendering.
- *
- * Runs during streaming in token mode only. React reconciles existing spans by
- * position, so newly-arrived characters are the only ones that re-run the fade-in
- * animation; already-mounted spans stay solid.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type HastNode = any
-const CHAR_WRAP_SKIP_TAGS = new Set([
-  'code',
-  'pre',
-  'style',
-  'script',
-  'math',
-  'mi',
-  'mn',
-  'mo',
-  'mrow',
-  'msub',
-  'msup',
-  'mfrac',
-  'mtext',
-  'semantics',
-  'annotation',
-])
-
-function nodeHasKatexClass(node: HastNode): boolean {
-  const cls = node?.properties?.className
-  if (!cls) return false
-  const arr = Array.isArray(cls) ? cls : typeof cls === 'string' ? cls.split(/\s+/) : []
-  for (const c of arr) {
-    if (typeof c !== 'string') continue
-    if (c === 'katex' || c === 'mathml' || c.startsWith('katex-')) return true
-  }
-  return false
-}
-
-function nodeIsStreamMarker(node: HastNode): boolean {
-  const cls = node?.properties?.className
-  if (!cls) return false
-  const arr = Array.isArray(cls) ? cls : typeof cls === 'string' ? cls.split(/\s+/) : []
-  return arr.includes('overlay-stream-marker')
-}
-
-function splitTextForCharFade(text: string): HastNode[] {
-  if (!text) return []
-  const out: HastNode[] = []
-  let wsBuf = ''
-  for (const ch of text) {
-    if (/\s/.test(ch)) {
-      wsBuf += ch
-      continue
-    }
-    if (wsBuf) {
-      out.push({ type: 'text', value: wsBuf })
-      wsBuf = ''
-    }
-    out.push({
-      type: 'element',
-      tagName: 'span',
-      properties: { className: ['md-char'] },
-      children: [{ type: 'text', value: ch }],
-    })
-  }
-  if (wsBuf) out.push({ type: 'text', value: wsBuf })
-  return out
-}
-
-function rehypeWrapStreamChars() {
-  return (tree: HastNode) => {
-    function walk(node: HastNode) {
-      if (!node || !Array.isArray(node.children)) return
-      const next: HastNode[] = []
-      for (const child of node.children) {
-        if (child.type === 'text') {
-          const parts = splitTextForCharFade(child.value)
-          for (const p of parts) next.push(p)
-        } else if (child.type === 'element') {
-          const tag = child.tagName
-          if (CHAR_WRAP_SKIP_TAGS.has(tag) || nodeHasKatexClass(child) || nodeIsStreamMarker(child)) {
-            next.push(child)
-          } else {
-            walk(child)
-            next.push(child)
-          }
-        } else {
-          next.push(child)
-        }
-      }
-      node.children = next
-    }
-    walk(tree)
-  }
-}
-
-const markdownRehypePluginsStreaming: Pluggable[] = [
-  rehypeRaw,
-  rehypeWrapStreamChars as Pluggable,
-  [rehypeSanitize, mdSanitizeSchema] as Pluggable,
-  rehypeKatexSafe,
-]
-
-/**
  * Reveal `targetText` one character at a time at a steady rate so tokens that
  * arrive from the server in chunks of 5-20 chars get visually dripped in as
  * individual characters instead of popping in as blocks.
  *
- * Base rate is ~80 chars/sec; if we fall behind the target, the rate ramps up so
- * we catch up within ~1 second even on long bursts. When `isStreaming` flips to
- * false (or the hook is disabled), we snap to the full text immediately.
+ * Base rate is ~80 chars/sec; if we fall behind, the rate ramps up. When the backlog
+ * is very large, the cap is raised so we take fewer frames to catch up (fewer React
+ * markdown passes). When `isStreaming` flips to false (or `enabled` is false), we snap
+ * to the full text immediately.
  */
 function useSmoothStreamedText(
   targetText: string,
@@ -493,9 +392,13 @@ function useSmoothStreamedText(
       if (cur.length < target.length) {
         const dt = lastTs ? now - lastTs : 16
         const backlog = target.length - cur.length
-        // Base 80 chars/sec + proportional catch-up so bursts resolve quickly.
-        const charsPerSec = Math.min(600, 80 + backlog * 4)
-        const charsToAdd = Math.max(1, Math.round((dt / 1000) * charsPerSec))
+        // Higher ceiling when far behind → fewer intermediate states / fewer React updates.
+        const maxRate = backlog > 1200 ? 1400 : 600
+        const charsPerSec = Math.min(maxRate, 80 + backlog * 4)
+        let charsToAdd = Math.max(1, Math.round((dt / 1000) * charsPerSec))
+        if (backlog > 2500) {
+          charsToAdd = Math.max(charsToAdd, Math.min(backlog, Math.ceil(backlog * 0.12)))
+        }
         const nextLen = Math.min(target.length, cur.length + charsToAdd)
         const next = target.slice(0, nextLen)
         displayRef.current = next
@@ -515,46 +418,6 @@ function useSmoothStreamedText(
   return display
 }
 
-// Find the char position of a safe paragraph boundary in `text`.
-// We only split at \n\n that is NOT inside a code fence, a table, or a math block.
-function findParagraphBoundary(text: string): number | null {
-  const lines = text.split('\n')
-  let inCodeBlock = false
-  let inTable = false
-  let inMathBlock = false
-  let pos = 0
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const trimmed = line.trim()
-
-    if (line.startsWith('```')) {
-      inCodeBlock = !inCodeBlock
-    }
-
-    if (!inCodeBlock) {
-      if (trimmed === '$$') {
-        inMathBlock = !inMathBlock
-      }
-
-      if (line.trimStart().startsWith('|')) {
-        inTable = true
-      } else if (inTable && line.trim() === '') {
-        inTable = false
-      }
-    }
-
-    // A blank line outside a code block / table / math block = paragraph boundary
-    if (trimmed === '' && !inCodeBlock && !inTable && !inMathBlock && i > 0) {
-      return pos // return start of the blank line (content before it is a complete block)
-    }
-
-    pos += line.length + 1 // +1 for the \n
-  }
-
-  return null
-}
-
 interface Props {
   text: string
   isStreaming: boolean
@@ -568,40 +431,6 @@ interface Props {
    * in-flight tail so text streams without a duplicate marker mid-message.
    */
   suppressTypingIndicator?: boolean
-  /**
-   * 'token' (default): render the full normalized text through one ReactMarkdown pass
-   *   every update, with a shim that closes open structures so partial markdown still
-   *   renders styled. Shows a pulsing Overlay logo at the tail of the most recent token
-   *   (or standalone before any tokens arrive); each new block element fades in as it
-   *   enters the DOM.
-   * 'chunk': split into completed paragraph blocks + a separate tail block, with the
-   *   pulsing Overlay logo as the trailing indicator. Steadier but content appears
-   *   in jumps.
-   */
-  streamingMode?: ChatStreamingMode
-}
-
-function splitStreamingMarkdown(text: string): { completedBlocks: string[]; streamTail: string } {
-  const completedBlocks: string[] = []
-  let offset = 0
-
-  while (offset < text.length) {
-    const boundary = findParagraphBoundary(text.slice(offset))
-    if (boundary === null) break
-    if (boundary === 0) {
-      offset += 1
-      continue
-    }
-
-    const blockText = text.slice(offset, offset + boundary)
-    if (blockText) completedBlocks.push(blockText)
-    offset += boundary
-    while (offset < text.length && (text[offset] === '\n' || text[offset] === '\r')) {
-      offset += 1
-    }
-  }
-
-  return { completedBlocks, streamTail: text.slice(offset) }
 }
 
 export function MarkdownMessage({
@@ -610,7 +439,6 @@ export function MarkdownMessage({
   sourceCitations,
   webSources,
   suppressTypingIndicator = false,
-  streamingMode = 'token',
 }: Props) {
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const hasWebSources = !!(webSources && webSources.length > 0)
@@ -699,103 +527,37 @@ export function MarkdownMessage({
     },
     [webSources],
   )
-  // Smooth pacer: while streaming in token mode, reveal the normalized text one
-  // character at a time at a steady rate. When not streaming (or in chunk mode),
-  // this returns `normalizedDisplay` immediately so historical renders are untouched.
-  const pacedDisplay = useSmoothStreamedText(
-    normalizedDisplay,
-    isStreaming,
-    streamingMode === 'token',
-  )
+  // Smooth pacer: while streaming, reveal the normalized text one character at a time.
+  // When not streaming, this returns `normalizedDisplay` immediately.
+  const pacedDisplay = useSmoothStreamedText(normalizedDisplay, isStreaming, true)
 
-  // Token mode: render the entire shimmed document in one pass so React can reconcile
-  // stable nodes and only the tail paragraph/row/code-line actually re-renders.
-  // Append the streaming marker inline so the Overlay logo sits at the right side
-  // of the most recent token (and pulses while generation continues).
+  // Render the entire shimmed document in one pass so React can reconcile stable nodes
+  // and only the tail paragraph/row/code-line actually re-renders. Append the streaming
+  // marker inline so the Overlay logo sits at the right side of the most recent token.
   const tokenDisplay = useMemo(() => {
-    if (!(isStreaming && streamingMode === 'token')) return normalizedDisplay
+    if (!isStreaming) return normalizedDisplay
     const shimmed = shimIncompleteMarkdown(pacedDisplay)
     return appendStreamMarker(shimmed)
-  }, [normalizedDisplay, pacedDisplay, isStreaming, streamingMode])
+  }, [normalizedDisplay, pacedDisplay, isStreaming])
 
-  // Activate the per-character wrap plugin only while streaming in token mode.
-  // Outside streaming, the plain rehype pipeline runs so the final DOM is clean
-  // plain text (no span-per-character overhead in chat history).
-  const activeRehypePlugins = useMemo(() => {
-    if (isStreaming && streamingMode === 'token') return markdownRehypePluginsStreaming
-    return markdownRehypePlugins
-  }, [isStreaming, streamingMode])
-
-  // Chunk mode only: paragraph split + trailing pulsing marker. Token mode always
-  // uses the single-pass render below (both during and after streaming) so React
-  // reconciles the existing DOM when streaming ends instead of unmounting the whole
-  // subtree and re-animating every block — which previously caused a one-shot
-  // "whole answer blinks" flash at the moment the response finished.
-  const { completedBlocks, streamTail } = useMemo(
-    () => splitStreamingMarkdown(normalizedDisplay),
-    [normalizedDisplay],
-  )
-  const trailingBlock = !isStreaming && streamTail.trim() ? streamTail.trim() : ''
-  const inChunkMode = streamingMode === 'chunk'
-  const showInlineTypingDots = isStreaming && !suppressTypingIndicator && inChunkMode
+  // While streaming, deprioritize markdown reconciliation so input stays responsive.
+  // On completion, render the synchronous string so the final pass is immediate.
+  const deferredStreamMarkdown = useDeferredValue(tokenDisplay)
+  const markdownChildren = isStreaming ? deferredStreamMarkdown : tokenDisplay
 
   if (!normalizedDisplay.trim() && !isStreaming) {
     return null
   }
 
-  if (!inChunkMode) {
-    // Token mode — single ReactMarkdown pass over the (optionally shimmed + marker)
-    // text. While streaming, the `markdown-content--streaming` class plays a gentle
-    // opacity/translate fade-in each time a new block (paragraph, list item, table
-    // row, heading, pre, blockquote) enters the DOM; within a given block, continued
-    // token updates just extend the existing text so the pulsing
-    // `.overlay-stream-marker` at the tail carries the "still generating" cue. When
-    // no tokens have arrived yet, the marker stands alone and scales up via CSS to
-    // act as a large "thinking" indicator. When streaming ends, the class is dropped
-    // and the marker disappears, but the underlying ReactMarkdown tree stays mounted
-    // so the transition is seamless (no remount, no re-animation).
-    return (
-      <div className={`markdown-content${isStreaming ? ' markdown-content--streaming' : ''}`}>
-        <ReactMarkdown
-          remarkPlugins={markdownRemarkPlugins}
-          rehypePlugins={activeRehypePlugins}
-          components={mdRenderComponents}
-        >
-          {tokenDisplay}
-        </ReactMarkdown>
-      </div>
-    )
-  }
-
   return (
-    <div className="markdown-content">
-      {completedBlocks.map((block, index) => (
-        <div key={`md-block-${index}`} className="md-block-appear">
-          <ReactMarkdown
-            remarkPlugins={markdownRemarkPlugins}
-            rehypePlugins={markdownRehypePlugins}
-            components={mdRenderComponents}
-          >
-            {block}
-          </ReactMarkdown>
-        </div>
-      ))}
-
-      {trailingBlock ? (
-        <div key={`md-block-${completedBlocks.length}`} className="md-block-appear">
-          <ReactMarkdown
-            remarkPlugins={markdownRemarkPlugins}
-            rehypePlugins={markdownRehypePlugins}
-            components={mdRenderComponents}
-          >
-            {trailingBlock}
-          </ReactMarkdown>
-        </div>
-      ) : null}
-
-      {showInlineTypingDots ? (
-        <span className="overlay-stream-marker" aria-hidden />
-      ) : null}
+    <div className={`markdown-content${isStreaming ? ' markdown-content--streaming' : ''}`}>
+      <ReactMarkdown
+        remarkPlugins={markdownRemarkPlugins}
+        rehypePlugins={markdownRehypePlugins}
+        components={mdRenderComponents}
+      >
+        {markdownChildren}
+      </ReactMarkdown>
     </div>
   )
 }

@@ -71,7 +71,7 @@ import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { DelayedTooltip } from './DelayedTooltip'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
-import { useAppSettings, type ChatStreamingMode } from './AppSettingsProvider'
+import { useAppSettings } from './AppSettingsProvider'
 import { useGuestGate } from './GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
@@ -667,13 +667,11 @@ function ReasoningBlock({
   streaming,
   connectTop,
   connectBottom,
-  streamingMode,
 }: {
   text: string
   streaming: boolean
   connectTop: boolean
   connectBottom: boolean
-  streamingMode: ChatStreamingMode
 }) {
   const [userExpanded, setUserExpanded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -728,7 +726,6 @@ function ReasoningBlock({
                   text={text}
                   isStreaming={streaming}
                   suppressTypingIndicator
-                  streamingMode={streamingMode}
                 />
               </div>
             ) : null}
@@ -1020,12 +1017,10 @@ function BrowserToolBlock({
   block,
   connectTop,
   connectBottom,
-  streamingMode,
 }: {
   block: ToolVisualBlock
   connectTop: boolean
   connectBottom: boolean
-  streamingMode: ChatStreamingMode
 }) {
   const isDone = block.state === 'output-available'
   const isError = block.state === 'output-error' || block.state === 'output-denied'
@@ -1113,7 +1108,6 @@ function BrowserToolBlock({
                       text={task}
                       isStreaming={running}
                       suppressTypingIndicator
-                      streamingMode={streamingMode}
                     />
                   </div>
                 ) : null}
@@ -1589,8 +1583,6 @@ function ExchangeBlock({
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true,
 }: ExchangeBlockProps) {
-    const { settings: appSettings } = useAppSettings()
-    const streamingMode = appSettings.chatStreamingMode
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const hasDraftToolCard = assistantVisualBlocks.some(
@@ -1710,7 +1702,6 @@ function ExchangeBlock({
                 streaming={active}
                 connectTop={chain.chainTop}
                 connectBottom={chain.chainBottom}
-                streamingMode={streamingMode}
               />
             )
           }
@@ -1721,7 +1712,6 @@ function ExchangeBlock({
                 block={seg.block}
                 connectTop={chain.chainTop}
                 connectBottom={chain.chainBottom}
-                streamingMode={streamingMode}
               />
             )
           }
@@ -1825,7 +1815,6 @@ function ExchangeBlock({
                 sourceCitations={isLastText ? sourceCitations : undefined}
                 webSources={isLastText && webSources.length > 0 ? webSources : undefined}
                 suppressTypingIndicator
-                streamingMode={streamingMode}
               />
             </div>
           )

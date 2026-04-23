@@ -1,5 +1,6 @@
 export type ThemePreference = 'light' | 'dark'
-export type ChatStreamingMode = 'token' | 'chunk'
+/** Token streaming is the only supported mode; the field remains for API/storage compatibility. */
+export type ChatStreamingMode = 'token'
 
 export interface AppSettings {
   theme: ThemePreference
