@@ -23,6 +23,7 @@ import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import {
   ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
   ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
+  ACT_PAID_PLAN_ACT_TOOLS_REALITY,
   FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
   MEMORY_SAVE_PROTOCOL,
   cloneMessagesWithIndexedFileHint,
@@ -34,6 +35,7 @@ import {
   filterComposioToolSetForPaidOnlyFeatures,
 } from '@/lib/tools/composio-filter'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
+import { createFreeTierGatedStubTools } from '@/lib/tools/free-tier-gated-stub-tools'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
 import { MATH_FORMAT_INSTRUCTION } from '@/lib/math-format-instructions'
 import { TABLE_FORMAT_INSTRUCTION } from '@/lib/markdown-table-instructions'
@@ -423,9 +425,13 @@ export async function POST(request: NextRequest) {
       paid,
     )
     const composioForAgent: ToolSet = isMultiModelFollowUpSlot ? {} : composioTools
-    const tools = {
+    const freeTierStubsActive = !paid && !isMultiModelFollowUpSlot
+    /** Stubs are spread before gateway Perplexity/Parallel so real tools always win if both are present. */
+    const freeTierGatedStubs: ToolSet = createFreeTierGatedStubTools(freeTierStubsActive)
+    const tools: ToolSet = {
       ...composioForAgent,
       ...webToolSet,
+      ...freeTierGatedStubs,
       ...(perplexityTool ? { perplexity_search: perplexityTool } : {}),
       ...(parallelTool ? { parallel_search: parallelTool } : {}),
     }
@@ -500,7 +506,7 @@ export async function POST(request: NextRequest) {
         memoryContext +
         autoRetrieval +
         indexedNote +
-        (paid ? '' : '\n\n' + FREE_TIER_NO_PAID_AGENT_CAPABILITIES) +
+        (paid ? '\n\n' + ACT_PAID_PLAN_ACT_TOOLS_REALITY : '\n\n' + FREE_TIER_NO_PAID_AGENT_CAPABILITIES) +
         '\n\n' +
         MATH_FORMAT_INSTRUCTION +
         '\n\n' +

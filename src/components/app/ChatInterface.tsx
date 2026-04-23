@@ -82,6 +82,7 @@ import {
   type ChatAutomationSuggestionSummary,
   type SkillDraftSummary,
 } from '@/lib/automation-drafts'
+import { isOverlayGatedToolOutput } from '@/lib/overlay-gated-feature'
 
 function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   const router = useRouter()
@@ -905,6 +906,36 @@ function ToolCallRowWithReasoning({
   )
 }
 
+function GatedPaidFeatureCallout({
+  block,
+  connectTop,
+  connectBottom,
+}: {
+  block: ToolVisualBlock
+  connectTop: boolean
+  connectBottom: boolean
+}) {
+  const out = block.toolOutput as { message?: unknown }
+  const line =
+    typeof out.message === 'string' && out.message.trim() ? out.message.trim() : 'This requires a paid plan.'
+  return (
+    <div className="w-full px-1 py-0.5">
+      <div className="flex w-full max-w-full items-start justify-start gap-2.5">
+        <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
+        <p className="w-fit max-w-[min(100%,22rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-[11px] leading-relaxed text-[var(--muted)]">
+          {line}{' '}
+          <Link
+            href="/pricing"
+            className="whitespace-nowrap font-medium text-[var(--foreground)] underline underline-offset-2 hover:opacity-80"
+          >
+            Upgrade
+          </Link>
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function SingleToolCallRow({
   block,
   connectTop,
@@ -961,15 +992,24 @@ function ToolCallsCollapsedGroup({
       </button>
       {open && (
         <div className="mt-2 space-y-2">
-          {tools.map((t, idx) => (
-            <ToolCallRowWithReasoning
-              key={t.key}
-              block={t}
-              variant="nested"
-              connectTop={idx > 0}
-              connectBottom={idx < tools.length - 1}
-            />
-          ))}
+          {tools.map((t, idx) =>
+            isOverlayGatedToolOutput(t.toolOutput) ? (
+              <GatedPaidFeatureCallout
+                key={t.key}
+                block={t}
+                connectTop={idx > 0}
+                connectBottom={idx < tools.length - 1}
+              />
+            ) : (
+              <ToolCallRowWithReasoning
+                key={t.key}
+                block={t}
+                variant="nested"
+                connectTop={idx > 0}
+                connectBottom={idx < tools.length - 1}
+              />
+            ),
+          )}
         </div>
       )}
     </div>
@@ -1008,6 +1048,16 @@ function BrowserToolBlock({
   }, [task, running])
   const showDetails =
     (running && Boolean(task)) || (isDone && userExpanded && hasDetails)
+
+  if (isOverlayGatedToolOutput(block.toolOutput)) {
+    return (
+      <GatedPaidFeatureCallout
+        block={block}
+        connectTop={connectTop}
+        connectBottom={connectBottom}
+      />
+    )
+  }
 
   if (isError) {
     return (
@@ -1531,15 +1581,13 @@ interface ExchangeBlockProps {
   isSourcesOpenForThis: boolean
   onRetry?: () => void
   retryDisabled?: boolean
-  /** Free plan: show upgrade hint in the response column (not the composer). */
-  showFreePlanCapabilitiesHint?: boolean
 }
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, showFreePlanCapabilitiesHint = false,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true,
 }: ExchangeBlockProps) {
     const { settings: appSettings } = useAppSettings()
     const streamingMode = appSettings.chatStreamingMode
@@ -1700,6 +1748,16 @@ function ExchangeBlock({
                   />
                 )
               }
+              if (isOverlayGatedToolOutput(t.toolOutput)) {
+                return (
+                  <GatedPaidFeatureCallout
+                    key={`${exchIdx}-gated-${seg.originIndex}-${t.key}`}
+                    block={t}
+                    connectTop={chain.chainTop}
+                    connectBottom={chain.chainBottom}
+                  />
+                )
+              }
               if (t.name === 'perplexity_search' || t.name === 'parallel_search') {
                 return (
                   <WebSearchToolBlock
@@ -1772,20 +1830,6 @@ function ExchangeBlock({
             </div>
           )
         })}
-
-        {showFreePlanCapabilitiesHint && responseSettled && !errorMessage && (
-          <div className="w-full px-1 pt-1">
-            <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-[11px] leading-relaxed text-[var(--muted)]">
-              Web search, remote browser, and workspace are available on a paid plan.{' '}
-              <Link
-                href="/pricing"
-                className="font-medium text-[var(--foreground)] underline underline-offset-2 hover:opacity-80"
-              >
-                Upgrade
-              </Link>
-            </p>
-          </div>
-        )}
 
         {!isStreaming && !errorMessage && automationSuggestion && !hasDraftToolCard ? (
           <DraftSuggestionCard
@@ -5729,10 +5773,6 @@ export default function ChatInterface({
                       ? 'Response was interrupted.'
                       : assistantPlainForReply
 
-                const textGenForEx = exchangeGenTypes[curExchIdx] ?? 'text'
-                const showFreePlanHintInResponse =
-                  isFreeTier && textGenForEx === 'text' && isActExch
-
                 blocks.push(
                   <ExchangeBlock
                     key={msg.id}
@@ -5753,7 +5793,6 @@ export default function ChatInterface({
                     responseInProgress={instLoading}
                     sourceCitations={sourceCitations}
                     automationSuggestion={automationSuggestion}
-                    showFreePlanCapabilitiesHint={showFreePlanHintInResponse}
                     turnIdForActions={textTurnIdForActions}
                     modelLabel={modelLabel}
                     onDeleteTurn={() => {
@@ -5818,17 +5857,6 @@ export default function ChatInterface({
                 <p className="text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
                   {greetingLine}
                 </p>
-                {isFreeTier && generationMode === 'text' && (
-                  <p className="mx-auto mt-4 max-w-md text-[11px] leading-relaxed text-[var(--muted)]">
-                    Web search, remote browser, and workspace are available on a paid plan.{' '}
-                    <Link
-                      href="/pricing"
-                      className="font-medium text-[var(--foreground)] underline underline-offset-2 hover:opacity-80"
-                    >
-                      Upgrade
-                    </Link>
-                  </p>
-                )}
               </motion.div>
             )}
           </AnimatePresence>

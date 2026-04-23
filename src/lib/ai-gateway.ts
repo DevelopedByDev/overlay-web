@@ -529,7 +529,7 @@ export async function executeGatewayParallelSearch(
 
 const searchRecencyEnum = z.enum(['day', 'week', 'month', 'year'])
 
-const perplexitySearchInputSchema = z.object({
+export const perplexitySearchInputSchema = z.object({
   query: z
     .union([z.string().min(1), z.array(z.string().min(1)).max(5)])
     .describe('Search query or up to 5 queries to merge'),
@@ -559,7 +559,7 @@ const perplexitySearchInputSchema = z.object({
     .describe('Relative time window. Default year. Use day/week for news'),
 })
 
-const parallelSearchInputSchema = z.object({
+export const parallelSearchInputSchema = z.object({
   objective: z
     .string()
     .min(1)

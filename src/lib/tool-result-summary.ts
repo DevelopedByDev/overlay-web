@@ -27,6 +27,9 @@ export function summarizeToolResultForTranscript(params: {
   const toolName = params.toolName?.trim() || 'tool'
   const output = asRecord(params.toolOutput)
   const input = asRecord(params.toolInput)
+  if (output?._overlayGatedFeature === true) {
+    return readString(output.message) || 'This capability requires a paid plan.'
+  }
   const toolMessage = readString(output?.message)
   const toolError = readString(output?.error) || readString(output?.errorMessage)
 
