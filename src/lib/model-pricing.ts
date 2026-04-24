@@ -134,6 +134,14 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'alibaba/qwen3.6-plus': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'openai/gpt-oss-20b': { inputPer1M: 0.075, cachedInputPer1M: 0.0375, outputPer1M: 0.3, isFree: false },
   'openai/gpt-oss-120b': { inputPer1M: 0.15, cachedInputPer1M: 0.075, outputPer1M: 0.6, isFree: false },
+
+  // NVIDIA NIM catalog rows. Free-tier requests are not charged to user budget;
+  // paid requests bill against the selected catalog id.
+  'deepseek-ai/deepseek-v4-pro': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'deepseek-ai/deepseek-v4-flash': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'deepseek-ai/deepseek-v3.2': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'minimaxai/minimax-m2.7': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'moonshotai/kimi-k2-thinking': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
 }
 
 /**

@@ -36,6 +36,7 @@ import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceCont
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_AUTO_MODEL_ID,
+  FREE_TIER_DEFAULT_MODEL_ID,
   IMAGE_MODELS,
   VIDEO_MODELS,
   DEFAULT_IMAGE_MODEL_ID,
@@ -46,6 +47,7 @@ import {
   getModelsByIntelligence,
   getVideoModelsBySubMode,
   intelligenceToBarFill5,
+  isNvidiaNimChatModelId,
   speedTierToBarFill5,
   type ChatModel,
   type GenerationMode,
@@ -2987,7 +2989,7 @@ export default function ChatInterface({
 
   const isFreeTier = (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'free'
   const premiumModelBlocked =
-    isFreeTier && selectedActModel !== FREE_TIER_AUTO_MODEL_ID
+    isFreeTier && selectedActModel !== FREE_TIER_AUTO_MODEL_ID && !isNvidiaNimChatModelId(selectedActModel)
   const creditsExhausted =
     !isFreeTier &&
     entitlements != null &&
@@ -3001,13 +3003,13 @@ export default function ChatInterface({
 
   useEffect(() => {
     if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
-    if (selectedActModel === FREE_TIER_AUTO_MODEL_ID) return
+    if (selectedActModel === FREE_TIER_DEFAULT_MODEL_ID) return
 
-    setSelectedModels([FREE_TIER_AUTO_MODEL_ID])
+    setSelectedModels([FREE_TIER_DEFAULT_MODEL_ID])
     setAskModelSelectionMode('single')
-    setSelectedActModel(FREE_TIER_AUTO_MODEL_ID)
-    localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_AUTO_MODEL_ID]))
-    localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_AUTO_MODEL_ID)
+    setSelectedActModel(FREE_TIER_DEFAULT_MODEL_ID)
+    localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_DEFAULT_MODEL_ID]))
+    localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_DEFAULT_MODEL_ID)
   }, [chatPrefsHydrated, activeChatId, isFreeTier, selectedActModel])
 
   // ── data loading ──────────────────────────────────────────────────────────
@@ -5399,35 +5401,47 @@ export default function ChatInterface({
                         )
                       })
                   ) : (
-                    getModelsByIntelligence(isFreeTier).map((m) => {
+                    getModelsByIntelligence(isFreeTier).map((m, index, models) => {
                       const isSel =
                         askModelSelectionMode === 'single'
                           ? m.id === selectedActModel
                           : selectedModels.includes(m.id)
                       const isDisabled =
                         askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
+                      const isFreeModelRow = m.id === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(m.id)
+                      const previous = models[index - 1]
+                      const previousIsFreeModelRow =
+                        previous?.id === FREE_TIER_AUTO_MODEL_ID ||
+                        (previous ? isNvidiaNimChatModelId(previous.id) : false)
+                      const showFreeDivider = isFreeModelRow && !previousIsFreeModelRow
                       return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          data-model-row={m.id}
-                          disabled={isDisabled}
-                          onClick={() => toggleTextModelInPicker(m.id)}
-                          onMouseEnter={(e) => {
-                            setHoveredModelId(m.id)
-                            const r = e.currentTarget.getBoundingClientRect()
-                            setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
-                          }}
-                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                            isDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
-                          } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}
-                        >
-                          <span className="flex items-center gap-2">
-                            {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                            {m.name}
-                          </span>
-                          <ModelBadges m={m} isFreeTier={isFreeTier} />
-                        </button>
+                        <div key={m.id}>
+                          {showFreeDivider && (
+                            <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
+                              Free
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            data-model-row={m.id}
+                            disabled={isDisabled}
+                            onClick={() => toggleTextModelInPicker(m.id)}
+                            onMouseEnter={(e) => {
+                              setHoveredModelId(m.id)
+                              const r = e.currentTarget.getBoundingClientRect()
+                              setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
+                              isDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
+                            } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
+                              {m.name}
+                            </span>
+                            <ModelBadges m={m} isFreeTier={isFreeTier} />
+                          </button>
+                        </div>
                       )
                     })
                   )}

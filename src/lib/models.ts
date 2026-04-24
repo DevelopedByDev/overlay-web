@@ -21,6 +21,7 @@ export interface ChatModel {
     | 'moonshotai'
     | 'zai'
     | 'alibaba'
+    | 'nvidia'
   description?: string
   intelligence: number
   /** 0 = free, 1 = cheap, 2 = mid, 3 = expensive */
@@ -52,6 +53,19 @@ export interface VideoModel {
 }
 
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
+export const FREE_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2-thinking'
+
+export const NVIDIA_NIM_MODEL_IDS = [
+  'deepseek-ai/deepseek-v4-pro',
+  'deepseek-ai/deepseek-v4-flash',
+  'minimaxai/minimax-m2.7',
+  'deepseek-ai/deepseek-v3.2',
+  'moonshotai/kimi-k2-thinking',
+] as const
+
+export function isNvidiaNimChatModelId(modelId: string): boolean {
+  return (NVIDIA_NIM_MODEL_IDS as readonly string[]).includes(modelId)
+}
 
 export const AVAILABLE_MODELS: ChatModel[] = [
   // Google Models
@@ -82,7 +96,14 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 1.25, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 
   // OpenRouter (free) — only the auto router; API id stays `openrouter/free` (do not send bare `free`).
-  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+
+  // NVIDIA NIM — explicit free catalog rows use NIM directly.
+  { id: 'deepseek-ai/deepseek-v4-pro', name: 'Free: DeepSeek V4 Pro', provider: 'nvidia', description: 'Free model', intelligence: 1.8, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'deepseek-ai/deepseek-v4-flash', name: 'Free: DeepSeek V4 Flash', provider: 'nvidia', description: 'Free model', intelligence: 1.75, cost: 0, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'minimaxai/minimax-m2.7', name: 'Free: Minimax 2.7', provider: 'nvidia', description: 'Free model', intelligence: 1.85, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'Free model', intelligence: 1.65, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Free model', intelligence: 1.7, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 ]
 
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
@@ -106,6 +127,12 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'claude-haiku-4-5',
   'google/gemma-4-26b-a4b-it',
   'openai/gpt-oss-120b',
+  'minimax/minimax-m2.7',
+  'minimaxai/minimax-m2.7',
+  'deepseek-ai/deepseek-v4-pro',
+  'deepseek-ai/deepseek-v4-flash',
+  'moonshotai/kimi-k2-thinking',
+  'deepseek-ai/deepseek-v3.2',
   FREE_TIER_AUTO_MODEL_ID,
 ]
 
@@ -186,20 +213,13 @@ export function getProviderModels(provider: ChatModel['provider']): ChatModel[] 
   return AVAILABLE_MODELS.filter((m) => m.provider === provider)
 }
 
-/** Models sorted by intelligence (CHAT_MODEL_QUALITY_PRIORITY order), with free router first when on free tier. */
-export function getModelsByIntelligence(isFreeTier: boolean): ChatModel[] {
+/** Models sorted by intelligence (CHAT_MODEL_QUALITY_PRIORITY order). */
+export function getModelsByIntelligence(_isFreeTier: boolean): ChatModel[] {
+  void _isFreeTier
   const idxMap = new Map(CHAT_MODEL_QUALITY_PRIORITY.map((id, i) => [id, i]))
-  const sorted = [...AVAILABLE_MODELS].sort(
+  return [...AVAILABLE_MODELS].sort(
     (a, b) => (idxMap.get(a.id) ?? 999) - (idxMap.get(b.id) ?? 999),
   )
-  if (isFreeTier) {
-    const freeIdx = sorted.findIndex((m) => m.id === FREE_TIER_AUTO_MODEL_ID)
-    if (freeIdx > 0) {
-      const [free] = sorted.splice(freeIdx, 1)
-      sorted.unshift(free!)
-    }
-  }
-  return sorted
 }
 
 // ─── Image Models (priority order — top = highest priority fallback) ──────────

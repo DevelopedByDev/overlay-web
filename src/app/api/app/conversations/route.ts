@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/lib/models'
+import { DEFAULT_MODEL_ID, FREE_TIER_DEFAULT_MODEL_ID } from '@/lib/models'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
@@ -181,8 +181,8 @@ export async function POST(request: NextRequest) {
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
-      askModelIds: isFreeTier ? [FREE_TIER_AUTO_MODEL_ID] : body.askModelIds,
-      actModelId: isFreeTier ? FREE_TIER_AUTO_MODEL_ID : (body.actModelId ?? body.askModelIds?.[0] ?? DEFAULT_MODEL_ID),
+      askModelIds: isFreeTier ? [FREE_TIER_DEFAULT_MODEL_ID] : body.askModelIds,
+      actModelId: isFreeTier ? FREE_TIER_DEFAULT_MODEL_ID : (body.actModelId ?? body.askModelIds?.[0] ?? DEFAULT_MODEL_ID),
       lastMode: body.lastMode,
     })
     const conversation = await convex.query<ConversationDoc | null>('conversations:get', {

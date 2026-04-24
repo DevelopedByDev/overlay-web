@@ -1,7 +1,7 @@
 import { createGateway, generateText, type ToolSet, stepCountIs, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
-import { FREE_TIER_AUTO_MODEL_ID, getModel, modelUsesOpenRouterTransport } from '@/lib/models'
+import { FREE_TIER_AUTO_MODEL_ID, getModel, isNvidiaNimChatModelId, modelUsesOpenRouterTransport } from '@/lib/models'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
 
@@ -209,7 +209,7 @@ export function resolveGatewayProviderToolProxyModelId(chatModelId: string): str
   if (!getModel(chatModelId)) {
     return GATEWAY_TOOL_PROXY_MODEL_ID
   }
-  if (chatModelId === FREE_TIER_AUTO_MODEL_ID || modelUsesOpenRouterTransport(chatModelId)) {
+  if (chatModelId === FREE_TIER_AUTO_MODEL_ID || modelUsesOpenRouterTransport(chatModelId) || isNvidiaNimChatModelId(chatModelId)) {
     return GATEWAY_TOOL_PROXY_MODEL_ID
   }
   return getGatewayModelId(chatModelId)

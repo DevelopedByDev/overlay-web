@@ -13,7 +13,7 @@ import {
 import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/models'
+import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/models'
 import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
 import {
   allowedOverlayToolIdsForTurn,
@@ -146,9 +146,9 @@ export async function POST(request: NextRequest) {
     const budget = getBudgetTotals(entitlements)
 
     if (!isPaidPlan(entitlements)) {
-      if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID) {
+      if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID && !isNvidiaNimChatModelId(effectiveModelId)) {
         return NextResponse.json(
-          { error: 'premium_model_not_allowed', message: 'Free tier is limited to the Auto model. Upgrade to a paid plan to use premium models.' },
+          { error: 'premium_model_not_allowed', message: 'Free tier is limited to Auto and NVIDIA NIM models. Upgrade to a paid plan to use premium models.' },
           { status: 403 },
         )
       }
@@ -394,7 +394,7 @@ export async function POST(request: NextRequest) {
     // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
     let streamedRoutedModelId: string | undefined
     let payTierLanguageModel: Awaited<ReturnType<typeof getGatewayLanguageModel>> | null = null
-    if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID) {
+    if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID && !isNvidiaNimChatModelId(effectiveModelId)) {
       payTierLanguageModel = await getGatewayLanguageModel(
         effectiveModelId,
         auth.accessToken || undefined,
@@ -596,7 +596,10 @@ export async function POST(request: NextRequest) {
               .slice(-4),
           }) ?? undefined
 
-        const providerCostUsd = calculateTokenCost(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
+        const providerCostUsd =
+          isNvidiaNimChatModelId(effectiveModelId)
+            ? 0
+            : calculateTokenCost(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
         const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
 
         if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
@@ -740,6 +743,15 @@ export async function POST(request: NextRequest) {
       })
     }
     return _uiResp
+    }
+
+    if (isNvidiaNimChatModelId(effectiveModelId)) {
+      const nvidiaKey = await resolveNvidiaApiKey(auth.accessToken)
+      if (!nvidiaKey) {
+        return NextResponse.json({ error: 'NVIDIA_API_KEY is not configured.' }, { status: 500 })
+      }
+      streamedRoutedModelId = effectiveModelId
+      return await runActStream(createNvidiaNimChatLanguageModel(effectiveModelId, nvidiaKey))
     }
 
     if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
