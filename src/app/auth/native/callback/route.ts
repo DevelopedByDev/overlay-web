@@ -1,17 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-export async function GET(request: NextRequest) {
-  const callbackUrl = escapeHtml(request.url)
-
+export async function GET() {
   return new NextResponse(`<!doctype html>
 <html lang="en">
   <head>
@@ -39,26 +28,15 @@ export async function GET(request: NextRequest) {
         text-align: center;
       }
       h1 { margin: 0 0 10px; font-size: 28px; line-height: 1.1; }
-      p { margin: 0 0 22px; color: rgba(247, 247, 243, 0.72); line-height: 1.5; }
-      a {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 48px;
-        width: 100%;
-        border-radius: 999px;
-        background: #f7f7f3;
-        color: #090909;
-        font-weight: 700;
-        text-decoration: none;
-      }
+      p { margin: 0 0 14px; color: rgba(247, 247, 243, 0.72); line-height: 1.5; }
+      small { display: block; color: rgba(247, 247, 243, 0.48); line-height: 1.45; }
     </style>
   </head>
   <body>
     <main>
-      <h1>Open Overlay</h1>
-      <p>If Overlay did not open automatically, tap below to finish signing in.</p>
-      <a href="${callbackUrl}">Continue in Overlay</a>
+      <h1>Overlay could not open</h1>
+      <p>This sign-in link must open through the installed Overlay app. Close this browser, rebuild the app, and try signing in again.</p>
+      <small>If you are testing a development build, confirm Associated Domains are enabled for <strong>applinks:www.getoverlay.io</strong>.</small>
     </main>
   </body>
 </html>`, {

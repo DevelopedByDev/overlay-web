@@ -7,12 +7,16 @@ export async function GET() {
   return NextResponse.json(
     {
       applinks: {
+        apps: [],
         details: [
           {
             appIDs: [`${TEAM_ID}.${BUNDLE_ID}`],
+            appID: `${TEAM_ID}.${BUNDLE_ID}`,
+            paths: ['/auth/native/callback', '/auth/native/callback/*'],
             components: [
               {
                 '/': '/auth/native/callback',
+                '?': { code: '*', state: '*' },
                 comment: 'Overlay mobile auth callback',
               },
             ],
@@ -22,7 +26,7 @@ export async function GET() {
     },
     {
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/pkcs7-mime',
         'Cache-Control': 'public, max-age=3600',
       },
     },
