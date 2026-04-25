@@ -58,8 +58,6 @@ import {
 } from '@/lib/safe-log'
 import {
   createNvidiaNimChatLanguageModel,
-  FREE_TIER_NVIDIA_PREFERRED_MODEL_ORDER,
-  isRetryableFreeTierPrimaryModelError,
   resolveNvidiaApiKey,
 } from '@/lib/nvidia-nim-openai'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
@@ -747,23 +745,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
-      const nvidiaKey = await resolveNvidiaApiKey(auth.accessToken)
-      for (const modelId of FREE_TIER_NVIDIA_PREFERRED_MODEL_ORDER) {
-        if (!nvidiaKey) break
-        streamedRoutedModelId = modelId
-        try {
-          return await runActStream(createNvidiaNimChatLanguageModel(modelId, nvidiaKey))
-        } catch (e) {
-          const retryable = isRetryableFreeTierPrimaryModelError(e)
-          console.warn(
-            retryable
-              ? `[conversations/act] free tier NIM failed (${modelId}), trying next`
-              : `[conversations/act] free tier NIM error (${modelId}), trying next`,
-            summarizeErrorForLog(e),
-          )
-        }
-      }
-      streamedRoutedModelId = undefined
       const openRouterModel = await getOpenRouterLanguageModelCapturingRoutedModel(
         FREE_TIER_AUTO_MODEL_ID,
         auth.accessToken || undefined,
