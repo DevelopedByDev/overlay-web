@@ -55,3 +55,6 @@ renders/*
 .cursor/*
 .claude/*
 .windsurf/*
+
+# surface folders
+overlay-mobile/
