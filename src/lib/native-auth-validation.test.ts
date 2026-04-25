@@ -1,6 +1,6 @@
-{
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import test from 'node:test'
+import assert from 'node:assert/strict'
+
 const {
   isAllowedNativeRedirectUri,
   isAllowedWorkOsAuthorizationUrl,
@@ -8,7 +8,7 @@ const {
   isValidNativeAuthCode,
   isValidNativeAuthState,
   isValidPkceVerifier,
-} = require('./native-auth-validation.ts')
+} = await import(new URL('./native-auth-validation.ts', import.meta.url).href)
 
 test('native auth provider allowlist is strict', () => {
   assert.equal(isNativeAuthProvider('GoogleOAuth'), true)
@@ -63,4 +63,3 @@ test('native auth authorization URL must point at WorkOS authorize endpoint', ()
   assert.equal(isAllowedWorkOsAuthorizationUrl('http://api.workos.com/user_management/authorize'), false)
   assert.equal(isAllowedWorkOsAuthorizationUrl('https://api.workos.com/sso/authorize'), false)
 })
-}

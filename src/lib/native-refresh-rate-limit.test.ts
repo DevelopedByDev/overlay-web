@@ -1,7 +1,9 @@
-{
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const { getNativeRefreshTokenBucketKey } = require('./native-refresh-rate-limit.ts')
+import test from 'node:test'
+import assert from 'node:assert/strict'
+
+const { getNativeRefreshTokenBucketKey } = await import(
+  new URL('./native-refresh-rate-limit.ts', import.meta.url).href
+)
 
 test('native refresh rate limit bucket is keyed by refresh token hash', () => {
   const tokenA = 'refresh-token-a'
@@ -21,4 +23,3 @@ test('native refresh rate limit bucket falls back to client key when token is mi
   assert.equal(getNativeRefreshTokenBucketKey('', '203.0.113.10'), 'missing:203.0.113.10')
   assert.equal(getNativeRefreshTokenBucketKey(undefined, '203.0.113.10'), 'missing:203.0.113.10')
 })
-}
