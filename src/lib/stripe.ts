@@ -2,8 +2,8 @@ import Stripe from 'stripe'
 
 /**
  * Vercel always runs Next with NODE_ENV=production, including Preview deployments.
- * Only treat Vercel Production as "must use live key only"; elsewhere accept
- * STRIPE_SECRET_KEY or DEV_STRIPE_SECRET_KEY so local dev and Preview work.
+ * Only treat Vercel Production as "must use live key only"; elsewhere prefer
+ * the dev key so local dev and Preview don't accidentally call live Stripe.
  */
 function resolveStripeSecretKey(): string {
   const vercelEnv = process.env.VERCEL_ENV
@@ -17,7 +17,7 @@ function resolveStripeSecretKey(): string {
   }
 
   const key =
-    process.env.STRIPE_SECRET_KEY || process.env.DEV_STRIPE_SECRET_KEY
+    process.env.DEV_STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY
   if (key) return key
 
   throw new Error(
@@ -34,7 +34,14 @@ export const stripe = new Proxy({} as Stripe, {
     if (!_stripe) {
       const stripeSecretKey = resolveStripeSecretKey()
       const mode =
-        stripeSecretKey.startsWith('sk_live') ? 'live' : 'test/sandbox'
+        stripeSecretKey.startsWith('sk_live') || stripeSecretKey.startsWith('rk_live')
+          ? 'live'
+          : 'test/sandbox'
+      if (stripeSecretKey.startsWith('rk_')) {
+        throw new Error(
+          `Stripe is configured with a restricted key (${mode}). Checkout requires a secret key with permission to create Checkout Sessions, Customers, Subscriptions, PaymentIntents, and read Prices. Use a full sk_${mode === 'live' ? 'live' : 'test'} key, or update the restricted key permissions in Stripe.`
+        )
+      }
       console.log(`[Stripe] Initialized (${mode} key)`)
       _stripe = new Stripe(stripeSecretKey)
     }

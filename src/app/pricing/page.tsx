@@ -4,7 +4,8 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, GaugeCircle, MessageSquare, PlusCircle, SlidersHorizontal, Wallet } from 'lucide-react'
-import { PageNavbar } from '@/components/PageNavbar'
+import { MarketingFooter } from '@/components/marketing/MarketingFooter'
+import { StaticMarketingShell, useStaticMarketingTheme } from '@/components/marketing/StaticMarketingShell'
 import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import {
@@ -28,7 +29,7 @@ import { formatBytes } from '@/lib/storage-limits'
 
 const TIER_STARTER_CENTS = 800
 const TIER_PRO_CENTS = 2_400
-const TIER_MAX_CENTS = 9_400
+const TIER_MAX_CENTS = 9_600
 
 type TierId = 'free' | 'starter' | 'pro' | 'max' | 'custom'
 
@@ -49,6 +50,12 @@ const PAID_FEATURE_BULLETS = [
 
 const PAID_FEATURE_BULLETS_COMPACT = PAID_FEATURE_BULLETS.slice(0, 4)
 
+const PAID_OPTIONS: Array<{ tier: TierId; label: string; amountCents: number; note: string }> = [
+  { tier: 'starter', label: 'Cheapest', amountCents: TIER_STARTER_CENTS, note: 'For light monthly use' },
+  { tier: 'pro', label: 'Most popular', amountCents: TIER_PRO_CENTS, note: 'For regular work' },
+  { tier: 'max', label: 'Best value', amountCents: TIER_MAX_CENTS, note: '12 GB storage' },
+]
+
 function UserIdExtractor() {
   const searchParams = useSearchParams()
 
@@ -65,6 +72,7 @@ function UserIdExtractor() {
 function PricingContent() {
   const router = useRouter()
   const { isLandingDark } = useLandingTheme()
+  const staticTheme = useStaticMarketingTheme()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [selectedTier, setSelectedTier] = useState<TierId>('starter')
   const [selectedPlanAmountCents, setSelectedPlanAmountCents] = useState(TIER_STARTER_CENTS)
@@ -140,9 +148,7 @@ function PricingContent() {
     secondaryButton: isLandingDark
       ? 'border border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
       : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50',
-    badge: isLandingDark
-      ? 'bg-zinc-100 text-zinc-900'
-      : 'bg-zinc-900 text-white',
+    badge: isLandingDark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white',
     iconChip: isLandingDark
       ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 text-zinc-100'
       : 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-900',
@@ -177,6 +183,8 @@ function PricingContent() {
     else if (tier === 'max') setSelectedPlanAmountCents(TIER_MAX_CENTS)
     else if (tier === 'custom') setSelectedPlanAmountCents((prev) => prev)
   }
+
+  const selectedPaidOption = PAID_OPTIONS.find((option) => option.tier === selectedTier) ?? PAID_OPTIONS[0]
 
   async function startCheckout(planAmountCents: number, tier?: TierId) {
     if (tier) {
@@ -320,22 +328,20 @@ function PricingContent() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col gradient-bg">
+    <StaticMarketingShell>
       <Suspense fallback={null}>
         <UserIdExtractor />
       </Suspense>
-      <div className="liquid-glass" />
 
-      <PageNavbar />
-
-      <main className="relative z-10 flex-1 px-4 pb-10 pt-28 md:px-8 md:pb-14 md:pt-32">
-        <div className="mx-auto flex max-w-7xl flex-col gap-10">
+      <main className="px-6 py-16 md:px-8 md:py-20">
+        <div className="mx-auto flex max-w-6xl flex-col gap-10">
           <div className="text-center">
-            <p className={`text-xs font-medium uppercase tracking-[0.2em] ${theme.muted}`}>Plans and pricing</p>
-            <h1 className={`mt-3 text-3xl font-serif md:text-4xl ${theme.title}`}>Choose your plan</h1>
-            <p className={`mx-auto mt-3 max-w-2xl text-base leading-relaxed ${theme.muted}`}>
-              Free covers core chat and workspace. Paid tiers scale your monthly budget in $1 steps—same premium product at
-              every level.
+            <p className={`text-sm uppercase tracking-[0.2em] ${staticTheme.subtleClass}`}>Plans and pricing</p>
+            <h1 className="mt-4 text-4xl tracking-tight md:text-6xl" style={{ fontFamily: 'var(--font-serif)' }}>
+              Simple pricing.
+            </h1>
+            <p className={`mx-auto mt-5 max-w-2xl text-base leading-7 ${staticTheme.mutedClass}`}>
+              Start free. Upgrade when you want premium models, agents, browser tasks, and more monthly budget.
             </p>
             {!authLoading && !isAuthenticated ? (
               <div className="mt-6 inline-flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-900">
@@ -350,7 +356,7 @@ function PricingContent() {
             ) : null}
           </div>
 
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
             {/* Free */}
             <section className={theme.tierCard}>
               <div className="flex items-center gap-3">
@@ -394,21 +400,45 @@ function PricingContent() {
               </div>
             </section>
 
-            {/* Starter */}
-            <section className={tierCardClass('starter')} onClick={() => selectTier('starter')}>
-              <div className="flex items-start justify-between gap-2">
+            {/* Paid */}
+            <section className={tierCardClass(selectedPaidOption.tier)} onClick={() => selectTier(selectedPaidOption.tier)}>
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className={`text-lg font-semibold ${theme.heading}`}>Starter</h2>
-                  <p className={`text-xs ${theme.muted}`}>8 × $1 budget units / mo</p>
+                  <h2 className={`text-lg font-semibold ${theme.heading}`}>Paid</h2>
+                  <p className={`text-xs ${theme.muted}`}>{selectedPaidOption.note}</p>
                 </div>
+              </div>
+              <div className={`mt-5 grid grid-cols-3 gap-1 rounded-full border p-1 ${isLandingDark ? 'border-white/10 bg-white/[0.03]' : 'border-black/10 bg-black/[0.02]'}`}>
+                {PAID_OPTIONS.map((option) => {
+                  const active = selectedTier === option.tier
+                  return (
+                    <button
+                      key={option.tier}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        selectTier(option.tier)
+                      }}
+                      className={`rounded-full px-2 py-2 text-xs transition-colors ${
+                        active
+                          ? isLandingDark
+                            ? 'bg-zinc-100 text-zinc-950'
+                            : 'bg-zinc-950 text-white'
+                          : theme.muted
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
               </div>
               <div className="mt-6">
                 <div className="flex flex-wrap items-end gap-1.5">
-                  <span className={`text-4xl font-serif ${theme.title}`}>$8</span>
+                  <span className={`text-4xl font-serif ${theme.title}`}>${selectedPaidOption.amountCents / 100}</span>
                   <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
                 </div>
                 <p className={`mt-2 text-xs leading-relaxed ${theme.muted}`}>
-                  {formatBytes(getStorageLimitBytes({ planKind: 'paid', planAmountCents: TIER_STARTER_CENTS }))} storage
+                  {formatBytes(getStorageLimitBytes({ planKind: 'paid', planAmountCents: selectedPaidOption.amountCents }))} storage
                 </p>
               </div>
               <ul className="mt-4 flex flex-1 flex-col gap-2">
@@ -420,61 +450,7 @@ function PricingContent() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-6">{paidCtaForAmount(TIER_STARTER_CENTS, 'starter')}</div>
-            </section>
-
-            {/* Pro */}
-            <section className={tierCardClass('pro')} onClick={() => selectTier('pro')}>
-              <div>
-                <h2 className={`text-lg font-semibold ${theme.heading}`}>Pro</h2>
-                <p className={`text-xs ${theme.muted}`}>24 × $1 budget units / mo</p>
-              </div>
-              <div className="mt-6">
-                <div className="flex flex-wrap items-end gap-1.5">
-                  <span className={`text-4xl font-serif ${theme.title}`}>$24</span>
-                  <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
-                </div>
-                <p className={`mt-2 text-xs leading-relaxed ${theme.muted}`}>
-                  {formatBytes(getStorageLimitBytes({ planKind: 'paid', planAmountCents: TIER_PRO_CENTS }))} storage
-                </p>
-              </div>
-              <ul className="mt-4 flex flex-1 flex-col gap-2">
-                <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
-                {PAID_FEATURE_BULLETS_COMPACT.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2">
-                    <Check className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                    <span className={`text-sm leading-snug ${marketingFeatureText(isLandingDark, true)}`}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-6">{paidCtaForAmount(TIER_PRO_CENTS, 'pro')}</div>
-            </section>
-
-            {/* Max */}
-            <section className={tierCardClass('max')} onClick={() => selectTier('max')}>
-              <div>
-                <h2 className={`text-lg font-semibold ${theme.heading}`}>Max</h2>
-                <p className={`text-xs ${theme.muted}`}>94 × $1 budget units / mo</p>
-              </div>
-              <div className="mt-6">
-                <div className="flex flex-wrap items-end gap-1.5">
-                  <span className={`text-4xl font-serif ${theme.title}`}>$94</span>
-                  <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
-                </div>
-                <p className={`mt-2 text-xs leading-relaxed ${theme.muted}`}>
-                  {formatBytes(getStorageLimitBytes({ planKind: 'paid', planAmountCents: TIER_MAX_CENTS }))} storage
-                </p>
-              </div>
-              <ul className="mt-4 flex flex-1 flex-col gap-2">
-                <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
-                {PAID_FEATURE_BULLETS_COMPACT.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2">
-                    <Check className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                    <span className={`text-sm leading-snug ${marketingFeatureText(isLandingDark, true)}`}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-6">{paidCtaForAmount(TIER_MAX_CENTS, 'max')}</div>
+              <div className="mt-6">{paidCtaForAmount(selectedPaidOption.amountCents, selectedPaidOption.tier)}</div>
             </section>
 
             {/* Choose your own */}
@@ -543,7 +519,7 @@ function PricingContent() {
           {/* Billing preferences: fixed $8 top-up, optional auto top-up */}
           <section className={theme.panel}>
             <h2 className={`text-sm font-medium ${theme.heading}`}>Top-ups</h2>
-            <p className={`mt-2 max-w-2xl text-sm leading-relaxed ${theme.body}`}>
+              <p className={`mt-2 max-w-2xl text-sm leading-relaxed ${theme.body}`}>
               One-time and automatic top-ups use <span className="font-medium">$8</span> per recharge unless you change this in{' '}
               <Link href="/account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
                 Account
@@ -620,7 +596,8 @@ function PricingContent() {
           </section>
         </div>
       </main>
-    </div>
+      <MarketingFooter />
+    </StaticMarketingShell>
   )
 }
 
