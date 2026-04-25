@@ -7,8 +7,10 @@ const SESSION_COOKIE_NAME = 'overlay_session'
 const CSP_REPORT_PATH = '/api/security/csp-report'
 const IS_DEVELOPMENT = process.env.NODE_ENV !== 'production'
 
-// '/app' is intentionally public so guests can view the shell; all writes are gated at /api/app/*
-const PROTECTED_ROUTES = ['/account', '/api/entitlements', '/api/portal', '/api/convex', '/api/app']
+// '/app' is intentionally public so guests can view the shell.
+// /api/app/* performs route-level auth so native clients can use bearer tokens
+// instead of browser session cookies.
+const PROTECTED_ROUTES = ['/account', '/api/entitlements', '/api/portal', '/api/convex']
 
 const PUBLIC_ROUTES = [
   '/',
