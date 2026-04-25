@@ -6,7 +6,7 @@ import {
   Plus, FolderOpen, Folder, ChevronRight, MessageSquare,
   BookOpen, FileText, Upload, FolderPlus, Loader2, Trash2, ArrowLeft, Pencil,
 } from 'lucide-react'
-import { CHAT_TITLE_UPDATED_EVENT, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
+import { CHAT_TITLE_UPDATED_EVENT, dispatchChatDeleted, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
 
 const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
@@ -635,6 +635,7 @@ export default function ProjectsSidebar() {
   async function handleDeleteItem(type: 'chat' | 'note', id: string, e: React.MouseEvent) {
     e.stopPropagation()
     if (type === 'chat') {
+      dispatchChatDeleted({ chatId: id })
       await fetch(`/api/app/conversations?conversationId=${id}`, { method: 'DELETE' })
       setProjectChats((prev) => prev.filter((c) => c._id !== id))
     } else if (type === 'note') {

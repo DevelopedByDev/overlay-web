@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { DEFAULT_MODEL_ID, FREE_TIER_DEFAULT_MODEL_ID } from '@/lib/models'
+import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID, FREE_TIER_DEFAULT_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/models'
+import { isPaidPlan } from '@/lib/billing-runtime'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
@@ -18,6 +19,16 @@ type ConversationDoc = {
   askModelIds: string[]
   actModelId: string
   projectId?: string
+}
+
+function isFreeTierChatModel(modelId: string | undefined): modelId is string {
+  return modelId === FREE_TIER_AUTO_MODEL_ID || Boolean(modelId && isNvidiaNimChatModelId(modelId))
+}
+
+function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
+  const requested = modelIds?.filter(isFreeTierChatModel) ?? []
+  const deduped = [...new Set(requested)].slice(0, 4)
+  return deduped.length > 0 ? deduped : [FREE_TIER_DEFAULT_MODEL_ID]
 }
 
 function readBooleanParam(value: string | null): boolean | undefined {
@@ -166,7 +177,7 @@ export async function POST(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<{ tier: 'free' | 'pro' | 'max' } | null>(
+    const entitlements = await convex.query<{ tier: 'free' | 'pro' | 'max'; planKind?: 'free' | 'paid' } | null>(
       'usage:getEntitlementsByServer',
       {
         userId: auth.userId,
@@ -174,15 +185,19 @@ export async function POST(request: NextRequest) {
       },
       { throwOnError: true },
     )
-    const isFreeTier = entitlements?.tier === 'free'
+    const isFreeTier = !entitlements || !isPaidPlan(entitlements)
+    const freeAskModelIds = clampFreeTierAskModels(body.askModelIds)
+    const freeActModelId = isFreeTierChatModel(body.actModelId)
+      ? body.actModelId
+      : freeAskModelIds[0] ?? FREE_TIER_DEFAULT_MODEL_ID
     const id = await convex.mutation<Id<'conversations'>>('conversations:create', {
       userId: auth.userId,
       serverSecret,
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
-      askModelIds: isFreeTier ? [FREE_TIER_DEFAULT_MODEL_ID] : body.askModelIds,
-      actModelId: isFreeTier ? FREE_TIER_DEFAULT_MODEL_ID : (body.actModelId ?? body.askModelIds?.[0] ?? DEFAULT_MODEL_ID),
+      askModelIds: isFreeTier ? freeAskModelIds : body.askModelIds,
+      actModelId: isFreeTier ? freeActModelId : (body.actModelId ?? body.askModelIds?.[0] ?? DEFAULT_MODEL_ID),
       lastMode: body.lastMode,
     })
     const conversation = await convex.query<ConversationDoc | null>('conversations:get', {

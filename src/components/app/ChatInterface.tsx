@@ -60,11 +60,14 @@ import { webSourceDisplayKey } from '@/lib/web-sources'
 import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
 import {
   CHAT_CREATED_EVENT,
+  CHAT_DELETED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatCreated,
+  dispatchChatDeleted,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
   type ChatCreatedDetail,
+  type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -2798,6 +2801,8 @@ export default function ChatInterface({
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   /** User turn ids currently playing the delete (fade-out) animation */
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
+  const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
+  const [activeChatDeleting, setActiveChatDeleting] = useState(false)
   /** Mobile: chat history opens from bottom sheet (primary sidebar is desktop-only). */
   const [mobileChatListOpen, setMobileChatListOpen] = useState(false)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
@@ -2930,6 +2935,37 @@ export default function ChatInterface({
     }
   }, [applyUiStateToView, ensureConversationRuntime])
 
+  const resetActiveChatAfterDelete = useCallback((chatId: string) => {
+    runtimesRef.current.delete(chatId)
+    if (activeChatIdRef.current !== chatId) return
+
+    activeChatIdRef.current = null
+    pendingTitleRef.current = null
+    setActiveChatId(null)
+    setActiveChatTitle(null)
+    setInterruptedExchangeIdx(null)
+    setSourcesPanel(null)
+    setMobileChatListOpen(false)
+    applyUiStateToView(createConversationUiState({
+      selectedActModel,
+      selectedModels,
+      askModelSelectionMode,
+      activeChatTitle: null,
+      isFirstMessage: true,
+    }))
+    clearTransientComposerState()
+    setActiveViewer(null)
+    if (!hideSidebar) router.replace('/app/chat')
+  }, [
+    applyUiStateToView,
+    askModelSelectionMode,
+    hideSidebar,
+    router,
+    selectedActModel,
+    selectedModels,
+    setActiveViewer,
+  ])
+
   useEffect(() => {
     function handleChatCreated(event: Event) {
       const { detail } = event as CustomEvent<ChatCreatedDetail>
@@ -2960,13 +2996,35 @@ export default function ChatInterface({
         setActiveChatTitle(detail.title)
       }
     }
+
+    function handleChatDeleted(event: Event) {
+      const { detail } = event as CustomEvent<ChatDeletedDetail>
+      if (!detail?.chatId) return
+      const deletedChatId = detail.chatId
+      setDeletingChatIds((prev) => (
+        prev.includes(deletedChatId) ? prev : [...prev, deletedChatId]
+      ))
+      if (activeChatIdRef.current === deletedChatId) {
+        setActiveChatDeleting(true)
+      }
+      window.setTimeout(() => {
+        setChats((prev) => prev.filter((chat) => chat._id !== deletedChatId))
+        setDeletingChatIds((prev) => prev.filter((id) => id !== deletedChatId))
+        if (activeChatIdRef.current === deletedChatId) {
+          resetActiveChatAfterDelete(deletedChatId)
+        }
+        setActiveChatDeleting(false)
+      }, 180)
+    }
     window.addEventListener(CHAT_CREATED_EVENT, handleChatCreated)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+    window.addEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     return () => {
       window.removeEventListener(CHAT_CREATED_EVENT, handleChatCreated)
       window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+      window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     }
-  }, [updateRuntimeUiState])
+  }, [resetActiveChatAfterDelete, updateRuntimeUiState])
 
   const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : emptyRuntimeRef.current
   const chat0 = useChat({ chat: activeRuntime.askChats[0] })
@@ -3003,7 +3061,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
-    if (selectedActModel === FREE_TIER_DEFAULT_MODEL_ID) return
+    if (selectedActModel === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(selectedActModel)) return
 
     setSelectedModels([FREE_TIER_DEFAULT_MODEL_ID])
     setAskModelSelectionMode('single')
@@ -3242,13 +3300,12 @@ export default function ChatInterface({
     activeChatId && runtimesRef.current.get(activeChatId)?.hydrated,
   )
 
-  // Called on the first message of a new chat. Immediately shows a fallback title,
-  // then replaces it with the GPT OSS 20B-generated title once it arrives.
+  // Called on the first message of a new chat. Titles come from the free title model;
+  // avoid persisting first-word excerpts, which read as incomplete titles.
   const startFirstMessageRename = useCallback((chatId: string, text: string) => {
-    const fallbackTitle = applyChatTitleUpdate(chatId, text)
-
     void generateTitle(text).then(async (aiTitle) => {
-      const finalTitle = applyChatTitleUpdate(chatId, aiTitle || fallbackTitle)
+      if (!aiTitle) return
+      const finalTitle = applyChatTitleUpdate(chatId, aiTitle)
       try {
         const res = await fetch('/api/app/conversations', {
           method: 'PATCH',
@@ -4256,21 +4313,8 @@ export default function ChatInterface({
 
   async function deleteChat(chatId: string, e: React.MouseEvent) {
     e.stopPropagation()
+    dispatchChatDeleted({ chatId })
     await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
-    runtimesRef.current.delete(chatId)
-    if (activeChatId === chatId) {
-      setActiveChatId(null)
-      activeChatIdRef.current = null
-      pendingTitleRef.current = null
-      applyUiStateToView(createConversationUiState({
-        selectedActModel,
-        selectedModels,
-        askModelSelectionMode,
-      }))
-      clearTransientComposerState()
-      setActiveViewer(null)
-      syncStandaloneChatUrl(null)
-    }
     await loadChats()
   }
 
@@ -4995,14 +5039,18 @@ export default function ChatInterface({
                 const isStreaming = sessions[chat._id]?.status === 'streaming'
                 const unread = getUnread(chat._id)
                 const isEditing = editingChatId === chat._id
+                const isDeleting = deletingChatIds.includes(chat._id)
                 return (
                   <div
                     key={chat._id}
                     onClick={() => {
+                      if (isDeleting) return
                       if (isEditing) return
                       void loadChat(chat._id)
                     }}
-                    className={`group flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+                    className={`group flex cursor-pointer items-center justify-between overflow-hidden rounded-md px-2.5 text-xs transition-all duration-200 ${
+                      isDeleting ? 'max-h-0 -translate-y-1 py-0 opacity-0' : 'max-h-10 py-1.5 opacity-100'
+                    } ${
                       activeChatId === chat._id
                         ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                         : 'text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
@@ -5107,15 +5155,19 @@ export default function ChatInterface({
                       const isStreaming = sessions[chat._id]?.status === 'streaming'
                       const unread = getUnread(chat._id)
                       const isEditing = editingChatId === chat._id
+                      const isDeleting = deletingChatIds.includes(chat._id)
                       return (
                         <div
                           key={chat._id}
                           onClick={() => {
+                            if (isDeleting) return
                             if (isEditing) return
                             void loadChat(chat._id)
                             setMobileChatListOpen(false)
                           }}
-                          className={`group flex items-center justify-between rounded-md px-2.5 py-2 text-xs transition-colors ${
+                          className={`group flex items-center justify-between overflow-hidden rounded-md px-2.5 text-xs transition-all duration-200 ${
+                            isDeleting ? 'max-h-0 -translate-y-1 py-0 opacity-0' : 'max-h-11 py-2 opacity-100'
+                          } ${
                               activeChatId === chat._id
                                 ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                                 : 'text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
@@ -5183,7 +5235,9 @@ export default function ChatInterface({
 
       {/* Main area */}
       <div
-        className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden"
+        className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden transition-opacity duration-200 ${
+          activeChatDeleting ? 'pointer-events-none opacity-0' : 'opacity-100'
+        }`}
         onDragEnter={(e) => {
           e.preventDefault()
           dragCounterRef.current++

@@ -257,14 +257,6 @@ export async function POST(request: NextRequest) {
               }),
               modelId: effectiveModelId,
             })
-            if (messages.filter((m) => m.role === 'user').length === 1) {
-              await convex.mutation('conversations:update', {
-                conversationId: cid,
-                userId,
-                serverSecret,
-                title: (latestUserText || latestUserContent).slice(0, 48) || 'New Chat',
-              })
-            }
           } catch (err) {
             console.error('[conversations/act] Failed to save user message:', summarizeErrorForLog(err))
           }

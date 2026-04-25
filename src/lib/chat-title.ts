@@ -1,5 +1,6 @@
 export const CHAT_TITLE_UPDATED_EVENT = 'overlay:chat-title-updated'
 export const CHAT_CREATED_EVENT = 'overlay:chat-created'
+export const CHAT_DELETED_EVENT = 'overlay:chat-deleted'
 const FALLBACK_CHAT_TITLE = 'New Chat'
 
 export interface ChatTitleUpdatedDetail {
@@ -13,6 +14,10 @@ export interface ChatCreatedDetail {
     title: string
     lastModified: number
   }
+}
+
+export interface ChatDeletedDetail {
+  chatId: string
 }
 
 export function sanitizeChatTitle(title: string | null | undefined, fallback = FALLBACK_CHAT_TITLE): string {
@@ -35,4 +40,9 @@ export function dispatchChatTitleUpdated(detail: ChatTitleUpdatedDetail) {
 export function dispatchChatCreated(detail: ChatCreatedDetail) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent<ChatCreatedDetail>(CHAT_CREATED_EVENT, { detail }))
+}
+
+export function dispatchChatDeleted(detail: ChatDeletedDetail) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent<ChatDeletedDetail>(CHAT_DELETED_EVENT, { detail }))
 }

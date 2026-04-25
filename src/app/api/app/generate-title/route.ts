@@ -5,6 +5,7 @@ import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
 
 const TITLE_MODEL = 'openrouter/free'
+const FALLBACK_TITLE = 'New Chat'
 
 async function resolveOpenRouterApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
@@ -14,52 +15,6 @@ async function resolveOpenRouterApiKey(accessToken?: string): Promise<string | n
     }
   }
   return process.env.OPENROUTER_API_KEY ?? null
-}
-
-function fallbackTitleFromFirstMessage(text: string): string {
-  const cleaned = text
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[?!.,;:]+$/g, '')
-
-  const withoutPrefix = cleaned.replace(
-    /^(please\s+)?(can you|could you|would you|will you|give me|tell me|show me|help me|explain|write|draft|create|make|summari[sz]e)\s+/i,
-    '',
-  )
-
-  const limited = withoutPrefix
-    .split(' ')
-    .slice(0, 6)
-    .join(' ')
-    .trim()
-
-  const source = limited || cleaned
-  return source.replace(/\b\w/g, (char) => char.toUpperCase())
-}
-
-function normalizeTitleComparison(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function shouldUseFallbackTitle(candidate: string, sourceText: string): boolean {
-  const normalizedCandidate = normalizeTitleComparison(candidate)
-  const normalizedSource = normalizeTitleComparison(sourceText)
-
-  if (!normalizedCandidate) return true
-  if (normalizedCandidate === normalizedSource) return true
-
-  const candidateWords = normalizedCandidate.split(' ').filter(Boolean)
-  const sourceWords = normalizedSource.split(' ').filter(Boolean)
-
-  if (candidateWords.length > 8) return true
-  if (sourceWords.length > 0 && candidateWords.length >= sourceWords.length - 1) return true
-  if (normalizedSource.includes(normalizedCandidate) && normalizedCandidate.length >= normalizedSource.length * 0.7) return true
-
-  return false
 }
 
 function extractTitleFromOpenRouterContent(raw: string): string {
@@ -93,14 +48,23 @@ export async function POST(request: NextRequest) {
     })
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const fallbackTitle = fallbackTitleFromFirstMessage(text)
     const apiKey = await resolveOpenRouterApiKey(auth.accessToken)
     if (!apiKey) {
-      console.warn('[ChatTitle][server] OpenRouter API key missing, using fallback title')
-      return NextResponse.json({ title: fallbackTitle })
+      console.warn('[ChatTitle][server] OpenRouter API key missing')
+      return NextResponse.json({ title: null }, { status: 503 })
     }
 
-    const userPrompt = `Generate a concise 3-6 word title for a conversation that starts with this message:\n\n${text.slice(0, 500)}`
+    const userPrompt = `Generate a concise title for a conversation that starts with this message:
+
+${text.slice(0, 1200)}
+
+Rules:
+- 3 to 6 words
+- Natural title case
+- Grammatically complete
+- Capture the actual topic, not the first words
+- No punctuation at the end
+- Return only JSON in this exact shape: {"title":"..."}`.trim()
 
     const response = await openRouterFetchWithRetry('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -118,7 +82,7 @@ export async function POST(request: NextRequest) {
           {
             role: 'system',
             content:
-              'You write short, precise chat titles. Reply with valid JSON only, one line: {"title":"3 to 6 words"} — no markdown, no trailing punctuation in the title string.',
+              'You write short, precise chat titles. Reply with valid JSON only, one line: {"title":"3 to 6 words"}. No markdown, no trailing punctuation in the title string.',
           },
           { role: 'user', content: userPrompt },
         ],
@@ -128,7 +92,7 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errText = await response.text().catch(() => '')
       console.warn('[ChatTitle][server] OpenRouter title request failed', response.status, errText.slice(0, 200))
-      return NextResponse.json({ title: fallbackTitle })
+      return NextResponse.json({ title: null }, { status: 503 })
     }
 
     const payload = (await response.json().catch(() => ({}))) as {
@@ -145,9 +109,10 @@ export async function POST(request: NextRequest) {
           : ''
 
     const extracted = extractTitleFromOpenRouterContent(textOut)
-    const candidateTitle = sanitizeChatTitle(extracted, fallbackTitle)
-    const usedFallback = shouldUseFallbackTitle(candidateTitle, text)
-    const sanitizedTitle = usedFallback ? fallbackTitle : candidateTitle
+    const sanitizedTitle = sanitizeChatTitle(extracted, FALLBACK_TITLE)
+    if (sanitizedTitle === FALLBACK_TITLE) {
+      return NextResponse.json({ title: null }, { status: 502 })
+    }
 
     return NextResponse.json({ title: sanitizedTitle })
   } catch (error) {

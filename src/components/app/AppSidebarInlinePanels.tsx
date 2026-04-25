@@ -17,10 +17,13 @@ import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import {
   CHAT_CREATED_EVENT,
+  CHAT_DELETED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
+  dispatchChatDeleted,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
   type ChatCreatedDetail,
+  type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
 
@@ -52,6 +55,7 @@ export function ChatInlinePanel({
   const [loading, setLoading] = useState(true)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
   const activeId = searchParams?.get('id') ?? null
 
   const loadChats = useCallback(async () => {
@@ -97,11 +101,26 @@ export function ChatInlinePanel({
         chat._id === detail.chatId ? { ...chat, title: detail.title } : chat
       )))
     }
+
+    function handleChatDeleted(event: Event) {
+      const { detail } = event as CustomEvent<ChatDeletedDetail>
+      if (!detail?.chatId) return
+      const deletedChatId = detail.chatId
+      setDeletingChatIds((prev) => (
+        prev.includes(deletedChatId) ? prev : [...prev, deletedChatId]
+      ))
+      window.setTimeout(() => {
+        setChats((prev) => prev.filter((chat) => chat._id !== deletedChatId))
+        setDeletingChatIds((prev) => prev.filter((id) => id !== deletedChatId))
+      }, 180)
+    }
     window.addEventListener(CHAT_CREATED_EVENT, handleChatCreated)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+    window.addEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     return () => {
       window.removeEventListener(CHAT_CREATED_EVENT, handleChatCreated)
       window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
+      window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     }
   }, [])
 
@@ -144,8 +163,8 @@ export function ChatInlinePanel({
 
   async function deleteChat(chatId: string, event: MouseEvent) {
     event.stopPropagation()
+    dispatchChatDeleted({ chatId })
     await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
-    setChats((prev) => prev.filter((chat) => chat._id !== chatId))
     if (activeId === chatId) {
       router.push('/app/chat')
     }
@@ -166,15 +185,19 @@ export function ChatInlinePanel({
         const unread = getUnread(chat._id)
         const active = activeId === chat._id
         const isEditing = editingChatId === chat._id
+        const isDeleting = deletingChatIds.includes(chat._id)
         return (
           <div
             key={chat._id}
             onClick={() => {
+              if (isDeleting) return
               if (isEditing) return
               router.push(`/app/chat?id=${encodeURIComponent(chat._id)}`)
               onNavigate?.()
             }}
-            className={`${panelItemClass} cursor-pointer ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+            className={`${panelItemClass} cursor-pointer overflow-hidden transition-all duration-200 ${
+              isDeleting ? 'max-h-0 -translate-y-1 py-0 opacity-0' : 'max-h-10 opacity-100'
+            } ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
           >
             <MessageSquare size={12} className="shrink-0" />
             {isEditing ? (

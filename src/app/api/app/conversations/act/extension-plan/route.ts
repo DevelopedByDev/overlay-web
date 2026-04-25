@@ -3,7 +3,7 @@ import { generateObject } from 'ai'
 import { z } from 'zod'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/models'
+import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/models'
 import { isPremiumModel } from '@/lib/model-pricing'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
@@ -317,9 +317,9 @@ export async function POST(request: NextRequest) {
 
     const budget = getBudgetTotals(entitlements)
 
-    if (!isPaidPlan(entitlements) && effectiveModelId !== FREE_TIER_AUTO_MODEL_ID) {
+    if (!isPaidPlan(entitlements) && effectiveModelId !== FREE_TIER_AUTO_MODEL_ID && !isNvidiaNimChatModelId(effectiveModelId)) {
       return NextResponse.json(
-        { error: 'premium_model_not_allowed', message: 'Free tier is limited to the Auto model. Upgrade to a paid plan to use premium models.' },
+        { error: 'premium_model_not_allowed', message: 'Free tier is limited to Auto and NVIDIA NIM models. Upgrade to a paid plan to use premium models.' },
         { status: 403 },
       )
     }
