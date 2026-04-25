@@ -15,8 +15,8 @@ export function useStaticMarketingTheme() {
   const subtleClass = isLandingDark ? "text-zinc-500" : "text-zinc-500";
   const dividerClass = isLandingDark ? "border-white/10" : "border-black/5";
   const secondaryButtonClass = isLandingDark
-    ? "border-white/10 hover:bg-white/[0.04]"
-    : "border-black/10 hover:bg-black/[0.03]";
+    ? "text-zinc-300 hover:bg-white/[0.04] hover:text-zinc-100"
+    : "text-zinc-600 hover:bg-black/[0.03] hover:text-zinc-950";
   const primaryButtonClass = isLandingDark
     ? "bg-zinc-100 text-zinc-950 hover:bg-white"
     : "bg-zinc-950 text-white hover:bg-zinc-800";
@@ -51,21 +51,21 @@ export function StaticMarketingNav() {
         </Link>
 
         <div className="flex items-center gap-2 text-sm">
-          <Link href="/pricing" className={`hidden rounded-full border px-4 py-2 md:inline-flex ${theme.secondaryButtonClass}`}>
+          <Link href="/pricing" className={`hidden rounded-full px-4 py-2 md:inline-flex ${theme.secondaryButtonClass}`}>
             Pricing
           </Link>
-          <Link href="/manifesto" className={`hidden rounded-full border px-4 py-2 md:inline-flex ${theme.secondaryButtonClass}`}>
+          <Link href="/manifesto" className={`hidden rounded-full px-4 py-2 md:inline-flex ${theme.secondaryButtonClass}`}>
             Manifesto
           </Link>
           <a
             href={MARKETING_GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className={`hidden rounded-full border px-4 py-2 md:inline-flex ${theme.secondaryButtonClass}`}
+            className={`hidden rounded-full px-4 py-2 md:inline-flex ${theme.secondaryButtonClass}`}
           >
             GitHub
           </a>
-          <button type="button" onClick={theme.toggleLandingTheme} className={`rounded-full border px-4 py-2 ${theme.secondaryButtonClass}`}>
+          <button type="button" onClick={theme.toggleLandingTheme} className={`rounded-full px-4 py-2 ${theme.secondaryButtonClass}`}>
             {theme.landingTheme === "dark" ? "Light" : "Dark"}
           </button>
           <Link href={webAppHref} className={`inline-flex rounded-full px-4 py-2 text-sm ${theme.primaryButtonClass}`}>

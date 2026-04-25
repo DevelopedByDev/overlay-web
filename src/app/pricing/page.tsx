@@ -186,6 +186,32 @@ function PricingContent() {
 
   const selectedPaidOption = PAID_OPTIONS.find((option) => option.tier === selectedTier) ?? PAID_OPTIONS[0]
 
+  function renderPaidTierToggle() {
+    return (
+      <div className={`grid grid-cols-3 gap-1 rounded-full border p-1 ${isLandingDark ? 'border-white/10 bg-white/[0.03]' : 'border-black/10 bg-black/[0.02]'}`}>
+      {PAID_OPTIONS.map((option) => {
+        const active = selectedTier === option.tier
+        return (
+          <button
+            key={option.tier}
+            type="button"
+            onClick={() => selectTier(option.tier)}
+            className={`rounded-full px-2 py-2 text-xs transition-colors ${
+              active
+                ? isLandingDark
+                  ? 'bg-zinc-100 text-zinc-950'
+                  : 'bg-zinc-950 text-white'
+                : theme.muted
+            }`}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+      </div>
+    )
+  }
+
   async function startCheckout(planAmountCents: number, tier?: TierId) {
     if (tier) {
       if (tier === 'custom') selectTier('custom', planAmountCents)
@@ -356,10 +382,16 @@ function PricingContent() {
             ) : null}
           </div>
 
+          <div className="hidden gap-3 lg:grid lg:grid-cols-3">
+            <div className="hidden lg:block" />
+            {renderPaidTierToggle()}
+            <div className="hidden lg:block" />
+          </div>
+
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
             {/* Free */}
             <section className={theme.tierCard}>
-              <div className="flex items-center gap-3">
+              <div className="flex min-h-[56px] items-center gap-3">
                 <div className={theme.iconChip}>
                   <MessageSquare className="h-4 w-4" strokeWidth={1.75} aria-hidden />
                 </div>
@@ -368,11 +400,11 @@ function PricingContent() {
                   <p className={`text-xs ${theme.muted}`}>Auto model and core workspace</p>
                 </div>
               </div>
-              <div className="mt-6">
+              <div className="mt-6 min-h-[82px]">
                 <div className={`text-4xl font-serif ${theme.title}`}>$0</div>
                 <p className={`mt-1 text-sm ${theme.body}`}>No card required</p>
               </div>
-              <ul className="mt-5 flex flex-1 flex-col gap-2.5">
+              <ul className="mt-4 flex flex-col gap-2.5">
                 {[
                   'Unlimited Auto model messages',
                   'Notes, chats, knowledge, projects',
@@ -385,7 +417,7 @@ function PricingContent() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-6">
+              <div className="mt-auto pt-6">
                 {currentPlanKind === 'free' ? (
                   <div className={theme.currentPlanPill}>{subscriptionLoading ? 'Loading…' : 'Current plan'}</div>
                 ) : (
@@ -400,39 +432,17 @@ function PricingContent() {
               </div>
             </section>
 
+            <div className="lg:hidden">{renderPaidTierToggle()}</div>
+
             {/* Paid */}
             <section className={tierCardClass(selectedPaidOption.tier)} onClick={() => selectTier(selectedPaidOption.tier)}>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex min-h-[56px] items-center justify-between gap-3">
                 <div>
                   <h2 className={`text-lg font-semibold ${theme.heading}`}>Paid</h2>
                   <p className={`text-xs ${theme.muted}`}>{selectedPaidOption.note}</p>
                 </div>
               </div>
-              <div className={`mt-5 grid grid-cols-3 gap-1 rounded-full border p-1 ${isLandingDark ? 'border-white/10 bg-white/[0.03]' : 'border-black/10 bg-black/[0.02]'}`}>
-                {PAID_OPTIONS.map((option) => {
-                  const active = selectedTier === option.tier
-                  return (
-                    <button
-                      key={option.tier}
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        selectTier(option.tier)
-                      }}
-                      className={`rounded-full px-2 py-2 text-xs transition-colors ${
-                        active
-                          ? isLandingDark
-                            ? 'bg-zinc-100 text-zinc-950'
-                            : 'bg-zinc-950 text-white'
-                          : theme.muted
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  )
-                })}
-              </div>
-              <div className="mt-6">
+              <div className="mt-6 min-h-[82px]">
                 <div className="flex flex-wrap items-end gap-1.5">
                   <span className={`text-4xl font-serif ${theme.title}`}>${selectedPaidOption.amountCents / 100}</span>
                   <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
@@ -441,7 +451,7 @@ function PricingContent() {
                   {formatBytes(getStorageLimitBytes({ planKind: 'paid', planAmountCents: selectedPaidOption.amountCents }))} storage
                 </p>
               </div>
-              <ul className="mt-4 flex flex-1 flex-col gap-2">
+              <ul className="mt-4 flex flex-col gap-2">
                 <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
                 {PAID_FEATURE_BULLETS_COMPACT.map((feature) => (
                   <li key={feature} className="flex items-start gap-2">
@@ -450,13 +460,13 @@ function PricingContent() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-6">{paidCtaForAmount(selectedPaidOption.amountCents, selectedPaidOption.tier)}</div>
+              <div className="mt-auto pt-6">{paidCtaForAmount(selectedPaidOption.amountCents, selectedPaidOption.tier)}</div>
             </section>
 
             {/* Choose your own */}
             <section className={`${tierCardClass('custom')} relative overflow-hidden`} onClick={() => selectTier('custom')}>
               <div className={`pointer-events-none absolute inset-0 ${theme.heroGlow}`} />
-              <div className="relative flex items-center gap-3">
+              <div className="relative flex min-h-[56px] items-center gap-3">
                 <div className={theme.iconChip}>
                   <SlidersHorizontal className="h-4 w-4" strokeWidth={1.75} aria-hidden />
                 </div>
@@ -465,7 +475,7 @@ function PricingContent() {
                   <p className={`text-xs ${theme.muted}`}>Pick any monthly budget ($8–$200)</p>
                 </div>
               </div>
-              <div className="relative mt-5">
+              <div className="relative mt-6 min-h-[82px]">
                 <div className="flex flex-wrap items-end gap-1.5">
                   <span className={`text-4xl font-serif ${theme.title}`}>{formatDollarAmount(selectedPlanAmountCents)}</span>
                   <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
@@ -475,7 +485,17 @@ function PricingContent() {
                 </p>
               </div>
 
-              <div className={`relative mt-4 ${theme.subtleCard}`}>
+              <ul className="relative mt-4 flex flex-col gap-2">
+                <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
+                {PAID_FEATURE_BULLETS.map((feature) => (
+                  <li key={feature} className="flex items-start gap-2">
+                    <Check className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                    <span className={`text-sm leading-snug ${marketingFeatureText(isLandingDark, true)}`}>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className={`relative mt-5 ${theme.subtleCard}`}>
                 <div className="flex items-center justify-between text-xs">
                   <span className={theme.muted}>Monthly budget</span>
                   <span className={`font-medium ${theme.heading}`}>{formatDollarAmount(selectedPlanAmountCents)}</span>
@@ -502,17 +522,7 @@ function PricingContent() {
                 </div>
               </div>
 
-              <ul className="relative mt-4 flex flex-1 flex-col gap-2">
-                <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
-                {PAID_FEATURE_BULLETS.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2">
-                    <Check className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                    <span className={`text-sm leading-snug ${marketingFeatureText(isLandingDark, true)}`}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="relative mt-6">{paidCtaForAmount(selectedPlanAmountCents, 'custom')}</div>
+              <div className="relative mt-auto pt-6">{paidCtaForAmount(selectedPlanAmountCents, 'custom')}</div>
             </section>
           </div>
 
