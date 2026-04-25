@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { refreshSessionFromRefreshToken } from '@/lib/workos-auth'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { getNativeRefreshTokenBucketKey } from '@/lib/native-refresh-rate-limit'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -19,10 +19,11 @@ export async function POST(request: NextRequest) {
           ? body.user.id
           : undefined
 
-    const tokenBucketKey = expectedUserId ?? createHash('sha256').update(refreshToken).digest('hex').slice(0, 16)
+    const clientIp = getClientIp(request)
+    const tokenBucketKey = getNativeRefreshTokenBucketKey(refreshToken, clientIp)
     const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'auth:native-refresh:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
-      { bucket: 'auth:native-refresh:user', key: tokenBucketKey, limit: 12, windowMs: 10 * 60_000 },
+      { bucket: 'auth:native-refresh:ip', key: clientIp, limit: 20, windowMs: 10 * 60_000 },
+      { bucket: 'auth:native-refresh:token', key: tokenBucketKey, limit: 12, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
 

@@ -378,6 +378,59 @@ export async function getAuthorizationUrl(
   return authorizationUrl
 }
 
+export async function getNativeAuthorizationUrl(
+  provider: 'GoogleOAuth' | 'AppleOAuth' | 'MicrosoftOAuth' | 'authkit',
+  options: {
+    redirectUri: string
+    codeChallenge: string
+    state: string
+    forceSignIn?: boolean
+  },
+): Promise<string> {
+  if (!clientId) {
+    throw new Error('WorkOS client ID is not configured')
+  }
+
+  const normalizedCodeChallenge = normalizeCodeChallenge(options.codeChallenge)
+  if (!normalizedCodeChallenge) {
+    throw new Error('Native authentication requires a valid codeChallenge')
+  }
+
+  const workos = getWorkOS()
+  return workos.userManagement.getAuthorizationUrl({
+    provider,
+    clientId,
+    redirectUri: options.redirectUri,
+    state: options.state,
+    codeChallenge: normalizedCodeChallenge,
+    codeChallengeMethod: 'S256',
+    ...(options.forceSignIn ? { prompt: 'login' } : {}),
+  })
+}
+
+export async function authenticateNativeWithCode(
+  code: string,
+  codeVerifier: string,
+): Promise<AuthSession> {
+  if (!clientId) {
+    throw new Error('WorkOS client ID is not configured')
+  }
+
+  const workos = getWorkOS(true)
+  const response = await workos.userManagement.authenticateWithCode({
+    clientId,
+    code,
+    codeVerifier,
+  })
+
+  return {
+    accessToken: response.accessToken,
+    refreshToken: response.refreshToken,
+    user: toAuthUser(response.user),
+    expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+  }
+}
+
 // Authenticate with email and password
 export async function authenticateWithPassword(
   email: string,
