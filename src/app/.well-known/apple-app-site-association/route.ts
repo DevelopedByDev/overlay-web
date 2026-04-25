@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 const TEAM_ID = '562STT95YC'
 const BUNDLE_ID = 'com.layernorm.overlay-mobile'
+const APP_ID = `${TEAM_ID}.${BUNDLE_ID}`
 
 export async function GET() {
   return NextResponse.json(
@@ -10,14 +11,17 @@ export async function GET() {
         apps: [],
         details: [
           {
-            appIDs: [`${TEAM_ID}.${BUNDLE_ID}`],
-            appID: `${TEAM_ID}.${BUNDLE_ID}`,
+            appID: APP_ID,
+            appIDs: [APP_ID],
             paths: ['/auth/native/callback', '/auth/native/callback/*'],
             components: [
               {
                 '/': '/auth/native/callback',
-                '?': { code: '*', state: '*' },
                 comment: 'Overlay mobile auth callback',
+              },
+              {
+                '/': '/auth/native/callback/*',
+                comment: 'Overlay mobile auth callback subpaths',
               },
             ],
           },
@@ -26,7 +30,7 @@ export async function GET() {
     },
     {
       headers: {
-        'Content-Type': 'application/pkcs7-mime',
+        'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=3600',
       },
     },
