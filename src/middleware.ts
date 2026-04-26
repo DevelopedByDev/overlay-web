@@ -62,6 +62,7 @@ function buildConnectSrc(): string[] {
   return uniqueSources([
     "'self'",
     parseOrigin(process.env.NEXT_PUBLIC_POSTHOG_HOST),
+    'https://us-assets.i.posthog.com',
     parseOrigin(process.env.NEXT_PUBLIC_SENTRY_DSN),
     parseOrigin(process.env.SENTRY_DSN),
     parseOrigin(process.env.NEXT_PUBLIC_CONVEX_URL),

@@ -44,11 +44,18 @@ export async function POST(request: NextRequest) {
 
     const sourceInstructions = await loadAutomationSourceInstructions(automation, userId, serverSecret)
     const prompt = buildAutomationRunPrompt(automation, sourceInstructions)
-    const preflight = await runAutomationIntegrationPreflight({
-      automation,
-      sourceInstructions,
-      userId,
-    })
+    let preflight
+    try {
+      preflight = await runAutomationIntegrationPreflight({
+        automation,
+        sourceInstructions,
+        userId,
+      })
+    } catch (preflightError) {
+      const message = preflightError instanceof Error ? preflightError.message : 'Preflight check failed'
+      console.error('[automation run-now] preflight error:', preflightError)
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
 
     const scheduledFor = Date.now()
     const failedAt = Date.now()
@@ -248,7 +255,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: message }, { status: 500 })
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to run automation'
     console.error('[automation run-now] POST error:', error)
-    return NextResponse.json({ error: 'Failed to run automation' }, { status: 500 })
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
