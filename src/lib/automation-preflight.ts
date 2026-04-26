@@ -1,4 +1,8 @@
 import type { AutomationSummary } from './automations'
+import { convex } from './convex'
+import { getInternalApiSecret } from './internal-api-secret'
+import { getAutomationExecutorBaseUrl } from './url'
+import { isPremiumModel } from './model-pricing'
 
 type KnownIntegration = {
   slug: string
@@ -50,21 +54,6 @@ export function detectRequiredIntegrations(text: string): KnownIntegration[] {
 async function getComposioApiKey(): Promise<string | null> {
   const { getServerProviderKey } = await import('./server-provider-keys')
   return (await getServerProviderKey('composio')) ?? process.env.COMPOSIO_API_KEY?.trim() ?? null
-}
-
-async function loadAutomationPreflightSupport() {
-  const [{ convex }, internalApiModule, urlModule, pricingModule] = await Promise.all([
-    import(new URL('./convex.ts', import.meta.url).href),
-    import(new URL('./internal-api-secret.ts', import.meta.url).href),
-    import(new URL('./url.ts', import.meta.url).href),
-    import(new URL('./model-pricing.ts', import.meta.url).href),
-  ])
-  return {
-    convex,
-    getInternalApiSecret: internalApiModule.getInternalApiSecret,
-    getAutomationExecutorBaseUrl: urlModule.getAutomationExecutorBaseUrl,
-    isPremiumModel: pricingModule.isPremiumModel,
-  }
 }
 
 async function listConnectedIntegrationSlugs(userId: string): Promise<Set<string> | null> {
@@ -122,13 +111,6 @@ export async function runAutomationIntegrationPreflight(args: {
       missingIntegrations: [],
     }
   }
-
-  const {
-    convex,
-    getInternalApiSecret,
-    getAutomationExecutorBaseUrl,
-    isPremiumModel,
-  } = await loadAutomationPreflightSupport()
 
   const executorBaseUrl = getAutomationExecutorBaseUrl()
   if (!executorBaseUrl) {
