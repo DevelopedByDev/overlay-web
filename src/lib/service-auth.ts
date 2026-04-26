@@ -2,7 +2,7 @@ const SERVICE_AUTH_HEADER = 'x-overlay-service-auth'
 const SERVICE_AUTH_AUDIENCE = 'overlay-internal-api'
 const SERVICE_AUTH_ISSUER = 'overlay-nextjs'
 const DEFAULT_SERVICE_AUTH_TTL_MS = 60_000
-const MAX_SERVICE_AUTH_CLOCK_SKEW_MS = 5_000
+const MAX_SERVICE_AUTH_CLOCK_SKEW_MS = 60_000
 const MAX_SERVICE_AUTH_VERIFICATIONS_PER_TOKEN = 2
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -188,10 +188,14 @@ export async function verifyServiceAuthToken(
   },
 ): Promise<{ userId: string } | null> {
   const trimmed = token?.trim()
-  if (!trimmed) return null
+  if (!trimmed) {
+    console.error('[service-auth] verify failed: missing token')
+    return null
+  }
 
   const separatorIndex = trimmed.lastIndexOf('.')
   if (separatorIndex <= 0 || separatorIndex === trimmed.length - 1) {
+    console.error('[service-auth] verify failed: malformed token (no separator)')
     return null
   }
 
@@ -201,10 +205,12 @@ export async function verifyServiceAuthToken(
   try {
     parsed = JSON.parse(fromBase64Url(payloadSegment))
   } catch {
+    console.error('[service-auth] verify failed: payload JSON parse error')
     return null
   }
 
   if (!isValidServiceAuthPayload(parsed)) {
+    console.error('[service-auth] verify failed: invalid payload shape', { parsed })
     return null
   }
 
@@ -220,14 +226,36 @@ export async function verifyServiceAuthToken(
     ) as ArrayBuffer,
     textEncoder.encode(payloadSegment),
   )
-  if (!verified) return null
+  if (!verified) {
+    console.error('[service-auth] verify failed: HMAC signature mismatch (secrets may differ between environments)')
+    return null
+  }
 
-  if (payload.exp < Date.now()) return null
-  if (payload.iat > Date.now() + MAX_SERVICE_AUTH_CLOCK_SKEW_MS) return null
-  if (payload.method !== normalizeMethod(params.method)) return null
-  if (payload.path !== normalizePath(params.path)) return null
-  if (params.userId && payload.sub !== params.userId.trim()) return null
-  if (!recordServiceAuthVerification(payload.jti, payload.exp)) return null
+  const now = Date.now()
+  if (payload.exp < now) {
+    console.error('[service-auth] verify failed: token expired', { exp: payload.exp, now })
+    return null
+  }
+  if (payload.iat > now + MAX_SERVICE_AUTH_CLOCK_SKEW_MS) {
+    console.error('[service-auth] verify failed: token issued in future (clock skew)', { iat: payload.iat, now, skewMs: payload.iat - now })
+    return null
+  }
+  if (payload.method !== normalizeMethod(params.method)) {
+    console.error('[service-auth] verify failed: method mismatch', { expected: normalizeMethod(params.method), actual: payload.method })
+    return null
+  }
+  if (payload.path !== normalizePath(params.path)) {
+    console.error('[service-auth] verify failed: path mismatch', { expected: normalizePath(params.path), actual: payload.path })
+    return null
+  }
+  if (params.userId && payload.sub !== params.userId.trim()) {
+    console.error('[service-auth] verify failed: userId mismatch', { expected: params.userId.trim(), actual: payload.sub })
+    return null
+  }
+  if (!recordServiceAuthVerification(payload.jti, payload.exp)) {
+    console.error('[service-auth] verify failed: replay protection triggered for jti', payload.jti)
+    return null
+  }
 
   return { userId: payload.sub }
 }

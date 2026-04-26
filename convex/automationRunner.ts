@@ -64,7 +64,13 @@ async function runMinuteTickHandler(
 
       if (!response.ok) {
         failed += 1
-        const message = await response.text().catch(() => 'Automation dispatch failed')
+        const body = await response.text().catch(() => 'Automation dispatch failed')
+        const message = `HTTP ${response.status}: ${body}`
+        console.error(`[automation dispatch] ${message}`, {
+          automationRunId: job.automationRunId,
+          automationId: job.automationId,
+          userId: job.userId,
+        })
         await ctx.runMutation(internal.automations.markDispatchFailedInternal, {
           automationRunId: job.automationRunId,
           errorMessage: message || 'Automation dispatch failed',
