@@ -1,9 +1,10 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { Plug, Lock, LayoutGrid } from 'lucide-react'
+import { Lock, LayoutGrid } from 'lucide-react'
 import IntegrationsView from './IntegrationsView'
 import SkillsView from './SkillsView'
+import McpServersView from './McpServersView'
 
 function ComingSoonView({ title, icon: Icon }: {
   title: string
@@ -30,7 +31,7 @@ export default function ToolsView({ userId }: { userId: string }) {
   const view = searchParams?.get('view') ?? null
 
   if (view === 'skills') return <SkillsView userId={userId} />
-  if (view === 'mcps') return <ComingSoonView title="MCP Servers" icon={Plug} />
+  if (view === 'mcps') return <McpServersView userId={userId} />
   if (view === 'apps') return <ComingSoonView title="Apps" icon={Lock} />
   if (view === 'all') return <ComingSoonView title="All Extensions" icon={LayoutGrid} />
 

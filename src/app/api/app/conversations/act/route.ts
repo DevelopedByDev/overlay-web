@@ -13,6 +13,7 @@ import {
 import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
+import { createMcpToolSet } from '@/lib/mcp-tools'
 import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/models'
 import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
 import {
@@ -234,6 +235,13 @@ export async function POST(request: NextRequest) {
       accessToken: auth.accessToken || undefined,
     })
 
+    // MCP servers are discovered at request time; 60s cache per user.
+    const mcpToolsTask: Promise<ToolSet> = createMcpToolSet({
+      userId,
+      accessToken: auth.accessToken || undefined,
+      serverSecret,
+    })
+
     // P3.2 Wave 1: user-message save + memories + skills + conversation fetch (for projectId).
     // These are all independent of each other; previously each was an await in sequence.
     const saveUserMessageTask: Promise<void> = isMultiModelFollowUpSlot
@@ -391,8 +399,9 @@ export async function POST(request: NextRequest) {
       )
     }
     if (_ttftDebug) _tPrep = performance.now()
-    const [composioRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
+    const [composioRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
       composioToolsTask,
+      mcpToolsTask,
       Promise.resolve(
         createWebTools({
           userId,
@@ -423,8 +432,10 @@ export async function POST(request: NextRequest) {
     const freeTierStubsActive = !paid && !isMultiModelFollowUpSlot
     /** Stubs are spread before gateway Perplexity/Parallel so real tools always win if both are present. */
     const freeTierGatedStubs: ToolSet = createFreeTierGatedStubTools(freeTierStubsActive)
+    const mcpTools: ToolSet = isMultiModelFollowUpSlot ? {} : mcpToolsRaw
     const tools: ToolSet = {
       ...composioForAgent,
+      ...mcpTools,
       ...webToolSet,
       ...freeTierGatedStubs,
       ...(perplexityTool ? { perplexity_search: perplexityTool } : {}),

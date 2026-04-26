@@ -409,6 +409,28 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_userId', ['userId']).index('by_projectId', ['projectId']),
 
+  mcpServers: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    transport: v.union(v.literal('sse'), v.literal('streamable-http')),
+    url: v.string(),
+    enabled: v.boolean(),
+    authType: v.union(v.literal('none'), v.literal('bearer'), v.literal('header')),
+    authConfig: v.optional(
+      v.object({
+        bearerToken: v.optional(v.string()),
+        headerName: v.optional(v.string()),
+        headerValue: v.optional(v.string()),
+      })
+    ),
+    timeoutMs: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_enabled', ['userId', 'enabled']),
+
   conversations: defineTable({
     userId: v.string(),
     clientId: v.optional(v.string()),

@@ -23,6 +23,7 @@ import type * as lib_authDebug from "../lib/authDebug.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_storageQuota from "../lib/storageQuota.js";
 import type * as lib_stripeOverlaySubscription from "../lib/stripeOverlaySubscription.js";
+import type * as mcpServers from "../mcpServers.js";
 import type * as memories from "../memories.js";
 import type * as notes from "../notes.js";
 import type * as outputs from "../outputs.js";
@@ -60,6 +61,7 @@ declare const fullApi: ApiFromModules<{
   "lib/logging": typeof lib_logging;
   "lib/storageQuota": typeof lib_storageQuota;
   "lib/stripeOverlaySubscription": typeof lib_stripeOverlaySubscription;
+  mcpServers: typeof mcpServers;
   memories: typeof memories;
   notes: typeof notes;
   outputs: typeof outputs;
