@@ -16,8 +16,6 @@ export const NVIDIA_NIM_BASE_URL = 'https://integrate.api.nvidia.com/v1' as cons
  * Align with NIM build names (see NVIDIA NIM / build docs).
  */
 export const FREE_TIER_NVIDIA_PREFERRED_MODEL_ORDER = [
-  'deepseek-ai/deepseek-v4-pro',
-  'deepseek-ai/deepseek-v4-flash',
   'minimaxai/minimax-m2.7',
   'deepseek-ai/deepseek-v3.2',
   'moonshotai/kimi-k2-thinking',
@@ -40,17 +38,11 @@ function withDeepseekThinkingTemplate(init?: RequestInit): RequestInit {
   try {
     const body = JSON.parse(init.body) as Record<string, unknown>
     const m = body.model
-    if (
-      typeof m === 'string' &&
-      (m.includes('deepseek-v3.2') || m.includes('deepseek-v4-flash') || m.includes('deepseek-v4-pro'))
-    ) {
+    if (typeof m === 'string' && m.includes('deepseek-v3.2')) {
       const existing = body.chat_template_kwargs as Record<string, unknown> | undefined
       body.chat_template_kwargs = {
         ...existing,
         thinking: true,
-        ...(m.includes('deepseek-v4-flash') || m.includes('deepseek-v4-pro')
-          ? { reasoning_effort: 'high' }
-          : {}),
       }
     }
     return { ...init, body: JSON.stringify(body) }
@@ -66,10 +58,7 @@ export function createNvidiaNimChatLanguageModel(
   modelId: string,
   apiKey: string,
 ): LanguageModelV3 {
-  const useThinkingMerge =
-    modelId === 'deepseek-ai/deepseek-v3.2' ||
-    modelId === 'deepseek-ai/deepseek-v4-flash' ||
-    modelId === 'deepseek-ai/deepseek-v4-pro'
+  const useThinkingMerge = modelId === 'deepseek-ai/deepseek-v3.2'
   const nvidia = createOpenAI({
     name: 'nvidia-nim',
     baseURL: NVIDIA_NIM_BASE_URL,
