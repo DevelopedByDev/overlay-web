@@ -6,6 +6,7 @@ import {
   Brain, Trash2, Plus, X, FilePlus, FolderPlus, FolderInput, Copy, Check,
   ChevronRight, ChevronDown, FileText, Folder, FolderOpen, Search,
   LayoutList, LayoutGrid, RefreshCw, SquareMousePointer, Loader2,
+  PanelRight, Maximize2,
 } from 'lucide-react'
 import { FileTreeSkeleton, KnowledgeListSkeleton } from '@/components/ui/Skeleton'
 import posthog from 'posthog-js'
@@ -266,6 +267,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   const [filesLoading, setFilesLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [fileContent, setFileContent] = useState('')
+  const [filePreviewMode, setFilePreviewMode] = useState<'dialog' | 'sidebar'>('dialog')
   const [isSavingFile, setIsSavingFile] = useState(false)
   const [dialog, setDialog] = useState<{ type: 'file' | 'folder'; parentId: string | null } | null>(null)
   const [dialogName, setDialogName] = useState('')
@@ -389,6 +391,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     const file = (await res.json()) as FileNode
     setSelectedFile(file)
     setFileContent(file.content ?? '')
+    setFilePreviewMode('dialog')
   }, [])
 
   const loadMemories = useCallback(async () => {
@@ -522,6 +525,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
   function closeFileDialog() {
     setSelectedFile(null)
     setFileContent('')
+    setFilePreviewMode('dialog')
     updateQuery({ file: null })
   }
 
@@ -934,35 +938,75 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         </div>
       )}
 
-      {/* ── View file dialog ── */}
-      {selectedFile && (
+      {/* ── View file preview (dialog or sidebar) ── */}
+      {selectedFile && filePreviewMode === 'dialog' && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
           onClick={(e) => { if (e.target === e.currentTarget) closeFileDialog() }}
         >
           <div
-            className="flex max-h-[min(92vh,900px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
+            className="flex h-[min(90vh,800px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-center justify-end border-b border-[var(--border)] px-2 py-2">
-              <button
-                type="button"
-                onClick={closeFileDialog}
-                className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div className="flex min-h-[min(75vh,720px)] flex-1 flex-col overflow-hidden">
-              <FileViewerPanel
-                name={selectedFile.name}
-                content={fileContent}
-                isSaving={isSavingFile}
-                isEditable={isEditableType(selectedFile.name)}
-                onContentChange={handleFileContentChange}
-              />
-            </div>
+            <FileViewerPanel
+              name={selectedFile.name}
+              content={fileContent}
+              url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/app/files/${selectedFile._id}/content` : undefined}
+              isSaving={isSavingFile}
+              isEditable={isEditableType(selectedFile.name)}
+              onContentChange={handleFileContentChange}
+              headerRight={
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setFilePreviewMode('sidebar')}
+                    title="Dock to sidebar"
+                    className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <PanelRight size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeFileDialog}
+                    className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              }
+            />
           </div>
+        </div>
+      )}
+      {selectedFile && filePreviewMode === 'sidebar' && (
+        <div className="fixed inset-y-0 right-0 z-50 flex w-[40rem] max-w-full flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl">
+          <FileViewerPanel
+            name={selectedFile.name}
+            content={fileContent}
+            url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/app/files/${selectedFile._id}/content` : undefined}
+            isSaving={isSavingFile}
+            isEditable={isEditableType(selectedFile.name)}
+            onContentChange={handleFileContentChange}
+            headerRight={
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setFilePreviewMode('dialog')}
+                  title="Pop out to dialog"
+                  className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                >
+                  <Maximize2 size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={closeFileDialog}
+                  className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            }
+          />
         </div>
       )}
 

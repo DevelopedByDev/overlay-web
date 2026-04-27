@@ -26,6 +26,8 @@ import {
   MessageSquare,
   BookOpen,
   Search,
+  Maximize2,
+  PanelRight,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
@@ -73,6 +75,7 @@ import {
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
 import { WebSourcesSidebar } from './WebSourcesSidebar'
+import { FileViewerPanel } from './FileViewer'
 import { DelayedTooltip } from './DelayedTooltip'
 import {
   normalizeAgentAssistantText,
@@ -1584,6 +1587,7 @@ interface ExchangeBlockProps {
   userMsgId: string
   userBodyText: string
   userDocumentNames: string[]
+  userIndexedAttachments?: { name: string; fileIds: string[] }[]
   userImages: string[]
   exchIdx: number
   /** Model id for this tab — stable key for markdown remount when picker slots change */
@@ -1616,13 +1620,14 @@ interface ExchangeBlockProps {
   isSourcesOpenForThis: boolean
   onRetry?: () => void
   retryDisabled?: boolean
+  onOpenFilePreview?: (name: string, fileIds: string[]) => void
 }
 
 function ExchangeBlock({
-  userMsgId, userBodyText, userDocumentNames, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
+  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -1685,15 +1690,23 @@ function ExchangeBlock({
             )}
             {userDocumentNames.length > 0 && (
               <div className="flex w-full flex-wrap justify-end gap-1.5">
-                {userDocumentNames.map((name) => (
-                  <div
-                    key={name}
-                    className="flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm"
-                  >
-                    <FileText size={13} className="shrink-0 text-[var(--muted)]" />
-                    <span className="truncate font-medium text-[var(--foreground)]">{name}</span>
-                  </div>
-                ))}
+                {userDocumentNames.map((name) => {
+                  const attachment = userIndexedAttachments?.find((a) => a.name === name)
+                  const clickable = !!attachment && attachment.fileIds.length > 0 && !!onOpenFilePreview
+                  return (
+                    <div
+                      key={name}
+                      className={`flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm ${clickable ? 'cursor-pointer hover:bg-[var(--surface-subtle)] transition-colors' : ''}`}
+                      onClick={() => {
+                        if (clickable) onOpenFilePreview!(name, attachment.fileIds)
+                      }}
+                      title={clickable ? 'Click to preview' : undefined}
+                    >
+                      <FileText size={13} className="shrink-0 text-[var(--muted)]" />
+                      <span className="truncate font-medium text-[var(--foreground)]">{name}</span>
+                    </div>
+                  )
+                })}
               </div>
             )}
             {showTextBubble && (
@@ -2641,6 +2654,29 @@ export default function ChatInterface({
     setSourcesPanel((prev) => (prev && prev.turnId === turnId ? null : { turnId, sources }))
   }, [])
   const closeSourcesPanel = useCallback(() => setSourcesPanel(null), [])
+  /** File preview dialog state. */
+  const [filePreview, setFilePreview] = useState<{ name: string; fileId: string } | null>(null)
+  const [filePreviewContent, setFilePreviewContent] = useState('')
+  const openFilePreview = useCallback(async (name: string, fileIds: string[]) => {
+    const fileId = fileIds[0]
+    if (!fileId) return
+    setFilePreview({ name, fileId })
+    try {
+      const res = await fetch(`/api/app/files/${fileId}/content`)
+      if (res.ok) {
+        const text = await res.text()
+        setFilePreviewContent(text)
+      } else {
+        setFilePreviewContent('')
+      }
+    } catch {
+      setFilePreviewContent('')
+    }
+  }, [])
+  const closeFilePreview = useCallback(() => {
+    setFilePreview(null)
+    setFilePreviewContent('')
+  }, [])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
@@ -5838,6 +5874,7 @@ export default function ChatInterface({
                 const { bodyText, docNames: parsedDocNames } = splitUserDisplayText(rawUserText)
                 const userDocumentNames = metaDocs.length > 0 ? metaDocs : parsedDocNames
                 const userBodyText = metaDocs.length > 0 ? rawUserText.trim() : bodyText
+                const userIndexedAttachments = (msg as { metadata?: { indexedAttachments?: { name: string; fileIds: string[] }[] } })?.metadata?.indexedAttachments ?? []
 
                 const sourceCitations = (
                   responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined
@@ -5878,6 +5915,7 @@ export default function ChatInterface({
                     userMsgId={msg.id}
                     userBodyText={userBodyText}
                     userDocumentNames={userDocumentNames}
+                    userIndexedAttachments={userIndexedAttachments}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     userImages={getMessageImages(msg as any)}
                     exchIdx={curExchIdx}
@@ -5926,6 +5964,7 @@ export default function ChatInterface({
                       (isLatest && isActiveLoading) ||
                       instLoading
                     }
+                    onOpenFilePreview={openFilePreview}
                   />
                 )
               }
@@ -6301,6 +6340,37 @@ export default function ChatInterface({
         onClose={closeSourcesPanel}
         sources={sourcesPanel?.sources ?? []}
       />
+
+      {/* File preview dialog */}
+      {filePreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) closeFilePreview() }}
+        >
+          <div
+            className="flex max-h-[min(92vh,900px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-2">
+              <span className="truncate text-sm font-medium text-[var(--foreground)]">{filePreview.name}</span>
+              <button
+                type="button"
+                onClick={closeFilePreview}
+                className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex min-h-[min(75vh,720px)] flex-1 flex-col overflow-hidden">
+              <FileViewerPanel
+                name={filePreview.name}
+                content={filePreviewContent}
+                url={`/api/app/files/${filePreview.fileId}/content`}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
