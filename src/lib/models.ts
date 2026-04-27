@@ -96,7 +96,7 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   // Groq Models
   { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 1.25, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 
-  // NVIDIA Gateway — ultra-cheap summarization / title models
+  // NVIDIA Gateway — internal-only title / summarization model (not shown in dropdown)
   { id: 'nvidia/nemotron-nano-9b-v2', name: 'Nemotron Nano 9B', provider: 'nvidia', description: 'Ultra-cheap summarization & tool-calling', intelligence: 1.3, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: false, supportsSearch: false },
 
   // OpenRouter (free) — only the auto router; API id stays `openrouter/free` (do not send bare `free`).
@@ -131,11 +131,11 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'claude-haiku-4-5',
   'google/gemma-4-26b-a4b-it',
   'openai/gpt-oss-120b',
+  'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
   'minimaxai/minimax-m2.7',
   'moonshotai/kimi-k2-thinking',
   'deepseek-ai/deepseek-v3.2',
-  'nvidia/nemotron-nano-9b-v2',
   FREE_TIER_AUTO_MODEL_ID,
 ]
 

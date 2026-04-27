@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateText } from 'ai'
+import { generateObject } from 'ai'
+import { z } from 'zod'
 import { sanitizeChatTitle } from '@/lib/chat-title'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
@@ -7,18 +8,9 @@ import { getGatewayLanguageModel } from '@/lib/ai-gateway'
 const TITLE_MODEL = 'nvidia/nemotron-nano-9b-v2'
 const FALLBACK_TITLE = 'New Chat'
 
-function extractTitleFromContent(raw: string): string {
-  const trimmed = raw.trim()
-  if (!trimmed) return ''
-  try {
-    const parsed = JSON.parse(trimmed) as { title?: string }
-    if (typeof parsed.title === 'string' && parsed.title.trim()) return parsed.title.trim()
-  } catch {
-    // not JSON
-  }
-  const line = trimmed.replace(/^["'`""'"'"]+|["'`""'"'"]+$/g, '').split('\n')[0]?.trim() ?? ''
-  return line
-}
+const titleSchema = z.object({
+  title: z.string().describe('A concise chat title, 3 to 6 words, natural title case, no trailing punctuation'),
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,19 +31,20 @@ export async function POST(request: NextRequest) {
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const model = await getGatewayLanguageModel(TITLE_MODEL, auth.accessToken)
-    const result = await generateText({
+    const result = await generateObject({
       model,
+      schema: titleSchema,
       system:
-        'You write short, precise chat titles. Reply with valid JSON only, one line: {"title":"3 to 6 words"}. No markdown, no trailing punctuation in the title string.',
+        'You write short, precise chat titles. Capture the actual topic, not the first words.',
       temperature: 0.2,
       maxOutputTokens: 80,
-      prompt: `Generate a concise title for a conversation that starts with this message:\n\n${text.slice(0, 1200)}\n\nRules:\n- 3 to 6 words\n- Natural title case\n- Grammatically complete\n- Capture the actual topic, not the first words\n- No punctuation at the end\n- Return only JSON in this exact shape: {"title":"..."}`,
+      prompt: `Generate a concise title for a conversation that starts with this message:\n\n${text.slice(0, 1200)}`,
     })
 
-    const extracted = extractTitleFromContent(result.text)
+    const extracted = result.object.title?.trim() ?? ''
     const sanitizedTitle = sanitizeChatTitle(extracted, FALLBACK_TITLE)
     if (sanitizedTitle === FALLBACK_TITLE) {
-      console.warn('[ChatTitle][server] Gateway returned unparseable title', result.text)
+      console.warn('[ChatTitle][server] Gateway returned empty title', result.object)
       return NextResponse.json({ title: null }, { status: 502 })
     }
 

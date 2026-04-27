@@ -5467,8 +5467,10 @@ export default function ChatInterface({
                         )
                       })
                   ) : (
-                    getModelsByIntelligence(isFreeTier).map((m, index, models) => {
-                      const isSel =
+                    getModelsByIntelligence(isFreeTier)
+                      .filter((m) => m.id !== 'nvidia/nemotron-nano-9b-v2')
+                      .map((m, index, models) => {
+                        const isSel =
                         askModelSelectionMode === 'single'
                           ? m.id === selectedActModel
                           : selectedModels.includes(m.id)
