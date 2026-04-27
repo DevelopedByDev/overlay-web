@@ -27,6 +27,11 @@ import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } fr
 import { shimIncompleteMarkdown } from '@/lib/shim-incomplete-markdown'
 import { normalizeAssistantMathMarkdown } from '@/lib/math-markdown-normalize'
 import { WebSourceTooltip } from './WebSourceTooltip'
+import {
+  getIntegrationLogoUrl,
+  resolveSlugFromName,
+  warmIntegrationLogoCache,
+} from '@/lib/integration-logo-cache'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
@@ -244,6 +249,44 @@ function CodeBlock({ language, children }: { language: string; children: string 
   )
 }
 
+// ── Integration logo chip (lazy-fetches Composio logos via shared cache) ──────
+
+function IntegrationLogoChip({ serviceName }: { serviceName: string }) {
+  const [failed, setFailed] = useState(false)
+  const slug = resolveSlugFromName(serviceName)
+  const [logoUrl, setLogoUrl] = useState<string | null>(() =>
+    slug ? getIntegrationLogoUrl(slug) : null
+  )
+
+  useEffect(() => {
+    if (!slug) return
+    if (getIntegrationLogoUrl(slug)) return
+    let mounted = true
+    warmIntegrationLogoCache().then(() => {
+      if (!mounted) return
+      const url = getIntegrationLogoUrl(slug)
+      if (url) setLogoUrl(url)
+    })
+    return () => { mounted = false }
+  }, [slug])
+
+  if (logoUrl && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoUrl}
+        alt={serviceName}
+        width={20}
+        height={20}
+        className="h-5 w-5 object-contain"
+        onError={() => setFailed(true)}
+      />
+    )
+  }
+
+  return <span className="text-xs font-bold text-foreground">{serviceName.charAt(0).toUpperCase()}</span>
+}
+
 // Stable markdown components — defined outside component to avoid re-creation
 const baseMdComponents = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -263,9 +306,9 @@ const baseMdComponents = {
             className="my-1.5 inline-flex max-w-[360px] min-w-[260px] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 transition-colors hover:bg-[var(--surface-subtle)]"
           >
             <span
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-xs font-bold text-[var(--foreground)]"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] overflow-hidden"
             >
-              {serviceName.charAt(0).toUpperCase()}
+              <IntegrationLogoChip serviceName={serviceName} />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-medium leading-snug text-[var(--foreground)]">{serviceName}</span>

@@ -95,6 +95,7 @@ import {
   type SkillDraftSummary,
 } from '@/lib/automation-drafts'
 import { isOverlayGatedToolOutput } from '@/lib/overlay-gated-feature'
+import { warmIntegrationLogoCache } from '@/lib/integration-logo-cache'
 
 function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   const router = useRouter()
@@ -2748,6 +2749,11 @@ export default function ChatInterface({
     setChatPrefsHydrated(true)
   }, [])
 
+  // Warm integration logo cache so Composio logos render in chat connect cards.
+  useEffect(() => {
+    void warmIntegrationLogoCache()
+  }, [])
+
   const [exchangeModels, setExchangeModels] = useState<string[][]>([])
   const [selectedTabPerExchange, setSelectedTabPerExchange] = useState<number[]>([])
 
@@ -3918,6 +3924,7 @@ export default function ChatInterface({
 
     // Fast path: runtime already loaded — switch instantly with no spinner or API calls.
     if (runtime.hydrated) {
+      shouldScrollRef.current = true
       applyUiStateToView(runtime.ui)
       return
     }
@@ -4171,6 +4178,7 @@ export default function ChatInterface({
       })
       if (requestId !== loadChatRequestRef.current) return
       runtime.hydrated = true
+      shouldScrollRef.current = true
       applyUiStateToView(runtime.ui)
     } catch (err) {
       console.error('[ChatInterface] loadChat failed:', err)

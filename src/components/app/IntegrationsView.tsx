@@ -5,6 +5,7 @@ import { Loader2, Plus, Search } from 'lucide-react'
 import { IntegrationListSkeleton } from '@/components/ui/Skeleton'
 import posthog from 'posthog-js'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/lib/integrations-events'
+import { setIntegrationLogoUrl } from '@/lib/integration-logo-cache'
 import { IntegrationsDialog } from './IntegrationsDialog'
 
 interface Integration {
@@ -136,6 +137,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
             const next = { ...prev }
             for (const item of items) {
               next[item.slug] = item.logoUrl ?? null
+              setIntegrationLogoUrl(item.slug, item.logoUrl ?? null)
             }
             return next
           })
@@ -160,6 +162,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
         const next = { ...prev }
         for (const item of items) {
           next[item.slug] = item.logoUrl ?? null
+          setIntegrationLogoUrl(item.slug, item.logoUrl ?? null)
         }
         return next
       })
