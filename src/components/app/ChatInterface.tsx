@@ -1256,11 +1256,11 @@ function MemoryToolBlock({
             }`}
           >
             {showDetails ? (
-              <ul className={`message-appear space-y-1.5 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} pr-1 [scrollbar-width:thin]`}>
+              <ul className={`message-appear space-y-1 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} pr-1 [scrollbar-width:thin]`}>
                 {contents.map((c, i) => (
                   <li
                     key={i}
-                    className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-[12px] leading-relaxed text-[var(--foreground)]"
+                    className="text-[12px] leading-relaxed text-[var(--muted)]"
                   >
                     {c}
                   </li>
