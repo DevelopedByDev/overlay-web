@@ -1,23 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { generateText } from 'ai'
 import { sanitizeChatTitle } from '@/lib/chat-title'
-import { getServerProviderKey } from '@/lib/server-provider-keys'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
+import { getGatewayLanguageModel } from '@/lib/ai-gateway'
 
-const TITLE_MODEL = 'openrouter/free'
+const TITLE_MODEL = 'nvidia/nemotron-nano-9b-v2'
 const FALLBACK_TITLE = 'New Chat'
 
-async function resolveOpenRouterApiKey(accessToken?: string): Promise<string | null> {
-  if (accessToken) {
-    const serverKey = await getServerProviderKey('openrouter')
-    if (serverKey) {
-      return serverKey
-    }
-  }
-  return process.env.OPENROUTER_API_KEY ?? null
-}
-
-function extractTitleFromOpenRouterContent(raw: string): string {
+function extractTitleFromContent(raw: string): string {
   const trimmed = raw.trim()
   if (!trimmed) return ''
   try {
@@ -26,7 +16,7 @@ function extractTitleFromOpenRouterContent(raw: string): string {
   } catch {
     // not JSON
   }
-  const line = trimmed.replace(/^["'`]+|["'`]+$/g, '').split('\n')[0]?.trim() ?? ''
+  const line = trimmed.replace(/^["'`""'"'"]+|["'`""'"'"]+$/g, '').split('\n')[0]?.trim() ?? ''
   return line
 }
 
@@ -48,69 +38,20 @@ export async function POST(request: NextRequest) {
     })
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const apiKey = await resolveOpenRouterApiKey(auth.accessToken)
-    if (!apiKey) {
-      console.warn('[ChatTitle][server] OpenRouter API key missing')
-      return NextResponse.json({ title: null }, { status: 503 })
-    }
-
-    const userPrompt = `Generate a concise title for a conversation that starts with this message:
-
-${text.slice(0, 1200)}
-
-Rules:
-- 3 to 6 words
-- Natural title case
-- Grammatically complete
-- Capture the actual topic, not the first words
-- No punctuation at the end
-- Return only JSON in this exact shape: {"title":"..."}`.trim()
-
-    const response = await openRouterFetchWithRetry('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://getoverlay.io',
-        'X-Title': 'Overlay Chat Title',
-      },
-      body: JSON.stringify({
-        model: toOpenRouterApiModelId(TITLE_MODEL),
-        temperature: 0.2,
-        max_tokens: 80,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You write short, precise chat titles. Reply with valid JSON only, one line: {"title":"3 to 6 words"}. No markdown, no trailing punctuation in the title string.',
-          },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
+    const model = await getGatewayLanguageModel(TITLE_MODEL, auth.accessToken)
+    const result = await generateText({
+      model,
+      system:
+        'You write short, precise chat titles. Reply with valid JSON only, one line: {"title":"3 to 6 words"}. No markdown, no trailing punctuation in the title string.',
+      temperature: 0.2,
+      maxOutputTokens: 80,
+      prompt: `Generate a concise title for a conversation that starts with this message:\n\n${text.slice(0, 1200)}\n\nRules:\n- 3 to 6 words\n- Natural title case\n- Grammatically complete\n- Capture the actual topic, not the first words\n- No punctuation at the end\n- Return only JSON in this exact shape: {"title":"..."}`,
     })
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '')
-      console.warn('[ChatTitle][server] OpenRouter title request failed', response.status, errText.slice(0, 200))
-      return NextResponse.json({ title: null }, { status: 503 })
-    }
-
-    const payload = (await response.json().catch(() => ({}))) as {
-      choices?: Array<{ message?: { content?: string | unknown[] } }>
-    }
-    const rawContent = payload.choices?.[0]?.message?.content
-    const textOut =
-      typeof rawContent === 'string'
-        ? rawContent
-        : Array.isArray(rawContent)
-          ? rawContent
-              .map((p) => (p && typeof p === 'object' && 'text' in p ? String((p as { text?: string }).text ?? '') : ''))
-              .join('')
-          : ''
-
-    const extracted = extractTitleFromOpenRouterContent(textOut)
+    const extracted = extractTitleFromContent(result.text)
     const sanitizedTitle = sanitizeChatTitle(extracted, FALLBACK_TITLE)
     if (sanitizedTitle === FALLBACK_TITLE) {
+      console.warn('[ChatTitle][server] Gateway returned unparseable title', result.text)
       return NextResponse.json({ title: null }, { status: 502 })
     }
 

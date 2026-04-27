@@ -136,8 +136,11 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'openai/gpt-oss-120b': { inputPer1M: 0.15, cachedInputPer1M: 0.075, outputPer1M: 0.6, isFree: false },
 
   // DeepSeek (AI Gateway)
-  'deepseek-ai/deepseek-v4-pro': { inputPer1M: 2.0, cachedInputPer1M: 0.5, outputPer1M: 8.0, isFree: false },
-  'deepseek-ai/deepseek-v4-flash': { inputPer1M: 0.5, cachedInputPer1M: 0.1, outputPer1M: 2.0, isFree: false },
+  'deepseek/deepseek-v4-pro': { inputPer1M: 2.0, cachedInputPer1M: 0.5, outputPer1M: 8.0, isFree: false },
+  'deepseek/deepseek-v4-flash': { inputPer1M: 0.5, cachedInputPer1M: 0.1, outputPer1M: 2.0, isFree: false },
+
+  // NVIDIA (AI Gateway)
+  'nvidia/nemotron-nano-9b-v2': { inputPer1M: 0.05, cachedInputPer1M: 0.05, outputPer1M: 0.05, isFree: false },
 
   // NVIDIA NIM catalog rows. Free-tier requests are not charged to user budget;
   // paid requests bill against the selected catalog id.
