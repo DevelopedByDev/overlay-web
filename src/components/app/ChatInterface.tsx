@@ -569,6 +569,18 @@ function getDescriptiveToolLabel(toolName: string, toolInput?: Record<string, un
     }
   }
 
+  if (toolName.startsWith('mcp_')) {
+    const rest = toolName.slice(4)
+    const firstUnderscore = rest.indexOf('_')
+    if (firstUnderscore > 0) {
+      const serverSlug = rest.slice(0, firstUnderscore)
+      const toolSlug = rest.slice(firstUnderscore + 1)
+      const serverName = titleCaseUnderscore(serverSlug)
+      const toolDisplayName = titleCaseUnderscore(toolSlug)
+      return `${serverName} MCP: ${toolDisplayName}`
+    }
+  }
+
   return titleCaseUnderscore(toolName)
 }
 

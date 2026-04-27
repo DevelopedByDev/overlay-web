@@ -22,6 +22,7 @@ export interface ChatModel {
     | 'zai'
     | 'alibaba'
     | 'nvidia'
+    | 'deepseek'
   description?: string
   intelligence: number
   /** 0 = free, 1 = cheap, 2 = mid, 3 = expensive */
@@ -56,8 +57,6 @@ export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
 export const FREE_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2-thinking'
 
 export const NVIDIA_NIM_MODEL_IDS = [
-  'deepseek-ai/deepseek-v4-pro',
-  'deepseek-ai/deepseek-v4-flash',
   'minimaxai/minimax-m2.7',
   'deepseek-ai/deepseek-v3.2',
   'moonshotai/kimi-k2-thinking',
@@ -87,6 +86,8 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20', provider: 'xai', description: 'Flagship reasoning', intelligence: 1.8, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
   // Other frontier / open models
+  { id: 'deepseek-ai/deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', description: 'Flagship reasoning', intelligence: 1.9, cost: 3, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'deepseek-ai/deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', description: 'Fast reasoning', intelligence: 1.8, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', description: 'Strong agentic coding', intelligence: 1.85, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', description: 'Multimodal long-context', intelligence: 1.7, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'zai', description: 'Long-horizon coding', intelligence: 1.55, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
@@ -99,9 +100,7 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
   // NVIDIA NIM — explicit free catalog rows use NIM directly.
-  { id: 'deepseek-ai/deepseek-v4-pro', name: 'Free: DeepSeek V4 Pro', provider: 'nvidia', description: 'Free model', intelligence: 1.8, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'deepseek-ai/deepseek-v4-flash', name: 'Free: DeepSeek V4 Flash', provider: 'nvidia', description: 'Free model', intelligence: 1.75, cost: 0, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'minimaxai/minimax-m2.7', name: 'Free: Minimax 2.7', provider: 'nvidia', description: 'Free model', intelligence: 1.85, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'minimaxai/minimax-m2.7', name: 'Free: Minimax M2.7', provider: 'nvidia', description: 'Free model', intelligence: 1.85, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'Free model', intelligence: 1.65, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Free model', intelligence: 1.7, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 ]
@@ -118,6 +117,8 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'gpt-5.4',
   'claude-sonnet-4-6',
   'xai/grok-4.20-reasoning',
+  'deepseek-ai/deepseek-v4-pro',
+  'deepseek-ai/deepseek-v4-flash',
   'moonshotai/kimi-k2.6',
   'qwen/qwen3.6-plus',
   'gemini-3-flash-preview',
@@ -129,8 +130,6 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'openai/gpt-oss-120b',
   'minimax/minimax-m2.7',
   'minimaxai/minimax-m2.7',
-  'deepseek-ai/deepseek-v4-pro',
-  'deepseek-ai/deepseek-v4-flash',
   'moonshotai/kimi-k2-thinking',
   'deepseek-ai/deepseek-v3.2',
   FREE_TIER_AUTO_MODEL_ID,

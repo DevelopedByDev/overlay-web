@@ -76,8 +76,8 @@ function slugify(text: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
-function safeToolId(serverId: string, toolName: string): string {
-  return `mcp_${slugify(serverId)}_${slugify(toolName)}`
+function safeToolId(serverName: string, toolName: string): string {
+  return `mcp_${slugify(serverName)}_${slugify(toolName)}`
 }
 
 function buildAuthHeaders(config: McpServerConfig): Record<string, string> {
@@ -216,7 +216,7 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
     for (const t of discoveredTools) {
       if (!t.name) continue
 
-      let toolId = safeToolId(config._id, t.name)
+      let toolId = safeToolId(config.name, t.name)
       if (seenNames.has(toolId)) {
         let suffix = 1
         while (seenNames.has(`${toolId}_${suffix}`)) suffix++
