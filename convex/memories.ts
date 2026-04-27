@@ -81,14 +81,11 @@ export const add = mutation({
     turnId: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
-    status: v.optional(
-      v.union(v.literal('candidate'), v.literal('approved'), v.literal('rejected')),
-    ),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const MAX_MEMORY_BYTES = 50 * 1024 // 50 KB
-    if (Buffer.byteLength(args.content, 'utf8') > MAX_MEMORY_BYTES) {
+    if (new TextEncoder().encode(args.content).byteLength > MAX_MEMORY_BYTES) {
       throw new Error(`Memory content exceeds size limit (max ${MAX_MEMORY_BYTES / 1024} KB)`)
     }
     if (args.clientId?.trim()) {
@@ -100,6 +97,25 @@ export const add = mutation({
         return existing._id
       }
     }
+
+    // Deduplication: exact / near-exact content match for non-clientId inserts
+    if (!args.clientId?.trim()) {
+      const normalized = args.content.toLowerCase().replace(/\s+/g, ' ').trim()
+      const candidates = await ctx.db
+        .query('memories')
+        .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+        .take(100)
+      for (const candidate of candidates) {
+        if (candidate.deletedAt) continue
+        const candNorm = candidate.content.toLowerCase().replace(/\s+/g, ' ').trim()
+        if (candNorm === normalized) {
+          // Update freshness on exact duplicate
+          await ctx.db.patch(candidate._id, { updatedAt: Date.now() })
+          return candidate._id
+        }
+      }
+    }
+
     const now = Date.now()
     const memoryId = await ctx.db.insert('memories', {
       userId: args.userId,
@@ -115,7 +131,6 @@ export const add = mutation({
       turnId: args.turnId,
       tags: args.tags,
       actor: args.actor,
-      status: args.status,
       createdAt: now,
       updatedAt: now,
     })
@@ -149,9 +164,6 @@ export const update = mutation({
     turnId: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
-    status: v.optional(
-      v.union(v.literal('candidate'), v.literal('approved'), v.literal('rejected')),
-    ),
   },
   handler: async (ctx, { userId, accessToken, serverSecret, memoryId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -160,7 +172,7 @@ export const update = mutation({
       throw new Error('Unauthorized')
     }
     const MAX_MEMORY_BYTES = 50 * 1024
-    if (updates.content !== undefined && Buffer.byteLength(updates.content, 'utf8') > MAX_MEMORY_BYTES) {
+    if (updates.content !== undefined && new TextEncoder().encode(updates.content).byteLength > MAX_MEMORY_BYTES) {
       throw new Error(`Memory content exceeds size limit (max ${MAX_MEMORY_BYTES / 1024} KB)`)
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
@@ -175,7 +187,6 @@ export const update = mutation({
     if (updates.turnId !== undefined) patch.turnId = updates.turnId || undefined
     if (updates.tags !== undefined) patch.tags = updates.tags
     if (updates.actor !== undefined) patch.actor = updates.actor
-    if (updates.status !== undefined) patch.status = updates.status
     await ctx.db.patch(memoryId, patch)
     await ctx.scheduler.runAfter(0, internal.knowledge.reindexMemoryInternal, { memoryId })
   },

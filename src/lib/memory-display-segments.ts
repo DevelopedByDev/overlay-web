@@ -93,7 +93,6 @@ export type MemoryRowForSidebar = {
   turnId?: string
   tags?: string[]
   actor?: 'user' | 'agent'
-  status?: 'candidate' | 'approved' | 'rejected'
   createdAt: number
   updatedAt?: number
 }
@@ -121,7 +120,6 @@ export function memoriesToClientListRows(
     turnId?: string
     tags?: string[]
     actor?: 'user' | 'agent'
-    status?: 'candidate' | 'approved' | 'rejected'
     createdAt: number
     updatedAt?: number
   }>,
@@ -142,7 +140,6 @@ export function memoriesToClientListRows(
     turnId: m.turnId,
     tags: m.tags,
     actor: m.actor,
-    status: m.status,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
   }))
@@ -163,7 +160,6 @@ export function expandMemoriesForSidebarList(
     turnId?: string
     tags?: string[]
     actor?: 'user' | 'agent'
-    status?: 'candidate' | 'approved' | 'rejected'
     createdAt: number
     updatedAt?: number
   }>,
@@ -188,7 +184,6 @@ export function expandMemoriesForSidebarList(
         turnId: m.turnId,
         tags: m.tags,
         actor: m.actor,
-        status: m.status,
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
       })

@@ -77,6 +77,10 @@ export interface StoredMemory {
   content: string
   source: MemorySource
   createdAt: number
+  updatedAt?: number
+  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+  importance?: number
+  tags?: string[]
 }
 
 type StoreState = {

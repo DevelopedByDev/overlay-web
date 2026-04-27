@@ -530,9 +530,6 @@ export default defineSchema({
     turnId: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
-    status: v.optional(
-      v.union(v.literal('candidate'), v.literal('approved'), v.literal('rejected')),
-    ),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),

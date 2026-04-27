@@ -18,6 +18,7 @@ import {
   executeListSkills,
   executeRunDaytonaSandbox,
   executeSaveMemory,
+  executeSaveMemoryBatch,
   executeSearchInFiles,
   executeSearchKnowledge,
   executeUpdateMemory,
@@ -122,15 +123,28 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('save_memory')) {
     tools.save_memory = tool({
     description:
-      'Save a durable memory about the user (preferences, facts, standing instructions). ' +
-      'You MUST call this when they state personal preferences or long-lived facts (e.g. "I like pasta", "I am vegetarian", "always cite sources"). ' +
-      'Use one short factual sentence per call. Skip for pure small talk or one-off requests.',
+      'Save a durable memory about the user. ' +
+      'DEFAULT: save ANY personal detail, preference, identity, goal, constraint, habit, or standing instruction the user reveals. ' +
+      'The only reasons to skip are: (1) the message is pure small talk with zero personal content, (2) it is a one-off task request with no personal detail, or (3) it is only code/data snippets. ' +
+      'Always err on the side of saving — the system deduplicates exact duplicates automatically. ' +
+      'Use one short factual sentence per call.',
     inputSchema: z.object({
-      content: z.string().describe('The memory text to store'),
+      content: z.string().describe('The memory text to store — one concise factual sentence about the user.'),
       source: z
         .enum(['chat', 'note', 'manual'])
         .optional()
         .describe('How the memory was captured (default: chat when learning from conversation)'),
+      type: z
+        .enum(['preference', 'fact', 'project', 'decision', 'agent'])
+        .optional()
+        .describe('Classify the memory: preference = taste/choice; fact = identity/demographic; project = work context; decision = explicit choice; agent = how you should behave toward them.'),
+      importance: z
+        .number().min(1).max(5).optional()
+        .describe('1 = nice-to-know, 3 = useful context, 5 = critical to every future answer (e.g. "always do X").'),
+      tags: z
+        .array(z.string())
+        .optional()
+        .describe('1-3 lowercase keyword tags with no spaces, e.g. ["coding","style"].'),
     }),
     execute: async (input) => {
       assertOverlayToolAllowed('save_memory')
@@ -139,12 +153,45 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   })
   }
 
+  if (shouldExposeTool('save_memory_batch')) {
+    tools.save_memory_batch = tool({
+    description:
+      'Save multiple durable memories about the user in ONE call. REQUIRED when the user shares 2+ personal facts, preferences, identity details, goals, or standing instructions in a single message. ' +
+      'Same save rules as save_memory: default to saving everything personal; skip only pure small talk, one-off tasks with no personal detail, or code/data only. ' +
+      'Each memory must be one short factual sentence. Up to 10 per call.',
+    inputSchema: z.object({
+      memories: z.array(
+        z.object({
+          content: z.string().describe('One short factual sentence about the user.'),
+          type: z.enum(['preference', 'fact', 'project', 'decision', 'agent']).optional().describe('Classify the memory type.'),
+          importance: z.number().min(1).max(5).optional().describe('1-5 memory importance.'),
+          tags: z.array(z.string()).optional().describe('Keyword tags.'),
+        })
+      ).min(1).max(10).describe('Array of memory objects to save'),
+      source: z
+        .enum(['chat', 'note', 'manual'])
+        .optional()
+        .describe('How the memories were captured (default: chat)'),
+    }),
+    execute: async (input) => {
+      assertOverlayToolAllowed('save_memory_batch')
+      return executeSaveMemoryBatch(options, input)
+    },
+  })
+  }
+
   if (shouldExposeTool('update_memory')) {
     tools.update_memory = tool({
-    description: 'Replace the text of an existing memory by id (use after listing or saving a memory).',
+    description: 'Replace the text (and optionally type/importance/tags) of an existing memory by id. Use after listing or saving a memory.',
     inputSchema: z.object({
       memoryId: z.string().describe('Convex document id of the memory'),
       content: z.string().describe('New full text for the memory'),
+      type: z
+        .enum(['preference', 'fact', 'project', 'decision', 'agent'])
+        .optional()
+        .describe('Optionally reclassify the memory type.'),
+      importance: z.number().min(1).max(5).optional().describe('Optionally update importance.'),
+      tags: z.array(z.string()).optional().describe('Optionally replace tags.'),
     }),
     execute: async (input) => {
       assertOverlayToolAllowed('update_memory')

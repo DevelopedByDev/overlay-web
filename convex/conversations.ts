@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../src/lib/models'
 import { mutation, query } from './_generated/server'
+import { internal } from './_generated/api'
 import { Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import { applyStorageUsageDelta } from './lib/storageQuota'
@@ -308,6 +309,26 @@ export const addMessage = mutation({
       ? (await ctx.db.patch(match._id, payload), match._id)
       : await ctx.db.insert('conversationMessages', payload)
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+
+    if (args.role === 'user') {
+      try {
+        const subscription = await ctx.db
+          .query('subscriptions')
+          .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+          .first()
+        const isPaid = subscription ? subscription.tier !== 'free' : false
+
+        await ctx.scheduler.runAfter(0, internal.memoryExtractorNode.extractFromTurn, {
+          conversationId: args.conversationId,
+          turnId: args.turnId,
+          userId: args.userId,
+          isPaid,
+        })
+      } catch {
+        // best-effort: extraction failure should not block message save
+      }
+    }
+
     return msgId
   },
 })

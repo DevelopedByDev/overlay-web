@@ -4,6 +4,7 @@ const INTERNAL_TOOL_IDS = new Set<string>([
   'search_knowledge',
   'search_in_files',
   'save_memory',
+  'save_memory_batch',
   'update_memory',
   'delete_memory',
   'list_notes',

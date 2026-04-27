@@ -450,7 +450,6 @@ export function OnboardingTour({
           content: text,
           source: 'manual',
           actor: 'user',
-          status: 'approved',
         }),
       })
       if (!res.ok) {

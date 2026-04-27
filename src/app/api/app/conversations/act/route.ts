@@ -268,9 +268,21 @@ export async function POST(request: NextRequest) {
           }
         })()
 
-    const memoriesTask: Promise<Array<{ content: string }>> = (async () => {
+    const memoriesTask: Promise<
+      Array<{
+        content: string
+        importance?: number
+        updatedAt?: number
+      }>
+    > = (async () => {
       try {
-        const memories = await convex.query<Array<{ content: string }>>('memories:list', {
+        const memories = await convex.query<
+          Array<{
+            content: string
+            importance?: number
+            updatedAt?: number
+          }>
+        >('memories:list', {
           userId,
           serverSecret,
         })
@@ -315,9 +327,20 @@ export async function POST(request: NextRequest) {
 
     let memoryContext = ''
     if (effectiveMemories.length > 0) {
+      const topMemories = effectiveMemories
+        .sort((a, b) => {
+          const impA = a.importance ?? 3
+          const impB = b.importance ?? 3
+          if (impB !== impA) return impB - impA
+          const ageA = a.updatedAt ?? 0
+          const ageB = b.updatedAt ?? 0
+          return ageB - ageA
+        })
+        .slice(0, 10)
+
       memoryContext =
         '\n\nUser context:\n' +
-        effectiveMemories.slice(0, 10).map((m) => `- ${m.content}`).join('\n')
+        topMemories.map((m) => `- ${m.content}`).join('\n')
     }
 
     let skillsContext = ''

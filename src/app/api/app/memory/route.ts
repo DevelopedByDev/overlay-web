@@ -21,7 +21,6 @@ type MemoryDoc = {
   turnId?: string
   tags?: string[]
   actor?: 'user' | 'agent'
-  status?: 'candidate' | 'approved' | 'rejected'
   createdAt: number
   updatedAt: number
   deletedAt?: number
@@ -101,7 +100,6 @@ export async function POST(request: NextRequest) {
       turnId?: string
       tags?: string[]
       actor?: 'user' | 'agent'
-      status?: 'candidate' | 'approved' | 'rejected'
       accessToken?: string
       userId?: string
     }
@@ -137,7 +135,6 @@ export async function POST(request: NextRequest) {
         turnId: body.turnId ?? undefined,
         tags: body.tags,
         actor: body.actor,
-        status: body.status,
       })
       const id = memoryId || addMemory(auth.userId, chunk, source)
       ids.push(id)
@@ -176,7 +173,6 @@ export async function PATCH(request: NextRequest) {
       turnId?: string
       tags?: string[]
       actor?: 'user' | 'agent'
-      status?: 'candidate' | 'approved' | 'rejected'
       accessToken?: string
       userId?: string
     }
@@ -204,7 +200,6 @@ export async function PATCH(request: NextRequest) {
       turnId: body.turnId,
       tags: body.tags,
       actor: body.actor,
-      status: body.status,
     })
     const memory = await convex.query<MemoryDoc[]>('memories:list', {
       userId: auth.userId,

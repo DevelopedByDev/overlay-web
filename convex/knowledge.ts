@@ -51,7 +51,7 @@ function truncateSearchQuery(q: string, maxTerms = 16): string {
   return terms.slice(0, maxTerms).join(' ')
 }
 
-async function embedViaGateway(texts: string[]): Promise<{ vectors: number[][]; promptTokens: number }> {
+export async function embedViaGateway(texts: string[]): Promise<{ vectors: number[][]; promptTokens: number }> {
   const key = process.env.AI_GATEWAY_API_KEY
   if (!key) {
     throw new Error('Missing AI_GATEWAY_API_KEY in Convex environment')
@@ -260,7 +260,7 @@ export const reindexFileInternal = internalAction({
     if (!meta || meta.kind === 'skip') return
     const { userId, projectId, name } = meta
     const MAX_INDEXABLE_BYTES = 2 * 1024 * 1024 // 2 MB
-    const content = Buffer.byteLength(meta.content, 'utf8') > MAX_INDEXABLE_BYTES
+    const content = new TextEncoder().encode(meta.content).byteLength > MAX_INDEXABLE_BYTES
       ? meta.content.slice(0, MAX_INDEXABLE_BYTES)
       : meta.content
     const segments = chunkText(content)

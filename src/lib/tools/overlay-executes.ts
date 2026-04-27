@@ -78,15 +78,24 @@ export async function executeSearchInFiles(
 
 export async function executeSaveMemory(
   options: OverlayToolsOptions,
-  input: { content: string; source?: 'chat' | 'note' | 'manual' },
+  input: {
+    content: string
+    source?: 'chat' | 'note' | 'manual'
+    type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+    importance?: number
+    tags?: string[]
+  },
 ) {
-  const { content, source } = input
+  const { content, source, type, importance, tags } = input
   try {
     const res = await callInternalApi(
       '/api/app/memory',
       {
         content,
         source: source ?? 'chat',
+        type,
+        importance,
+        tags,
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -107,15 +116,48 @@ export async function executeSaveMemory(
   }
 }
 
+export async function executeSaveMemoryBatch(
+  options: OverlayToolsOptions,
+  input: {
+    memories: Array<{
+      content: string
+      type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+      importance?: number
+      tags?: string[]
+    }>
+    source?: 'chat' | 'note' | 'manual'
+  },
+) {
+  const { memories, source } = input
+  const results: Array<{ success: boolean; memoryId?: string; error?: string }> = []
+  for (const memory of memories.slice(0, 10)) {
+    const result = await executeSaveMemory(options, { ...memory, source })
+    results.push(result)
+  }
+  const successCount = results.filter((r) => r.success).length
+  return {
+    success: successCount > 0,
+    results,
+    saved: successCount,
+    failed: results.length - successCount,
+  }
+}
+
 export async function executeUpdateMemory(
   options: OverlayToolsOptions,
-  input: { memoryId: string; content: string },
+  input: {
+    memoryId: string
+    content: string
+    type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+    importance?: number
+    tags?: string[]
+  },
 ) {
-  const { memoryId, content } = input
+  const { memoryId, content, type, importance, tags } = input
   try {
     const res = await callInternalApi(
       '/api/app/memory',
-      { memoryId, content, ...toolAuthBody(options) },
+      { memoryId, content, type, importance, tags, ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
       { method: 'PATCH', forwardCookie: options.forwardCookie },

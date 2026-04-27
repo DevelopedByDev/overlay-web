@@ -239,7 +239,6 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
         <div className="shrink-0">
           <h2 className="text-sm font-medium text-[var(--foreground)]">Skills</h2>
-          {!searchOpen && <p className="text-[11px] text-[var(--muted)]">Reusable instructions injected into every AI response</p>}
         </div>
         {searchOpen ? (
           <input

@@ -19,7 +19,6 @@ interface MemoryListItem {
   turnId?: string
   tags?: string[]
   actor?: 'user' | 'agent'
-  status?: 'candidate' | 'approved' | 'rejected'
   createdAt: number
   updatedAt?: number
 }
@@ -37,7 +36,6 @@ interface Memory {
   turnId?: string
   tags: string[]
   actor?: 'user' | 'agent'
-  status?: 'candidate' | 'approved' | 'rejected'
   createdAt: number
   updatedAt?: number
 }
@@ -61,7 +59,6 @@ function uniqueMemoriesFromRows(rows: MemoryListItem[]): Memory[] {
       turnId: row.turnId,
       tags: row.tags ?? [],
       actor: row.actor,
-      status: row.status,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     })
@@ -140,7 +137,6 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
           type: addType,
           importance: Number(addImportance) || 3,
           actor: 'user',
-          status: 'approved',
         }),
       })
       const data = (await res.json().catch(() => null)) as { error?: string } | null
@@ -396,11 +392,6 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
                               {memory.type && (
                                 <span className={`rounded-full border px-2 py-0.5 text-[10px] ${getBadgeTone(memory.type)}`}>
                                   {memory.type}
-                                </span>
-                              )}
-                              {memory.status && (
-                                <span className={`rounded-full border px-2 py-0.5 text-[10px] ${getBadgeTone(memory.status)}`}>
-                                  {memory.status}
                                 </span>
                               )}
                               <span className={metaChipClass}>

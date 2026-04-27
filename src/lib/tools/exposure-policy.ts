@@ -2,6 +2,7 @@ const DEFAULT_BASE_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
   'save_memory',
+  'save_memory_batch',
   'list_notes',
   'get_note',
   'list_skills',

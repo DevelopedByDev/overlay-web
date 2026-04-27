@@ -25,6 +25,8 @@ import type * as lib_storageQuota from "../lib/storageQuota.js";
 import type * as lib_stripeOverlaySubscription from "../lib/stripeOverlaySubscription.js";
 import type * as mcpServers from "../mcpServers.js";
 import type * as memories from "../memories.js";
+import type * as memoryExtractor from "../memoryExtractor.js";
+import type * as memoryExtractorNode from "../memoryExtractorNode.js";
 import type * as notes from "../notes.js";
 import type * as outputs from "../outputs.js";
 import type * as projects from "../projects.js";
@@ -63,6 +65,8 @@ declare const fullApi: ApiFromModules<{
   "lib/stripeOverlaySubscription": typeof lib_stripeOverlaySubscription;
   mcpServers: typeof mcpServers;
   memories: typeof memories;
+  memoryExtractor: typeof memoryExtractor;
+  memoryExtractorNode: typeof memoryExtractorNode;
   notes: typeof notes;
   outputs: typeof outputs;
   projects: typeof projects;

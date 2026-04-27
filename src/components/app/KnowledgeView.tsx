@@ -451,7 +451,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           type: 'fact',
           importance: 3,
           actor: 'user',
-          status: 'approved',
         }),
       })
       const data = (await res.json().catch(() => null)) as { error?: string } | null
@@ -485,7 +484,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           type: 'fact',
           importance: 3,
           actor: 'user',
-          status: 'approved',
         }),
       })
       const data = (await res.json().catch(() => null)) as { error?: string } | null
