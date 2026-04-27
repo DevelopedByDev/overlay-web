@@ -57,7 +57,6 @@ export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
 export const FREE_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2-thinking'
 
 export const NVIDIA_NIM_MODEL_IDS = [
-  'minimaxai/minimax-m2.7',
   'deepseek-ai/deepseek-v3.2',
   'moonshotai/kimi-k2-thinking',
 ] as const
@@ -103,7 +102,6 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 
   // NVIDIA NIM — explicit free catalog rows use NIM directly.
-  { id: 'minimaxai/minimax-m2.7', name: 'Free: Minimax M2.7', provider: 'nvidia', description: 'Free model', intelligence: 1.85, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'Free model', intelligence: 1.65, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Free model', intelligence: 1.7, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 ]
@@ -133,7 +131,6 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  'minimaxai/minimax-m2.7',
   'moonshotai/kimi-k2-thinking',
   'deepseek-ai/deepseek-v3.2',
   FREE_TIER_AUTO_MODEL_ID,
