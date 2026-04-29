@@ -39,6 +39,9 @@
   "exclude": [
     "node_modules",
     "archives",
+    "overlay-chrome",
+    "overlay-desktop",
+    "overlay-mobile",
     "scripts"
   ]
 }
