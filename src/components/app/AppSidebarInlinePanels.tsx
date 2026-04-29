@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   BookOpen,
@@ -31,7 +31,7 @@ import {
 const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 
 type Conversation = { _id: string; title: string; lastModified: number }
-type Note = { _id: string; title: string; updatedAt: number }
+type Note = { _id: string; title: string; updatedAt: number; projectId?: string | null }
 type Project = { _id: string; name: string; parentId: string | null }
 type ProjectChat = { _id: string; title: string; lastModified: number }
 type ProjectNote = { _id: string; title: string; updatedAt: number }
@@ -299,13 +299,19 @@ export function NotesInlinePanel({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [notes, setNotes] = useState<Note[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [loading, setLoading] = useState(true)
   const activeId = searchParams?.get('id') ?? null
 
   const loadNotes = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/notes')
-      if (res.ok) setNotes(await res.json())
+      const [notesRes, projectsRes] = await Promise.all([
+        fetch('/api/app/notes?scope=all'),
+        fetch('/api/app/projects'),
+      ])
+      if (notesRes.ok) setNotes(await notesRes.json())
+      if (projectsRes.ok) setProjects(await projectsRes.json())
     } catch {
       // ignore
     } finally {
@@ -327,39 +333,137 @@ export function NotesInlinePanel({
     }
   }
 
+  async function createFolder(parentId?: string) {
+    const res = await fetch('/api/app/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'New folder', parentProjectId: parentId }),
+    })
+    if (!res.ok) return
+    const data = await res.json().catch(() => ({})) as { project?: Project }
+    if (!data.project) return
+    setProjects((prev) => [...prev, data.project!])
+    if (parentId) setExpanded((prev) => new Set(prev).add(parentId))
+  }
+
+  function toggleProject(projectId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      try {
+        window.localStorage.setItem(`overlay:notes-project-expanded:${projectId}`, next.has(projectId) ? '1' : '0')
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+
+  function renderProject(project: Project, depth: number): ReactNode {
+    const children = projects
+      .filter((candidate) => candidate.parentId === project._id)
+      .sort((a, b) => a.name.localeCompare(b.name))
+    const projectNotes = filteredNotes.filter((note) => note.projectId === project._id)
+    const open = expanded.has(project._id)
+    return (
+      <div key={project._id}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => toggleProject(project._id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              toggleProject(project._id)
+            }
+          }}
+          className={`${panelItemClass} cursor-pointer`}
+          style={{ paddingLeft: `${10 + depth * 14}px` }}
+        >
+          <ChevronRight size={11} className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+          {open ? <FolderOpen size={12} className="shrink-0" /> : <Folder size={12} className="shrink-0" />}
+          <span className="min-w-0 flex-1 truncate">{project.name}</span>
+          <button type="button" onClick={(event) => { event.stopPropagation(); void createFolder(project._id) }} className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100" aria-label="New subfolder">
+            <ChevronRight size={11} />
+          </button>
+        </div>
+        {open ? (
+          <div className="space-y-0.5">
+            {children.map((child) => renderProject(child, depth + 1))}
+            {projectNotes.map((note) => {
+              const active = activeId === note._id
+              return (
+                <div
+                  key={note._id}
+                  onClick={() => {
+                    router.push(`/app/notes?id=${encodeURIComponent(note._id)}`)
+                    onNavigate?.()
+                  }}
+                  className={`${panelItemClass} cursor-pointer ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+                  style={{ paddingLeft: `${34 + depth * 14}px` }}
+                >
+                  <BookOpen size={11} className="shrink-0 text-[var(--muted-light)]" />
+                  <span className="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
+                  <button type="button" onClick={(event) => void deleteNote(note._id, event)} className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100">
+                    <Trash2 size={10} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   const filteredNotes = searchQuery.trim()
     ? notes.filter((n) => n.title.toLowerCase().includes(searchQuery.toLowerCase()))
     : notes
+  const unfiledNotes = filteredNotes.filter((note) => !note.projectId)
+  const rootProjects = projects
+    .filter((project) => project.parentId == null)
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <div className="space-y-0.5">
       {loading ? (
         <SidebarListSkeleton rows={6} />
-      ) : filteredNotes.length === 0 ? (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{notes.length === 0 ? 'No notes yet' : 'No results'}</p>
-      ) : filteredNotes.map((note) => {
-        const active = activeId === note._id
-        return (
-          <div
-            key={note._id}
-            onClick={() => {
-              router.push(`/app/notes?id=${encodeURIComponent(note._id)}`)
-              onNavigate?.()
-            }}
-            className={`${panelItemClass} cursor-pointer ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-          >
-            <BookOpen size={12} className="shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
-            <button
-              type="button"
-              onClick={(event) => void deleteNote(note._id, event)}
-              className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-            >
-              <Trash2 size={11} />
-            </button>
-          </div>
-        )
-      })}
+      ) : filteredNotes.length === 0 && rootProjects.length === 0 ? (
+        <div className="space-y-1 px-2.5 py-2">
+          <p className="text-xs text-[var(--muted-light)]">{notes.length === 0 ? 'No notes yet' : 'No results'}</p>
+          <button type="button" onClick={() => void createFolder()} className="rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)]">+ New folder</button>
+        </div>
+      ) : (
+        <>
+          <button type="button" onClick={() => void createFolder()} className="mb-1 ml-2 rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)]">+ New folder</button>
+          {rootProjects.map((project) => renderProject(project, 0))}
+          {unfiledNotes.length > 0 ? (
+            <div className="pt-1">
+              <p className="px-2.5 py-1 text-[10px] uppercase tracking-wide text-[var(--muted-light)]">Unfiled</p>
+              {unfiledNotes.map((note) => {
+                const active = activeId === note._id
+                return (
+                  <div
+                    key={note._id}
+                    onClick={() => {
+                      router.push(`/app/notes?id=${encodeURIComponent(note._id)}`)
+                      onNavigate?.()
+                    }}
+                    className={`${panelItemClass} cursor-pointer ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+                  >
+                    <BookOpen size={12} className="shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
+                    <button type="button" onClick={(event) => void deleteNote(note._id, event)} className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100">
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   )
 }

@@ -54,6 +54,33 @@ export const list = query({
   },
 })
 
+export const listAll = query({
+  args: {
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    updatedSince: v.optional(v.number()),
+    includeDeleted: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return []
+    }
+    const all = await ctx.db
+      .query('notes')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .order('desc')
+      .take(500)
+    return all
+      .map(normalizeNoteDoc)
+      .filter((n) => (updatedSince !== undefined ? n.updatedAt > updatedSince : true))
+      .filter((n) => (includeDeleted ? true : !n.deletedAt))
+      .slice(0, 400)
+  },
+})
+
 // Returns notes belonging to a specific project.
 export const listByProject = query({
   args: {
@@ -111,6 +138,9 @@ export const create = mutation({
     content: v.string(),
     tags: v.array(v.string()),
     projectId: v.optional(v.string()),
+    icon: v.optional(v.string()),
+    coverImage: v.optional(v.string()),
+    coverPosition: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
@@ -137,6 +167,9 @@ export const create = mutation({
       content: args.content,
       tags: args.tags,
       projectId: args.projectId,
+      icon: args.icon,
+      coverImage: args.coverImage,
+      coverPosition: args.coverPosition,
       createdAt: now,
       updatedAt: now,
     })
@@ -153,6 +186,9 @@ export const update = mutation({
     content: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     projectId: v.optional(v.string()),
+    icon: v.optional(v.string()),
+    coverImage: v.optional(v.string()),
+    coverPosition: v.optional(v.number()),
   },
   handler: async (ctx, { userId, accessToken, serverSecret, noteId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -171,6 +207,9 @@ export const update = mutation({
     if (updates.content !== undefined) patch.content = updates.content
     if (updates.tags !== undefined) patch.tags = updates.tags
     if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
+    if (updates.icon !== undefined) patch.icon = updates.icon || undefined
+    if (updates.coverImage !== undefined) patch.coverImage = updates.coverImage || undefined
+    if (updates.coverPosition !== undefined) patch.coverPosition = updates.coverPosition
     await ctx.db.patch(noteId, patch)
   },
 })

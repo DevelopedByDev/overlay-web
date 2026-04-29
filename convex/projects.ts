@@ -61,8 +61,9 @@ export const create = mutation({
     name: v.string(),
     instructions: v.optional(v.string()),
     parentId: v.optional(v.string()),
+    parentProjectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, clientId, name, instructions, parentId }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, clientId, name, instructions, parentId, parentProjectId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -73,13 +74,21 @@ export const create = mutation({
         return existing._id
       }
     }
+    const resolvedParentId = parentProjectId ?? parentId
+    if (resolvedParentId) {
+      const parent = await ctx.db.get(resolvedParentId as Id<'projects'>)
+      if (!parent || parent.userId !== userId || parent.deletedAt) {
+        throw new Error('Unauthorized')
+      }
+    }
     const now = Date.now()
     return await ctx.db.insert('projects', {
       userId,
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,
-      parentId,
+      parentId: resolvedParentId,
+      parentProjectId: resolvedParentId,
       createdAt: now,
       updatedAt: now,
     })
@@ -95,15 +104,17 @@ export const update = mutation({
     name: v.optional(v.string()),
     instructions: v.optional(v.string()),
     parentId: v.optional(v.string()),
+    parentProjectId: v.optional(v.string()),
   },
-  handler: async (ctx, { projectId, userId, accessToken, serverSecret, name, instructions, parentId }) => {
+  handler: async (ctx, { projectId, userId, accessToken, serverSecret, name, instructions, parentId, parentProjectId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const project = await ctx.db.get(projectId)
     if (!project || project.userId !== userId) {
       throw new Error('Unauthorized')
     }
-    if (parentId !== undefined && parentId !== null) {
-      const parent = await ctx.db.get(parentId as Id<'projects'>)
+    const resolvedParentId = parentProjectId ?? parentId
+    if (resolvedParentId !== undefined && resolvedParentId !== null) {
+      const parent = await ctx.db.get(resolvedParentId as Id<'projects'>)
       if (!parent || parent.userId !== userId || parent.deletedAt) {
         throw new Error('Unauthorized')
       }
@@ -111,7 +122,10 @@ export const update = mutation({
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (name !== undefined) patch.name = name
     if (instructions !== undefined) patch.instructions = instructions.trim() || undefined
-    if (parentId !== undefined) patch.parentId = parentId || undefined
+    if (parentId !== undefined || parentProjectId !== undefined) {
+      patch.parentId = resolvedParentId || undefined
+      patch.parentProjectId = resolvedParentId || undefined
+    }
     await ctx.db.patch(projectId, patch)
   },
 })

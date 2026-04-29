@@ -11,6 +11,7 @@ type ProjectDoc = {
   name: string
   instructions?: string
   parentId?: string | null
+  parentProjectId?: string | null
   createdAt: number
   updatedAt: number
   deletedAt?: number
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as {
       name?: string
       parentId?: string | null
+      parentProjectId?: string | null
       instructions?: string
       clientId?: string
       accessToken?: string
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { name, parentId, instructions, clientId } = body
+    const { name, parentId, parentProjectId, instructions, clientId } = body
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
     const id = await convex.mutation<Id<'projects'>>('projects:create', {
       userId: auth.userId,
@@ -77,7 +79,8 @@ export async function POST(request: NextRequest) {
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,
-      parentId: parentId ?? undefined,
+      parentId: parentProjectId ?? parentId ?? undefined,
+      parentProjectId: parentProjectId ?? parentId ?? undefined,
     })
     const project = await convex.query<ProjectDoc | null>('projects:get', {
       projectId: id,
@@ -97,13 +100,14 @@ export async function PATCH(request: NextRequest) {
       name?: string
       instructions?: string
       parentId?: string | null
+      parentProjectId?: string | null
       accessToken?: string
       userId?: string
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { projectId, name, instructions, parentId } = body
+    const { projectId, name, instructions, parentId, parentProjectId } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
     await convex.mutation('projects:update', {
       projectId: projectId as Id<'projects'>,
@@ -111,7 +115,8 @@ export async function PATCH(request: NextRequest) {
       serverSecret,
       name,
       instructions,
-      parentId: parentId ?? undefined,
+      parentId: parentProjectId ?? parentId ?? undefined,
+      parentProjectId: parentProjectId ?? parentId ?? undefined,
     })
     const project = await convex.query<ProjectDoc | null>('projects:get', {
       projectId: projectId as Id<'projects'>,

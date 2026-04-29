@@ -390,13 +390,15 @@ export default defineSchema({
     name: v.string(),
     instructions: v.optional(v.string()),
     parentId: v.optional(v.string()),
+    parentProjectId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
   })
     .index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
-    .index('by_userId_updatedAt', ['userId', 'updatedAt']),
+    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
+    .index('by_parent', ['parentProjectId']),
 
   skills: defineTable({
     userId: v.string(),
@@ -505,6 +507,8 @@ export default defineSchema({
     clientId: v.optional(v.string()),
     title: v.string(),
     icon: v.optional(v.string()),
+    coverImage: v.optional(v.string()),
+    coverPosition: v.optional(v.number()),
     content: v.string(),
     tags: v.array(v.string()),
     projectId: v.optional(v.string()),

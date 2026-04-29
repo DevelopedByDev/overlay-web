@@ -8,6 +8,9 @@ type NoteDoc = {
   userId: string
   clientId?: string
   title: string
+  icon?: string
+  coverImage?: string
+  coverPosition?: number
   content: string
   tags: string[]
   projectId?: string
@@ -57,6 +60,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(notes || [])
     }
 
+    const includeProjects = request.nextUrl.searchParams.get('scope') === 'all'
+    if (includeProjects) {
+      const notes = await convex.query('notes:listAll', {
+        userId: auth.userId,
+        serverSecret,
+        ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
+        ...(includeDeleted !== undefined ? { includeDeleted } : {}),
+      })
+      return NextResponse.json(notes || [])
+    }
+
     const notes = await convex.query('notes:list', {
       userId: auth.userId,
       serverSecret,
@@ -77,6 +91,9 @@ export async function POST(request: NextRequest) {
       content?: string
       tags?: string[]
       projectId?: string
+      icon?: string
+      coverImage?: string
+      coverPosition?: number
       clientId?: string
       accessToken?: string
       userId?: string
@@ -93,6 +110,9 @@ export async function POST(request: NextRequest) {
       content: body.content || '',
       tags: body.tags || [],
       projectId: body.projectId ?? undefined,
+      icon: body.icon,
+      coverImage: body.coverImage,
+      coverPosition: body.coverPosition,
     })
     const note = await convex.query<NoteDoc | null>('notes:get', {
       noteId,
@@ -114,6 +134,9 @@ export async function PATCH(request: NextRequest) {
       content?: string
       tags?: string[]
       projectId?: string
+      icon?: string
+      coverImage?: string
+      coverPosition?: number
       accessToken?: string
       userId?: string
     }
@@ -140,6 +163,9 @@ export async function PATCH(request: NextRequest) {
       content: body.content,
       tags: body.tags,
       projectId: body.projectId,
+      icon: body.icon,
+      coverImage: body.coverImage,
+      coverPosition: body.coverPosition,
     })
     const note = await convex.query<NoteDoc | null>('notes:get', {
       noteId: body.noteId,
