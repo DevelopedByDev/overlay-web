@@ -172,32 +172,56 @@ export function redactOpaqueNotebookFileIdsInVisibleText(s: string): string {
     .replace(/\bid\s+['"]([a-z0-9]{16,})['"]/gi, 'id [redacted]')
 }
 
-const REDACTED_THINKING_OPEN = /<think>/i
-const REDACTED_THINKING_CLOSE = /<\/redacted_thinking>/i
-
 /**
- * Split assistant `text` parts on `<think>…</think>` so the UI can
- * render inside the thinking / reasoning affordance instead of the main body.
+ * Free-tier / NIM reasoning models (Kimi K2 Thinking, DeepSeek V3.2, etc.) sometimes
+ * emit chain-of-thought inline in the `text` channel wrapped in `<think>…</think>`
+ * (or the legacy `<think>…</redacted_thinking>` variant). We split those segments
+ * out so the UI renders them under the collapsed reasoning affordance instead of the
+ * main body.
+ *
+ * Streaming-aware: when a `<think>` tag has been opened but not yet closed, everything
+ * after it up to the end of the chunk is treated as reasoning-in-progress so users
+ * don't momentarily see raw chain-of-thought while the tag is still streaming in.
  */
+const THINK_OPEN = /<think\b[^>]*>/i
+const THINK_PAIR_RE =
+  /<think\b[^>]*>([\s\S]*?)(?:<\/think\s*>|<\/redacted_thinking\s*>)/gi
+
 export function splitRedactedThinkingSegments(
   text: string,
 ): Array<{ kind: 'text' | 'reasoning'; text: string }> {
-  if (!text || !REDACTED_THINKING_OPEN.test(text) || !REDACTED_THINKING_CLOSE.test(text)) {
+  if (!text || !THINK_OPEN.test(text)) {
     return [{ kind: 'text', text }]
   }
   const out: Array<{ kind: 'text' | 'reasoning'; text: string }> = []
-  const re = /<think>([\s\S]*?)<\/redacted_thinking>/gi
   let last = 0
   let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
+  THINK_PAIR_RE.lastIndex = 0
+  while ((m = THINK_PAIR_RE.exec(text)) !== null) {
     if (m.index > last) {
       out.push({ kind: 'text', text: text.slice(last, m.index) })
     }
     out.push({ kind: 'reasoning', text: m[1] ?? '' })
     last = m.index + m[0].length
   }
+  // Unterminated `<think>` — treat the rest of the buffer as in-progress reasoning
+  // so the UI doesn't flash raw chain-of-thought before the closing tag arrives.
   if (last < text.length) {
-    out.push({ kind: 'text', text: text.slice(last) })
+    const rest = text.slice(last)
+    const openIdx = rest.search(THINK_OPEN)
+    if (openIdx >= 0) {
+      if (openIdx > 0) {
+        out.push({ kind: 'text', text: rest.slice(0, openIdx) })
+      }
+      const tagMatch = rest.slice(openIdx).match(THINK_OPEN)
+      const tagLen = tagMatch?.[0].length ?? 0
+      const reasoningChunk = rest.slice(openIdx + tagLen)
+      if (reasoningChunk) {
+        out.push({ kind: 'reasoning', text: reasoningChunk })
+      }
+    } else {
+      out.push({ kind: 'text', text: rest })
+    }
   }
   if (out.length === 0) {
     return [{ kind: 'text', text }]

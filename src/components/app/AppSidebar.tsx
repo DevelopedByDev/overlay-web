@@ -7,7 +7,7 @@ import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from '
 import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, FileText, Images, LogOut, User,
-  Puzzle, Monitor, ChevronUp, AlertCircle, LayoutGrid, Plug, Sparkles, Server, Package,
+  Puzzle, Monitor, Smartphone, Chrome, ChevronUp, AlertCircle, Plug, Sparkles, Server, Package,
   FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
@@ -43,7 +43,9 @@ const NAV_ITEMS: Array<{
 ]
 
 const PROFILE_APP_LINKS = [
-  { label: 'Desktop App', icon: Monitor, href: 'https://getoverlay.io' },
+  { label: 'Desktop App', icon: Monitor },
+  { label: 'Mobile App', icon: Smartphone },
+  { label: 'Chrome Extension', icon: Chrome },
 ] as const
 
 const SETTINGS_SECTIONS = [
@@ -197,7 +199,6 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     if (current === 'mcps') return 'mcps'
     if (current === 'apps') return 'apps'
     if (current === 'installed') return 'installed'
-    if (current === 'all') return 'all'
     return 'connectors'
   })()
   const loadEntitlements = useCallback(async () => {
@@ -590,7 +591,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                 ) : null}
                 {sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
                   <div className="mx-2 mt-1 flex flex-col overflow-hidden rounded-md border border-[var(--border)]">
-                    {([{ id: 'all', Icon: LayoutGrid, label: 'All', locked: false }, { id: 'connectors', Icon: Plug, label: 'Connectors', locked: false }, { id: 'skills', Icon: Sparkles, label: 'Skills', locked: false }, { id: 'mcps', Icon: Server, label: 'MCPs', locked: false }, { id: 'apps', Icon: Package, label: 'Apps', locked: true }] as const).map((sub) => (
+                    {([{ id: 'connectors', Icon: Plug, label: 'Connectors', locked: false }, { id: 'skills', Icon: Sparkles, label: 'Skills', locked: false }, { id: 'mcps', Icon: Server, label: 'MCPs', locked: false }, { id: 'apps', Icon: Package, label: 'Apps', locked: true }] as const).map((sub) => (
                       <button
                         key={sub.id}
                         type="button"
@@ -768,17 +769,20 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
               </div>
               <div className="border-t border-[var(--border)]">
                 <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
-                {PROFILE_APP_LINKS.map(({ label, icon: Icon, href }) => (
-                  <a
+                {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (
+                  <button
                     key={label}
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                    type="button"
+                    disabled
+                    title={`${label} · Coming soon`}
+                    className="flex w-full cursor-not-allowed items-center justify-between gap-2 px-3 py-2 text-xs text-[var(--muted-light)]"
                   >
-                    <Icon size={13} />
-                    {label}
-                  </a>
+                    <span className="flex items-center gap-2">
+                      <Icon size={13} />
+                      {label}
+                    </span>
+                    <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[var(--muted-light)]">Soon</span>
+                  </button>
                 ))}
               </div>
               <div className="border-t border-[var(--border)]">
@@ -888,18 +892,20 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                 </div>
                 <div className="border-t border-[var(--border)]">
                   <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
-                  {PROFILE_APP_LINKS.map(({ label, icon: Icon, href }) => (
-                    <a
+                  {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (
+                    <button
                       key={label}
-                      href={href}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={() => setMobileAccountOpen(false)}
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                      type="button"
+                      disabled
+                      title={`${label} · Coming soon`}
+                      className="flex w-full cursor-not-allowed items-center justify-between gap-2 px-3 py-2.5 text-xs text-[var(--muted-light)]"
                     >
-                      <Icon size={13} />
-                      {label}
-                    </a>
+                      <span className="flex items-center gap-2">
+                        <Icon size={13} />
+                        {label}
+                      </span>
+                      <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[var(--muted-light)]">Soon</span>
+                    </button>
                   ))}
                 </div>
                 <div className="border-t border-[var(--border)]">

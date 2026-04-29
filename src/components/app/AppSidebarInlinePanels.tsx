@@ -747,7 +747,6 @@ export const knowledgeInlineItems = [
 ] as const
 
 export const toolsInlineItems = [
-  { id: 'all', label: 'All' },
   { id: 'connectors', label: 'Connectors' },
   { id: 'skills', label: 'Skills' },
   { id: 'mcps', label: 'MCPs' },

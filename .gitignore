@@ -58,3 +58,6 @@ renders/*
 
 # surface folders
 overlay-mobile/
+overlay-desktop/
+overlay-chrome/
+overlay-api/
