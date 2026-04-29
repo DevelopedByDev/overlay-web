@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
+import { useQuery } from 'convex/react'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -86,6 +87,9 @@ import type { OutputType } from '@/lib/output-types'
 import { useAppSettings } from './AppSettingsProvider'
 import { useGuestGate } from './GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
+import { useConvexWorkOSToken } from '@/components/ConvexProviderWithWorkOS'
+import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../convex/_generated/dataModel'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
 import {
   buildAutomationDraftFromTurn,
@@ -1698,6 +1702,7 @@ interface ExchangeBlockProps {
   /** Ordered tools, text, and file parts as they appear in the assistant message */
   assistantVisualBlocks: AssistantVisualBlock[]
   isStreaming: boolean
+  isTextStreaming: boolean
   errorMessage: string | null
   exchModelList: string[]
   selectedTab: number
@@ -1727,7 +1732,7 @@ interface ExchangeBlockProps {
 }
 
 function ExchangeBlock({
-  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, errorMessage,
+  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview,
@@ -1850,7 +1855,7 @@ function ExchangeBlock({
             // Actively streaming = still emitting reasoning deltas (or message-level stream and
             // this part has not been explicitly marked `done`). Everything else collapses.
             const active =
-              seg.block.state === 'streaming' ||
+              (isStreaming && seg.block.state === 'streaming') ||
               (isStreaming && seg.block.state !== 'done' && seg.originIndex === assistantVisualBlocks.length - 1)
             return (
               <ReasoningBlock
@@ -1978,7 +1983,7 @@ function ExchangeBlock({
               <MarkdownMessage
                 key={`md-${userMsgId}-${responseModelId}-${seg.originIndex}`}
                 text={block.text}
-                isStreaming={isStreaming && isLastText}
+                isStreaming={isTextStreaming && isLastText}
                 sourceCitations={isLastText ? sourceCitations : undefined}
                 webSources={isLastText && webSources.length > 0 ? webSources : undefined}
                 suppressTypingIndicator
@@ -2031,6 +2036,16 @@ function ExchangeBlock({
             />
           </div>
         )}
+
+        {responseInProgress && assistantVisualBlocks.length > 0 && !errorMessage ? (
+          <div className="flex items-center px-1 py-1 min-h-5" aria-live="polite" aria-busy="true">
+            <span
+              className="overlay-stream-marker overlay-stream-marker--standalone scale-75 opacity-80"
+              aria-label="Response still generating"
+              role="img"
+            />
+          </div>
+        ) : null}
 
         {errorMessage && !responseInProgress && (
           <div className="flex justify-start">
@@ -2744,9 +2759,11 @@ export default function ChatInterface({
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
   const { user: authUser } = useAuth()
+  const convexAccessToken = useConvexWorkOSToken()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const loadChatRequestRef = useRef(0)
+  const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const runtimesRef = useRef(new Map<string, ConversationRuntime>())
   const emptyRuntimeRef = useRef(createConversationRuntime('__empty__'))
 
@@ -2760,6 +2777,8 @@ export default function ChatInterface({
 
   const [chats, setChats] = useState<Conversation[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const [, forceLiveSyncRender] = useState(0)
+  const [runtimeHydrationVersion, setRuntimeHydrationVersion] = useState(0)
   /** Lifted sources-panel state so the sidebar sits beside the chat area and shrinks it,
    *  matching the AppSidebar width-transition pattern instead of overlaying the composer. */
   const [sourcesPanel, setSourcesPanel] = useState<{ turnId: string; sources: WebSourceItem[] } | null>(null)
@@ -3199,6 +3218,30 @@ export default function ChatInterface({
   const chat2 = useChat({ chat: activeRuntime.askChats[2] })
   const chat3 = useChat({ chat: activeRuntime.askChats[3] })
   const actChat = useChat({ chat: activeRuntime.actChat })
+  const liveMessages = useQuery(
+    api.conversations.watchMessages,
+    activeChatId && authUser?.id && convexAccessToken
+      ? {
+          conversationId: activeChatId as Id<'conversations'>,
+          userId: authUser.id,
+          accessToken: convexAccessToken,
+        }
+      : 'skip',
+  ) as
+    | Array<{
+        _id: Id<'conversationMessages'>
+        turnId: string
+        role: 'user' | 'assistant'
+        mode: 'ask' | 'act'
+        content: string
+        contentType: 'text' | 'image' | 'video'
+        parts?: Array<Record<string, unknown>>
+        modelId?: string
+        variantIndex?: number
+        routedModelId?: string
+        status?: 'generating' | 'completed' | 'error'
+      }>
+    | undefined
 
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
   const activeAskChats = activeRuntime.askChats
@@ -3381,6 +3424,205 @@ export default function ChatInterface({
       }
     } catch { /* ignore */ }
   }, [])
+
+  useEffect(() => {
+    if (!activeChatId || !liveMessages) return
+    const liveGeneratingMessages = liveMessages.filter(
+      (message) => message.role === 'assistant' && message.status === 'generating',
+    )
+    const hadGenerating = liveGeneratingByChatRef.current.get(activeChatId) === true
+    liveGeneratingByChatRef.current.set(activeChatId, liveGeneratingMessages.length > 0)
+    const runtime = runtimesRef.current.get(activeChatId)
+    if (!runtime) {
+      if (hadGenerating && liveGeneratingMessages.length === 0) {
+        completeSession(activeChatId, activeChatIdRef.current === activeChatId)
+        void loadChats()
+      }
+      return
+    }
+
+    let changed = false
+    const patchList = (messages: UIMessage[], incoming: (typeof liveMessages)[number]) => {
+      if (incoming.role !== 'assistant') return false
+      const variant = incoming.variantIndex ?? 0
+      const nextMessage = {
+        id: incoming._id,
+        role: 'assistant' as const,
+        parts: incoming.parts?.length
+          ? incoming.parts
+          : [{ type: 'text', text: incoming.content ?? '' }],
+        metadata: {
+          ...(incoming.routedModelId ? { routedModelId: incoming.routedModelId } : {}),
+        },
+        turnId: incoming.turnId,
+        mode: incoming.mode,
+        model: incoming.modelId,
+        variantIndex: incoming.variantIndex,
+        status: incoming.status,
+      } as unknown as UIMessage
+
+      const existingIdx = messages.findIndex((message) => {
+        const m = message as unknown as { id?: string; turnId?: string; role?: string; variantIndex?: number }
+        return (
+          m.id === incoming._id ||
+          (m.role === 'assistant' &&
+            m.turnId === incoming.turnId &&
+            (m.variantIndex ?? 0) === variant)
+        )
+      })
+      if (existingIdx >= 0) {
+        messages[existingIdx] = nextMessage
+        return true
+      }
+      const userIdx = messages.findIndex((message) => {
+        const m = message as unknown as { turnId?: string; id?: string; role?: string }
+        return m.role === 'user' && (m.turnId === incoming.turnId || m.id === incoming.turnId)
+      })
+      if (userIdx >= 0) {
+        messages.splice(userIdx + 1, 0, nextMessage)
+        return true
+      }
+      return false
+    }
+
+    for (const incoming of liveMessages) {
+      if (incoming.mode === 'act') {
+        changed = patchList(runtime.actChat.messages as UIMessage[], incoming) || changed
+        const slot = incoming.variantIndex ?? 0
+        if (slot >= 0 && slot < runtime.askChats.length) {
+          changed = patchList(runtime.askChats[slot]!.messages as UIMessage[], incoming) || changed
+        }
+      }
+    }
+
+    if (changed) {
+      runtime.actChat.messages = [...runtime.actChat.messages]
+      for (const chat of runtime.askChats) chat.messages = [...chat.messages]
+      if (activeChatIdRef.current === activeChatId) {
+        actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
+        chat0.setMessages([...runtime.askChats[0]!.messages] as UIMessage[])
+        chat1.setMessages([...runtime.askChats[1]!.messages] as UIMessage[])
+        chat2.setMessages([...runtime.askChats[2]!.messages] as UIMessage[])
+        chat3.setMessages([...runtime.askChats[3]!.messages] as UIMessage[])
+      }
+      forceLiveSyncRender((value) => value + 1)
+    }
+    if (hadGenerating && liveGeneratingMessages.length === 0) {
+      completeSession(activeChatId, activeChatIdRef.current === activeChatId)
+      void loadChats()
+    }
+  }, [activeChatId, actChat, chat0, chat1, chat2, chat3, completeSession, liveMessages, loadChats, runtimeHydrationVersion])
+
+  useEffect(() => {
+    if (!activeChatId) return
+    const sessionIsStreaming = sessions[activeChatId]?.status === 'streaming'
+    const liveQuerySawGenerating = liveGeneratingByChatRef.current.get(activeChatId) === true
+    if (!sessionIsStreaming && !liveQuerySawGenerating) return
+
+    let cancelled = false
+    const patchFromServer = async () => {
+      try {
+        const res = await fetch(`/api/app/conversations?conversationId=${activeChatId}&messages=true`, {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        })
+        if (!res.ok || cancelled || activeChatIdRef.current !== activeChatId) return
+        const data = await res.json() as {
+          messages?: Array<{
+            id: string
+            turnId?: string
+            role: 'user' | 'assistant'
+            mode?: 'ask' | 'act'
+            parts?: Array<Record<string, unknown>>
+            model?: string
+            variantIndex?: number
+            routedModelId?: string
+            status?: 'generating' | 'completed' | 'error'
+          }>
+        }
+        const runtime = runtimesRef.current.get(activeChatId)
+        if (!runtime) return
+        const assistantRows = (data.messages ?? []).filter((message) => message.role === 'assistant')
+        let changed = false
+        const patchList = (messages: UIMessage[], incoming: (typeof assistantRows)[number]) => {
+          const variant = incoming.variantIndex ?? 0
+          const nextMessage = {
+            id: incoming.id,
+            role: 'assistant' as const,
+            parts: incoming.parts?.length ? incoming.parts : [{ type: 'text', text: '' }],
+            metadata: {
+              ...(incoming.routedModelId ? { routedModelId: incoming.routedModelId } : {}),
+            },
+            turnId: incoming.turnId,
+            mode: incoming.mode ?? 'act',
+            model: incoming.model,
+            variantIndex: incoming.variantIndex,
+            status: incoming.status,
+          } as unknown as UIMessage
+          const existingIdx = messages.findIndex((message) => {
+            const m = message as unknown as { id?: string; turnId?: string; role?: string; variantIndex?: number }
+            return (
+              m.id === incoming.id ||
+              (m.role === 'assistant' &&
+                m.turnId === incoming.turnId &&
+                (m.variantIndex ?? 0) === variant)
+            )
+          })
+          if (existingIdx < 0) {
+            const userIdx = messages.findIndex((message) => {
+              const m = message as unknown as { id?: string; turnId?: string; role?: string }
+              return m.role === 'user' && (m.turnId === incoming.turnId || m.id === incoming.turnId)
+            })
+            if (userIdx < 0) return false
+            messages.splice(userIdx + 1, 0, nextMessage)
+            return true
+          }
+          const existing = messages[existingIdx] as unknown as { parts?: unknown; status?: string }
+          if (
+            existing.status === incoming.status &&
+            JSON.stringify(existing.parts ?? []) === JSON.stringify((nextMessage as unknown as { parts?: unknown }).parts ?? [])
+          ) {
+            return false
+          }
+          messages[existingIdx] = nextMessage
+          return true
+        }
+        for (const incoming of assistantRows) {
+          if ((incoming.mode ?? 'act') !== 'act') continue
+          changed = patchList(runtime.actChat.messages as UIMessage[], incoming) || changed
+          const slot = incoming.variantIndex ?? 0
+          if (slot >= 0 && slot < runtime.askChats.length) {
+            changed = patchList(runtime.askChats[slot]!.messages as UIMessage[], incoming) || changed
+          }
+        }
+        if (!changed) return
+        runtime.actChat.messages = [...runtime.actChat.messages]
+        for (const chat of runtime.askChats) chat.messages = [...chat.messages]
+        actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
+        chat0.setMessages([...runtime.askChats[0]!.messages] as UIMessage[])
+        chat1.setMessages([...runtime.askChats[1]!.messages] as UIMessage[])
+        chat2.setMessages([...runtime.askChats[2]!.messages] as UIMessage[])
+        chat3.setMessages([...runtime.askChats[3]!.messages] as UIMessage[])
+        forceLiveSyncRender((value) => value + 1)
+        if (!assistantRows.some((message) => message.status === 'generating')) {
+          liveGeneratingByChatRef.current.set(activeChatId, false)
+          completeSession(activeChatId, true)
+          void loadChats()
+        }
+      } catch {
+        // Ignore transient reconnect failures; the next tick or Convex subscription can recover.
+      }
+    }
+
+    void patchFromServer()
+    const interval = window.setInterval(() => {
+      void patchFromServer()
+    }, 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [activeChatId, actChat, chat0, chat1, chat2, chat3, completeSession, loadChats, sessions])
 
   // Update title in local state + pendingTitleRef immediately, then broadcast.
   const applyChatTitleUpdate = useCallback((chatId: string, title: string) => {
@@ -4039,6 +4281,7 @@ export default function ChatInterface({
     if (runtime.hydrated) {
       shouldScrollRef.current = true
       applyUiStateToView(runtime.ui)
+      setRuntimeHydrationVersion((value) => value + 1)
       return
     }
 
@@ -4078,6 +4321,8 @@ export default function ChatInterface({
         replyToTurnId?: string
         replySnippet?: string
         routedModelId?: string
+        status?: 'generating' | 'completed' | 'error'
+        variantIndex?: number
       }
       let rawMessages: RawMsg[] = data.messages || []
       rawMessages = rawMessages.map((msg) => {
@@ -4291,8 +4536,12 @@ export default function ChatInterface({
       })
       if (requestId !== loadChatRequestRef.current) return
       runtime.hydrated = true
+      if (rawMessages.some((msg) => msg.role === 'assistant' && msg.status === 'generating')) {
+        startSession(chatId, 'act', resolvedTitle ?? DEFAULT_CHAT_TITLE, Math.max(0, rawMessages.length - 1))
+      }
       shouldScrollRef.current = true
       applyUiStateToView(runtime.ui)
+      setRuntimeHydrationVersion((value) => value + 1)
     } catch (err) {
       console.error('[ChatInterface] loadChat failed:', err)
       clearRuntimeMessages(runtime)
@@ -5976,7 +6225,10 @@ export default function ChatInterface({
                 }
 
                 const multiActInst = streamSlotIdx >= 0 ? chatInstances[streamSlotIdx] : null
-                const instLoading = isLatest && (
+                const persistedResponseStatus = (
+                  responseMsg as unknown as { status?: 'generating' | 'completed' | 'error' } | null
+                )?.status
+                const activeHttpLoading = isLatest && (
                   (isActExch
                     ? (isMultiAct
                         ? (multiActInst?.status === 'streaming' || multiActInst?.status === 'submitted')
@@ -5984,8 +6236,11 @@ export default function ChatInterface({
                     : !!slotInst && (slotInst.status === 'streaming' || slotInst.status === 'submitted'))
                   || isOptimisticLoading
                 )
+                const instLoading = activeHttpLoading || persistedResponseStatus === 'generating'
                 const instError = isLatest
-                  ? (isActExch
+                  ? (persistedResponseStatus === 'error'
+                      ? new Error('Generation failed')
+                      : isActExch
                       ? (isMultiAct && streamSlotIdx >= 0
                           ? (chatInstances[streamSlotIdx]?.error ?? null)
                           : isMultiAct
@@ -6003,7 +6258,9 @@ export default function ChatInterface({
                   assistantVisualBlocks = [{ kind: 'text', text: normalizeAgentAssistantText(responseText) }]
                 }
                 const hasAssistantText = assistantVisualBlocks.some((b) => b.kind === 'text' && b.text.trim().length > 0)
-                const isStreaming = instLoading && hasAssistantText
+                const hasAssistantActivity = assistantVisualBlocks.length > 0
+                const isStreaming = (activeHttpLoading || persistedResponseStatus === 'generating') && hasAssistantActivity
+                const isTextStreaming = activeHttpLoading && hasAssistantText
 
                 const rawUserText = getMessageText(msg)
                 const metaDocs = getUserMessageDocNames(msg)
@@ -6058,6 +6315,7 @@ export default function ChatInterface({
                     responseModelId={selectedModelId}
                     assistantVisualBlocks={assistantVisualBlocks}
                     isStreaming={isStreaming}
+                    isTextStreaming={isTextStreaming}
                     errorMessage={errLabelForTurn}
                     exchModelList={exchModelList}
                     selectedTab={selectedTab}

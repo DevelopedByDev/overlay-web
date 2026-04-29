@@ -89,6 +89,7 @@ export async function GET(request: NextRequest) {
           replyToTurnId?: string
           replySnippet?: string
           routedModelId?: string
+          status?: 'generating' | 'completed' | 'error'
         }>
       >('conversations:getMessages', {
         conversationId: conversationId as Id<'conversations'>,
@@ -134,6 +135,7 @@ export async function GET(request: NextRequest) {
           ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),
           ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
           ...(message.routedModelId ? { routedModelId: message.routedModelId } : {}),
+          ...(message.status ? { status: message.status } : {}),
         })),
       })
     }

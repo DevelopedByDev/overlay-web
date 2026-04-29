@@ -158,6 +158,19 @@ function linkifySourceCitations(text: string, citations: SourceCitationMap): str
     .join('\n')
 }
 
+function normalizePersistedWebCitationMarkdown(text: string, hasWebSources: boolean): string {
+  const dashChars = '\\-\\u2010-\\u2015\\u2212'
+  const overlayCitationLink = new RegExp(
+    `\\[([^\\]\\n]{1,80})\\]\\(#overlay[${dashChars}]webcite[${dashChars}]((?:multi[${dashChars}])?[\\d${dashChars}]+)\\)`,
+    'g',
+  )
+  return text.replace(overlayCitationLink, (_match, label: string, rawIndex: string) => {
+    if (!hasWebSources) return label
+    const normalizedIndex = rawIndex.replace(/[\u2010-\u2015\u2212]/g, '-')
+    return `[${label}](#overlay-webcite-${normalizedIndex})`
+  })
+}
+
 function normalizeGeneratedMarkdown(
   text: string,
   options?: {
@@ -173,6 +186,7 @@ function normalizeGeneratedMarkdown(
   const hasKnowledgeCitations =
     !!(options?.sourceCitations && Object.keys(options.sourceCitations).length > 0)
   const hasWebSources = !!(options?.webSources && options.webSources.length > 0)
+  t = normalizePersistedWebCitationMarkdown(t, hasWebSources)
   // Strip the redundant trailing "Sources:" prose block — we surface web sources via the sidebar
   // button + inline chips. Keep the block when we only have knowledge citations (those still
   // rely on the numbered list for Knowledge linkify).

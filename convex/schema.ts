@@ -489,14 +489,22 @@ export default defineSchema({
     replyToTurnId: v.optional(v.string()),
     replySnippet: v.optional(v.string()),
     routedModelId: v.optional(v.string()),
+    status: v.optional(v.union(
+      v.literal('generating'),
+      v.literal('completed'),
+      v.literal('error'),
+    )),
+    updatedAt: v.optional(v.number()),
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
-    .index('by_userId', ['userId']),
+    .index('by_userId', ['userId'])
+    .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt']),
 
   notes: defineTable({
     userId: v.string(),
     clientId: v.optional(v.string()),
     title: v.string(),
+    icon: v.optional(v.string()),
     content: v.string(),
     tags: v.array(v.string()),
     projectId: v.optional(v.string()),

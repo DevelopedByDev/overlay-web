@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../src/lib/models'
 import { mutation, query } from './_generated/server'
 import { internal } from './_generated/api'
-import { Id } from './_generated/dataModel'
+import type { Doc, Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import { applyStorageUsageDelta } from './lib/storageQuota'
 
@@ -56,6 +56,72 @@ function normalizeConversationDoc<T extends {
     ...conversation,
     updatedAt: conversation.updatedAt ?? conversation.lastModified ?? conversation.createdAt,
   }
+}
+
+function mergeGeneratingMessageParts(
+  existingParts: NonNullable<Doc<'conversationMessages'>['parts']>,
+  newParts: NonNullable<Doc<'conversationMessages'>['parts']>,
+) {
+  const isToolInvocationPart = (
+    candidate: NonNullable<Doc<'conversationMessages'>['parts']>[number],
+  ): candidate is Extract<
+    NonNullable<Doc<'conversationMessages'>['parts']>[number],
+    { toolInvocation: unknown }
+  > => 'toolInvocation' in candidate
+
+  let nextParts = existingParts
+  for (const part of newParts) {
+    const last = nextParts[nextParts.length - 1]
+    if (
+      part.type === 'reasoning' &&
+      last?.type === 'reasoning' &&
+      typeof part.text === 'string'
+    ) {
+      nextParts = [
+        ...nextParts.slice(0, -1),
+        {
+          ...last,
+          text: `${last.text ?? ''}${part.text}`,
+          state: part.state ?? last.state,
+        },
+      ]
+      continue
+    }
+    if (isToolInvocationPart(part)) {
+      const incoming = part.toolInvocation
+      const toolCallId = incoming.toolCallId
+      if (toolCallId) {
+        const existingIdx = nextParts.findIndex(
+          (candidate) => isToolInvocationPart(candidate) && candidate.toolInvocation.toolCallId === toolCallId,
+        )
+        if (existingIdx >= 0) {
+          const existing = nextParts[existingIdx]!
+          if (isToolInvocationPart(existing)) {
+            nextParts = [
+              ...nextParts.slice(0, existingIdx),
+              {
+                type: 'tool-invocation' as const,
+                toolInvocation: {
+                  ...existing.toolInvocation,
+                  ...incoming,
+                  toolName:
+                    incoming.toolName === 'unknown_tool'
+                      ? existing.toolInvocation.toolName
+                      : incoming.toolName,
+                  toolInput: incoming.toolInput ?? existing.toolInvocation.toolInput,
+                  toolOutput: incoming.toolOutput ?? existing.toolInvocation.toolOutput,
+                },
+              },
+              ...nextParts.slice(existingIdx + 1),
+            ]
+            continue
+          }
+        }
+      }
+    }
+    nextParts = [...nextParts, part]
+  }
+  return nextParts
 }
 
 export const list = query({
@@ -303,6 +369,8 @@ export const addMessage = mutation({
       replyToTurnId: args.replyToTurnId,
       replySnippet: args.replySnippet,
       routedModelId: args.routedModelId,
+      status: 'completed' as const,
+      updatedAt: now,
       createdAt: match?.createdAt ?? now,
     }
     const msgId = match
@@ -330,6 +398,193 @@ export const addMessage = mutation({
     }
 
     return msgId
+  },
+})
+
+export const startGeneratingMessage = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    serverSecret: v.string(),
+    turnId: v.string(),
+    variantIndex: v.optional(v.number()),
+    modelId: v.string(),
+    mode: v.union(v.literal('ask'), v.literal('act')),
+  },
+  handler: async (ctx, args) => {
+    await authorizeUserAccess({ userId: args.userId, serverSecret: args.serverSecret })
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+
+    const now = Date.now()
+    const existing = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
+      .collect()
+    const match = existing.find(
+      (message) =>
+        message.turnId === args.turnId &&
+        message.role === 'assistant' &&
+        (message.variantIndex ?? 0) === (args.variantIndex ?? 0),
+    )
+    const payload = {
+      conversationId: args.conversationId,
+      userId: args.userId,
+      turnId: args.turnId,
+      role: 'assistant' as const,
+      mode: args.mode,
+      content: '',
+      contentType: 'text' as const,
+      parts: [{ type: 'text', text: '' }],
+      modelId: args.modelId,
+      variantIndex: args.variantIndex,
+      status: 'generating' as const,
+      updatedAt: now,
+      createdAt: match?.createdAt ?? now,
+    }
+    const id = match
+      ? (await ctx.db.patch(match._id, payload), match._id)
+      : await ctx.db.insert('conversationMessages', payload)
+    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    return id
+  },
+})
+
+export const appendToGeneratingMessage = mutation({
+  args: {
+    messageId: v.id('conversationMessages'),
+    textDelta: v.optional(v.string()),
+    newParts: messageParts,
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, { messageId, textDelta, newParts, serverSecret }) => {
+    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
+    const message = await ctx.db.get(messageId)
+    if (!message) throw new Error('Message not found')
+    if (message.status !== 'generating') {
+      throw new Error('Message is not generating')
+    }
+
+    const now = Date.now()
+    const nextContent = textDelta ? `${message.content ?? ''}${textDelta}` : message.content
+    const existingParts = Array.isArray(message.parts) ? message.parts : []
+    let nextParts = existingParts
+    if (textDelta) {
+      const last = existingParts[existingParts.length - 1]
+      if (last?.type === 'text') {
+        nextParts = [
+          ...existingParts.slice(0, -1),
+          { ...last, text: `${last.text ?? ''}${textDelta}` },
+        ]
+      } else {
+        nextParts = [...existingParts, { type: 'text', text: textDelta }]
+      }
+    }
+    if (newParts?.length) {
+      nextParts = mergeGeneratingMessageParts(nextParts, newParts)
+    }
+    await ctx.db.patch(messageId, {
+      content: nextContent,
+      parts: nextParts,
+      updatedAt: now,
+    })
+    await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
+  },
+})
+
+export const finalizeGeneratingMessage = mutation({
+  args: {
+    messageId: v.id('conversationMessages'),
+    content: v.string(),
+    parts: v.array(messagePart),
+    tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
+    routedModelId: v.optional(v.string()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const message = await ctx.db.get(args.messageId)
+    if (!message) throw new Error('Message not found')
+    const now = Date.now()
+    await ctx.db.patch(args.messageId, {
+      content: args.content,
+      parts: args.parts,
+      tokens: args.tokens,
+      routedModelId: args.routedModelId,
+      status: 'completed',
+      updatedAt: now,
+    })
+    await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
+  },
+})
+
+export const failGeneratingMessage = mutation({
+  args: {
+    messageId: v.id('conversationMessages'),
+    errorText: v.optional(v.string()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, { messageId, errorText, serverSecret }) => {
+    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
+    const message = await ctx.db.get(messageId)
+    if (!message) throw new Error('Message not found')
+    const now = Date.now()
+    const text = errorText?.trim() || 'Generation failed.'
+    await ctx.db.patch(messageId, {
+      content: message.content?.trim() ? message.content : text,
+      parts: message.parts?.length ? message.parts : [{ type: 'text', text }],
+      status: 'error',
+      updatedAt: now,
+    })
+    await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
+  },
+})
+
+export const watchGeneratingMessages = query({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    accessToken: v.string(),
+  },
+  handler: async (ctx, { conversationId, userId, accessToken }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken })
+    } catch {
+      return []
+    }
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt) return []
+    return await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId_status_updatedAt', (q) =>
+        q.eq('conversationId', conversationId).eq('status', 'generating')
+      )
+      .order('desc')
+      .collect()
+  },
+})
+
+export const watchMessages = query({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    accessToken: v.string(),
+  },
+  handler: async (ctx, { conversationId, userId, accessToken }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken })
+    } catch {
+      return []
+    }
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt) return []
+    return await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
+      .order('asc')
+      .collect()
   },
 })
 
@@ -436,6 +691,8 @@ export const addMessages = mutation({
         conversationId,
         userId,
         createdAt: match?.createdAt ?? now,
+        updatedAt: now,
+        status: 'completed' as const,
         ...row,
       }
       const id = match

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from 'ai'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
@@ -84,7 +84,236 @@ function summarizeToolOutputForLog(output: unknown): string {
 
 export const maxDuration = 120
 
+type UiStreamPersistenceEvent =
+  | { kind: 'text-delta'; text: string }
+  | { kind: 'reasoning-delta'; text: string }
+  | {
+      kind: 'tool-input'
+      toolCallId: string
+      toolName: string
+      input: unknown
+      state: 'input-available' | 'output-error'
+      errorText?: string
+    }
+  | {
+      kind: 'tool-output'
+      toolCallId: string
+      output: unknown
+      state: 'output-available' | 'output-error' | 'output-denied'
+      errorText?: string
+    }
+
+function extractUiStreamPersistenceEvents(chunkText: string): UiStreamPersistenceEvent[] {
+  const events: UiStreamPersistenceEvent[] = []
+  const lines = chunkText.split(/\r?\n/)
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+    if (!line) continue
+    const payload = line.startsWith('data:') ? line.slice(5).trim() : line
+    if (!payload || payload === '[DONE]') continue
+    try {
+      const evt = JSON.parse(payload) as {
+        type?: string
+        delta?: unknown
+        text?: unknown
+        toolCallId?: unknown
+        toolName?: unknown
+        input?: unknown
+        output?: unknown
+        errorText?: unknown
+      }
+      if (
+        (evt.type === 'text-delta' || evt.type === 'text') &&
+        typeof evt.delta === 'string'
+      ) {
+        events.push({ kind: 'text-delta', text: evt.delta })
+      } else if (evt.type === 'text-delta' && typeof evt.text === 'string') {
+        events.push({ kind: 'text-delta', text: evt.text })
+      } else if (evt.type === 'reasoning-delta' && typeof evt.delta === 'string') {
+        events.push({ kind: 'reasoning-delta', text: evt.delta })
+      } else if (evt.type === 'reasoning-delta' && typeof evt.text === 'string') {
+        events.push({ kind: 'reasoning-delta', text: evt.text })
+      } else if (
+        (evt.type === 'tool-input-available' || evt.type === 'tool-input-error') &&
+        typeof evt.toolCallId === 'string' &&
+        typeof evt.toolName === 'string'
+      ) {
+        events.push({
+          kind: 'tool-input',
+          toolCallId: evt.toolCallId,
+          toolName: evt.toolName,
+          input: evt.input,
+          state: evt.type === 'tool-input-error' ? 'output-error' : 'input-available',
+          errorText: typeof evt.errorText === 'string' ? evt.errorText : undefined,
+        })
+      } else if (
+        (evt.type === 'tool-output-available' ||
+          evt.type === 'tool-output-error' ||
+          evt.type === 'tool-output-denied') &&
+        typeof evt.toolCallId === 'string'
+      ) {
+        events.push({
+          kind: 'tool-output',
+          toolCallId: evt.toolCallId,
+          output: evt.output,
+          state:
+            evt.type === 'tool-output-error'
+              ? 'output-error'
+              : evt.type === 'tool-output-denied'
+                ? 'output-denied'
+                : 'output-available',
+          errorText: typeof evt.errorText === 'string' ? evt.errorText : undefined,
+        })
+      }
+    } catch {
+      // Ignore partial chunks and non-JSON protocol frames.
+    }
+  }
+  return events
+}
+
+function createGeneratingPersistenceTransform(params: {
+  messageId?: Id<'conversationMessages'>
+  serverSecret: string
+}) {
+  const decoder = new TextDecoder()
+  let textBuffer = ''
+  let pendingText = ''
+  let lastFlushAt = Date.now()
+
+  async function flushText(force = false) {
+    if (!params.messageId || !pendingText) return
+    if (!force && pendingText.length < 80 && Date.now() - lastFlushAt < 250) return
+    const textDelta = pendingText
+    pendingText = ''
+    lastFlushAt = Date.now()
+    try {
+      await convex.mutation('conversations:appendToGeneratingMessage', {
+        messageId: params.messageId,
+        textDelta,
+        serverSecret: params.serverSecret,
+      })
+    } catch (err) {
+      console.error('[conversations/act] Failed to append generating text:', summarizeErrorForLog(err))
+    }
+  }
+
+  return new TransformStream<Uint8Array, Uint8Array>({
+    async transform(chunk, controller) {
+      controller.enqueue(chunk)
+      if (!params.messageId) return
+      textBuffer += decoder.decode(chunk, { stream: true })
+      const split = textBuffer.split(/\r?\n/)
+      textBuffer = split.pop() ?? ''
+      const newParts: Array<Record<string, unknown>> = []
+      for (const event of extractUiStreamPersistenceEvents(split.join('\n'))) {
+        if (event.kind === 'text-delta') {
+          pendingText += event.text
+        } else if (event.kind === 'reasoning-delta') {
+          newParts.push({ type: 'reasoning', text: event.text, state: 'streaming' })
+        } else if (event.kind === 'tool-input') {
+          newParts.push({
+            type: 'tool-invocation',
+            toolInvocation: {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              state: event.state,
+              toolInput: event.input,
+              ...(event.errorText ? { toolOutput: { error: event.errorText } } : {}),
+            },
+          })
+        } else if (event.kind === 'tool-output') {
+          newParts.push({
+            type: 'tool-invocation',
+            toolInvocation: {
+              toolCallId: event.toolCallId,
+              toolName: 'unknown_tool',
+              state: event.state,
+              toolOutput: event.state === 'output-error'
+                ? { error: event.errorText ?? 'Tool call failed.' }
+                : event.output,
+            },
+          })
+        }
+      }
+      if (newParts.length > 0 && params.messageId) {
+        try {
+          await convex.mutation('conversations:appendToGeneratingMessage', {
+            messageId: params.messageId,
+            newParts: newParts as never,
+            serverSecret: params.serverSecret,
+          })
+        } catch (err) {
+          console.error('[conversations/act] Failed to append generating parts:', summarizeErrorForLog(err))
+        }
+      }
+      await flushText(false)
+    },
+    async flush() {
+      if (textBuffer) {
+        const newParts: Array<Record<string, unknown>> = []
+        for (const event of extractUiStreamPersistenceEvents(textBuffer)) {
+          if (event.kind === 'text-delta') {
+            pendingText += event.text
+          } else if (event.kind === 'reasoning-delta') {
+            newParts.push({ type: 'reasoning', text: event.text, state: 'streaming' })
+          } else if (event.kind === 'tool-input') {
+            newParts.push({
+              type: 'tool-invocation',
+              toolInvocation: {
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                state: event.state,
+                toolInput: event.input,
+                ...(event.errorText ? { toolOutput: { error: event.errorText } } : {}),
+              },
+            })
+          } else if (event.kind === 'tool-output') {
+            newParts.push({
+              type: 'tool-invocation',
+              toolInvocation: {
+                toolCallId: event.toolCallId,
+                toolName: 'unknown_tool',
+                state: event.state,
+                toolOutput: event.state === 'output-error'
+                  ? { error: event.errorText ?? 'Tool call failed.' }
+                  : event.output,
+              },
+            })
+          }
+        }
+        if (newParts.length > 0 && params.messageId) {
+          try {
+            await convex.mutation('conversations:appendToGeneratingMessage', {
+              messageId: params.messageId,
+              newParts: newParts as never,
+              serverSecret: params.serverSecret,
+            })
+          } catch (err) {
+            console.error('[conversations/act] Failed to flush generating parts:', summarizeErrorForLog(err))
+          }
+        }
+        textBuffer = ''
+      }
+      await flushText(true)
+    },
+  })
+}
+
+async function drainReadableStream(stream: ReadableStream<Uint8Array<ArrayBufferLike>>) {
+  const reader = stream.getReader()
+  try {
+    while (!(await reader.read()).done) {
+      // Drain the stream so the upstream model generation continues after disconnect.
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 export async function POST(request: NextRequest) {
+  let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
+  let pendingServerSecret: string | undefined
   try {
     const _ttftDebug = process.env.TTFT_DEBUG === 'true'
     let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
@@ -129,6 +358,7 @@ export async function POST(request: NextRequest) {
     const userId = auth.userId
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
     const serverSecret = getInternalApiSecret()
+    pendingServerSecret = serverSecret
 
     const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
       serverSecret,
@@ -414,6 +644,26 @@ export async function POST(request: NextRequest) {
     const modelMessages = await convertToModelMessages(messagesForModel)
     // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
     let streamedRoutedModelId: string | undefined
+    let generatingMessageId: Id<'conversationMessages'> | undefined
+    if (cid) {
+      try {
+        generatingMessageId = await convex.mutation<Id<'conversationMessages'>>(
+          'conversations:startGeneratingMessage',
+          {
+            conversationId: cid,
+            userId,
+            serverSecret,
+            turnId: tid,
+            mode: 'act',
+            modelId: effectiveModelId,
+            variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
+          },
+        ) ?? undefined
+        pendingGeneratingMessageId = generatingMessageId
+      } catch (err) {
+        console.error('[conversations/act] Failed to start generating assistant message:', summarizeErrorForLog(err))
+      }
+    }
     let payTierLanguageModel: Awaited<ReturnType<typeof getGatewayLanguageModel>> | null = null
     if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID && !isNvidiaNimChatModelId(effectiveModelId)) {
       payTierLanguageModel = await getGatewayLanguageModel(
@@ -553,6 +803,8 @@ export async function POST(request: NextRequest) {
     let automationSuggestion:
       | ReturnType<typeof shouldSuggestAutomationFromTurn>
       | undefined
+    const toolFailuresByCallId = new Map<string, { toolName: string; error: string }>()
+    const finishedToolCallIds = new Set<string>()
 
     if (_ttftDebug) _tStreamCall = performance.now()
     const result = await agent.stream({
@@ -569,6 +821,13 @@ export async function POST(request: NextRequest) {
       },
       experimental_onToolCallFinish: ({ toolCall, success, durationMs, output, error }) => {
         if (!toolCall?.toolName) return
+        if (toolCall.toolCallId) finishedToolCallIds.add(toolCall.toolCallId)
+        if (!success && toolCall.toolCallId) {
+          toolFailuresByCallId.set(toolCall.toolCallId, {
+            toolName: toolCall.toolName,
+            error: summarizeErrorForLog(error),
+          })
+        }
         const n = toolCall.toolName
         if (n === 'perplexity_search' || n === 'parallel_search') {
           if (success) {
@@ -674,26 +933,93 @@ export async function POST(request: NextRequest) {
           const { content: persistContent, parts: persistParts } = persistOverride
             ? persistOverride
             : buildAssistantPersistenceFromSteps(event.steps, event.text)
+          const normalizedPersistParts = persistParts.map((part) => {
+            if (part.type !== 'tool-invocation') return part
+            const invocation = part.toolInvocation as
+              | {
+                  toolCallId?: string
+                  toolName?: string
+                  state?: string
+                  toolInput?: unknown
+                  toolOutput?: unknown
+                }
+              | undefined
+            const failure = invocation?.toolCallId
+              ? toolFailuresByCallId.get(invocation.toolCallId)
+              : undefined
+            if (!failure) return part
+            return {
+              ...part,
+              toolInvocation: {
+                ...invocation,
+                toolName: invocation?.toolName ?? failure.toolName,
+                state: 'output-error',
+                toolOutput: {
+                  error: failure.error,
+                },
+              },
+            }
+          }).map((part) => {
+            if (part.type !== 'tool-invocation') return part
+            const invocation = part.toolInvocation as
+              | {
+                  toolCallId?: string
+                  toolName?: string
+                  state?: string
+                  toolInput?: unknown
+                  toolOutput?: unknown
+                }
+              | undefined
+            if (
+              invocation?.toolCallId &&
+              finishedToolCallIds.has(invocation.toolCallId) &&
+              invocation.state !== 'output-available' &&
+              invocation.state !== 'output-error' &&
+              invocation.state !== 'output-denied'
+            ) {
+              return {
+                ...part,
+                toolInvocation: {
+                  ...invocation,
+                  state: 'output-available',
+                },
+              }
+            }
+            return part
+          })
 
           if (cid) {
             const routedModelId =
               effectiveModelId === FREE_TIER_AUTO_MODEL_ID
                 ? (streamedRoutedModelId || event.steps.at(-1)?.response.modelId)
                 : undefined
-            await convex.mutation('conversations:addMessage', {
-              conversationId: cid,
-              userId,
-              serverSecret,
-              turnId: tid,
-              role: 'assistant',
-              mode: 'act',
-              content: persistContent,
-              contentType: 'text',
-              parts: (persistParts.length > 0 ? persistParts : [{ type: 'text', text: persistContent }]) as never,
-              modelId: effectiveModelId,
-              routedModelId,
-              tokens: { input: totalInputTokens, output: totalOutputTokens },
-            })
+            const finalParts = (normalizedPersistParts.length > 0 ? normalizedPersistParts : [{ type: 'text', text: persistContent }]) as never
+            if (generatingMessageId) {
+              await convex.mutation('conversations:finalizeGeneratingMessage', {
+                messageId: generatingMessageId,
+                content: persistContent,
+                parts: finalParts,
+                routedModelId,
+                tokens: { input: totalInputTokens, output: totalOutputTokens },
+                serverSecret,
+              })
+            } else {
+              await convex.mutation('conversations:addMessage', {
+                conversationId: cid,
+                userId,
+                serverSecret,
+                turnId: tid,
+                role: 'assistant',
+                mode: 'act',
+                content: persistContent,
+                contentType: 'text',
+                parts: finalParts,
+                modelId: effectiveModelId,
+                routedModelId,
+                tokens: { input: totalInputTokens, output: totalOutputTokens },
+                variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
+              })
+            }
           }
         } catch (err) {
           console.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
@@ -725,7 +1051,36 @@ export async function POST(request: NextRequest) {
         return Object.keys(metadata).length > 0 ? metadata : undefined
       },
     })
-    if (_ttftDebug && _uiResp.body) {
+    let responseBody: ReadableStream<Uint8Array<ArrayBufferLike>> | null = _uiResp.body
+    if (responseBody) {
+      responseBody = responseBody.pipeThrough(
+        createGeneratingPersistenceTransform({
+          messageId: generatingMessageId,
+          serverSecret,
+        }),
+      ) as ReadableStream<Uint8Array<ArrayBufferLike>>
+      const [clientBody, backgroundBody] = responseBody.tee()
+      responseBody = clientBody
+      after(async () => {
+        try {
+          await drainReadableStream(backgroundBody)
+        } catch (err) {
+          console.error('[conversations/act] Background stream drain failed:', summarizeErrorForLog(err))
+          if (generatingMessageId) {
+            try {
+              await convex.mutation('conversations:failGeneratingMessage', {
+                messageId: generatingMessageId,
+                errorText: userFacingOpenRouterError(err),
+                serverSecret,
+              })
+            } catch (failErr) {
+              console.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(failErr))
+            }
+          }
+        }
+      })
+    }
+    if (_ttftDebug && responseBody) {
       const _decoder = new TextDecoder()
       let _buf = ''
       let _firstByteAt = 0
@@ -767,12 +1122,15 @@ export async function POST(request: NextRequest) {
           controller.enqueue(chunk)
         },
       })
-      return new Response(_uiResp.body.pipeThrough(_transform), {
+      return new Response(responseBody.pipeThrough(_transform), {
         status: _uiResp.status,
         headers: _uiResp.headers,
       })
     }
-    return _uiResp
+    return new Response(responseBody, {
+      status: _uiResp.status,
+      headers: _uiResp.headers,
+    })
     }
 
     if (isNvidiaNimChatModelId(effectiveModelId)) {
@@ -798,6 +1156,17 @@ export async function POST(request: NextRequest) {
     return await runActStream(payTierLanguageModel)
   } catch (error) {
     console.error('[conversations/act] Error:', summarizeErrorForLog(error))
+    if (pendingGeneratingMessageId && pendingServerSecret) {
+      try {
+        await convex.mutation('conversations:failGeneratingMessage', {
+          messageId: pendingGeneratingMessageId,
+          errorText: userFacingOpenRouterError(error),
+          serverSecret: pendingServerSecret,
+        })
+      } catch (err) {
+        console.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(err))
+      }
+    }
     return NextResponse.json(
       { error: userFacingOpenRouterError(error) },
       { status: 500 },
