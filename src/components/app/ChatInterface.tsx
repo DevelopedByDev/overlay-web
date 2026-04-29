@@ -3245,13 +3245,28 @@ export default function ChatInterface({
 
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
   const activeAskChats = activeRuntime.askChats
+  const activePersistedGenerating =
+    (liveMessages ?? []).some(
+      (message) => message.role === 'assistant' && message.status === 'generating',
+    ) ||
+    activeRuntime.actChat.messages.some((message) => {
+      const m = message as unknown as { role?: string; status?: string }
+      return m.role === 'assistant' && m.status === 'generating'
+    }) ||
+    activeRuntime.askChats.some((chat) =>
+      chat.messages.some((message) => {
+        const m = message as unknown as { role?: string; status?: string }
+        return m.role === 'assistant' && m.status === 'generating'
+      }),
+    )
 
   const isActiveLoading =
     activeAskChats
       .slice(0, selectedModels.length)
       .some((c) => c.status === 'streaming' || c.status === 'submitted') ||
     actChat.status === 'streaming' ||
-    actChat.status === 'submitted'
+    actChat.status === 'submitted' ||
+    activePersistedGenerating
 
   const supportsVision = getModel(selectedActModel)?.supportsVision ?? false
 
@@ -3517,7 +3532,7 @@ export default function ChatInterface({
     if (!activeChatId) return
     const sessionIsStreaming = sessions[activeChatId]?.status === 'streaming'
     const liveQuerySawGenerating = liveGeneratingByChatRef.current.get(activeChatId) === true
-    if (!sessionIsStreaming && !liveQuerySawGenerating) return
+    if (!sessionIsStreaming && !liveQuerySawGenerating && !activePersistedGenerating) return
 
     let cancelled = false
     const patchFromServer = async () => {
@@ -3622,7 +3637,7 @@ export default function ChatInterface({
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [activeChatId, actChat, chat0, chat1, chat2, chat3, completeSession, loadChats, sessions])
+  }, [activeChatId, actChat, activePersistedGenerating, chat0, chat1, chat2, chat3, completeSession, loadChats, sessions])
 
   // Update title in local state + pendingTitleRef immediately, then broadcast.
   const applyChatTitleUpdate = useCallback((chatId: string, title: string) => {
