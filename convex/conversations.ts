@@ -490,7 +490,6 @@ export const appendToGeneratingMessage = mutation({
       parts: nextParts,
       updatedAt: now,
     })
-    await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
   },
 })
 
