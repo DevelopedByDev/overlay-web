@@ -14,6 +14,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
+import { ConfirmDialog } from '@/components/app/ConfirmDialog'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import {
   CHAT_CREATED_EVENT,
@@ -56,6 +57,7 @@ export function ChatInlinePanel({
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
+  const [confirmDeleteChat, setConfirmDeleteChat] = useState<Conversation | null>(null)
   const activeId = searchParams?.get('id') ?? null
 
   const loadChats = useCallback(async () => {
@@ -161,8 +163,16 @@ export function ChatInlinePanel({
     }
   }
 
-  async function deleteChat(chatId: string, event: MouseEvent) {
+  function requestDeleteChat(chat: Conversation, event: MouseEvent) {
     event.stopPropagation()
+    setConfirmDeleteChat(chat)
+  }
+
+  async function confirmDeleteChatAction() {
+    const chat = confirmDeleteChat
+    if (!chat) return
+    const chatId = chat._id
+    setConfirmDeleteChat(null)
     dispatchChatDeleted({ chatId })
     await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
     if (activeId === chatId) {
@@ -254,7 +264,7 @@ export function ChatInlinePanel({
                 </button>
                 <button
                   type="button"
-                  onClick={(event) => void deleteChat(chat._id, event)}
+                  onClick={(event) => requestDeleteChat(chat, event)}
                   className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
                   aria-label="Delete chat"
                 >
@@ -265,6 +275,14 @@ export function ChatInlinePanel({
           </div>
         )
       })}
+      <ConfirmDialog
+        isOpen={confirmDeleteChat !== null}
+        title="Delete chat?"
+        description={confirmDeleteChat ? `“${confirmDeleteChat.title || 'Untitled chat'}” will be permanently deleted. This can’t be undone.` : undefined}
+        confirmLabel="Delete"
+        onConfirm={() => void confirmDeleteChatAction()}
+        onCancel={() => setConfirmDeleteChat(null)}
+      />
     </div>
   )
 }

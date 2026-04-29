@@ -96,6 +96,7 @@ import {
 } from '@/lib/automation-drafts'
 import { isOverlayGatedToolOutput } from '@/lib/overlay-gated-feature'
 import { warmIntegrationLogoCache } from '@/lib/integration-logo-cache'
+import { ConfirmDialog } from './ConfirmDialog'
 
 function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   const router = useRouter()
@@ -2972,6 +2973,7 @@ export default function ChatInterface({
   const [mobileChatListOpen, setMobileChatListOpen] = useState(false)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingChatTitle, setEditingChatTitle] = useState('')
+  const [confirmDeleteChat, setConfirmDeleteChat] = useState<{ id: string; title: string } | null>(null)
   const [draftModalState, setDraftModalState] = useState<DraftModalState | null>(null)
   const [isDraftSaving, setIsDraftSaving] = useState(false)
 
@@ -4478,10 +4480,17 @@ export default function ChatInterface({
     ],
   )
 
-  async function deleteChat(chatId: string, e: React.MouseEvent) {
+  function requestDeleteChat(chat: { _id: string; title: string }, e: React.MouseEvent) {
     e.stopPropagation()
-    dispatchChatDeleted({ chatId })
-    await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
+    setConfirmDeleteChat({ id: chat._id, title: chat.title })
+  }
+
+  async function performDeleteChat() {
+    const target = confirmDeleteChat
+    if (!target) return
+    setConfirmDeleteChat(null)
+    dispatchChatDeleted({ chatId: target.id })
+    await fetch(`/api/app/conversations?conversationId=${target.id}`, { method: 'DELETE' })
     await loadChats()
   }
 
@@ -5263,7 +5272,7 @@ export default function ChatInterface({
                           <Pencil size={11} />
                         </button>
                         <button
-                          onClick={(e) => deleteChat(chat._id, e)}
+                          onClick={(e) => requestDeleteChat(chat, e)}
                           className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
                           aria-label="Delete chat"
                         >
@@ -5381,7 +5390,7 @@ export default function ChatInterface({
                               </button>
                               <button
                                 type="button"
-                                onClick={(e) => deleteChat(chat._id, e)}
+                                onClick={(e) => requestDeleteChat(chat, e)}
                                 className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
                                 aria-label="Delete chat"
                               >
@@ -5636,12 +5645,20 @@ export default function ChatInterface({
                       const previousIsFreeModelRow =
                         previous?.id === FREE_TIER_AUTO_MODEL_ID ||
                         (previous ? isNvidiaNimChatModelId(previous.id) : false)
-                      const showFreeDivider = isFreeModelRow && !previousIsFreeModelRow
+                      // Free-tier users see free models first; the divider then
+                      // marks the start of the (locked) premium section. Otherwise
+                      // it marks the start of the free section appended at the end.
+                      const showFreeTierGroupDivider =
+                        isFreeTier && !isFreeModelRow && previousIsFreeModelRow
+                      const showFreeGroupDivider =
+                        !isFreeTier && isFreeModelRow && !previousIsFreeModelRow
+                      const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
+                      const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
                       return (
                         <div key={m.id}>
-                          {showFreeDivider && (
+                          {showDivider && (
                             <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
-                              Free
+                              {dividerLabel}
                             </div>
                           )}
                           <button
@@ -6490,6 +6507,15 @@ export default function ChatInterface({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDeleteChat !== null}
+        title="Delete chat?"
+        description={confirmDeleteChat ? `“${confirmDeleteChat.title || 'Untitled chat'}” will be permanently deleted. This can’t be undone.` : undefined}
+        confirmLabel="Delete"
+        onConfirm={() => void performDeleteChat()}
+        onCancel={() => setConfirmDeleteChat(null)}
+      />
     </div>
   )
 }

@@ -11,7 +11,7 @@ import {
 import { X, ArrowRight, Copy, Check, Plus, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { IntegrationsDialog } from '@/components/app/IntegrationsDialog'
-import { notifyIntegrationsChanged } from '@/lib/integrations-events'
+import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/lib/integrations-events'
 
 /** Paste in ChatGPT, Claude, etc., then paste the reply into Overlay to save as memories. */
 export const ONBOARDING_IMPORT_MEMORY_PROMPT =
@@ -277,6 +277,7 @@ export function OnboardingTour({
   const [memoryPromptCopied, setMemoryPromptCopied] = useState(false)
   const [connectorConnectingSlug, setConnectorConnectingSlug] = useState<string | null>(null)
   const [connectorLogos, setConnectorLogos] = useState<Record<string, string | null>>({})
+  const [connectedSlugs, setConnectedSlugs] = useState<Set<string>>(new Set())
   const [integrationsPickerOpen, setIntegrationsPickerOpen] = useState(false)
   const [isImportSaving, setIsImportSaving] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
@@ -364,6 +365,45 @@ export function OnboardingTour({
     })()
     return () => {
       cancelled = true
+    }
+  }, [postTourPhase])
+
+  // Track connected toolkits so cards reflect connections in real time after the
+  // OAuth popup completes (signaled via overlay:integrations-changed / BroadcastChannel).
+  useEffect(() => {
+    if (postTourPhase !== 'connectors') return
+
+    let cancelled = false
+    async function loadConnected() {
+      try {
+        const res = await fetch('/api/app/integrations')
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as { connected?: string[] }
+        if (cancelled) return
+        setConnectedSlugs(new Set(data.connected ?? []))
+      } catch {
+        // ignore
+      }
+    }
+
+    void loadConnected()
+
+    const onChanged = () => { void loadConnected() }
+    window.addEventListener('overlay:integrations-changed', onChanged)
+    window.addEventListener('focus', onChanged)
+    let bc: BroadcastChannel | null = null
+    try {
+      bc = new BroadcastChannel(INTEGRATIONS_BC_CHANNEL)
+      bc.onmessage = onChanged
+    } catch {
+      // BroadcastChannel unsupported
+    }
+
+    return () => {
+      cancelled = true
+      window.removeEventListener('overlay:integrations-changed', onChanged)
+      window.removeEventListener('focus', onChanged)
+      bc?.close()
     }
   }, [postTourPhase])
 
@@ -627,6 +667,7 @@ export function OnboardingTour({
               {ONBOARDING_CONNECTOR_CARDS.map((c) => {
                 const busy = connectorConnectingSlug === c.slug
                 const anyBusy = connectorConnectingSlug !== null
+                const isConnected = connectedSlugs.has(c.slug)
                 return (
                   <div
                     key={c.slug}
@@ -643,14 +684,23 @@ export function OnboardingTour({
                     </p>
                     <button
                       type="button"
-                      onClick={() => void connectPopularConnector(c.slug)}
-                      disabled={anyBusy}
-                      className="mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-50"
+                      onClick={() => { if (!isConnected) void connectPopularConnector(c.slug) }}
+                      disabled={anyBusy || isConnected}
+                      className="mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-100 disabled:hover:bg-[var(--surface-elevated)]"
                     >
-                      {busy ? (
-                        <Loader2 size={12} className="animate-spin" aria-hidden />
-                      ) : null}
-                      Connect
+                      {isConnected ? (
+                        <>
+                          <Check size={12} aria-hidden />
+                          Connected
+                        </>
+                      ) : (
+                        <>
+                          {busy ? (
+                            <Loader2 size={12} className="animate-spin" aria-hidden />
+                          ) : null}
+                          Connect
+                        </>
+                      )}
                     </button>
                   </div>
                 )

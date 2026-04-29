@@ -213,13 +213,25 @@ export function getProviderModels(provider: ChatModel['provider']): ChatModel[] 
   return AVAILABLE_MODELS.filter((m) => m.provider === provider)
 }
 
-/** Models sorted by intelligence (CHAT_MODEL_QUALITY_PRIORITY order). */
-export function getModelsByIntelligence(_isFreeTier: boolean): ChatModel[] {
-  void _isFreeTier
+/** True for free-tier rows (Auto router + free NVIDIA NIM catalog ids). */
+function isFreeTierModelId(id: string): boolean {
+  return id === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(id)
+}
+
+/**
+ * Models sorted by intelligence (CHAT_MODEL_QUALITY_PRIORITY order).
+ * For free-tier users, free models are hoisted above premium models so the
+ * options they can actually use without upgrading appear first.
+ */
+export function getModelsByIntelligence(isFreeTier: boolean): ChatModel[] {
   const idxMap = new Map(CHAT_MODEL_QUALITY_PRIORITY.map((id, i) => [id, i]))
-  return [...AVAILABLE_MODELS].sort(
+  const sorted = [...AVAILABLE_MODELS].sort(
     (a, b) => (idxMap.get(a.id) ?? 999) - (idxMap.get(b.id) ?? 999),
   )
+  if (!isFreeTier) return sorted
+  const free = sorted.filter((m) => isFreeTierModelId(m.id))
+  const premium = sorted.filter((m) => !isFreeTierModelId(m.id))
+  return [...free, ...premium]
 }
 
 // ─── Image Models (priority order — top = highest priority fallback) ──────────

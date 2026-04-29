@@ -7,6 +7,7 @@ import {
   BookOpen, FileText, Upload, FolderPlus, Loader2, Trash2, ArrowLeft, Pencil,
 } from 'lucide-react'
 import { CHAT_TITLE_UPDATED_EVENT, dispatchChatDeleted, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
+import { ConfirmDialog } from '@/components/app/ConfirmDialog'
 
 const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
@@ -456,6 +457,7 @@ export default function ProjectsSidebar() {
   const [projectChats, setProjectChats] = useState<ProjectChat[]>([])
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>([])
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([])
+  const [confirmDeleteChat, setConfirmDeleteChat] = useState<{ id: string; title: string } | null>(null)
   const [itemsLoading, setItemsLoading] = useState(false)
   const [expandedProjFolderIds, setExpandedProjFolderIds] = useState<Set<string>>(new Set())
   const [projectUploadError, setProjectUploadError] = useState<string | null>(null)
@@ -635,9 +637,9 @@ export default function ProjectsSidebar() {
   async function handleDeleteItem(type: 'chat' | 'note', id: string, e: React.MouseEvent) {
     e.stopPropagation()
     if (type === 'chat') {
-      dispatchChatDeleted({ chatId: id })
-      await fetch(`/api/app/conversations?conversationId=${id}`, { method: 'DELETE' })
-      setProjectChats((prev) => prev.filter((c) => c._id !== id))
+      const chat = projectChats.find((c) => c._id === id)
+      setConfirmDeleteChat({ id, title: chat?.title ?? '' })
+      return
     } else if (type === 'note') {
       await fetch(`/api/app/notes?noteId=${id}`, { method: 'DELETE' })
       setProjectNotes((prev) => prev.filter((n) => n._id !== id))
@@ -1111,6 +1113,21 @@ export default function ProjectsSidebar() {
           )
         )}
       </div>
+      <ConfirmDialog
+        isOpen={confirmDeleteChat !== null}
+        title="Delete chat?"
+        description={confirmDeleteChat ? `“${confirmDeleteChat.title || 'Untitled chat'}” will be permanently deleted. This can’t be undone.` : undefined}
+        confirmLabel="Delete"
+        onConfirm={async () => {
+          const target = confirmDeleteChat
+          if (!target) return
+          setConfirmDeleteChat(null)
+          dispatchChatDeleted({ chatId: target.id })
+          await fetch(`/api/app/conversations?conversationId=${target.id}`, { method: 'DELETE' })
+          setProjectChats((prev) => prev.filter((c) => c._id !== target.id))
+        }}
+        onCancel={() => setConfirmDeleteChat(null)}
+      />
     </div>
   )
 }
