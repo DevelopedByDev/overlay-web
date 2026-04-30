@@ -859,20 +859,42 @@ export default function NotebookEditor({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
-        <div className="shrink-0">
-          <h2 className="text-sm font-medium text-[var(--foreground)]">Notes</h2>
+      {/* Header - shows note title when active, otherwise "Notes" */}
+      {activeNote ? (
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
+          <input
+            type="text"
+            value={title}
+            onChange={handleTitleChange}
+            placeholder="Note title..."
+            className="flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          />
+          <div className="ml-3 flex shrink-0 items-center gap-2">
+            {projectName && (
+              <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+                <FolderOpen size={9} />
+                {projectName}
+              </span>
+            )}
+            {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
+          </div>
         </div>
-        <div className="flex-1" />
-        <button
-          onClick={createNote}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
-        >
-          <Plus size={14} />
-          New note
-        </button>
-      </div>
+      ) : (
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
+          <div className="shrink-0">
+            <h2 className="text-sm font-medium text-[var(--foreground)]">Notes</h2>
+          </div>
+          <div className="flex-1" />
+          <button
+            onClick={createNote}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
+          >
+            <Plus size={14} />
+            New note
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {showOwnSidebar && (
@@ -913,25 +935,6 @@ export default function NotebookEditor({
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {activeNote ? (
           <>
-            <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--background)] px-6">
-              <input
-                type="text"
-                value={title}
-                onChange={handleTitleChange}
-                placeholder="Note title..."
-                className="flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
-                style={{ fontFamily: 'var(--font-serif)' }}
-              />
-              <div className="ml-3 flex shrink-0 items-center gap-2">
-                {projectName && (
-                  <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
-                    <FolderOpen size={9} />
-                    {projectName}
-                  </span>
-                )}
-                {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
-              </div>
-            </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <EditorContent editor={editor} />
             </div>
