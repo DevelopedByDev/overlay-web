@@ -858,18 +858,34 @@ export default function NotebookEditor({
   }
 
   return (
-    <div className="flex h-full">
-      {showOwnSidebar && (
-        <div className="w-52 h-full flex flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
-          <div className="flex h-16 items-center border-b border-[var(--border)] px-3">
-            <button
-              onClick={createNote}
-              className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 transition-opacity"
-            >
-              <Plus size={13} />
-              New note
-            </button>
-          </div>
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
+        <div className="shrink-0">
+          <h2 className="text-sm font-medium text-[var(--foreground)]">Notes</h2>
+        </div>
+        <div className="flex-1" />
+        <button
+          onClick={createNote}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
+        >
+          <Plus size={14} />
+          New note
+        </button>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {showOwnSidebar && (
+          <div className="w-52 h-full flex flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
+            <div className="flex h-16 items-center border-b border-[var(--border)] px-3">
+              <button
+                onClick={createNote}
+                className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
+              >
+                <Plus size={13} />
+                New note
+              </button>
+            </div>
           <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
             {notes.map((note) => (
               <div
@@ -942,7 +958,7 @@ export default function NotebookEditor({
               <p className="text-sm text-[var(--muted)] mb-4">Select a note or create a new one</p>
               <button
                 onClick={createNote}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 transition-opacity"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
               >
                 <Plus size={14} />
                 New Note
@@ -952,5 +968,7 @@ export default function NotebookEditor({
         )}
       </div>
     </div>
+  </div>
   )
 }
+
