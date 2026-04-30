@@ -50,6 +50,13 @@ function uniqueSources(values: Array<string | null | undefined>): string[] {
   )
 }
 
+function toWebSocketOrigin(origin: string | null): string | null {
+  if (!origin) return null
+  if (origin.startsWith('https://')) return `wss://${origin.slice('https://'.length)}`
+  if (origin.startsWith('http://')) return `ws://${origin.slice('http://'.length)}`
+  return null
+}
+
 function getR2CspOrigin(): string | null {
   const s3Api = process.env.S3_API?.trim()
   if (s3Api) return parseOrigin(s3Api)
@@ -59,14 +66,19 @@ function getR2CspOrigin(): string | null {
 }
 
 function buildConnectSrc(): string[] {
+  const prodConvexOrigin = parseOrigin(process.env.NEXT_PUBLIC_CONVEX_URL)
+  const devConvexOrigin = parseOrigin(process.env.DEV_NEXT_PUBLIC_CONVEX_URL)
+
   return uniqueSources([
     "'self'",
     parseOrigin(process.env.NEXT_PUBLIC_POSTHOG_HOST),
     'https://us-assets.i.posthog.com',
     parseOrigin(process.env.NEXT_PUBLIC_SENTRY_DSN),
     parseOrigin(process.env.SENTRY_DSN),
-    parseOrigin(process.env.NEXT_PUBLIC_CONVEX_URL),
-    parseOrigin(process.env.DEV_NEXT_PUBLIC_CONVEX_URL),
+    prodConvexOrigin,
+    devConvexOrigin,
+    toWebSocketOrigin(prodConvexOrigin),
+    toWebSocketOrigin(devConvexOrigin),
     getR2CspOrigin(),
     IS_DEVELOPMENT ? 'ws:' : null,
     IS_DEVELOPMENT ? 'wss:' : null,
@@ -89,6 +101,7 @@ function buildCspPolicy(): string {
     "'unsafe-inline'",
     IS_DEVELOPMENT ? "'unsafe-eval'" : null,
     'https://va.vercel-scripts.com',
+    'https://us-assets.i.posthog.com',
   ])
 
   const directives = [
