@@ -127,9 +127,11 @@ function SignInContent() {
     <div className="flex min-h-screen w-full flex-col gradient-bg">
       <div className="liquid-glass" />
 
-      <PageNavbar />
+      <div className="hidden md:block">
+        <PageNavbar />
+      </div>
 
-      <main className="relative z-10 flex flex-1 items-center justify-center px-6 py-12">
+      <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-8 pt-20 md:px-6 md:py-12 md:pt-12">
         <div className="w-full max-w-md">
           <div className={card}>
             <h1 className={`text-2xl font-serif text-center mb-2 ${labelText}`}>Welcome back</h1>

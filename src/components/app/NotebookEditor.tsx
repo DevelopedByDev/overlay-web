@@ -939,7 +939,14 @@ export default function NotebookEditor({
               <p className="mb-2 text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
                 notes
               </p>
-              <p className="text-sm text-[var(--muted)]">Select a note or create a new one</p>
+              <p className="text-sm text-[var(--muted)] mb-4">Select a note or create a new one</p>
+              <button
+                onClick={createNote}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 transition-opacity"
+              >
+                <Plus size={14} />
+                New Note
+              </button>
             </div>
           </div>
         )}

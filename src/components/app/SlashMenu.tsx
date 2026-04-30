@@ -60,8 +60,8 @@ export default function SlashMenu({
         left: Math.max(8, Math.min(slashMenuPosition.left, window.innerWidth - 296)),
         width: 280,
         maxHeight: 320,
-        background: 'rgba(255,255,255,0.98)',
-        border: '1px solid #e5e5e5',
+        background: 'var(--card)',
+        border: '1px solid var(--border)',
         borderRadius: 12,
         boxShadow: '0 16px 40px rgba(0,0,0,0.12)',
         overflow: 'hidden',
@@ -71,9 +71,9 @@ export default function SlashMenu({
       <div
         style={{
           padding: '8px 12px',
-          borderBottom: '1px solid #f0f0f0',
+          borderBottom: '1px solid var(--border)',
           fontSize: 11,
-          color: '#71717a',
+          color: 'var(--muted)',
           fontWeight: 600,
           textTransform: 'uppercase',
           letterSpacing: '0.08em',
@@ -88,7 +88,7 @@ export default function SlashMenu({
             style={{
               padding: '16px',
               textAlign: 'center',
-              color: '#71717a',
+              color: 'var(--muted)',
               fontSize: 13,
             }}
           >
@@ -105,7 +105,7 @@ export default function SlashMenu({
                   style={{
                     padding: '6px 8px',
                     fontSize: 10,
-                    color: '#a1a1aa',
+                    color: 'var(--muted)',
                     fontWeight: 700,
                     textTransform: 'uppercase',
                     letterSpacing: '0.08em',
@@ -125,7 +125,7 @@ export default function SlashMenu({
                       style={{
                         width: '100%',
                         padding: '8px 10px',
-                        background: selectedSlashIndex === globalIndex ? '#f5f5f5' : 'transparent',
+                        background: selectedSlashIndex === globalIndex ? 'var(--muted-hover)' : 'transparent',
                         border: 'none',
                         borderRadius: 8,
                         display: 'flex',
@@ -142,22 +142,22 @@ export default function SlashMenu({
                           width: 28,
                           height: 28,
                           borderRadius: 8,
-                          background: '#fafafa',
-                          border: '1px solid #ededed',
+                          background: 'var(--muted-hover)',
+                          border: '1px solid var(--border)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          color: '#525252',
+                          color: 'var(--foreground)',
                           flexShrink: 0,
                         }}
                       >
                         {item.icon}
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, color: '#0a0a0a', fontWeight: 500 }}>
+                        <div style={{ fontSize: 13, color: 'var(--foreground)', fontWeight: 500 }}>
                           {item.title}
                         </div>
-                        <div style={{ fontSize: 11, color: '#71717a' }}>{item.description}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{item.description}</div>
                       </div>
                     </button>
                   )
