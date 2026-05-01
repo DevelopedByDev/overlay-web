@@ -2992,6 +2992,7 @@ export default function ChatInterface({
           schedule: draft.schedule,
           timezone: draft.timezone,
           enabled: true,
+          ...(activeChatId ? { sourceConversationId: activeChatId } : {}),
           ...(embedProjectId ? { projectId: embedProjectId } : {}),
         }),
       })
@@ -3009,7 +3010,7 @@ export default function ChatInterface({
     } finally {
       setIsDraftSaving(false)
     }
-  }, [embedProjectId])
+  }, [activeChatId, embedProjectId])
 
   const handleImageModelSelectionModeChange = useCallback(
     (next: AskModelSelectionMode) => {
@@ -3182,16 +3183,18 @@ export default function ChatInterface({
 
   function syncStandaloneChatUrl(chatId: string | null) {
     if (hideSidebar) return
-    router.replace(chatId ? `/app/chat?id=${encodeURIComponent(chatId)}` : '/app/chat')
+    const basePath = mode === 'automate' ? '/app/automations' : '/app/chat'
+    router.replace(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
   }
 
   async function createNewChat(): Promise<string | null> {
     persistActiveRuntimeUiState()
+    const initialTitle = mode === 'automate' ? 'New Automation' : DEFAULT_CHAT_TITLE
     const res = await fetch('/api/app/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: DEFAULT_CHAT_TITLE,
+        title: initialTitle,
         askModelIds: selectedModels,
         actModelId: selectedActModel,
         lastMode: 'act',
@@ -3203,7 +3206,7 @@ export default function ChatInterface({
       setInterruptedExchangeIdx(null)
       const newChat: Conversation = {
         _id: data.id,
-        title: DEFAULT_CHAT_TITLE,
+        title: initialTitle,
         lastModified: Date.now(),
         lastMode: 'act',
         askModelIds: selectedModels,
@@ -3216,14 +3219,14 @@ export default function ChatInterface({
         selectedActModel,
         selectedModels: [selectedActModel],
         askModelSelectionMode: 'single',
-        activeChatTitle: DEFAULT_CHAT_TITLE,
+        activeChatTitle: initialTitle,
         isFirstMessage: true,
       })
       resetRuntimeState(runtime, {
         selectedActModel,
         selectedModels: [selectedActModel],
         askModelSelectionMode: 'single',
-        activeChatTitle: DEFAULT_CHAT_TITLE,
+        activeChatTitle: initialTitle,
         isFirstMessage: true,
       })
       runtime.hydrated = true

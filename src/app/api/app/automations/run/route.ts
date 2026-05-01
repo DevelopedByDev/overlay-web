@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runActTurnForScheduledAutomation } from '@/lib/agent/run-act-turn'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export const maxDuration = 300
 
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
         instructions?: string
         projectId?: string
         modelId?: string
+        conversationId?: string
       }
     }
     const automation = body.automation
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
       instructions: automation.instructions,
       projectId: automation.projectId,
       modelId: automation.modelId,
+      conversationId: automation.conversationId as Id<'conversations'> | undefined,
       turnId: body.turnId,
       scheduledFor: body.scheduledFor,
     })

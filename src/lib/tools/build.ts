@@ -123,6 +123,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         enabled: z.boolean().optional(),
         projectId: z.string().optional(),
         modelId: z.string().optional(),
+        sourceConversationId: z.string().optional(),
       }),
       execute: async (input) => {
         assertOverlayToolAllowed('create_automation')

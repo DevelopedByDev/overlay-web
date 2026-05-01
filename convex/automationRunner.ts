@@ -71,8 +71,12 @@ export const runAutomation = internalAction({
 
     const now = Date.now()
     const turnId = `automation-${args.runId}-${now}`
+    const conversationId = (automation.sourceConversationId || automation.conversationId) as
+      | Id<'conversations'>
+      | undefined
     await ctx.runMutation(internal.automations.markRunStarted, {
       runId: args.runId,
+      conversationId,
       turnId,
       now,
     })
@@ -96,6 +100,7 @@ export const runAutomation = internalAction({
             instructions: automation.instructions || automation.instructionsMarkdown || '',
             projectId: automation.projectId,
             modelId: automation.modelId,
+            conversationId,
           },
         }),
       })

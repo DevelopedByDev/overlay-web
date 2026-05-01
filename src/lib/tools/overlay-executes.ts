@@ -320,6 +320,7 @@ export async function executeCreateAutomation(
     enabled?: boolean
     projectId?: string
     modelId?: string
+    sourceConversationId?: string
   },
 ) {
   try {
@@ -328,6 +329,7 @@ export async function executeCreateAutomation(
       {
         ...input,
         projectId: input.projectId ?? options.projectId,
+        sourceConversationId: input.sourceConversationId ?? options.conversationId,
         enabled: input.enabled ?? true,
         ...toolAuthBody(options),
       },

@@ -14,6 +14,7 @@ export type ScheduledAutomationTurn = {
   instructions: string
   projectId?: string
   modelId?: string
+  conversationId?: Id<'conversations'>
   turnId: string
   scheduledFor: number
 }
@@ -60,7 +61,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
 }> {
   const serverSecret = getInternalApiSecret()
   const title = `Automation: ${input.name}`
-  const conversationId = await convex.mutation<Id<'conversations'>>(
+  const conversationId = input.conversationId ?? await convex.mutation<Id<'conversations'>>(
     'conversations:create',
     {
       userId: input.userId,

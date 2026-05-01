@@ -12,6 +12,7 @@ import {
   Pencil,
   MessageSquare,
   Trash2,
+  Workflow,
 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 import { ConfirmDialog } from '@/components/app/ConfirmDialog'
@@ -759,6 +760,8 @@ type Automation = {
   name: string
   enabled: boolean
   createdAt: number
+  sourceConversationId?: string
+  conversationId?: string
   nextRunAt?: number
   lastError?: string
 }
@@ -769,6 +772,7 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
   const [automations, setAutomations] = useState<Automation[]>([])
   const [loading, setLoading] = useState(true)
   const activeId = searchParams?.get('id') ?? null
+  const activeAutomationId = searchParams?.get('automationId') ?? null
 
   useEffect(() => {
     async function load() {
@@ -822,21 +826,32 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
           : automation.enabled
             ? 'Enabled'
             : 'Paused'
+        const iconColor = automation.lastError
+          ? 'text-red-500'
+          : automation.enabled
+            ? 'text-green-500'
+            : 'text-[var(--muted-light)]'
+        const conversationId = automation.sourceConversationId || automation.conversationId
         return (
           <button
             key={automation._id}
             type="button"
             title={automation.lastError || statusLabel}
             onClick={() => {
-              router.push(`/app/automations?id=${automation._id}`)
+              router.push(
+                conversationId
+                  ? `/app/automations?id=${encodeURIComponent(conversationId)}&automationId=${encodeURIComponent(automation._id)}`
+                  : `/app/automations?automationId=${encodeURIComponent(automation._id)}`,
+              )
               onNavigate?.()
             }}
             className={`group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
-              activeId === automation._id
+              activeAutomationId === automation._id || activeId === automation._id || activeId === conversationId
                 ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                 : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
             }`}
           >
+            <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusColor}`} />
             <span className="flex-1 truncate text-left">{automation.name}</span>
           </button>

@@ -9,7 +9,7 @@ import {
   MessageSquare, BookOpen, Brain, FileText, Images, LogOut, User,
   Puzzle, Monitor, Smartphone, Chrome, ChevronUp, AlertCircle, Plug, Sparkles, Server, Package,
   FolderOpen, Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
-  Zap,
+  Workflow,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAuth } from '@/contexts/AuthContext'
@@ -41,7 +41,7 @@ const NAV_ITEMS: Array<{
   { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
   { href: '/app/tools', label: 'Extensions', icon: Puzzle },
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
-  { href: '/app/automations', label: 'Automations', icon: Zap },
+  { href: '/app/automations', label: 'Automations', icon: Workflow },
 ]
 
 const PROFILE_APP_LINKS = [
