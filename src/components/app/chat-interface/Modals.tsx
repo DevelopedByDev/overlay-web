@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { Check, Copy, X } from 'lucide-react'
+import type { AutomationDraftSummary } from '@/lib/automation-drafts'
 import type { SkillDraftSummary } from '@/lib/skill-drafts'
 import type { DraftModalState } from './types'
 
@@ -56,13 +57,16 @@ export function DraftReviewModal({
   saving,
   onClose,
   onSaveSkill,
+  onSaveAutomation,
 }: {
   state: DraftModalState | null
   saving: boolean
   onClose: () => void
   onSaveSkill: (draft: SkillDraftSummary) => Promise<void>
+  onSaveAutomation: (draft: AutomationDraftSummary) => Promise<void>
 }) {
   if (!state) return null
+  const isAutomation = state.kind === 'automation'
 
   return (
     <div
@@ -74,7 +78,9 @@ export function DraftReviewModal({
       <div className="w-full max-w-2xl rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <div>
-            <h3 className="text-sm font-medium text-[var(--foreground)]">Review Skill Draft</h3>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">
+              {isAutomation ? 'Review Automation Draft' : 'Review Skill Draft'}
+            </h3>
             <p className="mt-0.5 text-[11px] text-[var(--muted)]">{state.draft.reason}</p>
           </div>
           <button
@@ -93,6 +99,12 @@ export function DraftReviewModal({
             <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
               <p>Confidence: {state.draft.confidence}</p>
               <p>Integrations: {state.draft.detectedIntegrations.join(', ') || 'None detected'}</p>
+              {isAutomation ? (
+                <p>
+                  Schedule: {state.draft.schedule.kind}
+                  {'timezone' in state.draft ? ` (${state.draft.timezone})` : ''}
+                </p>
+              ) : null}
             </div>
           </div>
           <pre className="max-h-[280px] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
@@ -110,10 +122,16 @@ export function DraftReviewModal({
           <button
             type="button"
             disabled={saving}
-            onClick={() => void onSaveSkill(state.draft)}
+            onClick={() => {
+              if (state.kind === 'automation') {
+                void onSaveAutomation(state.draft)
+              } else {
+                void onSaveSkill(state.draft)
+              }
+            }}
             className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-colors hover:opacity-85 disabled:opacity-60"
           >
-            {saving ? 'Saving…' : 'Save skill'}
+            {saving ? 'Saving...' : isAutomation ? 'Create automation' : 'Save skill'}
           </button>
         </div>
       </div>

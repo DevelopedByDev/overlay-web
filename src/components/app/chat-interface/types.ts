@@ -2,6 +2,7 @@ import type { UIMessage } from 'ai'
 import type { Chat } from '@ai-sdk/react'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { OutputType } from '@/lib/output-types'
+import type { AutomationDraftSummary } from '@/lib/automation-drafts'
 import type { SkillDraftSummary } from '@/lib/skill-drafts'
 import type { Id } from '../../../../convex/_generated/dataModel'
 
@@ -92,6 +93,9 @@ export interface ChatMessageMetadata {
 export type DraftModalState = {
   kind: 'skill'
   draft: SkillDraftSummary
+} | {
+  kind: 'automation'
+  draft: AutomationDraftSummary
 }
 
 export type ServerConversationMessage = {

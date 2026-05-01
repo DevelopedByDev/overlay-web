@@ -329,6 +329,8 @@ export async function POST(request: NextRequest) {
       replyContextForModel,
       accessToken,
       userId: requestedUserId,
+      mode,
+      automationMode,
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
       multiModelTotal: rawMultiModelTotal,
@@ -344,6 +346,8 @@ export async function POST(request: NextRequest) {
       replyContextForModel?: string
       accessToken?: string
       userId?: string
+      mode?: 'chat' | 'automate'
+      automationMode?: boolean
       multiModelSlotIndex?: number
       multiModelTotal?: number
     } = await request.json()
@@ -629,6 +633,7 @@ export async function POST(request: NextRequest) {
     })
     const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
       latestUserText,
+      automationMode: automationMode === true || mode === 'automate',
     })
 
     const indexedNote = indexedFilesSystemNote(indexedAttachmentList)
@@ -733,7 +738,9 @@ export async function POST(request: NextRequest) {
     const generationNote =
       '\nYou also have generate_image and generate_video tools. Use them whenever the user asks to create visual content. For videos, inform the user that generation is async and may take a few minutes — results will appear in the Outputs tab.'
     const automationDraftNote =
-      '\nYou also have draft_automation_from_chat and draft_skill_from_chat. Use them only when the user is clearly asking for a repeatable workflow, recurring task, or reusable procedure. These tools only draft suggestions and never create live automations or skills.'
+      automationMode === true || mode === 'automate'
+        ? '\nYou are in Automate mode. Help the user design scheduled workflows. Use draft_automation_from_chat to propose a reviewable draft, and only call create_automation after the user explicitly confirms the draft should be created. Use list_automations, update_automation, pause_automation, and delete_automation for management requests.'
+        : '\nYou also have draft_automation_from_chat and draft_skill_from_chat when exposed. Use them only when the user is clearly asking for a repeatable workflow, recurring task, or reusable procedure. Draft tools only draft suggestions and never create live automations or skills.'
     const browserToolNote = paid
       ? '\nYou also have an interactive_browser_session tool that drives a real browser. Reserve it strictly for tasks that require UI interaction (login, form submission, JS-heavy scraping, screenshot). For any information lookup or research request, use perplexity_search and/or parallel_search instead.'
       : ''

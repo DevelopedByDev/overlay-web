@@ -1,5 +1,6 @@
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+import { buildAutomationDraftFromTurn, type AutomationScheduleDraft } from '@/lib/automation-drafts'
 import { buildSkillDraftFromTurn } from '@/lib/skill-drafts'
 
 export async function executeSearchKnowledge(
@@ -235,6 +236,182 @@ export async function executeListSkills(
       success: false,
       error: err instanceof Error ? err.message : 'Failed to list skills',
     }
+  }
+}
+
+export async function executeListAutomations(
+  options: OverlayToolsOptions,
+  input: { query?: string },
+) {
+  try {
+    const res = await callInternalApiGet(
+      '/api/app/automations',
+      options.accessToken,
+      options.baseUrl,
+      options.forwardCookie,
+      options.serverSecret,
+      options.userId,
+    )
+    if (!res.ok) {
+      return { success: false, error: 'Failed to fetch automations' }
+    }
+    const automations = (await res.json()) as Array<{
+      _id: string
+      name: string
+      description?: string
+      instructions: string
+      enabled: boolean
+      schedule?: Record<string, unknown>
+      nextRunAt?: number
+      lastRunAt?: number
+      lastError?: string
+    }>
+    if (input.query) {
+      const q = input.query.toLowerCase()
+      return {
+        success: true,
+        automations: automations.filter(
+          (automation) =>
+            automation.name.toLowerCase().includes(q) ||
+            (automation.description ?? '').toLowerCase().includes(q) ||
+            automation.instructions.toLowerCase().includes(q),
+        ),
+      }
+    }
+    return { success: true, automations }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to list automations',
+    }
+  }
+}
+
+export async function executeDraftAutomationFromChat(
+  _options: OverlayToolsOptions,
+  input: {
+    userText: string
+    assistantText?: string
+    reason?: string
+    timezone?: string
+  },
+) {
+  try {
+    return {
+      success: true,
+      draft: buildAutomationDraftFromTurn(input),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to draft automation',
+    }
+  }
+}
+
+export async function executeCreateAutomation(
+  options: OverlayToolsOptions,
+  input: {
+    name: string
+    description?: string
+    instructions: string
+    schedule: AutomationScheduleDraft
+    timezone?: string
+    enabled?: boolean
+    projectId?: string
+    modelId?: string
+  },
+) {
+  try {
+    const res = await callInternalApi(
+      '/api/app/automations',
+      {
+        ...input,
+        projectId: input.projectId ?? options.projectId,
+        enabled: input.enabled ?? true,
+        ...toolAuthBody(options),
+      },
+      options.accessToken,
+      options.baseUrl,
+      { forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to create automation' }))
+      return { success: false, error: (err as { error?: string }).error ?? 'Failed to create automation' }
+    }
+    const data = (await res.json()) as { id?: string }
+    return { success: true, automationId: data.id }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to create automation',
+    }
+  }
+}
+
+export async function executeUpdateAutomation(
+  options: OverlayToolsOptions,
+  input: {
+    automationId: string
+    name?: string
+    description?: string
+    instructions?: string
+    schedule?: AutomationScheduleDraft
+    timezone?: string
+    enabled?: boolean
+    modelId?: string
+  },
+) {
+  try {
+    const res = await callInternalApi(
+      '/api/app/automations',
+      { ...input, ...toolAuthBody(options) },
+      options.accessToken,
+      options.baseUrl,
+      { method: 'PATCH', forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to update automation' }))
+      return { success: false, error: (err as { error?: string }).error ?? 'Failed to update automation' }
+    }
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to update automation',
+    }
+  }
+}
+
+export async function executePauseAutomation(options: OverlayToolsOptions, input: { automationId: string }) {
+  try {
+    const res = await callInternalApi(
+      '/api/app/automations',
+      { automationId: input.automationId, action: 'pause', ...toolAuthBody(options) },
+      options.accessToken,
+      options.baseUrl,
+      { method: 'PATCH', forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) return { success: false, error: 'Failed to pause automation' }
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to pause automation' }
+  }
+}
+
+export async function executeDeleteAutomation(options: OverlayToolsOptions, input: { automationId: string }) {
+  try {
+    const res = await callInternalApi(
+      '/api/app/automations',
+      { automationId: input.automationId, ...toolAuthBody(options) },
+      options.accessToken,
+      options.baseUrl,
+      { method: 'DELETE', forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) return { success: false, error: 'Failed to delete automation' }
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to delete automation' }
   }
 }
 

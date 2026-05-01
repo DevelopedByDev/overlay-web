@@ -15,6 +15,14 @@ const VIDEO_TOOL_IDS = ['generate_video'] as const
 const BROWSER_TOOL_IDS = ['interactive_browser_session'] as const
 const DAYTONA_TOOL_IDS = ['run_daytona_sandbox'] as const
 const SKILL_DRAFT_TOOL_IDS = ['draft_skill_from_chat'] as const
+const AUTOMATION_TOOL_IDS = [
+  'list_automations',
+  'draft_automation_from_chat',
+  'create_automation',
+  'update_automation',
+  'pause_automation',
+  'delete_automation',
+] as const
 
 function matchesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text))
@@ -70,6 +78,13 @@ function isExplicitSkillDraftRequest(text: string): boolean {
   ])
 }
 
+function isExplicitAutomationRequest(text: string): boolean {
+  return matchesAny(text, [
+    /\b(automation|automations|automate|scheduled|recurring|repeatable|every day|daily|weekly|monthly|hourly)\b/i,
+    /\b(run|send|check|monitor|summari[sz]e|report)\b.{0,80}\b(every|daily|weekly|monthly|hourly|each morning|each week)\b/i,
+  ])
+}
+
 function addAll(target: Set<string>, toolIds: readonly string[]): void {
   for (const toolId of toolIds) {
     target.add(toolId)
@@ -78,6 +93,7 @@ function addAll(target: Set<string>, toolIds: readonly string[]): void {
 
 export function allowedOverlayToolIdsForTurn(params: {
   latestUserText?: string | null
+  automationMode?: boolean
   /**
    * When `chrome-extension`, never expose `interactive_browser_session` — the Chrome extension
    * drives the user’s real tab via Act/local tools; remote browser sessions are redundant and confusing.
@@ -108,6 +124,9 @@ export function allowedOverlayToolIdsForTurn(params: {
   }
   if (isExplicitSkillDraftRequest(text)) {
     addAll(allowed, SKILL_DRAFT_TOOL_IDS)
+  }
+  if (params.automationMode || isExplicitAutomationRequest(text)) {
+    addAll(allowed, AUTOMATION_TOOL_IDS)
   }
 
   return Array.from(allowed)

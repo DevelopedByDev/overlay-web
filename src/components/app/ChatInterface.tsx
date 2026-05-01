@@ -96,6 +96,7 @@ import {
   buildSkillDraftFromTurn,
   type SkillDraftSummary,
 } from '@/lib/skill-drafts'
+import type { AutomationDraftSummary } from '@/lib/automation-drafts'
 import { isOverlayGatedToolOutput } from '@/lib/overlay-gated-feature'
 import { warmIntegrationLogoCache } from '@/lib/integration-logo-cache'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -1109,17 +1110,18 @@ function ExchangeBlock({
               const t = seg.tools[0]!
               const draft = getDraftFromToolBlock(t)
               if (draft) {
+                const isAutomationDraft = draft.kind === 'automation'
                 return (
                   <DraftSuggestionCard
                     key={`${exchIdx}-draft-${seg.originIndex}-${t.key}`}
                     title={draft.draft.name}
                     description={draft.draft.description}
-                    badge="Skill Draft"
+                    badge={isAutomationDraft ? 'Automation Draft' : 'Skill Draft'}
                     reason={draft.draft.reason}
                     primaryLabel="Review draft"
-                    secondaryLabel="Save skill"
-                    onPrimary={() => onOpenDraft({ kind: 'skill', draft: draft.draft })}
-                    onSecondary={() => onOpenDraft({ kind: 'skill', draft: draft.draft })}
+                    secondaryLabel={isAutomationDraft ? 'Create automation' : 'Save skill'}
+                    onPrimary={() => onOpenDraft(draft)}
+                    onSecondary={() => onOpenDraft(draft)}
                   />
                 )
               }
@@ -2977,6 +2979,38 @@ export default function ChatInterface({
     }
   }, [embedProjectId])
 
+  const saveAutomationDraft = useCallback(async (draft: AutomationDraftSummary) => {
+    setIsDraftSaving(true)
+    try {
+      const res = await fetch('/api/app/automations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: draft.name,
+          description: draft.description,
+          instructions: draft.instructions,
+          schedule: draft.schedule,
+          timezone: draft.timezone,
+          enabled: true,
+          ...(embedProjectId ? { projectId: embedProjectId } : {}),
+        }),
+      })
+      const payload = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        throw new Error(payload.error || 'Failed to create automation')
+      }
+      setDraftModalState(null)
+      window.dispatchEvent(new Event('overlay:automations-updated'))
+      setComposerNotice('Automation created. It will run on its saved schedule.')
+      window.setTimeout(() => setComposerNotice(null), 5000)
+    } catch (error) {
+      setComposerNotice(error instanceof Error ? error.message : 'Failed to create automation.')
+      window.setTimeout(() => setComposerNotice(null), 6000)
+    } finally {
+      setIsDraftSaving(false)
+    }
+  }, [embedProjectId])
+
   const handleImageModelSelectionModeChange = useCallback(
     (next: AskModelSelectionMode) => {
       if (isActiveLoading || generationMode !== 'image') return
@@ -3582,6 +3616,8 @@ export default function ChatInterface({
       const baseBody = {
         conversationId: chatId,
         turnId,
+        mode,
+        automationMode: mode === 'automate',
         ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
         ...(replyExtra ? { replyContextForModel: replyExtra } : {}),
       }
@@ -3667,6 +3703,7 @@ export default function ChatInterface({
       selectedActModel,
       startSession,
       isActiveLoading,
+      mode,
     ],
   )
 
@@ -4230,6 +4267,8 @@ export default function ChatInterface({
     const commonActBody = {
       conversationId: chatId,
       turnId: textTurnId,
+      mode,
+      automationMode: mode === 'automate',
       ...(indexedFileNames.length > 0
         ? { indexedFileNames, indexedAttachments: indexedAttachments }
         : {}),
@@ -5695,6 +5734,7 @@ export default function ChatInterface({
             if (!isDraftSaving) setDraftModalState(null)
           }}
           onSaveSkill={saveSkillDraft}
+          onSaveAutomation={saveAutomationDraft}
         />
 
         {showOwnSidebar && (

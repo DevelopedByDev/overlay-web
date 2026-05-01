@@ -255,6 +255,112 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_userId', ['userId']).index('by_projectId', ['projectId']),
 
+  automations: defineTable({
+    userId: v.string(),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+    instructions: v.optional(v.string()),
+    enabled: v.optional(v.boolean()),
+    schedule: v.optional(v.object({
+      kind: v.union(
+        v.literal('interval'),
+        v.literal('daily'),
+        v.literal('weekly'),
+        v.literal('monthly'),
+      ),
+      intervalMinutes: v.optional(v.number()),
+      minuteUTC: v.optional(v.number()),
+      hourUTC: v.optional(v.number()),
+      dayOfWeekUTC: v.optional(v.number()),
+      dayOfMonthUTC: v.optional(v.number()),
+    })),
+    timezone: v.optional(v.string()),
+    nextRunAt: v.optional(v.number()),
+    lastRunAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    projectId: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    sourceConversationId: v.optional(v.id('conversations')),
+    concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
+    // Legacy automation fields kept so existing production rows continue to validate.
+    conversationId: v.optional(v.id('conversations')),
+    failureStreak: v.optional(v.number()),
+    title: v.optional(v.string()),
+    instructionsMarkdown: v.optional(v.string()),
+    lastRunStatus: v.optional(v.string()),
+    mode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
+    readinessMessage: v.optional(v.string()),
+    readinessState: v.optional(v.string()),
+    skillId: v.optional(v.id('skills')),
+    sourceType: v.optional(v.union(v.literal('skill'), v.literal('inline'))),
+    status: v.optional(v.union(v.literal('active'), v.literal('paused'), v.literal('archived'))),
+    scheduleKind: v.optional(v.union(
+      v.literal('once'),
+      v.literal('daily'),
+      v.literal('weekdays'),
+      v.literal('weekly'),
+      v.literal('monthly'),
+    )),
+    scheduleConfig: v.optional(v.object({
+      localTime: v.optional(v.string()),
+      weekdays: v.optional(v.array(v.number())),
+      dayOfMonth: v.optional(v.number()),
+      onceAt: v.optional(v.number()),
+    })),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
+    .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
+    .index('by_projectId', ['projectId']),
+
+  automationRuns: defineTable({
+    automationId: v.id('automations'),
+    userId: v.string(),
+    status: v.union(
+      v.literal('queued'),
+      v.literal('running'),
+      v.literal('completed'),
+      v.literal('succeeded'),
+      v.literal('failed'),
+      v.literal('skipped'),
+    ),
+    scheduledFor: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    conversationId: v.optional(v.id('conversations')),
+    turnId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    // Legacy run fields kept so existing production rows continue to validate.
+    attemptNumber: v.optional(v.number()),
+    assistantMessage: v.optional(v.string()),
+    assistantPersisted: v.optional(v.boolean()),
+    durationMs: v.optional(v.number()),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    executor: v.optional(v.any()),
+    failureStage: v.optional(v.string()),
+    finishedAt: v.optional(v.number()),
+    lastHeartbeatAt: v.optional(v.number()),
+    mode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
+    modelId: v.optional(v.string()),
+    promptSnapshot: v.optional(v.string()),
+    readinessState: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    resultSummary: v.optional(v.string()),
+    retryOfRunId: v.optional(v.id('automationRuns')),
+    stage: v.optional(v.string()),
+    triggerSource: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index('by_automationId_createdAt', ['automationId', 'createdAt'])
+    .index('by_automationId_status', ['automationId', 'status'])
+    .index('by_status_scheduledFor', ['status', 'scheduledFor'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
+
   mcpServers: defineTable({
     userId: v.string(),
     name: v.string(),

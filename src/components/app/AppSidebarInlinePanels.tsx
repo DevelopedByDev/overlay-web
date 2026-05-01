@@ -29,6 +29,7 @@ import {
 } from '@/lib/chat-title'
 
 const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
+const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
 
 type Conversation = { _id: string; title: string; lastModified: number }
 type Note = { _id: string; title: string; updatedAt: number }
@@ -753,7 +754,14 @@ export const toolsInlineItems = [
   { id: 'apps', label: 'Apps', locked: true },
 ] as const
 
-type Automation = { _id: string; name: string; enabled: boolean; createdAt: number }
+type Automation = {
+  _id: string
+  name: string
+  enabled: boolean
+  createdAt: number
+  nextRunAt?: number
+  lastError?: string
+}
 
 export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
@@ -776,6 +784,25 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
     void load()
   }, [])
 
+  useEffect(() => {
+    function handleAutomationsUpdated() {
+      setLoading(true)
+      async function load() {
+        try {
+          const res = await fetch('/api/app/automations')
+          if (res.ok) setAutomations(await res.json())
+        } catch {
+          // ignore
+        } finally {
+          setLoading(false)
+        }
+      }
+      void load()
+    }
+    window.addEventListener(AUTOMATIONS_UPDATED_EVENT, handleAutomationsUpdated)
+    return () => window.removeEventListener(AUTOMATIONS_UPDATED_EVENT, handleAutomationsUpdated)
+  }, [])
+
   if (loading) return <SidebarListSkeleton rows={3} />
 
   if (automations.length === 0) {
@@ -784,26 +811,37 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
 
   return (
     <div className="space-y-0.5">
-      {automations.map((automation) => (
-        <button
-          key={automation._id}
-          type="button"
-          onClick={() => {
-            router.push(`/app/automations?id=${automation._id}`)
-            onNavigate?.()
-          }}
-          className={`group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
-            activeId === automation._id
-              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-              : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-          }`}
-        >
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${automation.enabled ? 'bg-green-500' : 'bg-[var(--muted-light)]'}`}
-          />
-          <span className="flex-1 truncate text-left">{automation.name}</span>
-        </button>
-      ))}
+      {automations.map((automation) => {
+        const statusColor = automation.lastError
+          ? 'bg-red-500'
+          : automation.enabled
+            ? 'bg-green-500'
+            : 'bg-[var(--muted-light)]'
+        const statusLabel = automation.lastError
+          ? 'Error'
+          : automation.enabled
+            ? 'Enabled'
+            : 'Paused'
+        return (
+          <button
+            key={automation._id}
+            type="button"
+            title={automation.lastError || statusLabel}
+            onClick={() => {
+              router.push(`/app/automations?id=${automation._id}`)
+              onNavigate?.()
+            }}
+            className={`group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+              activeId === automation._id
+                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusColor}`} />
+            <span className="flex-1 truncate text-left">{automation.name}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }

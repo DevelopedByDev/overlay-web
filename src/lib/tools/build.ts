@@ -10,16 +10,22 @@ import {
 } from './notes-executes'
 import { executeBrowserRunTask } from './browser-executes'
 import {
+  executeCreateAutomation,
+  executeDeleteAutomation,
+  executeDraftAutomationFromChat,
   executeDraftSkillFromChat,
   executeDeleteMemory,
   executeGenerateImage,
   executeGenerateVideo,
+  executeListAutomations,
   executeListSkills,
+  executePauseAutomation,
   executeRunDaytonaSandbox,
   executeSaveMemory,
   executeSaveMemoryBatch,
   executeSearchInFiles,
   executeSearchKnowledge,
+  executeUpdateAutomation,
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
@@ -33,6 +39,29 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
   const shouldExposeTool = (toolId: string): boolean => !allowedToolIds || allowedToolIds.has(toolId)
   const includePaidOnlyOverlay = options.includePaidOnlyOverlayTools !== false
+  const automationScheduleSchema = z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('interval'),
+      intervalMinutes: z.number().int().min(1).max(60 * 24 * 365),
+    }),
+    z.object({
+      kind: z.literal('daily'),
+      hourUTC: z.number().int().min(0).max(23),
+      minuteUTC: z.number().int().min(0).max(59),
+    }),
+    z.object({
+      kind: z.literal('weekly'),
+      dayOfWeekUTC: z.number().int().min(0).max(6),
+      hourUTC: z.number().int().min(0).max(23),
+      minuteUTC: z.number().int().min(0).max(59),
+    }),
+    z.object({
+      kind: z.literal('monthly'),
+      dayOfMonthUTC: z.number().int().min(1).max(31),
+      hourUTC: z.number().int().min(0).max(23),
+      minuteUTC: z.number().int().min(0).max(59),
+    }),
+  ])
 
   if (shouldExposeTool('list_skills')) {
     tools.list_skills = tool({
@@ -48,6 +77,105 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       return executeListSkills(options, input)
     },
   })
+  }
+
+  if (shouldExposeTool('list_automations')) {
+    tools.list_automations = tool({
+      description:
+        'List the user\'s saved automations, including enabled state, schedule metadata, next run, last run, and last error. Use this in Automate mode or when the user asks about automations.',
+      inputSchema: z.object({
+        query: z.string().optional().describe('Optional keyword to filter automations by name, description, or instructions'),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowed('list_automations')
+        return executeListAutomations(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('draft_automation_from_chat')) {
+    tools.draft_automation_from_chat = tool({
+      description:
+        'Create an automation draft from the current chat turn. Use this when the user describes a recurring, scheduled, or background workflow. This only drafts the automation and never saves or enables it.',
+      inputSchema: z.object({
+        userText: z.string().describe('The user request to turn into an automation draft'),
+        assistantText: z.string().optional().describe('Optional assistant summary of the workflow'),
+        reason: z.string().optional().describe('Why this should become a scheduled automation'),
+        timezone: z.string().optional().describe('The user timezone if known; default UTC'),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowed('draft_automation_from_chat')
+        return executeDraftAutomationFromChat(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('create_automation')) {
+    tools.create_automation = tool({
+      description:
+        'Create and enable a scheduled automation after the user explicitly confirms the draft. Do not call this for vague ideas; collect name, instructions, and schedule first.',
+      inputSchema: z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        instructions: z.string().min(1),
+        schedule: automationScheduleSchema,
+        timezone: z.string().optional(),
+        enabled: z.boolean().optional(),
+        projectId: z.string().optional(),
+        modelId: z.string().optional(),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowed('create_automation')
+        return executeCreateAutomation(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('update_automation')) {
+    tools.update_automation = tool({
+      description:
+        'Update an existing automation. Use for changes to name, description, instructions, schedule, enabled state, timezone, or model.',
+      inputSchema: z.object({
+        automationId: z.string().min(1),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        instructions: z.string().optional(),
+        schedule: automationScheduleSchema.optional(),
+        timezone: z.string().optional(),
+        enabled: z.boolean().optional(),
+        modelId: z.string().optional(),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowed('update_automation')
+        return executeUpdateAutomation(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('pause_automation')) {
+    tools.pause_automation = tool({
+      description: 'Pause an existing automation so it no longer schedules future runs.',
+      inputSchema: z.object({
+        automationId: z.string().min(1),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowed('pause_automation')
+        return executePauseAutomation(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('delete_automation')) {
+    tools.delete_automation = tool({
+      description: 'Delete an existing automation after the user explicitly asks to remove it.',
+      inputSchema: z.object({
+        automationId: z.string().min(1),
+      }),
+      execute: async (input) => {
+        assertOverlayToolAllowed('delete_automation')
+        return executeDeleteAutomation(options, input)
+      },
+    })
   }
 
   if (shouldExposeTool('search_knowledge')) {

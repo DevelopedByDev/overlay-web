@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
 import { getToolName, isReasoningUIPart, isToolUIPart } from 'ai'
+import type { AutomationDraftSummary } from '@/lib/automation-drafts'
 import type { SkillDraftSummary } from '@/lib/skill-drafts'
 import type { WebSourceItem } from '@/lib/web-sources'
 import {
@@ -612,7 +613,7 @@ export function applyLiveMessageDeltaParts(
   return nextParts
 }
 
-export function getDraftFromToolBlock(block: ToolVisualBlock): { kind: 'skill'; draft: SkillDraftSummary } | null {
+export function getDraftFromToolBlock(block: ToolVisualBlock): { kind: 'skill'; draft: SkillDraftSummary } | { kind: 'automation'; draft: AutomationDraftSummary } | null {
   const output =
     block.toolOutput && typeof block.toolOutput === 'object'
       ? (block.toolOutput as Record<string, unknown>)
@@ -621,6 +622,9 @@ export function getDraftFromToolBlock(block: ToolVisualBlock): { kind: 'skill'; 
 
   if (block.name === 'draft_skill_from_chat' && output.draft && typeof output.draft === 'object') {
     return { kind: 'skill', draft: output.draft as SkillDraftSummary }
+  }
+  if (block.name === 'draft_automation_from_chat' && output.draft && typeof output.draft === 'object') {
+    return { kind: 'automation', draft: output.draft as AutomationDraftSummary }
   }
   return null
 }
