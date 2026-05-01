@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { BookOpen, FolderOpen, Loader2, MessageSquare, Pencil, Workflow } from 'lucide-react'
+import { BookOpen, FolderOpen, Loader2, MessageSquare, Pencil } from 'lucide-react'
 import { CHAT_CREATED_EVENT, CHAT_TITLE_UPDATED_EVENT, type ChatCreatedDetail, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
 
 const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 
 type HubChat = { _id: string; title: string }
 type HubNote = { _id: string; title?: string }
-type HubAutomation = { _id: string; title: string }
 import { FileViewerSkeleton } from '@/components/ui/Skeleton'
 import ChatInterface from './ChatInterface'
 import NotebookEditor from './NotebookEditor'
@@ -101,7 +100,6 @@ function ProjectHub({
   const [creating, setCreating] = useState<'chat' | 'note' | null>(null)
   const [chats, setChats] = useState<HubChat[]>([])
   const [notes, setNotes] = useState<HubNote[]>([])
-  const [automations, setAutomations] = useState<HubAutomation[]>([])
   const [listsLoading, setListsLoading] = useState(true)
   const [editingName, setEditingName] = useState(false)
   const [draftName, setDraftName] = useState(projectName)
@@ -115,19 +113,16 @@ function ProjectHub({
     setListsLoading(true)
     try {
       const q = encodeURIComponent(projectId)
-      const [chatsRes, notesRes, autoRes] = await Promise.all([
+      const [chatsRes, notesRes] = await Promise.all([
         fetch(`/api/app/conversations?projectId=${q}`),
         fetch(`/api/app/notes?projectId=${q}`),
-        fetch(`/api/app/automations?projectId=${q}`),
       ])
-      const [chatsJson, notesJson, autoJson] = await Promise.all([
+      const [chatsJson, notesJson] = await Promise.all([
         chatsRes.ok ? chatsRes.json() : [],
         notesRes.ok ? notesRes.json() : [],
-        autoRes.ok ? autoRes.json() : [],
       ])
       setChats(Array.isArray(chatsJson) ? chatsJson : [])
       setNotes(Array.isArray(notesJson) ? notesJson : [])
-      setAutomations(Array.isArray(autoJson) ? autoJson : [])
     } finally {
       setListsLoading(false)
     }
@@ -167,10 +162,6 @@ function ProjectHub({
       window.removeEventListener(PROJECT_META_UPDATED_EVENT, onProjectMeta)
     }
   }, [loadHubItems, pathname, projectId, router, searchParams])
-
-  const goAutomations = useCallback(() => {
-    router.push(`/app/automations?projectId=${encodeURIComponent(projectId)}&create=1`)
-  }, [router, projectId])
 
   async function commitProjectRename() {
     setEditingName(false)
@@ -320,10 +311,6 @@ function ProjectHub({
             {creating === 'note' ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
             New note
           </button>
-          <button type="button" className={headerBtnClass} onClick={goAutomations} disabled={creating !== null}>
-            <Workflow size={14} />
-            New automation
-          </button>
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
@@ -361,29 +348,6 @@ function ProjectHub({
                       <button type="button" className={`${rowClass} w-full`} onClick={() => openNote(n._id)}>
                         <BookOpen size={14} className="shrink-0 text-[var(--muted-light)]" />
                         <span className="min-w-0 truncate">{n.title || 'Untitled'}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-            <section>
-              <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--muted-light)]">Automations</h2>
-              {automations.length === 0 ? (
-                <p className="text-sm text-[var(--muted)]">No automations yet.</p>
-              ) : (
-                <ul className="space-y-1">
-                  {automations.map((a) => (
-                    <li key={a._id}>
-                      <button
-                        type="button"
-                        className={`${rowClass} w-full`}
-                        onClick={() =>
-                          router.push(`/app/automations?projectId=${encodeURIComponent(projectId)}`)
-                        }
-                      >
-                        <Workflow size={14} className="shrink-0 text-[var(--muted-light)]" />
-                        <span className="min-w-0 truncate">{a.title || 'Untitled'}</span>
                       </button>
                     </li>
                   ))}

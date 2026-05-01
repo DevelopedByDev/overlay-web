@@ -13,7 +13,6 @@ const INTERNAL_TOOL_IDS = new Set<string>([
   'update_note',
   'delete_note',
   'list_skills',
-  'draft_automation_from_chat',
   'draft_skill_from_chat',
 ])
 

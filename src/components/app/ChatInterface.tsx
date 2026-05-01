@@ -92,12 +92,9 @@ import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
 import {
-  buildAutomationDraftFromTurn,
   buildSkillDraftFromTurn,
-  type AutomationDraftSummary,
-  type ChatAutomationSuggestionSummary,
   type SkillDraftSummary,
-} from '@/lib/automation-drafts'
+} from '@/lib/skill-drafts'
 import { isOverlayGatedToolOutput } from '@/lib/overlay-gated-feature'
 import { warmIntegrationLogoCache } from '@/lib/integration-logo-cache'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -1364,18 +1361,12 @@ type ChatMessageMetadata = {
   replySnippet?: string
   sourceCitations?: SourceCitationMap
   routedModelId?: string
-  automationSuggestion?: ChatAutomationSuggestionSummary
 }
 
-type DraftModalState =
-  | {
-      kind: 'automation'
-      draft: AutomationDraftSummary
-    }
-  | {
-      kind: 'skill'
-      draft: SkillDraftSummary
-    }
+type DraftModalState = {
+  kind: 'skill'
+  draft: SkillDraftSummary
+}
 
 function getUserMessageDocNames(msg: unknown): string[] {
   const m = msg as { metadata?: ChatMessageMetadata }
@@ -1420,13 +1411,6 @@ function getRoutedModelId(msg: unknown): string | null {
   }
   const routedModelId = m.metadata?.routedModelId?.trim() || m.routedModelId?.trim()
   return routedModelId || null
-}
-
-function getAutomationSuggestion(msg: unknown): ChatAutomationSuggestionSummary | null {
-  const m = msg as {
-    metadata?: ChatMessageMetadata
-  }
-  return m.metadata?.automationSuggestion ?? null
 }
 
 type ServerConversationMessage = {
@@ -1617,19 +1601,13 @@ function applyLiveMessageDeltaParts(
   return nextParts
 }
 
-function getDraftFromToolBlock(block: ToolVisualBlock):
-  | { kind: 'automation'; draft: AutomationDraftSummary }
-  | { kind: 'skill'; draft: SkillDraftSummary }
-  | null {
+function getDraftFromToolBlock(block: ToolVisualBlock): { kind: 'skill'; draft: SkillDraftSummary } | null {
   const output =
     block.toolOutput && typeof block.toolOutput === 'object'
       ? (block.toolOutput as Record<string, unknown>)
       : null
   if (!output || output.success !== true) return null
 
-  if (block.name === 'draft_automation_from_chat' && output.draft && typeof output.draft === 'object') {
-    return { kind: 'automation', draft: output.draft as AutomationDraftSummary }
-  }
   if (block.name === 'draft_skill_from_chat' && output.draft && typeof output.draft === 'object') {
     return { kind: 'skill', draft: output.draft as SkillDraftSummary }
   }
@@ -1855,7 +1833,6 @@ interface ExchangeBlockProps {
   isLoadingTabs: boolean
   responseInProgress: boolean
   sourceCitations?: SourceCitationMap
-  automationSuggestion?: ChatAutomationSuggestionSummary | null
   turnIdForActions: string | null
   modelLabel: string
   onDeleteTurn: () => void
@@ -1878,7 +1855,7 @@ interface ExchangeBlockProps {
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
-  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations, automationSuggestion,
+  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview,
 }: ExchangeBlockProps) {
@@ -2030,18 +2007,14 @@ function ExchangeBlock({
                 return (
                   <DraftSuggestionCard
                     key={`${exchIdx}-draft-${seg.originIndex}-${t.key}`}
-                    title={draft.kind === 'automation' ? draft.draft.title : draft.draft.name}
-                    description={draft.kind === 'automation' ? draft.draft.description : draft.draft.description}
-                    badge={draft.kind === 'automation' ? 'Automation Draft' : 'Skill Draft'}
-                    reason={draft.kind === 'automation' ? draft.draft.reason : draft.draft.reason}
+                    title={draft.draft.name}
+                    description={draft.draft.description}
+                    badge="Skill Draft"
+                    reason={draft.draft.reason}
                     primaryLabel="Review draft"
-                    secondaryLabel={draft.kind === 'automation' ? 'Create automation' : 'Save skill'}
-                    onPrimary={() => onOpenDraft(draft.kind === 'automation'
-                      ? { kind: 'automation', draft: draft.draft }
-                      : { kind: 'skill', draft: draft.draft })}
-                    onSecondary={() => onOpenDraft(draft.kind === 'automation'
-                      ? { kind: 'automation', draft: draft.draft }
-                      : { kind: 'skill', draft: draft.draft })}
+                    secondaryLabel="Save skill"
+                    onPrimary={() => onOpenDraft({ kind: 'skill', draft: draft.draft })}
+                    onSecondary={() => onOpenDraft({ kind: 'skill', draft: draft.draft })}
                   />
                 )
               }
@@ -2136,41 +2109,6 @@ function ExchangeBlock({
             </div>
           )
         })}
-
-        {!isStreaming && !errorMessage && automationSuggestion && !hasDraftToolCard ? (
-          <DraftSuggestionCard
-            title={automationSuggestion.kind === 'automation' ? 'Turn This Into An Automation' : 'Save This As A Skill'}
-            description={
-              automationSuggestion.kind === 'automation'
-                ? 'This Act workflow looks repeatable. Review a draft before saving it into Automations.'
-                : 'This workflow looks reusable. Review a draft before saving it as a skill.'
-            }
-            badge={automationSuggestion.kind === 'automation' ? 'Suggested Automation' : 'Suggested Skill'}
-            reason={automationSuggestion.reason}
-            primaryLabel="Review draft"
-            onPrimary={() =>
-              onOpenDraft(
-                automationSuggestion.kind === 'automation'
-                  ? {
-                      kind: 'automation',
-                      draft: buildAutomationDraftFromTurn({
-                        userText: userBodyText,
-                        assistantText: assistantPlainText,
-                        reason: automationSuggestion.reason,
-                      }),
-                    }
-                  : {
-                      kind: 'skill',
-                      draft: buildSkillDraftFromTurn({
-                        userText: userBodyText,
-                        assistantText: assistantPlainText,
-                        reason: automationSuggestion.reason,
-                      }),
-                    },
-              )
-            }
-          />
-        ) : null}
 
         {responseInProgress && assistantVisualBlocks.length === 0 && (
           <div className="flex items-center px-1 py-2 min-h-7" aria-live="polite" aria-busy="true">
@@ -2349,13 +2287,11 @@ function DraftReviewModal({
   state,
   saving,
   onClose,
-  onSaveAutomation,
   onSaveSkill,
 }: {
   state: DraftModalState | null
   saving: boolean
   onClose: () => void
-  onSaveAutomation: (draft: AutomationDraftSummary) => Promise<void>
   onSaveSkill: (draft: SkillDraftSummary) => Promise<void>
 }) {
   if (!state) return null
@@ -2370,12 +2306,8 @@ function DraftReviewModal({
       <div className="w-full max-w-2xl rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <div>
-            <h3 className="text-sm font-medium text-[var(--foreground)]">
-              {state.kind === 'automation' ? 'Review Automation Draft' : 'Review Skill Draft'}
-            </h3>
-            <p className="mt-0.5 text-[11px] text-[var(--muted)]">
-              {state.kind === 'automation' ? state.draft.reason : state.draft.reason}
-            </p>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">Review Skill Draft</h3>
+            <p className="mt-0.5 text-[11px] text-[var(--muted)]">{state.draft.reason}</p>
           </div>
           <button
             type="button"
@@ -2387,40 +2319,17 @@ function DraftReviewModal({
           </button>
         </div>
         <div className="space-y-4 px-4 py-4">
-          {state.kind === 'automation' ? (
-            <>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                <p className="text-sm font-medium text-[var(--foreground)]">{state.draft.title}</p>
-                <p className="mt-1 text-[12px] text-[var(--muted)]">{state.draft.description}</p>
-                <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
-                  <p>Agent</p>
-                  <p>Model: {getChatModelDisplayName(state.draft.modelId)}</p>
-                  <p>Confidence: {state.draft.confidence}</p>
-                  <p>Integrations: {state.draft.detectedIntegrations.join(', ') || 'None detected'}</p>
-                  <p className="sm:col-span-2">
-                    Schedule: {state.draft.suggestedSchedule?.label || 'No schedule inferred. You can edit this later in Automations.'}
-                  </p>
-                </div>
-              </div>
-              <pre className="max-h-[280px] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
-                {state.draft.instructionsMarkdown}
-              </pre>
-            </>
-          ) : (
-            <>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                <p className="text-sm font-medium text-[var(--foreground)]">{state.draft.name}</p>
-                <p className="mt-1 text-[12px] text-[var(--muted)]">{state.draft.description}</p>
-                <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
-                  <p>Confidence: {state.draft.confidence}</p>
-                  <p>Integrations: {state.draft.detectedIntegrations.join(', ') || 'None detected'}</p>
-                </div>
-              </div>
-              <pre className="max-h-[280px] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
-                {state.draft.instructions}
-              </pre>
-            </>
-          )}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+            <p className="text-sm font-medium text-[var(--foreground)]">{state.draft.name}</p>
+            <p className="mt-1 text-[12px] text-[var(--muted)]">{state.draft.description}</p>
+            <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
+              <p>Confidence: {state.draft.confidence}</p>
+              <p>Integrations: {state.draft.detectedIntegrations.join(', ') || 'None detected'}</p>
+            </div>
+          </div>
+          <pre className="max-h-[280px] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
+            {state.draft.instructions}
+          </pre>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-4 py-3">
           <button
@@ -2433,10 +2342,10 @@ function DraftReviewModal({
           <button
             type="button"
             disabled={saving}
-            onClick={() => void (state.kind === 'automation' ? onSaveAutomation(state.draft) : onSaveSkill(state.draft))}
+            onClick={() => void onSaveSkill(state.draft)}
             className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-colors hover:opacity-85 disabled:opacity-60"
           >
-            {saving ? 'Saving…' : state.kind === 'automation' ? 'Create automation' : 'Save skill'}
+            {saving ? 'Saving…' : 'Save skill'}
           </button>
         </div>
       </div>
@@ -4201,42 +4110,6 @@ export default function ChatInterface({
   const jumpToReplyTarget = useCallback((turnId: string) => {
     scrollToExchangeTurn(turnId)
   }, [])
-
-  const saveAutomationDraft = useCallback(async (draft: AutomationDraftSummary) => {
-    setIsDraftSaving(true)
-    try {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-      const res = await fetch('/api/app/automations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: draft.title,
-          description: draft.description,
-          sourceType: 'inline',
-          instructionsMarkdown: draft.instructionsMarkdown,
-          mode: draft.mode,
-          modelId: draft.modelId,
-          status: 'active',
-          timezone,
-          scheduleKind: draft.suggestedSchedule?.kind ?? 'daily',
-          scheduleConfig: draft.suggestedSchedule?.config ?? { localTime: '09:00' },
-          ...(embedProjectId ? { projectId: embedProjectId } : {}),
-        }),
-      })
-      const payload = (await res.json().catch(() => ({}))) as { error?: string }
-      if (!res.ok) {
-        throw new Error(payload.error || 'Failed to create automation draft')
-      }
-      setDraftModalState(null)
-      setComposerNotice('Automation created. Review it in Automations.')
-      window.setTimeout(() => setComposerNotice(null), 5000)
-    } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Failed to create automation.')
-      window.setTimeout(() => setComposerNotice(null), 6000)
-    } finally {
-      setIsDraftSaving(false)
-    }
-  }, [embedProjectId])
 
   const saveSkillDraft = useCallback(async (draft: SkillDraftSummary) => {
     setIsDraftSaving(true)
@@ -6503,8 +6376,6 @@ export default function ChatInterface({
                 const sourceCitations = (
                   responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined
                 )?.metadata?.sourceCitations
-                const automationSuggestion = responseMsg ? getAutomationSuggestion(responseMsg) : null
-
                 const routedModelId = responseMsg ? getRoutedModelId(responseMsg) : null
                 const routedModelName =
                   selectedModelId === FREE_TIER_AUTO_MODEL_ID && routedModelId
@@ -6554,7 +6425,6 @@ export default function ChatInterface({
                     isLoadingTabs={isActiveLoading}
                     responseInProgress={instLoading}
                     sourceCitations={sourceCitations}
-                    automationSuggestion={automationSuggestion}
                     turnIdForActions={textTurnIdForActions}
                     modelLabel={modelLabel}
                     onDeleteTurn={() => {
@@ -6942,7 +6812,6 @@ export default function ChatInterface({
           onClose={() => {
             if (!isDraftSaving) setDraftModalState(null)
           }}
-          onSaveAutomation={saveAutomationDraft}
           onSaveSkill={saveSkillDraft}
         />
 

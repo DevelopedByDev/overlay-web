@@ -1,9 +1,6 @@
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
-import {
-  buildAutomationDraftFromTurn,
-  buildSkillDraftFromTurn,
-} from '@/lib/automation-drafts'
+import { buildSkillDraftFromTurn } from '@/lib/skill-drafts'
 
 export async function executeSearchKnowledge(
   options: OverlayToolsOptions,
@@ -462,29 +459,6 @@ export async function executeRunDaytonaSandbox(
   }
 }
 
-export async function executeDraftAutomationFromChat(
-  _options: OverlayToolsOptions,
-  input: {
-    userText: string
-    assistantText?: string
-    toolNames?: string[]
-    reason?: string
-    mode?: 'act'
-    modelId?: string
-  },
-) {
-  try {
-    return {
-      success: true,
-      draft: buildAutomationDraftFromTurn(input),
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to draft automation',
-    }
-  }
-}
 
 export async function executeDraftSkillFromChat(
   _options: OverlayToolsOptions,

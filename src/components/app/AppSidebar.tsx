@@ -8,7 +8,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, BookOpen, Brain, FileText, Images, LogOut, User,
   Puzzle, Monitor, Smartphone, Chrome, ChevronUp, AlertCircle, Plug, Sparkles, Server, Package,
-  FolderOpen, Loader2, Menu, X, ArrowUp, Workflow, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
+  FolderOpen, Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAuth } from '@/contexts/AuthContext'
@@ -39,7 +39,6 @@ const NAV_ITEMS: Array<{
   { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
   { href: '/app/tools', label: 'Extensions', icon: Puzzle },
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
-  { href: '/app/automations', label: 'Automations', icon: Workflow },
 ]
 
 const PROFILE_APP_LINKS = [
@@ -465,7 +464,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                   type="button"
                   disabled
                   title="Coming soon"
-                  aria-label="Automations (coming soon)"
+                  aria-label={`${label} (coming soon)`}
                   className={commonClass}
                 >
                   <Icon size={15} />
@@ -489,7 +488,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                   }}
                   title={shortcut ? `${label} · ⌥${shortcut}` : label}
                   aria-label={label}
-                  data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/knowledge' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : href === '/app/automations' ? 'nav-automations' : undefined}
+                  data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/knowledge' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : undefined}
                   className={commonClass}
                 >
                   {sidebarCollapsed && isPending ? (

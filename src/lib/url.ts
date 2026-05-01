@@ -72,15 +72,6 @@ export function getInternalApiBaseUrl(request?: NextRequest): string {
   return canonicalBaseUrl
 }
 
-export function getAutomationExecutorBaseUrl(): string {
-  const explicitExecutorBaseUrl = process.env.AUTOMATION_EXECUTOR_BASE_URL?.trim()
-  if (explicitExecutorBaseUrl) {
-    return normalizeAppBaseUrl(explicitExecutorBaseUrl, getBaseUrl())
-  }
-
-  return getBaseUrl()
-}
-
 const DEFAULT_APP_URL = 'https://getoverlay.io'
 
 export function getBaseUrl(): string {

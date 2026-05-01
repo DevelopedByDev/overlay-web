@@ -80,7 +80,6 @@ export async function GET(request: NextRequest) {
         canUseVoiceTranscription: true,
         canUseKnowledge: true,
         canUseProjects: true,
-        canUseAutomations: true,
         canUseExtensions: true,
       },
       destinations: [...CANONICAL_APP_DESTINATIONS],

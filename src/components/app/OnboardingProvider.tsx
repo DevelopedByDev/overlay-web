@@ -42,13 +42,6 @@ const TOUR_STEPS: TourStep[] = [
       "Store memories, files, connectors, skills, and MCPs — your AI's long-term context and extensions, always at hand.",
     placement: 'right',
   },
-  {
-    target: 'nav-automations',
-    title: 'Run automations autonomously',
-    description:
-      "Build workflows that run on their own — no manual prompting needed. Set them up once and let them work in the background.",
-    placement: 'right',
-  },
 ]
 
 interface OnboardingContextType {
@@ -100,7 +93,6 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
           <li>💬 <strong className="text-[var(--foreground)]">Chat</strong> — talk to the best models, or multiple at once</li>
           <li>🎨 <strong className="text-[var(--foreground)]">Generate</strong> — images & video with best-in-class models</li>
           <li>🧠 <strong className="text-[var(--foreground)]">Knowledge</strong> — memories, files, connectors, skills & MCPs</li>
-          <li>⚡ <strong className="text-[var(--foreground)]">Automations</strong> — workflows that run themselves</li>
         </ul>
         <button
           type="button"

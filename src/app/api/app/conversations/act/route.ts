@@ -47,7 +47,6 @@ import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
 import { buildSecondarySystemPromptExtension } from '@/lib/operator-system-prompt'
-import { shouldSuggestAutomationFromTurn } from '@/lib/automation-drafts'
 import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
@@ -800,9 +799,6 @@ export async function POST(request: NextRequest) {
         (!paid && (effectiveModelId === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(effectiveModelId)) ? freeTierModelLeakNote : ''),
     })
 
-    let automationSuggestion:
-      | ReturnType<typeof shouldSuggestAutomationFromTurn>
-      | undefined
     const toolFailuresByCallId = new Map<string, { toolName: string; error: string }>()
     const finishedToolCallIds = new Set<string>()
 
@@ -866,25 +862,6 @@ export async function POST(request: NextRequest) {
           const rid = event.steps.at(-1)?.response.modelId
           if (typeof rid === 'string' && rid) streamedRoutedModelId = rid
         }
-        automationSuggestion =
-          shouldSuggestAutomationFromTurn({
-            userText: latestUserText ?? '',
-            toolNames: event.steps
-              .flatMap((step) => (step.toolCalls ?? []).map((toolCall) => toolCall?.toolName))
-              .filter((toolName): toolName is string => Boolean(toolName)),
-            recentUserTexts: messages
-              .filter((message) => message.role === 'user')
-              .map((message) =>
-                message.parts
-                  ?.filter((part) => part.type === 'text')
-                  .map((part) => ('text' in part ? part.text || '' : ''))
-                  .join(' ')
-                  .trim() || '',
-              )
-              .filter(Boolean)
-              .slice(-4),
-          }) ?? undefined
-
         const providerCostUsd =
           isNvidiaNimChatModelId(effectiveModelId)
             ? 0
@@ -1037,9 +1014,6 @@ export async function POST(request: NextRequest) {
         if (hasCitations && (part.type === 'start' || part.type === 'finish')) {
           // Send early so the client can linkify **Sources:** while the reply streams.
           metadata.sourceCitations = sourceCitationMap
-        }
-        if (automationSuggestion && part.type === 'finish') {
-          metadata.automationSuggestion = automationSuggestion
         }
         if (
           effectiveModelId === FREE_TIER_AUTO_MODEL_ID &&
