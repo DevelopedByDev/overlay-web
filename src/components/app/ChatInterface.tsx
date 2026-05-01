@@ -99,6 +99,70 @@ import {
 import { isOverlayGatedToolOutput } from '@/lib/overlay-gated-feature'
 import { warmIntegrationLogoCache } from '@/lib/integration-logo-cache'
 import { ConfirmDialog } from './ConfirmDialog'
+import {
+  ASSISTANT_COLLAPSIBLE_BODY_CLASS,
+  CHAT_GEN_MODE_KEY,
+  DEFAULT_CHAT_TITLE,
+  IMAGE_MODEL_SELECTION_MODE_KEY,
+  OVERLAY_LOGO_SRC,
+  SELECTED_IMAGE_MODELS_KEY,
+  SELECTED_VIDEO_MODELS_KEY,
+  SUPPORTED_INPUT_IMAGE_TYPES,
+  TOOL_UI_DONE_STATES,
+  VIDEO_MODEL_SELECTION_MODE_KEY,
+  VIDEO_SUB_MODE_KEY,
+  VIDEO_SUB_MODE_LABELS,
+  VIDEO_SUB_MODES,
+} from './chat-interface/constants'
+import { DraftReviewModal, FlashCopyIconButton } from './chat-interface/Modals'
+import {
+  applyLiveMessageDeltaParts,
+  assistantBlocksToPlainText,
+  buildAssistantVisualSegments,
+  buildAssistantVisualSequence,
+  buildMediaSummary,
+  chatGreetingLine,
+  chooseAssistantCandidate,
+  collectWebSourcesFromBlocks,
+  collectWebSourcesFromSingleBlock,
+  computeToolChainFlags,
+  errorLabel,
+  faviconUrl,
+  generateTitle,
+  getDescriptiveToolLabel,
+  getDraftFromToolBlock,
+  getMessageImages,
+  getMessageText,
+  getRoutedModelId,
+  getUserMessageDocNames,
+  getUserReplyThreadMeta,
+  getUserTurnId,
+  groupOutputsIntoExchanges,
+  hostFromUrl,
+  pickFirstStringFromInput,
+  resolveActAssistant,
+  sanitizeEmptyChatStarters,
+  scrollToExchangeTurn,
+  splitUserDisplayText,
+  stripAssistantAfterUserTurn,
+} from './chat-interface/chatLogic'
+import type {
+  AskModelSelectionMode,
+  AssistantVisualBlock,
+  AttachedImage,
+  ChatMessageMetadata,
+  ChatOutput,
+  Conversation,
+  ConversationRuntime,
+  ConversationUiState,
+  DraftModalState,
+  Entitlements,
+  GenerationResult,
+  LiveConversationMessage,
+  LiveMessageDelta,
+  PendingChatDocument,
+  ToolVisualBlock,
+} from './chat-interface/types'
 
 function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   const router = useRouter()
@@ -182,500 +246,7 @@ function cloneUiMessageForThread(msg: UIMessage): UIMessage {
   }
 }
 
-interface Conversation {
-  _id: string
-  title: string
-  lastModified: number
-  lastMode?: 'ask' | 'act'
-  askModelIds?: string[]
-  actModelId?: string
-}
 
-interface AttachedImage {
-  dataUrl: string
-  mimeType: string
-  name: string
-}
-
-interface PendingChatDocument {
-  clientId: string
-  name: string
-  /** Convex file row ids (all parts when a long upload was split). */
-  fileIds: string[]
-  status: 'uploading' | 'ready' | 'error'
-  error?: string
-}
-
-interface ChatOutput {
-  _id: string
-  type: OutputType
-  status: 'pending' | 'completed' | 'failed'
-  prompt: string
-  modelId: string
-  url?: string
-  createdAt: number
-  turnId?: string
-}
-
-interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  planKind?: 'free' | 'paid'
-  creditsUsed: number
-  creditsTotal: number
-  budgetUsedCents?: number
-  budgetTotalCents?: number
-  budgetRemainingCents?: number
-  autoTopUpEnabled?: boolean
-  topUpAmountCents?: number
-  autoTopUpAmountCents?: number
-  topUpMinAmountCents?: number
-  topUpMaxAmountCents?: number
-  topUpStepAmountCents?: number
-  dailyUsage: { ask: number; write: number; agent: number }
-  dailyLimits: { ask: number; write: number; agent: number }
-}
-
-// ─── helpers ────────────────────────────────────────────────────────────────
-
-function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> }): string {
-  if (!msg.parts) return ''
-  return msg.parts.filter((p) => p.type === 'text').map((p) => p.text || '').join('')
-}
-
-function messageHasVisibleAssistantActivity(msg: { parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }> }): boolean {
-  return (msg.parts ?? []).some((part) => {
-    if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
-    if (part.type === 'tool-invocation') return Boolean(part.toolInvocation)
-    if (part.type === 'file') return Boolean(part.url)
-    return part.type.startsWith('tool-')
-  })
-}
-
-function chooseAssistantCandidate<T extends { role: string; parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }> }>(
-  candidates: T[],
-): T | null {
-  if (candidates.length === 0) return null
-  return candidates.find(messageHasVisibleAssistantActivity) ?? candidates[candidates.length - 1]!
-}
-
-type AssistantVisualBlock =
-  | {
-      kind: 'tool'
-      key: string
-      name: string
-      state: string
-      toolInput?: Record<string, unknown>
-      toolOutput?: unknown
-    }
-  | { kind: 'text'; text: string }
-  | { kind: 'file'; url: string; mediaType?: string }
-  | { kind: 'reasoning'; key: string; text: string; state?: string }
-
-/**
- * Preserve message `parts` order so tools and text interleave (matches stream / persisted transcript).
- */
-function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVisualBlock[] {
-  if (!parts?.length) return []
-  const out: AssistantVisualBlock[] = []
-  for (const p of parts) {
-    const legacy = p as {
-      type?: string
-      toolInvocation?: {
-        toolCallId?: string
-        toolName?: string
-        state?: string
-        toolInput?: Record<string, unknown>
-        toolOutput?: unknown
-      }
-    }
-    if (legacy?.type === 'tool-invocation' && legacy.toolInvocation?.toolName) {
-      const inv = legacy.toolInvocation
-      out.push({
-        kind: 'tool',
-        key: (inv.toolCallId && inv.toolCallId.trim()) || `legacy-inv-${out.length}`,
-        name: inv.toolName as string,
-        state: inv.state ?? 'output-available',
-        toolInput: inv.toolInput,
-        toolOutput: inv.toolOutput,
-      })
-      continue
-    }
-    if (isToolUIPart(p as never)) {
-      const part = p as {
-        toolCallId?: string
-        state: string
-        input?: Record<string, unknown>
-        output?: unknown
-      }
-      out.push({
-        kind: 'tool',
-        key: (part.toolCallId && part.toolCallId.trim()) || `sdk-tool-${out.length}`,
-        name: getToolName(p as never),
-        state: part.state,
-        toolInput: part.input,
-        toolOutput: part.output,
-      })
-      continue
-    }
-    if (isReasoningUIPart(p as never)) {
-      const part = p as { type: 'reasoning'; text?: string; state?: string }
-      const merged = normalizeAgentAssistantText(part.text?.trim() || '')
-      if (!merged) continue
-      const prev = out[out.length - 1]
-      if (prev?.kind === 'reasoning') {
-        prev.text = normalizeAgentAssistantText(`${prev.text}\n\n${merged}`)
-      } else {
-        out.push({
-          kind: 'reasoning',
-          key: `reasoning-${out.length}`,
-          text: merged,
-          state: part.state,
-        })
-      }
-      continue
-    }
-    const pt = p as { type?: string; text?: string; url?: string; mediaType?: string }
-    if (pt.type === 'file' && typeof pt.url === 'string' && pt.url) {
-      out.push({ kind: 'file', url: pt.url, mediaType: pt.mediaType })
-      continue
-    }
-    if (pt.type === 'text' && typeof pt.text === 'string') {
-      const segList = splitRedactedThinkingSegments(pt.text)
-      for (const seg of segList) {
-        if (seg.kind === 'text') {
-          const merged = normalizeAgentAssistantText(seg.text)
-          if (!merged) continue
-          const prev = out[out.length - 1]
-          if (prev?.kind === 'text') {
-            prev.text = normalizeAgentAssistantText(`${prev.text}\n\n${merged}`)
-          } else {
-            out.push({ kind: 'text', text: merged })
-          }
-        } else {
-          const merged = redactOpaqueNotebookFileIdsInVisibleText(seg.text.trim())
-          if (!merged) continue
-          const prev = out[out.length - 1]
-          if (prev?.kind === 'reasoning') {
-            prev.text = redactOpaqueNotebookFileIdsInVisibleText(
-              `${prev.text}\n\n${merged}`.trim(),
-            )
-          } else {
-            out.push({
-              kind: 'reasoning',
-              key: `reasoning-${out.length}`,
-              text: merged,
-            })
-          }
-        }
-      }
-    }
-  }
-  // Reasoning now renders as its own standalone collapsible segment; no folding.
-
-  // Fix word-split artifact: some reasoning models (e.g. routed by openrouter/free) emit
-  // the first word(s) of the response as thinking tokens. The AI SDK puts these in a
-  // `reasoning` part and the text part starts mid-word with an apostrophe (e.g.
-  // reasoning="I don", text="'t have..."). Detect this pattern and move the trailing
-  // word fragment from the reasoning block into the text block.
-  for (let i = 0; i < out.length - 1; i++) {
-    const rBlk = out[i]
-    const tBlk = out[i + 1]
-    if (
-      rBlk?.kind === 'reasoning' &&
-      tBlk?.kind === 'text' &&
-      /^'[a-zA-Z]/.test(tBlk.text)
-    ) {
-      const lastWordMatch = rBlk.text.match(/(\S+)$/)
-      if (lastWordMatch) {
-        const word = lastWordMatch[1]!
-        rBlk.text = rBlk.text.slice(0, rBlk.text.length - word.length).trim()
-        tBlk.text = word + tBlk.text
-      }
-    }
-  }
-
-  return out
-}
-
-function assistantBlocksToPlainText(blocks: AssistantVisualBlock[]): string {
-  return blocks
-    .filter((b): b is { kind: 'text'; text: string } => b.kind === 'text')
-    .map((b) => b.text)
-    .join('\n\n')
-}
-
-const TOOL_UI_DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
-
-const OVERLAY_LOGO_SRC = '/assets/overlay-logo.png'
-
-function pickFirstStringFromInput(input: Record<string, unknown> | undefined, keys: string[]): string | null {
-  if (!input) return null
-  for (const k of keys) {
-    const v = input[k]
-    if (typeof v === 'string' && v.trim()) return v.trim()
-  }
-  return null
-}
-
-function titleCaseUnderscore(id: string): string {
-  return id
-    .trim()
-    .split(/_+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ')
-}
-
-function describeComposioSearchToolsInput(input?: Record<string, unknown>): string | null {
-  if (!input) return null
-  const hint =
-    pickFirstStringFromInput(input, ['use_case', 'intent', 'description', 'goal', 'task']) ??
-    (typeof input.query === 'string' ? input.query : null)
-  if (hint) {
-    const clipped = hint.length > 120 ? `${hint.slice(0, 120)}…` : hint
-    return `Finding the right tools — ${clipped}`
-  }
-  const qs = input.queries
-  if (Array.isArray(qs) && qs.length && typeof qs[0] === 'string' && qs[0].trim()) {
-    const q = qs[0]!.trim()
-    const clipped = q.length > 80 ? `${q.slice(0, 80)}…` : q
-    return `Searching apps for “${clipped}”`
-  }
-  return null
-}
-
-const INTEGRATION_SERVICE_NAMES: Record<string, string> = {
-  GMAIL: 'Gmail',
-  GOOGLE_CALENDAR: 'Google Calendar',
-  GOOGLE_DRIVE: 'Google Drive',
-  GOOGLE_SHEETS: 'Google Sheets',
-  GOOGLE_DOCS: 'Google Docs',
-  SLACK: 'Slack',
-  NOTION: 'Notion',
-  GITHUB: 'GitHub',
-  LINEAR: 'Linear',
-  DISCORD: 'Discord',
-  OUTLOOK: 'Outlook',
-  CAL_COM: 'Cal.com',
-  TWITTER: 'Twitter',
-  HUBSPOT: 'HubSpot',
-  SALESFORCE: 'Salesforce',
-  AIRTABLE: 'Airtable',
-  ZOOM: 'Zoom',
-  TRELLO: 'Trello',
-  JIRA: 'Jira',
-  DROPBOX: 'Dropbox',
-}
-
-function serviceNameFromComposioTool(toolName: string): string | null {
-  const u = toolName.toUpperCase()
-  const keys = Object.keys(INTEGRATION_SERVICE_NAMES).sort((a, b) => b.length - a.length)
-  for (const prefix of keys) {
-    if (u.startsWith(`${prefix}_`)) {
-      return INTEGRATION_SERVICE_NAMES[prefix] ?? null
-    }
-  }
-  return null
-}
-
-function describeComposioIntegrationTool(toolName: string, input?: Record<string, unknown>): string {
-  const service = serviceNameFromComposioTool(toolName)
-  const u = toolName.toUpperCase()
-  const q =
-    input &&
-    pickFirstStringFromInput(input, [
-      'query',
-      'search_query',
-      'q',
-      'search',
-      'prompt',
-      'message',
-      'subject',
-      'body',
-      'text',
-    ])
-
-  if (service) {
-    if (q && (u.includes('SEARCH') || u.includes('FIND') || u.includes('QUERY') || u.includes('LIST_MESSAGE'))) {
-      const clipped = q.length > 56 ? `${q.slice(0, 56)}…` : q
-      return `Searching ${service} for “${clipped}”`
-    }
-    if (/(SEND|POST|CREATE_MESSAGE|REPLY)/.test(u) && u.includes('MAIL')) {
-      return `Sending mail in ${service}`
-    }
-    if (/(SEND|POST|MESSAGE)/.test(u) && u.includes('SLACK')) {
-      return `Sending a message in ${service}`
-    }
-    if (/(CREATE_EVENT|ADD_EVENT|INSERT_EVENT|SCHEDULE)/.test(u)) {
-      return `Scheduling an event in ${service}`
-    }
-    if (/(LIST_MESSAGES|FETCH|INBOX|THREAD)/.test(u) && u.includes('GMAIL')) {
-      return `Reading mail in ${service}`
-    }
-    if (/(LIST_EVENT|GET_EVENT|SEARCH_EVENT|FIND_EVENT|FREE_BUSY|AVAILABILITY)/.test(u)) {
-      return `Looking at events in ${service}`
-    }
-    if (/(UPDATE_EVENT|PATCH_EVENT|EDIT_EVENT)/.test(u)) {
-      return `Updating an event in ${service}`
-    }
-    if (/(DELETE_EVENT|REMOVE_EVENT|CANCEL_EVENT)/.test(u)) {
-      return `Updating calendar in ${service}`
-    }
-    if (/(CREATE|ADD|NEW)/.test(u) && !/(CREATE_EVENT)/.test(u)) {
-      return `Creating in ${service}`
-    }
-    if (/(UPDATE|EDIT|PATCH)/.test(u)) {
-      return `Updating ${service}`
-    }
-    if (/(DELETE|REMOVE)/.test(u)) {
-      return `Deleting in ${service}`
-    }
-    if (/(LIST|SEARCH|FETCH|GET|FIND|QUERY|READ)/.test(u)) {
-      return `Searching ${service}`
-    }
-    return `Using ${service}`
-  }
-
-  if (u.includes('MULTI_EXECUTE')) {
-    return 'Running connected app actions'
-  }
-  if (u.includes('SEARCH_TOOLS')) {
-    return describeComposioSearchToolsInput(input) ?? 'Finding the right tools for your task'
-  }
-
-  return titleCaseUnderscore(toolName.replace(/^composio_/i, ''))
-}
-
-function getDescriptiveToolLabel(toolName: string, toolInput?: Record<string, unknown>): string {
-  const map: Record<string, string> = {
-    browser_run_task: 'Browsing the web',
-    interactive_browser_session: 'Browsing the web',
-    perplexity_search: 'Searching the web',
-    parallel_search: 'Deep web research',
-    search_knowledge: 'Searching your knowledge',
-    list_skills: 'Checking your skills',
-    list_notes: 'Listing your notes',
-    get_note: 'Opening a note',
-    create_note: 'Creating a note',
-    update_note: 'Updating a note',
-    delete_note: 'Deleting a note',
-    save_memory: 'Saving to memory',
-    update_memory: 'Updating memory',
-    delete_memory: 'Deleting memory',
-    generate_image: 'Generating an image',
-    generate_video: 'Generating a video',
-    run_daytona_sandbox: 'Running your workspace',
-  }
-  if (map[toolName]) return map[toolName]!
-
-  if (toolName === 'COMPOSIO_SEARCH_TOOLS') {
-    return describeComposioSearchToolsInput(toolInput) ?? 'Finding the right tools for your task'
-  }
-
-  if (/composio|GMAIL_|GOOGLE_|SLACK_|NOTION_|GITHUB_|LINEAR_|OUTLOOK_|CAL_COM/i.test(toolName)) {
-    return describeComposioIntegrationTool(toolName, toolInput)
-  }
-
-  if (toolName === 'perplexity_search' && toolInput) {
-    const q = pickFirstStringFromInput(toolInput, ['query', 'q'])
-    if (q) {
-      const clipped = q.length > 72 ? `${q.slice(0, 72)}…` : q
-      return `Searching the web for “${clipped}”`
-    }
-  }
-
-  if (toolName === 'parallel_search' && toolInput) {
-    const o = pickFirstStringFromInput(toolInput, ['objective'])
-    if (o) {
-      const clipped = o.length > 72 ? `${o.slice(0, 72)}…` : o
-      return `Researching: “${clipped}”`
-    }
-  }
-
-  if (toolName.startsWith('mcp_')) {
-    const rest = toolName.slice(4)
-    const firstUnderscore = rest.indexOf('_')
-    if (firstUnderscore > 0) {
-      const serverSlug = rest.slice(0, firstUnderscore)
-      const toolSlug = rest.slice(firstUnderscore + 1)
-      const serverName = titleCaseUnderscore(serverSlug)
-      const toolDisplayName = titleCaseUnderscore(toolSlug)
-      return `${serverName} MCP: ${toolDisplayName}`
-    }
-  }
-
-  return titleCaseUnderscore(toolName)
-}
-
-type ToolVisualBlock = Extract<AssistantVisualBlock, { kind: 'tool' }>
-
-type AssistantVisualSegment =
-  | { kind: 'reasoning'; block: Extract<AssistantVisualBlock, { kind: 'reasoning' }>; originIndex: number }
-  | { kind: 'text'; block: Extract<AssistantVisualBlock, { kind: 'text' }>; originIndex: number }
-  | { kind: 'file'; block: Extract<AssistantVisualBlock, { kind: 'file' }>; originIndex: number }
-  | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
-  | { kind: 'tools'; tools: ToolVisualBlock[]; originIndex: number }
-
-function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
-  const out: AssistantVisualSegment[] = []
-  let i = 0
-  while (i < blocks.length) {
-    const b = blocks[i]!
-    if (b.kind === 'reasoning') {
-      out.push({ kind: 'reasoning', block: b, originIndex: i })
-      i++
-      continue
-    }
-    if (b.kind === 'tool' && (b.name === 'browser_run_task' || b.name === 'interactive_browser_session')) {
-      out.push({ kind: 'browser', block: b, originIndex: i })
-      i++
-      continue
-    }
-    if (b.kind === 'tool') {
-      const start = i
-      const group: ToolVisualBlock[] = []
-      while (i < blocks.length) {
-        const t = blocks[i]!
-        if (t.kind !== 'tool' || t.name === 'browser_run_task' || t.name === 'interactive_browser_session') break
-        group.push(t)
-        i++
-      }
-      out.push({ kind: 'tools', tools: group, originIndex: start })
-      continue
-    }
-    if (b.kind === 'file') {
-      out.push({ kind: 'file', block: b, originIndex: i })
-      i++
-      continue
-    }
-    if (b.kind === 'text') {
-      out.push({ kind: 'text', block: b, originIndex: i })
-      i++
-      continue
-    }
-    i++
-  }
-  return out
-}
-
-function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
-  // Reasoning renders as its own first-class segment (see `ReasoningBlock`), so we no longer
-  // collapse reasoning between tool groups; each reasoning chunk stays visible next to the
-  // tools it describes.
-  return buildAssistantVisualSegmentsRaw(blocks)
-}
-
-function isToolChainSegment(seg: AssistantVisualSegment): boolean {
-  return seg.kind === 'browser' || seg.kind === 'tools'
-}
-
-function computeToolChainFlags(segments: AssistantVisualSegment[]): Array<{ chainTop: boolean; chainBottom: boolean }> {
-  return segments.map((seg, i) => ({
-    chainTop: i > 0 && isToolChainSegment(segments[i - 1]!) && isToolChainSegment(seg),
-    chainBottom:
-      i < segments.length - 1 && isToolChainSegment(seg) && isToolChainSegment(segments[i + 1]!),
-  }))
-}
 
 function ToolLineLogo() {
   return (
@@ -689,10 +260,6 @@ function ToolLineLogo() {
     />
   )
 }
-
-/** Long reasoning / tool metadata: cap height so the thread stays usable; scroll inside. */
-const ASSISTANT_COLLAPSIBLE_BODY_CLASS =
-  'max-h-[min(42vh,300px)] overflow-y-auto overflow-x-hidden overscroll-contain'
 
 /** Vertical connector between consecutive tool rows (logo stays top-aligned; line in logo column). */
 function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; connectBottom: boolean }) {
@@ -1348,469 +915,6 @@ function DraftSuggestionCard({
   )
 }
 
-function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; mediaType?: string }> }): string[] {
-  if (!msg.parts) return []
-  return msg.parts
-    .filter((p) => p.type === 'file' && p.url && (p.mediaType?.startsWith('image/') ?? true))
-    .map((p) => p.url!)
-}
-
-type ChatMessageMetadata = {
-  indexedDocuments?: string[]
-  indexedAttachments?: { name: string; fileIds: string[] }[]
-  replyToTurnId?: string
-  replySnippet?: string
-  sourceCitations?: SourceCitationMap
-  routedModelId?: string
-}
-
-type DraftModalState = {
-  kind: 'skill'
-  draft: SkillDraftSummary
-}
-
-function getUserMessageDocNames(msg: unknown): string[] {
-  const m = msg as { metadata?: ChatMessageMetadata }
-  const fromMeta = m.metadata?.indexedDocuments
-  if (Array.isArray(fromMeta) && fromMeta.length > 0) return fromMeta
-  return []
-}
-
-/** Strip `[Indexed documents: …]` from display text and return attachment names (from persisted content). */
-function splitUserDisplayText(fullText: string): { bodyText: string; docNames: string[] } {
-  const re = /\[Indexed documents:\s*([^\]]+)\]/g
-  const docNames: string[] = []
-  let match: RegExpExecArray | null
-  while ((match = re.exec(fullText)) !== null) {
-    docNames.push(...match[1]!.split(',').map((s) => s.trim()).filter(Boolean))
-  }
-  const bodyText = fullText.replace(re, '').replace(/\n{3,}/g, '\n\n').trim()
-  return { bodyText, docNames }
-}
-
-function getUserTurnId(msg: { id: string; turnId?: string }): string | null {
-  if (typeof msg.turnId === 'string' && msg.turnId.trim()) return msg.turnId.trim()
-  return msg.id?.trim() || null
-}
-
-function getUserReplyThreadMeta(msg: unknown): { replyToTurnId: string; replySnippet: string } | null {
-  const m = msg as {
-    metadata?: ChatMessageMetadata
-    replyToTurnId?: string
-    replySnippet?: string
-  }
-  const tid = m.metadata?.replyToTurnId?.trim() || m.replyToTurnId?.trim()
-  if (!tid) return null
-  const snippet = (m.metadata?.replySnippet || m.replySnippet || 'Earlier message').trim()
-  return { replyToTurnId: tid, replySnippet: snippet }
-}
-
-function getRoutedModelId(msg: unknown): string | null {
-  const m = msg as {
-    metadata?: ChatMessageMetadata
-    routedModelId?: string
-  }
-  const routedModelId = m.metadata?.routedModelId?.trim() || m.routedModelId?.trim()
-  return routedModelId || null
-}
-
-type ServerConversationMessage = {
-  id: string
-  turnId?: string
-  role: 'user' | 'assistant'
-  parts: Array<{
-    type: string
-    text?: string
-    url?: string
-    mediaType?: string
-    fileName?: string
-    state?: string
-  }>
-  model?: string
-  metadata?: ChatMessageMetadata
-  replyToTurnId?: string
-  replySnippet?: string
-  routedModelId?: string
-}
-
-type LiveConversationMessage = {
-  _id: Id<'conversationMessages'>
-  turnId: string
-  role: 'user' | 'assistant'
-  mode: 'ask' | 'act'
-  content: string
-  contentType: 'text' | 'image' | 'video'
-  parts?: Array<Record<string, unknown>>
-  modelId?: string
-  variantIndex?: number
-  routedModelId?: string
-  status?: 'generating' | 'completed' | 'error'
-}
-
-type LiveMessageDelta = {
-  _id: Id<'conversationMessageDeltas'>
-  messageId: Id<'conversationMessages'>
-  textDelta?: string
-  newParts?: Array<Record<string, unknown>>
-}
-
-function messageMatchesLocalTurn(msg: { id?: string; turnId?: string }, turnId: string): boolean {
-  const persistedTurnId = msg.turnId?.trim()
-  if (persistedTurnId) return persistedTurnId === turnId
-  const localId = msg.id?.trim() || ''
-  return localId === turnId || localId.startsWith(`${turnId}::`)
-}
-
-/** Remove assistant (and any non-user tail) after the given user turn so the exchange can be re-streamed. */
-function stripAssistantAfterUserTurn(messages: UIMessage[], turnId: string): UIMessage[] {
-  let userIdx = -1
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i] as UIMessage & { id?: string }
-    if (m.role === 'user' && messageMatchesLocalTurn(m, turnId)) {
-      userIdx = i
-      break
-    }
-  }
-  if (userIdx < 0) return messages
-  let end = userIdx + 1
-  while (end < messages.length && messages[end]!.role !== 'user') {
-    end++
-  }
-  if (end === userIdx + 1) return messages
-  return [...messages.slice(0, userIdx + 1), ...messages.slice(end)]
-}
-
-function replaceAssistantForTurn(
-  messages: UIMessage[],
-  turnId: string,
-  assistantFromServer: ServerConversationMessage,
-): UIMessage[] {
-  const next = [...messages]
-  let matchedUser = false
-  for (let i = 0; i < next.length; i++) {
-    const msg = next[i] as UIMessage & { turnId?: string }
-    if (msg.role === 'user') {
-      if (matchedUser) break
-      matchedUser = messageMatchesLocalTurn(msg, turnId)
-      continue
-    }
-    if (matchedUser && msg.role === 'assistant') {
-      next[i] = assistantFromServer as unknown as UIMessage
-      return next
-    }
-  }
-  return next
-}
-
-function isToolInvocationPart(part: Record<string, unknown>): part is Record<string, unknown> & {
-  toolInvocation: {
-    toolCallId?: string
-    toolName?: string
-    toolInput?: unknown
-    toolOutput?: unknown
-    state?: string
-  }
-} {
-  return typeof part.toolInvocation === 'object' && part.toolInvocation !== null
-}
-
-function mergeLiveStreamingParts(
-  existingParts: Array<Record<string, unknown>>,
-  newParts: Array<Record<string, unknown>>,
-) {
-  let nextParts = existingParts
-  for (const part of newParts) {
-    const last = nextParts[nextParts.length - 1]
-    if (
-      part.type === 'reasoning' &&
-      last?.type === 'reasoning' &&
-      typeof part.text === 'string'
-    ) {
-      nextParts = [
-        ...nextParts.slice(0, -1),
-        {
-          ...last,
-          text: `${typeof last.text === 'string' ? last.text : ''}${part.text}`,
-          state: part.state ?? last.state,
-        },
-      ]
-      continue
-    }
-
-    if (isToolInvocationPart(part)) {
-      const incoming = part.toolInvocation
-      const toolCallId = incoming.toolCallId
-      if (toolCallId) {
-        const existingIdx = nextParts.findIndex(
-          (candidate) =>
-            isToolInvocationPart(candidate) &&
-            candidate.toolInvocation.toolCallId === toolCallId,
-        )
-        if (existingIdx >= 0) {
-          const existing = nextParts[existingIdx]!
-          if (isToolInvocationPart(existing)) {
-            nextParts = [
-              ...nextParts.slice(0, existingIdx),
-              {
-                type: 'tool-invocation',
-                toolInvocation: {
-                  ...existing.toolInvocation,
-                  ...incoming,
-                  toolName:
-                    incoming.toolName === 'unknown_tool'
-                      ? existing.toolInvocation.toolName
-                      : incoming.toolName,
-                  toolInput: incoming.toolInput ?? existing.toolInvocation.toolInput,
-                  toolOutput: incoming.toolOutput ?? existing.toolInvocation.toolOutput,
-                },
-              },
-              ...nextParts.slice(existingIdx + 1),
-            ]
-            continue
-          }
-        }
-      }
-    }
-
-    nextParts = [...nextParts, part]
-  }
-  return nextParts
-}
-
-function applyLiveMessageDeltaParts(
-  existingParts: Array<Record<string, unknown>>,
-  delta: LiveMessageDelta,
-) {
-  let nextParts = existingParts
-  if (delta.textDelta) {
-    const last = nextParts[nextParts.length - 1]
-    if (last?.type === 'text') {
-      nextParts = [
-        ...nextParts.slice(0, -1),
-        {
-          ...last,
-          text: `${typeof last.text === 'string' ? last.text : ''}${delta.textDelta}`,
-        },
-      ]
-    } else {
-      nextParts = [...nextParts, { type: 'text', text: delta.textDelta }]
-    }
-  }
-  if (delta.newParts?.length) {
-    nextParts = mergeLiveStreamingParts(nextParts, delta.newParts)
-  }
-  return nextParts
-}
-
-function getDraftFromToolBlock(block: ToolVisualBlock): { kind: 'skill'; draft: SkillDraftSummary } | null {
-  const output =
-    block.toolOutput && typeof block.toolOutput === 'object'
-      ? (block.toolOutput as Record<string, unknown>)
-      : null
-  if (!output || output.success !== true) return null
-
-  if (block.name === 'draft_skill_from_chat' && output.draft && typeof output.draft === 'object') {
-    return { kind: 'skill', draft: output.draft as SkillDraftSummary }
-  }
-  return null
-}
-
-function safeReadString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
-}
-
-function normalizeWebUrl(raw: string): string | null {
-  try {
-    const normalized = new URL(raw).toString()
-    return normalized
-  } catch {
-    return null
-  }
-}
-
-function pickSourceTitle(entry: Record<string, unknown>, fallbackUrl: string): string {
-  const candidate =
-    safeReadString(entry.title) ??
-    safeReadString(entry.name) ??
-    safeReadString(entry.domain) ??
-    safeReadString(entry.host)
-  if (candidate) return candidate
-  try {
-    const parsed = new URL(fallbackUrl)
-    return parsed.hostname.replace(/^www\./i, '')
-  } catch {
-    return fallbackUrl
-  }
-}
-
-function collectSourceCandidatesFromUnknown(
-  value: unknown,
-  origin: 'web-search' | 'browser',
-  acc: WebSourceItem[],
-  seen: Set<string>,
-  depth = 0,
-) {
-  if (depth > 5) return
-  if (Array.isArray(value)) {
-    for (const item of value) collectSourceCandidatesFromUnknown(item, origin, acc, seen, depth + 1)
-    return
-  }
-  if (!value || typeof value !== 'object') {
-    if (typeof value === 'string') {
-      const urlMatches = value.match(/https?:\/\/[^\s)\]]+/g)
-      if (!urlMatches) return
-      for (const rawUrl of urlMatches) {
-        const normalized = normalizeWebUrl(rawUrl)
-        if (!normalized || seen.has(normalized)) continue
-        seen.add(normalized)
-        acc.push({
-          url: normalized,
-          title: pickSourceTitle({}, normalized),
-          origin,
-        })
-      }
-    }
-    return
-  }
-
-  const rec = value as Record<string, unknown>
-  const possibleUrl =
-    safeReadString(rec.url) ??
-    safeReadString(rec.link) ??
-    safeReadString(rec.href) ??
-    safeReadString(rec.sourceUrl) ??
-    safeReadString(rec.source_url)
-  if (possibleUrl) {
-    const normalized = normalizeWebUrl(possibleUrl)
-    if (normalized && !seen.has(normalized)) {
-      seen.add(normalized)
-      acc.push({
-        url: normalized,
-        title: pickSourceTitle(rec, normalized),
-        snippet:
-          safeReadString(rec.snippet) ??
-          safeReadString(rec.excerpt) ??
-          safeReadString(rec.summary) ??
-          safeReadString(rec.description) ??
-          undefined,
-        origin,
-      })
-    }
-  }
-
-  for (const child of Object.values(rec)) {
-    if (child && (typeof child === 'object' || typeof child === 'string')) {
-      collectSourceCandidatesFromUnknown(child, origin, acc, seen, depth + 1)
-    }
-  }
-}
-
-function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): WebSourceItem[] {
-  const items: WebSourceItem[] = []
-  const seen = new Set<string>()
-  for (const block of blocks) {
-    if (block.kind !== 'tool') continue
-    if (block.state !== 'output-available') continue
-    if (
-      block.name !== 'perplexity_search' &&
-      block.name !== 'parallel_search' &&
-      block.name !== 'browser_run_task' &&
-      block.name !== 'interactive_browser_session'
-    ) continue
-    collectSourceCandidatesFromUnknown(
-      block.toolOutput,
-      block.name === 'perplexity_search' || block.name === 'parallel_search' ? 'web-search' : 'browser',
-      items,
-      seen,
-    )
-  }
-  return items
-}
-
-/** Extract structured sources from a single tool block (used by the web-search row). */
-function collectWebSourcesFromSingleBlock(block: ToolVisualBlock): WebSourceItem[] {
-  if (block.state !== 'output-available') return []
-  const items: WebSourceItem[] = []
-  const seen = new Set<string>()
-  collectSourceCandidatesFromUnknown(
-    block.toolOutput,
-    block.name === 'perplexity_search' || block.name === 'parallel_search' ? 'web-search' : 'browser',
-    items,
-    seen,
-  )
-  return items
-}
-
-function faviconUrl(pageUrl: string): string {
-  try {
-    const host = new URL(pageUrl).hostname
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`
-  } catch {
-    return ''
-  }
-}
-
-function hostFromUrl(pageUrl: string): string {
-  try {
-    return new URL(pageUrl).hostname.replace(/^www\./i, '')
-  } catch {
-    return ''
-  }
-}
-
-function scrollToExchangeTurn(turnId: string) {
-  const safe = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(turnId) : turnId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-  document.querySelector(`[data-exchange-turn="${safe}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
-/**
- * Act assistant for a user turn: `actChat` mirrors `chat0` until streaming appends the assistant only to `actChat`,
- * so the assistant is at the same index as the user + 1. Falls back to id-based scan inside `actChat`.
- */
-function resolveActAssistant(
-  chat0Linear: Array<{ id?: string; role: string }>,
-  actMsgs: Array<{ id?: string; role: string; parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }> }>,
-  userMsgId: string,
-) {
-  const i = chat0Linear.findIndex((m) => m.role === 'user' && m.id === userMsgId)
-  if (i >= 0) {
-    const candidates: typeof actMsgs = []
-    for (let j = i + 1; j < actMsgs.length; j++) {
-      const m = actMsgs[j]!
-      if (m.role === 'user') break
-      if (m.role === 'assistant') candidates.push(m)
-    }
-    const selected = chooseAssistantCandidate(candidates)
-    if (selected) return selected
-  }
-  const ui = actMsgs.findIndex((m) => m.id === userMsgId && m.role === 'user')
-  if (ui >= 0) {
-    const candidates: typeof actMsgs = []
-    for (let j = ui + 1; j < actMsgs.length; j++) {
-      const m = actMsgs[j]!
-      if (m.role === 'user') break
-      if (m.role === 'assistant') candidates.push(m)
-    }
-    return chooseAssistantCandidate(candidates)
-  }
-  return null
-}
-
-
-async function generateTitle(text: string): Promise<string | null> {
-  try {
-    const res = await fetch('/api/app/generate-title', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      return (data.title as string)?.trim() || null
-    }
-  } catch { /* ignore */ }
-  return null
-}
 
 // ─── ExchangeBlock ───────────────────────────────────────────────────────────
 
@@ -2215,225 +1319,6 @@ function ExchangeBlock({
     )
 }
 
-// ─── error label ─────────────────────────────────────────────────────────────
-
-function errorLabel(err: Error | null | undefined): string | null {
-  if (!err) return null
-  const m = err.message || ''
-  if (m.includes('OpenRouter') || m.includes('rate-limited') || m.includes('rate limit')) {
-    return m
-  }
-  if (err.message?.includes('weekly_limit')) return 'Weekly limit reached — upgrade to a paid plan for unlimited messages.'
-  if (err.message?.includes('premium_model')) return 'This model requires a paid plan.'
-  if (err.message?.includes('generation_not_allowed')) return 'This action requires a paid plan.'
-  if (err.message?.includes('insufficient_credits')) return 'No budget remaining.'
-  if (err.message?.includes('storage_limit_exceeded')) return 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.'
-  if (err.message?.includes('bandwidth_limit_exceeded')) return 'File bandwidth limit reached for this billing period.'
-  if (err.message?.includes('supported image formats') || err.message?.includes('does not represent a valid image')) {
-    return 'Unsupported image format. Use JPEG, PNG, GIF, or WebP.'
-  }
-  if (/model.*not found|not found.*model|model_not_found/i.test(m)) {
-    return 'That model is not available from the provider right now. Try another model.'
-  }
-  return 'Something went wrong. Please try again.'
-}
-
-function FlashCopyIconButton({
-  copyText,
-  disabled,
-  ariaLabel = 'Copy',
-}: {
-  copyText: string
-  disabled?: boolean
-  ariaLabel?: string
-}) {
-  const [showCheck, setShowCheck] = useState(false)
-  const timerRef = useRef<number | null>(null)
-
-  useEffect(() => () => {
-    if (timerRef.current != null) window.clearTimeout(timerRef.current)
-  }, [])
-
-  const handleClick = async () => {
-    if (disabled || !copyText) return
-    try {
-      await navigator.clipboard.writeText(copyText)
-    } catch {
-      return
-    }
-    setShowCheck(true)
-    if (timerRef.current != null) window.clearTimeout(timerRef.current)
-    timerRef.current = window.setTimeout(() => {
-      setShowCheck(false)
-      timerRef.current = null
-    }, 900)
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => void handleClick()}
-      disabled={disabled || !copyText}
-      className={`rounded-md p-1.5 text-[var(--muted)] transition-all duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
-        showCheck ? 'text-emerald-600 hover:text-emerald-600 hover:bg-[#ecfdf5]' : ''
-      }`}
-      aria-label={ariaLabel}
-    >
-      {showCheck ? <Check size={14} strokeWidth={1.75} /> : <Copy size={14} strokeWidth={1.75} />}
-    </button>
-  )
-}
-
-function DraftReviewModal({
-  state,
-  saving,
-  onClose,
-  onSaveSkill,
-}: {
-  state: DraftModalState | null
-  saving: boolean
-  onClose: () => void
-  onSaveSkill: (draft: SkillDraftSummary) => Promise<void>
-}) {
-  if (!state) return null
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 sm:items-center sm:p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className="w-full max-w-2xl rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl sm:rounded-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-          <div>
-            <h3 className="text-sm font-medium text-[var(--foreground)]">Review Skill Draft</h3>
-            <p className="mt-0.5 text-[11px] text-[var(--muted)]">{state.draft.reason}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-            aria-label="Close draft review"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <div className="space-y-4 px-4 py-4">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-            <p className="text-sm font-medium text-[var(--foreground)]">{state.draft.name}</p>
-            <p className="mt-1 text-[12px] text-[var(--muted)]">{state.draft.description}</p>
-            <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
-              <p>Confidence: {state.draft.confidence}</p>
-              <p>Integrations: {state.draft.detectedIntegrations.join(', ') || 'None detected'}</p>
-            </div>
-          </div>
-          <pre className="max-h-[280px] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
-            {state.draft.instructions}
-          </pre>
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void onSaveSkill(state.draft)}
-            className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-colors hover:opacity-85 disabled:opacity-60"
-          >
-            {saving ? 'Saving…' : 'Save skill'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── constants ───────────────────────────────────────────────────────────────
-
-function chatGreetingLine(firstName: string | undefined) {
-  const raw = firstName?.trim()
-  if (!raw) return 'hi there'
-  const word = raw.split(/\s+/)[0] ?? raw
-  const nice = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-  return `Hi ${nice}!`
-}
-
-function sanitizeEmptyChatStarters(prompts: string[], firstName?: string): string[] {
-  const trimmedFirstName = firstName?.trim()
-  const firstNamePattern = trimmedFirstName
-    ? new RegExp(`\\b${trimmedFirstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
-    : null
-
-  return prompts
-    .filter((prompt) => typeof prompt === 'string')
-    .map((prompt) => prompt.trim())
-    .filter((prompt) => prompt.length > 0)
-    .filter((prompt) => !/\boverlay\b/i.test(prompt))
-    .filter((prompt) => !(firstNamePattern?.test(prompt) ?? false))
-    .slice(0, 4)
-}
-
-const DEFAULT_CHAT_TITLE = 'New Chat'
-const IMAGE_MODEL_SELECTION_MODE_KEY = 'overlay_image_model_selection_mode'
-const VIDEO_MODEL_SELECTION_MODE_KEY = 'overlay_video_model_selection_mode'
-const SELECTED_IMAGE_MODELS_KEY = 'overlay_selected_image_models'
-const SELECTED_VIDEO_MODELS_KEY = 'overlay_selected_video_models'
-const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
-const VIDEO_SUB_MODE_KEY = 'overlay_video_sub_mode'
-
-const VIDEO_SUB_MODES: { value: VideoSubMode; label: string }[] = [
-  { value: 'text-to-video',      label: 'Text to Video' },
-  { value: 'image-to-video',     label: 'Image to Video' },
-  { value: 'reference-to-video', label: 'Reference to Video' },
-  { value: 'motion-control',     label: 'Motion Control' },
-  { value: 'video-editing',      label: 'Video Editing' },
-]
-const VIDEO_SUB_MODE_LABELS = Object.fromEntries(
-  VIDEO_SUB_MODES.map(({ value, label }) => [value, label])
-) as Record<VideoSubMode, string>
-
-const SUPPORTED_INPUT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
-
-interface GenerationResult {
-  type: 'image' | 'video'
-  status: 'generating' | 'completed' | 'failed'
-  url?: string
-  modelUsed?: string
-  outputId?: string
-  error?: string
-  upgradeRequired?: boolean
-}
-
-type AskModelSelectionMode = 'single' | 'multiple'
-
-interface ConversationUiState {
-  selectedActModel: string
-  selectedModels: string[]
-  askModelSelectionMode: AskModelSelectionMode
-  exchangeModes: ('ask' | 'act')[]
-  exchangeModels: string[][]
-  selectedTabPerExchange: number[]
-  activeChatTitle: string | null
-  generationResults: Map<number, GenerationResult[]>
-  exchangeGenTypes: ('text' | 'image' | 'video')[]
-  isFirstMessage: boolean
-  orphanModelThreads: Map<string, UIMessage[]>
-  lastGeneratedImageUrl: string | null
-}
-
-interface ConversationRuntime {
-  askChats: [Chat<UIMessage>, Chat<UIMessage>, Chat<UIMessage>, Chat<UIMessage>]
-  actChat: Chat<UIMessage>
-  hydrated: boolean
-  ui: ConversationUiState
-}
-
 function cloneGenerationResultsMap(source: Map<number, GenerationResult[]>): Map<number, GenerationResult[]> {
   return new Map(
     Array.from(source.entries()).map(([idx, results]) => [
@@ -2722,79 +1607,6 @@ function MediaCompletedReveal({
   )
 }
 
-interface RestoredOutputGroup {
-  type: 'image' | 'video'
-  prompt: string
-  modelIds: string[]
-  results: GenerationResult[]
-  createdAt: number
-  turnId?: string | null
-}
-
-function groupOutputsIntoExchanges(outputs: ChatOutput[]): RestoredOutputGroup[] {
-  const isMediaOutput = (output: ChatOutput): output is ChatOutput & { type: 'image' | 'video' } =>
-    output.type === 'image' || output.type === 'video'
-
-  const sorted = outputs
-    .filter(isMediaOutput)
-    .sort((a, b) => a.createdAt - b.createdAt)
-  const groups: RestoredOutputGroup[] = []
-
-  for (const output of sorted) {
-    const prev = groups[groups.length - 1]
-    const normalizedTurnId = output.turnId?.trim() || null
-    const shouldMerge =
-      prev &&
-      prev.type === output.type &&
-      (
-        (normalizedTurnId && prev.turnId === normalizedTurnId) ||
-        (
-          !normalizedTurnId &&
-          !prev.turnId &&
-          prev.prompt === output.prompt &&
-          Math.abs(output.createdAt - prev.createdAt) < 60_000
-        )
-      )
-
-    const result: GenerationResult = {
-      type: output.type,
-      status:
-        output.status === 'pending'
-          ? 'generating'
-          : output.status === 'completed'
-          ? 'completed'
-          : 'failed',
-      url: output.url,
-      modelUsed: output.modelId,
-      outputId: output._id,
-      error: output.status === 'failed' ? 'Generation failed' : undefined,
-    }
-
-    if (shouldMerge) {
-      prev.modelIds.push(output.modelId)
-      prev.results.push(result)
-      continue
-    }
-
-    groups.push({
-      type: output.type,
-      prompt: output.prompt,
-      modelIds: [output.modelId],
-      results: [result],
-      createdAt: output.createdAt,
-      turnId: normalizedTurnId,
-    })
-  }
-
-  return groups
-}
-
-function buildMediaSummary(type: 'image' | 'video', prompt: string, modelIds: string[], completedCount: number, failedCount: number): string {
-  const noun = type === 'image' ? (completedCount === 1 ? 'image' : 'images') : (completedCount === 1 ? 'video' : 'videos')
-  const modelList = modelIds.join(', ')
-  const failureSuffix = failedCount > 0 ? ` ${failedCount} generation${failedCount === 1 ? '' : 's'} failed.` : ''
-  return `Generated ${completedCount} ${noun} for the prompt "${prompt}" using ${modelList}.${failureSuffix}`
-}
 
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -6771,53 +5583,53 @@ export default function ChatInterface({
                       </button>
                     </div>
                   )}
-                  <div ref={modeMenuRef} className="relative shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setShowModeMenu((v) => !v)}
-                      className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
-                        mode === 'automate'
-                          ? 'text-[var(--foreground)]'
-                          : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                      }`}
-                    >
-                      {mode === 'automate' ? (
-                        <Zap size={12} strokeWidth={1.75} />
-                      ) : (
-                        <MessageSquare size={12} strokeWidth={1.75} />
-                      )}
-                      <span>{mode === 'automate' ? 'Automate' : 'Chat'}</span>
-                      <ChevronDown size={10} className="opacity-60" />
-                    </button>
-                    {showModeMenu && (
-                      <div className="absolute bottom-full left-0 mb-2 z-20 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
-                        <button
-                          type="button"
-                          onClick={() => { router.push('/app/chat'); setShowModeMenu(false) }}
-                          className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
-                            mode === 'chat' ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
-                          }`}
-                        >
-                          <MessageSquare size={13} />
-                          <span>Chat</span>
-                          {mode === 'chat' && <Check size={11} className="ml-auto" />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { router.push('/app/automations'); setShowModeMenu(false) }}
-                          className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
-                            mode === 'automate' ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
-                          }`}
-                        >
-                          <Zap size={13} strokeWidth={1.75} />
-                          <span>Automate</span>
-                          {mode === 'automate' && <Check size={11} className="ml-auto" />}
-                        </button>
-                      </div>
-                    )}
-                  </div>
                   <div className="min-w-0 flex-1" />
                   <div className="flex shrink-0 items-center gap-2">
+                    <div ref={modeMenuRef} className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowModeMenu((v) => !v)}
+                        className={`flex h-9 items-center gap-1 rounded-lg px-2.5 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
+                          mode === 'automate'
+                            ? 'text-[var(--foreground)]'
+                            : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                        }`}
+                      >
+                        {mode === 'automate' ? (
+                          <Zap size={12} strokeWidth={1.75} />
+                        ) : (
+                          <MessageSquare size={12} strokeWidth={1.75} />
+                        )}
+                        <span>{mode === 'automate' ? 'Automate' : 'Chat'}</span>
+                        <ChevronDown size={10} className="opacity-60" />
+                      </button>
+                      {showModeMenu && (
+                        <div className="absolute bottom-full right-0 mb-2 z-20 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+                          <button
+                            type="button"
+                            onClick={() => { router.push('/app/chat'); setShowModeMenu(false) }}
+                            className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
+                              mode === 'chat' ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
+                            }`}
+                          >
+                            <MessageSquare size={13} />
+                            <span>Chat</span>
+                            {mode === 'chat' && <Check size={11} className="ml-auto" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { router.push('/app/automations'); setShowModeMenu(false) }}
+                            className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
+                              mode === 'automate' ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
+                            }`}
+                          >
+                            <Zap size={13} strokeWidth={1.75} />
+                            <span>Automate</span>
+                            {mode === 'automate' && <Check size={11} className="ml-auto" />}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     {isActiveLoading ? (
                       <DelayedTooltip label="Stop generating" side="top">
                         <button
