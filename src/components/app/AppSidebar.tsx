@@ -9,6 +9,7 @@ import {
   MessageSquare, BookOpen, Brain, FileText, Images, LogOut, User,
   Puzzle, Monitor, Smartphone, Chrome, ChevronUp, AlertCircle, Plug, Sparkles, Server, Package,
   FolderOpen, Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
+  Zap,
 } from 'lucide-react'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAuth } from '@/contexts/AuthContext'
@@ -17,6 +18,7 @@ import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
 import { useAppSettings } from './AppSettingsProvider'
 import {
+  AutomationsInlinePanel,
   ChatInlinePanel,
   InlineNavChildren,
   NotesInlinePanel,
@@ -39,6 +41,7 @@ const NAV_ITEMS: Array<{
   { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
   { href: '/app/tools', label: 'Extensions', icon: Puzzle },
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
+  { href: '/app/automations', label: 'Automations', icon: Zap },
 ]
 
 const PROFILE_APP_LINKS = [
@@ -183,6 +186,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   const chatOpen = pathname.startsWith('/app/chat')
   const toolsOpen = pathname.startsWith('/app/tools')
   const knowledgeOpen = pathname.startsWith('/app/knowledge')
+  const automationsOpen = pathname.startsWith('/app/automations')
   const settingsPathActive = pathname.startsWith('/app/settings')
   const settingsSection = searchParams?.get('section') ?? 'general'
   const inlineSecondaryDisabled = !settings.useSecondarySidebar
@@ -409,7 +413,9 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
         ? { label: 'New note', onClick: handleCreateNote }
         : projectsOpen
           ? { label: 'New project', onClick: handleCreateProject }
-          : null
+          : automationsOpen
+            ? { label: 'New automation', onClick: () => router.push('/app/automations?new=1') }
+            : null
     : null
   const hasInlineChildren = (href?: string) =>
     inlineSecondaryDisabled && (href === '/app/knowledge' || href === '/app/tools')
@@ -672,7 +678,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
           </div>
         </nav>
 
-        {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || notesOpen || projectsOpen) ? (
+        {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || notesOpen || projectsOpen || automationsOpen) ? (
           <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
             {contextualAction && (chatOpen || notesOpen) ? (
               <div className="mb-3 flex items-center gap-1.5">
@@ -735,6 +741,9 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                   refreshKey={projectsPanelRefreshKey}
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
+              ) : null}
+              {automationsOpen ? (
+                <AutomationsInlinePanel onNavigate={() => setMobileMenuOpen(false)} />
               ) : null}
             </div>
           </div>

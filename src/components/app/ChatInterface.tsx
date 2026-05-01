@@ -28,6 +28,7 @@ import {
   Search,
   Maximize2,
   PanelRight,
+  Zap,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
@@ -2802,11 +2803,13 @@ export default function ChatInterface({
   firstName,
   hideSidebar,
   projectName,
+  mode = 'chat',
 }: {
   userId: string | null
   firstName?: string
   hideSidebar?: boolean
   projectName?: string
+  mode?: 'chat' | 'automate'
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -2969,6 +2972,7 @@ export default function ChatInterface({
   /** Viewport position for the fixed model-qualities flyout (tracks hovered row). */
   const [modelQualitiesPos, setModelQualitiesPos] = useState<{ x: number; y: number } | null>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [showModeMenu, setShowModeMenu] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const dragCounterRef = useRef(0)
   const [input, setInput] = useState(() => {
@@ -2991,7 +2995,17 @@ export default function ChatInterface({
   /**
    * Empty-chat suggestion chips: defaults show immediately; API merges Convex-persisted / freshly generated prompts.
    */
-  const [emptyChatStarters, setEmptyChatStarters] = useState<string[]>(() => sanitizeEmptyChatStarters([...DEFAULT_CHAT_SUGGESTIONS], firstName))
+  const DEFAULT_AUTOMATE_SUGGESTIONS = [
+    'Email me a daily digest of my top priorities',
+    'Monitor a website and alert me when it changes',
+    'Summarize my unread Slack messages every morning',
+    'Run a weekly report and send it to my team',
+  ]
+  const [emptyChatStarters, setEmptyChatStarters] = useState<string[]>(() =>
+    mode === 'automate'
+      ? DEFAULT_AUTOMATE_SUGGESTIONS
+      : sanitizeEmptyChatStarters([...DEFAULT_CHAT_SUGGESTIONS], firstName)
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -3075,6 +3089,7 @@ export default function ChatInterface({
   const videoSubModePickerRef = useRef<HTMLDivElement>(null)
   const modelPickerListScrollRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
+  const modeMenuRef = useRef<HTMLDivElement>(null)
 
   const syncModelQualitiesPosition = useCallback((modelId: string | null) => {
     if (typeof document === 'undefined' || !modelId || !modelPickerRef.current) {
@@ -4028,6 +4043,16 @@ export default function ChatInterface({
     document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [showAttachMenu])
+
+  useEffect(() => {
+    if (!showModeMenu) return
+    function handleOutside(e: MouseEvent) {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node))
+        setShowModeMenu(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showModeMenu])
 
   useEffect(() => {
     const el = textareaRef.current
@@ -5545,7 +5570,7 @@ export default function ChatInterface({
   const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
   const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
 
-  const greetingLine = chatGreetingLine(firstName)
+  const greetingLine = mode === 'automate' ? 'What are we automating today?' : chatGreetingLine(firstName)
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -6667,7 +6692,7 @@ export default function ChatInterface({
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onPaste={handlePaste}
-                  placeholder="Ask anything..."
+                  placeholder={mode === 'automate' ? 'Describe an automation...' : 'Ask anything...'}
                   rows={1}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -6746,6 +6771,51 @@ export default function ChatInterface({
                       </button>
                     </div>
                   )}
+                  <div ref={modeMenuRef} className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowModeMenu((v) => !v)}
+                      className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
+                        mode === 'automate'
+                          ? 'text-[var(--foreground)]'
+                          : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      {mode === 'automate' ? (
+                        <Zap size={12} strokeWidth={1.75} />
+                      ) : (
+                        <MessageSquare size={12} strokeWidth={1.75} />
+                      )}
+                      <span>{mode === 'automate' ? 'Automate' : 'Chat'}</span>
+                      <ChevronDown size={10} className="opacity-60" />
+                    </button>
+                    {showModeMenu && (
+                      <div className="absolute bottom-full left-0 mb-2 z-20 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+                        <button
+                          type="button"
+                          onClick={() => { router.push('/app/chat'); setShowModeMenu(false) }}
+                          className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
+                            mode === 'chat' ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
+                          }`}
+                        >
+                          <MessageSquare size={13} />
+                          <span>Chat</span>
+                          {mode === 'chat' && <Check size={11} className="ml-auto" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { router.push('/app/automations'); setShowModeMenu(false) }}
+                          className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
+                            mode === 'automate' ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
+                          }`}
+                        >
+                          <Zap size={13} strokeWidth={1.75} />
+                          <span>Automate</span>
+                          {mode === 'automate' && <Check size={11} className="ml-auto" />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1" />
                   <div className="flex shrink-0 items-center gap-2">
                     {isActiveLoading ? (

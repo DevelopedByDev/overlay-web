@@ -753,6 +753,61 @@ export const toolsInlineItems = [
   { id: 'apps', label: 'Apps', locked: true },
 ] as const
 
+type Automation = { _id: string; name: string; enabled: boolean; createdAt: number }
+
+export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [automations, setAutomations] = useState<Automation[]>([])
+  const [loading, setLoading] = useState(true)
+  const activeId = searchParams?.get('id') ?? null
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/app/automations')
+        if (res.ok) setAutomations(await res.json())
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false)
+      }
+    }
+    void load()
+  }, [])
+
+  if (loading) return <SidebarListSkeleton rows={3} />
+
+  if (automations.length === 0) {
+    return <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No automations yet</p>
+  }
+
+  return (
+    <div className="space-y-0.5">
+      {automations.map((automation) => (
+        <button
+          key={automation._id}
+          type="button"
+          onClick={() => {
+            router.push(`/app/automations?id=${automation._id}`)
+            onNavigate?.()
+          }}
+          className={`group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+            activeId === automation._id
+              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+              : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+          }`}
+        >
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${automation.enabled ? 'bg-green-500' : 'bg-[var(--muted-light)]'}`}
+          />
+          <span className="flex-1 truncate text-left">{automation.name}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function InlineNavChildren({
   items,
   activeId,
