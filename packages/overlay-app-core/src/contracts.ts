@@ -70,7 +70,6 @@ export type AppDestinationId =
   | 'knowledge'
   | 'extensions'
   | 'projects'
-  | 'automations'
   | 'settings'
   | 'account'
 
@@ -107,7 +106,6 @@ export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
     subviews: ['connectors', 'skills', 'mcps', 'apps', 'all'],
   },
   { id: 'projects', label: 'Projects', href: '/app/projects' },
-  { id: 'automations', label: 'Automations', href: '/app/automations' },
   {
     id: 'settings',
     label: 'Settings',
@@ -121,7 +119,6 @@ export interface AppFeatureFlags {
   canUseVoiceTranscription: boolean
   canUseKnowledge: boolean
   canUseProjects: boolean
-  canUseAutomations: boolean
   canUseExtensions: boolean
 }
 
@@ -309,159 +306,3 @@ export interface ProjectSummary {
   createdAt: number
 }
 
-export type AutomationSourceType = 'skill' | 'inline'
-export type AutomationMode = 'ask' | 'act'
-export type AutomationStatus = 'active' | 'paused' | 'archived'
-export type AutomationScheduleKind = 'once' | 'daily' | 'weekdays' | 'weekly' | 'monthly'
-export type AutomationReadinessState =
-  | 'ready'
-  | 'needs_setup'
-  | 'invalid_source'
-  | 'paused_due_to_failures'
-export type AutomationRunStage =
-  | 'queued'
-  | 'dispatching'
-  | 'running'
-  | 'persisting'
-  | 'succeeded'
-  | 'failed'
-  | 'timed_out'
-  | 'canceled'
-  | 'needs_setup'
-export type AutomationRunStatus =
-  | 'queued'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'skipped'
-  | 'canceled'
-  | 'timed_out'
-
-export interface AutomationExecutorSummary {
-  platform: 'vercel' | 'local' | 'unknown'
-  region?: string
-  deploymentId?: string
-  runtime?: string
-}
-
-export interface AutomationScheduleConfig {
-  onceAt?: number
-  localTime?: string
-  weekdays?: number[]
-  dayOfMonth?: number
-}
-
-export interface AutomationSummary {
-  _id: string
-  userId?: string
-  title: string
-  description?: string
-  sourceType?: AutomationSourceType
-  skillId?: string
-  instructionsMarkdown?: string
-  mode: AutomationMode
-  modelId: string
-  projectId?: string
-  status: AutomationStatus
-  timezone: string
-  scheduleKind: AutomationScheduleKind | string
-  scheduleConfig: AutomationScheduleConfig | Record<string, unknown>
-  nextRunAt?: number
-  lastRunAt?: number
-  lastRunStatus?: AutomationRunStatus | string
-  conversationId?: string
-  readinessState?: AutomationReadinessState | string
-  readinessMessage?: string
-  failureStreak?: number
-  createdAt?: number
-  updatedAt: number
-}
-
-export interface AutomationRunSummary {
-  _id: string
-  automationId: string
-  userId?: string
-  status: AutomationRunStatus | string
-  triggerSource?: 'manual' | 'schedule' | 'retry'
-  scheduledFor?: number
-  startedAt?: number
-  finishedAt?: number
-  durationMs?: number
-  conversationId?: string
-  turnId?: string
-  attemptNumber?: number
-  retryOfRunId?: string
-  stage?: AutomationRunStage | string
-  failureStage?: string
-  requestId?: string
-  lastHeartbeatAt?: number
-  assistantPersisted?: boolean
-  assistantMessage?: string
-  readinessState?: AutomationReadinessState | string
-  executor?: AutomationExecutorSummary
-  promptSnapshot?: string
-  mode?: AutomationMode
-  modelId?: string
-  resultSummary?: string
-  errorCode?: string
-  errorMessage?: string
-  createdAt?: number
-}
-
-export interface AutomationToolInvocationSummary {
-  _id: string
-  toolId: string
-  mode: AutomationMode
-  modelId?: string
-  conversationId?: string
-  turnId?: string
-  success: boolean
-  durationMs?: number
-  costBucket:
-    | 'perplexity'
-    | 'image'
-    | 'video'
-    | 'browser'
-    | 'daytona'
-    | 'composio'
-    | 'internal'
-  errorMessage?: string
-  createdAt: number
-}
-
-export interface AutomationOutputSummary {
-  _id: string
-  type: string
-  status: 'pending' | 'completed' | 'failed'
-  url?: string
-  fileName?: string
-  mimeType?: string
-  sizeBytes?: number
-  modelId: string
-  conversationId?: string
-  turnId?: string
-  errorMessage?: string
-  createdAt: number
-  completedAt?: number
-}
-
-export interface AutomationRunEventSummary {
-  _id: string
-  automationRunId: string
-  stage: AutomationRunStage | string
-  level: 'info' | 'warning' | 'error'
-  message: string
-  metadata?: Record<string, unknown>
-  createdAt: number
-}
-
-export interface AutomationRunDetail {
-  run: AutomationRunSummary
-  automation?: Pick<AutomationSummary, '_id' | 'title' | 'description' | 'mode' | 'modelId'>
-  userMessage?: string
-  assistantMessage?: string
-  tools: AutomationToolInvocationSummary[]
-  outputs: AutomationOutputSummary[]
-  relatedRetryRun?: AutomationRunSummary
-  events?: AutomationRunEventSummary[]
-}
