@@ -72,7 +72,8 @@ export async function POST(request: Request) {
       hasCodeChallenge: Boolean(codeChallenge),
     })
 
-    const deepLink = `overlay://auth/transfer?token=${token}`
+    const requestOrigin = new URL(request.url).origin
+    const deepLink = `overlay://auth/transfer?token=${encodeURIComponent(token)}&server=${encodeURIComponent(requestOrigin)}`
 
     return NextResponse.json({ deepLink }, { headers: NO_STORE_HEADERS })
   } catch (error) {

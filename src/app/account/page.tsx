@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { PageNavbar } from '@/components/PageNavbar'
 import { formatBytes } from '@/lib/storage-limits'
+import { getStoredDesktopPkceChallenge } from '@/lib/mobile-auth-client'
 import {
   marketingBody,
   marketingHeading,
@@ -171,7 +172,7 @@ function AccountPageContent() {
   const canceledParam = searchParams?.get('canceled')
   const topUpSuccessParam = searchParams?.get('topup_success')
   const topUpSessionId = searchParams?.get('topup_session_id') ?? null
-  const desktopCodeChallenge = searchParams?.get('desktop_code_challenge')?.trim() || ''
+  const desktopCodeChallenge = searchParams?.get('desktop_code_challenge')?.trim() || getStoredDesktopPkceChallenge() || ''
   const extensionHandoff = searchParams?.get('extension_handoff') === '1'
   const chromeExtensionIdRaw = searchParams?.get('chrome_extension_id')?.trim() || ''
   const extensionHandoffSentRef = useRef(false)
@@ -432,7 +433,10 @@ function AccountPageContent() {
       // so Launch Services never fires open-url on the running instance).
       if (token) {
         try {
-          const localRes = await fetch(`http://localhost:45738/auth?token=${token}`, {
+          const localUrl = new URL('http://localhost:45738/auth')
+          localUrl.searchParams.set('token', token)
+          localUrl.searchParams.set('server', window.location.origin)
+          const localRes = await fetch(localUrl.toString(), {
             signal: AbortSignal.timeout(1500),
           })
           if (localRes.ok) {

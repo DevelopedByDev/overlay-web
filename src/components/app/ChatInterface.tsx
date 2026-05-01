@@ -244,6 +244,22 @@ function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> })
   return msg.parts.filter((p) => p.type === 'text').map((p) => p.text || '').join('')
 }
 
+function messageHasVisibleAssistantActivity(msg: { parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }> }): boolean {
+  return (msg.parts ?? []).some((part) => {
+    if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
+    if (part.type === 'tool-invocation') return Boolean(part.toolInvocation)
+    if (part.type === 'file') return Boolean(part.url)
+    return part.type.startsWith('tool-')
+  })
+}
+
+function chooseAssistantCandidate<T extends { role: string; parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }> }>(
+  candidates: T[],
+): T | null {
+  if (candidates.length === 0) return null
+  return candidates.find(messageHasVisibleAssistantActivity) ?? candidates[candidates.length - 1]!
+}
+
 type AssistantVisualBlock =
   | {
       kind: 'tool'
@@ -1432,6 +1448,27 @@ type ServerConversationMessage = {
   routedModelId?: string
 }
 
+type LiveConversationMessage = {
+  _id: Id<'conversationMessages'>
+  turnId: string
+  role: 'user' | 'assistant'
+  mode: 'ask' | 'act'
+  content: string
+  contentType: 'text' | 'image' | 'video'
+  parts?: Array<Record<string, unknown>>
+  modelId?: string
+  variantIndex?: number
+  routedModelId?: string
+  status?: 'generating' | 'completed' | 'error'
+}
+
+type LiveMessageDelta = {
+  _id: Id<'conversationMessageDeltas'>
+  messageId: Id<'conversationMessages'>
+  textDelta?: string
+  newParts?: Array<Record<string, unknown>>
+}
+
 function messageMatchesLocalTurn(msg: { id?: string; turnId?: string }, turnId: string): boolean {
   const persistedTurnId = msg.turnId?.trim()
   if (persistedTurnId) return persistedTurnId === turnId
@@ -1478,6 +1515,106 @@ function replaceAssistantForTurn(
     }
   }
   return next
+}
+
+function isToolInvocationPart(part: Record<string, unknown>): part is Record<string, unknown> & {
+  toolInvocation: {
+    toolCallId?: string
+    toolName?: string
+    toolInput?: unknown
+    toolOutput?: unknown
+    state?: string
+  }
+} {
+  return typeof part.toolInvocation === 'object' && part.toolInvocation !== null
+}
+
+function mergeLiveStreamingParts(
+  existingParts: Array<Record<string, unknown>>,
+  newParts: Array<Record<string, unknown>>,
+) {
+  let nextParts = existingParts
+  for (const part of newParts) {
+    const last = nextParts[nextParts.length - 1]
+    if (
+      part.type === 'reasoning' &&
+      last?.type === 'reasoning' &&
+      typeof part.text === 'string'
+    ) {
+      nextParts = [
+        ...nextParts.slice(0, -1),
+        {
+          ...last,
+          text: `${typeof last.text === 'string' ? last.text : ''}${part.text}`,
+          state: part.state ?? last.state,
+        },
+      ]
+      continue
+    }
+
+    if (isToolInvocationPart(part)) {
+      const incoming = part.toolInvocation
+      const toolCallId = incoming.toolCallId
+      if (toolCallId) {
+        const existingIdx = nextParts.findIndex(
+          (candidate) =>
+            isToolInvocationPart(candidate) &&
+            candidate.toolInvocation.toolCallId === toolCallId,
+        )
+        if (existingIdx >= 0) {
+          const existing = nextParts[existingIdx]!
+          if (isToolInvocationPart(existing)) {
+            nextParts = [
+              ...nextParts.slice(0, existingIdx),
+              {
+                type: 'tool-invocation',
+                toolInvocation: {
+                  ...existing.toolInvocation,
+                  ...incoming,
+                  toolName:
+                    incoming.toolName === 'unknown_tool'
+                      ? existing.toolInvocation.toolName
+                      : incoming.toolName,
+                  toolInput: incoming.toolInput ?? existing.toolInvocation.toolInput,
+                  toolOutput: incoming.toolOutput ?? existing.toolInvocation.toolOutput,
+                },
+              },
+              ...nextParts.slice(existingIdx + 1),
+            ]
+            continue
+          }
+        }
+      }
+    }
+
+    nextParts = [...nextParts, part]
+  }
+  return nextParts
+}
+
+function applyLiveMessageDeltaParts(
+  existingParts: Array<Record<string, unknown>>,
+  delta: LiveMessageDelta,
+) {
+  let nextParts = existingParts
+  if (delta.textDelta) {
+    const last = nextParts[nextParts.length - 1]
+    if (last?.type === 'text') {
+      nextParts = [
+        ...nextParts.slice(0, -1),
+        {
+          ...last,
+          text: `${typeof last.text === 'string' ? last.text : ''}${delta.textDelta}`,
+        },
+      ]
+    } else {
+      nextParts = [...nextParts, { type: 'text', text: delta.textDelta }]
+    }
+  }
+  if (delta.newParts?.length) {
+    nextParts = mergeLiveStreamingParts(nextParts, delta.newParts)
+  }
+  return nextParts
 }
 
 function getDraftFromToolBlock(block: ToolVisualBlock):
@@ -1653,21 +1790,29 @@ function scrollToExchangeTurn(turnId: string) {
  */
 function resolveActAssistant(
   chat0Linear: Array<{ id?: string; role: string }>,
-  actMsgs: Array<{ id?: string; role: string }>,
+  actMsgs: Array<{ id?: string; role: string; parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }> }>,
   userMsgId: string,
 ) {
   const i = chat0Linear.findIndex((m) => m.role === 'user' && m.id === userMsgId)
   if (i >= 0) {
-    const next = actMsgs[i + 1]
-    if (next?.role === 'assistant') return next
+    const candidates: typeof actMsgs = []
+    for (let j = i + 1; j < actMsgs.length; j++) {
+      const m = actMsgs[j]!
+      if (m.role === 'user') break
+      if (m.role === 'assistant') candidates.push(m)
+    }
+    const selected = chooseAssistantCandidate(candidates)
+    if (selected) return selected
   }
   const ui = actMsgs.findIndex((m) => m.id === userMsgId && m.role === 'user')
   if (ui >= 0) {
+    const candidates: typeof actMsgs = []
     for (let j = ui + 1; j < actMsgs.length; j++) {
       const m = actMsgs[j]!
-      if (m.role === 'assistant') return m
       if (m.role === 'user') break
+      if (m.role === 'assistant') candidates.push(m)
     }
+    return chooseAssistantCandidate(candidates)
   }
   return null
 }
@@ -2764,6 +2909,7 @@ export default function ChatInterface({
   const activeChatIdRef = useRef<string | null>(null)
   const loadChatRequestRef = useRef(0)
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
+  const appliedLiveDeltaIdsRef = useRef(new Set<string>())
   const runtimesRef = useRef(new Map<string, ConversationRuntime>())
   const emptyRuntimeRef = useRef(createConversationRuntime('__empty__'))
 
@@ -2998,6 +3144,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     setExitingTurnIds([])
+    appliedLiveDeltaIdsRef.current.clear()
   }, [activeChatId])
 
   useEffect(() => {
@@ -3219,7 +3366,7 @@ export default function ChatInterface({
   const chat3 = useChat({ chat: activeRuntime.askChats[3] })
   const actChat = useChat({ chat: activeRuntime.actChat })
   const liveMessages = useQuery(
-    api.conversations.watchMessages,
+    api.conversations.watchGeneratingMessages,
     activeChatId && authUser?.id && convexAccessToken
       ? {
           conversationId: activeChatId as Id<'conversations'>,
@@ -3227,21 +3374,17 @@ export default function ChatInterface({
           accessToken: convexAccessToken,
         }
       : 'skip',
-  ) as
-    | Array<{
-        _id: Id<'conversationMessages'>
-        turnId: string
-        role: 'user' | 'assistant'
-        mode: 'ask' | 'act'
-        content: string
-        contentType: 'text' | 'image' | 'video'
-        parts?: Array<Record<string, unknown>>
-        modelId?: string
-        variantIndex?: number
-        routedModelId?: string
-        status?: 'generating' | 'completed' | 'error'
-      }>
-    | undefined
+  ) as Array<LiveConversationMessage> | undefined
+  const liveMessageDeltas = useQuery(
+    api.conversations.watchGeneratingMessageDeltas,
+    activeChatId && authUser?.id && convexAccessToken
+      ? {
+          conversationId: activeChatId as Id<'conversations'>,
+          userId: authUser.id,
+          accessToken: convexAccessToken,
+        }
+      : 'skip',
+  ) as Array<LiveMessageDelta> | undefined
 
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
   const activeAskChats = activeRuntime.askChats
@@ -3442,6 +3585,14 @@ export default function ChatInterface({
 
   useEffect(() => {
     if (!activeChatId || !liveMessages) return
+    const hasLocalHttpStream =
+      activeChatIdRef.current === activeChatId &&
+      (
+        actChat.status === 'streaming' ||
+        actChat.status === 'submitted' ||
+        [chat0, chat1, chat2, chat3].some((chat) => chat.status === 'streaming' || chat.status === 'submitted')
+      )
+    if (hasLocalHttpStream) return
     const liveGeneratingMessages = liveMessages.filter(
       (message) => message.role === 'assistant' && message.status === 'generating',
     )
@@ -3529,7 +3680,71 @@ export default function ChatInterface({
   }, [activeChatId, actChat, chat0, chat1, chat2, chat3, completeSession, liveMessages, loadChats, runtimeHydrationVersion])
 
   useEffect(() => {
+    if (!activeChatId || !liveMessageDeltas?.length) return
+    const hasLocalHttpStream =
+      activeChatIdRef.current === activeChatId &&
+      (
+        actChat.status === 'streaming' ||
+        actChat.status === 'submitted' ||
+        [chat0, chat1, chat2, chat3].some((chat) => chat.status === 'streaming' || chat.status === 'submitted')
+      )
+    if (hasLocalHttpStream) return
+    const runtime = runtimesRef.current.get(activeChatId)
+    if (!runtime) return
+
+    let changed = false
+    const applyDeltaToList = (messages: UIMessage[], delta: LiveMessageDelta) => {
+      const existingIdx = messages.findIndex((message) => {
+        const m = message as unknown as { id?: string; role?: string }
+        return m.role === 'assistant' && m.id === delta.messageId
+      })
+      if (existingIdx < 0) return false
+      const existing = messages[existingIdx] as unknown as {
+        parts?: Array<Record<string, unknown>>
+      }
+      messages[existingIdx] = {
+        ...messages[existingIdx],
+        parts: applyLiveMessageDeltaParts(existing.parts ?? [], delta),
+      } as UIMessage
+      return true
+    }
+
+    for (const delta of liveMessageDeltas) {
+      if (appliedLiveDeltaIdsRef.current.has(delta._id)) continue
+      let applied = false
+      applied = applyDeltaToList(runtime.actChat.messages as UIMessage[], delta) || applied
+      for (const chat of runtime.askChats) {
+        applied = applyDeltaToList(chat.messages as UIMessage[], delta) || applied
+      }
+      if (applied) {
+        appliedLiveDeltaIdsRef.current.add(delta._id)
+        changed = true
+      }
+    }
+
+    if (!changed) return
+    runtime.actChat.messages = [...runtime.actChat.messages]
+    for (const chat of runtime.askChats) chat.messages = [...chat.messages]
+    if (activeChatIdRef.current === activeChatId) {
+      actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
+      chat0.setMessages([...runtime.askChats[0]!.messages] as UIMessage[])
+      chat1.setMessages([...runtime.askChats[1]!.messages] as UIMessage[])
+      chat2.setMessages([...runtime.askChats[2]!.messages] as UIMessage[])
+      chat3.setMessages([...runtime.askChats[3]!.messages] as UIMessage[])
+    }
+    forceLiveSyncRender((value) => value + 1)
+  }, [activeChatId, actChat, chat0, chat1, chat2, chat3, liveMessageDeltas, liveMessages])
+
+  useEffect(() => {
     if (!activeChatId) return
+    const hasLocalHttpStream =
+      activeChatIdRef.current === activeChatId &&
+      (
+        actChat.status === 'streaming' ||
+        actChat.status === 'submitted' ||
+        [chat0, chat1, chat2, chat3].some((chat) => chat.status === 'streaming' || chat.status === 'submitted')
+      )
+    if (hasLocalHttpStream) return
     const sessionIsStreaming = sessions[activeChatId]?.status === 'streaming'
     const liveQuerySawGenerating = liveGeneratingByChatRef.current.get(activeChatId) === true
     if (!sessionIsStreaming && !liveQuerySawGenerating && !activePersistedGenerating) return
@@ -3632,7 +3847,7 @@ export default function ChatInterface({
     void patchFromServer()
     const interval = window.setInterval(() => {
       void patchFromServer()
-    }, 1000)
+    }, 5000)
     return () => {
       cancelled = true
       window.clearInterval(interval)
@@ -3932,11 +4147,12 @@ export default function ChatInterface({
     for (let i = 0; i < msgs.length; i++) {
       if (msgs[i].role === 'user') {
         if (uCount === exchIdx) {
+          const candidates: UIMessage[] = []
           for (let j = i + 1; j < msgs.length; j++) {
-            if (msgs[j].role === 'assistant') return msgs[j]
             if (msgs[j].role === 'user') break
+            if (msgs[j].role === 'assistant') candidates.push(msgs[j]!)
           }
-          return null
+          return chooseAssistantCandidate(candidates)
         }
         uCount++
       }

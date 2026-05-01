@@ -58,17 +58,18 @@ function normalizeConversationDoc<T extends {
   }
 }
 
-function mergeGeneratingMessageParts(
-  existingParts: NonNullable<Doc<'conversationMessages'>['parts']>,
-  newParts: NonNullable<Doc<'conversationMessages'>['parts']>,
-) {
-  const isToolInvocationPart = (
-    candidate: NonNullable<Doc<'conversationMessages'>['parts']>[number],
-  ): candidate is Extract<
-    NonNullable<Doc<'conversationMessages'>['parts']>[number],
-    { toolInvocation: unknown }
-  > => 'toolInvocation' in candidate
+type MessageDoc = Doc<'conversationMessages'>
+type MessageDeltaDoc = Doc<'conversationMessageDeltas'>
+type MessagePart = NonNullable<MessageDoc['parts']>[number]
+type MessageParts = NonNullable<MessageDoc['parts']>
 
+function isToolInvocationPart(
+  candidate: MessagePart,
+): candidate is Extract<MessagePart, { toolInvocation: unknown }> {
+  return 'toolInvocation' in candidate
+}
+
+function mergeStreamingParts(existingParts: MessageParts, newParts: MessageParts) {
   let nextParts = existingParts
   for (const part of newParts) {
     const last = nextParts[nextParts.length - 1]
@@ -122,6 +123,30 @@ function mergeGeneratingMessageParts(
     nextParts = [...nextParts, part]
   }
   return nextParts
+}
+
+function applyStreamingDeltas(message: MessageDoc, deltas: MessageDeltaDoc[]): MessageDoc {
+  if (message.status !== 'generating' || deltas.length === 0) return message
+  let content = message.content ?? ''
+  let parts = Array.isArray(message.parts) ? message.parts : [{ type: 'text' as const, text: content }]
+  for (const delta of deltas) {
+    if (delta.textDelta) {
+      content += delta.textDelta
+      const last = parts[parts.length - 1]
+      if (last?.type === 'text') {
+        parts = [
+          ...parts.slice(0, -1),
+          { ...last, text: `${last.text ?? ''}${delta.textDelta}` },
+        ]
+      } else {
+        parts = [...parts, { type: 'text', text: delta.textDelta }]
+      }
+    }
+    if (delta.newParts?.length) {
+      parts = mergeStreamingParts(parts, delta.newParts)
+    }
+  }
+  return { ...message, content, parts }
 }
 
 export const list = query({
@@ -306,11 +331,24 @@ export const getMessages = query({
     if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
       return []
     }
-    return await ctx.db
+    const messages = await ctx.db
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('asc')
       .collect()
+    const generating = messages.filter((message) => message.status === 'generating')
+    if (generating.length === 0) return messages
+
+    const hydrated = await Promise.all(generating.map(async (message) => {
+      const deltas = await ctx.db
+        .query('conversationMessageDeltas')
+        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
+        .order('asc')
+        .collect()
+      return applyStreamingDeltas(message, deltas)
+    }))
+    const hydratedById = new Map(hydrated.map((message) => [message._id, message]))
+    return messages.map((message) => hydratedById.get(message._id) ?? message)
   },
 })
 
@@ -464,34 +502,22 @@ export const appendToGeneratingMessage = mutation({
     const message = await ctx.db.get(messageId)
     if (!message) throw new Error('Message not found')
     if (message.status !== 'generating') {
-      throw new Error('Message is not generating')
+      return
     }
 
-    const now = Date.now()
-    const nextContent = textDelta ? `${message.content ?? ''}${textDelta}` : message.content
-    const existingParts = Array.isArray(message.parts) ? message.parts : []
-    let nextParts = existingParts
-    if (textDelta) {
-      const last = existingParts[existingParts.length - 1]
-      if (last?.type === 'text') {
-        nextParts = [
-          ...existingParts.slice(0, -1),
-          { ...last, text: `${last.text ?? ''}${textDelta}` },
-        ]
-      } else {
-        nextParts = [...existingParts, { type: 'text', text: textDelta }]
-      }
-    }
-    if (newParts?.length) {
-      nextParts = mergeGeneratingMessageParts(nextParts, newParts)
-    }
-    await ctx.db.patch(messageId, {
-      content: nextContent,
-      parts: nextParts,
-      updatedAt: now,
+    if (!textDelta && !newParts?.length) return
+    await ctx.db.insert('conversationMessageDeltas', {
+      conversationId: message.conversationId,
+      messageId,
+      userId: message.userId,
+      textDelta,
+      newParts,
+      createdAt: Date.now(),
     })
   },
 })
+
+export const appendGeneratingMessageDelta = appendToGeneratingMessage
 
 export const finalizeGeneratingMessage = mutation({
   args: {
@@ -515,6 +541,11 @@ export const finalizeGeneratingMessage = mutation({
       status: 'completed',
       updatedAt: now,
     })
+    const deltas = await ctx.db
+      .query('conversationMessageDeltas')
+      .withIndex('by_messageId', (q) => q.eq('messageId', args.messageId))
+      .collect()
+    await Promise.all(deltas.map((delta) => ctx.db.delete(delta._id)))
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
   },
 })
@@ -537,6 +568,11 @@ export const failGeneratingMessage = mutation({
       status: 'error',
       updatedAt: now,
     })
+    const deltas = await ctx.db
+      .query('conversationMessageDeltas')
+      .withIndex('by_messageId', (q) => q.eq('messageId', messageId))
+      .collect()
+    await Promise.all(deltas.map((delta) => ctx.db.delete(delta._id)))
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
   },
 })
@@ -555,13 +591,52 @@ export const watchGeneratingMessages = query({
     }
     const conversation = await ctx.db.get(conversationId)
     if (!conversation || conversation.userId !== userId || conversation.deletedAt) return []
-    return await ctx.db
+    const messages = await ctx.db
       .query('conversationMessages')
       .withIndex('by_conversationId_status_updatedAt', (q) =>
         q.eq('conversationId', conversationId).eq('status', 'generating')
       )
       .order('desc')
       .collect()
+    return await Promise.all(messages.map(async (message) => {
+      const deltas = await ctx.db
+        .query('conversationMessageDeltas')
+        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
+        .order('asc')
+        .collect()
+      return applyStreamingDeltas(message, deltas)
+    }))
+  },
+})
+
+export const watchGeneratingMessageDeltas = query({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    accessToken: v.string(),
+  },
+  handler: async (ctx, { conversationId, userId, accessToken }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken })
+    } catch {
+      return []
+    }
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt) return []
+    const generatingMessages = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId_status_updatedAt', (q) =>
+        q.eq('conversationId', conversationId).eq('status', 'generating')
+      )
+      .collect()
+    if (generatingMessages.length === 0) return []
+    const generatingIds = new Set(generatingMessages.map((message) => message._id))
+    const deltas = await ctx.db
+      .query('conversationMessageDeltas')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
+      .order('asc')
+      .collect()
+    return deltas.filter((delta) => generatingIds.has(delta.messageId))
   },
 })
 

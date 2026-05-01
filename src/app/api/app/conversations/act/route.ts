@@ -183,12 +183,12 @@ function createGeneratingPersistenceTransform(params: {
 
   async function flushText(force = false) {
     if (!params.messageId || !pendingText) return
-    if (!force && pendingText.length < 80 && Date.now() - lastFlushAt < 250) return
+    if (!force && pendingText.length < 600 && Date.now() - lastFlushAt < 1500) return
     const textDelta = pendingText
     pendingText = ''
     lastFlushAt = Date.now()
     try {
-      await convex.mutation('conversations:appendToGeneratingMessage', {
+      await convex.mutation('conversations:appendGeneratingMessageDelta', {
         messageId: params.messageId,
         textDelta,
         serverSecret: params.serverSecret,
@@ -238,7 +238,7 @@ function createGeneratingPersistenceTransform(params: {
       }
       if (newParts.length > 0 && params.messageId) {
         try {
-          await convex.mutation('conversations:appendToGeneratingMessage', {
+          await convex.mutation('conversations:appendGeneratingMessageDelta', {
             messageId: params.messageId,
             newParts: newParts as never,
             serverSecret: params.serverSecret,
@@ -284,7 +284,7 @@ function createGeneratingPersistenceTransform(params: {
         }
         if (newParts.length > 0 && params.messageId) {
           try {
-            await convex.mutation('conversations:appendToGeneratingMessage', {
+            await convex.mutation('conversations:appendGeneratingMessageDelta', {
               messageId: params.messageId,
               newParts: newParts as never,
               serverSecret: params.serverSecret,

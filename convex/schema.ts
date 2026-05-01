@@ -500,6 +500,39 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt']),
 
+  conversationMessageDeltas: defineTable({
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    userId: v.string(),
+    textDelta: v.optional(v.string()),
+    newParts: v.optional(
+      v.array(
+        v.union(
+          v.object({
+            type: v.literal('tool-invocation'),
+            toolInvocation: v.object({
+              toolCallId: v.optional(v.string()),
+              toolName: v.string(),
+              state: v.optional(v.string()),
+              toolInput: v.optional(v.any()),
+              toolOutput: v.optional(v.any()),
+            }),
+          }),
+          v.object({
+            type: v.string(),
+            text: v.optional(v.string()),
+            url: v.optional(v.string()),
+            mediaType: v.optional(v.string()),
+            fileName: v.optional(v.string()),
+            state: v.optional(v.string()),
+          }),
+        ),
+      ),
+    ),
+    createdAt: v.number(),
+  }).index('by_conversationId', ['conversationId'])
+    .index('by_messageId', ['messageId']),
+
   notes: defineTable({
     userId: v.string(),
     clientId: v.optional(v.string()),
