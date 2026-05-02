@@ -280,6 +280,7 @@ export default defineSchema({
     lastError: v.optional(v.string()),
     projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
+    graphSource: v.optional(v.string()),
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
     // Legacy automation fields kept so existing production rows continue to validate.

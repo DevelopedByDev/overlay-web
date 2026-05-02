@@ -110,6 +110,7 @@ export async function PATCH(request: NextRequest) {
       timezone?: string
       projectId?: string
       modelId?: string
+      graphSource?: string
       concurrencyPolicy?: 'skip' | 'queue'
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
@@ -138,6 +139,7 @@ export async function PATCH(request: NextRequest) {
         timezone: body.timezone,
         projectId: body.projectId,
         modelId: body.modelId,
+        graphSource: body.graphSource,
         concurrencyPolicy: body.concurrencyPolicy,
       }, { throwOnError: true })
     }

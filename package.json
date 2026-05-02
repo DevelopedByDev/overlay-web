@@ -102,6 +102,7 @@
     "lowlight": "^3.3.0",
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.0",
+    "mermaid": "^11.14.0",
     "next": "^15.5.15",
     "pdf-parse": "^1.1.1",
     "picomatch": "^2.3.2",

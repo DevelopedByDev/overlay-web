@@ -165,6 +165,529 @@ import type {
   ToolVisualBlock,
 } from './chat-interface/types'
 
+type AutomationDetailTab = 'chat' | 'edit' | 'graph'
+
+type AutomationSchedule =
+  | { kind: 'interval'; intervalMinutes?: number }
+  | { kind: 'daily'; hourUTC?: number; minuteUTC?: number }
+  | { kind: 'weekly'; dayOfWeekUTC?: number; hourUTC?: number; minuteUTC?: number }
+  | { kind: 'monthly'; dayOfMonthUTC?: number; hourUTC?: number; minuteUTC?: number }
+
+type AutomationDetail = {
+  _id: string
+  name?: string
+  title?: string
+  description?: string
+  instructions?: string
+  instructionsMarkdown?: string
+  enabled?: boolean
+  schedule?: AutomationSchedule
+  timezone?: string
+  modelId?: string
+  graphSource?: string
+  sourceConversationId?: string
+  conversationId?: string
+  nextRunAt?: number
+  lastError?: string
+}
+
+const AUTOMATION_DETAIL_TABS: Array<{ id: AutomationDetailTab; label: string }> = [
+  { id: 'chat', label: 'Chat' },
+  { id: 'edit', label: 'Edit' },
+  { id: 'graph', label: 'Graph' },
+]
+
+function normalizeAutomationDetailTab(value: string | null | undefined): AutomationDetailTab {
+  return value === 'edit' || value === 'graph' ? value : 'chat'
+}
+
+function getAutomationDisplayName(automation: AutomationDetail): string {
+  return automation.name || automation.title || 'Untitled automation'
+}
+
+function getAutomationInstructions(automation: AutomationDetail): string {
+  return automation.instructions || automation.instructionsMarkdown || ''
+}
+
+function defaultAutomationGraphSource(automation: AutomationDetail): string {
+  const name = getAutomationDisplayName(automation).replace(/["\n\r]/g, ' ')
+  const schedule = automation.schedule?.kind ? automation.schedule.kind : 'schedule'
+  const model = automation.modelId || DEFAULT_MODEL_ID
+  return [
+    'flowchart TD',
+    `  trigger["${schedule} trigger"] --> instructions["${name} instructions"]`,
+    `  instructions --> model["Run with ${model}"]`,
+    '  model --> output["Write result to automation chat"]',
+  ].join('\n')
+}
+
+function formatAutomationTime(schedule: AutomationSchedule | undefined): string {
+  const hour = schedule && 'hourUTC' in schedule ? schedule.hourUTC ?? 9 : 9
+  const minute = schedule && 'minuteUTC' in schedule ? schedule.minuteUTC ?? 0 : 0
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function parseAutomationTime(value: string): { hourUTC: number; minuteUTC: number } {
+  const [hourRaw, minuteRaw] = value.split(':')
+  const hour = Number(hourRaw)
+  const minute = Number(minuteRaw)
+  return {
+    hourUTC: Number.isFinite(hour) ? Math.min(23, Math.max(0, Math.floor(hour))) : 9,
+    minuteUTC: Number.isFinite(minute) ? Math.min(59, Math.max(0, Math.floor(minute))) : 0,
+  }
+}
+
+function buildAutomationSchedule(input: {
+  kind: AutomationSchedule['kind']
+  intervalMinutes: number
+  time: string
+  dayOfWeekUTC: number
+  dayOfMonthUTC: number
+}): AutomationSchedule {
+  if (input.kind === 'interval') {
+    return {
+      kind: 'interval',
+      intervalMinutes: Math.max(1, Math.floor(input.intervalMinutes) || 60),
+    }
+  }
+  const time = parseAutomationTime(input.time)
+  if (input.kind === 'weekly') {
+    return {
+      kind: 'weekly',
+      dayOfWeekUTC: Math.min(6, Math.max(0, Math.floor(input.dayOfWeekUTC))),
+      ...time,
+    }
+  }
+  if (input.kind === 'monthly') {
+    return {
+      kind: 'monthly',
+      dayOfMonthUTC: Math.min(31, Math.max(1, Math.floor(input.dayOfMonthUTC))),
+      ...time,
+    }
+  }
+  return { kind: 'daily', ...time }
+}
+
+function AutomationEditorPanel({
+  automation,
+  isFreeTier,
+  onSaved,
+  onTested,
+}: {
+  automation: AutomationDetail
+  isFreeTier: boolean
+  onSaved: (automation: AutomationDetail) => void
+  onTested: (conversationId: string) => void
+}) {
+  const initialSchedule = automation.schedule ?? { kind: 'daily', hourUTC: 14, minuteUTC: 0 }
+  const [name, setName] = useState(getAutomationDisplayName(automation))
+  const [description, setDescription] = useState(automation.description ?? '')
+  const [instructions, setInstructions] = useState(getAutomationInstructions(automation))
+  const [enabled, setEnabled] = useState(automation.enabled ?? true)
+  const [scheduleKind, setScheduleKind] = useState<AutomationSchedule['kind']>(initialSchedule.kind)
+  const [intervalMinutes, setIntervalMinutes] = useState(
+    initialSchedule.kind === 'interval' ? initialSchedule.intervalMinutes ?? 60 : 60,
+  )
+  const [time, setTime] = useState(formatAutomationTime(initialSchedule))
+  const [dayOfWeekUTC, setDayOfWeekUTC] = useState(
+    initialSchedule.kind === 'weekly' ? initialSchedule.dayOfWeekUTC ?? 1 : 1,
+  )
+  const [dayOfMonthUTC, setDayOfMonthUTC] = useState(
+    initialSchedule.kind === 'monthly' ? initialSchedule.dayOfMonthUTC ?? 1 : 1,
+  )
+  const [timezone, setTimezone] = useState(automation.timezone ?? 'UTC')
+  const [modelId, setModelId] = useState(automation.modelId ?? DEFAULT_MODEL_ID)
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [testState, setTestState] = useState<'idle' | 'running' | 'success' | 'error'>('idle')
+  const [testMessage, setTestMessage] = useState<string | null>(null)
+  const availableModels = useMemo(() => getModelsByIntelligence(isFreeTier), [isFreeTier])
+
+  useEffect(() => {
+    const nextSchedule = automation.schedule ?? { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 }
+    setName(getAutomationDisplayName(automation))
+    setDescription(automation.description ?? '')
+    setInstructions(getAutomationInstructions(automation))
+    setEnabled(automation.enabled ?? true)
+    setScheduleKind(nextSchedule.kind)
+    setIntervalMinutes(nextSchedule.kind === 'interval' ? nextSchedule.intervalMinutes ?? 60 : 60)
+    setTime(formatAutomationTime(nextSchedule))
+    setDayOfWeekUTC(nextSchedule.kind === 'weekly' ? nextSchedule.dayOfWeekUTC ?? 1 : 1)
+    setDayOfMonthUTC(nextSchedule.kind === 'monthly' ? nextSchedule.dayOfMonthUTC ?? 1 : 1)
+    setTimezone(automation.timezone ?? 'UTC')
+    setModelId(automation.modelId ?? DEFAULT_MODEL_ID)
+    setSaveState('idle')
+    setTestState('idle')
+    setTestMessage(null)
+  }, [automation])
+
+  const schedule = buildAutomationSchedule({
+    kind: scheduleKind,
+    intervalMinutes,
+    time,
+    dayOfWeekUTC,
+    dayOfMonthUTC,
+  })
+
+  async function saveAutomation() {
+    if (!name.trim() || !instructions.trim()) return
+    setSaveState('saving')
+    try {
+      const res = await fetch('/api/app/automations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          automationId: automation._id,
+          name,
+          description,
+          instructions,
+          enabled,
+          schedule,
+          timezone,
+          modelId,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to save automation')
+      const updated = {
+        ...automation,
+        name: name.trim(),
+        description: description.trim(),
+        instructions: instructions.trim(),
+        enabled,
+        schedule,
+        timezone: timezone.trim() || 'UTC',
+        modelId: modelId.trim() || undefined,
+      }
+      onSaved(updated)
+      window.dispatchEvent(new Event('overlay:automations-updated'))
+      setSaveState('saved')
+      window.setTimeout(() => setSaveState('idle'), 1500)
+    } catch {
+      setSaveState('error')
+    }
+  }
+
+  async function testAutomation() {
+    setTestState('running')
+    setTestMessage(null)
+    try {
+      const res = await fetch('/api/app/automations/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ automationId: automation._id }),
+      })
+      const data = await res.json().catch(() => ({})) as {
+        conversationId?: string
+        message?: string
+        error?: string
+      }
+      if (!res.ok || !data.conversationId) {
+        throw new Error(data.message || data.error || 'Failed to test automation')
+      }
+      setTestState('success')
+      setTestMessage('Test run completed. Opening the automation chat.')
+      onTested(data.conversationId)
+    } catch (error) {
+      setTestState('error')
+      setTestMessage(error instanceof Error ? error.message : 'Failed to test automation')
+    }
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-[var(--foreground)]">Automation editor</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Tune the saved instructions, schedule, timezone, model, and run a test.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setEnabled((value) => !value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  enabled
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                    : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
+                }`}
+              >
+                {enabled ? 'Enabled' : 'Paused'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveAutomation()}
+                disabled={saveState === 'saving' || !name.trim() || !instructions.trim()}
+                className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
+            <div className="space-y-4">
+              <label className="block text-xs font-medium text-[var(--muted)]">
+                Name
+                <input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+                />
+              </label>
+              <label className="block text-xs font-medium text-[var(--muted)]">
+                Description
+                <input
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+                />
+              </label>
+              <label className="block text-xs font-medium text-[var(--muted)]">
+                Instructions
+                <textarea
+                  value={instructions}
+                  onChange={(event) => setInstructions(event.target.value)}
+                  rows={10}
+                  className="mt-1 w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm leading-6 text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+                />
+              </label>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-medium text-[var(--muted)]">
+                Frequency
+                <select
+                  value={scheduleKind}
+                  onChange={(event) => setScheduleKind(event.target.value as AutomationSchedule['kind'])}
+                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
+                >
+                  <option value="interval">Interval</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </label>
+              {scheduleKind === 'interval' ? (
+                <label className="block text-xs font-medium text-[var(--muted)]">
+                  Every N minutes
+                  <input
+                    type="number"
+                    min={1}
+                    value={intervalMinutes}
+                    onChange={(event) => setIntervalMinutes(Number(event.target.value))}
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
+                  />
+                </label>
+              ) : (
+                <label className="block text-xs font-medium text-[var(--muted)]">
+                  Time (UTC)
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(event) => setTime(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
+                  />
+                </label>
+              )}
+              {scheduleKind === 'weekly' && (
+                <label className="block text-xs font-medium text-[var(--muted)]">
+                  Day of week
+                  <select
+                    value={dayOfWeekUTC}
+                    onChange={(event) => setDayOfWeekUTC(Number(event.target.value))}
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
+                  >
+                    {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, index) => (
+                      <option key={day} value={index}>{day}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {scheduleKind === 'monthly' && (
+                <label className="block text-xs font-medium text-[var(--muted)]">
+                  Day of month
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={dayOfMonthUTC}
+                    onChange={(event) => setDayOfMonthUTC(Number(event.target.value))}
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
+                  />
+                </label>
+              )}
+              <label className="block text-xs font-medium text-[var(--muted)]">
+                Time zone
+                <input
+                  value={timezone}
+                  onChange={(event) => setTimezone(event.target.value)}
+                  placeholder="UTC"
+                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
+                />
+              </label>
+              <label className="block text-xs font-medium text-[var(--muted)]">
+                Model
+                <select
+                  value={modelId}
+                  onChange={(event) => setModelId(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
+                >
+                  {availableModels.map((model) => (
+                    <option key={model.id} value={model.id}>{model.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+          {saveState === 'error' && (
+            <p className="mt-3 text-xs text-red-500">Could not save automation. Please try again.</p>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-[var(--foreground)]">Test automation</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Runs this automation once now and writes the result into the automation chat.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void testAutomation()}
+              disabled={testState === 'running' || !instructions.trim()}
+              className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+            >
+              <Play size={12} />
+              {testState === 'running' ? 'Running...' : 'Test Automation'}
+            </button>
+          </div>
+          {testMessage && (
+            <p className={`mt-3 text-xs ${testState === 'error' ? 'text-red-500' : 'text-[var(--muted)]'}`}>
+              {testMessage}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AutomationGraphPanel({
+  automation,
+  onSaved,
+}: {
+  automation: AutomationDetail
+  onSaved: (automation: AutomationDetail) => void
+}) {
+  const renderIdRef = useRef(`automation-graph-${Math.random().toString(36).slice(2)}`)
+  const [source, setSource] = useState(automation.graphSource || defaultAutomationGraphSource(automation))
+  const [svg, setSvg] = useState('')
+  const [renderError, setRenderError] = useState<string | null>(null)
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  useEffect(() => {
+    setSource(automation.graphSource || defaultAutomationGraphSource(automation))
+    setSaveState('idle')
+  }, [automation])
+
+  useEffect(() => {
+    let cancelled = false
+    async function renderGraph() {
+      try {
+        const mermaid = (await import('mermaid')).default
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: 'base',
+          themeVariables: {
+            fontFamily: 'Inter, ui-sans-serif, system-ui',
+            primaryColor: '#f4f4f5',
+            primaryTextColor: '#18181b',
+            primaryBorderColor: '#d4d4d8',
+            lineColor: '#71717a',
+          },
+        })
+        const result = await mermaid.render(`${renderIdRef.current}-${Date.now()}`, source)
+        if (!cancelled) {
+          setSvg(result.svg)
+          setRenderError(null)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSvg('')
+          setRenderError(error instanceof Error ? error.message : 'Could not render Mermaid graph')
+        }
+      }
+    }
+    void renderGraph()
+    return () => {
+      cancelled = true
+    }
+  }, [source])
+
+  async function saveGraph() {
+    setSaveState('saving')
+    try {
+      const res = await fetch('/api/app/automations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          automationId: automation._id,
+          graphSource: source,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to save graph')
+      onSaved({ ...automation, graphSource: source })
+      setSaveState('saved')
+      window.setTimeout(() => setSaveState('idle'), 1500)
+    } catch {
+      setSaveState('error')
+    }
+  }
+
+  return (
+    <div className="grid min-h-0 flex-1 gap-0 overflow-hidden md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <div className="min-h-0 border-b border-[var(--border)] bg-[var(--background)] p-4 md:border-b-0 md:border-r">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-[var(--foreground)]">Mermaid graph</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">Edit the source and save it to this automation.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void saveGraph()}
+            disabled={saveState === 'saving'}
+            className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save graph'}
+          </button>
+        </div>
+        <textarea
+          value={source}
+          onChange={(event) => setSource(event.target.value)}
+          spellCheck={false}
+          className="h-[calc(100%-4.5rem)] min-h-[20rem] w-full resize-none rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 font-mono text-xs leading-6 text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+        />
+        {saveState === 'error' && <p className="mt-2 text-xs text-red-500">Could not save graph.</p>}
+      </div>
+      <div className="min-h-0 overflow-auto bg-[var(--surface-subtle)] p-4">
+        <div className="flex min-h-full items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6">
+          {renderError ? (
+            <p className="max-w-md text-sm text-red-500">{renderError}</p>
+          ) : svg ? (
+            <div
+              className="max-w-full overflow-auto text-[var(--foreground)]"
+              // Mermaid returns sanitized SVG when securityLevel is strict.
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          ) : (
+            <p className="text-sm text-[var(--muted)]">Rendering graph...</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   const router = useRouter()
   const showUpgrade = isFreeTier && m.cost > 0
@@ -1876,6 +2399,8 @@ export default function ChatInterface({
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingChatTitle, setEditingChatTitle] = useState('')
   const [confirmDeleteChat, setConfirmDeleteChat] = useState<{ id: string; title: string } | null>(null)
+  const [selectedAutomation, setSelectedAutomation] = useState<AutomationDetail | null>(null)
+  const [selectedAutomationLoading, setSelectedAutomationLoading] = useState(false)
   const [draftModalState, setDraftModalState] = useState<DraftModalState | null>(null)
   const [isDraftSaving, setIsDraftSaving] = useState(false)
 
@@ -2716,6 +3241,12 @@ export default function ChatInterface({
   // Auto-load a specific chat when embedded in project view (`id` = conversation)
   const showOwnSidebar = !hideSidebar && settings.useSecondarySidebar
   const idParam = searchParams?.get('id') ?? null
+  const automationIdParam = mode === 'automate' ? searchParams?.get('automationId') ?? null : null
+  const automationDetailTab = normalizeAutomationDetailTab(searchParams?.get('tab'))
+  const automationConversationId =
+    selectedAutomation?.sourceConversationId || selectedAutomation?.conversationId || null
+  const hasAutomationContext = mode === 'automate' && Boolean(automationIdParam)
+  const showAutomationChatTab = !hasAutomationContext || automationDetailTab === 'chat'
   /** When chat is opened inside a project, files/docs attach to this project for search scoping. */
   const rawEmbedProjectId = hideSidebar ? searchParams?.get('projectId')?.trim() ?? null : null
   const embedProjectId =
@@ -2733,6 +3264,46 @@ export default function ChatInterface({
     // `loadChat` is intentionally excluded so this only reacts to route changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idParam])
+
+  useEffect(() => {
+    if (mode !== 'automate' || !automationIdParam) {
+      setSelectedAutomation(null)
+      setSelectedAutomationLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setSelectedAutomationLoading(true)
+    void fetch(`/api/app/automations?automationId=${encodeURIComponent(automationIdParam)}`, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Failed to load automation')
+        return await res.json() as AutomationDetail
+      })
+      .then((automation) => {
+        if (!cancelled) setSelectedAutomation(automation)
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedAutomation(null)
+      })
+      .finally(() => {
+        if (!cancelled) setSelectedAutomationLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [automationIdParam, mode])
+
+  useEffect(() => {
+    if (mode !== 'automate' || !automationConversationId) return
+    if (activeChatIdRef.current === automationConversationId) return
+    void loadChat(automationConversationId)
+    // `loadChat` is intentionally excluded so this only reacts to selected automation changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [automationConversationId, mode])
 
   useEffect(() => {
     if (wasStreamingRef.current && !isActiveLoading && chat0.messages.length > 0) {
@@ -3183,7 +3754,18 @@ export default function ChatInterface({
 
   function syncStandaloneChatUrl(chatId: string | null) {
     if (hideSidebar) return
-    const basePath = mode === 'automate' ? '/app/automations' : '/app/chat'
+    if (mode === 'automate') {
+      const params = new URLSearchParams()
+      if (chatId) params.set('id', chatId)
+      const automationId = searchParams?.get('automationId')
+      if (automationId) params.set('automationId', automationId)
+      const tab = normalizeAutomationDetailTab(searchParams?.get('tab'))
+      if (tab !== 'chat') params.set('tab', tab)
+      const query = params.toString()
+      router.replace(`/app/automations${query ? `?${query}` : ''}`)
+      return
+    }
+    const basePath = '/app/chat'
     router.replace(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
   }
 
@@ -4426,6 +5008,17 @@ export default function ChatInterface({
 
   const greetingLine = mode === 'automate' ? 'What are we automating today?' : chatGreetingLine(firstName)
 
+  const selectAutomationDetailTab = useCallback((tab: AutomationDetailTab) => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    if (tab === 'chat') {
+      params.delete('tab')
+    } else {
+      params.set('tab', tab)
+    }
+    const query = params.toString()
+    router.replace(`${pathname}${query ? `?${query}` : ''}`)
+  }, [pathname, router, searchParams])
+
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-w-0 overflow-x-hidden">
@@ -4691,6 +5284,8 @@ export default function ChatInterface({
               className={`group/header-title min-w-0 items-center gap-2 ${
                 activeChatId && editingChatId === activeChatId
                   ? 'flex w-full'
+                  : selectedAutomation
+                    ? 'flex w-full flex-wrap md:w-auto md:flex-nowrap'
                   : 'hidden min-[768px]:flex'
               }`}
             >
@@ -4716,7 +5311,7 @@ export default function ChatInterface({
                 <div className="flex min-w-0 items-center gap-1">
                   <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] md:truncate lg:max-w-[24rem]">
                     <span className="line-clamp-2 md:line-clamp-1 md:truncate">
-                      {activeChatTitle ?? activeChat?.title ?? 'New conversation'}
+                      {selectedAutomation?.name || activeChatTitle || activeChat?.title || 'New conversation'}
                     </span>
                   </h2>
                   {isSwitchingChat ? (
@@ -4724,7 +5319,7 @@ export default function ChatInterface({
                       className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin"
                       aria-label="Loading chat"
                     />
-                  ) : activeChatId && activeChatHydrated ? (
+                  ) : activeChatId && activeChatHydrated && !selectedAutomation ? (
                     <button
                       type="button"
                       onClick={beginHeaderChatRename}
@@ -4742,10 +5337,33 @@ export default function ChatInterface({
                   <span className="max-w-[6rem] truncate sm:max-w-none">{projectName}</span>
                 </span>
               )}
+              {selectedAutomation && (
+                <div className="flex shrink-0 items-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-0.5">
+                  {AUTOMATION_DETAIL_TABS.map((tab) => {
+                    const active = automationDetailTab === tab.id
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => selectAutomationDetailTab(tab.id)}
+                        className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                          active
+                            ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
+                            : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Model picker + Generation mode (mobile: one row, model left / mode select right) */}
-            <div className="flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2">
+            <div className={`flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2 ${
+              showAutomationChatTab ? '' : 'hidden'
+            }`}>
               {generationMode === 'video' && (
                 <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
                   <button
@@ -5015,8 +5633,42 @@ export default function ChatInterface({
           </div>
         </div>
 
+        {mode === 'automate' && automationIdParam && selectedAutomationLoading && !selectedAutomation && (
+          <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
+            <div className="h-5 w-5 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" aria-label="Loading automation" />
+          </div>
+        )}
+
+        {hasAutomationContext && !selectedAutomationLoading && !selectedAutomation && !showAutomationChatTab && (
+          <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
+            <p className="text-sm text-[var(--muted)]">Automation not found.</p>
+          </div>
+        )}
+
+        {!showAutomationChatTab && selectedAutomation && automationDetailTab === 'edit' && (
+          <AutomationEditorPanel
+            automation={selectedAutomation}
+            isFreeTier={isFreeTier}
+            onSaved={setSelectedAutomation}
+            onTested={(conversationId) => {
+              const params = new URLSearchParams(searchParams?.toString() ?? '')
+              params.set('id', conversationId)
+              params.set('automationId', selectedAutomation._id)
+              params.delete('tab')
+              router.replace(`${pathname}?${params.toString()}`)
+            }}
+          />
+        )}
+
+        {!showAutomationChatTab && selectedAutomation && automationDetailTab === 'graph' && (
+          <AutomationGraphPanel
+            automation={selectedAutomation}
+            onSaved={setSelectedAutomation}
+          />
+        )}
+
         {/* Messages — only after first exchange; empty chat keeps composer centered below */}
-        {hasHistory && (
+        {showAutomationChatTab && hasHistory && (
         <div
           ref={messagesScrollRef}
           className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
@@ -5351,6 +6003,8 @@ export default function ChatInterface({
         </div>
         )}
 
+        {showAutomationChatTab && (
+          <>
         {/* Input — empty chat: mobile = greeting centered, composer at bottom, no suggestions; md+ = legacy centered stack */}
         <div
           className={`flex min-h-0 flex-col ${
@@ -5729,6 +6383,8 @@ export default function ChatInterface({
             )}
           </AnimatePresence>
         </div>
+          </>
+        )}
 
         <DraftReviewModal
           state={draftModalState}

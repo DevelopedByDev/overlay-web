@@ -268,6 +268,7 @@ export const update = mutation({
     timezone: v.optional(v.string()),
     projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
+    graphSource: v.optional(v.string()),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
   },
   returns: v.null(),
@@ -287,6 +288,7 @@ export const update = mutation({
     if (updates.timezone !== undefined) patch.timezone = updates.timezone.trim() || 'UTC'
     if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     if (updates.modelId !== undefined) patch.modelId = updates.modelId.trim() || undefined
+    if (updates.graphSource !== undefined) patch.graphSource = updates.graphSource.trim() || undefined
     if (updates.concurrencyPolicy !== undefined) patch.concurrencyPolicy = updates.concurrencyPolicy
     if (updates.schedule !== undefined) {
       const schedule = normalizeSchedule(updates.schedule)
@@ -398,6 +400,118 @@ export const listRuns = query({
       .withIndex('by_automationId_createdAt', (q) => q.eq('automationId', args.automationId))
       .order('desc')
       .take(50)
+  },
+})
+
+export const createManualRun = mutation({
+  args: {
+    automationId: v.id('automations'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    scheduledFor: v.number(),
+  },
+  returns: v.id('automationRuns'),
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const automation = await ctx.db.get(args.automationId)
+    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+    const now = Date.now()
+    return await ctx.db.insert('automationRuns', {
+      automationId: args.automationId,
+      userId: args.userId,
+      status: 'queued',
+      scheduledFor: args.scheduledFor,
+      triggerSource: 'manual',
+      createdAt: now,
+      updatedAt: now,
+    })
+  },
+})
+
+export const markManualRunStarted = mutation({
+  args: {
+    runId: v.id('automationRuns'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    conversationId: v.optional(v.id('conversations')),
+    turnId: v.string(),
+    now: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId || run.status !== 'queued') return null
+    await ctx.db.patch(args.runId, {
+      status: 'running',
+      startedAt: args.now,
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      updatedAt: args.now,
+    })
+    return null
+  },
+})
+
+export const markManualRunCompleted = mutation({
+  args: {
+    runId: v.id('automationRuns'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    conversationId: v.optional(v.id('conversations')),
+    now: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId) return null
+    await ctx.db.patch(args.runId, {
+      status: 'completed',
+      completedAt: args.now,
+      conversationId: args.conversationId ?? run.conversationId,
+      updatedAt: args.now,
+    })
+    await ctx.db.patch(run.automationId, {
+      lastRunAt: args.now,
+      lastError: undefined,
+      updatedAt: args.now,
+    })
+    return null
+  },
+})
+
+export const markManualRunFailed = mutation({
+  args: {
+    runId: v.id('automationRuns'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    error: v.string(),
+    now: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId) return null
+    await ctx.db.patch(args.runId, {
+      status: 'failed',
+      completedAt: args.now,
+      error: args.error,
+      updatedAt: args.now,
+    })
+    await ctx.db.patch(run.automationId, {
+      lastRunAt: args.now,
+      lastError: args.error,
+      updatedAt: args.now,
+    })
+    return null
   },
 })
 
