@@ -25,7 +25,6 @@ import {
   Play,
   MessageSquare,
   SlidersHorizontal,
-  GitBranch,
   BookOpen,
   Search,
   Maximize2,
@@ -118,6 +117,7 @@ import {
   VIDEO_SUB_MODES,
 } from './chat-interface/constants'
 import { DraftReviewModal, FlashCopyIconButton } from './chat-interface/Modals'
+import { AutomationInstructionsEditor } from './chat-interface/AutomationInstructionsEditor'
 import {
   applyLiveMessageDeltaParts,
   assistantBlocksToPlainText,
@@ -167,7 +167,7 @@ import type {
   ToolVisualBlock,
 } from './chat-interface/types'
 
-type AutomationDetailTab = 'chat' | 'edit' | 'graph'
+type AutomationDetailTab = 'chat' | 'edit'
 
 type AutomationSchedule =
   | { kind: 'interval'; intervalMinutes?: number }
@@ -196,11 +196,80 @@ type AutomationDetail = {
 const AUTOMATION_DETAIL_TABS = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'edit', label: 'Edit', icon: SlidersHorizontal },
-  { id: 'graph', label: 'Graph', icon: GitBranch },
 ] satisfies Array<{ id: AutomationDetailTab; label: string; icon: typeof MessageSquare }>
 
+const FALLBACK_TIME_ZONES = [
+  'UTC',
+  'America/Los_Angeles',
+  'America/Denver',
+  'America/Chicago',
+  'America/New_York',
+  'Europe/London',
+  'Europe/Paris',
+  'Asia/Kolkata',
+  'Asia/Singapore',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+]
+
+const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+type TimeZoneOption = {
+  label: string
+  offsetMinutes: number
+  value: string
+}
+
+function supportedTimeZones(): string[] {
+  try {
+    const values = Intl.supportedValuesOf?.('timeZone')
+    return values?.length ? values : FALLBACK_TIME_ZONES
+  } catch {
+    return FALLBACK_TIME_ZONES
+  }
+}
+
+function timeZoneOffsetMinutes(timeZone: string, dateMs = Date.now()): number {
+  const minuteAlignedDateMs = Math.floor(dateMs / 60_000) * 60_000
+  const parts = getTimeZoneParts(minuteAlignedDateMs, timeZone)
+  const localAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute)
+  return Math.round((localAsUtc - minuteAlignedDateMs) / 60_000)
+}
+
+function formatGmtOffset(offsetMinutes: number): string {
+  const sign = offsetMinutes >= 0 ? '+' : '-'
+  const absolute = Math.abs(offsetMinutes)
+  const hours = Math.floor(absolute / 60)
+  const minutes = absolute % 60
+  return `GMT${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function timeZoneCityLabel(timeZone: string): string {
+  const parts = timeZone.split('/')
+  return (parts.at(-1) || timeZone).replaceAll('_', ' ')
+}
+
+function supportedTimeZoneOptions(): TimeZoneOption[] {
+  return supportedTimeZones()
+    .map((value) => {
+      const offsetMinutes = timeZoneOffsetMinutes(value)
+      return {
+        value,
+        offsetMinutes,
+        label: `${formatGmtOffset(offsetMinutes)} - ${timeZoneCityLabel(value)}`,
+      }
+    })
+    .sort((a, b) => a.offsetMinutes - b.offsetMinutes || a.label.localeCompare(b.label))
+}
+
+function safeTimeZone(value: string | undefined): string {
+  const zones = supportedTimeZones()
+  const candidate = value?.trim()
+  if (candidate && zones.includes(candidate)) return candidate
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+}
+
 function normalizeAutomationDetailTab(value: string | null | undefined): AutomationDetailTab {
-  return value === 'edit' || value === 'graph' ? value : 'chat'
+  return value === 'edit' || value === 'graph' ? 'edit' : 'chat'
 }
 
 function getAutomationDisplayName(automation: AutomationDetail): string {
@@ -254,19 +323,80 @@ function defaultAutomationGraphSource(automation: AutomationDetail): string {
   ].join('\n')
 }
 
-function formatAutomationTime(schedule: AutomationSchedule | undefined): string {
-  const hour = schedule && 'hourUTC' in schedule ? schedule.hourUTC ?? 9 : 9
-  const minute = schedule && 'minuteUTC' in schedule ? schedule.minuteUTC ?? 0 : 0
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+function getTimeZoneParts(dateMs: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    weekday: 'short',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(dateMs))
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
+  const weekday = read('weekday')
+  return {
+    year: Number(read('year')),
+    month: Number(read('month')),
+    day: Number(read('day')),
+    hour: Number(read('hour')),
+    minute: Number(read('minute')),
+    dayOfWeek: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekday),
+  }
 }
 
-function parseAutomationTime(value: string): { hourUTC: number; minuteUTC: number } {
+function zonedDateTimeToUtcMs(input: {
+  timeZone: string
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+}): number {
+  const targetUtcLike = Date.UTC(input.year, input.month - 1, input.day, input.hour, input.minute, 0, 0)
+  let candidate = targetUtcLike
+  for (let iteration = 0; iteration < 3; iteration += 1) {
+    const parts = getTimeZoneParts(candidate, input.timeZone)
+    const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0, 0)
+    candidate -= asUtc - targetUtcLike
+  }
+  return candidate
+}
+
+function utcReferenceForSchedule(schedule: AutomationSchedule | undefined): number {
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const month = now.getUTCMonth()
+  const baseDay = now.getUTCDate()
+  const hour = schedule && 'hourUTC' in schedule ? schedule.hourUTC ?? 9 : 9
+  const minute = schedule && 'minuteUTC' in schedule ? schedule.minuteUTC ?? 0 : 0
+  if (schedule?.kind === 'weekly') {
+    const sunday = baseDay - now.getUTCDay()
+    return Date.UTC(year, month, sunday + (schedule.dayOfWeekUTC ?? 1), hour, minute)
+  }
+  if (schedule?.kind === 'monthly') {
+    return Date.UTC(year, month, schedule.dayOfMonthUTC ?? 1, hour, minute)
+  }
+  return Date.UTC(year, month, baseDay, hour, minute)
+}
+
+function localFieldsFromSchedule(schedule: AutomationSchedule | undefined, timeZone: string) {
+  const parts = getTimeZoneParts(utcReferenceForSchedule(schedule), timeZone)
+  return {
+    time: `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`,
+    dayOfWeek: parts.dayOfWeek >= 0 ? parts.dayOfWeek : 1,
+    dayOfMonth: Math.min(31, Math.max(1, parts.day || 1)),
+  }
+}
+
+function parseAutomationTime(value: string): { hour: number; minute: number } {
   const [hourRaw, minuteRaw] = value.split(':')
   const hour = Number(hourRaw)
   const minute = Number(minuteRaw)
   return {
-    hourUTC: Number.isFinite(hour) ? Math.min(23, Math.max(0, Math.floor(hour))) : 9,
-    minuteUTC: Number.isFinite(minute) ? Math.min(59, Math.max(0, Math.floor(minute))) : 0,
+    hour: Number.isFinite(hour) ? Math.min(23, Math.max(0, Math.floor(hour))) : 9,
+    minute: Number.isFinite(minute) ? Math.min(59, Math.max(0, Math.floor(minute))) : 0,
   }
 }
 
@@ -274,8 +404,9 @@ function buildAutomationSchedule(input: {
   kind: AutomationSchedule['kind']
   intervalMinutes: number
   time: string
-  dayOfWeekUTC: number
-  dayOfMonthUTC: number
+  dayOfWeek: number
+  dayOfMonth: number
+  timeZone: string
 }): AutomationSchedule {
   if (input.kind === 'interval') {
     return {
@@ -283,32 +414,63 @@ function buildAutomationSchedule(input: {
       intervalMinutes: Math.max(1, Math.floor(input.intervalMinutes) || 60),
     }
   }
-  const time = parseAutomationTime(input.time)
+  const nowParts = getTimeZoneParts(Date.now(), input.timeZone)
+  const localTime = parseAutomationTime(input.time)
+  let localYear = nowParts.year
+  let localMonth = nowParts.month
+  let localDay = nowParts.day
+  if (input.kind === 'weekly') {
+    const today = nowParts.dayOfWeek >= 0 ? nowParts.dayOfWeek : 0
+    const target = Math.min(6, Math.max(0, Math.floor(input.dayOfWeek)))
+    const offset = (target - today + 7) % 7
+    const base = new Date(zonedDateTimeToUtcMs({
+      timeZone: input.timeZone,
+      year: nowParts.year,
+      month: nowParts.month,
+      day: nowParts.day,
+      hour: 12,
+      minute: 0,
+    }))
+    const candidate = getTimeZoneParts(base.getTime() + offset * 24 * 60 * 60_000, input.timeZone)
+    localYear = candidate.year
+    localMonth = candidate.month
+    localDay = candidate.day
+  } else if (input.kind === 'monthly') {
+    localDay = Math.min(31, Math.max(1, Math.floor(input.dayOfMonth)))
+  }
+  const utc = new Date(zonedDateTimeToUtcMs({
+    timeZone: input.timeZone,
+    year: localYear,
+    month: localMonth,
+    day: localDay,
+    hour: localTime.hour,
+    minute: localTime.minute,
+  }))
   if (input.kind === 'weekly') {
     return {
       kind: 'weekly',
-      dayOfWeekUTC: Math.min(6, Math.max(0, Math.floor(input.dayOfWeekUTC))),
-      ...time,
+      dayOfWeekUTC: utc.getUTCDay(),
+      hourUTC: utc.getUTCHours(),
+      minuteUTC: utc.getUTCMinutes(),
     }
   }
   if (input.kind === 'monthly') {
     return {
       kind: 'monthly',
-      dayOfMonthUTC: Math.min(31, Math.max(1, Math.floor(input.dayOfMonthUTC))),
-      ...time,
+      dayOfMonthUTC: utc.getUTCDate(),
+      hourUTC: utc.getUTCHours(),
+      minuteUTC: utc.getUTCMinutes(),
     }
   }
-  return { kind: 'daily', ...time }
+  return { kind: 'daily', hourUTC: utc.getUTCHours(), minuteUTC: utc.getUTCMinutes() }
 }
 
 function AutomationEditorPanel({
   automation,
-  isFreeTier,
   onSaved,
   onTested,
 }: {
   automation: AutomationDetail
-  isFreeTier: boolean
   onSaved: (automation: AutomationDetail) => void
   onTested: (conversationId: string) => void
 }) {
@@ -321,33 +483,32 @@ function AutomationEditorPanel({
   const [intervalMinutes, setIntervalMinutes] = useState(
     initialSchedule.kind === 'interval' ? initialSchedule.intervalMinutes ?? 60 : 60,
   )
-  const [time, setTime] = useState(formatAutomationTime(initialSchedule))
-  const [dayOfWeekUTC, setDayOfWeekUTC] = useState(
-    initialSchedule.kind === 'weekly' ? initialSchedule.dayOfWeekUTC ?? 1 : 1,
-  )
-  const [dayOfMonthUTC, setDayOfMonthUTC] = useState(
-    initialSchedule.kind === 'monthly' ? initialSchedule.dayOfMonthUTC ?? 1 : 1,
-  )
-  const [timezone, setTimezone] = useState(automation.timezone ?? 'UTC')
-  const [modelId, setModelId] = useState(automation.modelId ?? DEFAULT_MODEL_ID)
+  const [timezone, setTimezone] = useState(safeTimeZone(automation.timezone))
+  const initialLocalFields = localFieldsFromSchedule(initialSchedule, safeTimeZone(automation.timezone))
+  const [time, setTime] = useState(initialLocalFields.time)
+  const [dayOfWeek, setDayOfWeek] = useState(initialLocalFields.dayOfWeek)
+  const [dayOfMonth, setDayOfMonth] = useState(initialLocalFields.dayOfMonth)
+  const [graphSource, setGraphSource] = useState(automation.graphSource || defaultAutomationGraphSource(automation))
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [testState, setTestState] = useState<'idle' | 'running' | 'success' | 'error'>('idle')
   const [testMessage, setTestMessage] = useState<string | null>(null)
-  const availableModels = useMemo(() => getModelsByIntelligence(isFreeTier), [isFreeTier])
+  const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
 
   useEffect(() => {
     const nextSchedule = automation.schedule ?? { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 }
+    const nextTimeZone = safeTimeZone(automation.timezone)
+    const nextLocalFields = localFieldsFromSchedule(nextSchedule, nextTimeZone)
     setName(getAutomationDisplayName(automation))
     setDescription(automation.description ?? '')
     setInstructions(getAutomationInstructions(automation))
     setEnabled(automation.enabled ?? true)
     setScheduleKind(nextSchedule.kind)
     setIntervalMinutes(nextSchedule.kind === 'interval' ? nextSchedule.intervalMinutes ?? 60 : 60)
-    setTime(formatAutomationTime(nextSchedule))
-    setDayOfWeekUTC(nextSchedule.kind === 'weekly' ? nextSchedule.dayOfWeekUTC ?? 1 : 1)
-    setDayOfMonthUTC(nextSchedule.kind === 'monthly' ? nextSchedule.dayOfMonthUTC ?? 1 : 1)
-    setTimezone(automation.timezone ?? 'UTC')
-    setModelId(automation.modelId ?? DEFAULT_MODEL_ID)
+    setTimezone(nextTimeZone)
+    setTime(nextLocalFields.time)
+    setDayOfWeek(nextLocalFields.dayOfWeek)
+    setDayOfMonth(nextLocalFields.dayOfMonth)
+    setGraphSource(automation.graphSource || defaultAutomationGraphSource(automation))
     setSaveState('idle')
     setTestState('idle')
     setTestMessage(null)
@@ -357,14 +518,19 @@ function AutomationEditorPanel({
     kind: scheduleKind,
     intervalMinutes,
     time,
-    dayOfWeekUTC,
-    dayOfMonthUTC,
+    dayOfWeek,
+    dayOfMonth,
+    timeZone: timezone,
   })
 
   async function saveAutomation() {
     if (!name.trim() || !instructions.trim()) return
     setSaveState('saving')
     try {
+      const instructionsChanged = instructions.trim() !== getAutomationInstructions(automation).trim()
+      const nextGraphSource = instructionsChanged
+        ? graphSourceFromAutomationInstructions({ ...automation, instructions }) || defaultAutomationGraphSource({ ...automation, instructions })
+        : graphSource
       const res = await fetch('/api/app/automations', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -376,10 +542,11 @@ function AutomationEditorPanel({
           enabled,
           schedule,
           timezone,
-          modelId,
+          graphSource: nextGraphSource,
         }),
       })
       if (!res.ok) throw new Error('Failed to save automation')
+      setGraphSource(nextGraphSource)
       const updated = {
         ...automation,
         name: name.trim(),
@@ -387,8 +554,8 @@ function AutomationEditorPanel({
         instructions: instructions.trim(),
         enabled,
         schedule,
-        timezone: timezone.trim() || 'UTC',
-        modelId: modelId.trim() || undefined,
+        timezone,
+        graphSource: nextGraphSource,
       }
       onSaved(updated)
       window.dispatchEvent(new Event('overlay:automations-updated'))
@@ -427,12 +594,12 @@ function AutomationEditorPanel({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-[var(--foreground)]">Automation editor</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">Tune the saved instructions, schedule, timezone, model, and run a test.</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Tune the saved instructions, schedule, timezone, and run a test.</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -457,120 +624,117 @@ function AutomationEditorPanel({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
-            <div className="space-y-4">
-              <label className="block text-xs font-medium text-[var(--muted)]">
-                Name
-                <input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
-                />
-              </label>
-              <label className="block text-xs font-medium text-[var(--muted)]">
-                Description
-                <input
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
-                />
-              </label>
+          <div className="mt-5 grid min-h-[34rem] gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(24rem,1.1fr)]">
+            <div className="min-w-0 space-y-4">
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
+                <div className="space-y-4">
+                  <label className="block text-xs font-medium text-[var(--muted)]">
+                    Name
+                    <input
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+                    />
+                  </label>
+                  <label className="block text-xs font-medium text-[var(--muted)]">
+                    Description
+                    <input
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+                    />
+                  </label>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block text-xs font-medium text-[var(--muted)]">
+                    Frequency
+                    <select
+                      value={scheduleKind}
+                      onChange={(event) => setScheduleKind(event.target.value as AutomationSchedule['kind'])}
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                    >
+                      <option value="interval">Interval</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </label>
+                  {scheduleKind === 'interval' ? (
+                    <label className="block text-xs font-medium text-[var(--muted)]">
+                      Every N minutes
+                      <input
+                        type="number"
+                        min={1}
+                        value={intervalMinutes}
+                        onChange={(event) => setIntervalMinutes(Number(event.target.value))}
+                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
+                      />
+                    </label>
+                  ) : (
+                    <label className="block text-xs font-medium text-[var(--muted)]">
+                      Time
+                      <input
+                        type="time"
+                        value={time}
+                        onChange={(event) => setTime(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                      />
+                    </label>
+                  )}
+                  {scheduleKind === 'weekly' && (
+                    <label className="block text-xs font-medium text-[var(--muted)]">
+                      Day of week
+                      <select
+                        value={dayOfWeek}
+                        onChange={(event) => setDayOfWeek(Number(event.target.value))}
+                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                      >
+                        {WEEKDAY_LABELS.map((day, index) => (
+                          <option key={day} value={index}>{day}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {scheduleKind === 'monthly' && (
+                    <label className="block text-xs font-medium text-[var(--muted)]">
+                      Day of month
+                      <input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={dayOfMonth}
+                        onChange={(event) => setDayOfMonth(Number(event.target.value))}
+                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                      />
+                    </label>
+                  )}
+                  <label className="block text-xs font-medium text-[var(--muted)]">
+                    Time zone
+                    <select
+                      value={timezone}
+                      onChange={(event) => setTimezone(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                    >
+                      {timeZoneOptions.map((zone) => (
+                        <option key={zone.value} value={zone.value}>{zone.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
               <label className="block text-xs font-medium text-[var(--muted)]">
                 Instructions
-                <textarea
+                <AutomationInstructionsEditor
                   value={instructions}
-                  onChange={(event) => setInstructions(event.target.value)}
-                  rows={10}
-                  className="mt-1 w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm leading-6 text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+                  onChange={setInstructions}
                 />
               </label>
             </div>
-
-            <div className="space-y-3">
-              <label className="block text-xs font-medium text-[var(--muted)]">
-                Frequency
-                <select
-                  value={scheduleKind}
-                  onChange={(event) => setScheduleKind(event.target.value as AutomationSchedule['kind'])}
-                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
-                >
-                  <option value="interval">Interval</option>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                </select>
-              </label>
-              {scheduleKind === 'interval' ? (
-                <label className="block text-xs font-medium text-[var(--muted)]">
-                  Every N minutes
-                  <input
-                    type="number"
-                    min={1}
-                    value={intervalMinutes}
-                    onChange={(event) => setIntervalMinutes(Number(event.target.value))}
-                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
-                  />
-                </label>
-              ) : (
-                <label className="block text-xs font-medium text-[var(--muted)]">
-                  Time (UTC)
-                  <input
-                    type="time"
-                    value={time}
-                    onChange={(event) => setTime(event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
-                  />
-                </label>
-              )}
-              {scheduleKind === 'weekly' && (
-                <label className="block text-xs font-medium text-[var(--muted)]">
-                  Day of week
-                  <select
-                    value={dayOfWeekUTC}
-                    onChange={(event) => setDayOfWeekUTC(Number(event.target.value))}
-                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
-                  >
-                    {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, index) => (
-                      <option key={day} value={index}>{day}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {scheduleKind === 'monthly' && (
-                <label className="block text-xs font-medium text-[var(--muted)]">
-                  Day of month
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={dayOfMonthUTC}
-                    onChange={(event) => setDayOfMonthUTC(Number(event.target.value))}
-                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
-                  />
-                </label>
-              )}
-              <label className="block text-xs font-medium text-[var(--muted)]">
-                Time zone
-                <input
-                  value={timezone}
-                  onChange={(event) => setTimezone(event.target.value)}
-                  placeholder="UTC"
-                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
-                />
-              </label>
-              <label className="block text-xs font-medium text-[var(--muted)]">
-                Model
-                <select
-                  value={modelId}
-                  onChange={(event) => setModelId(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
-                >
-                  {availableModels.map((model) => (
-                    <option key={model.id} value={model.id}>{model.name}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            <AutomationGraphCanvas
+              source={graphSource}
+              onSourceChange={setGraphSource}
+            />
           </div>
           {saveState === 'error' && (
             <p className="mt-3 text-xs text-red-500">Could not save automation. Please try again.</p>
@@ -604,23 +768,17 @@ function AutomationEditorPanel({
   )
 }
 
-function AutomationGraphPanel({
-  automation,
-  onSaved,
+function AutomationGraphCanvas({
+  source,
+  onSourceChange,
 }: {
-  automation: AutomationDetail
-  onSaved: (automation: AutomationDetail) => void
+  source: string
+  onSourceChange: (source: string) => void
 }) {
   const renderIdRef = useRef(`automation-graph-${Math.random().toString(36).slice(2)}`)
-  const [source, setSource] = useState(automation.graphSource || defaultAutomationGraphSource(automation))
   const [svg, setSvg] = useState('')
   const [renderError, setRenderError] = useState<string | null>(null)
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-
-  useEffect(() => {
-    setSource(automation.graphSource || defaultAutomationGraphSource(automation))
-    setSaveState('idle')
-  }, [automation])
+  const [showSource, setShowSource] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -657,66 +815,50 @@ function AutomationGraphPanel({
     }
   }, [source])
 
-  async function saveGraph() {
-    setSaveState('saving')
-    try {
-      const res = await fetch('/api/app/automations', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          automationId: automation._id,
-          graphSource: source,
-        }),
-      })
-      if (!res.ok) throw new Error('Failed to save graph')
-      onSaved({ ...automation, graphSource: source })
-      setSaveState('saved')
-      window.setTimeout(() => setSaveState('idle'), 1500)
-    } catch {
-      setSaveState('error')
-    }
-  }
-
   return (
-    <div className="grid min-h-0 flex-1 gap-0 overflow-hidden md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-      <div className="min-h-0 border-b border-[var(--border)] bg-[var(--background)] p-4 md:border-b-0 md:border-r">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-[var(--foreground)]">Mermaid graph</p>
-            <p className="mt-1 text-xs text-[var(--muted)]">Edit the source and save it to this automation.</p>
+    <div className="relative min-h-0 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+      <div className={`grid h-full min-h-0 gap-4 ${showSource ? 'md:grid-cols-[minmax(0,1.05fr)_minmax(18rem,0.75fr)]' : ''}`}>
+        <div className="min-h-0 overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6">
+          <div className="flex min-h-full items-center justify-center">
+            {renderError ? (
+              <p className="max-w-md text-sm text-red-500">{renderError}</p>
+            ) : svg ? (
+              <div
+                className="max-w-full overflow-auto text-[var(--foreground)]"
+                // Mermaid returns sanitized SVG when securityLevel is strict.
+                dangerouslySetInnerHTML={{ __html: svg }}
+              />
+            ) : (
+              <p className="text-sm text-[var(--muted)]">Rendering graph...</p>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={() => void saveGraph()}
-            disabled={saveState === 'saving'}
-            className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save graph'}
-          </button>
         </div>
-        <textarea
-          value={source}
-          onChange={(event) => setSource(event.target.value)}
-          spellCheck={false}
-          className="h-[calc(100%-4.5rem)] min-h-[20rem] w-full resize-none rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 font-mono text-xs leading-6 text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
-        />
-        {saveState === 'error' && <p className="mt-2 text-xs text-red-500">Could not save graph.</p>}
-      </div>
-      <div className="min-h-0 overflow-auto bg-[var(--surface-subtle)] p-4">
-        <div className="flex min-h-full items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6">
-          {renderError ? (
-            <p className="max-w-md text-sm text-red-500">{renderError}</p>
-          ) : svg ? (
-            <div
-              className="max-w-full overflow-auto text-[var(--foreground)]"
-              // Mermaid returns sanitized SVG when securityLevel is strict.
-              dangerouslySetInnerHTML={{ __html: svg }}
+        {showSource && (
+          <div className="min-h-0 rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)]">Source</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">Edit Mermaid source. Save changes persists it.</p>
+              </div>
+            </div>
+            <textarea
+              value={source}
+              onChange={(event) => onSourceChange(event.target.value)}
+              spellCheck={false}
+              className="h-[calc(100%-4.5rem)] min-h-[20rem] w-full resize-none rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 font-mono text-xs leading-6 text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
             />
-          ) : (
-            <p className="text-sm text-[var(--muted)]">Rendering graph...</p>
-          )}
-        </div>
+          </div>
+        )}
       </div>
+      <label className="absolute bottom-5 right-5 inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-xs font-medium text-[var(--foreground)] shadow-sm">
+        <input
+          type="checkbox"
+          checked={showSource}
+          onChange={(event) => setShowSource(event.target.checked)}
+          className="h-3.5 w-3.5 accent-[var(--foreground)]"
+        />
+        Source
+      </label>
     </div>
   )
 }
@@ -3395,7 +3537,7 @@ export default function ChatInterface({
   }, [showModelPicker])
 
   useLayoutEffect(() => {
-    if (!showModelPicker || generationMode !== 'text' || !hoveredModelId) {
+    if (!showModelPicker || (!hasAutomationContext && generationMode !== 'text') || !hoveredModelId) {
       setModelQualitiesPos(null)
       return
     }
@@ -3403,9 +3545,11 @@ export default function ChatInterface({
   }, [
     showModelPicker,
     generationMode,
+    hasAutomationContext,
     hoveredModelId,
     selectedModels,
     selectedActModel,
+    selectedAutomation?.modelId,
     syncModelQualitiesPosition,
   ])
 
@@ -5053,6 +5197,28 @@ export default function ChatInterface({
     router.replace(`${pathname}${query ? `?${query}` : ''}`)
   }, [pathname, router, searchParams])
 
+  const automationHeaderModels = useMemo(() => getModelsByIntelligence(isFreeTier), [isFreeTier])
+  const saveAutomationHeaderModel = useCallback(async (modelId: string) => {
+    if (!selectedAutomation) return
+    const previousAutomation = selectedAutomation
+    const nextAutomation = { ...selectedAutomation, modelId }
+    setSelectedAutomation(nextAutomation)
+    try {
+      const res = await fetch('/api/app/automations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          automationId: selectedAutomation._id,
+          modelId,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to save automation model')
+      window.dispatchEvent(new Event('overlay:automations-updated'))
+    } catch {
+      setSelectedAutomation(previousAutomation)
+    }
+  }, [selectedAutomation])
+
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-w-0 overflow-x-hidden">
@@ -5371,7 +5537,101 @@ export default function ChatInterface({
                   <span className="max-w-[6rem] truncate sm:max-w-none">{projectName}</span>
                 </span>
               )}
-              {selectedAutomation && (
+            </div>
+
+            {selectedAutomation && (
+              <div className="flex w-full shrink-0 items-center justify-end gap-2 md:w-auto">
+                <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
+                  <DelayedTooltip label="Choose automation model" side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => !isActiveLoading && setShowModelPicker((value) => !value)}
+                      disabled={isActiveLoading}
+                      className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1 ${
+                        isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+                      }`}
+                      aria-label="Automation model"
+                    >
+                      <span className="min-w-0 truncate">{getChatModelDisplayName(selectedAutomation.modelId ?? DEFAULT_MODEL_ID) || 'Select model'}</span>
+                      <ChevronDown size={11} className="shrink-0" />
+                    </button>
+                  </DelayedTooltip>
+                  {showModelPicker && (
+                    <>
+                      {hoveredModelId && modelQualitiesPos ? (
+                        <div
+                          aria-hidden
+                          className="pointer-events-none fixed z-[100] hidden w-[6rem] rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 shadow-md md:block"
+                          style={{
+                            left: modelQualitiesPos.x,
+                            top: modelQualitiesPos.y,
+                            transform: 'translate(calc(-100% - 6px), -50%)',
+                          }}
+                        >
+                          <ModelQualitiesPanel modelId={hoveredModelId} />
+                        </div>
+                      ) : null}
+                      <div
+                        data-tour="model-picker"
+                        className="absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+                        onMouseLeave={() => {
+                          setHoveredModelId(null)
+                          setModelQualitiesPos(null)
+                        }}
+                      >
+                        <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
+                          {automationHeaderModels
+                            .filter((m) => m.id !== 'nvidia/nemotron-nano-9b-v2')
+                            .map((m, index, models) => {
+                              const isSel = m.id === (selectedAutomation.modelId ?? DEFAULT_MODEL_ID)
+                              const isFreeModelRow = m.id === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(m.id)
+                              const previous = models[index - 1]
+                              const previousIsFreeModelRow =
+                                previous?.id === FREE_TIER_AUTO_MODEL_ID ||
+                                (previous ? isNvidiaNimChatModelId(previous.id) : false)
+                              const showFreeTierGroupDivider =
+                                isFreeTier && !isFreeModelRow && previousIsFreeModelRow
+                              const showFreeGroupDivider =
+                                !isFreeTier && isFreeModelRow && !previousIsFreeModelRow
+                              const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
+                              const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
+                              return (
+                                <div key={m.id}>
+                                  {showDivider && (
+                                    <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
+                                      {dividerLabel}
+                                    </div>
+                                  )}
+                                  <button
+                                    type="button"
+                                    data-model-row={m.id}
+                                    onClick={() => {
+                                      void saveAutomationHeaderModel(m.id)
+                                      setShowModelPicker(false)
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      setHoveredModelId(m.id)
+                                      const r = e.currentTarget.getBoundingClientRect()
+                                      setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
+                                    }}
+                                    className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${
+                                      isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
+                                    }`}
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
+                                      {m.name}
+                                    </span>
+                                    <ModelBadges m={m} isFreeTier={isFreeTier} />
+                                  </button>
+                                </div>
+                              )
+                            })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
                 <div className="flex shrink-0 items-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-0.5">
                   {AUTOMATION_DETAIL_TABS.map((tab) => {
                     const active = automationDetailTab === tab.id
@@ -5393,8 +5653,8 @@ export default function ChatInterface({
                     )
                   })}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Model picker + Generation mode (mobile: one row, model left / mode select right) */}
             <div className={`flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2 ${
@@ -5684,7 +5944,6 @@ export default function ChatInterface({
         {!showAutomationChatTab && selectedAutomation && automationDetailTab === 'edit' && (
           <AutomationEditorPanel
             automation={selectedAutomation}
-            isFreeTier={isFreeTier}
             onSaved={setSelectedAutomation}
             onTested={(conversationId) => {
               const params = new URLSearchParams(searchParams?.toString() ?? '')
@@ -5693,13 +5952,6 @@ export default function ChatInterface({
               params.delete('tab')
               router.replace(`${pathname}?${params.toString()}`)
             }}
-          />
-        )}
-
-        {!showAutomationChatTab && selectedAutomation && automationDetailTab === 'graph' && (
-          <AutomationGraphPanel
-            automation={selectedAutomation}
-            onSaved={setSelectedAutomation}
           />
         )}
 
