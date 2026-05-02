@@ -1,34 +1,149 @@
-# Overlay Web App
+# Overlay
 
-Overlay is a Next.js + Convex application that combines a public marketing site with a
-signed-in AI workspace. The product is centered around chat, notes, memories, knowledge,
-projects, and media generation.
+An AI workspace that thinks, remembers, creates, and acts — all in one place. Chat with top models, build persistent knowledge, generate media, and run automations without switching tabs.
 
-This repository contains the web surface for Overlay:
+<div align="center">
 
-- The landing site and pricing/legal pages.
-- The authenticated `/app/*` product experience.
-- Next.js API routes for auth, Stripe, file/media flows, and AI interactions.
-- The Convex backend schema and functions that power app data, usage tracking, and
-  server-side integrations.
+![Overlay](./src/assets/overlay-logo.png)
 
-## What You Can Do In Overlay
+</div>
 
-- Chat with multiple model providers.
-- Save and retrieve notes, memories, files, and project context.
-- Run "Ask" and "Act" flows with tool calling.
-- Generate images and videos.
-- Connect external tools through Composio.
-- Manage subscriptions and entitlements with Stripe.
+<br />
 
-## Tech Stack
+🔗 **[Try Overlay](https://getoverlay.ai)**
 
-- `Next.js 15` with the App Router.
-- `Convex` for backend functions, data, and realtime state.
-- `WorkOS` for authentication.
-- `Stripe` for billing and subscription events.
-- `Vercel AI SDK` plus provider SDKs for OpenAI, Anthropic, Google, Groq, xAI, and OpenRouter.
-- `TipTap`, `react-markdown`, and KaTeX for rich editing and rendering.
+## Powered By
+
+<div align="center">
+
+[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-black?logo=vercel&logoColor=white)](https://sdk.vercel.ai/docs)
+[![Convex](https://img.shields.io/badge/Convex-FCBD42?logo=convex&logoColor=black)](https://convex.dev)
+[![WorkOS](https://img.shields.io/badge/WorkOS-6366F1?logo=workos&logoColor=white)](https://workos.com)
+[![Stripe](https://img.shields.io/badge/Stripe-635BFF?logo=stripe&logoColor=white)](https://stripe.com)
+[![Composio](https://img.shields.io/badge/Composio-FF6B6B?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMiI+PHBhdGggZD0iTTEyIDJhMTAgMTAgMCAxIDAgMTAgMTBBMTAgMTAgMCAwIDAgMTIgMloiLz48cGF0aCBkPSJNMTIgNmE2IDYgMCAxIDAgNiA2QTYgNiAwIDAgMCAxMiA2WiIvPjwvc3ZnPg==&logoColor=white)](https://composio.dev)
+
+<br/>
+
+| Service | Purpose |
+|---------|---------|
+| **Vercel AI SDK** | AI streaming, tool calling, multi-provider support |
+| **Convex** | Backend functions, data, and realtime sync |
+| **WorkOS** | Enterprise-grade authentication and SSO |
+| **Stripe** | Billing and subscription management |
+| **Composio** | 100+ external app integrations |
+
+</div>
+
+## How It Works
+
+1. **Bring your context** — Upload files, save memories, create notes, and organize work into projects.
+2. **Ask or Act** — Ask questions with full knowledge access, or switch to Act mode for tool use and automation.
+3. **Create & execute** — Generate images and videos, run browser tasks, connect apps, and schedule automations.
+
+## Features
+
+### Core Capabilities
+
+- **Multi-Model Chat** — Access top models from OpenAI, Anthropic, Google, xAI, Groq, and OpenRouter in one workspace
+- **Ask & Act Modes** — Switch between answer synthesis (Ask) and tool execution (Act) depending on what you need
+- **Persistent Memory** — Save preferences, facts, and standing instructions that compound over time
+- **Knowledge Base** — Upload files, create folders, and search across your personal knowledge with semantic retrieval
+- **Project Organization** — Group chats, notes, files, and context by project for focused work
+- **Media Generation** — Create images and videos without leaving the workspace
+- **Voice Input** — Record and transcribe audio directly into notes or chat
+- **Browser Automation** — Run interactive browser tasks for live web work
+- **External Integrations** — Connect Gmail, Calendar, Notion, GitHub, and 100+ apps via Composio
+- **Automations** — Schedule recurring AI workflows that run on your behalf
+
+### Workspace Areas
+
+| Area | Description |
+|---|---|
+| **Chat** | Multi-model conversations with context from memories, files, and projects |
+| **Notes** | Rich notebook editor with markdown, slash commands, and project linking |
+| **Memories** | Durable facts and preferences that shape future responses |
+| **Knowledge** | File storage with semantic search across documents and folders |
+| **Projects** | Scoped workspaces for organizing related chats, notes, and files |
+| **Outputs** | Gallery of generated images and videos with metadata and downloads |
+| **Integrations** | Connected apps and tools for external actions |
+| **Voice** | Audio recording and transcription flows |
+
+### Tools & Actions
+
+#### Knowledge & Memory
+- **Memory CRUD** — Save, update, delete, and search personal memories
+- **File search** — Lexical and semantic search across uploaded documents
+- **Note management** — Create, edit, and organize notebook entries
+- **Knowledge retrieval** — Hybrid semantic + keyword search across all saved context
+
+#### Content Generation
+- **Image generation** — GPT Image, Grok Image, FLUX, Seedream models with aspect ratio control
+- **Video generation** — Veo 3.1, Seedance, Grok Video, Kling, Wan models
+- **Image-to-video** — Animate static images into motion clips
+- **Reference-to-video** — Place characters into new video scenes
+- **Motion control** — Transfer motion from reference video to character images
+- **Video editing** — Transform existing videos with text prompts
+
+#### Automation & Execution
+- **Browser sessions** — AI-controlled browser for interactive web tasks
+- **Daytona sandbox** — Run code and CLI tasks in persistent sandboxes
+- **Scheduled automations** — Interval, daily, weekly, or monthly recurring workflows
+- **Skills** — Reusable instruction templates for common tasks
+- **MCP servers** — Connect external tool servers via Model Context Protocol
+
+#### Integrations (via Composio)
+- Gmail, Google Calendar, Google Sheets, Google Drive
+- Notion, Asana, Slack, GitHub
+- LinkedIn, X (Twitter), Outlook
+- And 100+ more apps
+
+## Models Supported
+
+### Chat Models
+
+| Provider | Models |
+|----------|--------|
+| **OpenAI** | GPT-5.4, GPT-5.4 Mini, GPT-4.1 |
+| **Anthropic** | Claude Opus 4.7, Claude Sonnet 4.6, Claude Haiku 4.5 |
+| **Google** | Gemini 3.1 Pro, Gemini 3 Flash, Gemma 4 26B |
+| **xAI** | Grok 4.20 |
+| **DeepSeek** | DeepSeek V4 Pro, V4 Flash |
+| **Moonshot** | Kimi K2.6, Kimi K2 Thinking (free) |
+| **MiniMax** | MiniMax M2.7 |
+| **Qwen** | Qwen 3.6 Plus |
+| **GLM** | GLM 5.1 |
+| **Groq** | GPT OSS 120B |
+| **NVIDIA** | DeepSeek V3.2 (free), Kimi K2 Thinking (free) |
+| **OpenRouter** | Free Router (auto-selects free models) |
+
+### Image Models
+
+- GPT Image 1.5, Grok Image Pro, Grok Image
+- FLUX 2 Max, FLUX Schnell
+- Seedream 5.0 Lite, Seedream 4.5
+
+### Video Models
+
+- Veo 3.1, Veo 3.1 Fast
+- Seedance v1.5 Pro
+- Grok Video
+- Wan v2.6 (T2V, I2V, R2V)
+- Kling v2.6 (T2V, I2V, Motion Control)
+
+## Built With
+
+- [Next.js 15](https://nextjs.org/) — React framework with App Router
+- [Tailwind CSS](https://tailwindcss.com/) — Styling
+- [Vercel AI SDK](https://sdk.vercel.ai/docs) — AI streaming, tool calling, and multi-provider support
+- [Convex](https://convex.dev/) — Backend functions, data, and realtime sync
+- [WorkOS](https://workos.com/) — Enterprise authentication and SSO
+- [Stripe](https://stripe.com/) — Billing and subscriptions
+- [Composio](https://composio.dev/) — External app integrations
+- [TipTap](https://tiptap.dev/) — Rich text editing
+- [Daytona](https://daytona.io/) — Code execution sandboxes
+- [Browser Use](https://browser-use.com/) — Browser automation
+- [OpenRouter](https://openrouter.ai/) — Unified model API
+- [Shadcn/UI](https://ui.shadcn.com/) — UI components
 
 ## Repository Layout
 
@@ -45,169 +160,67 @@ This repository contains the web surface for Overlay:
 └── TESTING_CHECKLIST.md     # Manual Stripe/subscription test notes
 ```
 
-## Important Product Areas
-
-### Public site
-
-- `/` is the animated landing page.
-- `/pricing`, `/manifesto`, `/privacy`, and `/terms` are public content pages.
-
-### Authenticated app
-
-- `/app/chat`
-- `/app/notes`
-- `/app/memories`
-- `/app/knowledge`
-- `/app/projects`
-- `/app/outputs`
-- `/app/integrations`
-- `/app/voice`
-
-### Key API surfaces
-
-- `src/app/api/auth/*` for sign-in, SSO, callback, session, desktop/mobile handoff, and refresh.
-- `src/app/api/app/conversations/*` for Ask/Act chat flows.
-- `src/app/api/app/files/*`, `memory`, `notes`, `projects`, `skills`, and `outputs`.
-- `src/app/api/webhooks/stripe/route.ts` for Stripe webhooks.
-
 ## Local Development
 
 ### Prerequisites
 
 - Node.js 20+
 - npm
-- A Convex account and separate dev/prod deployments
-- WorkOS app credentials if you want auth enabled
-- Stripe test credentials if you want billing flows enabled
+- Convex account (dev + prod deployments)
+- WorkOS credentials (for auth)
+- Stripe test credentials (for billing)
 
-### Install
+### Quick Start
 
 ```bash
+# Install dependencies
 npm install
-```
 
-### Configure environment variables
+# Configure environment
+cp .env.example .env.local
+# Edit .env.local with your credentials
 
-1. Copy `.env.example` to the env files you need.
-2. Fill in the placeholders with your own deployment URLs and secrets.
-3. Read `ENV_SETUP.md` for the full setup matrix across web, Convex, mobile, and desktop.
-
-### Run the app
-
-```bash
+# Run development server
 npm run dev
 ```
 
-### Build locally
+### Convex Workflow
+
+Push backend changes to both environments:
 
 ```bash
-npm run build
-npm run start
+npm run convex:push:all    # Push to both prod and dev
 ```
-
-## Convex Workflow
-
-This repo expects separate Convex environments for development and production.
-
-```bash
-npm run convex:push:prod
-npm run convex:push:dev
-npm run convex:push:all
-```
-
-If you change anything inside `convex/`, push both deployments so the web app and backend
-stay aligned.
 
 ## Available Commands
 
 | Command | Purpose |
-| --- | --- |
+|---------|---------|
 | `npm run dev` | Run the Next.js development server |
 | `npm run build` | Create a production build |
-| `npm run start` | Serve the production build |
-| `npm run lint` | Run ESLint |
-| `npm run test:unified-tools` | Run the unified tools sanity script |
 | `npm run convex:push:prod` | Push Convex changes to production |
 | `npm run convex:push:dev` | Push Convex changes to dev |
-| `npm run convex:push:all` | Push Convex changes to both deployments |
-| `npm run billing:audit:stripe -- --target=prod` | Audit Stripe subscriptions against the dynamic pricing cutover expectations |
+| `npm run convex:push:all` | Push Convex changes to both |
 
-## Ask / Act Tooling
+## Security
 
-Overlay merges several tool layers into chat:
+- Session cookies are encrypted and signed
+- Transfer tokens are short-lived and hashed
+- Provider keys isolated behind `PROVIDER_KEYS_SECRET`
+- Sensitive logs redacted in chat and billing flows
+- See `SECURITY.md` for full security guidance
 
-- Overlay-native tools from `src/lib/tools/build.ts`
-- Composio tool integrations from `src/lib/composio-tools.ts`
-- AI Gateway / Perplexity search when enabled
+## Contributing
 
-Primary orchestration happens in:
+- Do not commit real secrets or customer data
+- Keep public docs on placeholders
+- Treat `NEXT_PUBLIC_*` values as public
+- Prefer backend logic in `convex/` with web handlers in `src/app/api/`
 
-- `src/app/api/app/conversations/ask/route.ts`
-- `src/app/api/app/conversations/act/route.ts`
+## License
 
-Successful and failed tool calls can also be recorded into Convex usage/audit tables.
+[Add your license here]
 
-## Models And Generation
+---
 
-Model catalogs live in `src/lib/models.ts` and include:
-
-- Text chat models
-- Image generation models
-- Video generation models
-
-The app supports capability-aware model metadata such as:
-
-- reasoning
-- vision
-- search
-- cost tier
-
-## Integrations
-
-Overlay currently includes integration surfaces for:
-
-- WorkOS auth
-- Stripe billing
-- Composio-connected tools
-- OpenRouter
-- Vercel AI Gateway
-
-## Security Notes
-
-- Public docs use placeholders instead of live deployment identifiers.
-- Local Cursor state files are ignored and should not be committed.
-- Session cookies are encrypted and signed before storage.
-- Transfer tokens are short-lived, encrypted before storage, hashed for lookup, and can be bound to a client-provided verifier.
-- Provider key export is isolated behind a dedicated `PROVIDER_KEYS_SECRET`; the Next.js server reads provider env vars directly.
-- Client-supplied `systemPrompt` values are treated as lower-priority extensions and cannot override operator instructions.
-- Sensitive logs are redacted in higher-risk chat and billing flows.
-- See `SECURITY.md` for reporting guidance and secure contribution expectations.
-
-## CI / Repository Safeguards
-
-GitHub Actions includes a security workflow that:
-
-- runs `gitleaks` for secret scanning
-- blocks `NEXT_PUBLIC_*` variables that look like secret-bearing env names
-
-## Open Source Expectations
-
-If you plan to contribute:
-
-- do not commit real secrets, tokens, or customer data
-- keep public docs on placeholders
-- treat `NEXT_PUBLIC_*` values as public
-- prefer adding new backend logic in `convex/` and corresponding web handlers in `src/app/api/`
-
-## Related Docs
-
-- `ENV_SETUP.md`
-- `SECURITY.md`
-- `TESTING_CHECKLIST.md`
-- `docs/stripe-dynamic-pricing-cutover.md`
-
-## Status
-
-This repository is actively evolving. Expect product-specific architecture, auth, billing,
-and tool integrations to change as the system is hardened and prepared for broader
-open-source collaboration.
+*Overlay — One workspace, many models, real memory, live action.*
