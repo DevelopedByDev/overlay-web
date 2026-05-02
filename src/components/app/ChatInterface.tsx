@@ -469,10 +469,12 @@ function AutomationEditorPanel({
   automation,
   onSaved,
   onTested,
+  isFreeTier,
 }: {
   automation: AutomationDetail
   onSaved: (automation: AutomationDetail) => void
   onTested: (conversationId: string) => void
+  isFreeTier: boolean
 }) {
   const initialSchedule = automation.schedule ?? { kind: 'daily', hourUTC: 14, minuteUTC: 0 }
   const [name, setName] = useState(getAutomationDisplayName(automation))
@@ -489,10 +491,12 @@ function AutomationEditorPanel({
   const [dayOfWeek, setDayOfWeek] = useState(initialLocalFields.dayOfWeek)
   const [dayOfMonth, setDayOfMonth] = useState(initialLocalFields.dayOfMonth)
   const [graphSource, setGraphSource] = useState(automation.graphSource || defaultAutomationGraphSource(automation))
+  const [modelId, setModelId] = useState(automation.modelId ?? DEFAULT_MODEL_ID)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [testState, setTestState] = useState<'idle' | 'running' | 'success' | 'error'>('idle')
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
+  const modelOptions = useMemo(() => getModelsByIntelligence(isFreeTier).filter((m) => m.id !== 'nvidia/nemotron-nano-9b-v2'), [isFreeTier])
 
   useEffect(() => {
     const nextSchedule = automation.schedule ?? { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 }
@@ -509,6 +513,7 @@ function AutomationEditorPanel({
     setDayOfWeek(nextLocalFields.dayOfWeek)
     setDayOfMonth(nextLocalFields.dayOfMonth)
     setGraphSource(automation.graphSource || defaultAutomationGraphSource(automation))
+    setModelId(automation.modelId ?? DEFAULT_MODEL_ID)
     setSaveState('idle')
     setTestState('idle')
     setTestMessage(null)
@@ -543,6 +548,7 @@ function AutomationEditorPanel({
           schedule,
           timezone,
           graphSource: nextGraphSource,
+          modelId,
         }),
       })
       if (!res.ok) throw new Error('Failed to save automation')
@@ -556,6 +562,7 @@ function AutomationEditorPanel({
         schedule,
         timezone,
         graphSource: nextGraphSource,
+        modelId,
       }
       onSaved(updated)
       window.dispatchEvent(new Event('overlay:automations-updated'))
@@ -652,7 +659,7 @@ function AutomationEditorPanel({
                     <select
                       value={scheduleKind}
                       onChange={(event) => setScheduleKind(event.target.value as AutomationSchedule['kind'])}
-                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
                     >
                       <option value="interval">Interval</option>
                       <option value="daily">Daily</option>
@@ -678,7 +685,7 @@ function AutomationEditorPanel({
                         type="time"
                         value={time}
                         onChange={(event) => setTime(event.target.value)}
-                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-8 text-sm text-[var(--foreground)] outline-none"
                       />
                     </label>
                   )}
@@ -688,7 +695,7 @@ function AutomationEditorPanel({
                       <select
                         value={dayOfWeek}
                         onChange={(event) => setDayOfWeek(Number(event.target.value))}
-                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
                       >
                         {WEEKDAY_LABELS.map((day, index) => (
                           <option key={day} value={index}>{day}</option>
@@ -705,7 +712,7 @@ function AutomationEditorPanel({
                         max={31}
                         value={dayOfMonth}
                         onChange={(event) => setDayOfMonth(Number(event.target.value))}
-                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                        className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-8 text-sm text-[var(--foreground)] outline-none"
                       />
                     </label>
                   )}
@@ -714,10 +721,22 @@ function AutomationEditorPanel({
                     <select
                       value={timezone}
                       onChange={(event) => setTimezone(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-10 text-sm text-[var(--foreground)] outline-none"
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
                     >
                       {timeZoneOptions.map((zone) => (
                         <option key={zone.value} value={zone.value}>{zone.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-xs font-medium text-[var(--muted)]">
+                    Model
+                    <select
+                      value={modelId}
+                      onChange={(event) => setModelId(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
+                    >
+                      {modelOptions.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
                       ))}
                     </select>
                   </label>
@@ -5952,6 +5971,7 @@ export default function ChatInterface({
               params.delete('tab')
               router.replace(`${pathname}?${params.toString()}`)
             }}
+            isFreeTier={isFreeTier}
           />
         )}
 
