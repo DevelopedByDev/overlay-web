@@ -24,6 +24,8 @@ import {
   ArrowUp,
   Play,
   MessageSquare,
+  SlidersHorizontal,
+  GitBranch,
   BookOpen,
   Search,
   Maximize2,
@@ -191,11 +193,11 @@ type AutomationDetail = {
   lastError?: string
 }
 
-const AUTOMATION_DETAIL_TABS: Array<{ id: AutomationDetailTab; label: string }> = [
-  { id: 'chat', label: 'Chat' },
-  { id: 'edit', label: 'Edit' },
-  { id: 'graph', label: 'Graph' },
-]
+const AUTOMATION_DETAIL_TABS = [
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'edit', label: 'Edit', icon: SlidersHorizontal },
+  { id: 'graph', label: 'Graph', icon: GitBranch },
+] satisfies Array<{ id: AutomationDetailTab; label: string; icon: typeof MessageSquare }>
 
 function normalizeAutomationDetailTab(value: string | null | undefined): AutomationDetailTab {
   return value === 'edit' || value === 'graph' ? value : 'chat'
@@ -209,8 +211,39 @@ function getAutomationInstructions(automation: AutomationDetail): string {
   return automation.instructions || automation.instructionsMarkdown || ''
 }
 
+function mermaidLabel(value: string): string {
+  return value.replace(/["\n\r]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function extractAutomationInstructionSteps(instructions: string): string[] {
+  const lines = instructions.split('\n')
+  const numbered = lines
+    .map((line) => line.trim().match(/^\d+\.\s+(.+)$/)?.[1]?.trim())
+    .filter((line): line is string => Boolean(line))
+  if (numbered.length > 0) return numbered.slice(0, 10)
+
+  return lines
+    .map((line) => line.trim().replace(/^[-*]\s+/, '').trim())
+    .filter((line) => line.length > 0 && !line.startsWith('```'))
+    .slice(0, 8)
+}
+
+function graphSourceFromAutomationInstructions(automation: AutomationDetail): string {
+  const steps = extractAutomationInstructionSteps(getAutomationInstructions(automation))
+  if (steps.length === 0) return ''
+  const nodes = steps.map((step, index) => {
+    const nodeId = `step${index + 1}`
+    const label = mermaidLabel(step).slice(0, 96)
+    return `  ${nodeId}["${index + 1}. ${label}"]`
+  })
+  const edges = steps.slice(1).map((_, index) => `  step${index + 1} --> step${index + 2}`)
+  return ['flowchart TD', ...nodes, ...edges].join('\n')
+}
+
 function defaultAutomationGraphSource(automation: AutomationDetail): string {
-  const name = getAutomationDisplayName(automation).replace(/["\n\r]/g, ' ')
+  const instructionGraph = graphSourceFromAutomationInstructions(automation)
+  if (instructionGraph) return instructionGraph
+  const name = mermaidLabel(getAutomationDisplayName(automation))
   const schedule = automation.schedule?.kind ? automation.schedule.kind : 'schedule'
   const model = automation.modelId || DEFAULT_MODEL_ID
   return [
@@ -3562,6 +3595,7 @@ export default function ChatInterface({
           instructions: draft.instructions,
           schedule: draft.schedule,
           timezone: draft.timezone,
+          graphSource: draft.graphSource,
           enabled: true,
           ...(activeChatId ? { sourceConversationId: activeChatId } : {}),
           ...(embedProjectId ? { projectId: embedProjectId } : {}),
@@ -5341,17 +5375,19 @@ export default function ChatInterface({
                 <div className="flex shrink-0 items-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-0.5">
                   {AUTOMATION_DETAIL_TABS.map((tab) => {
                     const active = automationDetailTab === tab.id
+                    const TabIcon = tab.icon
                     return (
                       <button
                         key={tab.id}
                         type="button"
                         onClick={() => selectAutomationDetailTab(tab.id)}
-                        className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
                           active
                             ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
                             : 'text-[var(--muted)] hover:text-[var(--foreground)]'
                         }`}
                       >
+                        <TabIcon size={12} strokeWidth={1.75} />
                         {tab.label}
                       </button>
                     )
@@ -5362,7 +5398,7 @@ export default function ChatInterface({
 
             {/* Model picker + Generation mode (mobile: one row, model left / mode select right) */}
             <div className={`flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2 ${
-              showAutomationChatTab ? '' : 'hidden'
+              mode === 'automate' || !showAutomationChatTab ? 'hidden' : ''
             }`}>
               {generationMode === 'video' && (
                 <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">

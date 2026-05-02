@@ -96,7 +96,9 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('draft_automation_from_chat')) {
     tools.draft_automation_from_chat = tool({
       description:
-        'Create an automation draft from the current chat turn. Use this when the user describes a recurring, scheduled, or background workflow. This only drafts the automation and never saves or enables it.',
+        'Create an automation draft from the current chat turn. Use this when the user describes a recurring, scheduled, or background workflow. ' +
+        'The draft instructions must be a detailed numbered pointer list with concrete tool calls, queries, parallelization notes, formatting instructions, and final delivery steps. ' +
+        'After drafting, show the numbered instructions to the user in a fenced code block so they can copy them. This only drafts the automation and never saves or enables it.',
       inputSchema: z.object({
         userText: z.string().describe('The user request to turn into an automation draft'),
         assistantText: z.string().optional().describe('Optional assistant summary of the workflow'),
@@ -113,16 +115,17 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('create_automation')) {
     tools.create_automation = tool({
       description:
-        'Create and enable a scheduled automation after the user explicitly confirms the draft. Do not call this for vague ideas; collect name, instructions, and schedule first.',
+        'Create and enable a scheduled automation after the user explicitly confirms the draft. Do not call this for vague ideas; collect name, description, instructions, and schedule first.',
       inputSchema: z.object({
         name: z.string().min(1),
-        description: z.string().optional(),
+        description: z.string().min(1),
         instructions: z.string().min(1),
         schedule: automationScheduleSchema,
         timezone: z.string().optional(),
         enabled: z.boolean().optional(),
         projectId: z.string().optional(),
         modelId: z.string().optional(),
+        graphSource: z.string().optional(),
         sourceConversationId: z.string().optional(),
       }),
       execute: async (input) => {

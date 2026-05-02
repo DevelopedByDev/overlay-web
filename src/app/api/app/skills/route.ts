@@ -29,14 +29,19 @@ export async function POST(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
 
     const { name, description, instructions, projectId } = body as Record<string, unknown>
-    if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
+    const nameText = typeof name === 'string' ? name.trim() : ''
+    const descriptionText = typeof description === 'string' ? description.trim() : ''
+    const instructionsText = typeof instructions === 'string' ? instructions.trim() : ''
+    if (!nameText || !descriptionText || !instructionsText) {
+      return NextResponse.json({ error: 'name, description, and instructions are required' }, { status: 400 })
+    }
 
     const skillId = await convex.mutation<string>('skills:create', {
       userId: auth.userId,
       serverSecret,
-      name,
-      description: description || '',
-      instructions: instructions || '',
+      name: nameText,
+      description: descriptionText,
+      instructions: instructionsText,
       projectId: projectId ?? undefined,
     })
     return NextResponse.json({ id: skillId })

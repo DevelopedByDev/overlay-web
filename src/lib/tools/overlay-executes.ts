@@ -313,13 +313,14 @@ export async function executeCreateAutomation(
   options: OverlayToolsOptions,
   input: {
     name: string
-    description?: string
+    description: string
     instructions: string
     schedule: AutomationScheduleDraft
     timezone?: string
     enabled?: boolean
     projectId?: string
     modelId?: string
+    graphSource?: string
     sourceConversationId?: string
   },
 ) {

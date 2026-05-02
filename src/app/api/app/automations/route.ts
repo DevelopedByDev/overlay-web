@@ -65,13 +65,14 @@ export async function POST(request: NextRequest) {
       timezone?: string
       projectId?: string
       modelId?: string
+      graphSource?: string
       sourceConversationId?: string
       concurrencyPolicy?: 'skip' | 'queue'
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    if (!body.name?.trim() || !body.instructions?.trim() || !body.schedule) {
-      return NextResponse.json({ error: 'name, instructions, and schedule are required' }, { status: 400 })
+    if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {
+      return NextResponse.json({ error: 'name, description, instructions, and schedule are required' }, { status: 400 })
     }
     const id = await convex.mutation('automations:create', {
       userId: auth.userId,
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
       timezone: body.timezone,
       projectId: body.projectId,
       modelId: body.modelId,
+      graphSource: body.graphSource,
       sourceConversationId: body.sourceConversationId as Id<'conversations'> | undefined,
       concurrencyPolicy: body.concurrencyPolicy,
     }, { throwOnError: true })

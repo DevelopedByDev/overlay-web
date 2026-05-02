@@ -107,9 +107,15 @@ export function DraftReviewModal({
               ) : null}
             </div>
           </div>
-          <pre className="max-h-[280px] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
-            {state.draft.instructions}
-          </pre>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]">
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-2">
+              <span className="text-[11px] font-medium text-[var(--muted)]">Instructions</span>
+              <FlashCopyIconButton copyText={state.draft.instructions} ariaLabel="Copy draft instructions" />
+            </div>
+            <pre className="max-h-[280px] overflow-auto p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
+              {state.draft.instructions}
+            </pre>
+          </div>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-4 py-3">
           <button

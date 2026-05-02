@@ -39,6 +39,7 @@ function clampInteger(value: number, min: number, max: number, fallback: number)
 type AutomationSchedule = NonNullable<Doc<'automations'>['schedule']>
 
 const DEFAULT_SCHEDULE: AutomationSchedule = { kind: 'daily', hourUTC: 14, minuteUTC: 0 }
+const STALE_AUTOMATION_RUN_MS = 15 * 60_000
 
 function normalizeSchedule(schedule: AutomationSchedule): AutomationSchedule {
   switch (schedule.kind) {
@@ -219,6 +220,7 @@ export const create = mutation({
     timezone: v.optional(v.string()),
     projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
+    graphSource: v.optional(v.string()),
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
   },
@@ -246,6 +248,7 @@ export const create = mutation({
       nextRunAt: enabled ? computeNextRunAt(schedule, now) : undefined,
       projectId: args.projectId,
       modelId: args.modelId?.trim() || undefined,
+      graphSource: args.graphSource?.trim() || undefined,
       sourceConversationId: args.sourceConversationId,
       concurrencyPolicy: args.concurrencyPolicy ?? 'skip',
       createdAt: now,
@@ -478,6 +481,7 @@ export const markManualRunCompleted = mutation({
       updatedAt: args.now,
     })
     await ctx.db.patch(run.automationId, {
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       lastRunAt: args.now,
       lastError: undefined,
       updatedAt: args.now,
@@ -515,17 +519,39 @@ export const markManualRunFailed = mutation({
   },
 })
 
-async function hasQueuedOrRunningRun(ctx: MutationCtx, automationId: Id<'automations'>) {
+async function hasQueuedOrRunningRun(ctx: MutationCtx, automationId: Id<'automations'>, now: number) {
   const queued = await ctx.db
     .query('automationRuns')
     .withIndex('by_automationId_status', (q) => q.eq('automationId', automationId).eq('status', 'queued'))
     .first()
-  if (queued) return true
+  if (queued) {
+    const queuedAt = queued.createdAt ?? queued.updatedAt ?? queued.scheduledFor
+    if (now - queuedAt <= STALE_AUTOMATION_RUN_MS) return true
+    await ctx.db.patch(queued._id, {
+      status: 'failed',
+      completedAt: now,
+      error: 'Automation run expired before execution could start.',
+      updatedAt: now,
+    })
+  }
   const running = await ctx.db
     .query('automationRuns')
     .withIndex('by_automationId_status', (q) => q.eq('automationId', automationId).eq('status', 'running'))
     .first()
-  return Boolean(running)
+  if (!running) return false
+  const startedAt = running.startedAt ?? running.updatedAt ?? running.createdAt
+  if (now - startedAt <= STALE_AUTOMATION_RUN_MS) return true
+  await ctx.db.patch(running._id, {
+    status: 'failed',
+    completedAt: now,
+    error: 'Automation run timed out before completion.',
+    updatedAt: now,
+  })
+  await ctx.db.patch(automationId, {
+    lastError: 'Previous automation run timed out before completion.',
+    updatedAt: now,
+  })
+  return false
 }
 
 export const claimDueRuns = internalMutation({
@@ -548,7 +574,7 @@ export const claimDueRuns = internalMutation({
       const nextRunAt = computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, Math.max(args.now, scheduledFor))
       const now = Date.now()
 
-      if ((automation.concurrencyPolicy ?? 'skip') === 'skip' && await hasQueuedOrRunningRun(ctx, automation._id)) {
+      if ((automation.concurrencyPolicy ?? 'skip') === 'skip' && await hasQueuedOrRunningRun(ctx, automation._id, now)) {
         await ctx.db.insert('automationRuns', {
           automationId: automation._id,
           userId: automation.userId,
@@ -642,6 +668,7 @@ export const markRunCompleted = internalMutation({
       updatedAt: args.now,
     })
     await ctx.db.patch(run.automationId, {
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       lastRunAt: args.now,
       lastError: undefined,
       updatedAt: args.now,
