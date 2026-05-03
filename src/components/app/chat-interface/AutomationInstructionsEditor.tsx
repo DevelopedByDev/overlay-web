@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent, type JSONContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -240,7 +240,7 @@ export function AutomationInstructionsEditor({
   value: string
   onChange: (value: string) => void
 }) {
-  const initialContent = useMemo(() => normalizeMarkdownInput(value), [])
+  const initialContent = normalizeMarkdownInput(value)
   const [expanded, setExpanded] = useState(false)
   const lastEmittedValueRef = useRef(value)
   const editor = useEditor({
