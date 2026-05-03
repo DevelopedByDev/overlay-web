@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import NextImage from 'next/image'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -52,7 +53,6 @@ import {
   Quote,
   Send,
   SmilePlus,
-  Sparkles,
   Strikethrough,
   Subscript as SubscriptIcon,
   Superscript as SuperscriptIcon,
@@ -1517,10 +1517,10 @@ export default function NotebookEditor({
             </div>
             {agentPanelOpen && (
               <aside
-                className="flex w-[min(400px,92vw)] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)]"
+                className="flex w-[min(400px,92vw)] shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--surface)]"
                 aria-label="Note assistant"
               >
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
                   {agentItems.length === 0 && (
                     <div className="text-center py-8">
                       <p className="text-sm text-[var(--muted)]">Ask about this note or describe edits...</p>
@@ -1539,8 +1539,11 @@ export default function NotebookEditor({
                     if (item.type === 'thinking') {
                       return (
                         <div key={idx} className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                          <span className="italic">{item.text}</span>
+                          <span
+                            className="overlay-stream-marker overlay-stream-marker--standalone h-4 w-4"
+                            aria-label={item.text}
+                            role="img"
+                          />
                         </div>
                       )
                     }
@@ -1549,12 +1552,24 @@ export default function NotebookEditor({
                         item.tool === 'read_note' ? 'Reading note' :
                         item.tool === 'propose_edit' ? 'Proposing edit' :
                         item.tool === 'finish' ? 'Done' : item.tool
+                      const isRunning = agentRunning && idx === agentItems.length - 1
                       return (
-                        <div key={idx} className="flex w-full max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug text-[var(--tool-line-label)]">
-                          <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
-                            <Sparkles size={14} className="text-[var(--muted)]" />
+                        <div key={idx} className="flex w-full max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug">
+                          <div className="relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                            <div className="relative z-[1] shrink-0 rounded-full bg-[var(--background)] p-px">
+                              <NextImage
+                                src="/assets/overlay-logo.png"
+                                alt=""
+                                width={14}
+                                height={14}
+                                className="mt-0.5 size-3.5 shrink-0 select-none"
+                                draggable={false}
+                              />
+                            </div>
                           </div>
-                          <span>{toolLabel}</span>
+                          <span className={isRunning ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>
+                            {toolLabel}
+                          </span>
                         </div>
                       )
                     }
@@ -1577,7 +1592,7 @@ export default function NotebookEditor({
                     )
                   })}
                 </div>
-                <div className="shrink-0 border-t border-[var(--border)] p-3">
+                <div className="shrink-0 p-3">
                   <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                     <div className="p-2.5">
                       <textarea
