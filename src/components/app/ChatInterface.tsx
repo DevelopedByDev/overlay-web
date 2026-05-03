@@ -87,6 +87,7 @@ import {
 } from '@/lib/agent-assistant-text'
 import type { OutputType } from '@/lib/output-types'
 import { useAppSettings } from './AppSettingsProvider'
+import { ExportMenu } from './ExportMenu'
 import { useGuestGate } from './GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/ConvexProviderWithWorkOS'
@@ -5945,6 +5946,24 @@ export default function ChatInterface({
                 <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
               </span>
             </DelayedTooltip>
+
+            {/* Export Menu */}
+            {activeChatId && !selectedAutomation && primaryMessages.length > 0 && (
+              <ExportMenu
+                type="chat"
+                title={activeChatTitle || activeChat?.title || 'New conversation'}
+                content={primaryMessages.map((m) => ({
+                  role: m.role,
+                  content: m.content,
+                  parts: m.parts,
+                }))}
+                metadata={{
+                  createdAt: activeChat?.createdAt,
+                  updatedAt: activeChat?.updatedAt,
+                  modelIds: activeChat?.modelIds,
+                }}
+              />
+            )}
           </div>
         </div>
 

@@ -58,6 +58,7 @@ import {
 import { common, createLowlight } from 'lowlight'
 import SlashMenu, { type SlashMenuItem } from './SlashMenu'
 import { useAppSettings } from './AppSettingsProvider'
+import { ExportMenu } from './ExportMenu'
 
 interface Note {
   _id: string
@@ -969,6 +970,17 @@ export default function NotebookEditor({
               </span>
             )}
             {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
+            {activeNote && (
+              <ExportMenu
+                type="note"
+                title={title || 'Untitled'}
+                content={editor?.getHTML() || activeNote.content || ''}
+                metadata={{
+                  createdAt: activeNote.createdAt,
+                  updatedAt: activeNote.updatedAt,
+                }}
+              />
+            )}
           </div>
         </div>
       ) : (
