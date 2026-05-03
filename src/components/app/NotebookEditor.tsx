@@ -101,6 +101,45 @@ function renderParagraph(lines: string[]): string {
   return content ? `<p>${content}</p>` : ''
 }
 
+function parseTableRow(line: string): string[] | null {
+  const match = line.match(/^\|(.+)\|$/)
+  if (!match) return null
+  return match[1].split('|').map((cell) => cell.trim())
+}
+
+function isTableSeparator(line: string): boolean {
+  return /^\|(?:\s*:?-+:?\s*\|)+$/.test(line.trim())
+}
+
+function parseTableAlignments(line: string): ('left' | 'center' | 'right' | null)[] {
+  const cells = parseTableRow(line)
+  if (!cells) return []
+  return cells.map((cell) => {
+    const trimmed = cell.trim()
+    const left = trimmed.startsWith(':')
+    const right = trimmed.endsWith(':')
+    if (left && right) return 'center'
+    if (right) return 'right'
+    if (left) return 'left'
+    return null
+  })
+}
+
+function renderTableRow(
+  cells: string[],
+  tag: 'td' | 'th',
+  alignments?: ('left' | 'center' | 'right' | null)[],
+): string {
+  const cellsHtml = cells
+    .map((cell, i) => {
+      const align = alignments?.[i]
+      const style = align ? ` style="text-align: ${align};"` : ''
+      return `<${tag}${style}>${parseInlineMarkdown(cell)}</${tag}>`
+    })
+    .join('')
+  return `<tr>${cellsHtml}</tr>`
+}
+
 function markdownToHtml(markdown: string): string {
   const lines = markdown.replace(markdownLineBreak, '\n').split('\n')
   const blocks: string[] = []
@@ -109,6 +148,10 @@ function markdownToHtml(markdown: string): string {
   let listType: 'ul' | 'ol' | null = null
   let codeLines: string[] = []
   let inCodeBlock = false
+  let tableRows: string[][] = []
+  let tableAlignments: ('left' | 'center' | 'right' | null)[] = []
+  let inTable = false
+  let tableHasHeader = false
 
   const flushParagraph = (): void => {
     if (paragraphLines.length > 0) {
@@ -134,8 +177,52 @@ function markdownToHtml(markdown: string): string {
     }
   }
 
+  const flushTable = (): void => {
+    if (tableRows.length === 0) return
+
+    let thead = ''
+    let tbodyRows = tableRows
+
+    if (tableHasHeader && tableRows.length > 0) {
+      thead = `<thead>${renderTableRow(tableRows[0], 'th', tableAlignments)}</thead>`
+      tbodyRows = tableRows.slice(1)
+    }
+
+    const tbody =
+      tbodyRows.length > 0
+        ? `<tbody>${tbodyRows.map((row) => renderTableRow(row, 'td', tableAlignments)).join('')}</tbody>`
+        : ''
+
+    blocks.push(`<table>${thead}${tbody}</table>`)
+    tableRows = []
+    tableAlignments = []
+    inTable = false
+    tableHasHeader = false
+  }
+
   for (const rawLine of lines) {
     const line = rawLine.trimEnd()
+
+    const tableRowCells = parseTableRow(line)
+
+    if (tableRowCells) {
+      if (!inTable) {
+        flushParagraph()
+        flushList()
+        inTable = true
+        tableRows = [tableRowCells]
+      } else if (isTableSeparator(line)) {
+        tableHasHeader = true
+        tableAlignments = parseTableAlignments(line)
+      } else {
+        tableRows.push(tableRowCells)
+      }
+      continue
+    }
+
+    if (inTable) {
+      flushTable()
+    }
 
     if (line.startsWith('```')) {
       flushParagraph()
@@ -204,6 +291,10 @@ function markdownToHtml(markdown: string): string {
 
     flushList()
     paragraphLines.push(line)
+  }
+
+  if (inTable) {
+    flushTable()
   }
 
   flushParagraph()

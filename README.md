@@ -1,16 +1,17 @@
-# Overlay
+<p align="center">
+  <img src="./src/assets/overlay-logo.png" alt="Overlay" width="150">
+</p>
+
+<h1 align="left">Overlay</h1>
 
 An AI workspace that thinks, remembers, creates, and acts — all in one place. Chat with top models, build persistent knowledge, generate media, and run automations without switching tabs.
 
 <div align="center">
 
-![Overlay](./src/assets/overlay-logo.png)
-
 </div>
 
-<br />
 
-🔗 **[Try Overlay](https://getoverlay.ai)**
+🔗 **[Try Overlay](https://getoverlay.io)**
 
 ## Powered By
 
