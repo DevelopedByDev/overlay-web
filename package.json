@@ -96,6 +96,7 @@
     "browser-use-sdk": "^3.3.1",
     "convex": "^1.32.0",
     "docx": "^9.6.1",
+    "dompurify": "^3.4.2",
     "eventsource": "^4.1.0",
     "framer-motion": "^12.26.2",
     "groq-sdk": "^1.1.1",
@@ -128,6 +129,7 @@
   },
   "devDependencies": {
     "@remotion/cli": "^4.0.441",
+    "@types/dompurify": "^3.0.5",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

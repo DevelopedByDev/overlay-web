@@ -30,6 +30,8 @@ import {
   AlignRight,
   Bold,
   BookImage,
+  Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Code,
@@ -42,12 +44,15 @@ import {
   List,
   ListOrdered,
   ListTodo,
+  Loader2,
   MessageCircle,
   Minus,
   Pencil,
   Plus,
   Quote,
+  Send,
   SmilePlus,
+  Sparkles,
   Strikethrough,
   Subscript as SubscriptIcon,
   Superscript as SuperscriptIcon,
@@ -63,6 +68,19 @@ import { common, createLowlight } from 'lowlight'
 import SlashMenu, { type SlashMenuItem } from './SlashMenu'
 import { useAppSettings } from './AppSettingsProvider'
 import { ExportMenu } from './ExportMenu'
+import {
+  InlineDiffExtension,
+  INLINE_DIFF_CSS,
+  getPendingDiffs,
+} from '@/components/notebook/InlineDiffExtension'
+import type { NotebookAgentStreamEvent } from '@/lib/notebook-agent-contract'
+import { noteContentFromEditor } from '@/lib/notebook-editor-blocks'
+import { readStoredActModelId, ACT_MODEL_KEY } from '@/lib/chat-model-prefs'
+import {
+  getModelsByIntelligence,
+  getChatModelDisplayName,
+} from '@/lib/models'
+import { MarkdownMessage } from './MarkdownMessage'
 
 interface Note {
   _id: string
@@ -74,7 +92,16 @@ interface Note {
   updatedAt: number
 }
 
+type NotebookAgentUiItem =
+  | { type: 'user'; text: string }
+  | { type: 'thinking'; text: string }
+  | { type: 'tool_call'; tool: string; toolInput?: Record<string, unknown> }
+  | { type: 'text'; text: string }
+  | { type: 'error'; text: string }
+
 const lowlight = createLowlight(common)
+const NOTEBOOK_INLINE_DIFF_STYLE_ID = 'notebook-inline-diff-styles'
+
 const markdownLineBreak = /\r\n?/g
 const htmlTagPattern = /<\/?[a-z][\s\S]*>/i
 
@@ -347,6 +374,14 @@ export default function NotebookEditor({
   const [slashMenuPosition, setSlashMenuPosition] = useState({ top: 0, left: 0 })
   const [slashMenuFilter, setSlashMenuFilter] = useState('')
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0)
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false)
+  const [agentItems, setAgentItems] = useState<NotebookAgentUiItem[]>([])
+  const [agentInput, setAgentInput] = useState('')
+  const [agentRunning, setAgentRunning] = useState(false)
+  const [selectedModelId, setSelectedModelId] = useState<string>(() => readStoredActModelId())
+  const [showModelPicker, setShowModelPicker] = useState(false)
+  const notebookAgentAbortRef = useRef<AbortController | null>(null)
+  const modelPickerRef = useRef<HTMLDivElement>(null)
   const activeNoteRef = useRef<Note | null>(null)
   const titleRef = useRef('')
   const isDirtyRef = useRef(false)
@@ -356,12 +391,28 @@ export default function NotebookEditor({
   const flushSaveRef = useRef<() => void>(() => {})
 
   useEffect(() => {
-    activeNoteRef.current = activeNote
-  }, [activeNote])
+    if (typeof document === 'undefined') return
+    if (document.getElementById(NOTEBOOK_INLINE_DIFF_STYLE_ID)) return
+    const el = document.createElement('style')
+    el.id = NOTEBOOK_INLINE_DIFF_STYLE_ID
+    el.textContent = INLINE_DIFF_CSS
+    document.head.appendChild(el)
+  }, [])
 
   useEffect(() => {
     titleRef.current = title
   }, [title])
+
+  useEffect(() => {
+    activeNoteRef.current = activeNote
+  }, [activeNote])
+
+  useEffect(() => {
+    notebookAgentAbortRef.current?.abort()
+    notebookAgentAbortRef.current = null
+    setAgentRunning(false)
+    setAgentItems([])
+  }, [activeNote?._id])
 
   const editor = useEditor({
     extensions: [
@@ -420,6 +471,7 @@ export default function NotebookEditor({
       Emoji.configure({
         enableEmoticons: true,
       }),
+      InlineDiffExtension,
     ],
     content: '',
     immediatelyRender: false,
@@ -771,6 +823,24 @@ export default function NotebookEditor({
     return () => { flushSaveRef.current() }
   }, [])
 
+  useEffect(() => {
+    if (!showModelPicker) return
+    function handleClickOutside(e: MouseEvent) {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
+        setShowModelPicker(false)
+      }
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowModelPicker(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside, true)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, true)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [showModelPicker])
+
   const idParam = searchParams?.get('id') ?? null
   useEffect(() => {
     if (!idParam) return
@@ -900,6 +970,126 @@ export default function NotebookEditor({
   }
   flushSaveRef.current = flushSave
 
+  const stopNotebookAgent = useCallback(() => {
+    notebookAgentAbortRef.current?.abort()
+    notebookAgentAbortRef.current = null
+    setAgentRunning(false)
+  }, [])
+
+  const runNotebookAgent = useCallback(async () => {
+    if (!editor || !activeNote || agentRunning) return
+    const message = agentInput.trim()
+    if (!message) return
+    const noteContent = noteContentFromEditor(editor)
+    const modelId = selectedModelId
+
+    setAgentItems((prev) => [...prev, { type: 'user', text: message }])
+    setAgentInput('')
+
+    const ac = new AbortController()
+    notebookAgentAbortRef.current = ac
+    setAgentRunning(true)
+
+    try {
+      const res = await fetch('/api/app/notebook-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        signal: ac.signal,
+        body: JSON.stringify({
+          noteContent,
+          noteTitle: title.trim() || 'Untitled',
+          message,
+          modelId,
+          projectId: activeNote.projectId,
+        }),
+      })
+
+      if (!res.ok) {
+        let errText = `Request failed (${res.status})`
+        try {
+          const j = (await res.json()) as { message?: string; error?: string }
+          errText = j.message || j.error || errText
+        } catch {
+          try {
+            errText = (await res.text()) || errText
+          } catch {
+            /* ignore */
+          }
+        }
+        setAgentItems((prev) => [...prev, { type: 'error', text: errText }])
+        return
+      }
+
+      const reader = res.body?.getReader()
+      if (!reader) {
+        setAgentItems((prev) => [...prev, { type: 'error', text: 'No response body' }])
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          let evt: NotebookAgentStreamEvent
+          try {
+            evt = JSON.parse(trimmed) as NotebookAgentStreamEvent
+          } catch {
+            continue
+          }
+          switch (evt.type) {
+            case 'thinking':
+              if (evt.thinking?.trim()) {
+                setAgentItems((prev) => [...prev, { type: 'thinking', text: evt.thinking! }])
+              }
+              break
+            case 'tool_call':
+              setAgentItems((prev) => [
+                ...prev,
+                { type: 'tool_call', tool: evt.tool ?? 'tool', toolInput: evt.toolInput },
+              ])
+              break
+            case 'text':
+              if (evt.text?.trim()) {
+                setAgentItems((prev) => [...prev, { type: 'text', text: evt.text! }])
+              }
+              break
+            case 'edit_proposal': {
+              const edit = evt.edit
+              if (!edit) break
+              editor.chain().focus().addDiffProposal(edit).run()
+              break
+            }
+            case 'error':
+              setAgentItems((prev) => [
+                ...prev,
+                { type: 'error', text: evt.error ?? 'Unknown error' },
+              ])
+              break
+            case 'done':
+              break
+            default:
+              break
+          }
+        }
+      }
+    } catch (e) {
+      if (ac.signal.aborted) return
+      const msg = e instanceof Error ? e.message : String(e)
+      setAgentItems((prev) => [...prev, { type: 'error', text: msg }])
+    } finally {
+      notebookAgentAbortRef.current = null
+      setAgentRunning(false)
+    }
+  }, [activeNote, agentInput, agentRunning, editor, selectedModelId, title])
+
   async function createNote() {
     const res = await fetch('/api/app/notes', {
       method: 'POST',
@@ -967,35 +1157,118 @@ export default function NotebookEditor({
     <div className="flex h-full flex-col">
       {/* Header - shows note title when active, otherwise "Notes" */}
       {activeNote ? (
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
-          <input
-            type="text"
-            value={title}
-            onChange={handleTitleChange}
-            placeholder="Note title..."
-            className="flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
-            style={{ fontFamily: 'var(--font-serif)' }}
-          />
-          <div className="ml-3 flex shrink-0 items-center gap-2">
-            {projectName && (
-              <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
-                <FolderOpen size={9} />
-                {projectName}
-              </span>
-            )}
-            {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
-            {activeNote && (
-              <ExportMenu
-                type="note"
-                title={title || 'Untitled'}
-                content={editor?.getHTML() || activeNote.content || ''}
-                metadata={{
-                  createdAt: activeNote.createdAt,
-                  updatedAt: activeNote.updatedAt,
-                }}
-              />
-            )}
+        <div className="flex h-16 shrink-0 border-b border-[var(--border)]">
+          {/* Left side - Note title section */}
+          <div className="flex flex-1 items-center justify-between px-6">
+            <input
+              type="text"
+              value={title}
+              onChange={handleTitleChange}
+              placeholder="Note title..."
+              className="flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+              style={{ fontFamily: 'var(--font-serif)' }}
+            />
+            <div className="ml-3 flex shrink-0 items-center gap-2">
+              {projectName && (
+                <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+                  <FolderOpen size={9} />
+                  {projectName}
+                </span>
+              )}
+              {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
+              {activeNote && (
+                <ExportMenu
+                  type="note"
+                  title={title || 'Untitled'}
+                  content={editor?.getHTML() || activeNote.content || ''}
+                  metadata={{
+                    createdAt: activeNote.createdAt,
+                    updatedAt: activeNote.updatedAt,
+                  }}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => setAgentPanelOpen((open) => !open)}
+                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                  agentPanelOpen ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
+                }`}
+                aria-label={agentPanelOpen ? 'Close note assistant' : 'Open note assistant'}
+                title="Note assistant"
+              >
+                <MessageCircle size={16} />
+              </button>
+            </div>
           </div>
+          {/* Right side - Assistant header (only when open) */}
+          {agentPanelOpen && (
+            <div className="flex w-[min(400px,92vw)] shrink-0 items-center justify-between gap-3 border-l border-[var(--border)] px-4">
+              <span className="text-xs font-medium text-[var(--foreground)]">Assistant</span>
+              <div className="flex items-center gap-2">
+                {editor && getPendingDiffs(editor).length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => editor.chain().focus().acceptAllDiffs().run()}
+                      className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1 text-[11px] text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+                    >
+                      Accept all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => editor.chain().focus().rejectAllDiffs().run()}
+                      className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                    >
+                      Reject all
+                    </button>
+                  </>
+                )}
+                <div ref={modelPickerRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => !agentRunning && setShowModelPicker((v) => !v)}
+                    disabled={agentRunning}
+                    className={`flex h-8 min-h-8 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:py-1 ${
+                      agentRunning ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+                    }`}
+                  >
+                    <span className="min-w-0 truncate">{getChatModelDisplayName(selectedModelId)}</span>
+                    <ChevronDown size={11} className="shrink-0" />
+                  </button>
+                  {showModelPicker && (
+                    <div className="absolute right-0 top-full z-20 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+                      <div className="max-h-72 overflow-y-auto">
+                        {getModelsByIntelligence(false).map((m) => {
+                          const isSel = m.id === selectedModelId
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedModelId(m.id)
+                                try {
+                                  localStorage.setItem(ACT_MODEL_KEY, m.id)
+                                } catch { /* ignore */ }
+                                setShowModelPicker(false)
+                              }}
+                              className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[var(--surface-muted)] ${
+                                isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'
+                              }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
+                                {m.name}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
@@ -1049,10 +1322,11 @@ export default function NotebookEditor({
         </div>
       )}
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeNote ? (
           <>
-            <div className="relative flex-1 overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <div className="h-full overflow-y-auto px-6 py-4">
                 <EditorContent editor={editor} />
               </div>
@@ -1239,16 +1513,114 @@ export default function NotebookEditor({
                     </button>
                   </>
                 )}
-                <button
-                  type="button"
-                  disabled
-                  className="inline-flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-lg text-[var(--muted)] opacity-40"
-                  aria-label="Agentic chat editing coming soon"
-                  title="Agentic chat editing coming soon"
-                >
-                  <MessageCircle size={16} />
-                </button>
               </div>
+            </div>
+            {agentPanelOpen && (
+              <aside
+                className="flex w-[min(400px,92vw)] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)]"
+                aria-label="Note assistant"
+              >
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+                  {agentItems.length === 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-sm text-[var(--muted)]">Ask about this note or describe edits...</p>
+                    </div>
+                  )}
+                  {agentItems.map((item, idx) => {
+                    if (item.type === 'user') {
+                      return (
+                        <div key={idx} className="flex justify-end">
+                          <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:max-w-[75%]">
+                            <span className="whitespace-pre-wrap">{item.text}</span>
+                          </div>
+                        </div>
+                      )
+                    }
+                    if (item.type === 'thinking') {
+                      return (
+                        <div key={idx} className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                          <span className="italic">{item.text}</span>
+                        </div>
+                      )
+                    }
+                    if (item.type === 'tool_call') {
+                      const toolLabel = item.tool === 'search_knowledge' ? 'Searching knowledge' :
+                        item.tool === 'read_note' ? 'Reading note' :
+                        item.tool === 'propose_edit' ? 'Proposing edit' :
+                        item.tool === 'finish' ? 'Done' : item.tool
+                      return (
+                        <div key={idx} className="flex w-full max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug text-[var(--tool-line-label)]">
+                          <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                            <Sparkles size={14} className="text-[var(--muted)]" />
+                          </div>
+                          <span>{toolLabel}</span>
+                        </div>
+                      )
+                    }
+                    if (item.type === 'text') {
+                      return (
+                        <div key={idx} className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <MarkdownMessage
+                              text={item.text ?? ''}
+                              isStreaming={agentRunning && idx === agentItems.length - 1}
+                            />
+                          </div>
+                        </div>
+                      )
+                    }
+                    return (
+                      <div key={idx} className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-700 dark:text-red-300">
+                        {item.text}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="shrink-0 border-t border-[var(--border)] p-3">
+                  <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                    <div className="p-2.5">
+                      <textarea
+                        value={agentInput}
+                        onChange={(e) => setAgentInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            if (!agentRunning && agentInput.trim()) void runNotebookAgent()
+                          }
+                        }}
+                        placeholder="Ask about this note or describe edits..."
+                        rows={1}
+                        disabled={agentRunning}
+                        className="w-full min-h-11 resize-none border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--muted-light)] focus:ring-0"
+                      />
+                      <div className="mt-2 flex min-h-9 items-center justify-end gap-2">
+                        {agentRunning ? (
+                          <button
+                            type="button"
+                            onClick={stopNotebookAgent}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80"
+                            aria-label="Stop"
+                          >
+                            <div className="h-3.5 w-3.5 rounded-sm bg-[var(--background)]" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void runNotebookAgent()}
+                            disabled={!agentInput.trim()}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"
+                            aria-label="Send"
+                          >
+                            <Send size={17} strokeWidth={1.75} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            )}
             </div>
             <SlashMenu
               showSlashMenu={showSlashMenu}
