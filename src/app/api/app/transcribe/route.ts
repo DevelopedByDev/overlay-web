@@ -17,8 +17,11 @@ export async function POST(request: NextRequest) {
     const groqApiKey = process.env.GROQ_API_KEY
 
     if (groqApiKey) {
+      // Preserve the original filename (e.g. audio.m4a) so Groq picks the right
+      // decoder. Sending 'audio.webm' for an M4A file causes intermittent 400s.
+      const fileName = audioFile.name || 'audio.m4a'
       const groqFormData = new FormData()
-      groqFormData.append('file', audioFile, 'audio.webm')
+      groqFormData.append('file', audioFile, fileName)
       groqFormData.append('model', 'whisper-large-v3-turbo')
       groqFormData.append('response_format', 'json')
 
