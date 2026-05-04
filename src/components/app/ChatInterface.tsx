@@ -5954,8 +5954,8 @@ export default function ChatInterface({
                 title={activeChatTitle || activeChat?.title || 'New conversation'}
                 content={primaryMessages.map((m) => ({
                   role: m.role,
-                  content: m.content,
-                  parts: m.parts,
+                  content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
+                  parts: m.parts as Array<{ type: string; text?: string }>,
                 }))}
                 metadata={{
                   createdAt: activeChat?.createdAt,

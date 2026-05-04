@@ -10,8 +10,11 @@ export interface Conversation {
   _id: string
   title: string
   lastModified: number
+  createdAt?: number
+  updatedAt?: number
   lastMode?: 'ask' | 'act'
   askModelIds?: string[]
+  modelIds?: string[]
   actModelId?: string
 }
 
