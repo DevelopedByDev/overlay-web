@@ -1282,6 +1282,21 @@ export const INLINE_DIFF_CSS = `
 
   /* Light mode overrides */
   @media (prefers-color-scheme: light) {
+    .ProseMirror .inline-diff-removed {
+      color: #000;
+    }
+
+    .inline-diff-line-added,
+    .inline-diff-code-block code,
+    .inline-diff-deletion-label,
+    .inline-diff-desc {
+      color: #000;
+    }
+
+    .inline-diff-removed {
+      color: #000;
+    }
+
     .inline-diff-accept:hover,
     .inline-diff-reject:hover {
       background: rgba(0, 0, 0, 0.06);
