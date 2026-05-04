@@ -93,6 +93,9 @@ export async function executeSaveMemory(
         source: source ?? 'chat',
         type,
         importance,
+        projectId: options.projectId,
+        conversationId: options.conversationId,
+        turnId: options.turnId,
         tags,
         ...toolAuthBody(options),
       },
@@ -126,18 +129,42 @@ export async function executeSaveMemoryBatch(
     source?: 'chat' | 'note' | 'manual'
   },
 ) {
-  const { memories, source } = input
-  const results: Array<{ success: boolean; memoryId?: string; error?: string }> = []
-  for (const memory of memories.slice(0, 10)) {
-    const result = await executeSaveMemory(options, { ...memory, source })
-    results.push(result)
-  }
-  const successCount = results.filter((r) => r.success).length
-  return {
-    success: successCount > 0,
-    results,
-    saved: successCount,
-    failed: results.length - successCount,
+  try {
+    const { memories, source } = input
+    if (!Array.isArray(memories) || memories.length === 0) {
+      return {
+        success: false,
+        results: [],
+        saved: 0,
+        failed: 0,
+        error: 'No memories provided',
+      }
+    }
+
+    const bounded = memories
+      .slice(0, 10)
+      .filter((memory) => typeof memory.content === 'string' && memory.content.trim())
+    const results = await Promise.all(
+      bounded.map((memory) => executeSaveMemory(options, { ...memory, source })),
+    )
+    const successCount = results.filter((r) => r.success).length
+    return {
+      success: successCount > 0,
+      results,
+      saved: successCount,
+      failed: results.length - successCount,
+      ...(successCount === 0
+        ? { error: results.find((r) => r.error)?.error ?? 'Failed to save memories' }
+        : {}),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      results: [],
+      saved: 0,
+      failed: Array.isArray(input.memories) ? Math.min(input.memories.length, 10) : 0,
+      error: err instanceof Error ? err.message : 'Failed to save memories',
+    }
   }
 }
 

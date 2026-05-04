@@ -90,12 +90,12 @@ function simpleMarkdownToHtml(text: string): string {
 
   // Check for code fence markers (```language or ```)
   if (/^```\w*$/.test(text.trim())) {
-    return `<span style="color: rgba(255,255,255,0.3); font-family: ui-monospace, monospace; font-size: 0.85em;">${text}</span>`
+    return `<span style="color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.85em;">${text}</span>`
   }
 
   // Check for horizontal rule (--- or *** or ___)
   if (/^([-*_])\1{2,}$/.test(text.trim())) {
-    return '<hr style="border: none; border-top: 1px solid rgba(255,255,255,0.2); margin: 8px 0;">'
+    return '<hr style="border: none; border-top: 1px solid var(--border); margin: 8px 0;">'
   }
 
   // Check for standalone $$ marker (part of multi-line display math)
@@ -132,7 +132,7 @@ function simpleMarkdownToHtml(text: string): string {
           processed = processed.replace(/\$\s*([^$]+?)\s*\$/g, (_, latex) =>
             renderLatex(latex.trim(), false)
           )
-          return `<td style="padding: 6px 12px; border: 1px solid rgba(255,255,255,0.15);">${processed}</td>`
+          return `<td style="padding: 6px 12px; border: 1px solid var(--border);">${processed}</td>`
         })
         .join('')
       return `<tr>${cellsHtml}</tr>`
@@ -168,13 +168,13 @@ function simpleMarkdownToHtml(text: string): string {
   // Inline code: `code`
   html = html.replace(
     /`([^`]+)`/g,
-    '<code style="background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 0.9em;">$1</code>'
+    '<code style="background: var(--surface-subtle); color: var(--foreground); padding: 1px 4px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 0.9em;">$1</code>'
   )
 
   // Links: [text](url)
   html = html.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
-    '<span style="color: rgb(96, 165, 250); text-decoration: underline;">$1</span>'
+    '<span style="color: var(--link, rgb(37, 99, 235)); text-decoration: underline;">$1</span>'
   )
 
   return html
@@ -1158,7 +1158,7 @@ export const INLINE_DIFF_CSS = `
   /* Removed paragraphs — subtle red highlight without strikethrough */
   .ProseMirror .inline-diff-removed {
     background: rgba(255, 59, 48, 0.08) !important;
-    color: rgba(255, 255, 255, 0.5);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
     opacity: 0.7;
     border-left: 2px solid rgba(255, 59, 48, 0.35);
     padding-left: 6px;
@@ -1189,7 +1189,7 @@ export const INLINE_DIFF_CSS = `
   }
 
   .inline-diff-line-added {
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--foreground);
   }
 
   /* Code block in diff preview */
@@ -1202,7 +1202,7 @@ export const INLINE_DIFF_CSS = `
   .inline-diff-code-block pre {
     margin: 0;
     padding: 12px 16px;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--surface-subtle);
     border-radius: 8px;
     overflow-x: auto;
   }
@@ -1211,7 +1211,7 @@ export const INLINE_DIFF_CSS = `
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     font-size: 13px;
     line-height: 1.5;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--foreground);
     white-space: pre;
   }
 
@@ -1227,7 +1227,7 @@ export const INLINE_DIFF_CSS = `
   .inline-diff-deletion-label {
     padding: 2px 8px;
     font-size: 11px;
-    color: rgba(255,255,255,0.3);
+    color: var(--muted);
     font-style: italic;
     border-left: 2px solid rgba(255, 59, 48, 0.3);
   }
@@ -1239,13 +1239,13 @@ export const INLINE_DIFF_CSS = `
     justify-content: space-between;
     padding: 4px 8px 4px 8px;
     gap: 8px;
-    border-top: 1px solid rgba(255,255,255,0.06);
-    background: rgba(255,255,255,0.025);
+    border-top: 1px solid var(--border);
+    background: var(--surface-muted);
   }
 
   .inline-diff-desc {
     font-size: 10px;
-    color: rgba(255,255,255,0.35);
+    color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1277,29 +1277,7 @@ export const INLINE_DIFF_CSS = `
 
   .inline-diff-accept:hover,
   .inline-diff-reject:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--surface-subtle);
   }
 
-  /* Light mode overrides */
-  @media (prefers-color-scheme: light) {
-    .ProseMirror .inline-diff-removed {
-      color: #000;
-    }
-
-    .inline-diff-line-added,
-    .inline-diff-code-block code,
-    .inline-diff-deletion-label,
-    .inline-diff-desc {
-      color: #000;
-    }
-
-    .inline-diff-removed {
-      color: #000;
-    }
-
-    .inline-diff-accept:hover,
-    .inline-diff-reject:hover {
-      background: rgba(0, 0, 0, 0.06);
-    }
-  }
 `
