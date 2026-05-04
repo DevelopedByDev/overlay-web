@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-// @ts-ignore - Node's strip-types runner needs the .ts specifier here.
+// @ts-expect-error - Node's strip-types runner needs the .ts specifier here.
 import { createNotebookTextEmitter } from './notebook-agent-stream.ts'
 
 test('dedupes repeated notebook agent text emissions', () => {
