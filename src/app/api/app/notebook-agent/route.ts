@@ -14,6 +14,7 @@ import {
   isPaidPlan,
 } from '@/lib/billing-runtime'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
+import { createNotebookTextEmitter } from '@/lib/notebook-agent-stream'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_AUTO_MODEL_ID,
@@ -284,6 +285,9 @@ export async function POST(request: NextRequest) {
         emit({ type: 'thinking', thinking: 'Analyzing note...' })
         const model = await getGatewayLanguageModel(effectiveModelId, auth.accessToken)
         const instructions = NOTEBOOK_AGENT_PROMPT
+        const emitText = createNotebookTextEmitter((text) => {
+          emit({ type: 'text', text })
+        })
         const tools = createNotebookTools({
           frozenNoteLines,
           noteTitle,
@@ -298,9 +302,7 @@ export async function POST(request: NextRequest) {
           tools,
           stopWhen: stepCountIs(20),
           onStepFinish: async ({ text }) => {
-            if (text?.trim()) {
-              emit({ type: 'text', text })
-            }
+            emitText(text)
           },
         })
 
@@ -309,9 +311,7 @@ export async function POST(request: NextRequest) {
 
         const result = await agent.generate({ prompt })
 
-        if (result.text?.trim()) {
-          emit({ type: 'text', text: result.text })
-        }
+        emitText(result.text)
 
         const totalUsage = result.totalUsage
         const totalInputTokens = totalUsage?.inputTokens ?? 0
