@@ -331,6 +331,7 @@ export async function POST(request: NextRequest) {
       userId: requestedUserId,
       mode,
       automationMode,
+      automationExecution,
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
       multiModelTotal: rawMultiModelTotal,
@@ -348,6 +349,7 @@ export async function POST(request: NextRequest) {
       userId?: string
       mode?: 'chat' | 'automate'
       automationMode?: boolean
+      automationExecution?: boolean
       multiModelSlotIndex?: number
       multiModelTotal?: number
     } = await request.json()
@@ -634,6 +636,7 @@ export async function POST(request: NextRequest) {
     const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
       latestUserText,
       automationMode: automationMode === true || mode === 'automate',
+      automationExecution: automationExecution === true,
     })
 
     const indexedNote = indexedFilesSystemNote(indexedAttachmentList)
@@ -738,7 +741,9 @@ export async function POST(request: NextRequest) {
     const generationNote =
       '\nYou also have generate_image and generate_video tools. Use them whenever the user asks to create visual content. For videos, inform the user that generation is async and may take a few minutes — results will appear in the Outputs tab.'
     const automationDraftNote =
-      automationMode === true || mode === 'automate'
+      automationExecution === true
+        ? '\nYou are executing an existing saved automation. Follow the stored automation instructions now. Do not design, draft, create, update, pause, delete, or ask approval for any automation. Automation-management tools are intentionally unavailable during execution.'
+        : automationMode === true || mode === 'automate'
         ? '\nYou are in Automate mode. Help the user design scheduled workflows. Use draft_automation_from_chat to propose a reviewable draft, and only call create_automation after the user explicitly confirms the draft should be created. Use list_automations, update_automation, pause_automation, and delete_automation for management requests.'
         : '\nYou also have draft_automation_from_chat and draft_skill_from_chat when exposed. Use them only when the user is clearly asking for a repeatable workflow, recurring task, or reusable procedure. Draft tools only draft suggestions and never create live automations or skills.'
     const browserToolNote = paid

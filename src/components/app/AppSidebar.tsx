@@ -333,8 +333,11 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       body: JSON.stringify({ title: 'Untitled', content: '', tags: [] }),
     })
     if (!res.ok) return
-    const data = await res.json() as { id?: string }
+    const data = await res.json() as { id?: string; note?: unknown }
     if (!data.id) return
+    if (data.note) {
+      window.dispatchEvent(new CustomEvent('overlay:notes-changed', { detail: { note: data.note } }))
+    }
     setNotesPanelRefreshKey((value) => value + 1)
     setMobileMenuOpen(false)
     router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)

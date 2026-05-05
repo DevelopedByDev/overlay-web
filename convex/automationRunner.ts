@@ -1,12 +1,7 @@
 import { v } from 'convex/values'
-import { api, internal } from './_generated/api'
+import { internal } from './_generated/api'
 import { internalAction } from './_generated/server'
 import type { Id } from './_generated/dataModel'
-
-const SERVICE_AUTH_AUDIENCE = 'overlay-internal-api'
-const SERVICE_AUTH_ISSUER = 'overlay-nextjs'
-const SERVICE_AUTH_HEADER = 'x-overlay-service-auth'
-const textEncoder = new TextEncoder()
 
 function summarizeError(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -39,50 +34,6 @@ function getInternalApiSecret(): string {
     throw new Error('INTERNAL_API_SECRET is not configured')
   }
   return secret
-}
-
-function getServiceAuthSecret(): string {
-  const dedicated = process.env.INTERNAL_SERVICE_AUTH_SECRET?.trim()
-  if (dedicated) return dedicated
-  return getInternalApiSecret()
-}
-
-function bytesToBase64Url(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-}
-
-function toBase64Url(value: string): string {
-  return bytesToBase64Url(textEncoder.encode(value))
-}
-
-async function buildServiceAuthToken(params: {
-  userId: string
-  method: string
-  path: string
-}): Promise<string> {
-  const payloadSegment = toBase64Url(JSON.stringify({
-    aud: SERVICE_AUTH_AUDIENCE,
-    iss: SERVICE_AUTH_ISSUER,
-    jti: crypto.randomUUID(),
-    sub: params.userId.trim(),
-    method: params.method.trim().toUpperCase(),
-    path: params.path.trim() || '/',
-    iat: Date.now(),
-    exp: Date.now() + 60_000,
-  }))
-  const key = await crypto.subtle.importKey(
-    'raw',
-    textEncoder.encode(getServiceAuthSecret()),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const signature = await crypto.subtle.sign('HMAC', key, textEncoder.encode(payloadSegment))
-  return `${payloadSegment}.${bytesToBase64Url(new Uint8Array(signature))}`
 }
 
 export const runMinuteTick = internalAction({
@@ -123,67 +74,35 @@ export const runAutomation = internalAction({
     const existingConversationId = (automation.sourceConversationId || automation.conversationId) as
       | Id<'conversations'>
       | undefined
-    const conversationId = existingConversationId ?? await ctx.runMutation(api.conversations.create, {
-      userId: automation.userId,
-      serverSecret: getInternalApiSecret(),
-      title: automation.name || automation.title || 'Automation run',
-      projectId: automation.projectId,
-      askModelIds: [automation.modelId || 'claude-sonnet-4-6'],
-      actModelId: automation.modelId || 'claude-sonnet-4-6',
-      lastMode: 'act',
-    })
     await ctx.runMutation(internal.automations.markRunStarted, {
       runId: args.runId,
-      conversationId,
+      conversationId: existingConversationId,
       turnId,
       now,
     })
 
     try {
-      const actPath = '/api/app/conversations/act'
-      const response = await fetch(`${getAutomationRunnerBaseUrl()}${actPath}`, {
+      const runPath = '/api/app/automations/run'
+      const response = await fetch(`${getAutomationRunnerBaseUrl()}${runPath}`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           'x-overlay-internal-secret': getInternalApiSecret(),
-          [SERVICE_AUTH_HEADER]: await buildServiceAuthToken({
-            userId: automation.userId,
-            method: 'POST',
-            path: actPath,
-          }),
         },
         body: JSON.stringify({
-          conversationId,
+          runId: args.runId,
           turnId,
-          modelId: automation.modelId || 'claude-sonnet-4-6',
-          userId: automation.userId,
-          mode: 'automate',
-          automationMode: true,
-          messages: [
-            {
-              id: turnId,
-              role: 'user',
-              content: [
-                `Scheduled automation: ${automation.name || automation.title || 'Untitled automation'}`,
-                automation.description ? `Description: ${automation.description}` : '',
-                `Scheduled for: ${new Date(run.scheduledFor).toISOString()}`,
-                '',
-                automation.instructions || automation.instructionsMarkdown || '',
-              ].filter(Boolean).join('\n'),
-              parts: [
-                {
-                  type: 'text',
-                  text: [
-                    `Scheduled automation: ${automation.name || automation.title || 'Untitled automation'}`,
-                    automation.description ? `Description: ${automation.description}` : '',
-                    `Scheduled for: ${new Date(run.scheduledFor).toISOString()}`,
-                    '',
-                    automation.instructions || automation.instructionsMarkdown || '',
-                  ].filter(Boolean).join('\n'),
-                },
-              ],
-            },
-          ],
+          scheduledFor: run.scheduledFor,
+          automation: {
+            id: automation._id,
+            userId: automation.userId,
+            name: automation.name || automation.title || 'Untitled automation',
+            description: automation.description || '',
+            instructions: automation.instructions || automation.instructionsMarkdown || '',
+            projectId: automation.projectId,
+            modelId: automation.modelId,
+            conversationId: existingConversationId,
+          },
         }),
       })
 
@@ -192,10 +111,10 @@ export const runAutomation = internalAction({
         throw new Error(text || `Automation runner returned ${response.status}`)
       }
 
-      await response.text().catch(() => '')
+      const result = await response.json().catch(() => ({})) as { conversationId?: Id<'conversations'> }
       await ctx.runMutation(internal.automations.markRunCompleted, {
         runId: args.runId,
-        conversationId,
+        conversationId: result.conversationId ?? existingConversationId,
         now: Date.now(),
       })
     } catch (error) {

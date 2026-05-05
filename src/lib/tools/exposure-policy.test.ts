@@ -48,3 +48,33 @@ test('exposure policy exposes high-risk tools only for explicit matching request
   })
   assert.equal(imageTools.includes('generate_image'), true)
 })
+
+test('automation execution hides automation management tools even for automation-shaped prompts', async () => {
+  const { allowedOverlayToolIdsForTurn } = await import(
+    new URL('./exposure-policy.ts', import.meta.url).href,
+  )
+  const automationManagementTools = [
+    'list_automations',
+    'draft_automation_from_chat',
+    'create_automation',
+    'update_automation',
+    'pause_automation',
+    'delete_automation',
+  ]
+
+  const executionTools = allowedOverlayToolIdsForTurn({
+    latestUserText: 'Execute saved automation now: Daily News Digest. Scheduled automation daily.',
+    automationExecution: true,
+  })
+  for (const toolId of automationManagementTools) {
+    assert.equal(executionTools.includes(toolId), false)
+  }
+
+  const automateModeTools = allowedOverlayToolIdsForTurn({
+    latestUserText: 'Help me create a daily automation',
+    automationMode: true,
+  })
+  for (const toolId of automationManagementTools) {
+    assert.equal(automateModeTools.includes(toolId), true)
+  }
+})

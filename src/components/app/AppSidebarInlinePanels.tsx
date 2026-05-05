@@ -320,6 +320,21 @@ export function NotesInlinePanel({
     void loadNotes()
   }, [loadNotes, refreshKey])
 
+  useEffect(() => {
+    function handleNotesChanged(event: Event) {
+      const note = (event as CustomEvent<{ note?: Note }>).detail?.note
+      if (note?._id) {
+        setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
+        setLoading(false)
+        return
+      }
+      void loadNotes()
+    }
+
+    window.addEventListener('overlay:notes-changed', handleNotesChanged)
+    return () => window.removeEventListener('overlay:notes-changed', handleNotesChanged)
+  }, [loadNotes])
+
   async function deleteNote(noteId: string, event: MouseEvent) {
     event.stopPropagation()
     await fetch(`/api/app/notes?noteId=${noteId}`, { method: 'DELETE' })

@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
     }, { throwOnError: true })
 
     const result = await runActTurnForScheduledAutomation({
+      automationId,
       runId,
       userId: auth.userId,
       name,

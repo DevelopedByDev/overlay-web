@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await runActTurnForScheduledAutomation({
+      automationId: automation.id,
       runId: body.runId,
       userId: automation.userId,
       name: automation.name,

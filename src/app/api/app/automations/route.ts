@@ -10,6 +10,154 @@ type AutomationSchedule =
   | { kind: 'weekly'; dayOfWeekUTC?: number; hourUTC?: number; minuteUTC?: number }
   | { kind: 'monthly'; dayOfMonthUTC?: number; hourUTC?: number; minuteUTC?: number }
 
+type AutomationForUpdateNote = {
+  _id: Id<'automations'>
+  userId: string
+  name?: string
+  title?: string
+  description?: string
+  instructions?: string
+  enabled?: boolean
+  schedule?: AutomationSchedule
+  timezone?: string
+  modelId?: string
+  sourceConversationId?: Id<'conversations'>
+  conversationId?: Id<'conversations'>
+}
+
+function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
+  if (!schedule) return ''
+  if (schedule.kind === 'interval') return `interval:${schedule.intervalMinutes ?? ''}`
+  if (schedule.kind === 'daily') return `daily:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
+  if (schedule.kind === 'weekly') return `weekly:${schedule.dayOfWeekUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
+  return `monthly:${schedule.dayOfMonthUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
+}
+
+function formatLocalTime(date: Date, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date)
+  } catch {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date)
+  }
+}
+
+function weekdayName(date: Date, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'long',
+    }).format(date)
+  } catch {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      weekday: 'long',
+    }).format(date)
+  }
+}
+
+function dateForUtcSchedule(hourUTC = 9, minuteUTC = 0, dayOffset = 0): Date {
+  const now = new Date()
+  return new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + dayOffset,
+    hourUTC,
+    minuteUTC,
+  ))
+}
+
+function formatSchedule(schedule: AutomationSchedule | undefined, timezone: string | undefined): string {
+  if (!schedule) return 'unscheduled'
+  const zone = timezone?.trim() || 'UTC'
+  if (schedule.kind === 'interval') {
+    const minutes = schedule.intervalMinutes ?? 60
+    if (minutes % 1440 === 0) return `every ${minutes / 1440} day${minutes === 1440 ? '' : 's'}`
+    if (minutes % 60 === 0) return `every ${minutes / 60} hour${minutes === 60 ? '' : 's'}`
+    return `every ${minutes} minutes`
+  }
+  if (schedule.kind === 'daily') {
+    return `daily at ${formatLocalTime(dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC), zone)} ${zone}`
+  }
+  if (schedule.kind === 'weekly') {
+    const today = new Date().getUTCDay()
+    const target = schedule.dayOfWeekUTC ?? 1
+    const dayOffset = (target - today + 7) % 7
+    const date = dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC, dayOffset)
+    return `weekly on ${weekdayName(date, zone)} at ${formatLocalTime(date, zone)} ${zone}`
+  }
+  const day = schedule.dayOfMonthUTC ?? 1
+  return `monthly on day ${day} at ${formatLocalTime(dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC), zone)} ${zone}`
+}
+
+function buildAutomationUpdateNote(
+  before: AutomationForUpdateNote,
+  after: {
+    name?: string
+    description?: string
+    instructions?: string
+    enabled?: boolean
+    schedule?: AutomationSchedule
+    timezone?: string
+    modelId?: string
+  },
+): string | null {
+  const changes: string[] = []
+  const beforeName = (before.name || before.title || 'Untitled automation').trim()
+  const afterName = after.name !== undefined ? after.name.trim() : beforeName
+  if (after.name !== undefined && afterName !== beforeName) changes.push(`name changed to "${afterName || beforeName}"`)
+
+  if (after.description !== undefined && after.description.trim() !== (before.description || '').trim()) {
+    changes.push('description updated')
+  }
+  if (after.instructions !== undefined && after.instructions.trim() !== (before.instructions || '').trim()) {
+    changes.push('instructions updated')
+  }
+  const nextTimezone = after.timezone !== undefined ? after.timezone.trim() || 'UTC' : before.timezone
+  if (after.schedule !== undefined && stableScheduleKey(after.schedule) !== stableScheduleKey(before.schedule)) {
+    changes.push(`schedule changed to ${formatSchedule(after.schedule, nextTimezone)}`)
+  } else if (after.timezone !== undefined && nextTimezone !== (before.timezone || 'UTC')) {
+    changes.push(`timezone changed to ${nextTimezone}`)
+  }
+  if (after.enabled !== undefined && after.enabled !== (before.enabled ?? true)) {
+    changes.push(after.enabled ? 'enabled' : 'paused')
+  }
+  if (after.modelId !== undefined && (after.modelId.trim() || '') !== (before.modelId || '')) {
+    changes.push(`model changed to ${after.modelId.trim() || 'default'}`)
+  }
+
+  if (changes.length === 0) return null
+  return `Automation updated: ${changes.join('; ')}.`
+}
+
+async function appendAutomationUpdateNote(params: {
+  automation: AutomationForUpdateNote
+  userId: string
+  serverSecret: string
+  content: string
+}) {
+  const conversationId = params.automation.sourceConversationId || params.automation.conversationId
+  if (!conversationId) return
+  await convex.mutation('conversations:addMessage', {
+    conversationId,
+    userId: params.userId,
+    serverSecret: params.serverSecret,
+    turnId: `automation-update-${params.automation._id}-${Date.now()}`,
+    role: 'assistant',
+    mode: 'act',
+    content: params.content,
+    contentType: 'text',
+    parts: [{ type: 'text', text: params.content }],
+  }, { throwOnError: true })
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await resolveAuthenticatedAppUser(request, {})
@@ -121,16 +269,18 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'automationId required' }, { status: 400 })
     }
 
+    const serverSecret = getInternalApiSecret()
     const args = {
       automationId: body.automationId as Id<'automations'>,
       userId: auth.userId,
-      serverSecret: getInternalApiSecret(),
+      serverSecret,
     }
     if (body.action === 'pause') {
       await convex.mutation('automations:pause', args, { throwOnError: true })
     } else if (body.action === 'resume') {
       await convex.mutation('automations:resume', args, { throwOnError: true })
     } else {
+      const before = await convex.query('automations:get', args) as AutomationForUpdateNote | null
       await convex.mutation('automations:update', {
         ...args,
         name: body.name,
@@ -144,6 +294,27 @@ export async function PATCH(request: NextRequest) {
         graphSource: body.graphSource,
         concurrencyPolicy: body.concurrencyPolicy,
       }, { throwOnError: true })
+      if (before) {
+        const updateNote = buildAutomationUpdateNote(before, {
+          name: body.name,
+          description: body.description,
+          instructions: body.instructions,
+          enabled: body.enabled,
+          schedule: body.schedule,
+          timezone: body.timezone,
+          modelId: body.modelId,
+        })
+        if (updateNote) {
+          await appendAutomationUpdateNote({
+            automation: before,
+            userId: auth.userId,
+            serverSecret,
+            content: updateNote,
+          }).catch((error) => {
+            console.warn('[automations PATCH] Failed to append automation update note', error)
+          })
+        }
+      }
     }
 
     return NextResponse.json({ success: true })

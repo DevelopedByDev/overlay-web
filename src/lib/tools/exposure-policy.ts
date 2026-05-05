@@ -94,6 +94,7 @@ function addAll(target: Set<string>, toolIds: readonly string[]): void {
 export function allowedOverlayToolIdsForTurn(params: {
   latestUserText?: string | null
   automationMode?: boolean
+  automationExecution?: boolean
   /**
    * When `chrome-extension`, never expose `interactive_browser_session` — the Chrome extension
    * drives the user’s real tab via Act/local tools; remote browser sessions are redundant and confusing.
@@ -125,7 +126,7 @@ export function allowedOverlayToolIdsForTurn(params: {
   if (isExplicitSkillDraftRequest(text)) {
     addAll(allowed, SKILL_DRAFT_TOOL_IDS)
   }
-  if (params.automationMode || isExplicitAutomationRequest(text)) {
+  if (!params.automationExecution && (params.automationMode || isExplicitAutomationRequest(text))) {
     addAll(allowed, AUTOMATION_TOOL_IDS)
   }
 

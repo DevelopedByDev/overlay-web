@@ -10,7 +10,7 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import Highlight from '@tiptap/extension-highlight'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
-import Mathematics from '@tiptap/extension-mathematics'
+import Mathematics, { migrateMathStrings } from '@tiptap/extension-mathematics'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import { Table } from '@tiptap/extension-table'
@@ -45,7 +45,6 @@ import {
   List,
   ListOrdered,
   ListTodo,
-  Loader2,
   MessageCircle,
   Minus,
   Pencil,
@@ -101,6 +100,8 @@ type NotebookAgentUiItem =
 
 const lowlight = createLowlight(common)
 const NOTEBOOK_INLINE_DIFF_STYLE_ID = 'notebook-inline-diff-styles'
+const NOTES_CHANGED_EVENT = 'overlay:notes-changed'
+const NOTEBOOK_INLINE_MATH_MIGRATION_REGEX = /(?<!\$)\$(?![\d\s$])([^$\n]*(?:\\[a-zA-Z@]+|[=^_{}]|[a-zA-Z]\s*[+\-*/=^_]|[+\-*/=^_]\s*[a-zA-Z]|[a-zA-Z])[^$\n]*)\$(?![\d$])/g
 
 const markdownLineBreak = /\r\n?/g
 const htmlTagPattern = /<\/?[a-z][\s\S]*>/i
@@ -475,7 +476,12 @@ export default function NotebookEditor({
     ],
     content: '',
     immediatelyRender: false,
+    onCreate: ({ editor: currentEditor }) => {
+      migrateMathStrings(currentEditor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
+    },
     onUpdate: ({ editor: currentEditor }) => {
+      migrateMathStrings(currentEditor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
+
       if (activeNoteRef.current) {
         isDirtyRef.current = true
         pendingNoteIdRef.current = activeNoteRef.current._id
@@ -883,6 +889,7 @@ export default function NotebookEditor({
     }
 
     editor.commands.setContent(normalizeNoteContent(activeNote.content || ''))
+    migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, activeNote?._id])
 
@@ -1100,18 +1107,22 @@ export default function NotebookEditor({
       const data = (await res.json()) as { id: string; note?: Note }
       if (data.note) {
         setNotes((prev) => [data.note!, ...prev])
+        window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note: data.note } }))
         openNote(data.note)
         return
       }
-      await loadNotes()
-      openNote({
+      const note = {
         _id: data.id,
         title: 'Untitled',
         content: '',
         tags: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
-      })
+      }
+      setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
+      window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
+      await loadNotes()
+      openNote(note)
     }
   }
 

@@ -7,6 +7,7 @@ import { DEFAULT_MODEL_ID } from '@/lib/models'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 export type ScheduledAutomationTurn = {
+  automationId?: string
   runId: string
   userId: string
   name: string
@@ -34,11 +35,12 @@ async function drainResponseBody(response: Response): Promise<void> {
 function buildAutomationUserMessage(input: ScheduledAutomationTurn): string {
   const scheduledAt = new Date(input.scheduledFor).toISOString()
   return [
-    `Run scheduled automation: ${input.name}`,
+    `Execute saved automation now: ${input.name}`,
     input.description ? `Description: ${input.description}` : '',
     `Scheduled for: ${scheduledAt}`,
+    input.automationId ? `Automation ID: ${input.automationId}` : '',
     '',
-    'Stored automation instructions:',
+    'Current saved instructions to execute:',
     input.instructions,
   ].filter(Boolean).join('\n')
 }
@@ -47,6 +49,7 @@ function buildAutomationSystemPrompt(input: ScheduledAutomationTurn): string {
   return [
     'You are running a scheduled automation for the user.',
     'Execute the stored automation instructions without asking clarifying questions.',
+    'Do not create, draft, update, pause, delete, or propose a new automation. This run is already attached to an existing saved automation.',
     'If required auth, context, or tool access is missing, stop and write a concise failure summary.',
     'Only use tools that are clearly authorized by the stored automation and connected for this user.',
     'End with a concise summary of what was completed and what still needs attention.',
@@ -103,6 +106,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
       turnId: input.turnId,
       modelId: input.modelId || DEFAULT_MODEL_ID,
       userId: input.userId,
+      automationExecution: true,
     }),
   })
 
