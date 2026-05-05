@@ -3,7 +3,7 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { generatePresignedDownloadUrl } from '@/lib/r2'
-import { isOwnedFileR2Key } from '@/lib/storage-keys'
+import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/lib/storage-keys'
 
 export const runtime = 'nodejs'
 
@@ -32,7 +32,10 @@ export async function GET(
   }
 
   if (proxyTarget.r2Key) {
-    if (!isOwnedFileR2Key(session.user.id, proxyTarget.r2Key)) {
+    if (
+      !isOwnedFileR2Key(session.user.id, proxyTarget.r2Key) &&
+      !isOwnedOutputR2Key(session.user.id, proxyTarget.r2Key)
+    ) {
       return Response.json({ error: 'Not found' }, { status: 404 })
     }
     const presignedUrl = await generatePresignedDownloadUrl(proxyTarget.r2Key)

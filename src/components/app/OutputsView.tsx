@@ -43,6 +43,39 @@ interface Output {
   completedAt?: number
 }
 
+interface CanonicalOutputFile {
+  _id: string
+  kind?: 'output'
+  name?: string
+  outputType?: string
+  prompt?: string
+  modelId?: string
+  downloadUrl?: string
+  mimeType?: string
+  sizeBytes?: number
+  createdAt?: number
+  updatedAt?: number
+  indexStatus?: string
+}
+
+function canonicalFileToOutput(file: CanonicalOutputFile): Output {
+  const type = (file.outputType || 'document') as OutputType
+  return {
+    _id: file._id,
+    type,
+    status: 'completed',
+    prompt: file.prompt || file.name || 'Generated output',
+    modelId: file.modelId || '',
+    url: file.downloadUrl,
+    fileName: file.name,
+    mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+    metadata: {},
+    createdAt: file.createdAt ?? file.updatedAt ?? Date.now(),
+    completedAt: file.updatedAt ?? file.createdAt ?? Date.now(),
+  }
+}
+
 type FilterType = 'all' | 'image' | 'video' | 'files'
 
 function timeAgo(ts: number): string {
@@ -253,7 +286,7 @@ export default function OutputsView({
   async function handleDelete(outputId: string) {
     setDeletingId(outputId)
     try {
-      await fetch(`/api/app/outputs?outputId=${encodeURIComponent(outputId)}`, { method: 'DELETE' })
+      await fetch(`/api/app/files?fileId=${encodeURIComponent(outputId)}`, { method: 'DELETE' })
       setOutputs((prev) => prev.filter((o) => o._id !== outputId))
       if (lightbox?._id === outputId) setLightbox(null)
       if (detailsOutput?._id === outputId) setDetailsOutput(null)
@@ -268,11 +301,14 @@ export default function OutputsView({
     try {
       const params = new URLSearchParams({ limit: '100' })
       if (filter === 'image' || filter === 'video') {
-        params.set('type', filter)
+        params.set('kind', 'output')
+      } else {
+        params.set('kind', 'output')
       }
-      const res = await fetch(`/api/app/outputs?${params}`)
+      const res = await fetch(`/api/app/files?${params}`)
       if (!res.ok) throw new Error('Failed to load')
-      setOutputs(await res.json())
+      const rows = (await res.json()) as CanonicalOutputFile[]
+      setOutputs(rows.map(canonicalFileToOutput))
     } catch {
       setError('Failed to load outputs.')
     } finally {

@@ -185,7 +185,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('search_knowledge')) {
     tools.search_knowledge = tool({
     description:
-      'Search the user\'s saved knowledge: notebook files and memories. Uses hybrid semantic + keyword retrieval. ' +
+      'Search the user\'s saved knowledge: indexed files and memories. Uses hybrid semantic + keyword retrieval. ' +
       'Call this when you need facts from their knowledge base, prior notes, or stored context that is not in the chat transcript.',
     inputSchema: z.object({
       query: z.string().describe('Search query: keywords or a short natural-language question'),
@@ -204,9 +204,9 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('search_in_files')) {
     tools.search_in_files = tool({
       description:
-        'Lexical (substring) search over the user\'s own notebook file rows by Convex file id. Case-insensitive phrase matching with context snippets — works immediately even while vector embeddings are still building. ' +
+        'Lexical (substring) search over the user\'s own file rows by Convex file id. Case-insensitive phrase matching with context snippets — works immediately even while vector embeddings are still building. ' +
         'For a document split into multiple parts, pass every part id in order (see system hint for this turn). ' +
-        'Use this for exact phrases, names, and codes; use search_knowledge for broader semantic retrieval across the notebook.',
+        'Use this for exact phrases, names, and codes; use search_knowledge for broader semantic retrieval across indexed files.',
       inputSchema: z.object({
         fileIds: z
           .array(z.string())

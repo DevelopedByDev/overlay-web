@@ -9,6 +9,7 @@ const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 
 type HubChat = { _id: string; title: string }
 type HubNote = { _id: string; title?: string }
+type CanonicalNoteFile = { _id: string; name?: string; textContent?: string; content?: string }
 import { FileViewerSkeleton } from '@/components/ui/Skeleton'
 import ChatInterface from './ChatInterface'
 import NotebookEditor from './NotebookEditor'
@@ -32,7 +33,7 @@ function ProjectFileView({ fileId }: { fileId: string }) {
         .then((data) => {
           if (cancelled) return
           setFile(data)
-          setFileContent(data.content ?? '')
+          setFileContent(data.textContent ?? data.content ?? '')
         })
         .catch(() => {})
         .finally(() => {
@@ -57,7 +58,7 @@ function ProjectFileView({ fileId }: { fileId: string }) {
       await fetch('/api/app/files', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId, content: val }),
+        body: JSON.stringify({ fileId, textContent: val }),
       })
       setIsSaving(false)
     }, 800)
@@ -115,14 +116,17 @@ function ProjectHub({
       const q = encodeURIComponent(projectId)
       const [chatsRes, notesRes] = await Promise.all([
         fetch(`/api/app/conversations?projectId=${q}`),
-        fetch(`/api/app/notes?projectId=${q}`),
+        fetch(`/api/app/files?kind=note&projectId=${q}`),
       ])
       const [chatsJson, notesJson] = await Promise.all([
         chatsRes.ok ? chatsRes.json() : [],
         notesRes.ok ? notesRes.json() : [],
       ])
       setChats(Array.isArray(chatsJson) ? chatsJson : [])
-      setNotes(Array.isArray(notesJson) ? notesJson : [])
+      setNotes(Array.isArray(notesJson) ? notesJson.map((file: CanonicalNoteFile) => ({
+        _id: file._id,
+        title: file.name || 'Untitled',
+      })) : [])
     } finally {
       setListsLoading(false)
     }
@@ -221,10 +225,10 @@ function ProjectHub({
     if (creating) return
     setCreating('note')
     try {
-      const res = await fetch('/api/app/notes', {
+      const res = await fetch('/api/app/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, title: 'Untitled', content: '' }),
+        body: JSON.stringify({ projectId, kind: 'note', name: 'Untitled', textContent: '' }),
       })
       if (!res.ok) return
       const data = (await res.json()) as { id?: string }

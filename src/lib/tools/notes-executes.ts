@@ -8,10 +8,11 @@ export async function executeListNotes(
 ) {
   try {
     const params = new URLSearchParams({ userId: options.userId })
+    params.set('kind', 'note')
     const projectId = input.projectId ?? options.projectId
     if (projectId) params.set('projectId', projectId)
     const res = await callInternalApiGet(
-      `/api/app/notes?${params}`,
+      `/api/app/files?${params}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -24,13 +25,13 @@ export async function executeListNotes(
     }
     const notes = (await res.json()) as Array<{
       _id: string
-      title: string
+      name?: string
       updatedAt: number
       projectId?: string
     }>
     const slim = notes.map((n) => ({
       noteId: n._id,
-      title: n.title,
+      title: n.name || 'Untitled',
       updatedAt: n.updatedAt,
       projectId: n.projectId,
     }))
@@ -47,10 +48,10 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
   try {
     const params = new URLSearchParams({
       userId: options.userId,
-      noteId: input.noteId.trim(),
+      fileId: input.noteId.trim(),
     })
     const res = await callInternalApiGet(
-      `/api/app/notes?${params}`,
+      `/api/app/files?${params}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -63,9 +64,9 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
     }
     const note = (await res.json()) as {
       _id: string
-      title: string
-      content: string
-      tags: string[]
+      name?: string
+      content?: string
+      textContent?: string
       projectId?: string
       updatedAt: number
     }
@@ -73,9 +74,9 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
       success: true,
       note: {
         noteId: note._id,
-        title: note.title,
-        content: note.content,
-        tags: note.tags,
+        title: note.name || 'Untitled',
+        content: note.textContent ?? note.content ?? '',
+        tags: [],
         projectId: note.projectId,
         updatedAt: note.updatedAt,
       },
@@ -94,11 +95,11 @@ export async function executeCreateNote(
 ) {
   try {
     const res = await callInternalApi(
-      '/api/app/notes',
+      '/api/app/files',
       {
-        title: input.title ?? 'Untitled',
-        content: input.content,
-        tags: input.tags ?? [],
+        kind: 'note',
+        name: input.title ?? 'Untitled',
+        textContent: input.content,
         projectId: input.projectId ?? options.projectId,
         ...toolAuthBody(options),
       },
@@ -126,12 +127,11 @@ export async function executeUpdateNote(
 ) {
   try {
     const res = await callInternalApi(
-      '/api/app/notes',
+      '/api/app/files',
       {
-        noteId: input.noteId,
-        title: input.title,
-        content: input.content,
-        tags: input.tags,
+        fileId: input.noteId,
+        name: input.title,
+        textContent: input.content,
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -154,14 +154,14 @@ export async function executeUpdateNote(
 export async function executeDeleteNote(options: OverlayToolsOptions, input: { noteId: string }) {
   try {
     const url = options.baseUrl
-      ? `${options.baseUrl}/api/app/notes?noteId=${encodeURIComponent(input.noteId.trim())}`
-      : `/api/app/notes?noteId=${encodeURIComponent(input.noteId.trim())}`
+      ? `${options.baseUrl}/api/app/files?fileId=${encodeURIComponent(input.noteId.trim())}`
+      : `/api/app/files?fileId=${encodeURIComponent(input.noteId.trim())}`
     const serviceAuthHeader =
       options.serverSecret
         ? await buildServiceAuthToken({
             userId: options.userId,
             method: 'DELETE',
-            path: '/api/app/notes',
+            path: '/api/app/files',
           })
         : null
     const res = await fetch(url, {

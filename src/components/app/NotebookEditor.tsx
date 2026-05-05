@@ -91,6 +91,28 @@ interface Note {
   updatedAt: number
 }
 
+interface CanonicalNoteFile {
+  _id: string
+  name: string
+  content?: string
+  textContent?: string
+  projectId?: string
+  createdAt?: number
+  updatedAt?: number
+}
+
+function canonicalFileToNote(file: CanonicalNoteFile): Note {
+  return {
+    _id: file._id,
+    title: file.name || 'Untitled',
+    content: file.textContent ?? file.content ?? '',
+    tags: [],
+    projectId: file.projectId,
+    createdAt: file.createdAt ?? Date.now(),
+    updatedAt: file.updatedAt ?? Date.now(),
+  }
+}
+
 type NotebookAgentUiItem =
   | { type: 'user'; text: string }
   | { type: 'thinking'; text: string }
@@ -782,10 +804,10 @@ export default function NotebookEditor({
   const loadNotes = useCallback(async () => {
     if (hideSidebar) return
     try {
-      const res = await fetch('/api/app/notes')
+      const res = await fetch('/api/app/files?kind=note')
       if (res.ok) {
-        const data = (await res.json()) as Note[]
-        setNotes(data)
+        const data = (await res.json()) as CanonicalNoteFile[]
+        setNotes(data.map(canonicalFileToNote))
       }
     } catch {
       // ignore
@@ -863,9 +885,9 @@ export default function NotebookEditor({
     let cancelled = false
     async function loadNoteById() {
       try {
-        const res = await fetch(`/api/app/notes?noteId=${encodeURIComponent(noteId)}`)
+        const res = await fetch(`/api/app/files?fileId=${encodeURIComponent(noteId)}`)
         if (!res.ok) return
-        const note = (await res.json()) as Note
+        const note = canonicalFileToNote((await res.json()) as CanonicalNoteFile)
         if (!cancelled) {
           if (hideSidebar) setNotes([note])
           openNote(note)
@@ -959,18 +981,19 @@ export default function NotebookEditor({
     const noteId = pendingNoteIdRef.current
     const noteTitle = pendingTitleRef.current
     const content = pendingContentRef.current
-    void fetch('/api/app/notes', {
+    void fetch('/api/app/files', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ noteId, title: noteTitle, content }),
+      body: JSON.stringify({ fileId: noteId, name: noteTitle, textContent: content }),
       keepalive: true,
     }).then(async (res) => {
       if (!res.ok) return
-      const data = (await res.json()) as { note?: Note }
-      if (data.note) {
+      const data = (await res.json()) as { file?: CanonicalNoteFile }
+      if (data.file) {
+        const note = canonicalFileToNote(data.file)
         setNotes((prev) => {
-          const next = prev.filter((note) => note._id !== data.note!._id)
-          return [data.note!, ...next]
+          const next = prev.filter((item) => item._id !== note._id)
+          return [note, ...next]
         })
       }
     }).catch(() => {})
@@ -1098,17 +1121,18 @@ export default function NotebookEditor({
   }, [activeNote, agentInput, agentRunning, editor, selectedModelId, title])
 
   async function createNote() {
-    const res = await fetch('/api/app/notes', {
+    const res = await fetch('/api/app/files', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Untitled', content: '', tags: [] }),
+      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '' }),
     })
     if (res.ok) {
-      const data = (await res.json()) as { id: string; note?: Note }
-      if (data.note) {
-        setNotes((prev) => [data.note!, ...prev])
-        window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note: data.note } }))
-        openNote(data.note)
+      const data = (await res.json()) as { id: string; file?: CanonicalNoteFile }
+      if (data.file) {
+        const note = canonicalFileToNote(data.file)
+        setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
+        window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
+        openNote(note)
         return
       }
       const note = {
@@ -1128,7 +1152,7 @@ export default function NotebookEditor({
 
   async function deleteNote(noteId: string, event: React.MouseEvent) {
     event.stopPropagation()
-    await fetch(`/api/app/notes?noteId=${noteId}`, { method: 'DELETE' })
+    await fetch(`/api/app/files?fileId=${noteId}`, { method: 'DELETE' })
     if (activeNote?._id === noteId) {
       setActiveNote(null)
       setTitle('')
@@ -1684,4 +1708,3 @@ export default function NotebookEditor({
   </div>
   )
 }
-

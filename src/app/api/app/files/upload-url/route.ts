@@ -5,6 +5,7 @@ import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { generatePresignedUploadUrl, keyForFile } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
+import { formatBytes } from '@/lib/storage-limits'
 
 interface Entitlements {
   overlayStorageBytesUsed: number
@@ -38,7 +39,11 @@ export async function POST(request: NextRequest) {
     })
     if (!entitlements) return NextResponse.json({ error: 'Could not verify subscription.' }, { status: 401 })
     if (entitlements.overlayStorageBytesUsed + normalizedSizeBytes > entitlements.overlayStorageBytesLimit) {
-      return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
+      const remainingBytes = Math.max(0, entitlements.overlayStorageBytesLimit - entitlements.overlayStorageBytesUsed)
+      return NextResponse.json({
+        error: 'Overlay storage limit reached.',
+        message: `Not enough Overlay storage remaining. ${formatBytes(remainingBytes)} available, ${formatBytes(normalizedSizeBytes)} needed.`,
+      }, { status: 403 })
     }
 
     await checkGlobalR2Budget(normalizedSizeBytes)
@@ -58,7 +63,7 @@ export async function POST(request: NextRequest) {
     const fileName = name ?? `upload-${Date.now()}`
     const fileIdPlaceholder = `tmp-${Date.now()}-${randomBytes(9).toString('base64url')}`
     const r2Key = keyForFile(userId, fileIdPlaceholder, fileName)
-    const uploadUrl = await generatePresignedUploadUrl(r2Key, resolvedMime)
+    const uploadUrl = await generatePresignedUploadUrl(r2Key, resolvedMime, 900)
 
     return NextResponse.json({ uploadUrl, r2Key })
   } catch (error) {

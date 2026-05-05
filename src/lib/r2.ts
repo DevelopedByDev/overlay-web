@@ -16,10 +16,15 @@ function requireR2Env(name: string): string {
 }
 
 function getR2Endpoint(): string {
-  return (
-    process.env['S3_API']?.trim() ||
-    `https://${requireR2Env('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`
-  )
+  const configured = process.env['S3_API']?.trim()
+  if (configured) {
+    try {
+      return new URL(configured).origin
+    } catch {
+      return configured
+    }
+  }
+  return `https://${requireR2Env('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`
 }
 
 function getR2BucketName(): string {
@@ -29,7 +34,7 @@ function getR2BucketName(): string {
 const MAX_PRESIGN_TTL_SECONDS = 900 // hard cap: 15 minutes
 
 function getR2PresignTtl(): number {
-  const configured = parseInt(process.env['R2_PRESIGN_TTL_SECONDS'] ?? '300', 10)
+  const configured = parseInt(process.env['R2_PRESIGN_TTL_SECONDS'] ?? String(MAX_PRESIGN_TTL_SECONDS), 10)
   return Math.min(Number.isFinite(configured) && configured > 0 ? configured : 300, MAX_PRESIGN_TTL_SECONDS)
 }
 

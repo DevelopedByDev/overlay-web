@@ -4090,7 +4090,7 @@ export default function ChatInterface({
     try {
       const [messagesRes, outputsRes, metaRes] = await Promise.all([
         fetch(`/api/app/conversations?conversationId=${chatId}&messages=true`),
-        fetch(`/api/app/outputs?conversationId=${chatId}`),
+        fetch(`/api/app/files?kind=output&conversationId=${chatId}`),
         fetch(`/api/app/conversations?conversationId=${chatId}`),
       ])
       if (requestId !== loadChatRequestRef.current) return
@@ -4136,7 +4136,28 @@ export default function ChatInterface({
         }
       })
 
-      const outputs: ChatOutput[] = outputsRes.ok ? await outputsRes.json() : []
+      const outputRows = outputsRes.ok ? await outputsRes.json() : []
+      const outputs: ChatOutput[] = Array.isArray(outputRows)
+        ? outputRows.map((file: {
+            _id: string
+            outputType?: string
+            prompt?: string
+            modelId?: string
+            downloadUrl?: string
+            createdAt?: number
+            updatedAt?: number
+            turnId?: string
+          }) => ({
+            _id: file._id,
+            type: (file.outputType || 'document') as ChatOutput['type'],
+            status: 'completed',
+            prompt: file.prompt || 'Generated output',
+            modelId: file.modelId || '',
+            url: file.downloadUrl,
+            createdAt: file.createdAt ?? file.updatedAt ?? 0,
+            turnId: file.turnId,
+          }))
+        : []
       if (requestId !== loadChatRequestRef.current) return
       const outputGroups = groupOutputsIntoExchanges(outputs)
 

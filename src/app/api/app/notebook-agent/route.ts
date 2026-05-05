@@ -54,7 +54,7 @@ function createNotebookTools(params: {
 
   tools.search_knowledge = tool({
     description:
-      "Search the user's saved knowledge: notebook files and memories. Uses hybrid semantic + keyword retrieval. Call when you need facts that are not already in the note text.",
+      "Search the user's saved knowledge: indexed files and memories. Uses hybrid semantic + keyword retrieval. Call when you need facts that are not already in the note text.",
     inputSchema: z.object({
       query: z.string().describe('Search query: keywords or a short natural-language question'),
       sourceKind: z

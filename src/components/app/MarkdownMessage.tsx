@@ -136,7 +136,7 @@ function stripTrailingSourcesBlock(text: string): string {
   return kept.join('\n')
 }
 
-/** Turn `[n]` on **Sources:** lines into markdown links to Knowledge (when we have retrieval metadata). */
+/** Turn `[n]` on **Sources:** lines into markdown links to Files or Memories. */
 function linkifySourceCitations(text: string, citations: SourceCitationMap): string {
   if (!citations || Object.keys(citations).length === 0) return text
   const lines = text.split('\n')
@@ -150,8 +150,8 @@ function linkifySourceCitations(text: string, citations: SourceCitationMap): str
         if (!src) return `[${d}]`
         const href =
           src.kind === 'memory'
-            ? `/app/knowledge?memory=${encodeURIComponent(src.sourceId)}`
-            : `/app/knowledge?file=${encodeURIComponent(src.sourceId)}`
+            ? `/app/settings?section=memories&memory=${encodeURIComponent(src.sourceId)}`
+            : `/app/files?file=${encodeURIComponent(src.sourceId)}`
         return `[${d}](${href})`
       })
     })

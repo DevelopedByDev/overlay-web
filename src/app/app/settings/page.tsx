@@ -8,11 +8,13 @@ import { Mail, Moon, PanelsLeftRight, Sun, Play } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
+import MemoriesView from '@/components/app/MemoriesView'
 
 const SECTIONS = [
   { id: 'general', label: 'General' },
   { id: 'account', label: 'Account' },
   { id: 'customization', label: 'Customization' },
+  { id: 'memories', label: 'Memories' },
   { id: 'models', label: 'Models' },
   { id: 'contact', label: 'Contact' },
 ] as const
@@ -291,6 +293,12 @@ export default function SettingsPage() {
             <SectionPlaceholder title="Customization">
               <p>Additional appearance and layout options will appear here as they ship.</p>
             </SectionPlaceholder>
+          )}
+
+          {!isLoading && section === 'memories' && (
+            <div className="-mx-6 -my-6 h-[calc(100vh-4rem)]">
+              <MemoriesView userId="" />
+            </div>
           )}
 
           {!isLoading && section === 'models' && (

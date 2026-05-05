@@ -30,7 +30,13 @@ interface Project {
 
 interface ProjectChat { _id: string; title: string; lastModified: number }
 interface ProjectNote { _id: string; title: string; updatedAt: number }
-interface ProjectFile { _id: string; name: string; type: 'file' | 'folder'; parentId: string | null }
+interface ProjectFile {
+  _id: string
+  name: string
+  type: 'file' | 'folder'
+  kind?: 'folder' | 'note' | 'upload' | 'output'
+  parentId: string | null
+}
 
 // ─── Project file tree (nested folders) ───────────────────────────────────────
 
@@ -212,7 +218,7 @@ function ProjectNode({
       try {
         const [cr, nr, fr] = await Promise.all([
           fetch(`/api/app/conversations?projectId=${project._id}`),
-          fetch(`/api/app/notes?projectId=${project._id}`),
+          fetch(`/api/app/files?kind=note&projectId=${project._id}`),
           fetch(`/api/app/files?projectId=${project._id}`),
         ])
         if (cancelled) return
@@ -221,7 +227,13 @@ function ProjectNode({
           nr.ok ? nr.json() : [],
           fr.ok ? fr.json() : [],
         ])
-        if (!cancelled) setItems({ chats, notes, files })
+        const noteRows = Array.isArray(notes)
+          ? notes.map((note: ProjectFile) => ({ _id: note._id, title: note.name || 'Untitled', updatedAt: 0 }))
+          : []
+        const fileRows = Array.isArray(files)
+          ? files.filter((file: ProjectFile) => file.kind !== 'note')
+          : []
+        if (!cancelled) setItems({ chats, notes: noteRows, files: fileRows })
       } finally {
         if (!cancelled) setItemsLoading(false)
       }
@@ -488,12 +500,20 @@ export default function ProjectsSidebar() {
     try {
       const [chatsRes, notesRes, filesRes] = await Promise.all([
         fetch(`/api/app/conversations?projectId=${projectId}`),
-        fetch(`/api/app/notes?projectId=${projectId}`),
+        fetch(`/api/app/files?kind=note&projectId=${projectId}`),
         fetch(`/api/app/files?projectId=${projectId}`),
       ])
       if (chatsRes.ok) setProjectChats(await chatsRes.json())
-      if (notesRes.ok) setProjectNotes(await notesRes.json())
-      if (filesRes.ok) setProjectFiles(await filesRes.json())
+      if (notesRes.ok) {
+        const notes = await notesRes.json()
+        setProjectNotes(Array.isArray(notes)
+          ? notes.map((note: ProjectFile) => ({ _id: note._id, title: note.name || 'Untitled', updatedAt: 0 }))
+          : [])
+      }
+      if (filesRes.ok) {
+        const files = await filesRes.json()
+        setProjectFiles(Array.isArray(files) ? files.filter((file: ProjectFile) => file.kind !== 'note') : [])
+      }
     } catch { /* ignore */ } finally { setItemsLoading(false) }
   }, [])
 
@@ -641,7 +661,7 @@ export default function ProjectsSidebar() {
       setConfirmDeleteChat({ id, title: chat?.title ?? '' })
       return
     } else if (type === 'note') {
-      await fetch(`/api/app/notes?noteId=${id}`, { method: 'DELETE' })
+      await fetch(`/api/app/files?fileId=${id}`, { method: 'DELETE' })
       setProjectNotes((prev) => prev.filter((n) => n._id !== id))
     }
   }
@@ -677,10 +697,10 @@ export default function ProjectsSidebar() {
   async function handleNewNote() {
     if (!selectedProject) return
     setAddMenuOpen(false)
-    const res = await fetch('/api/app/notes', {
+    const res = await fetch('/api/app/files', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Untitled', content: '', tags: [], projectId: selectedProject._id }),
+      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '', projectId: selectedProject._id }),
     })
     if (res.ok) {
       const { id } = await res.json()

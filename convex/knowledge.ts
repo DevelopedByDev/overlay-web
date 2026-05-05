@@ -168,12 +168,13 @@ export const getFileForReindex = internalQuery({
   args: { fileId: v.id('files') },
   handler: async (ctx, { fileId }) => {
     const f = await ctx.db.get(fileId)
-    if (!f || f.type !== 'file') return null
+    if (!f || f.deletedAt || f.type !== 'file') return null
     const binaryOnly =
-      (f.storageId || f.r2Key) && !(f.content && f.content.trim().length > 0)
+      (f.storageId || f.r2Key) && !((f.textContent ?? f.content ?? '').trim().length > 0)
     if (binaryOnly) return { kind: 'skip' as const, reason: 'binary' as const }
     if (f.duplicateOfFileId) return { kind: 'skip' as const, reason: 'duplicate' as const }
-    const content = f.content ?? ''
+    if (f.indexable === false) return { kind: 'skip' as const, reason: 'not_indexable' as const }
+    const content = f.textContent ?? f.content ?? ''
     return {
       kind: 'ok' as const,
       userId: f.userId,

@@ -4,9 +4,11 @@ import { internal } from './_generated/api'
 import { mutation, query } from './_generated/server'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import { applyStorageUsageDelta, ensureStorageAvailable } from './lib/storageQuota'
-import { assertOwnedFileR2Key, isOwnedFileR2Key } from '../src/lib/storage-keys'
+import { assertOwnedFileR2Key, isOwnedFileR2Key, isOwnedOutputR2Key } from '../src/lib/storage-keys'
 
 const utf8Encoder = new TextEncoder()
+
+type FileKind = 'folder' | 'note' | 'upload' | 'output'
 
 function utf8ByteLength(value: string): number {
   return utf8Encoder.encode(value).length
@@ -21,20 +23,145 @@ async function authorizeUserAccess(params: {
   serverSecret?: string
   userId: string
 }) {
-  if (validateServerSecret(params.serverSecret)) {
-    return
-  }
+  if (validateServerSecret(params.serverSecret)) return
   await requireAccessToken(params.accessToken ?? '', params.userId)
+}
+
+function extensionOf(name: string): string | undefined {
+  const clean = name.trim()
+  const dot = clean.lastIndexOf('.')
+  if (dot <= 0 || dot === clean.length - 1) return undefined
+  return clean.slice(dot + 1).toLowerCase()
+}
+
+function inferKind(file: Partial<Doc<'files'>>): FileKind {
+  if (file.kind) return file.kind as FileKind
+  return file.type === 'folder' ? 'folder' : 'upload'
+}
+
+function textOf(file: Partial<Doc<'files'>>): string {
+  return file.textContent ?? file.content ?? ''
+}
+
+function isTextIndexable(kind: FileKind, text: string): boolean {
+  if (kind === 'folder') return false
+  return text.trim().length > 0
+}
+
+function normalizeFile(file: Doc<'files'>) {
+  const kind = inferKind(file)
+  const text = textOf(file)
+  const blobBacked = Boolean(file.storageId ?? file.r2Key)
+  const hasInlineText = Boolean(text.trim())
+  const storageBackedForDownload = blobBacked && !hasInlineText
+  return {
+    _id: file._id,
+    userId: file.userId,
+    name: file.name,
+    type: file.type,
+    kind,
+    parentId: file.parentId ?? null,
+    content: storageBackedForDownload ? buildProxyUrl(file._id) : text,
+    textContent: text,
+    storageId: file.storageId ?? null,
+    r2Key: file.r2Key ?? null,
+    mimeType: file.mimeType,
+    extension: file.extension ?? extensionOf(file.name),
+    sizeBytes: file.sizeBytes ?? (text ? utf8ByteLength(text) : 0),
+    contentHash: file.contentHash,
+    duplicateOfFileId: file.duplicateOfFileId,
+    indexable: file.indexable ?? isTextIndexable(kind, text),
+    indexStatus: file.indexStatus ?? (isTextIndexable(kind, text) ? 'pending' : 'skipped'),
+    indexedAt: file.indexedAt,
+    indexError: file.indexError,
+    isStorageBacked: storageBackedForDownload,
+    downloadUrl: storageBackedForDownload ? buildProxyUrl(file._id) : undefined,
+    conversationId: file.conversationId,
+    turnId: file.turnId,
+    modelId: file.modelId,
+    prompt: file.prompt,
+    outputType: file.outputType,
+    legacyNoteId: file.legacyNoteId,
+    legacyOutputId: file.legacyOutputId,
+    projectId: file.projectId,
+    createdAt: file.createdAt,
+    updatedAt: file.updatedAt,
+    deletedAt: file.deletedAt,
+  }
 }
 
 type FilesCtxLike = {
   db: {
     query: (table: 'files') => {
-      withIndex: (index: string, cb: (q: { eq: (field: string, value: unknown) => { eq: (field: string, value: unknown) => unknown } }) => unknown) => {
-        collect: () => Promise<Doc<'files'>[]>
-      }
+      withIndex: (
+        index: string,
+        cb: (q: { eq: (field: string, value: unknown) => { eq: (field: string, value: unknown) => unknown } }) => unknown,
+      ) => { collect: () => Promise<Doc<'files'>[]> }
     }
     patch: (id: Id<'files'>, value: Partial<Doc<'files'>>) => Promise<void>
+  }
+}
+
+async function findCanonicalDuplicate(
+  ctx: FilesCtxLike,
+  userId: string,
+  contentHash: string | undefined,
+  ignoreFileId?: Id<'files'>,
+): Promise<Doc<'files'> | null> {
+  if (!contentHash) return null
+  const matches = await ctx.db
+    .query('files')
+    .withIndex('by_userId_contentHash', (q) => q.eq('userId', userId).eq('contentHash', contentHash))
+    .collect()
+
+  for (const match of matches) {
+    if (ignoreFileId && match._id === ignoreFileId) continue
+    if (match.duplicateOfFileId) continue
+    if (match.deletedAt) continue
+    return match
+  }
+  return null
+}
+
+async function maybePromoteDuplicate(
+  ctx: FilesCtxLike,
+  userId: string,
+  canonicalFileId: Id<'files'>,
+): Promise<Id<'files'> | null> {
+  const duplicates = await ctx.db
+    .query('files')
+    .withIndex('by_duplicateOfFileId', (q) => q.eq('duplicateOfFileId', canonicalFileId))
+    .collect()
+  const promoted = duplicates.find((candidate) => candidate.userId === userId && !candidate.deletedAt)
+  if (!promoted) return null
+  await ctx.db.patch(promoted._id, { duplicateOfFileId: undefined, indexStatus: 'pending' })
+  return promoted._id
+}
+
+function shouldCountStorage(kind: FileKind, type: 'file' | 'folder', sizeBytes: number): boolean {
+  return type === 'file' && kind !== 'output' && sizeBytes > 0
+}
+
+function validStorageKeyForKind(userId: string, kind: FileKind, r2Key: string): boolean {
+  return kind === 'output' ? isOwnedOutputR2Key(userId, r2Key) : isOwnedFileR2Key(userId, r2Key)
+}
+
+async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'> | Id<'projects'>) => Promise<unknown> } }, args: {
+  userId: string
+  parentId?: string
+  projectId?: string
+}) {
+  if (args.parentId) {
+    const parent = await ctx.db.get(args.parentId as Id<'files'>) as Doc<'files'> | null
+    if (!parent || parent.userId !== args.userId || parent.deletedAt || inferKind(parent) !== 'folder') {
+      throw new Error('Unauthorized')
+    }
+  }
+  if (args.projectId) {
+    const project = await ctx.db.get(args.projectId as Id<'projects'>) as Doc<'projects'> | null
+    if (!project || project.userId !== args.userId || project.deletedAt) {
+      throw new Error('Unauthorized')
+    }
   }
 }
 
@@ -46,8 +173,28 @@ export const list = query({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     projectId: v.optional(v.string()),
+    parentId: v.optional(v.union(v.string(), v.null())),
+    conversationId: v.optional(v.string()),
+    outputType: v.optional(v.string()),
+    kind: v.optional(v.union(
+      v.literal('folder'),
+      v.literal('note'),
+      v.literal('upload'),
+      v.literal('output'),
+    )),
+    includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, projectId }) => {
+  handler: async (ctx, {
+    userId,
+    accessToken,
+    serverSecret,
+    projectId,
+    parentId,
+    conversationId,
+    outputType,
+    kind,
+    includeDeleted,
+  }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -56,38 +203,29 @@ export const list = query({
     const allFiles = await ctx.db
       .query('files')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .order('asc')
+      .order('desc')
       .collect()
 
-    const filtered =
-      projectId !== undefined
-        ? allFiles.filter((f) => f.projectId === projectId)
-        : allFiles
-
-    return filtered.map((file) => {
-      const hasInlineText = Boolean(file.content?.trim())
-      const blobBacked = Boolean(file.storageId ?? file.r2Key)
-      const storageBackedForDownload = blobBacked && !hasInlineText
-      return {
-      _id: file._id,
-      userId: file.userId,
-      name: file.name,
-      type: file.type,
-      parentId: file.parentId ?? null,
-      sizeBytes: file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0),
-      isStorageBacked: storageBackedForDownload,
-      downloadUrl: storageBackedForDownload ? buildProxyUrl(file._id) : undefined,
-      projectId: file.projectId,
-      createdAt: file.createdAt,
-      updatedAt: file.updatedAt,
-    }
-    })
+    return allFiles
+      .filter((file) => (includeDeleted ? true : !file.deletedAt))
+      .filter((file) => (projectId !== undefined ? file.projectId === projectId : true))
+      .filter((file) => (parentId !== undefined ? (file.parentId ?? null) === parentId : true))
+      .filter((file) => (conversationId !== undefined ? file.conversationId === conversationId : true))
+      .filter((file) => (outputType !== undefined ? file.outputType === outputType : true))
+      .filter((file) => (kind !== undefined ? inferKind(file) === kind : true))
+      .map(normalizeFile)
   },
 })
 
 export const get = query({
-  args: { fileId: v.id('files'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { fileId, userId, accessToken, serverSecret }) => {
+  args: {
+    fileId: v.id('files'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    includeDeleted: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { fileId, userId, accessToken, serverSecret, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -95,24 +233,50 @@ export const get = query({
     }
     const file = await ctx.db.get(fileId)
     if (!file || file.userId !== userId) return null
-    const hasInlineText = Boolean(file.content?.trim())
-    const blobBacked = Boolean(file.storageId ?? file.r2Key)
-    const useProxyForContent = blobBacked && !hasInlineText
-    return {
-      _id: file._id,
-      userId: file.userId,
-      name: file.name,
-      type: file.type,
-      parentId: file.parentId ?? null,
-      content: useProxyForContent ? buildProxyUrl(file._id) : (file.content ?? ''),
-      storageId: file.storageId ?? null,
-      r2Key: file.r2Key ?? null,
-      sizeBytes: file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0),
-      isStorageBacked: useProxyForContent,
-      projectId: file.projectId,
-      createdAt: file.createdAt,
-      updatedAt: file.updatedAt,
+    if (file.deletedAt && !includeDeleted) return null
+    return normalizeFile(file)
+  },
+})
+
+export const getByLegacyNoteId = query({
+  args: {
+    noteId: v.id('notes'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, { noteId, userId, accessToken, serverSecret }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return null
     }
+    const file = await ctx.db
+      .query('files')
+      .withIndex('by_legacyNoteId', (q) => q.eq('legacyNoteId', noteId))
+      .first()
+    return file && file.userId === userId && !file.deletedAt ? normalizeFile(file) : null
+  },
+})
+
+export const getByLegacyOutputId = query({
+  args: {
+    outputId: v.id('outputs'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, { outputId, userId, accessToken, serverSecret }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return null
+    }
+    const file = await ctx.db
+      .query('files')
+      .withIndex('by_legacyOutputId', (q) => q.eq('legacyOutputId', outputId))
+      .first()
+    return file && file.userId === userId && !file.deletedAt ? normalizeFile(file) : null
   },
 })
 
@@ -130,15 +294,13 @@ export const getStorageUrlForProxy = query({
       return null
     }
     const file = await ctx.db.get(fileId)
-    if (!file || file.userId !== userId) return null
+    if (!file || file.userId !== userId || file.deletedAt) return null
     if (file.r2Key) {
-      if (!isOwnedFileR2Key(userId, file.r2Key)) {
-        return null
-      }
+      if (!validStorageKeyForKind(userId, inferKind(file), file.r2Key)) return null
       return {
         r2Key: file.r2Key,
         name: file.name,
-        mimeType: undefined as string | undefined,
+        mimeType: file.mimeType,
         sizeBytes: file.sizeBytes ?? 0,
       }
     }
@@ -148,7 +310,7 @@ export const getStorageUrlForProxy = query({
       return {
         url,
         name: file.name,
-        mimeType: undefined as string | undefined,
+        mimeType: file.mimeType,
         sizeBytes: file.sizeBytes ?? 0,
       }
     }
@@ -171,22 +333,23 @@ export const getR2KeysForSubtree = query({
     }
     const root = await ctx.db.get(fileId)
     if (!root || root.userId !== userId) return []
-    const results: Array<{ fileId: Id<'files'>; r2Key?: string; storageId?: string }> = []
+    const results: Array<{ fileId: Id<'files'>; r2Key?: string; storageId?: string; kind: FileKind }> = []
     async function collectSubtree(id: Id<'files'>) {
       const children = await ctx.db
         .query('files')
         .withIndex('by_parentId', (q) => q.eq('parentId', id as string))
         .collect()
       for (const child of children) {
-        if (child.userId !== userId) continue
+        if (child.userId !== userId || child.deletedAt) continue
         await collectSubtree(child._id)
       }
       const file = await ctx.db.get(id)
-      if (file) {
+      if (file && !file.deletedAt) {
         results.push({
           fileId: id,
           r2Key: file.r2Key,
           storageId: file.storageId as string | undefined,
+          kind: inferKind(file),
         })
       }
     }
@@ -197,109 +360,97 @@ export const getR2KeysForSubtree = query({
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
-async function findCanonicalDuplicate(
-  ctx: FilesCtxLike,
-  userId: string,
-  contentHash: string | undefined,
-  ignoreFileId?: Id<'files'>,
-): Promise<Doc<'files'> | null> {
-  if (!contentHash) return null
-  const matches = await ctx.db
-    .query('files')
-    .withIndex('by_userId_contentHash', (q) => q.eq('userId', userId).eq('contentHash', contentHash))
-    .collect()
-
-  for (const match of matches) {
-    if (ignoreFileId && match._id === ignoreFileId) continue
-    if (match.duplicateOfFileId) continue
-    return match
-  }
-
-  return null
-}
-
-async function maybePromoteDuplicate(
-  ctx: FilesCtxLike,
-  userId: string,
-  canonicalFileId: Id<'files'>,
-): Promise<Id<'files'> | null> {
-  const duplicates = await ctx.db
-    .query('files')
-    .withIndex('by_duplicateOfFileId', (q) => q.eq('duplicateOfFileId', canonicalFileId))
-    .collect()
-  const promoted = duplicates.find((candidate) => candidate.userId === userId)
-  if (!promoted) return null
-  await ctx.db.patch(promoted._id, {
-    duplicateOfFileId: undefined,
-  })
-  return promoted._id
-}
-
 export const create = mutation({
   args: {
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.string(),
-    type: v.union(v.literal('file'), v.literal('folder')),
+    type: v.optional(v.union(v.literal('file'), v.literal('folder'))),
+    kind: v.optional(v.union(
+      v.literal('folder'),
+      v.literal('note'),
+      v.literal('upload'),
+      v.literal('output'),
+    )),
     parentId: v.optional(v.string()),
     content: v.optional(v.string()),
+    textContent: v.optional(v.string()),
     contentHash: v.optional(v.string()),
     projectId: v.optional(v.string()),
-    /** Original bytes on R2 (e.g. PDF) while `content` holds extracted text for search. */
     r2Key: v.optional(v.string()),
-    /** Byte size for quota when using R2 (e.g. original file size). */
+    storageId: v.optional(v.id('_storage')),
+    sizeBytes: v.optional(v.number()),
     sizeBytesOverride: v.optional(v.number()),
+    mimeType: v.optional(v.string()),
+    extension: v.optional(v.string()),
+    conversationId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    prompt: v.optional(v.string()),
+    outputType: v.optional(v.string()),
+    legacyNoteId: v.optional(v.id('notes')),
+    legacyOutputId: v.optional(v.id('outputs')),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, name, type, parentId, content, contentHash, projectId, r2Key, sizeBytesOverride }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
-    if (r2Key) {
-      assertOwnedFileR2Key(userId, r2Key)
-    }
-    if (parentId) {
-      const parent = await ctx.db.get(parentId as Id<'files'>)
-      if (!parent || parent.userId !== userId) {
-        throw new Error('Unauthorized')
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const kind = args.kind ?? (args.type === 'folder' ? 'folder' : 'upload')
+    const type = kind === 'folder' ? 'folder' : 'file'
+    if (args.r2Key) {
+      if (kind === 'output') {
+        if (!isOwnedOutputR2Key(args.userId, args.r2Key)) throw new Error('Invalid storage key')
+      } else {
+        assertOwnedFileR2Key(args.userId, args.r2Key)
       }
     }
-    if (projectId) {
-      const project = await ctx.db.get(projectId as Id<'projects'>)
-      if (!project || project.userId !== userId) {
-        throw new Error('Unauthorized')
-      }
-    }
+    await assertParentAndProject(ctx, args)
     const now = Date.now()
-    const inlineContent = content ?? ''
-    const textBytes = type === 'file' ? utf8ByteLength(inlineContent) : 0
-    const sizeBytes =
-      type === 'file'
-        ? Math.max(textBytes, typeof sizeBytesOverride === 'number' && sizeBytesOverride > 0 ? sizeBytesOverride : 0)
-        : 0
-    if (type === 'file' && sizeBytes > 0) {
-      await ensureStorageAvailable(ctx as never, userId, sizeBytes)
+    const textContent = args.textContent ?? args.content ?? ''
+    const textBytes = type === 'file' ? utf8ByteLength(textContent) : 0
+    const explicitSize = args.sizeBytesOverride ?? args.sizeBytes ?? 0
+    const sizeBytes = type === 'file' ? Math.max(textBytes, explicitSize) : 0
+    if (shouldCountStorage(kind, type, sizeBytes)) {
+      await ensureStorageAvailable(ctx as never, args.userId, sizeBytes)
     }
+    const indexable = isTextIndexable(kind, textContent)
     const canonicalDuplicate =
-      type === 'file' && inlineContent.trim() && contentHash
-        ? await findCanonicalDuplicate(ctx as never, userId, contentHash)
+      type === 'file' && indexable && args.contentHash
+        ? await findCanonicalDuplicate(ctx as never, args.userId, args.contentHash)
         : null
     const id = await ctx.db.insert('files', {
-      userId,
-      name,
+      userId: args.userId,
+      name: args.name,
       type,
-      parentId,
-      content: inlineContent,
+      kind,
+      parentId: args.parentId,
+      content: textContent,
+      textContent,
+      storageId: args.storageId,
+      r2Key: args.r2Key,
+      mimeType: args.mimeType,
+      extension: args.extension ?? extensionOf(args.name),
       sizeBytes,
-      contentHash,
+      contentHash: args.contentHash,
       duplicateOfFileId: canonicalDuplicate?._id,
-      projectId,
-      r2Key,
-      createdAt: now,
-      updatedAt: now,
+      indexable,
+      indexStatus: indexable && !canonicalDuplicate ? 'pending' : 'skipped',
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      modelId: args.modelId,
+      prompt: args.prompt,
+      outputType: args.outputType,
+      legacyNoteId: args.legacyNoteId,
+      legacyOutputId: args.legacyOutputId,
+      projectId: args.projectId,
+      createdAt: args.createdAt ?? now,
+      updatedAt: args.updatedAt ?? now,
     })
-    if (type === 'file' && sizeBytes > 0) {
-      await applyStorageUsageDelta(ctx as never, userId, sizeBytes)
+    if (shouldCountStorage(kind, type, sizeBytes)) {
+      await applyStorageUsageDelta(ctx as never, args.userId, sizeBytes)
     }
-    if (type === 'file' && inlineContent.trim() && !canonicalDuplicate) {
+    if (indexable && !canonicalDuplicate) {
       await ctx.scheduler.runAfter(0, internal.knowledge.reindexFileInternal, { fileId: id })
     }
     return id
@@ -317,42 +468,36 @@ export const createWithStorage = mutation({
     r2Key: v.optional(v.string()),
     sizeBytes: v.number(),
     projectId: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
+    extension: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, name, parentId, storageId, r2Key, sizeBytes, projectId }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
-    if (storageId) {
+  handler: async (ctx, args) => {
+    if (args.storageId) {
       throw new Error('Convex file storage is deprecated; upload to R2 and pass r2Key only')
     }
-    if (!r2Key) {
-      throw new Error('createWithStorage requires r2Key')
-    }
-    assertOwnedFileR2Key(userId, r2Key)
-    if (parentId) {
-      const parent = await ctx.db.get(parentId as Id<'files'>)
-      if (!parent || parent.userId !== userId) {
-        throw new Error('Unauthorized')
-      }
-    }
-    if (projectId) {
-      const project = await ctx.db.get(projectId as Id<'projects'>)
-      if (!project || project.userId !== userId) {
-        throw new Error('Unauthorized')
-      }
-    }
-    await ensureStorageAvailable(ctx as never, userId, sizeBytes)
+    if (!args.r2Key) throw new Error('createWithStorage requires r2Key')
+    await authorizeUserAccess(args)
+    assertOwnedFileR2Key(args.userId, args.r2Key)
+    await assertParentAndProject(ctx, args)
+    await ensureStorageAvailable(ctx as never, args.userId, args.sizeBytes)
     const now = Date.now()
     const id = await ctx.db.insert('files', {
-      userId,
-      name,
+      userId: args.userId,
+      name: args.name,
       type: 'file',
-      parentId,
-      r2Key,
-      sizeBytes,
-      projectId,
+      kind: 'upload',
+      parentId: args.parentId,
+      r2Key: args.r2Key,
+      mimeType: args.mimeType,
+      extension: args.extension ?? extensionOf(args.name),
+      sizeBytes: args.sizeBytes,
+      indexable: false,
+      indexStatus: 'skipped',
+      projectId: args.projectId,
       createdAt: now,
       updatedAt: now,
     })
-    await applyStorageUsageDelta(ctx as never, userId, sizeBytes)
+    await applyStorageUsageDelta(ctx as never, args.userId, args.sizeBytes)
     return id
   },
 })
@@ -365,49 +510,76 @@ export const update = mutation({
     fileId: v.id('files'),
     name: v.optional(v.string()),
     content: v.optional(v.string()),
+    textContent: v.optional(v.string()),
     contentHash: v.optional(v.string()),
+    parentId: v.optional(v.union(v.string(), v.null())),
+    projectId: v.optional(v.union(v.string(), v.null())),
+    indexStatus: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('indexed'),
+      v.literal('skipped'),
+      v.literal('failed'),
+    )),
+    indexError: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, fileId, name, content, contentHash }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, fileId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
-    if (!existing || existing.userId !== userId) {
-      throw new Error('Unauthorized')
+    if (!existing || existing.userId !== userId || existing.deletedAt) throw new Error('Unauthorized')
+    if (updates.parentId !== undefined || updates.projectId !== undefined) {
+      await assertParentAndProject(ctx, {
+        userId,
+        parentId: updates.parentId === null ? undefined : updates.parentId,
+        projectId: updates.projectId === null ? undefined : updates.projectId,
+      })
     }
-    const blobOnly =
-      (existing.storageId || existing.r2Key) && !(existing.content && existing.content.trim().length > 0)
-    if (blobOnly && content !== undefined) {
+
+    const kind = inferKind(existing)
+    const existingText = textOf(existing)
+    const nextText = updates.textContent ?? updates.content
+    const blobOnly = (existing.storageId || existing.r2Key) && !existingText.trim()
+    if (blobOnly && nextText !== undefined && kind !== 'output') {
       throw new Error('Storage-backed files cannot be edited inline.')
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
-    if (name !== undefined) patch.name = name
+    if (updates.name !== undefined) {
+      patch.name = updates.name
+      patch.extension = extensionOf(updates.name)
+    }
+    if (updates.parentId !== undefined) patch.parentId = updates.parentId || undefined
+    if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
+    if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
+    if (updates.indexError !== undefined) patch.indexError = updates.indexError
+
     let shouldReindex = false
     let shouldPurge = false
     let storageDelta = 0
-    if (content !== undefined) {
-      const nextSizeBytes = utf8ByteLength(content)
-      const previousSizeBytes = existing.sizeBytes ?? utf8ByteLength(existing.content ?? '')
-      storageDelta = nextSizeBytes - previousSizeBytes
-      if (storageDelta > 0) {
-        await ensureStorageAvailable(ctx as never, userId, storageDelta)
-      }
+    if (nextText !== undefined) {
+      const nextSizeBytes = utf8ByteLength(nextText)
+      const previousSizeBytes = existing.sizeBytes ?? utf8ByteLength(existingText)
+      storageDelta = shouldCountStorage(kind, existing.type, nextSizeBytes)
+        ? nextSizeBytes - previousSizeBytes
+        : 0
+      if (storageDelta > 0) await ensureStorageAvailable(ctx as never, userId, storageDelta)
+      const indexable = isTextIndexable(kind, nextText)
       const canonicalDuplicate =
-        content.trim() && contentHash
-          ? await findCanonicalDuplicate(ctx as never, userId, contentHash, fileId)
+        indexable && updates.contentHash
+          ? await findCanonicalDuplicate(ctx as never, userId, updates.contentHash, fileId)
           : null
-      patch.content = content
+      patch.content = nextText
+      patch.textContent = nextText
       patch.sizeBytes = nextSizeBytes
-      patch.contentHash = contentHash
+      patch.contentHash = updates.contentHash
       patch.duplicateOfFileId = canonicalDuplicate?._id
+      patch.indexable = indexable
+      patch.indexStatus = indexable && !canonicalDuplicate ? 'pending' : 'skipped'
+      patch.indexError = undefined
       shouldPurge = true
-      shouldReindex = content.trim().length > 0 && !canonicalDuplicate
+      shouldReindex = indexable && !canonicalDuplicate
     }
     await ctx.db.patch(fileId, patch)
-    if (storageDelta !== 0) {
-      await applyStorageUsageDelta(ctx as never, userId, storageDelta)
-    }
-    const skipPurgeForBlobOnly =
-      (existing.storageId || existing.r2Key) && !(existing.content && existing.content.trim().length > 0)
-    if (existing.type === 'file' && shouldPurge && !skipPurgeForBlobOnly) {
+    if (storageDelta !== 0) await applyStorageUsageDelta(ctx as never, userId, storageDelta)
+    if (existing.type === 'file' && shouldPurge) {
       await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
         sourceKind: 'file',
         sourceId: fileId,
@@ -421,48 +593,188 @@ export const update = mutation({
 })
 
 export const remove = mutation({
-  args: { fileId: v.id('files'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  args: {
+    fileId: v.id('files'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
   handler: async (ctx, { fileId, userId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const root = await ctx.db.get(fileId)
-    if (!root || root.userId !== userId) {
-      throw new Error('Unauthorized')
-    }
+    if (!root || root.userId !== userId || root.deletedAt) throw new Error('Unauthorized')
+    const now = Date.now()
     async function deleteSubtree(id: Id<'files'>) {
       const children = await ctx.db
         .query('files')
         .withIndex('by_parentId', (q) => q.eq('parentId', id as string))
         .collect()
       for (const child of children) {
-        if (child.userId !== userId) {
-          continue
-        }
+        if (child.userId !== userId || child.deletedAt) continue
         await deleteSubtree(child._id)
       }
-      const file = (await ctx.db.get(id)) as { type?: string; storageId?: Id<'_storage'> } | null
-      const fullFile = await ctx.db.get(id)
+      const file = await ctx.db.get(id)
+      if (!file || file.deletedAt) return
       let promotedDuplicateId: Id<'files'> | null = null
-      if (fullFile?.type === 'file' && !fullFile.duplicateOfFileId) {
+      if (file.type === 'file' && !file.duplicateOfFileId) {
         promotedDuplicateId = await maybePromoteDuplicate(ctx as never, userId, id)
       }
-      if (file?.type === 'file') {
+      if (file.type === 'file') {
         await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
           sourceKind: 'file',
           sourceId: id,
           userId,
         })
       }
-      if (file?.storageId) {
-        await ctx.storage.delete(file.storageId)
+      if (file.storageId) await ctx.storage.delete(file.storageId)
+      const kind = inferKind(file)
+      if (shouldCountStorage(kind, file.type, file.sizeBytes ?? 0)) {
+        await applyStorageUsageDelta(ctx as never, userId, -(file.sizeBytes ?? 0))
       }
-      if (fullFile?.sizeBytes) {
-        await applyStorageUsageDelta(ctx as never, userId, -fullFile.sizeBytes)
-      }
-      await ctx.db.delete(id)
+      await ctx.db.patch(id, { deletedAt: now, updatedAt: now, indexStatus: 'skipped' })
       if (promotedDuplicateId) {
         await ctx.scheduler.runAfter(0, internal.knowledge.reindexFileInternal, { fileId: promotedDuplicateId })
       }
     }
     await deleteSubtree(fileId)
+  },
+})
+
+// ─── Migration / backfill ─────────────────────────────────────────────────────
+
+export const backfillCanonicalFilesystem = mutation({
+  args: {
+    serverSecret: v.string(),
+    dryRun: v.optional(v.boolean()),
+    userId: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { serverSecret, dryRun, userId, limit }) => {
+    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
+    const max = Math.min(5000, Math.max(1, limit ?? 1000))
+    const notes = await ctx.db.query('notes').collect()
+    const outputs = await ctx.db.query('outputs').collect()
+    const existingFiles = await ctx.db.query('files').collect()
+    const targetNotes = notes.filter((note) => !userId || note.userId === userId).slice(0, max)
+    const targetOutputs = outputs.filter((output) => !userId || output.userId === userId).slice(0, max)
+    const targetFiles = existingFiles.filter((file) => !userId || file.userId === userId).slice(0, max)
+
+    const existingNoteIds = new Set(
+      existingFiles.flatMap((file) => file.legacyNoteId ? [String(file.legacyNoteId)] : []),
+    )
+    const existingOutputIds = new Set(
+      existingFiles.flatMap((file) => file.legacyOutputId ? [String(file.legacyOutputId)] : []),
+    )
+
+    let notesMigrated = 0
+    let outputsMigrated = 0
+    let filesPatched = 0
+    let notesSkipped = 0
+    let outputsSkipped = 0
+    const now = Date.now()
+
+    for (const file of targetFiles) {
+      if (file.kind) continue
+      filesPatched += 1
+      if (!dryRun) {
+        const text = textOf(file)
+        const kind = file.type === 'folder' ? 'folder' : 'upload'
+        await ctx.db.patch(file._id, {
+          kind,
+          textContent: text,
+          extension: file.extension ?? extensionOf(file.name),
+          indexable: isTextIndexable(kind, text),
+          indexStatus: isTextIndexable(kind, text) ? 'pending' : 'skipped',
+        })
+        if (isTextIndexable(kind, text)) {
+          await ctx.scheduler.runAfter(0, internal.knowledge.reindexFileInternal, { fileId: file._id })
+        }
+      }
+    }
+
+    for (const note of targetNotes) {
+      if (note.deletedAt || existingNoteIds.has(String(note._id))) {
+        notesSkipped += 1
+        continue
+      }
+      notesMigrated += 1
+      if (!dryRun) {
+        const fileId = await ctx.db.insert('files', {
+          userId: note.userId,
+          name: note.title || 'Untitled',
+          type: 'file',
+          kind: 'note',
+          content: note.content,
+          textContent: note.content,
+          sizeBytes: utf8ByteLength(note.content),
+          contentHash: undefined,
+          extension: 'md',
+          indexable: note.content.trim().length > 0,
+          indexStatus: note.content.trim().length > 0 ? 'pending' : 'skipped',
+          projectId: note.projectId,
+          legacyNoteId: note._id,
+          createdAt: note.createdAt ?? note.updatedAt,
+          updatedAt: note.updatedAt,
+        })
+        if (note.content.trim()) {
+          await ctx.scheduler.runAfter(0, internal.knowledge.reindexFileInternal, { fileId })
+        }
+      }
+    }
+
+    for (const output of targetOutputs) {
+      if (existingOutputIds.has(String(output._id))) {
+        outputsSkipped += 1
+        continue
+      }
+      outputsMigrated += 1
+      if (!dryRun) {
+        const name = output.fileName || `${output.type}-${output._id}`
+        const textContent =
+          output.type === 'text' || output.type === 'code' || output.type === 'document'
+            ? String(output.metadata?.text ?? output.metadata?.content ?? '')
+            : ''
+        const fileId = await ctx.db.insert('files', {
+          userId: output.userId,
+          name,
+          type: 'file',
+          kind: 'output',
+          content: textContent,
+          textContent,
+          storageId: output.storageId,
+          r2Key: output.r2Key,
+          mimeType: output.mimeType,
+          extension: extensionOf(name),
+          sizeBytes: output.sizeBytes ?? (textContent ? utf8ByteLength(textContent) : 0),
+          indexable: textContent.trim().length > 0,
+          indexStatus: textContent.trim().length > 0 ? 'pending' : 'skipped',
+          conversationId: output.conversationId,
+          turnId: output.turnId,
+          modelId: output.modelId,
+          prompt: output.prompt,
+          outputType: output.type,
+          legacyOutputId: output._id,
+          createdAt: output.createdAt,
+          updatedAt: output.completedAt ?? output.createdAt,
+        })
+        await ctx.db.patch(output._id, { fileId })
+        if (textContent.trim()) {
+          await ctx.scheduler.runAfter(0, internal.knowledge.reindexFileInternal, { fileId })
+        }
+      }
+    }
+
+    return {
+      dryRun: Boolean(dryRun),
+      filesInspected: targetFiles.length,
+      filesPatched,
+      notesInspected: targetNotes.length,
+      notesMigrated,
+      notesSkipped,
+      outputsInspected: targetOutputs.length,
+      outputsMigrated,
+      outputsSkipped,
+      completedAt: now,
+    }
   },
 })

@@ -594,6 +594,7 @@ export default defineSchema({
     mimeType: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
     metadata: v.optional(v.any()),
+    fileId: v.optional(v.id('files')),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
@@ -611,19 +612,47 @@ export default defineSchema({
     userId: v.string(),
     name: v.string(),
     type: v.union(v.literal('file'), v.literal('folder')),
+    kind: v.optional(v.union(
+      v.literal('folder'),
+      v.literal('note'),
+      v.literal('upload'),
+      v.literal('output'),
+    )),
     parentId: v.optional(v.string()),
     content: v.optional(v.string()),
+    textContent: v.optional(v.string()),
     storageId: v.optional(v.id('_storage')),
     r2Key: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
+    extension: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
     contentHash: v.optional(v.string()),
     duplicateOfFileId: v.optional(v.id('files')),
+    indexable: v.optional(v.boolean()),
+    indexStatus: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('indexed'),
+      v.literal('skipped'),
+      v.literal('failed'),
+    )),
+    indexedAt: v.optional(v.number()),
+    indexError: v.optional(v.string()),
+    conversationId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    prompt: v.optional(v.string()),
+    outputType: v.optional(v.string()),
+    legacyNoteId: v.optional(v.id('notes')),
+    legacyOutputId: v.optional(v.id('outputs')),
     projectId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
     .index('by_projectId', ['projectId'])
-    .index('by_parentId', ['parentId']),
+    .index('by_parentId', ['parentId'])
+    .index('by_legacyNoteId', ['legacyNoteId'])
+    .index('by_legacyOutputId', ['legacyOutputId']),
 })

@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  MessageSquare, BookOpen, Brain, FileText, Images, LogOut, User,
+  MessageSquare, FileText, LogOut, User,
   Puzzle, Monitor, Smartphone, Chrome, ChevronUp, AlertCircle, Plug, Sparkles, Server, Package,
   FolderOpen, Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
   Workflow,
@@ -17,18 +17,17 @@ import { useGuestGate } from './GuestGateProvider'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
 import { useAppSettings } from './AppSettingsProvider'
+import { formatBytes } from '@/lib/storage-limits'
 import {
   AutomationsInlinePanel,
   ChatInlinePanel,
+  FilesInlinePanel,
   InlineNavChildren,
-  NotesInlinePanel,
   ProjectsInlinePanel,
-  knowledgeInlineItems,
   toolsInlineItems,
 } from './AppSidebarInlinePanels'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
-import KnowledgeSidebar from './KnowledgeSidebar'
 
 const NAV_ITEMS: Array<{
   href?: string
@@ -37,8 +36,7 @@ const NAV_ITEMS: Array<{
   disabled?: boolean
 }> = [
   { href: '/app/chat', label: 'Chat', icon: MessageSquare },
-  { href: '/app/notes', label: 'Notes', icon: BookOpen },
-  { href: '/app/knowledge', label: 'Knowledge', icon: Brain },
+  { href: '/app/files', label: 'Files', icon: FileText },
   { href: '/app/tools', label: 'Extensions', icon: Puzzle },
   { href: '/app/projects', label: 'Projects', icon: FolderOpen },
   { href: '/app/automations', label: 'Automations', icon: Workflow },
@@ -54,6 +52,7 @@ const SETTINGS_SECTIONS = [
   { id: 'general', label: 'General' },
   { id: 'account', label: 'Account' },
   { id: 'customization', label: 'Customization' },
+  { id: 'memories', label: 'Memories' },
   { id: 'models', label: 'Models' },
   { id: 'contact', label: 'Contact' },
 ] as const
@@ -150,6 +149,36 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
   )
 }
 
+function StorageBar({ entitlements }: { entitlements: Entitlements | null }) {
+  if (!entitlements) {
+    return <p className="text-[11px] text-[var(--muted-light)]">Loading...</p>
+  }
+
+  const usedBytes = Math.max(0, entitlements.overlayStorageBytesUsed)
+  const limitBytes = Math.max(0, entitlements.overlayStorageBytesLimit)
+  const remainingBytes = Math.max(0, limitBytes - usedBytes)
+  const usedPct = limitBytes > 0 ? Math.min(100, (usedBytes / limitBytes) * 100) : 0
+  const warning = usedPct >= 80
+  const exhausted = limitBytes > 0 && remainingBytes <= 0
+
+  return (
+    <div className={`flex flex-col gap-1 text-xs ${exhausted ? 'text-red-500' : warning ? 'text-amber-500' : 'text-[var(--muted-light)]'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="tabular-nums">{formatBytes(remainingBytes)} available</span>
+        <span className="shrink-0 text-[10px] opacity-70 tabular-nums">
+          {formatBytes(usedBytes)} / {formatBytes(limitBytes)}
+        </span>
+      </div>
+      <div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
+        <div
+          className={`h-full rounded-full transition-all ${exhausted ? 'bg-red-400' : warning ? 'bg-amber-400' : 'bg-[var(--foreground)]'}`}
+          style={{ width: `${usedPct}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function AppSidebar({ user: serverUser }: { user: AuthUser | null }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
@@ -174,7 +203,6 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     () => false,
   )
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
-  const [notesPanelRefreshKey, setNotesPanelRefreshKey] = useState(0)
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
@@ -183,19 +211,14 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     pendingNav && pathname === pendingNav.fromPath ? pendingNav.href : null
   const projectsOpen = pathname.startsWith('/app/projects')
   const notesOpen = pathname.startsWith('/app/notes')
+  const filesOpen = pathname.startsWith('/app/files')
+  const filesSectionOpen = filesOpen || notesOpen
   const chatOpen = pathname.startsWith('/app/chat')
   const toolsOpen = pathname.startsWith('/app/tools')
-  const knowledgeOpen = pathname.startsWith('/app/knowledge')
   const automationsOpen = pathname.startsWith('/app/automations')
   const settingsPathActive = pathname.startsWith('/app/settings')
   const settingsSection = searchParams?.get('section') ?? 'general'
   const inlineSecondaryDisabled = !settings.useSecondarySidebar
-  const knowledgeView = (() => {
-    const current = searchParams?.get('view')
-    if (current === 'files') return 'files'
-    if (current === 'outputs') return 'outputs'
-    return 'memories'
-  })()
   const toolsView = (() => {
     const current = searchParams?.get('view')
     if (current === 'skills') return 'skills'
@@ -219,12 +242,12 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   }, [loadEntitlements])
 
   useEffect(() => {
-    if (!accountMenuOpen && !mobileAccountOpen && !knowledgeOpen) return
+    if (!accountMenuOpen && !mobileAccountOpen && !filesSectionOpen) return
     const intervalId = window.setInterval(() => { void loadEntitlements() }, 30_000)
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [accountMenuOpen, mobileAccountOpen, knowledgeOpen, loadEntitlements])
+  }, [accountMenuOpen, mobileAccountOpen, filesSectionOpen, loadEntitlements])
 
   useEffect(() => {
     function onSubscriptionRefresh() {
@@ -327,18 +350,27 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
 
   async function handleCreateNote() {
     if (!user) { requireAuth('nav'); return }
-    const res = await fetch('/api/app/notes', {
+    const res = await fetch('/api/app/files', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Untitled', content: '', tags: [] }),
+      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '' }),
     })
     if (!res.ok) return
-    const data = await res.json() as { id?: string; note?: unknown }
+    const data = await res.json() as { id?: string; file?: { _id: string; name?: string; content?: string; textContent?: string; createdAt?: number; updatedAt?: number } }
     if (!data.id) return
-    if (data.note) {
-      window.dispatchEvent(new CustomEvent('overlay:notes-changed', { detail: { note: data.note } }))
-    }
-    setNotesPanelRefreshKey((value) => value + 1)
+    const file = data.file
+    window.dispatchEvent(new CustomEvent('overlay:notes-changed', {
+      detail: {
+        note: {
+          _id: data.id,
+          title: file?.name || 'Untitled',
+          content: file?.textContent ?? file?.content ?? '',
+          tags: [],
+          createdAt: file?.createdAt ?? 0,
+          updatedAt: file?.updatedAt ?? 0,
+        },
+      },
+    }))
     setMobileMenuOpen(false)
     router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
   }
@@ -410,10 +442,10 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   /** Hide until loaded so paid users never see a flash of the upgrade CTA. */
   const showUpgradeCta = entitlements !== null && entitlements.tier === 'free'
   const contextualAction = inlineSecondaryDisabled
-    ? chatOpen
-      ? { label: 'New chat', onClick: handleCreateChat }
-      : notesOpen
-        ? { label: 'New note', onClick: handleCreateNote }
+      ? chatOpen
+        ? { label: 'New chat', onClick: handleCreateChat }
+      : filesSectionOpen
+          ? { label: 'New File', onClick: handleCreateNote }
         : projectsOpen
           ? { label: 'New project', onClick: handleCreateProject }
           : automationsOpen
@@ -421,7 +453,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
             : null
     : null
   const hasInlineChildren = (href?: string) =>
-    inlineSecondaryDisabled && (href === '/app/knowledge' || href === '/app/tools')
+    inlineSecondaryDisabled && href === '/app/tools'
 
   const sidebarContent = (
     <>
@@ -453,7 +485,11 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
             const { href, label, icon: Icon, disabled } = item
             const active =
               href &&
-              (effectivePendingHref ? effectivePendingHref === href : pathname.startsWith(href))
+              (effectivePendingHref
+                ? effectivePendingHref === href
+                : href === '/app/files'
+                  ? filesSectionOpen
+                  : pathname.startsWith(href))
             const isPending = href && effectivePendingHref === href
             const unreadCount = href === '/app/chat' ? totalUnread : 0
             const shortcut = navIdx < 9 ? navIdx + 1 : null
@@ -497,7 +533,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                   }}
                   title={shortcut ? `${label} · ⌥${shortcut}` : label}
                   aria-label={label}
-                  data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/knowledge' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : undefined}
+                  data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/files' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : undefined}
                   className={commonClass}
                 >
                   {sidebarCollapsed && isPending ? (
@@ -549,44 +585,6 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                     </span>
                   ) : null}
                 </button>
-                {!sidebarCollapsed && inlineSecondaryDisabled && href === '/app/knowledge' && active ? (
-                  <InlineNavChildren
-                    items={knowledgeInlineItems}
-                    activeId={knowledgeView}
-                    onSelect={(next) => {
-                      const params = new URLSearchParams(searchParams?.toString() ?? '')
-                      params.set('view', next)
-                      if (next !== 'outputs') params.delete('out')
-                      setMobileMenuOpen(false)
-                      router.push(`/app/knowledge?${params.toString()}`)
-                    }}
-                  />
-                ) : null}
-                {sidebarCollapsed && inlineSecondaryDisabled && href === '/app/knowledge' && active ? (
-                  <div className="mx-2 mt-1 flex flex-col overflow-hidden rounded-md border border-[var(--border)]">
-                    {([{ id: 'memories', Icon: Brain, label: 'Memories' }, { id: 'files', Icon: FileText, label: 'Files' }, { id: 'outputs', Icon: Images, label: 'Outputs' }] as const).map((sub) => (
-                      <button
-                        key={sub.id}
-                        type="button"
-                        title={sub.label}
-                        aria-label={sub.label}
-                        onClick={() => {
-                          const params = new URLSearchParams(searchParams?.toString() ?? '')
-                          params.set('view', sub.id)
-                          if (sub.id !== 'outputs') params.delete('out')
-                          router.push(`/app/knowledge?${params.toString()}`)
-                        }}
-                        className={`flex h-8 items-center justify-center transition-colors ${
-                          knowledgeView === sub.id
-                            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                            : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        <sub.Icon size={13} />
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
                 {!sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
                   <InlineNavChildren
                     items={toolsInlineItems}
@@ -681,15 +679,15 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
           </div>
         </nav>
 
-        {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || notesOpen || projectsOpen || automationsOpen) ? (
+        {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || filesSectionOpen || projectsOpen || automationsOpen) ? (
           <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
-            {contextualAction && (chatOpen || notesOpen) ? (
+            {contextualAction && (chatOpen || filesSectionOpen) ? (
               <div className="mb-3 flex items-center gap-1.5">
                 {sidebarSearchOpen ? (
                   <input
                     value={sidebarSearchQuery}
                     onChange={(e) => setSidebarSearchQuery(e.target.value)}
-                    placeholder={chatOpen ? 'Search chats…' : 'Search notes…'}
+                    placeholder={chatOpen ? 'Search chats...' : 'Search files...'}
                     autoFocus
                     className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
                   />
@@ -704,7 +702,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                 )}
                 <button
                   type="button"
-                  title={chatOpen ? 'Search chats' : 'Search notes'}
+                  title={chatOpen ? 'Search chats' : 'Search files'}
                   onClick={() => { setSidebarSearchOpen((v) => !v); if (sidebarSearchOpen) setSidebarSearchQuery('') }}
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
                     sidebarSearchOpen
@@ -732,9 +730,8 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
-              {notesOpen ? (
-                <NotesInlinePanel
-                  refreshKey={notesPanelRefreshKey}
+              {filesSectionOpen ? (
+                <FilesInlinePanel
                   searchQuery={sidebarSearchQuery}
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
@@ -777,6 +774,10 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
               <div className="px-3 py-2">
                 <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
                 <UsageBar entitlements={entitlements} />
+              </div>
+              <div className="border-t border-[var(--border)] px-3 py-2">
+                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Storage</p>
+                <StorageBar entitlements={entitlements} />
               </div>
               <div className="border-t border-[var(--border)]">
                 <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
@@ -901,6 +902,10 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                   <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
                   <UsageBar entitlements={entitlements} />
                 </div>
+                <div className="border-t border-[var(--border)] px-3 py-2">
+                  <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Storage</p>
+                  <StorageBar entitlements={entitlements} />
+                </div>
                 <div className="border-t border-[var(--border)]">
                   <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
                   {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (
@@ -996,7 +1001,6 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       <div className="hidden md:flex">
         {settings.useSecondarySidebar && projectsOpen ? <ProjectsSidebar /> : null}
         {settings.useSecondarySidebar && toolsOpen ? <ToolsSidebar /> : null}
-        {settings.useSecondarySidebar && knowledgeOpen ? <KnowledgeSidebar entitlements={entitlements} /> : null}
       </div>
     </>
   )

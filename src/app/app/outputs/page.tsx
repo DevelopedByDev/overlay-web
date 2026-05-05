@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
 export default function OutputsPage() {
-  redirect('/app/knowledge?view=outputs')
+  redirect('/app/files?view=outputs')
 }

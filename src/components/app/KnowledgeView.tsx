@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  Brain, Trash2, Plus, X, FilePlus, FolderPlus, FolderInput, Copy, Check,
+  BookOpen, Brain, Trash2, Plus, X, FilePlus, FolderPlus, FolderInput, Copy, Check,
   ChevronRight, ChevronDown, FileText, Folder, FolderOpen, Search,
   LayoutList, LayoutGrid, RefreshCw, SquareMousePointer, Loader2,
   PanelRight, Maximize2,
@@ -11,7 +11,6 @@ import {
 import { FileTreeSkeleton, KnowledgeListSkeleton } from '@/components/ui/Skeleton'
 import posthog from 'posthog-js'
 import { FileViewerPanel, getFileType, isEditableType } from './FileViewer'
-import OutputsView from './OutputsView'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,11 +28,14 @@ interface FileNode {
   _id: string
   name: string
   type: 'file' | 'folder'
+  kind?: 'folder' | 'note' | 'upload' | 'output'
   parentId: string | null
   content?: string
+  textContent?: string
   sizeBytes?: number
   isStorageBacked?: boolean
   downloadUrl?: string
+  outputType?: string
   createdAt: number
   updatedAt: number
 }
@@ -157,7 +159,9 @@ function FileTreeNode({
                 : <Folder size={14} className="shrink-0 text-[var(--muted-light)]" />}
             </>
           ) : (
-            <FileText size={14} className="shrink-0 text-[var(--muted-light)]" />
+            node.kind === 'note'
+              ? <BookOpen size={14} className="shrink-0 text-[var(--muted-light)]" />
+              : <FileText size={14} className="shrink-0 text-[var(--muted-light)]" />
           )}
           <span className="min-w-0 flex-1 truncate leading-relaxed">{node.name}</span>
         </div>
@@ -191,16 +195,24 @@ function FileTreeNode({
 
 // ─── Main KnowledgeView ───────────────────────────────────────────────────────
 
-export default function KnowledgeView({ userId: _userId }: { userId: string }) {
+export default function KnowledgeView({
+  userId: _userId,
+  mode = 'knowledge',
+}: {
+  userId: string
+  mode?: 'knowledge' | 'files'
+}) {
   void _userId
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const fileOpenParam = searchParams?.get('file') ?? null
   const memoryOpenParam = searchParams?.get('memory') ?? null
-  const viewParam = searchParams?.get('view') ?? 'memories'
+  const viewParam = searchParams?.get('view') ?? (mode === 'files' ? 'files' : 'memories')
   const activeTab: Tab =
-    viewParam === 'files' ? 'files' : viewParam === 'outputs' ? 'outputs' : 'memories'
+    mode === 'files'
+      ? 'files'
+      : viewParam === 'files' ? 'files' : viewParam === 'outputs' ? 'outputs' : 'memories'
 
   const layout: 'list' | 'cards' = useMemo(() => {
     const L = searchParams?.get('layout')
@@ -217,7 +229,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     router.push(`${pathname}?${p.toString()}`)
   }
 
-  const [outputsRefreshKey, setOutputsRefreshKey] = useState(0)
+  const [, setOutputsRefreshKey] = useState(0)
   const [outputFilterOpen, setOutputFilterOpen] = useState(false)
   const outputFilterRef = useRef<HTMLDivElement>(null)
 
@@ -319,15 +331,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     })
   }
 
-  function toggleOutputSelect(outputId: string) {
-    setSelectedOutputIds((prev) => {
-      const n = new Set(prev)
-      if (n.has(outputId)) n.delete(outputId)
-      else n.add(outputId)
-      return n
-    })
-  }
-
   async function bulkDeleteMemories() {
     if (selectedMemoryIds.size === 0 || bulkDeleting) return
     setBulkDeleting(true)
@@ -375,7 +378,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     try {
       await Promise.all(
         [...selectedOutputIds].map((id) =>
-          fetch(`/api/app/outputs?outputId=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+          fetch(`/api/app/files?fileId=${encodeURIComponent(id)}`, { method: 'DELETE' }),
         ),
       )
       setOutputsRefreshKey((k) => k + 1)
@@ -390,7 +393,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     if (!res.ok) return
     const file = (await res.json()) as FileNode
     setSelectedFile(file)
-    setFileContent(file.content ?? '')
+    setFileContent(file.textContent ?? file.content ?? '')
     setFilePreviewMode('dialog')
   }, [])
 
@@ -536,7 +539,12 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       const res = await fetch('/api/app/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type: dialog.type, parentId: dialog.parentId }),
+        body: JSON.stringify({
+          name,
+          type: dialog.type,
+          kind: dialog.type === 'folder' ? 'folder' : 'upload',
+          parentId: dialog.parentId,
+        }),
       })
       if (res.ok) {
         posthog.capture('knowledge_file_created', { file_name: name, type: dialog.type })
@@ -548,7 +556,24 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     } finally { setIsCreating(false) }
   }
 
+  async function handleCreateNoteFile() {
+    const res = await fetch('/api/app/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '' }),
+    })
+    if (!res.ok) return
+    const data = await res.json() as { id?: string; file?: unknown }
+    if (!data.id) return
+    window.dispatchEvent(new CustomEvent('overlay:notes-changed', { detail: { file: data.file } }))
+    router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
+  }
+
   function handleSelectFile(node: FileNode) {
+    if (node.kind === 'note') {
+      router.push(`/app/notes?id=${encodeURIComponent(node._id)}`)
+      return
+    }
     void loadFile(node._id)
     updateQuery({ view: 'files', file: node._id })
   }
@@ -577,14 +602,19 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       await fetch('/api/app/files', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId: selectedFile._id, content: val }),
+        body: JSON.stringify({ fileId: selectedFile._id, textContent: val }),
       })
       setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f } : f))
       setIsSavingFile(false)
     }, 800)
   }
 
-  async function uploadSingleFile(file: File, parentId: string | null): Promise<boolean> {
+  async function readUploadError(res: Response, fallback: string): Promise<string> {
+    const data = (await res.json().catch(() => null)) as { error?: string; message?: string } | null
+    return data?.message || data?.error || fallback
+  }
+
+  async function uploadSingleFile(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string }> {
     try {
       const fileType = getFileType(file.name)
       const isText = fileType === 'text' || fileType === 'markdown' || fileType === 'csv'
@@ -595,29 +625,31 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: file.name, type: 'file', parentId, content }),
         })
-        return res.ok
+        if (!res.ok) return { ok: false, error: await readUploadError(res, 'Failed to save file') }
+        return { ok: true }
       }
       const urlRes = await fetch('/api/app/files/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sizeBytes: file.size, name: file.name, mimeType: file.type || undefined }),
       })
-      if (!urlRes.ok) return false
+      if (!urlRes.ok) return { ok: false, error: await readUploadError(urlRes, 'Could not prepare upload') }
       const { uploadUrl, r2Key } = await urlRes.json() as { uploadUrl: string; r2Key: string }
       const uploadRes = await fetch(uploadUrl, {
         method: 'PUT',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
       })
-      if (!uploadRes.ok) return false
+      if (!uploadRes.ok) return { ok: false, error: 'Storage upload failed. Check your connection and try again.' }
       const createRes = await fetch('/api/app/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: file.name, type: 'file', parentId, r2Key, sizeBytes: file.size }),
       })
-      return createRes.ok
-    } catch {
-      return false
+      if (!createRes.ok) return { ok: false, error: await readUploadError(createRes, 'Failed to save file') }
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Upload failed' }
     }
   }
 
@@ -627,9 +659,9 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     setFileUploadError(null)
     setFileUploadPending({ label: file.name })
     try {
-      const ok = await uploadSingleFile(file, null)
-      if (!ok) {
-        setFileUploadError('Upload failed. Check the file and try again.')
+      const result = await uploadSingleFile(file, null)
+      if (!result.ok) {
+        setFileUploadError(result.error ?? 'Upload failed. Check the file and try again.')
         return
       }
       await loadFiles()
@@ -667,9 +699,9 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
         }
         const parentFolderPath = parts.slice(0, -1).join('/')
         const parentId = folders.get(parentFolderPath) ?? null
-        const ok = await uploadSingleFile(file, parentId)
-        if (!ok) {
-          setFileUploadError('One or more files failed to upload.')
+        const result = await uploadSingleFile(file, parentId)
+        if (!result.ok) {
+          setFileUploadError(result.error ?? 'One or more files failed to upload.')
           break
         }
       }
@@ -685,7 +717,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
     if (!q) return files
     const keep = new Set<string>()
     for (const n of files) {
-      if (n.type === 'file' && n.name.toLowerCase().includes(q)) {
+      if (n.name.toLowerCase().includes(q)) {
         keep.add(n._id)
         let p = n.parentId
         while (p) {
@@ -1012,7 +1044,7 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
         <div className="flex min-w-0 shrink-0 items-center gap-3">
           <h1 className="text-sm font-medium text-[var(--foreground)]">
-            {activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
+            {mode === 'files' ? 'Files' : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
           </h1>
           {activeTab !== 'outputs' && !memorySearchOpen && !fileSearchOpen && (
             <span className="text-xs text-[var(--muted-light)]">
@@ -1202,6 +1234,24 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
               >
                 <Search size={14} strokeWidth={1.75} />
               </button>
+              {mode === 'files' ? (
+                <button
+                  type="button"
+                  onClick={() => void handleCreateNoteFile()}
+                  className={TOOLBAR_FILLED_BUTTON_CLASS}
+                >
+                  <BookOpen size={13} />
+                  New File
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => { setDialog({ type: 'folder', parentId: null }); setDialogName('') }}
+                className={TOOLBAR_FILLED_BUTTON_CLASS}
+              >
+                <FolderPlus size={13} />
+                New Folder
+              </button>
               <button
                 type="button"
                 onClick={() => fileUploadRef.current?.click()}
@@ -1229,17 +1279,6 @@ export default function KnowledgeView({ userId: _userId }: { userId: string }) {
           activeTab === 'outputs' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'
         }`}
       >
-        {activeTab === 'outputs' && (
-          <OutputsView
-            key={outputsRefreshKey}
-            embedded
-            layout={layout}
-            selectionMode={selectMode}
-            selectedIds={selectedOutputIds}
-            onToggleSelect={toggleOutputSelect}
-          />
-        )}
-
         {activeTab === 'memories' && (memorySavePendingPreview || importPendingPreview) && (
           <div
             className="mx-auto mb-4 flex max-w-3xl items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3"

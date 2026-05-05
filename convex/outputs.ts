@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import { Id } from './_generated/dataModel'
+import { internal } from './_generated/api'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import { applyStorageUsageDelta, ensureStorageAvailable } from './lib/storageQuota'
 import { classifyOutputType } from '../src/lib/output-types'
@@ -26,9 +27,20 @@ function resolveStoredType(output: {
   fileName?: string
   mimeType?: string
 }) {
-  return output.fileName || output.mimeType
+    return output.fileName || output.mimeType
     ? classifyOutputType(output.fileName, output.mimeType)
     : output.type
+}
+
+function outputFileName(args: { fileName?: string; type: string; id?: string }) {
+  return args.fileName?.trim() || `${args.type}-${args.id ?? Date.now()}`
+}
+
+function outputTextContent(args: { type: string; metadata?: unknown }): string {
+  if (args.type !== 'text' && args.type !== 'code' && args.type !== 'document') return ''
+  const metadata = args.metadata as { text?: unknown; content?: unknown } | undefined
+  const value = metadata?.text ?? metadata?.content
+  return typeof value === 'string' ? value : ''
 }
 
 export const create = mutation({
@@ -106,6 +118,32 @@ export const create = mutation({
       createdAt: Date.now(),
       completedAt: args.status === 'completed' ? Date.now() : undefined,
     })
+    const textContent = outputTextContent({ type: args.type, metadata: args.metadata })
+    const name = outputFileName({ fileName: args.fileName, type: args.type, id })
+    const fileId = await ctx.db.insert('files', {
+      userId: args.userId,
+      name,
+      type: 'file',
+      kind: 'output',
+      content: textContent,
+      textContent,
+      storageId: args.storageId,
+      r2Key: args.r2Key,
+      mimeType: args.mimeType,
+      extension: name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined,
+      sizeBytes: args.sizeBytes ?? (textContent ? new TextEncoder().encode(textContent).length : 0),
+      indexable: textContent.trim().length > 0,
+      indexStatus: textContent.trim().length > 0 ? 'pending' : 'skipped',
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      modelId: args.modelId,
+      prompt: args.prompt,
+      outputType: args.type,
+      legacyOutputId: id,
+      createdAt: Date.now(),
+      updatedAt: args.status === 'completed' ? Date.now() : Date.now(),
+    })
+    await ctx.db.patch(id, { fileId })
     if (sizeBytes > 0) {
       await applyStorageUsageDelta(ctx as never, args.userId, sizeBytes)
     }
@@ -182,6 +220,31 @@ export const update = mutation({
     if (errorMessage !== undefined) updates.errorMessage = errorMessage
     if (status === 'completed' || status === 'failed') updates.completedAt = Date.now()
     await ctx.db.patch(outputId, updates)
+    const nextOutput = await ctx.db.get(outputId)
+    const fileId = nextOutput?.fileId
+    if (nextOutput && fileId) {
+      const resolvedType = type ?? nextOutput.type
+      const textContent = outputTextContent({ type: resolvedType, metadata: metadata ?? nextOutput.metadata })
+      const name = outputFileName({ fileName: fileName ?? nextOutput.fileName, type: resolvedType, id: outputId })
+      await ctx.db.patch(fileId, {
+        name,
+        content: textContent,
+        textContent,
+        storageId: storageId !== undefined ? storageId : nextOutput.storageId,
+        r2Key: r2Key !== undefined ? r2Key : nextOutput.r2Key,
+        mimeType: mimeType !== undefined ? mimeType : nextOutput.mimeType,
+        extension: name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined,
+        sizeBytes: nextSizeBytes || (textContent ? new TextEncoder().encode(textContent).length : 0),
+        indexable: textContent.trim().length > 0,
+        indexStatus: textContent.trim().length > 0 ? 'pending' : 'skipped',
+        modelId: modelId !== undefined ? modelId : nextOutput.modelId,
+        outputType: resolvedType,
+        updatedAt: Date.now(),
+      })
+      if (textContent.trim()) {
+        await ctx.scheduler.runAfter(0, internal.knowledge.reindexFileInternal, { fileId })
+      }
+    }
     if (storageDelta !== 0) {
       await applyStorageUsageDelta(ctx as never, userId, storageDelta)
     }
@@ -351,6 +414,18 @@ export const remove = mutation({
     }
     if (output.sizeBytes) {
       await applyStorageUsageDelta(ctx as never, userId, -output.sizeBytes)
+    }
+    if (output.fileId) {
+      await ctx.runMutation(internal.knowledge.purgeKnowledgeSource, {
+        sourceKind: 'file',
+        sourceId: output.fileId,
+        userId,
+      })
+      await ctx.db.patch(output.fileId, {
+        deletedAt: Date.now(),
+        updatedAt: Date.now(),
+        indexStatus: 'skipped',
+      })
     }
     await ctx.db.delete(outputId)
     return { success: true }

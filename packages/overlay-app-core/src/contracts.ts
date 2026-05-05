@@ -66,6 +66,7 @@ export interface VideoModel {
 
 export type AppDestinationId =
   | 'chat'
+  | 'files'
   | 'notes'
   | 'knowledge'
   | 'extensions'
@@ -79,6 +80,7 @@ export type SettingsSubview =
   | 'general'
   | 'account'
   | 'customization'
+  | 'memories'
   | 'models'
   | 'contact'
 export type ProjectSubview = 'chat' | 'note' | 'file'
@@ -92,12 +94,11 @@ export interface AppDestinationConfig {
 
 export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
   { id: 'chat', label: 'Chat', href: '/app/chat' },
-  { id: 'notes', label: 'Notes', href: '/app/notes' },
   {
-    id: 'knowledge',
-    label: 'Knowledge',
-    href: '/app/knowledge',
-    subviews: ['memories', 'files', 'outputs'],
+    id: 'files',
+    label: 'Files',
+    href: '/app/files',
+    subviews: ['files', 'outputs'],
   },
   {
     id: 'extensions',
@@ -305,4 +306,3 @@ export interface ProjectSummary {
   updatedAt: number
   createdAt: number
 }
-

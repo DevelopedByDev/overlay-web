@@ -34,10 +34,18 @@ const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
 
 type Conversation = { _id: string; title: string; lastModified: number }
 type Note = { _id: string; title: string; updatedAt: number }
+type CanonicalNoteFile = { _id: string; name?: string; updatedAt?: number }
 type Project = { _id: string; name: string; parentId: string | null }
 type ProjectChat = { _id: string; title: string; lastModified: number }
 type ProjectNote = { _id: string; title: string; updatedAt: number }
-type ProjectFile = { _id: string; name: string; type: 'file' | 'folder'; parentId: string | null }
+type ProjectFile = {
+  _id: string
+  name: string
+  type: 'file' | 'folder'
+  kind?: 'folder' | 'note' | 'upload' | 'output'
+  parentId: string | null
+  outputType?: string
+}
 
 const panelItemClass =
   'group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -306,8 +314,15 @@ export function NotesInlinePanel({
 
   const loadNotes = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/notes')
-      if (res.ok) setNotes(await res.json())
+      const res = await fetch('/api/app/files?kind=note')
+      if (res.ok) {
+        const rows = (await res.json()) as CanonicalNoteFile[]
+        setNotes(rows.map((file) => ({
+          _id: file._id,
+          title: file.name || 'Untitled',
+          updatedAt: file.updatedAt ?? 0,
+        })))
+      }
     } catch {
       // ignore
     } finally {
@@ -337,7 +352,7 @@ export function NotesInlinePanel({
 
   async function deleteNote(noteId: string, event: MouseEvent) {
     event.stopPropagation()
-    await fetch(`/api/app/notes?noteId=${noteId}`, { method: 'DELETE' })
+    await fetch(`/api/app/files?fileId=${noteId}`, { method: 'DELETE' })
     setNotes((prev) => prev.filter((note) => note._id !== noteId))
     if (activeId === noteId) {
       router.push('/app/notes')
@@ -377,6 +392,200 @@ export function NotesInlinePanel({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function FilesBranch({
+  file,
+  allFiles,
+  depth,
+  expanded,
+  activeFileId,
+  onToggle,
+  onOpen,
+}: {
+  file: ProjectFile
+  allFiles: ProjectFile[]
+  depth: number
+  expanded: Set<string>
+  activeFileId: string | null
+  onToggle: (fileId: string) => void
+  onOpen: (file: ProjectFile) => void
+}) {
+  const children = allFiles
+    .filter((candidate) => candidate.parentId === file._id)
+    .sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+  const open = expanded.has(file._id)
+
+  return (
+    <div>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          if (file.type === 'folder') onToggle(file._id)
+          else onOpen(file)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            if (file.type === 'folder') onToggle(file._id)
+            else onOpen(file)
+          }
+        }}
+        className={`${panelItemClass} cursor-pointer ${activeFileId === file._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+        style={{ paddingLeft: `${10 + depth * 14}px` }}
+      >
+        {file.type === 'folder' ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggle(file._id)
+            }}
+            className="shrink-0 rounded p-0.5 text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+            aria-label={open ? 'Collapse folder' : 'Expand folder'}
+          >
+            <ChevronRight size={11} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+          </button>
+        ) : (
+          <span className="w-4 shrink-0" aria-hidden />
+        )}
+        {file.type === 'folder'
+          ? open
+            ? <FolderOpen size={12} className="shrink-0" />
+            : <Folder size={12} className="shrink-0" />
+          : file.kind === 'note'
+            ? <BookOpen size={12} className="shrink-0 text-[var(--muted-light)]" />
+            : <FileText size={12} className="shrink-0 text-[var(--muted-light)]" />}
+        <span className="min-w-0 flex-1 truncate">{file.name}</span>
+      </div>
+
+      {file.type === 'folder' && open && children.map((child) => (
+        <FilesBranch
+          key={child._id}
+          file={child}
+          allFiles={allFiles}
+          depth={depth + 1}
+          expanded={expanded}
+          activeFileId={activeFileId}
+          onToggle={onToggle}
+          onOpen={onOpen}
+        />
+      ))}
+    </div>
+  )
+}
+
+export function FilesInlinePanel({
+  searchQuery = '',
+  onNavigate,
+}: {
+  searchQuery?: string
+  onNavigate?: () => void
+}) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [files, setFiles] = useState<ProjectFile[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const activeFileId = searchParams?.get('file') ?? null
+  const activeNoteId = searchParams?.get('id') ?? null
+  const activeCanonicalFileId = activeFileId ?? activeNoteId
+
+  const loadItems = useCallback(async () => {
+    try {
+      const filesRes = await fetch('/api/app/files')
+      setFiles(filesRes.ok ? await filesRes.json() : [])
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    void loadItems()
+  }, [loadItems])
+
+  useEffect(() => {
+    function handleNotesChanged() {
+      void loadItems()
+    }
+    window.addEventListener('overlay:notes-changed', handleNotesChanged)
+    return () => window.removeEventListener('overlay:notes-changed', handleNotesChanged)
+  }, [loadItems])
+
+  function toggleFile(fileId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(fileId)) next.delete(fileId)
+      else next.add(fileId)
+      return next
+    })
+  }
+
+  function openFile(file: ProjectFile) {
+    if (file.kind === 'note') {
+      router.push(`/app/notes?id=${encodeURIComponent(file._id)}`)
+    } else {
+      router.push(`/app/files?file=${encodeURIComponent(file._id)}`)
+    }
+    onNavigate?.()
+  }
+
+  const q = searchQuery.trim().toLowerCase()
+  const filteredFiles = useMemo(() => {
+    if (!q) return files
+    const keep = new Set<string>()
+    for (const file of files) {
+      if (file.name.toLowerCase().includes(q)) {
+        keep.add(file._id)
+        let parentId = file.parentId
+        while (parentId) {
+          keep.add(parentId)
+          parentId = files.find((candidate) => candidate._id === parentId)?.parentId ?? null
+        }
+      }
+    }
+    return files.filter((file) => keep.has(file._id))
+  }, [files, q])
+
+  const rootFiles = filteredFiles
+    .filter((file) => file.parentId == null)
+    .sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+  const hasItems = rootFiles.length > 0
+
+  return (
+    <div className="space-y-0.5">
+      {loading ? (
+        <SidebarListSkeleton rows={7} />
+      ) : !hasItems ? (
+        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{q ? 'No results' : 'No files yet'}</p>
+      ) : (
+        <>
+          {rootFiles.map((file) => (
+            <FilesBranch
+              key={file._id}
+              file={file}
+              allFiles={filteredFiles}
+              depth={0}
+              expanded={expanded}
+              activeFileId={activeCanonicalFileId}
+              onToggle={toggleFile}
+              onOpen={openFile}
+            />
+          ))}
+        </>
+      )}
     </div>
   )
 }
@@ -647,7 +856,7 @@ export function ProjectsInlinePanel({
     try {
       const [chatsRes, notesRes, filesRes] = await Promise.all([
         fetch(`/api/app/conversations?projectId=${projectId}`),
-        fetch(`/api/app/notes?projectId=${projectId}`),
+        fetch(`/api/app/files?kind=note&projectId=${projectId}`),
         fetch(`/api/app/files?projectId=${projectId}`),
       ])
       const [chats, notes, files] = await Promise.all([
@@ -655,7 +864,13 @@ export function ProjectsInlinePanel({
         notesRes.ok ? notesRes.json() : [],
         filesRes.ok ? filesRes.json() : [],
       ])
-      setItemsByProject((prev) => ({ ...prev, [projectId]: { chats, notes, files } }))
+      const noteRows = Array.isArray(notes)
+        ? notes.map((note: ProjectFile) => ({ _id: note._id, title: note.name || 'Untitled', updatedAt: 0 }))
+        : []
+      const fileRows = Array.isArray(files)
+        ? files.filter((file: ProjectFile) => file.kind !== 'note')
+        : []
+      setItemsByProject((prev) => ({ ...prev, [projectId]: { chats, notes: noteRows, files: fileRows } }))
     } finally {
       setItemsLoading((prev) => {
         const next = new Set(prev)
@@ -709,7 +924,7 @@ export function ProjectsInlinePanel({
     if (type === 'chat') {
       await fetch(`/api/app/conversations?conversationId=${id}`, { method: 'DELETE' })
     } else {
-      await fetch(`/api/app/notes?noteId=${id}`, { method: 'DELETE' })
+      await fetch(`/api/app/files?fileId=${id}`, { method: 'DELETE' })
     }
     setItemsByProject((prev) => {
       const next = { ...prev }

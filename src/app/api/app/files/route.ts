@@ -4,7 +4,7 @@ import { convex } from '@/lib/convex'
 import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
 import { deleteObjects } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { isOwnedFileR2Key } from '@/lib/storage-keys'
+import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/lib/storage-keys'
 
 function storageErrorResponse(error: unknown, fallback = 'Failed to save file') {
   const message = error instanceof Error ? error.message : String(error)
@@ -33,11 +33,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(file)
     }
     const projectId = searchParams.get('projectId')
+    const kind = searchParams.get('kind')
+    const parentId = searchParams.get('parentId')
+    const conversationId = searchParams.get('conversationId')
+    const outputType = searchParams.get('outputType') ?? searchParams.get('type')
     const args: Record<string, unknown> = {
       userId: auth.userId,
       serverSecret,
     }
     if (projectId !== null) args.projectId = projectId
+    if (parentId !== null) args.parentId = parentId === 'null' ? null : parentId
+    if (conversationId !== null) args.conversationId = conversationId
+    if (outputType !== null) args.outputType = outputType
+    if (kind === 'folder' || kind === 'note' || kind === 'upload' || kind === 'output') args.kind = kind
     const files = await convex.query('files:list', args)
     return NextResponse.json(files ?? [])
   } catch {
@@ -52,9 +60,28 @@ export async function POST(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body as { accessToken?: string; userId?: string })
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { name, type, parentId, content, storageId, r2Key, sizeBytes, projectId } = body as Record<string, unknown>
-    if (typeof name !== 'string' || typeof type !== 'string') {
-      return NextResponse.json({ error: 'name and type required' }, { status: 400 })
+    const {
+      name,
+      type,
+      kind,
+      parentId,
+      content,
+      textContent,
+      storageId,
+      r2Key,
+      sizeBytes,
+      projectId,
+      mimeType,
+      extension,
+      conversationId,
+      turnId,
+      modelId,
+      prompt,
+      outputType,
+      legacyOutputId,
+    } = body as Record<string, unknown>
+    if (typeof name !== 'string') {
+      return NextResponse.json({ error: 'name required' }, { status: 400 })
     }
     if (storageId) {
       return NextResponse.json(
@@ -67,27 +94,51 @@ export async function POST(request: NextRequest) {
       userId: auth.userId,
       serverSecret,
       name,
-      type,
     }
+    if (typeof type === 'string') args.type = type
+    if (kind === 'folder' || kind === 'note' || kind === 'upload' || kind === 'output') args.kind = kind
     if (parentId) args.parentId = parentId
     if (projectId) args.projectId = projectId
+    if (typeof mimeType === 'string') args.mimeType = mimeType
+    if (typeof extension === 'string') args.extension = extension
+    if (typeof conversationId === 'string') args.conversationId = conversationId
+    if (typeof turnId === 'string') args.turnId = turnId
+    if (typeof modelId === 'string') args.modelId = modelId
+    if (typeof prompt === 'string') args.prompt = prompt
+    if (typeof outputType === 'string') args.outputType = outputType
+    if (typeof legacyOutputId === 'string') args.legacyOutputId = legacyOutputId
 
     let id: unknown
     const ids: string[] = []
 
     if (r2Key) {
-      if (typeof r2Key !== 'string' || !isOwnedFileR2Key(auth.userId, r2Key)) {
+      if (
+        typeof r2Key !== 'string' ||
+        (kind === 'output'
+          ? !isOwnedOutputR2Key(auth.userId, r2Key)
+          : !isOwnedFileR2Key(auth.userId, r2Key))
+      ) {
         return NextResponse.json({ error: 'Invalid storage key' }, { status: 400 })
       }
-      const { type: _type, ...storageArgs } = args
-      void _type
-      id = await convex.mutation('files:createWithStorage', {
-        ...storageArgs,
-        r2Key,
-        sizeBytes: typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0,
-      })
-    } else if (type === 'file' && typeof content === 'string' && content.length > 0) {
-      const parts = splitTextForConvexDocuments(content)
+      if (kind === 'output') {
+        id = await convex.mutation('files:create', {
+          ...args,
+          type: 'file',
+          r2Key,
+          sizeBytes: typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0,
+        })
+      } else {
+        const { type: _type, ...storageArgs } = args
+        void _type
+        id = await convex.mutation('files:createWithStorage', {
+          ...storageArgs,
+          r2Key,
+          sizeBytes: typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0,
+        })
+      }
+    } else if (kind !== 'note' && type === 'file' && typeof (textContent ?? content) === 'string' && String(textContent ?? content).length > 0) {
+      const fullText = String(textContent ?? content)
+      const parts = splitTextForConvexDocuments(fullText)
       const total = parts.length
       for (let p = 0; p < parts.length; p++) {
         const part = parts[p]!
@@ -96,6 +147,7 @@ export async function POST(request: NextRequest) {
           ...args,
           name: partName,
           content: part,
+          textContent: part,
           contentHash: hashTextContent(part),
         })
         if (!partId) {
@@ -105,9 +157,11 @@ export async function POST(request: NextRequest) {
       }
       id = ids[0]
     } else {
-      if (typeof content === 'string' && content.length > 0) {
-        args.content = content
-        args.contentHash = hashTextContent(content)
+      if (typeof (textContent ?? content) === 'string' && String(textContent ?? content).length > 0) {
+        const fullText = String(textContent ?? content)
+        args.content = fullText
+        args.textContent = fullText
+        args.contentHash = hashTextContent(fullText)
       }
       id = await convex.mutation('files:create', args)
     }
@@ -124,7 +178,7 @@ export async function PATCH(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { fileId, name, content } = body as Record<string, unknown>
+    const { fileId, name, content, textContent, parentId, projectId } = body as Record<string, unknown>
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
     const args: Record<string, unknown> = {
       fileId,
@@ -132,11 +186,15 @@ export async function PATCH(request: NextRequest) {
       serverSecret,
     }
     if (name !== undefined) args.name = name
-    if (typeof content === 'string') {
-      args.content = content
-      args.contentHash = hashTextContent(content)
-    } else if (content !== undefined) {
-      args.content = content
+    if (parentId !== undefined) args.parentId = parentId || null
+    if (projectId !== undefined) args.projectId = projectId || null
+    if (typeof (textContent ?? content) === 'string') {
+      const fullText = String(textContent ?? content)
+      args.content = fullText
+      args.textContent = fullText
+      args.contentHash = hashTextContent(fullText)
+    } else if ((textContent ?? content) !== undefined) {
+      args.content = textContent ?? content
     }
     await convex.mutation('files:update', args)
     return NextResponse.json({ success: true })
@@ -167,7 +225,10 @@ export async function DELETE(request: NextRequest) {
       { fileId, userId: auth.userId, serverSecret },
     )
     const r2Keys = (r2Entries ?? []).flatMap((entry) => {
-      if (!entry.r2Key || !isOwnedFileR2Key(auth.userId, entry.r2Key)) {
+      if (
+        !entry.r2Key ||
+        (!isOwnedFileR2Key(auth.userId, entry.r2Key) && !isOwnedOutputR2Key(auth.userId, entry.r2Key))
+      ) {
         return []
       }
       return [entry.r2Key]

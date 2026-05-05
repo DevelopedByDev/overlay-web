@@ -57,12 +57,20 @@ function toWebSocketOrigin(origin: string | null): string | null {
   return null
 }
 
-function getR2CspOrigin(): string | null {
-  const s3Api = process.env.S3_API?.trim()
-  if (s3Api) return parseOrigin(s3Api)
+function getR2CspOrigins(): string[] {
   const accountId = process.env.R2_ACCOUNT_ID?.trim()
-  if (accountId) return `https://${accountId}.r2.cloudflarestorage.com`
-  return null
+  const bucketName = process.env.R2_BUCKET_NAME?.trim()
+  const bucketOrigin =
+    accountId && bucketName ? `https://${bucketName}.${accountId}.r2.cloudflarestorage.com` : null
+  const s3Api = process.env.S3_API?.trim()
+  if (s3Api) {
+    const origin = parseOrigin(s3Api)
+    return uniqueSources([origin, bucketOrigin])
+  }
+  if (!accountId) return []
+
+  const accountOrigin = `https://${accountId}.r2.cloudflarestorage.com`
+  return uniqueSources([accountOrigin, bucketOrigin])
 }
 
 function buildConnectSrc(): string[] {
@@ -79,7 +87,7 @@ function buildConnectSrc(): string[] {
     devConvexOrigin,
     toWebSocketOrigin(prodConvexOrigin),
     toWebSocketOrigin(devConvexOrigin),
-    getR2CspOrigin(),
+    ...getR2CspOrigins(),
     IS_DEVELOPMENT ? 'ws:' : null,
     IS_DEVELOPMENT ? 'wss:' : null,
   ])
