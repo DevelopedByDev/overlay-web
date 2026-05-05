@@ -332,6 +332,7 @@ export async function POST(request: NextRequest) {
       mode,
       automationMode,
       automationExecution,
+      mentions: rawMentions,
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
       multiModelTotal: rawMultiModelTotal,
@@ -350,6 +351,7 @@ export async function POST(request: NextRequest) {
       mode?: 'chat' | 'automate'
       automationMode?: boolean
       automationExecution?: boolean
+      mentions?: Array<{ type: string; id: string; name: string; fileIds?: string[] }>
       multiModelSlotIndex?: number
       multiModelTotal?: number
     } = await request.json()
@@ -586,6 +588,45 @@ export async function POST(request: NextRequest) {
         '\n</skills>'
     }
 
+    // Resolve @mention context from the request
+    let mentionsContext = ''
+    if (Array.isArray(rawMentions) && rawMentions.length > 0) {
+      const mentionParts: string[] = []
+      for (const mention of rawMentions) {
+        switch (mention.type) {
+          case 'skill': {
+            const skill = enabledSkills.find((s) => s.name === mention.name)
+            if (skill) {
+              mentionParts.push(`[Referenced Skill: ${skill.name}]\n${skill.instructions.trim()}`)
+            } else {
+              mentionParts.push(`[Referenced Skill: ${mention.name}]`)
+            }
+            break
+          }
+          case 'automation':
+            mentionParts.push(`[Referenced Automation: ${mention.name} (id: ${mention.id})]`)
+            break
+          case 'mcp':
+            mentionParts.push(`[Referenced MCP Server: ${mention.name} (id: ${mention.id})]`)
+            break
+          case 'connector':
+            mentionParts.push(`[Referenced Connected App: ${mention.name} (slug: ${mention.id})] — Composio tools for this app are available.`)
+            break
+          case 'chat':
+            mentionParts.push(`[Referenced Chat: ${mention.name} (id: ${mention.id})]`)
+            break
+          case 'file':
+            mentionParts.push(`[Referenced File: ${mention.name}${mention.fileIds?.length ? ` (indexed, fileIds: ${mention.fileIds.join(', ')})` : ''}]`)
+            break
+          default:
+            mentionParts.push(`[Referenced: ${mention.name}]`)
+        }
+      }
+      mentionsContext = '\n\n<user_mentions>\nThe user explicitly referenced the following entities with @ mentions:\n' +
+        mentionParts.join('\n') +
+        '\n</user_mentions>'
+    }
+
     // Wave 2: project fetch + auto-retrieval. Both depend on the projectId resolved above.
     const conversationProjectId: string | undefined = conv?.projectId
     const projectTask: Promise<string> = (async () => {
@@ -794,6 +835,7 @@ export async function POST(request: NextRequest) {
         (userSystemPromptExtension ? `\n\n${userSystemPromptExtension}` : '')) +
         projectInstructionsExtension +
         skillsContext +
+        mentionsContext +
         generationNote +
         automationDraftNote +
         browserToolNote +

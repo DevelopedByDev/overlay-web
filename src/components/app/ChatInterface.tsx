@@ -174,6 +174,8 @@ import type {
   PendingChatDocument,
   ToolVisualBlock,
 } from './chat-interface/types'
+import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
+import type { MentionItem } from './chat-interface/mention-types'
 
 type AutomationDetailTab = 'chat' | 'edit'
 
@@ -1682,13 +1684,14 @@ interface ExchangeBlockProps {
   onRetry?: () => void
   retryDisabled?: boolean
   onOpenFilePreview?: (name: string, fileIds: string[]) => void
+  userMentions?: Array<{ type: string; id: string; name: string }>
 }
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, userMentions,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -1773,6 +1776,18 @@ function ExchangeBlock({
             {showTextBubble && (
               <div className="chat-user-bubble ml-auto min-w-0 max-w-full break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:px-4">
                 <span className="whitespace-pre-wrap">{userBodyText}</span>
+                {userMentions && userMentions.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {userMentions.map((m) => (
+                      <span
+                        key={`${m.type}-${m.id}`}
+                        className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] px-1.5 py-0.5 text-xs font-medium text-[var(--foreground)]"
+                      >
+                        @{m.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2625,7 +2640,8 @@ export default function ChatInterface({
   const shouldScrollRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<MentionInputHandle>(null)
+  const [mentions, setMentions] = useState<MentionItem[]>([])
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const videoSubModePickerRef = useRef<HTMLDivElement>(null)
   const modelPickerListScrollRef = useRef<HTMLDivElement>(null)
@@ -3649,14 +3665,7 @@ export default function ChatInterface({
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [showModeMenu])
 
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    const maxHeight = 160
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
-    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
-  }, [input])
+  // Auto-resize is now handled internally by MentionInput
 
   // ── response lookup ────────────────────────────────────────────────────────
 
@@ -5103,6 +5112,14 @@ export default function ChatInterface({
       userMeta.replyToTurnId = replyCtxSnapshot.replyToTurnId
       userMeta.replySnippet = replyCtxSnapshot.snippet
     }
+    if (mentions.length > 0) {
+      userMeta.mentions = mentions.map((m) => ({
+        type: m.type,
+        id: m.id,
+        name: m.name,
+        ...(m.meta?.fileIds ? { fileIds: m.meta.fileIds as string[] } : {}),
+      }))
+    }
     const userMetadata = Object.keys(userMeta).length > 0 ? userMeta : undefined
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userUIMessage: any = {
@@ -5147,6 +5164,7 @@ export default function ChatInterface({
     }
 
     setInput('')
+    setMentions([])
     setAttachedImages([])
     setPendingChatDocuments([])
     setAttachmentError(null)
@@ -5162,6 +5180,7 @@ export default function ChatInterface({
         ? { indexedFileNames, indexedAttachments: indexedAttachments }
         : {}),
       ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
+      ...(userMeta.mentions && userMeta.mentions.length > 0 ? { mentions: userMeta.mentions } : {}),
     }
 
     /* eslint-disable @typescript-eslint/no-explicit-any -- UIMessage / sendMessage payload */
@@ -5272,7 +5291,8 @@ export default function ChatInterface({
       if (e.key === '/' && !meta && !e.altKey && !e.shiftKey) {
         const t = e.target as HTMLElement | null
         if (!t) return
-        if (textareaRef.current && (t === textareaRef.current || textareaRef.current.contains(t))) return
+        const editorEl = textareaRef.current?.getElement?.()
+        if (editorEl && (t === editorEl || editorEl.contains(t))) return
         if (t.closest('input, textarea, select, [contenteditable="true"]')) return
         e.preventDefault()
         textareaRef.current?.focus()
@@ -6628,20 +6648,20 @@ export default function ChatInterface({
                     e.target.value = ''
                   }}
                 />
-                <textarea
+                <MentionInput
                   ref={textareaRef}
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={setInput}
+                  onMentionsChange={setMentions}
                   onPaste={handlePaste}
+                  onUploadFile={() => docInputRef.current?.click()}
                   placeholder={mode === 'automate' ? 'Describe an automation...' : 'Ask anything...'}
-                  rows={1}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
                       handleSend()
                     }
                   }}
-                  className="w-full min-h-11 resize-none border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--muted-light)] focus:ring-0"
                 />
                 <div className="mt-2 flex min-h-9 items-center gap-2">
                   <div ref={attachMenuRef} className="relative shrink-0">

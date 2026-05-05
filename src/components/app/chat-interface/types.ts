@@ -84,6 +84,15 @@ export type AssistantVisualSegment =
   | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
   | { kind: 'tools'; tools: ToolVisualBlock[]; originIndex: number }
 
+export type MentionType = 'file' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat'
+
+export interface ChatMessageMention {
+  type: MentionType
+  id: string
+  name: string
+  fileIds?: string[]
+}
+
 export interface ChatMessageMetadata {
   indexedDocuments?: string[]
   indexedAttachments?: { name: string; fileIds: string[] }[]
@@ -91,6 +100,7 @@ export interface ChatMessageMetadata {
   replySnippet?: string
   sourceCitations?: SourceCitationMap
   routedModelId?: string
+  mentions?: ChatMessageMention[]
 }
 
 export type DraftModalState = {
