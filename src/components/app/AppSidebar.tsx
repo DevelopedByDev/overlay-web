@@ -16,6 +16,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from './GuestGateProvider'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
+import { dispatchChatCreated } from '@/lib/chat-title'
+import { upsertCachedChat } from '@/lib/chat-list-cache'
 import { useAppSettings } from './AppSettingsProvider'
 import { formatBytes } from '@/lib/storage-limits'
 import {
@@ -341,8 +343,11 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       }),
     })
     if (!res.ok) return
-    const data = await res.json() as { id?: string }
+    const data = await res.json() as { id?: string; conversation?: { _id: string; title: string; lastModified: number } }
     if (!data.id) return
+    const chat = data.conversation ?? { _id: data.id, title: 'New Chat', lastModified: 0 }
+    upsertCachedChat(chat)
+    dispatchChatCreated({ chat })
     setChatPanelRefreshKey((value) => value + 1)
     setMobileMenuOpen(false)
     router.push(`/app/chat?id=${encodeURIComponent(data.id)}`)

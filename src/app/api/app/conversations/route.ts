@@ -63,6 +63,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (conversationId && includeMessages) {
+      const conv = await convex.query<ConversationDoc | null>('conversations:get', {
+        conversationId: conversationId as Id<'conversations'>,
+        userId: auth.userId,
+        serverSecret,
+      })
+      if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
       const messages = await convex.query<
         Array<{
           _id: string

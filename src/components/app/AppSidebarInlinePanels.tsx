@@ -28,6 +28,7 @@ import {
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
+import { fetchChatList, getCachedChatList, removeCachedChat, upsertCachedChat } from '@/lib/chat-list-cache'
 
 const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
@@ -72,8 +73,8 @@ export function ChatInlinePanel({
   const router = useRouter()
   const searchParams = useSearchParams()
   const { sessions, getUnread } = useAsyncSessions()
-  const [chats, setChats] = useState<Conversation[]>([])
-  const [loading, setLoading] = useState(true)
+  const [chats, setChats] = useState<Conversation[]>(() => getCachedChatList() ?? [])
+  const [loading, setLoading] = useState(() => !getCachedChatList())
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
@@ -82,8 +83,7 @@ export function ChatInlinePanel({
 
   const loadChats = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/conversations')
-      if (res.ok) setChats(await res.json())
+      setChats(await fetchChatList())
     } catch {
       // ignore
     } finally {
@@ -92,7 +92,7 @@ export function ChatInlinePanel({
   }, [])
 
   useEffect(() => {
-    setLoading(true)
+    if (!getCachedChatList()) setLoading(true)
     void loadChats()
   }, [loadChats, refreshKey])
 
@@ -100,7 +100,8 @@ export function ChatInlinePanel({
     function handleChatCreated(event: Event) {
       const { detail } = event as CustomEvent<ChatCreatedDetail>
       const nextChat = detail?.chat
-      if (!nextChat?._id) return
+        if (!nextChat?._id) return
+      upsertCachedChat(nextChat)
       setLoading(false)
       setChats((prev) => {
         const existingIndex = prev.findIndex((chat) => chat._id === nextChat._id)
@@ -119,6 +120,11 @@ export function ChatInlinePanel({
     function handleChatTitleUpdated(event: Event) {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
+      upsertCachedChat({
+        _id: detail.chatId,
+        title: detail.title,
+        lastModified: Date.now(),
+      })
       setChats((prev) => prev.map((chat) => (
         chat._id === detail.chatId ? { ...chat, title: detail.title } : chat
       )))
@@ -128,6 +134,7 @@ export function ChatInlinePanel({
       const { detail } = event as CustomEvent<ChatDeletedDetail>
       if (!detail?.chatId) return
       const deletedChatId = detail.chatId
+      removeCachedChat(deletedChatId)
       setDeletingChatIds((prev) => (
         prev.includes(deletedChatId) ? prev : [...prev, deletedChatId]
       ))

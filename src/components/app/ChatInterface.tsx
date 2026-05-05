@@ -75,6 +75,13 @@ import {
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
+import {
+  fetchChatList,
+  getCachedChatList,
+  primeChatList,
+  removeCachedChat,
+  upsertCachedChat,
+} from '@/lib/chat-list-cache'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import { MarkdownMessage } from './MarkdownMessage'
 import { WebSourcesSidebar } from './WebSourcesSidebar'
@@ -2365,7 +2372,7 @@ export default function ChatInterface({
     }
   }, [setActiveViewer])
 
-  const [chats, setChats] = useState<Conversation[]>([])
+  const [chats, setChats] = useState<Conversation[]>(() => getCachedChatList() ?? [])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [, forceLiveSyncRender] = useState(0)
   const [runtimeHydrationVersion, setRuntimeHydrationVersion] = useState(0)
@@ -2762,6 +2769,7 @@ export default function ChatInterface({
       const { detail } = event as CustomEvent<ChatCreatedDetail>
       const nextChat = detail?.chat
       if (!nextChat?._id) return
+      upsertCachedChat(nextChat)
       setChats((prev) => {
         const existingIndex = prev.findIndex((chat) => chat._id === nextChat._id)
         if (existingIndex === -1) return [nextChat, ...prev]
@@ -2779,6 +2787,11 @@ export default function ChatInterface({
     function handleChatTitleUpdated(event: Event) {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
+      upsertCachedChat({
+        _id: detail.chatId,
+        title: detail.title,
+        lastModified: Date.now(),
+      })
       setChats((prev) => prev.map((chat) => (
         chat._id === detail.chatId ? { ...chat, title: detail.title } : chat
       )))
@@ -2792,6 +2805,7 @@ export default function ChatInterface({
       const { detail } = event as CustomEvent<ChatDeletedDetail>
       if (!detail?.chatId) return
       const deletedChatId = detail.chatId
+      removeCachedChat(deletedChatId)
       setDeletingChatIds((prev) => (
         prev.includes(deletedChatId) ? prev : [...prev, deletedChatId]
       ))
@@ -3025,18 +3039,17 @@ export default function ChatInterface({
   const loadChats = useCallback(async () => {
     try {
       const pending = pendingTitleRef.current
-      const res = await fetch('/api/app/conversations')
-      if (res.ok) {
-        const serverChats: Conversation[] = await res.json()
-        setChats(
-          pending
-            ? serverChats.map((c) => (c._id === pending.chatId ? { ...c, title: pending.title } : c))
-            : serverChats
-        )
-        // Clear the ref once the server has confirmed the title
-        if (pending && serverChats.some((c) => c._id === pending.chatId && c.title === pending.title)) {
-          if (pendingTitleRef.current?.chatId === pending.chatId) pendingTitleRef.current = null
-        }
+      const serverChats = await fetchChatList()
+      const nextChats = pending
+        ? serverChats.map((c) => (c._id === pending.chatId ? { ...c, title: pending.title } : c))
+        : serverChats
+      setChats(nextChats)
+      if (pending) {
+        primeChatList(nextChats)
+      }
+      // Clear the ref once the server has confirmed the title
+      if (pending && serverChats.some((c) => c._id === pending.chatId && c.title === pending.title)) {
+        if (pendingTitleRef.current?.chatId === pending.chatId) pendingTitleRef.current = null
       }
     } catch { /* ignore */ }
   }, [])
@@ -3991,8 +4004,8 @@ export default function ChatInterface({
     setRuntimeHydrationVersion((value) => value + 1)
   }
 
-  function syncStandaloneChatUrl(chatId: string | null) {
-    if (hideSidebar) return
+  function syncStandaloneChatUrl(chatId: string | null, options: { replaceUrl?: boolean } = {}) {
+    if (hideSidebar || options.replaceUrl === false) return
     if (mode === 'automate') {
       const params = new URLSearchParams()
       if (chatId) params.set('id', chatId)
@@ -4033,6 +4046,7 @@ export default function ChatInterface({
         askModelIds: selectedModels,
         actModelId: selectedActModel,
       }
+      upsertCachedChat(newChat)
       setChats((prev) => [newChat, ...prev])
       dispatchChatCreated({ chat: newChat })
       posthog.capture('chat_new_chat_created', { mode: 'act' })
@@ -4062,7 +4076,7 @@ export default function ChatInterface({
     return null
   }
 
-  async function loadChat(chatId: string) {
+  async function loadChat(chatId: string, options: { replaceUrl?: boolean } = {}) {
     const requestId = ++loadChatRequestRef.current
     persistActiveRuntimeUiState()
     clearTransientComposerState()
@@ -4072,7 +4086,7 @@ export default function ChatInterface({
     activeChatIdRef.current = chatId
     setActiveViewer(chatId)
     setActiveChatId(chatId)
-    syncStandaloneChatUrl(chatId)
+    syncStandaloneChatUrl(chatId, options)
     const runtime = ensureConversationRuntime(chatId)
     pendingTitleRef.current = null
 
@@ -4088,13 +4102,44 @@ export default function ChatInterface({
     setIsSwitchingChat(true)
     runtime.hydrated = false
     try {
+      const shouldLoadMeta = !existingChat?.title || !existingChat?.askModelIds?.length || !existingChat?.actModelId
       const [messagesRes, outputsRes, metaRes] = await Promise.all([
         fetch(`/api/app/conversations?conversationId=${chatId}&messages=true`),
         fetch(`/api/app/files?kind=output&conversationId=${chatId}`),
-        fetch(`/api/app/conversations?conversationId=${chatId}`),
+        shouldLoadMeta ? fetch(`/api/app/conversations?conversationId=${chatId}`) : Promise.resolve(null),
       ])
       if (requestId !== loadChatRequestRef.current) return
+      if (metaRes?.status === 404) {
+        removeCachedChat(chatId)
+        setChats((prev) => prev.filter((chat) => chat._id !== chatId))
+        runtimesRef.current.delete(chatId)
+        if (activeChatIdRef.current === chatId) {
+          activeChatIdRef.current = null
+          setActiveChatId(null)
+          setActiveChatTitle(null)
+          setActiveViewer(null)
+          syncStandaloneChatUrl(null, options)
+        }
+        setComposerNotice('That chat no longer exists.')
+        window.setTimeout(() => setComposerNotice(null), 4000)
+        return
+      }
       if (!messagesRes.ok) {
+        if (messagesRes.status === 404) {
+          removeCachedChat(chatId)
+          setChats((prev) => prev.filter((chat) => chat._id !== chatId))
+          runtimesRef.current.delete(chatId)
+          if (activeChatIdRef.current === chatId) {
+            activeChatIdRef.current = null
+            setActiveChatId(null)
+            setActiveChatTitle(null)
+            setActiveViewer(null)
+            syncStandaloneChatUrl(null, options)
+          }
+          setComposerNotice('That chat no longer exists.')
+          window.setTimeout(() => setComposerNotice(null), 4000)
+          return
+        }
         clearRuntimeMessages(runtime)
         runtime.hydrated = false
         setComposerNotice('Could not load chat messages. Try again.')
@@ -4175,7 +4220,7 @@ export default function ChatInterface({
       let resolvedTitle = existingChat?.title ?? null
       let resolvedSelectedModels = existingChat?.askModelIds?.slice(0, 4) ?? selectedModels
       let resolvedActModel = existingChat?.actModelId ?? selectedActModel
-      if (metaRes.ok) {
+      if (metaRes?.ok) {
         const meta = await metaRes.json() as {
           title?: string
           lastMode?: 'ask' | 'act'
@@ -5328,7 +5373,7 @@ export default function ChatInterface({
                     onClick={() => {
                       if (isDeleting) return
                       if (isEditing) return
-                      void loadChat(chat._id)
+                      void loadChat(chat._id, { replaceUrl: false })
                     }}
                     className={`group flex cursor-pointer items-center justify-between overflow-hidden rounded-md px-2.5 text-xs transition-all duration-200 ${
                       isDeleting ? 'max-h-0 -translate-y-1 py-0 opacity-0' : 'max-h-10 py-1.5 opacity-100'
@@ -5444,7 +5489,7 @@ export default function ChatInterface({
                           onClick={() => {
                             if (isDeleting) return
                             if (isEditing) return
-                            void loadChat(chat._id)
+                            void loadChat(chat._id, { replaceUrl: false })
                             setMobileChatListOpen(false)
                           }}
                           className={`group flex items-center justify-between overflow-hidden rounded-md px-2.5 text-xs transition-all duration-200 ${
