@@ -873,7 +873,11 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
         method: 'DELETE',
       })
       if (!res.ok) throw new Error('Failed to delete automation')
+      const payload = (await res.json().catch(() => ({}))) as { linkedConversationIds?: string[] }
       setAutomations((prev) => prev.filter((item) => item._id !== automation._id))
+      for (const chatId of payload.linkedConversationIds ?? []) {
+        dispatchChatDeleted({ chatId })
+      }
       window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
     } catch {
       // keep row in place

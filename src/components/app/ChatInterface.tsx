@@ -3950,6 +3950,47 @@ export default function ChatInterface({
     runtime.ui = createConversationUiState(uiOverrides)
   }
 
+  function removeTurnFromRuntime(chatId: string, turnId: string) {
+    const runtime = ensureConversationRuntime(chatId)
+    const removeTurn = (messages: UIMessage[]) => messages.filter((message) => (
+      ((message as { turnId?: string }).turnId || message.id) !== turnId
+    ))
+
+    const previousUserTurnIds = (runtime.askChats[0]?.messages ?? [])
+      .filter((message) => message.role === 'user')
+      .map((message) => ((message as { turnId?: string }).turnId || message.id))
+    const removedExchangeIndex = previousUserTurnIds.indexOf(turnId)
+
+    runtime.askChats.forEach((chat, index) => {
+      chat.messages = removeTurn(chat.messages as UIMessage[]) as never
+      if (activeChatIdRef.current === chatId && chatInstances[index]) {
+        chatInstances[index].setMessages([...chat.messages] as UIMessage[])
+      }
+    })
+    runtime.actChat.messages = removeTurn(runtime.actChat.messages as UIMessage[]) as never
+    if (activeChatIdRef.current === chatId) {
+      actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
+    }
+
+    if (removedExchangeIndex >= 0) {
+      runtime.ui = createConversationUiState({
+        ...runtime.ui,
+        exchangeModes: runtime.ui.exchangeModes.filter((_, index) => index !== removedExchangeIndex),
+        exchangeModels: runtime.ui.exchangeModels.filter((_, index) => index !== removedExchangeIndex),
+        selectedTabPerExchange: runtime.ui.selectedTabPerExchange.filter((_, index) => index !== removedExchangeIndex),
+        exchangeGenTypes: runtime.ui.exchangeGenTypes.filter((_, index) => index !== removedExchangeIndex),
+        generationResults: new Map(
+          [...runtime.ui.generationResults.entries()]
+            .filter(([index]) => index !== removedExchangeIndex)
+            .map(([index, value]) => [index > removedExchangeIndex ? index - 1 : index, value]),
+        ),
+        isFirstMessage: !runtime.askChats[0]?.messages.some((message) => message.role === 'user'),
+      })
+      if (activeChatIdRef.current === chatId) applyUiStateToView(runtime.ui)
+    }
+    setRuntimeHydrationVersion((value) => value + 1)
+  }
+
   function syncStandaloneChatUrl(chatId: string | null) {
     if (hideSidebar) return
     if (mode === 'automate') {
@@ -4334,8 +4375,7 @@ export default function ChatInterface({
         window.setTimeout(() => setComposerNotice(null), 5000)
         return
       }
-      runtimesRef.current.delete(cid)
-      await loadChat(cid)
+      removeTurnFromRuntime(cid, turnId)
     } catch {
       setComposerNotice('Could not delete this turn.')
       window.setTimeout(() => setComposerNotice(null), 5000)

@@ -337,12 +337,34 @@ export async function DELETE(request: NextRequest) {
     if (!automationId) {
       return NextResponse.json({ error: 'automationId required' }, { status: 400 })
     }
+    const serverSecret = getInternalApiSecret()
+    const automation = await convex.query('automations:get', {
+      automationId: automationId as Id<'automations'>,
+      userId: auth.userId,
+      serverSecret,
+    }) as AutomationForUpdateNote | null
+    const linkedConversationIds = [
+      automation?.sourceConversationId,
+      automation?.conversationId,
+    ].filter((id, index, ids): id is Id<'conversations'> => Boolean(id && ids.indexOf(id) === index))
+
     await convex.mutation('automations:remove', {
       automationId: automationId as Id<'automations'>,
       userId: auth.userId,
-      serverSecret: getInternalApiSecret(),
+      serverSecret,
     }, { throwOnError: true })
-    return NextResponse.json({ success: true })
+
+    for (const conversationId of linkedConversationIds) {
+      await convex.mutation('conversations:remove', {
+        conversationId,
+        userId: auth.userId,
+        serverSecret,
+      }, { throwOnError: true }).catch((error) => {
+        console.warn('[automations DELETE] Failed to delete linked conversation', error)
+      })
+    }
+
+    return NextResponse.json({ success: true, linkedConversationIds })
   } catch (error) {
     console.error('[automations DELETE]', error)
     return NextResponse.json({ error: 'Failed to delete automation' }, { status: 500 })
