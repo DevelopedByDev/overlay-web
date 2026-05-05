@@ -10,6 +10,22 @@ const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 type HubChat = { _id: string; title: string }
 type HubNote = { _id: string; title?: string }
 type CanonicalNoteFile = { _id: string; name?: string; textContent?: string; content?: string }
+type ProjectFileRecord = {
+  _id: string
+  name: string
+  content?: string
+  textContent?: string
+  mimeType?: string
+  extension?: string
+  kind?: 'folder' | 'note' | 'upload' | 'output'
+}
+
+function opensInDocumentEditor(file: ProjectFileRecord): boolean {
+  if (file.kind === 'note') return true
+  const ext = (file.extension || file.name.split('.').pop() || '').toLowerCase()
+  const mime = (file.mimeType || '').toLowerCase()
+  return ext === 'md' || ext === 'markdown' || ext === 'txt' || mime === 'text/markdown' || mime.startsWith('text/')
+}
 import { FileViewerSkeleton } from '@/components/ui/Skeleton'
 import ChatInterface from './ChatInterface'
 import NotebookEditor from './NotebookEditor'
@@ -18,7 +34,9 @@ import { FileViewerPanel, isEditableType } from './FileViewer'
 // ─── File viewer fetched by ID ────────────────────────────────────────────────
 
 function ProjectFileView({ fileId }: { fileId: string }) {
-  const [file, setFile] = useState<{ name: string; content: string } | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [file, setFile] = useState<ProjectFileRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [fileContent, setFileContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -32,6 +50,13 @@ function ProjectFileView({ fileId }: { fileId: string }) {
         .then((r) => r.json())
         .then((data) => {
           if (cancelled) return
+          if (opensInDocumentEditor(data)) {
+            const p = new URLSearchParams(searchParams?.toString() ?? '')
+            p.set('view', 'note')
+            p.set('id', fileId)
+            router.replace(`/app/projects?${p.toString()}`)
+            return
+          }
           setFile(data)
           setFileContent(data.textContent ?? data.content ?? '')
         })
@@ -47,7 +72,7 @@ function ProjectFileView({ fileId }: { fileId: string }) {
       cancelled = true
       clearTimeout(timeoutId)
     }
-  }, [fileId])
+  }, [fileId, router, searchParams])
 
   function handleContentChange(val: string) {
     setFileContent(val)

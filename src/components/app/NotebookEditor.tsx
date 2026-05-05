@@ -123,6 +123,7 @@ type NotebookAgentUiItem =
 const lowlight = createLowlight(common)
 const NOTEBOOK_INLINE_DIFF_STYLE_ID = 'notebook-inline-diff-styles'
 const NOTES_CHANGED_EVENT = 'overlay:notes-changed'
+const FILES_CHANGED_EVENT = 'overlay:files-changed'
 const NOTEBOOK_INLINE_MATH_MIGRATION_REGEX = /(?<!\$)\$(?![\d\s$])([^$\n]*(?:\\[a-zA-Z@]+|[=^_{}]|[a-zA-Z]\s*[+\-*/=^_]|[+\-*/=^_]\s*[a-zA-Z]|[a-zA-Z])[^$\n]*)\$(?![\d$])/g
 
 const markdownLineBreak = /\r\n?/g
@@ -995,6 +996,8 @@ export default function NotebookEditor({
           const next = prev.filter((item) => item._id !== note._id)
           return [note, ...next]
         })
+        window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
+        window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
       }
     }).catch(() => {})
   }
@@ -1132,6 +1135,7 @@ export default function NotebookEditor({
         const note = canonicalFileToNote(data.file)
         setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
         window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
+        window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
         openNote(note)
         return
       }
@@ -1145,6 +1149,7 @@ export default function NotebookEditor({
       }
       setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
       window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
+      window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
       await loadNotes()
       openNote(note)
     }
@@ -1162,6 +1167,7 @@ export default function NotebookEditor({
       }
     }
     setNotes((prev) => prev.filter((note) => note._id !== noteId))
+    window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
     if (showOwnSidebar) {
       await loadNotes()
     }

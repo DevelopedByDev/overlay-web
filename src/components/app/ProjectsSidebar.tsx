@@ -35,7 +35,16 @@ interface ProjectFile {
   name: string
   type: 'file' | 'folder'
   kind?: 'folder' | 'note' | 'upload' | 'output'
+  mimeType?: string
+  extension?: string
   parentId: string | null
+}
+
+function opensInDocumentEditor(file: ProjectFile): boolean {
+  if (file.kind === 'note') return true
+  const ext = (file.extension || file.name.split('.').pop() || '').toLowerCase()
+  const mime = (file.mimeType || '').toLowerCase()
+  return ext === 'md' || ext === 'markdown' || ext === 'txt' || mime === 'text/markdown' || mime.startsWith('text/')
 }
 
 // ─── Project file tree (nested folders) ───────────────────────────────────────
@@ -424,7 +433,10 @@ function ProjectNode({
                   legacyInline
                   expandedIds={expandedFileIds}
                   onToggleFolder={toggleInlineFileFolder}
-                  onOpenFile={(id) => onNavigateItem(project, 'file', id)}
+                  onOpenFile={(id) => {
+                    const target = items.files.find((candidate) => candidate._id === id)
+                    onNavigateItem(project, target && opensInDocumentEditor(target) ? 'note' : 'file', id)
+                  }}
                   onDeleteFile={handleDeleteInlineFile}
                 />
               ))}
@@ -1092,7 +1104,10 @@ export default function ProjectsSidebar() {
                   baseIndentPx={TREE_GUTTER_PX}
                   expandedIds={expandedProjFolderIds}
                   onToggleFolder={toggleProjFolder}
-                  onOpenFile={(id) => projectNav('file', id)}
+                  onOpenFile={(id) => {
+                    const target = projectFiles.find((candidate) => candidate._id === id)
+                    projectNav(target && opensInDocumentEditor(target) ? 'note' : 'file', id)
+                  }}
                   onDeleteFile={handleDeleteFile}
                 />
               ))}

@@ -6,11 +6,11 @@ import {
   BookOpen, Brain, Trash2, Plus, X, FilePlus, FolderPlus, FolderInput, Copy, Check,
   ChevronRight, ChevronDown, FileText, Folder, FolderOpen, Search,
   LayoutList, LayoutGrid, RefreshCw, SquareMousePointer, Loader2,
-  PanelRight, Maximize2,
+  ArrowLeft, Upload,
 } from 'lucide-react'
 import { FileTreeSkeleton, KnowledgeListSkeleton } from '@/components/ui/Skeleton'
 import posthog from 'posthog-js'
-import { FileViewerPanel, getFileType, isEditableType } from './FileViewer'
+import { FileViewer, getFileType, isEditableType } from './FileViewer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,12 +32,21 @@ interface FileNode {
   parentId: string | null
   content?: string
   textContent?: string
+  mimeType?: string
+  extension?: string
   sizeBytes?: number
   isStorageBacked?: boolean
   downloadUrl?: string
   outputType?: string
   createdAt: number
   updatedAt: number
+}
+
+function opensInDocumentEditor(file: FileNode): boolean {
+  if (file.kind === 'note') return true
+  const ext = (file.extension || file.name.split('.').pop() || '').toLowerCase()
+  const mime = (file.mimeType || '').toLowerCase()
+  return ext === 'md' || ext === 'markdown' || ext === 'txt' || mime === 'text/markdown' || mime.startsWith('text/')
 }
 
 type Tab = 'memories' | 'files' | 'outputs'
@@ -61,6 +70,7 @@ const DIALOG_ACTION_BUTTON_CLASS =
   'px-3 py-1.5 rounded-md text-xs border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
 
 const IMPORT_MEMORY_PROMPT = 'Export all of my stored memories and any context you\'ve learned about me from past conversations. Preserve my words verbatim where possible, especially for instructions and preferences.'
+const FILES_CHANGED_EVENT = 'overlay:files-changed'
 
 function filePathLabel(all: FileNode[], file: FileNode): string {
   const parts: string[] = []
@@ -279,25 +289,44 @@ export default function KnowledgeView({
   const [filesLoading, setFilesLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [fileContent, setFileContent] = useState('')
-  const [filePreviewMode, setFilePreviewMode] = useState<'dialog' | 'sidebar'>('dialog')
+  const [fileTitle, setFileTitle] = useState('')
   const [isSavingFile, setIsSavingFile] = useState(false)
   const [dialog, setDialog] = useState<{ type: 'file' | 'folder'; parentId: string | null } | null>(null)
   const [dialogName, setDialogName] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileUploadRef = useRef<HTMLInputElement>(null)
   const folderUploadRef = useRef<HTMLInputElement>(null)
+  const createMenuRef = useRef<HTMLDivElement>(null)
+  const uploadMenuRef = useRef<HTMLDivElement>(null)
+  const [createMenuOpen, setCreateMenuOpen] = useState(false)
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
 
   const [memorySearchOpen, setMemorySearchOpen] = useState(false)
   const [memorySearchQuery, setMemorySearchQuery] = useState('')
-  const [fileSearchOpen, setFileSearchOpen] = useState(false)
-  const [fileSearchQuery, setFileSearchQuery] = useState('')
+  const [fileSearchQuery] = useState('')
 
   const [selectMode, setSelectMode] = useState(false)
   const [selectedMemoryIds, setSelectedMemoryIds] = useState<Set<string>>(() => new Set())
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(() => new Set())
   const [selectedOutputIds, setSelectedOutputIds] = useState<Set<string>>(() => new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
+
+  useEffect(() => {
+    if (!createMenuOpen && !uploadMenuOpen) return
+    function handleMouseDown(e: MouseEvent) {
+      const target = e.target as Node
+      if (createMenuOpen && createMenuRef.current && !createMenuRef.current.contains(target)) {
+        setCreateMenuOpen(false)
+      }
+      if (uploadMenuOpen && uploadMenuRef.current && !uploadMenuRef.current.contains(target)) {
+        setUploadMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [createMenuOpen, uploadMenuOpen])
 
   useEffect(() => {
     setSelectMode(false)
@@ -363,9 +392,11 @@ export default function KnowledgeView({
       if (selectedFile && selectedFileIds.has(selectedFile._id)) {
         setSelectedFile(null)
         setFileContent('')
+        setFileTitle('')
         updateQuery({ file: null })
       }
       await loadFiles()
+      window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
       exitSelectMode()
     } finally {
       setBulkDeleting(false)
@@ -392,10 +423,14 @@ export default function KnowledgeView({
     const res = await fetch(`/api/app/files?fileId=${fileId}`)
     if (!res.ok) return
     const file = (await res.json()) as FileNode
+    if (opensInDocumentEditor(file)) {
+      router.replace(`/app/notes?id=${encodeURIComponent(file._id)}`)
+      return
+    }
     setSelectedFile(file)
+    setFileTitle(file.name)
     setFileContent(file.textContent ?? file.content ?? '')
-    setFilePreviewMode('dialog')
-  }, [])
+  }, [router])
 
   const loadMemories = useCallback(async () => {
     try {
@@ -526,7 +561,7 @@ export default function KnowledgeView({
   function closeFileDialog() {
     setSelectedFile(null)
     setFileContent('')
-    setFilePreviewMode('dialog')
+    setFileTitle('')
     updateQuery({ file: null })
   }
 
@@ -552,6 +587,7 @@ export default function KnowledgeView({
           posthog.capture('knowledge_folder_created', { folder_name: name })
         }
         setDialogName(''); setDialog(null); await loadFiles()
+        window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
       }
     } finally { setIsCreating(false) }
   }
@@ -566,11 +602,12 @@ export default function KnowledgeView({
     const data = await res.json() as { id?: string; file?: unknown }
     if (!data.id) return
     window.dispatchEvent(new CustomEvent('overlay:notes-changed', { detail: { file: data.file } }))
+    window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
     router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
   }
 
   function handleSelectFile(node: FileNode) {
-    if (node.kind === 'note') {
+    if (opensInDocumentEditor(node)) {
       router.push(`/app/notes?id=${encodeURIComponent(node._id)}`)
       return
     }
@@ -588,9 +625,11 @@ export default function KnowledgeView({
     if (selectedFile?._id === id) {
       setSelectedFile(null)
       setFileContent('')
+      setFileTitle('')
       updateQuery({ file: null })
     }
     await loadFiles()
+    window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
   }
 
   function handleFileContentChange(val: string) {
@@ -607,6 +646,27 @@ export default function KnowledgeView({
       setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f } : f))
       setIsSavingFile(false)
     }, 800)
+  }
+
+  function handleFileTitleChange(val: string) {
+    setFileTitle(val)
+    if (!selectedFile) return
+    const nextName = val.trim() || 'Untitled'
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+    titleSaveTimerRef.current = setTimeout(async () => {
+      setIsSavingFile(true)
+      const res = await fetch('/api/app/files', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: selectedFile._id, name: nextName }),
+      })
+      if (res.ok) {
+        setSelectedFile((prev) => prev ? { ...prev, name: nextName } : prev)
+        setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f, name: nextName } : f))
+        window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
+      }
+      setIsSavingFile(false)
+    }, 600)
   }
 
   async function readUploadError(res: Response, fallback: string): Promise<string> {
@@ -665,6 +725,7 @@ export default function KnowledgeView({
         return
       }
       await loadFiles()
+      window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
     } finally {
       setFileUploadPending(null)
       e.target.value = ''
@@ -706,6 +767,7 @@ export default function KnowledgeView({
         }
       }
       await loadFiles()
+      window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
     } finally {
       setFileUploadPending(null)
       e.target.value = ''
@@ -968,91 +1030,43 @@ export default function KnowledgeView({
         </div>
       )}
 
-      {/* ── View file preview (dialog or sidebar) ── */}
-      {selectedFile && filePreviewMode === 'dialog' && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) closeFileDialog() }}
-        >
-          <div
-            className="flex h-[min(90vh,800px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <FileViewerPanel
-              name={selectedFile.name}
-              content={fileContent}
-              url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/app/files/${selectedFile._id}/content` : undefined}
-              isSaving={isSavingFile}
-              isEditable={isEditableType(selectedFile.name)}
-              onContentChange={handleFileContentChange}
-              headerRight={
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setFilePreviewMode('sidebar')}
-                    title="Dock to sidebar"
-                    className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <PanelRight size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeFileDialog}
-                    className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              }
-            />
-          </div>
-        </div>
-      )}
-      {selectedFile && filePreviewMode === 'sidebar' && (
-        <div className="fixed inset-y-0 right-0 z-50 flex w-[40rem] max-w-full flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl">
-          <FileViewerPanel
-            name={selectedFile.name}
-            content={fileContent}
-            url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/app/files/${selectedFile._id}/content` : undefined}
-            isSaving={isSavingFile}
-            isEditable={isEditableType(selectedFile.name)}
-            onContentChange={handleFileContentChange}
-            headerRight={
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setFilePreviewMode('dialog')}
-                  title="Pop out to dialog"
-                  className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <Maximize2 size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={closeFileDialog}
-                  className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            }
-          />
-        </div>
-      )}
-
       {/* ── Header ── */}
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
-        <div className="flex min-w-0 shrink-0 items-center gap-3">
-          <h1 className="text-sm font-medium text-[var(--foreground)]">
-            {mode === 'files' ? 'Files' : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
-          </h1>
-          {activeTab !== 'outputs' && !memorySearchOpen && !fileSearchOpen && (
-            <span className="text-xs text-[var(--muted-light)]">
-              {activeTab === 'memories' ? memoriesFiltered.length : filesFiltered.length} items
-            </span>
-          )}
-        </div>
-        {activeTab === 'memories' && memorySearchOpen ? (
+        {selectedFile ? (
+          <>
+            <button
+              type="button"
+              onClick={closeFileDialog}
+              title="Back to files"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            >
+              <ArrowLeft size={17} />
+            </button>
+            <input
+              type="text"
+              value={fileTitle}
+              onChange={(e) => handleFileTitleChange(e.target.value)}
+              placeholder="File title..."
+              className="min-w-0 flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+              style={{ fontFamily: 'var(--font-serif)' }}
+            />
+            {isSavingFile ? (
+              <span className="shrink-0 text-[11px] text-[var(--muted-light)]">Saving...</span>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div className="flex min-w-0 shrink-0 items-center gap-3">
+              <h1 className="text-sm font-medium text-[var(--foreground)]">
+                {mode === 'files' ? 'Files' : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
+              </h1>
+              {activeTab !== 'outputs' && !memorySearchOpen && (
+                <span className="text-xs text-[var(--muted-light)]">
+                  {activeTab === 'memories' ? memoriesFiltered.length : filesFiltered.length} items
+                </span>
+              )}
+            </div>
+            {activeTab === 'memories' && memorySearchOpen ? (
           <input
             value={memorySearchQuery}
             onChange={(e) => setMemorySearchQuery(e.target.value)}
@@ -1060,18 +1074,10 @@ export default function KnowledgeView({
             autoFocus
             className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
           />
-        ) : activeTab === 'files' && fileSearchOpen ? (
-          <input
-            value={fileSearchQuery}
-            onChange={(e) => setFileSearchQuery(e.target.value)}
-            placeholder="Search file names…"
-            autoFocus
-            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-          />
-        ) : (
-          <div className="flex-1" />
-        )}
-        <div className="flex shrink-0 items-center gap-2">
+            ) : (
+              <div className="flex-1" />
+            )}
+            <div className="flex shrink-0 items-center gap-2">
           {(activeTab === 'memories' || activeTab === 'files' || activeTab === 'outputs') &&
             (selectMode ? (
               <>
@@ -1112,10 +1118,9 @@ export default function KnowledgeView({
                 type="button"
                 title="Select items"
                 onClick={() => setSelectMode(true)}
-                className={TOOLBAR_FILLED_BUTTON_CLASS}
+                className={TOOLBAR_ICON_BUTTON_CLASS}
               >
-                <SquareMousePointer size={13} />
-                Select
+                <SquareMousePointer size={14} />
               </button>
             ))}
           {activeTab === 'outputs' && (
@@ -1224,53 +1229,96 @@ export default function KnowledgeView({
             </>
           ) : activeTab === 'files' ? (
             <>
-              <button
-                type="button"
-                title="Search files"
-                onClick={() => setFileSearchOpen((v) => !v)}
-                className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                  fileSearchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
-                }`}
-              >
-                <Search size={14} strokeWidth={1.75} />
-              </button>
               {mode === 'files' ? (
+                <div ref={createMenuRef} className="relative">
+                  <button
+                    type="button"
+                    title="Create"
+                    onClick={() => {
+                      setCreateMenuOpen((v) => !v)
+                      setUploadMenuOpen(false)
+                    }}
+                    className={TOOLBAR_ICON_BUTTON_CLASS}
+                    aria-expanded={createMenuOpen}
+                    aria-haspopup="menu"
+                  >
+                    <Plus size={15} />
+                  </button>
+                  {createMenuOpen ? (
+                    <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreateMenuOpen(false)
+                          void handleCreateNoteFile()
+                        }}
+                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+                      >
+                        <BookOpen size={13} />
+                        New File
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreateMenuOpen(false)
+                          setDialog({ type: 'folder', parentId: null })
+                          setDialogName('')
+                        }}
+                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+                      >
+                        <FolderPlus size={13} />
+                        New Folder
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div ref={uploadMenuRef} className="relative">
                 <button
                   type="button"
-                  onClick={() => void handleCreateNoteFile()}
-                  className={TOOLBAR_FILLED_BUTTON_CLASS}
+                  title="Upload"
+                  onClick={() => {
+                    setUploadMenuOpen((v) => !v)
+                    setCreateMenuOpen(false)
+                  }}
+                  className={TOOLBAR_ICON_BUTTON_CLASS}
+                  aria-expanded={uploadMenuOpen}
+                  aria-haspopup="menu"
                 >
-                  <BookOpen size={13} />
-                  New File
+                  <Upload size={15} />
                 </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => { setDialog({ type: 'folder', parentId: null }); setDialogName('') }}
-                className={TOOLBAR_FILLED_BUTTON_CLASS}
-              >
-                <FolderPlus size={13} />
-                New Folder
-              </button>
-              <button
-                type="button"
-                onClick={() => fileUploadRef.current?.click()}
-                className={TOOLBAR_FILLED_BUTTON_CLASS}
-              >
-                <FilePlus size={13} />
-                Upload File
-              </button>
-              <button
-                type="button"
-                onClick={() => folderUploadRef.current?.click()}
-                className={TOOLBAR_FILLED_BUTTON_CLASS}
-              >
-                <FolderPlus size={13} />
-                Upload Folder
-              </button>
+                {uploadMenuOpen ? (
+                  <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMenuOpen(false)
+                        fileUploadRef.current?.click()
+                      }}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+                    >
+                      <FilePlus size={13} />
+                      Upload File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMenuOpen(false)
+                        folderUploadRef.current?.click()
+                      }}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+                    >
+                      <FolderInput size={13} />
+                      Upload Folder
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </>
           ) : null}
-        </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Main content ── */}
@@ -1279,6 +1327,35 @@ export default function KnowledgeView({
           activeTab === 'outputs' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'
         }`}
       >
+        {activeTab === 'files' && selectedFile && (
+          <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col">
+            {isEditableType(selectedFile.name) ? (
+              <>
+                <textarea
+                  value={fileContent}
+                  onChange={(e) => handleFileContentChange(e.target.value)}
+                  placeholder="Start typing..."
+                  className="min-h-[calc(100vh-11rem)] w-full flex-1 resize-none bg-transparent px-2 py-4 font-mono text-sm leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
+                />
+                <div className="shrink-0 border-t border-[var(--border)] px-2 py-2 text-[11px] text-[var(--muted-light)]">
+                  Reference in chat with{' '}
+                  <code className="rounded bg-[var(--surface-subtle)] px-1 py-0.5 font-mono text-[var(--foreground)]">
+                    @{selectedFile.name}
+                  </code>
+                </div>
+              </>
+            ) : (
+              <div className="min-h-[calc(100vh-11rem)] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+                <FileViewer
+                  name={selectedFile.name}
+                  content={fileContent}
+                  url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/app/files/${selectedFile._id}/content` : undefined}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'memories' && (memorySavePendingPreview || importPendingPreview) && (
           <div
             className="mx-auto mb-4 flex max-w-3xl items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3"
@@ -1399,7 +1476,7 @@ export default function KnowledgeView({
           </div>
         )}
 
-        {activeTab === 'files' && fileUploadPending && (
+        {activeTab === 'files' && !selectedFile && fileUploadPending && (
           <div
             className="mx-auto mb-4 flex max-w-3xl items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3"
             aria-busy
@@ -1412,26 +1489,26 @@ export default function KnowledgeView({
             </div>
           </div>
         )}
-        {activeTab === 'files' && fileUploadError && (
+        {activeTab === 'files' && !selectedFile && fileUploadError && (
           <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
             {fileUploadError}
           </p>
         )}
 
-        {activeTab === 'files' && filesLoading && <FileTreeSkeleton rows={10} />}
-        {activeTab === 'files' && !filesLoading && files.length === 0 && (
+        {activeTab === 'files' && !selectedFile && filesLoading && <FileTreeSkeleton rows={10} />}
+        {activeTab === 'files' && !selectedFile && !filesLoading && files.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
             <FileText size={32} strokeWidth={1} className="opacity-40" />
             <p className="text-sm">No files yet</p>
           </div>
         )}
-        {activeTab === 'files' && !filesLoading && files.length > 0 && rootNodes.length === 0 && (
+        {activeTab === 'files' && !selectedFile && !filesLoading && files.length > 0 && rootNodes.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
             <Search size={32} strokeWidth={1} className="opacity-40" />
             <p className="text-sm">No files match your search</p>
           </div>
         )}
-        {activeTab === 'files' && !filesLoading && rootNodes.length > 0 && layout === 'list' && (
+        {activeTab === 'files' && !selectedFile && !filesLoading && rootNodes.length > 0 && layout === 'list' && (
           <div className="mx-auto max-w-3xl space-y-0.5">
             {rootNodes.map((node) => (
               <FileTreeNode
@@ -1439,7 +1516,7 @@ export default function KnowledgeView({
                 node={node}
                 allNodes={filesFiltered}
                 depth={0}
-                selectedId={selectedFile?._id ?? null}
+                selectedId={null}
                 onSelect={handleSelectFile}
                 onDelete={handleDeleteNode}
                 bulkSelectMode={selectMode}
@@ -1449,7 +1526,7 @@ export default function KnowledgeView({
             ))}
           </div>
         )}
-        {activeTab === 'files' && !filesLoading && flatFilesSorted.length > 0 && layout === 'cards' && (
+        {activeTab === 'files' && !selectedFile && !filesLoading && flatFilesSorted.length > 0 && layout === 'cards' && (
           <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
             {flatFilesSorted.map((file) => {
               const bulkSel = selectedFileIds.has(file._id)

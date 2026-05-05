@@ -371,6 +371,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
         },
       },
     }))
+    window.dispatchEvent(new CustomEvent('overlay:files-changed'))
     setMobileMenuOpen(false)
     router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
   }

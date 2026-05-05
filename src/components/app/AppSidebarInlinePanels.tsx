@@ -31,6 +31,7 @@ import {
 
 const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
+const FILES_CHANGED_EVENT = 'overlay:files-changed'
 
 type Conversation = { _id: string; title: string; lastModified: number }
 type Note = { _id: string; title: string; updatedAt: number }
@@ -44,7 +45,16 @@ type ProjectFile = {
   type: 'file' | 'folder'
   kind?: 'folder' | 'note' | 'upload' | 'output'
   parentId: string | null
+  mimeType?: string
+  extension?: string
   outputType?: string
+}
+
+function opensInDocumentEditor(file: ProjectFile): boolean {
+  if (file.kind === 'note') return true
+  const ext = (file.extension || file.name.split('.').pop() || '').toLowerCase()
+  const mime = (file.mimeType || '').toLowerCase()
+  return ext === 'md' || ext === 'markdown' || ext === 'txt' || mime === 'text/markdown' || mime.startsWith('text/')
 }
 
 const panelItemClass =
@@ -452,9 +462,7 @@ function FilesBranch({
           >
             <ChevronRight size={11} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
           </button>
-        ) : (
-          <span className="w-4 shrink-0" aria-hidden />
-        )}
+        ) : null}
         {file.type === 'folder'
           ? open
             ? <FolderOpen size={12} className="shrink-0" />
@@ -514,11 +522,15 @@ export function FilesInlinePanel({
   }, [loadItems])
 
   useEffect(() => {
-    function handleNotesChanged() {
+    function handleFilesChanged() {
       void loadItems()
     }
-    window.addEventListener('overlay:notes-changed', handleNotesChanged)
-    return () => window.removeEventListener('overlay:notes-changed', handleNotesChanged)
+    window.addEventListener('overlay:notes-changed', handleFilesChanged)
+    window.addEventListener(FILES_CHANGED_EVENT, handleFilesChanged)
+    return () => {
+      window.removeEventListener('overlay:notes-changed', handleFilesChanged)
+      window.removeEventListener(FILES_CHANGED_EVENT, handleFilesChanged)
+    }
   }, [loadItems])
 
   function toggleFile(fileId: string) {
@@ -531,7 +543,7 @@ export function FilesInlinePanel({
   }
 
   function openFile(file: ProjectFile) {
-    if (file.kind === 'note') {
+    if (opensInDocumentEditor(file)) {
       router.push(`/app/notes?id=${encodeURIComponent(file._id)}`)
     } else {
       router.push(`/app/files?file=${encodeURIComponent(file._id)}`)
@@ -803,7 +815,7 @@ function ProjectBranch({
               {rootFiles.map((file) => (
                 <div
                   key={file._id}
-                  onClick={() => onNavigateItem(project, 'file', file._id)}
+                  onClick={() => onNavigateItem(project, opensInDocumentEditor(file) ? 'note' : 'file', file._id)}
                   className={`${panelItemClass} cursor-pointer`}
                   style={{ paddingLeft: `${34 + depth * 14}px` }}
                 >
