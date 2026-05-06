@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
+import { DeleteAccountSection } from '@/components/account/DeleteAccountSection'
 import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { PageNavbar } from '@/components/PageNavbar'
@@ -734,17 +735,20 @@ function AccountPageContent() {
                       <p className={`text-sm ${t.muted}`}>{user?.email}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={handleSignOut}
-                    disabled={signingOut}
-                    className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
-                      isLandingDark
-                        ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
-                        : 'text-red-600 hover:bg-red-50 hover:text-red-700'
-                    }`}
-                  >
-                    {signingOut ? 'Signing out...' : 'Sign out'}
-                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <button
+                      onClick={handleSignOut}
+                      disabled={signingOut}
+                      className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
+                        isLandingDark
+                          ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
+                          : 'text-red-600 hover:bg-red-50 hover:text-red-700'
+                      }`}
+                    >
+                      {signingOut ? 'Signing out...' : 'Sign out'}
+                    </button>
+                    <DeleteAccountSection isLandingDark={isLandingDark} />
+                  </div>
                 </div>
               </div>
 

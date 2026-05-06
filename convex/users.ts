@@ -375,3 +375,219 @@ export const setChatStartersByServer = mutation({
     return { ok: true as const }
   },
 })
+
+/**
+ * Permanently delete every Convex row owned by `userId`, plus return the R2 keys
+ * and Convex storage handles that the caller must purge afterwards.
+ *
+ * App Store guideline 5.1.1(v) requires in-app account deletion, so this is the
+ * ground truth for "delete my account" on web, mobile, and desktop. Anything
+ * keyed by userId in `convex/schema.ts` MUST be cleared here — adding a new
+ * userId-scoped table without updating this mutation is a privacy bug.
+ *
+ * Server-secret-gated; never expose to the client.
+ */
+export const deleteUserAccountByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.object({
+    r2Keys: v.array(v.string()),
+    storageIds: v.array(v.string()),
+    stripeSubscriptionId: v.optional(v.string()),
+    stripeCustomerId: v.optional(v.string()),
+    deletedRowCount: v.number(),
+    email: v.optional(v.string()),
+  }),
+  handler: async (ctx, { serverSecret, userId }) => {
+    requireServerSecret(serverSecret)
+
+    if (!userId.trim()) throw new Error('userId is required')
+
+    let deletedRowCount = 0
+    const r2Keys: string[] = []
+    const storageIds: string[] = []
+
+    // Capture Stripe linkage from the subscription row before we delete it so
+    // the API route can cancel the live subscription on Stripe.
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    const stripeSubscriptionId = subscription?.stripeSubscriptionId
+    const stripeCustomerId = subscription?.stripeCustomerId
+    const email = subscription?.email
+
+    // Helper: delete every row returned by a query.
+    async function deleteIndexed(
+      runQuery: () => Promise<Array<{ _id: import('./_generated/dataModel').GenericId<string> }>>,
+    ): Promise<void> {
+      const rows = await runQuery()
+      for (const row of rows) {
+        await ctx.db.delete(row._id)
+        deletedRowCount += 1
+      }
+    }
+
+    // 1. Tables with a `by_userId` (or compound) index — single-key lookup.
+    await deleteIndexed(() =>
+      ctx.db
+        .query('userUiSettings')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('budgetTopUps')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('tokenUsage')
+        .withIndex('by_userId_period', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('daytonaWorkspaces')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('daytonaUsageLedger')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('toolInvocations')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('dailyUsage')
+        .withIndex('by_userId_date', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('projects')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('skills')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('automations')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('automationRuns')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('mcpServers')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('conversations')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('conversationMessages')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('notes')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('memories')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('knowledgeChunks')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('outputs')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+
+    // 2. Files: collect R2 keys and Convex storage IDs before deletion so the
+    //    API route can purge the underlying blobs after the DB write commits.
+    const fileRows = await ctx.db
+      .query('files')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .collect()
+    for (const file of fileRows) {
+      if (file.r2Key) r2Keys.push(file.r2Key)
+      if (file.storageId) storageIds.push(file.storageId)
+      await ctx.db.delete(file._id)
+      deletedRowCount += 1
+    }
+
+    // 3. Tables that store userId but lack a by_userId index — full table scan
+    //    is the only correct option. Acceptable here because account deletion
+    //    is rare and off the hot path.
+    const embeddingRows = await ctx.db
+      .query('knowledgeChunkEmbeddings')
+      .filter((q) => q.eq(q.field('userId'), userId))
+      .collect()
+    for (const row of embeddingRows) {
+      await ctx.db.delete(row._id)
+      deletedRowCount += 1
+    }
+
+    const deltaRows = await ctx.db
+      .query('conversationMessageDeltas')
+      .filter((q) => q.eq(q.field('userId'), userId))
+      .collect()
+    for (const row of deltaRows) {
+      await ctx.db.delete(row._id)
+      deletedRowCount += 1
+    }
+
+    // 4. Subscription row last so Stripe linkage stays available above. After
+    //    this, the user has no rows left in Convex.
+    if (subscription) {
+      await ctx.db.delete(subscription._id)
+      deletedRowCount += 1
+    }
+
+    return {
+      r2Keys,
+      storageIds,
+      stripeSubscriptionId,
+      stripeCustomerId,
+      deletedRowCount,
+      email,
+    }
+  },
+})
