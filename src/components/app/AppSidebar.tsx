@@ -30,6 +30,8 @@ import {
 } from './AppSidebarInlinePanels'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
+import { GlobalSearchDialog } from './GlobalSearchDialog'
+import type { MentionType } from './chat-interface/mention-types'
 
 const NAV_ITEMS: Array<{
   href?: string
@@ -442,8 +444,27 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     </Link>
   )
 
-  const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false)
-  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('')
+  // Global Cmd/Ctrl+K command palette. The same dialog is reused by the per-section
+  // search buttons in the sidebar; passing `globalSearchInitialCategory` opens it
+  // pre-filtered to the current section (chats, files, …).
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
+  const [globalSearchInitialCategory, setGlobalSearchInitialCategory] = useState<MentionType | null>(null)
+  const openGlobalSearch = useCallback((category: MentionType | null) => {
+    setGlobalSearchInitialCategory(category)
+    setGlobalSearchOpen(true)
+  }, [])
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const isMeta = e.metaKey || e.ctrlKey
+      if (isMeta && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setGlobalSearchInitialCategory(null)
+        setGlobalSearchOpen((prev) => !prev)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   /** Hide until loaded so paid users never see a flash of the upgrade CTA. */
   const showUpgradeCta = entitlements !== null && entitlements.tier === 'free'
@@ -455,7 +476,13 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
         : projectsOpen
           ? { label: 'New project', onClick: handleCreateProject }
           : automationsOpen
-            ? { label: 'New automation', onClick: () => router.push('/app/automations?new=1') }
+            ? {
+                label: 'New automation',
+                // Always navigate to the bare automations page. If an automation is
+                // already open (URL has automationId/id/tab params), this clears them
+                // and brings the user back to the empty composer / new-automation entry.
+                onClick: () => router.push('/app/automations'),
+              }
             : null
     : null
   const hasInlineChildren = (href?: string) =>
@@ -689,34 +716,20 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
           <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
             {contextualAction && (chatOpen || filesSectionOpen) ? (
               <div className="mb-3 flex items-center gap-1.5">
-                {sidebarSearchOpen ? (
-                  <input
-                    value={sidebarSearchQuery}
-                    onChange={(e) => setSidebarSearchQuery(e.target.value)}
-                    placeholder={chatOpen ? 'Search chats...' : 'Search files...'}
-                    autoFocus
-                    className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void contextualAction.onClick()}
-                    className="flex flex-1 items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <span className="min-w-0 flex-1 text-left text-xs">{contextualAction.label}</span>
-                  </button>
-                )}
                 <button
                   type="button"
-                  title={chatOpen ? 'Search chats' : 'Search files'}
-                  onClick={() => { setSidebarSearchOpen((v) => !v); if (sidebarSearchOpen) setSidebarSearchQuery('') }}
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-                    sidebarSearchOpen
-                      ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                      : 'bg-[var(--surface-elevated)] text-[var(--muted)]'
-                  }`}
+                  onClick={() => void contextualAction.onClick()}
+                  className="flex flex-1 items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                 >
-                  {sidebarSearchOpen ? <X size={13} strokeWidth={1.75} /> : <Search size={13} strokeWidth={1.75} />}
+                  <span className="min-w-0 flex-1 text-left text-xs">{contextualAction.label}</span>
+                </button>
+                <button
+                  type="button"
+                  title={chatOpen ? 'Search chats (\u2318K)' : 'Search files (\u2318K)'}
+                  onClick={() => openGlobalSearch(chatOpen ? 'chat' : 'file')}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                >
+                  <Search size={13} strokeWidth={1.75} />
                 </button>
               </div>
             ) : contextualAction ? (
@@ -732,13 +745,13 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
               {chatOpen ? (
                 <ChatInlinePanel
                   refreshKey={chatPanelRefreshKey}
-                  searchQuery={sidebarSearchQuery}
+                  searchQuery=""
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
               {filesSectionOpen ? (
                 <FilesInlinePanel
-                  searchQuery={sidebarSearchQuery}
+                  searchQuery=""
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
@@ -1008,6 +1021,15 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
         {settings.useSecondarySidebar && projectsOpen ? <ProjectsSidebar /> : null}
         {settings.useSecondarySidebar && toolsOpen ? <ToolsSidebar /> : null}
       </div>
+
+      <GlobalSearchDialog
+        open={globalSearchOpen}
+        onClose={() => setGlobalSearchOpen(false)}
+        initialCategory={globalSearchInitialCategory}
+        onNewChat={() => {
+          void handleCreateChat()
+        }}
+      />
     </>
   )
 }
