@@ -6444,6 +6444,7 @@ export default function ChatInterface({
                       instLoading
                     }
                     onOpenFilePreview={openFilePreview}
+                    userMentions={(msg as { metadata?: { mentions?: Array<{ type: string; id: string; name: string }> } })?.metadata?.mentions}
                   />
                 )
               }

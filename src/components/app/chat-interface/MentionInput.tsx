@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { MentionPopup } from './MentionPopup'
 import { useMentionData } from './useMentionData'
-import type { MentionCategory, MentionItem } from './mention-types'
+import type { MentionCategory, MentionItem, MentionType } from './mention-types'
 
 export interface MentionInputHandle {
   focus: () => void
@@ -172,6 +172,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const [mentionQuery, setMentionQuery] = useState('')
     const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null)
     const [categories, setCategories] = useState<MentionCategory[]>([])
+    const [selectedCategory, setSelectedCategory] = useState<MentionType | null>(null)
     const triggerOffsetRef = useRef<number>(0)
     const isComposingRef = useRef(false)
     const suppressInputRef = useRef(false)
@@ -279,6 +280,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
 
         setShowPopup(false)
         setMentionQuery('')
+        setSelectedCategory(null)
 
         // Update state
         const text = extractPlainTextFromElement(el)
@@ -353,6 +355,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const closePopup = useCallback(() => {
       setShowPopup(false)
       setMentionQuery('')
+      setSelectedCategory(null)
     }, [])
 
     // Auto-resize
@@ -397,6 +400,8 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
             }}
             onClose={closePopup}
             query={mentionQuery}
+            selectedCategory={selectedCategory}
+            onSelectedCategoryChange={setSelectedCategory}
           />
         )}
       </div>
