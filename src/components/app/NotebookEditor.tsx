@@ -29,6 +29,7 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  ArrowLeft,
   Bold,
   BookImage,
   Check,
@@ -1200,7 +1201,15 @@ export default function NotebookEditor({
       {activeNote ? (
         <div className="flex h-16 shrink-0 border-b border-[var(--border)]">
           {/* Left side - Note title section */}
-          <div className="flex flex-1 items-center justify-between px-6">
+          <div className="flex flex-1 items-center justify-between gap-3 px-6">
+            <button
+              type="button"
+              onClick={() => router.push('/app/files')}
+              title="Back to files"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            >
+              <ArrowLeft size={17} />
+            </button>
             <input
               type="text"
               value={title}

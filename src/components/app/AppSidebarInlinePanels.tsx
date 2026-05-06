@@ -421,6 +421,7 @@ function FilesBranch({
   activeFileId,
   onToggle,
   onOpen,
+  onMove,
 }: {
   file: ProjectFile
   allFiles: ProjectFile[]
@@ -429,6 +430,7 @@ function FilesBranch({
   activeFileId: string | null
   onToggle: (fileId: string) => void
   onOpen: (file: ProjectFile) => void
+  onMove: (fileId: string, parentId: string | null) => void
 }) {
   const children = allFiles
     .filter((candidate) => candidate.parentId === file._id)
@@ -437,24 +439,42 @@ function FilesBranch({
       return a.name.localeCompare(b.name)
     })
   const open = expanded.has(file._id)
+  const [dragOver, setDragOver] = useState(false)
 
   return (
     <div>
       <div
         role="button"
         tabIndex={0}
-        onClick={() => {
-          if (file.type === 'folder') onToggle(file._id)
-          else onOpen(file)
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData('application/x-overlay-file-id', file._id)
+          e.dataTransfer.effectAllowed = 'move'
         }}
+        onDragOver={(e) => {
+          if (file.type !== 'folder') return
+          if (!e.dataTransfer.types.includes('application/x-overlay-file-id')) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          if (!dragOver) setDragOver(true)
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          if (file.type !== 'folder') return
+          e.preventDefault()
+          setDragOver(false)
+          const fileId = e.dataTransfer.getData('application/x-overlay-file-id')
+          if (!fileId || fileId === file._id) return
+          onMove(fileId, file._id)
+        }}
+        onClick={() => onOpen(file)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
-            if (file.type === 'folder') onToggle(file._id)
-            else onOpen(file)
+            onOpen(file)
           }
         }}
-        className={`${panelItemClass} cursor-pointer ${activeFileId === file._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+        className={`${panelItemClass} cursor-pointer ${dragOver ? 'bg-[var(--surface-subtle)] ring-1 ring-inset ring-[var(--foreground)]' : activeFileId === file._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
         style={{ paddingLeft: `${10 + depth * 14}px` }}
       >
         {file.type === 'folder' ? (
@@ -490,6 +510,7 @@ function FilesBranch({
           activeFileId={activeFileId}
           onToggle={onToggle}
           onOpen={onOpen}
+          onMove={onMove}
         />
       ))}
     </div>
@@ -550,12 +571,38 @@ export function FilesInlinePanel({
   }
 
   function openFile(file: ProjectFile) {
+    if (file.type === 'folder') {
+      router.push(`/app/files?folder=${encodeURIComponent(file._id)}`)
+      onNavigate?.()
+      return
+    }
     if (opensInDocumentEditor(file)) {
       router.push(`/app/notes?id=${encodeURIComponent(file._id)}`)
     } else {
       router.push(`/app/files?file=${encodeURIComponent(file._id)}`)
     }
     onNavigate?.()
+  }
+
+  async function moveFile(fileId: string, parentId: string | null) {
+    if (fileId === parentId) return
+    if (parentId) {
+      let cur: string | null = parentId
+      while (cur) {
+        if (cur === fileId) return
+        const next: ProjectFile | undefined = files.find((candidate) => candidate._id === cur)
+        cur = next?.parentId ?? null
+      }
+    }
+    const res = await fetch('/api/app/files', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileId, parentId }),
+    })
+    if (res.ok) {
+      await loadItems()
+      window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
+    }
   }
 
   const q = searchQuery.trim().toLowerCase()
@@ -601,6 +648,7 @@ export function FilesInlinePanel({
               activeFileId={activeCanonicalFileId}
               onToggle={toggleFile}
               onOpen={openFile}
+              onMove={moveFile}
             />
           ))}
         </>

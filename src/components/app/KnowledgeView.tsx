@@ -86,24 +86,24 @@ function filePathLabel(all: FileNode[], file: FileNode): string {
 
 // ─── File tree node ───────────────────────────────────────────────────────────
 
-function FileTreeNode({
-  node, allNodes, depth, selectedId, onSelect, onDelete,
+function FileTreeRow({
+  node, selectedId, onSelect, onFolderOpen, onDelete,
   bulkSelectMode = false,
   bulkSelectedIds,
   onToggleBulk,
+  onMove,
 }: {
   node: FileNode
-  allNodes: FileNode[]
-  depth: number
   selectedId: string | null
   onSelect: (node: FileNode) => void
+  onFolderOpen: (folderId: string) => void
   onDelete: (id: string, e: React.MouseEvent) => void
   bulkSelectMode?: boolean
   bulkSelectedIds?: Set<string>
   onToggleBulk?: (id: string) => void
+  onMove?: (fileId: string, parentId: string | null) => void
 }) {
-  const [open, setOpen] = useState(true)
-  const children = allNodes.filter((n) => n.parentId === node._id)
+  const [dragOver, setDragOver] = useState(false)
   const isFileViewerSelected = node.type === 'file' && node._id === selectedId
   const isBulkSelected = Boolean(bulkSelectedIds?.has(node._id))
 
@@ -112,14 +112,8 @@ function FileTreeNode({
       onToggleBulk(node._id)
       return
     }
-    if (node.type === 'folder') setOpen((v) => !v)
+    if (node.type === 'folder') onFolderOpen(node._id)
     else onSelect(node)
-  }
-
-  function handleChevronClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    if (node.type !== 'folder') return
-    setOpen((v) => !v)
   }
 
   return (
@@ -127,6 +121,28 @@ function FileTreeNode({
       <div
         role="button"
         tabIndex={0}
+        draggable={!bulkSelectMode}
+        onDragStart={(e) => {
+          e.dataTransfer.setData('application/x-overlay-file-id', node._id)
+          e.dataTransfer.effectAllowed = 'move'
+        }}
+        onDragOver={(e) => {
+          if (node.type !== 'folder' || !onMove) return
+          const draggingId = e.dataTransfer.types.includes('application/x-overlay-file-id')
+          if (!draggingId) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          if (!dragOver) setDragOver(true)
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          if (node.type !== 'folder' || !onMove) return
+          e.preventDefault()
+          setDragOver(false)
+          const fileId = e.dataTransfer.getData('application/x-overlay-file-id')
+          if (!fileId || fileId === node._id) return
+          onMove(fileId, node._id)
+        }}
         onClick={handleRowClick}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -134,14 +150,16 @@ function FileTreeNode({
             handleRowClick()
           }
         }}
-        className={`group flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
-          isFileViewerSelected && !bulkSelectMode
-            ? 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)]'
-            : isBulkSelected
-              ? 'border-[var(--border)] bg-[var(--surface-muted)]'
-              : 'text-[var(--foreground)]'
+        className={`group flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
+          dragOver
+            ? 'border-[var(--foreground)] bg-[var(--surface-muted)]'
+            : isFileViewerSelected && !bulkSelectMode
+              ? 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)]'
+              : isBulkSelected
+                ? 'border-[var(--border)] bg-[var(--surface-muted)]'
+                : 'border-transparent text-[var(--foreground)]'
         }`}
-        style={{ paddingLeft: `${depth * 12 + 12}px` }}
+        style={{ paddingLeft: '12px' }}
       >
         {bulkSelectMode ? (
           <span
@@ -155,19 +173,7 @@ function FileTreeNode({
         ) : null}
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {node.type === 'folder' ? (
-            <>
-              <button
-                type="button"
-                className="-m-0.5 shrink-0 rounded p-0.5 text-[var(--muted-light)] hover:bg-[var(--surface-subtle)]"
-                onClick={handleChevronClick}
-                aria-label={open ? 'Collapse folder' : 'Expand folder'}
-              >
-                <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
-              </button>
-              {open
-                ? <FolderOpen size={14} className="shrink-0 text-[var(--muted-light)]" />
-                : <Folder size={14} className="shrink-0 text-[var(--muted-light)]" />}
-            </>
+            <Folder size={14} className="shrink-0 text-[var(--muted-light)]" />
           ) : (
             node.kind === 'note'
               ? <BookOpen size={14} className="shrink-0 text-[var(--muted-light)]" />
@@ -185,21 +191,62 @@ function FileTreeNode({
           </button>
         ) : null}
       </div>
-      {node.type === 'folder' && open && children.map((child) => (
-        <FileTreeNode
-          key={child._id}
-          node={child}
-          allNodes={allNodes}
-          depth={depth + 1}
-          selectedId={selectedId}
-          onSelect={onSelect}
-          onDelete={onDelete}
-          bulkSelectMode={bulkSelectMode}
-          bulkSelectedIds={bulkSelectedIds}
-          onToggleBulk={onToggleBulk}
-        />
-      ))}
     </div>
+  )
+}
+
+// ─── Folder card (cards layout) ───────────────────────────────────────────────
+
+function FolderCard({
+  folder, bulkSel, selectMode, onOpen, onMove,
+}: {
+  folder: FileNode
+  bulkSel: boolean
+  selectMode: boolean
+  onOpen: () => void
+  onMove?: (fileId: string, parentId: string | null) => void
+}) {
+  const [dragOver, setDragOver] = useState(false)
+  return (
+    <button
+      type="button"
+      draggable={!selectMode}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('application/x-overlay-file-id', folder._id)
+        e.dataTransfer.effectAllowed = 'move'
+      }}
+      onDragOver={(e) => {
+        if (!onMove) return
+        if (!e.dataTransfer.types.includes('application/x-overlay-file-id')) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        if (!dragOver) setDragOver(true)
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        if (!onMove) return
+        e.preventDefault()
+        setDragOver(false)
+        const fileId = e.dataTransfer.getData('application/x-overlay-file-id')
+        if (!fileId || fileId === folder._id) return
+        onMove(fileId, folder._id)
+      }}
+      onClick={onOpen}
+      className={`group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
+        dragOver
+          ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20'
+          : bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
+      }`}
+      style={{ breakInside: 'avoid' }}
+    >
+      <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
+        <Folder size={36} className="text-[var(--muted-light)]" />
+      </div>
+      <div className="px-3 py-2">
+        <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{folder.name}</p>
+        <p className="mt-1 text-[10px] text-[var(--muted-light)]">Folder</p>
+      </div>
+    </button>
   )
 }
 
@@ -218,6 +265,7 @@ export default function KnowledgeView({
   const searchParams = useSearchParams()
   const fileOpenParam = searchParams?.get('file') ?? null
   const memoryOpenParam = searchParams?.get('memory') ?? null
+  const folderParam = searchParams?.get('folder') ?? null
   const viewParam = searchParams?.get('view') ?? (mode === 'files' ? 'files' : 'memories')
   const activeTab: Tab =
     mode === 'files'
@@ -719,7 +767,7 @@ export default function KnowledgeView({
     setFileUploadError(null)
     setFileUploadPending({ label: file.name })
     try {
-      const result = await uploadSingleFile(file, null)
+      const result = await uploadSingleFile(file, activeFolder?._id ?? null)
       if (!result.ok) {
         setFileUploadError(result.error ?? 'Upload failed. Check the file and try again.')
         return
@@ -774,6 +822,46 @@ export default function KnowledgeView({
     }
   }
 
+  const activeFolder = useMemo(
+    () => folderParam ? (files.find((f) => f._id === folderParam && f.type === 'folder') ?? null) : null,
+    [files, folderParam],
+  )
+  const folderBreadcrumb = useMemo(() => {
+    const path: FileNode[] = []
+    let current: FileNode | null = activeFolder
+    while (current) {
+      path.unshift(current)
+      current = current.parentId ? (files.find((f) => f._id === current!.parentId) ?? null) : null
+    }
+    return path
+  }, [activeFolder, files])
+
+  async function moveFileToParent(fileId: string, parentId: string | null) {
+    if (fileId === parentId) return
+    // prevent cycles: don't allow moving a folder into its own descendant
+    if (parentId) {
+      let cur: string | null = parentId
+      while (cur) {
+        if (cur === fileId) return
+        const next: FileNode | undefined = files.find((f) => f._id === cur)
+        cur = next?.parentId ?? null
+      }
+    }
+    const res = await fetch('/api/app/files', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileId, parentId }),
+    })
+    if (res.ok) {
+      await loadFiles()
+      window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
+    }
+  }
+
+  function navigateToFolder(folderId: string | null) {
+    updateQuery({ folder: folderId, file: null })
+  }
+
   const filesFiltered = useMemo(() => {
     const q = fileSearchQuery.trim().toLowerCase()
     if (!q) return files
@@ -799,14 +887,32 @@ export default function KnowledgeView({
     )
   }, [memories, memorySearchQuery])
 
-  const rootNodes = filesFiltered.filter((f) => f.parentId === null)
+  const currentParentId = activeFolder?._id ?? null
+  const rootNodes = useMemo(
+    () =>
+      filesFiltered
+        .filter((f) => f.parentId === currentParentId)
+        .sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+          return a.name.localeCompare(b.name)
+        }),
+    [filesFiltered, currentParentId],
+  )
 
   const flatFilesSorted = useMemo(
     () =>
       filesFiltered
-        .filter((f) => f.type === 'file')
+        .filter((f) => f.parentId === currentParentId && f.type === 'file')
         .sort((a, b) => b.updatedAt - a.updatedAt),
-    [filesFiltered],
+    [filesFiltered, currentParentId],
+  )
+
+  const folderCardsSorted = useMemo(
+    () =>
+      filesFiltered
+        .filter((f) => f.parentId === currentParentId && f.type === 'folder')
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [filesFiltered, currentParentId],
   )
 
   return (
@@ -1056,16 +1162,69 @@ export default function KnowledgeView({
           </>
         ) : (
           <>
-            <div className="flex min-w-0 shrink-0 items-center gap-3">
-              <h1 className="text-sm font-medium text-[var(--foreground)]">
-                {mode === 'files' ? 'Files' : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
-              </h1>
-              {activeTab !== 'outputs' && !memorySearchOpen && (
-                <span className="text-xs text-[var(--muted-light)]">
-                  {activeTab === 'memories' ? memoriesFiltered.length : filesFiltered.length} items
-                </span>
-              )}
-            </div>
+            {activeTab === 'files' && activeFolder ? (
+              <div className="flex min-w-0 shrink flex-1 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigateToFolder(activeFolder.parentId)}
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes('application/x-overlay-file-id')) return
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const fileId = e.dataTransfer.getData('application/x-overlay-file-id')
+                    if (!fileId || fileId === activeFolder._id) return
+                    void moveFileToParent(fileId, activeFolder.parentId)
+                  }}
+                  title={activeFolder.parentId ? 'Back to parent folder' : 'Back to all files'}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                >
+                  <ArrowLeft size={17} />
+                </button>
+                <FolderOpen size={18} className="shrink-0 text-[var(--muted-light)]" />
+                <div className="flex min-w-0 items-center gap-1 truncate text-sm">
+                  <button
+                    type="button"
+                    onClick={() => navigateToFolder(null)}
+                    className="shrink-0 text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+                  >
+                    Files
+                  </button>
+                  {folderBreadcrumb.map((node, i) => (
+                    <span key={node._id} className="flex min-w-0 items-center gap-1">
+                      <ChevronRight size={12} className="shrink-0 text-[var(--muted-light)]" />
+                      {i === folderBreadcrumb.length - 1 ? (
+                        <span className="truncate font-medium text-[var(--foreground)]">{node.name}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => navigateToFolder(node._id)}
+                          className="truncate text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+                        >
+                          {node.name}
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+                {!memorySearchOpen && (
+                  <span className="shrink-0 text-xs text-[var(--muted-light)]">{rootNodes.length} items</span>
+                )}
+              </div>
+            ) : (
+              <div className="flex min-w-0 shrink-0 items-center gap-3">
+                <h1 className="text-sm font-medium text-[var(--foreground)]">
+                  {mode === 'files' ? 'Files' : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
+                </h1>
+                {activeTab !== 'outputs' && !memorySearchOpen && (
+                  <span className="text-xs text-[var(--muted-light)]">
+                    {activeTab === 'memories' ? memoriesFiltered.length : filesFiltered.length} items
+                  </span>
+                )}
+              </div>
+            )}
             {activeTab === 'memories' && memorySearchOpen ? (
           <input
             value={memorySearchQuery}
@@ -1261,7 +1420,7 @@ export default function KnowledgeView({
                         type="button"
                         onClick={() => {
                           setCreateMenuOpen(false)
-                          setDialog({ type: 'folder', parentId: null })
+                          setDialog({ type: 'folder', parentId: activeFolder?._id ?? null })
                           setDialogName('')
                         }}
                         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
@@ -1328,7 +1487,7 @@ export default function KnowledgeView({
         }`}
       >
         {activeTab === 'files' && selectedFile && (
-          <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col">
+          <div className={`mx-auto flex min-h-full w-full flex-col ${isEditableType(selectedFile.name) ? 'max-w-5xl' : ''}`}>
             {isEditableType(selectedFile.name) ? (
               <>
                 <textarea
@@ -1345,7 +1504,7 @@ export default function KnowledgeView({
                 </div>
               </>
             ) : (
-              <div className="min-h-[calc(100vh-11rem)] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+  <div className="flex h-[calc(100vh-9rem)] flex-col overflow-hidden">
                 <FileViewer
                   name={selectedFile.name}
                   content={fileContent}
@@ -1511,29 +1670,47 @@ export default function KnowledgeView({
         {activeTab === 'files' && !selectedFile && !filesLoading && rootNodes.length > 0 && layout === 'list' && (
           <div className="mx-auto max-w-3xl space-y-0.5">
             {rootNodes.map((node) => (
-              <FileTreeNode
+              <FileTreeRow
                 key={node._id}
                 node={node}
-                allNodes={filesFiltered}
-                depth={0}
                 selectedId={null}
                 onSelect={handleSelectFile}
+                onFolderOpen={navigateToFolder}
                 onDelete={handleDeleteNode}
                 bulkSelectMode={selectMode}
                 bulkSelectedIds={selectedFileIds}
                 onToggleBulk={toggleFileBulkSelect}
+                onMove={moveFileToParent}
               />
             ))}
           </div>
         )}
-        {activeTab === 'files' && !selectedFile && !filesLoading && flatFilesSorted.length > 0 && layout === 'cards' && (
+        {activeTab === 'files' && !selectedFile && !filesLoading && (folderCardsSorted.length > 0 || flatFilesSorted.length > 0) && layout === 'cards' && (
           <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
+            {folderCardsSorted.map((folder) => {
+              const bulkSel = selectedFileIds.has(folder._id)
+              return (
+                <FolderCard
+                  key={folder._id}
+                  folder={folder}
+                  bulkSel={bulkSel}
+                  selectMode={selectMode}
+                  onOpen={() => (selectMode ? toggleFileBulkSelect(folder._id) : navigateToFolder(folder._id))}
+                  onMove={moveFileToParent}
+                />
+              )
+            })}
             {flatFilesSorted.map((file) => {
               const bulkSel = selectedFileIds.has(file._id)
               return (
                 <button
                   key={file._id}
                   type="button"
+                  draggable={!selectMode}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-overlay-file-id', file._id)
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
                   onClick={() => (selectMode ? toggleFileBulkSelect(file._id) : handleSelectFile(file))}
                   className={`group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
                     bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'

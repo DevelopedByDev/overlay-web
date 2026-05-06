@@ -109,7 +109,7 @@ export function MentionPopup({
 
   // Reset active row when query/category changes
   useEffect(() => {
-    setActiveIndex(0)
+    queueMicrotask(() => setActiveIndex(0))
   }, [query, selectedCategory, rows.length])
 
   useEffect(() => {
