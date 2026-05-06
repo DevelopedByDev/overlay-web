@@ -3,6 +3,7 @@ import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type 
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
+import { resolveMentionsContext } from '@/lib/mention-resolver'
 import { listMemories } from '@/lib/app-store'
 import {
   getGatewayLanguageModel,
@@ -588,44 +589,13 @@ export async function POST(request: NextRequest) {
         '\n</skills>'
     }
 
-    // Resolve @mention context from the request
-    let mentionsContext = ''
-    if (Array.isArray(rawMentions) && rawMentions.length > 0) {
-      const mentionParts: string[] = []
-      for (const mention of rawMentions) {
-        switch (mention.type) {
-          case 'skill': {
-            const skill = enabledSkills.find((s) => s.name === mention.name)
-            if (skill) {
-              mentionParts.push(`[Referenced Skill: ${skill.name}]\n${skill.instructions.trim()}`)
-            } else {
-              mentionParts.push(`[Referenced Skill: ${mention.name}]`)
-            }
-            break
-          }
-          case 'automation':
-            mentionParts.push(`[Referenced Automation: ${mention.name} (id: ${mention.id})]`)
-            break
-          case 'mcp':
-            mentionParts.push(`[Referenced MCP Server: ${mention.name} (id: ${mention.id})]`)
-            break
-          case 'connector':
-            mentionParts.push(`[Referenced Connected App: ${mention.name} (slug: ${mention.id})] — Composio tools for this app are available.`)
-            break
-          case 'chat':
-            mentionParts.push(`[Referenced Chat: ${mention.name} (id: ${mention.id})]`)
-            break
-          case 'file':
-            mentionParts.push(`[Referenced File: ${mention.name}${mention.fileIds?.length ? ` (indexed, fileIds: ${mention.fileIds.join(', ')})` : ''}]`)
-            break
-          default:
-            mentionParts.push(`[Referenced: ${mention.name}]`)
-        }
-      }
-      mentionsContext = '\n\n<user_mentions>\nThe user explicitly referenced the following entities with @ mentions:\n' +
-        mentionParts.join('\n') +
-        '\n</user_mentions>'
-    }
+    // Resolve @mention context from the request (lightweight metadata per entity).
+    // Kicked off in parallel with the wave-2 project + auto-retrieval fetches below.
+    const mentionsContextTask = resolveMentionsContext(rawMentions, {
+      userId,
+      serverSecret,
+      enabledSkills,
+    })
 
     // Wave 2: project fetch + auto-retrieval. Both depend on the projectId resolved above.
     const conversationProjectId: string | undefined = conv?.projectId
@@ -662,9 +632,10 @@ export async function POST(request: NextRequest) {
       }
     })()
 
-    const [projectInstructions, autoRetrievalBundle] = await Promise.all([
+    const [projectInstructions, autoRetrievalBundle, mentionsContext] = await Promise.all([
       projectTask,
       autoRetrievalTask,
+      mentionsContextTask,
     ])
     const autoRetrieval: string = autoRetrievalBundle.extension
     const sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> =

@@ -30,6 +30,7 @@ import {
   Maximize2,
   PanelRight,
   Zap,
+  AtSign,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
@@ -6656,7 +6657,11 @@ export default function ChatInterface({
                   onMentionsChange={setMentions}
                   onPaste={handlePaste}
                   onUploadFile={() => docInputRef.current?.click()}
-                  placeholder={mode === 'automate' ? 'Describe an automation...' : 'Ask anything...'}
+                  placeholder={
+                    mode === 'automate'
+                      ? 'Describe an automation, use @ to reference files, skills, automations...'
+                      : 'Ask anything, use @ to reference files, skills, automations...'
+                  }
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
@@ -6724,6 +6729,16 @@ export default function ChatInterface({
                     </div>
                   )}
                   </div>
+                  <DelayedTooltip label="Reference files, skills, automations…" side="top">
+                    <button
+                      type="button"
+                      onClick={() => textareaRef.current?.openMentionPopup()}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+                      aria-label="Insert mention"
+                    >
+                      <AtSign size={16} strokeWidth={1.75} />
+                    </button>
+                  </DelayedTooltip>
                   {generationChip && (
                     <div className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--foreground)] px-2 py-1 text-xs font-medium text-[var(--background)]">
                       {generationChip === 'image' ? <ImageIcon size={10} /> : <Video size={10} />}

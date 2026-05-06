@@ -19,6 +19,8 @@ export interface MentionInputHandle {
   getMentions: () => MentionItem[]
   setPlainText: (text: string) => void
   getElement: () => HTMLDivElement | null
+  /** Open the mention popup at the current caret without the user typing `@`. */
+  openMentionPopup: () => void
 }
 
 interface MentionInputProps {
@@ -177,6 +179,9 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const isComposingRef = useRef(false)
     const suppressInputRef = useRef(false)
     const lastValueRef = useRef(value)
+    /** True when the @ that opened the current popup was inserted by the @ button rather
+     * than typed by the user; on close-without-select we strip that orphan @. */
+    const buttonInsertedAtRef = useRef(false)
 
     const { search, loading } = useMentionData()
 
@@ -214,6 +219,38 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
         }
       },
       getElement: () => editorRef.current,
+      openMentionPopup: () => {
+        const el = editorRef.current
+        if (!el) return
+        el.focus()
+        // Ensure caret is positioned somewhere inside the editor.
+        const sel = window.getSelection()
+        if (!sel || sel.rangeCount === 0 || !el.contains(sel.anchorNode)) {
+          const range = document.createRange()
+          range.selectNodeContents(el)
+          range.collapse(false) // place at end
+          sel?.removeAllRanges()
+          sel?.addRange(range)
+        }
+        // Insert "@" at the caret. If the previous char is not whitespace, prepend a space
+        // so getMentionQueryFromCaret recognises the new @ as a mention trigger.
+        let prefix = ''
+        const sel2 = window.getSelection()
+        if (sel2 && sel2.rangeCount > 0) {
+          const range = sel2.getRangeAt(0)
+          const node = range.startContainer
+          if (node.nodeType === Node.TEXT_NODE && range.startOffset > 0) {
+            const prevChar = (node.textContent || '')[range.startOffset - 1]
+            if (prevChar && prevChar !== ' ' && prevChar !== '\n' && prevChar !== '\u00A0') {
+              prefix = ' '
+            }
+          }
+        }
+        document.execCommand('insertText', false, `${prefix}@`)
+        buttonInsertedAtRef.current = true
+        // Trigger input handling so the popup opens (input event already fires from
+        // execCommand, but we make it explicit in case the browser does not).
+      },
     }))
 
     const handleInput = useCallback(() => {
@@ -281,6 +318,9 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
         setShowPopup(false)
         setMentionQuery('')
         setSelectedCategory(null)
+        // Successful selection consumed the @<query> via removeMentionQueryText above,
+        // so the orphan-strip path in closePopup must not run.
+        buttonInsertedAtRef.current = false
 
         // Update state
         const text = extractPlainTextFromElement(el)
@@ -356,7 +396,24 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       setShowPopup(false)
       setMentionQuery('')
       setSelectedCategory(null)
-    }, [])
+      // If the @ was inserted by the button and no item was selected, strip the
+      // orphan @<query> from the editor.
+      if (buttonInsertedAtRef.current) {
+        buttonInsertedAtRef.current = false
+        const el = editorRef.current
+        if (el) {
+          try {
+            removeMentionQueryText(el, triggerOffsetRef.current)
+            const text = extractPlainTextFromElement(el)
+            lastValueRef.current = text
+            onChange(text)
+            onMentionsChange(extractMentionsFromElement(el))
+          } catch {
+            // Best-effort cleanup; ignore failures.
+          }
+        }
+      }
+    }, [onChange, onMentionsChange])
 
     // Auto-resize
     useEffect(() => {

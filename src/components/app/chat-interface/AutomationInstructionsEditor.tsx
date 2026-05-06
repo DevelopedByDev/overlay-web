@@ -6,11 +6,15 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import Link from '@tiptap/extension-link'
+import Mention from '@tiptap/extension-mention'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import Typography from '@tiptap/extension-typography'
 import { Bold, Code, Italic, List, ListOrdered, ListTodo, Quote } from 'lucide-react'
 import { common, createLowlight } from 'lowlight'
+import { overlayMentionSuggestion } from './tiptap-mention-suggestion'
+import { serializeMentionToken } from '@/lib/mention-tokens'
+import type { MentionType } from './mention-types'
 
 const lowlight = createLowlight(common)
 const markdownLineBreak = /\r\n?/g
@@ -34,6 +38,13 @@ function parseInlineMarkdown(value: string): string {
   html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>')
   html = html.replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, '$1<em>$2</em>')
   html = html.replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,!?:;])/g, '$1<em>$2</em>')
+  // Round-trip overlay mention tokens. Pattern: `@<label> [[overlay:type:id]]`.
+  // Both `@<label>` and the token survive escapeHtml because none of those chars are escaped.
+  html = html.replace(
+    /@([^\s@\[]{1,80})\s\[\[overlay:([a-z]+):([^\]]+)\]\]/g,
+    (_match, label: string, type: string, id: string) =>
+      `<span data-type="mention" data-id="${escapeHtml(`${type}:${id}`)}" data-label="${escapeHtml(label)}">@${escapeHtml(label)}</span>`,
+  )
   return html
 }
 
@@ -156,6 +167,17 @@ function inlineContentToMarkdown(content: JSONContent[] | undefined): string {
     .map((node) => {
       if (node.type === 'text') return marksToMarkdown(node.text ?? '', node.marks)
       if (node.type === 'hardBreak') return '\n'
+      if (node.type === 'mention') {
+        const packed = (node.attrs?.id as string | undefined) ?? ''
+        const label = (node.attrs?.label as string | undefined) ?? ''
+        // id is packed as `type:id` (e.g. "file:k123abc"). Split once.
+        const colonIdx = packed.indexOf(':')
+        if (colonIdx <= 0) return label ? `@${label}` : ''
+        const type = packed.slice(0, colonIdx) as MentionType
+        const id = packed.slice(colonIdx + 1)
+        if (!id) return label ? `@${label}` : ''
+        return `@${label} ${serializeMentionToken(type, id)}`
+      }
       return node.content ? inlineContentToMarkdown(node.content) : ''
     })
     .join('')
@@ -265,6 +287,14 @@ export function AutomationInstructionsEditor({
         autolink: true,
         linkOnPaste: true,
         protocols: ['http', 'https', 'mailto'],
+      }),
+      Mention.configure({
+        HTMLAttributes: {
+          class:
+            'inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] text-xs font-medium text-[var(--foreground)] align-baseline',
+        },
+        renderText: ({ node }) => `@${node.attrs.label}`,
+        suggestion: overlayMentionSuggestion,
       }),
     ],
     content: initialContent,

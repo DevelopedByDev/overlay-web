@@ -81,6 +81,8 @@ import {
   getChatModelDisplayName,
 } from '@/lib/models'
 import { MarkdownMessage } from './MarkdownMessage'
+import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
+import type { MentionItem } from './chat-interface/mention-types'
 
 interface Note {
   _id: string
@@ -402,6 +404,8 @@ export default function NotebookEditor({
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [agentItems, setAgentItems] = useState<NotebookAgentUiItem[]>([])
   const [agentInput, setAgentInput] = useState('')
+  const [agentMentions, setAgentMentions] = useState<MentionItem[]>([])
+  const agentInputRef = useRef<MentionInputHandle>(null)
   const [agentRunning, setAgentRunning] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState<string>(() => readStoredActModelId())
   const [showModelPicker, setShowModelPicker] = useState(false)
@@ -1018,7 +1022,13 @@ export default function NotebookEditor({
     const modelId = selectedModelId
 
     setAgentItems((prev) => [...prev, { type: 'user', text: message }])
+    const mentionsForRequest = agentMentions.map((m) => ({
+      type: m.type,
+      id: m.id,
+      name: m.name,
+    }))
     setAgentInput('')
+    setAgentMentions([])
 
     const ac = new AbortController()
     notebookAgentAbortRef.current = ac
@@ -1036,6 +1046,7 @@ export default function NotebookEditor({
           message,
           modelId,
           projectId: activeNote.projectId,
+          mentions: mentionsForRequest.length > 0 ? mentionsForRequest : undefined,
         }),
       })
 
@@ -1122,7 +1133,7 @@ export default function NotebookEditor({
       notebookAgentAbortRef.current = null
       setAgentRunning(false)
     }
-  }, [activeNote, agentInput, agentRunning, editor, selectedModelId, title])
+  }, [activeNote, agentInput, agentMentions, agentRunning, editor, selectedModelId, title])
 
   async function createNote() {
     const res = await fetch('/api/app/files', {
@@ -1645,19 +1656,20 @@ export default function NotebookEditor({
                 <div className="shrink-0 p-3">
                   <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                     <div className="p-2.5">
-                      <textarea
+                      <MentionInput
+                        ref={agentInputRef}
                         value={agentInput}
-                        onChange={(e) => setAgentInput(e.target.value)}
+                        onChange={setAgentInput}
+                        onMentionsChange={setAgentMentions}
+                        onUploadFile={() => { /* note assistant: no file upload here */ }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault()
                             if (!agentRunning && agentInput.trim()) void runNotebookAgent()
                           }
                         }}
-                        placeholder="Ask about this note or describe edits..."
-                        rows={1}
+                        placeholder="Ask about this note or describe edits, use @ to reference files, skills..."
                         disabled={agentRunning}
-                        className="w-full min-h-11 resize-none border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--muted-light)] focus:ring-0"
                       />
                       <div className="mt-2 flex min-h-9 items-center justify-end gap-2">
                         {agentRunning ? (

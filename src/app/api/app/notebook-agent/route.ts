@@ -25,11 +25,19 @@ import { executeSearchKnowledge } from '@/lib/tools/overlay-executes'
 import type { OverlayToolsOptions } from '@/lib/tools/types'
 import type { NotebookEdit, NotebookAgentStreamEvent } from '@/lib/notebook-agent-contract'
 import { NOTEBOOK_AGENT_PROMPT } from '@/lib/notebook-agent-prompts'
+import { resolveMentionsContext } from '@/lib/mention-resolver'
 import { summarizeErrorForLog } from '@/lib/safe-log'
 
 export const maxDuration = 120
 
 const MAX_NOTE_CHARS = 400_000
+
+const MentionSchema = z.object({
+  type: z.string(),
+  id: z.string(),
+  name: z.string(),
+  fileIds: z.array(z.string()).optional(),
+})
 
 const BodySchema = z.object({
   noteContent: z.string(),
@@ -40,6 +48,7 @@ const BodySchema = z.object({
   projectId: z.string().optional(),
   accessToken: z.string().optional(),
   userId: z.string().optional(),
+  mentions: z.array(MentionSchema).optional(),
 })
 
 function createNotebookTools(params: {
@@ -174,7 +183,7 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  const { noteContent: rawNoteContent, noteTitle, message, modelId, projectId } = parsed.data
+  const { noteContent: rawNoteContent, noteTitle, message, modelId, projectId, mentions: rawMentions } = parsed.data
 
   const auth = await resolveAuthenticatedAppUser(request, {
     accessToken: parsed.data.accessToken,
@@ -284,7 +293,11 @@ export async function POST(request: NextRequest) {
       try {
         emit({ type: 'thinking', thinking: 'Analyzing note...' })
         const model = await getGatewayLanguageModel(effectiveModelId, auth.accessToken)
-        const instructions = NOTEBOOK_AGENT_PROMPT
+        const mentionsContext = await resolveMentionsContext(rawMentions, {
+          userId,
+          serverSecret,
+        })
+        const instructions = NOTEBOOK_AGENT_PROMPT + mentionsContext
         const emitText = createNotebookTextEmitter((text) => {
           emit({ type: 'text', text })
         })

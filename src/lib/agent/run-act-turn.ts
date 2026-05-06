@@ -4,6 +4,7 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/lib/service-auth'
 import { getBaseUrl } from '@/lib/url'
 import { DEFAULT_MODEL_ID } from '@/lib/models'
+import { parseMentionTokens } from '@/lib/mention-tokens'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 export type ScheduledAutomationTurn = {
@@ -107,6 +108,11 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
       modelId: input.modelId || DEFAULT_MODEL_ID,
       userId: input.userId,
       automationExecution: true,
+      // Forward any @mention tokens embedded in the saved instructions so the act
+      // route's mention-context resolver can inject the same lightweight metadata
+      // that interactive chats use.
+      mentions: parseMentionTokens(input.instructions)
+        .map((m) => ({ type: m.type, id: m.id, name: m.name || m.id })),
     }),
   })
 
