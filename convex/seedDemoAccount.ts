@@ -28,7 +28,7 @@ export default mutation({
     // 1. Create a sample project
     const project = await ctx.db.insert("projects", {
       name: "Welcome to Overlay",
-      description: "Your AI workspace for projects, notes, and conversations.",
+      instructions: "Your AI workspace for projects, notes, and conversations.",
       userId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -48,6 +48,7 @@ export default mutation({
           },
         ],
       }),
+      tags: ["welcome", "getting-started"],
       userId,
       projectId: project,
       createdAt: Date.now(),
@@ -69,6 +70,7 @@ export default mutation({
           },
         ],
       }),
+      tags: ["ideas", "projects"],
       userId,
       projectId: project,
       createdAt: Date.now() - 86400000,
@@ -78,16 +80,19 @@ export default mutation({
     // 3. Create a saved memory
     await ctx.db.insert("memories", {
       content: "User prefers concise, bullet-point summaries. Interested in productivity tools, AI workflows, and building efficient teams.",
-      source: "system",
+      source: "manual",
       userId,
       createdAt: Date.now(),
     });
 
-    // 4. Create sample knowledge file
-    await ctx.db.insert("knowledge", {
+    // 4. Create sample file
+    await ctx.db.insert("files", {
       name: "Overlay Documentation",
+      type: "file",
+      kind: "upload",
       content: "Overlay is a model-agnostic AI workspace. Features: Chat, Memory, Notes, Projects, Knowledge Base, Automations, and Integrations.",
       userId,
+      projectId: project,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -96,23 +101,35 @@ export default mutation({
     const conversation = await ctx.db.insert("conversations", {
       title: "Welcome Chat",
       userId,
+      lastModified: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      lastMode: "ask",
+      askModelIds: ["gpt-4o"],
+      actModelId: "gpt-4o",
     });
 
-    await ctx.db.insert("messages", {
+    const turnId = crypto.randomUUID();
+
+    await ctx.db.insert("conversationMessages", {
       conversationId: conversation,
-      role: "user",
-      content: "What can you help me with?",
       userId,
+      turnId,
+      role: "user",
+      mode: "ask",
+      content: "What can you help me with?",
+      contentType: "text",
       createdAt: Date.now() - 120000,
     });
 
-    await ctx.db.insert("messages", {
+    await ctx.db.insert("conversationMessages", {
       conversationId: conversation,
-      role: "assistant",
-      content: "I can help you with a wide range of tasks! I can write and edit documents, brainstorm ideas, analyze data, write code, answer questions, and much more. What would you like to work on today?",
       userId,
+      turnId,
+      role: "assistant",
+      mode: "ask",
+      content: "I can help you with a wide range of tasks! I can write and edit documents, brainstorm ideas, analyze data, write code, answer questions, and much more. What would you like to work on today?",
+      contentType: "text",
       createdAt: Date.now() - 60000,
     });
 
