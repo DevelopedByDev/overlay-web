@@ -5378,9 +5378,69 @@ export default function ChatInterface({
     if (!isActiveLoading) return
     const userTurns = chat0.messages.filter((m) => m.role === 'user').length
     const idx = userTurns > 0 ? userTurns - 1 : -1
+
+    // Normal stop
     activeAskChats.forEach((chat) => chat.stop())
     activeRuntime.actChat.stop()
+
+    // Clear any stuck 'generating' status from local messages so
+    // activePersistedGenerating drops immediately.
+    for (const chat of activeRuntime.askChats) {
+      let changed = false
+      for (const msg of chat.messages) {
+        const m = msg as unknown as { role?: string; status?: string }
+        if (m.role === 'assistant' && m.status === 'generating') {
+          m.status = 'complete'
+          changed = true
+        }
+      }
+      if (changed) chat.messages = [...chat.messages]
+    }
+    let actChanged = false
+    for (const msg of activeRuntime.actChat.messages) {
+      const m = msg as unknown as { role?: string; status?: string }
+      if (m.role === 'assistant' && m.status === 'generating') {
+        m.status = 'complete'
+        actChanged = true
+      }
+    }
+    if (actChanged) activeRuntime.actChat.messages = [...activeRuntime.actChat.messages]
+
+    // Sync useChat instances so the UI reflects the cleared state
+    chat0.setMessages([...activeRuntime.askChats[0].messages] as UIMessage[])
+    if (activeAskChats[1]) chat1.setMessages([...activeRuntime.askChats[1].messages] as UIMessage[])
+    if (activeAskChats[2]) chat2.setMessages([...activeRuntime.askChats[2].messages] as UIMessage[])
+    if (activeAskChats[3]) chat3.setMessages([...activeRuntime.askChats[3].messages] as UIMessage[])
+    actChat.setMessages([...activeRuntime.actChat.messages] as UIMessage[])
+
     if (idx >= 0) setInterruptedExchangeIdx(idx)
+    forceLiveSyncRender((v) => v + 1)
+
+    // Nuclear option: if Chat.status itself is still stuck after 3s,
+    // delete and recreate the runtime with fresh Chat objects.
+    const chatId = activeChatIdRef.current
+    if (!chatId) return
+    setTimeout(() => {
+      const runtime = runtimesRef.current.get(chatId)
+      if (!runtime) return
+      const stillLoading =
+        runtime.askChats.some((c) => c.status === 'streaming' || c.status === 'submitted') ||
+        runtime.actChat.status === 'streaming' ||
+        runtime.actChat.status === 'submitted'
+      if (stillLoading) {
+        const uiSnapshot = { ...runtime.ui }
+        const oldAskMessages = runtime.askChats.map((c) => [...c.messages])
+        const oldActMessages = [...runtime.actChat.messages]
+        runtimesRef.current.delete(chatId)
+        const newRuntime = createConversationRuntime(chatId, uiSnapshot)
+        newRuntime.askChats.forEach((chat, i) => {
+          if (oldAskMessages[i]) chat.messages = oldAskMessages[i] as never
+        })
+        newRuntime.actChat.messages = oldActMessages as never
+        runtimesRef.current.set(chatId, newRuntime)
+        forceLiveSyncRender((v) => v + 1)
+      }
+    }, 400)
   }
 
   // ── derived values for header ─────────────────────────────────────────────
