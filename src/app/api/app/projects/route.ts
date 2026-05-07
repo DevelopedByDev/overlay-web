@@ -167,9 +167,15 @@ function collectDescendants(
   rootId: string,
 ): string[] {
   const result: string[] = [rootId]
-  const children = projects.filter((p) => p.parentId === rootId)
-  for (const child of children) {
-    result.push(...collectDescendants(projects, child._id))
+  const seen = new Set<string>(result)
+  for (let index = 0; index < result.length; index += 1) {
+    const current = result[index]!
+    const children = projects.filter((p) => p.parentId === current)
+    for (const child of children) {
+      if (seen.has(child._id)) continue
+      seen.add(child._id)
+      result.push(child._id)
+    }
   }
   return result
 }

@@ -63,6 +63,7 @@ import { ACT_MODEL_KEY, CHAT_MODEL_KEY } from '@/lib/chat-model-prefs'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { webSourceDisplayKey } from '@/lib/web-sources'
+import { safeHttpUrl } from '@/lib/safe-url'
 import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
 import {
   CHAT_CREATED_EVENT,
@@ -1182,7 +1183,9 @@ function WebSearchToolBlock({
                 ) : null}
                 {visibleSources.length > 0 ? (
                   <ul className="flex flex-col">
-                    {visibleSources.map((source, idx) => {
+                    {visibleSources.flatMap((source, idx) => {
+                      const safeUrl = safeHttpUrl(source.url)
+                      if (!safeUrl) return []
                       const site = webSourceDisplayKey(source.url)
                       const fav = faviconUrl(source.url)
                       const host = hostFromUrl(source.url) || site
@@ -1195,7 +1198,7 @@ function WebSearchToolBlock({
                       return (
                         <li key={`${source.url}-${idx}`}>
                           <a
-                            href={source.url}
+                            href={safeUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="group flex min-w-0 items-center gap-2 rounded-md py-0.5 text-[12px] leading-snug transition-colors hover:text-[var(--foreground)]"

@@ -2,20 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { validatePublicNetworkUrl } from '@/lib/ssrf'
 
-function validateMcpUrl(url: unknown): string | null {
-  if (typeof url !== 'string' || !url.trim()) return 'URL is required'
-  let parsed: URL
-  try {
-    parsed = new URL(url.trim())
-  } catch {
-    return 'Invalid URL'
-  }
-  const isDev = process.env.NODE_ENV === 'development'
-  if (parsed.protocol !== 'https:' && !(isDev && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'))) {
-    return 'HTTPS required in production. HTTP allowed for localhost/127.0.0.1 in development only.'
-  }
-  return null
+async function validateMcpUrl(url: unknown): Promise<string | null> {
+  const result = await validatePublicNetworkUrl(url, { allowLocalDev: true, requireHttps: true })
+  return result.ok ? null : result.error
 }
 
 export async function GET(request: NextRequest) {
@@ -58,7 +49,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const urlError = validateMcpUrl(url)
+    const urlError = await validateMcpUrl(url)
     if (urlError) {
       return NextResponse.json({ error: urlError }, { status: 400 })
     }
@@ -104,7 +95,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (url !== undefined) {
-      const urlError = validateMcpUrl(url)
+      const urlError = await validateMcpUrl(url)
       if (urlError) {
         return NextResponse.json({ error: urlError }, { status: 400 })
       }

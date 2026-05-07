@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { X } from 'lucide-react'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { webSourceDisplayKey } from '@/lib/web-sources'
+import { safeHttpUrl } from '@/lib/safe-url'
 
 function faviconUrl(pageUrl: string): string {
   try {
@@ -79,7 +80,9 @@ export function WebSourcesSidebar({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           <ul className="flex flex-col gap-1">
-            {sources.map((source, idx) => {
+            {sources.flatMap((source, idx) => {
+              const safeUrl = safeHttpUrl(source.url)
+              if (!safeUrl) return []
               const site = webSourceDisplayKey(source.url)
               const fav = faviconUrl(source.url)
               // Prefer a real page title; fall back to the host key when the extractor could only find a domain.
@@ -101,7 +104,7 @@ export function WebSourcesSidebar({
               return (
                 <li key={`${source.url}-${idx}`}>
                   <a
-                    href={source.url}
+                    href={safeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="group block rounded-lg px-2 py-2 transition-colors hover:bg-[var(--surface-subtle)]"

@@ -27,6 +27,7 @@ import type { NotebookEdit, NotebookAgentStreamEvent } from '@/lib/notebook-agen
 import { NOTEBOOK_AGENT_PROMPT } from '@/lib/notebook-agent-prompts'
 import { resolveMentionsContext } from '@/lib/mention-resolver'
 import { summarizeErrorForLog } from '@/lib/safe-log'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export const maxDuration = 120
 
@@ -197,6 +198,11 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = auth.userId
+  const rateLimitResponse = await enforceRateLimits(request, [
+    { bucket: 'notebook-agent:ip', key: getClientIp(request), limit: 60, windowMs: 10 * 60_000 },
+    { bucket: 'notebook-agent:user', key: userId, limit: 30, windowMs: 10 * 60_000 },
+  ])
+  if (rateLimitResponse) return rateLimitResponse
   const serverSecret = getInternalApiSecret()
 
   const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
@@ -354,6 +360,7 @@ export async function POST(request: NextRequest) {
             })
           } catch (err) {
             console.error('[notebook-agent] Failed to record usage:', summarizeErrorForLog(err))
+            throw err
           }
         }
 

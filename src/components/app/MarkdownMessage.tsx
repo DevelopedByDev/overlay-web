@@ -24,6 +24,7 @@ import {
 } from '@/lib/agent-assistant-text'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } from '@/lib/web-sources'
+import { safeHttpUrl } from '@/lib/safe-url'
 import { shimIncompleteMarkdown } from '@/lib/shim-incomplete-markdown'
 import { normalizeAssistantMathMarkdown } from '@/lib/math-markdown-normalize'
 import { WebSourceTooltip } from './WebSourceTooltip'
@@ -308,14 +309,16 @@ const baseMdComponents = {
     const linkText = extractLinkText(children as ReactNode).trim()
     const connectMatch = linkText.match(/^connect\s+(.+)$/i)
 
-    if (connectMatch && href) {
+    const safeExternalHref = safeHttpUrl(href)
+
+    if (connectMatch && safeExternalHref) {
       const serviceName = connectMatch[1].trim()
       const description =
         CONNECT_SERVICE_DESCRIPTIONS[serviceName.toLowerCase()] ||
         'Connect to use this integration'
 
       return (
-        <a href={href} target="_blank" rel="noopener noreferrer" className="no-underline">
+        <a href={safeExternalHref} target="_blank" rel="noopener noreferrer" className="no-underline">
           <span
             className="my-1.5 inline-flex max-w-[360px] min-w-[260px] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 transition-colors hover:bg-[var(--surface-subtle)]"
           >
@@ -353,8 +356,10 @@ const baseMdComponents = {
       )
     }
 
+    if (!safeExternalHref) return <span>{children}</span>
+
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer">
+      <a href={safeExternalHref} target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     )
@@ -526,13 +531,17 @@ export function MarkdownMessage({
       const chipClass =
         'overlay-webcite-chip mx-0.5 inline-flex max-w-full cursor-pointer items-baseline rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 align-baseline text-[11px] font-normal leading-none text-[var(--muted)] no-underline! transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]'
 
-      const renderChip = (href: string, label: string, tooltipSources: WebSourceItem[]) => (
-        <WebSourceTooltip sources={tooltipSources}>
-          <a href={href} target="_blank" rel="noopener noreferrer" className={chipClass}>
+      const renderChip = (href: string, label: string, tooltipSources: WebSourceItem[]) => {
+        const safeHref = safeHttpUrl(href)
+        if (!safeHref) return <span className={chipClass}>{label}</span>
+        return (
+        <WebSourceTooltip sources={tooltipSources.filter((source) => safeHttpUrl(source.url))}>
+          <a href={safeHref} target="_blank" rel="noopener noreferrer" className={chipClass}>
             {label}
           </a>
         </WebSourceTooltip>
-      )
+        )
+      }
 
       return {
         ...baseMdComponents,
@@ -575,16 +584,18 @@ export function MarkdownMessage({
             !/^connect\s+/i.test(linkText)
           ) {
             // Prefer metadata from `webSources` when this URL was one of the collected sources.
-            const matched = webSources?.find((s) => s.url === href)
+            const safeHref = safeHttpUrl(href)
+            if (!safeHref) return baseMdComponents.a(props)
+            const matched = webSources?.find((s) => s.url === safeHref)
             const fallback: WebSourceItem = matched ?? {
-              url: href,
+              url: safeHref,
               title: '',
               origin: 'web-search',
             }
             const isTextJustUrl =
               !linkText || linkText === href || /^https?:\/\//i.test(linkText)
-            const chipLabel = isTextJustUrl ? webSourceDisplayKey(href) : linkText
-            return renderChip(href, chipLabel, [fallback])
+            const chipLabel = isTextJustUrl ? webSourceDisplayKey(safeHref) : linkText
+            return renderChip(safeHref, chipLabel, [fallback])
           }
 
           return baseMdComponents.a(props)

@@ -3,7 +3,7 @@ import { getSession } from '@/lib/workos-auth'
 import { stripe } from '@/lib/stripe'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { quantityToTopUpAmountCents } from '@/lib/billing-pricing'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 async function findLatestPaidTopUpSession(userId: string) {
   const page = await stripe.checkout.sessions.list({ limit: 50 })
@@ -51,10 +51,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'billing:topup-verify:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
+      { bucket: 'billing:topup-verify:user', key: session.user.id, limit: 10, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+
     const body = await request.json()
     const sessionId = String(body.sessionId ?? '').trim()
     if (!sessionId) {
       return NextResponse.json({ error: 'Session ID required' }, { status: 400 })
+    }
+    if (
+      sessionId !== '{CHECKOUT_SESSION_ID}' &&
+      !sessionId.includes('CHECKOUT_SESSION_ID') &&
+      !/^cs_(test|live)_[A-Za-z0-9]+$/.test(sessionId)
+    ) {
+      return NextResponse.json({ error: 'Invalid session ID' }, { status: 400 })
     }
 
     const checkoutSession = await resolveCheckoutSession(sessionId, session.user.id)
@@ -67,14 +80,11 @@ export async function POST(request: NextRequest) {
     if (checkoutSession.payment_status !== 'paid') {
       return NextResponse.json({ error: 'Payment not completed' }, { status: 400 })
     }
+    if (checkoutSession.status !== 'complete' || checkoutSession.currency !== 'usd' || !checkoutSession.amount_total) {
+      return NextResponse.json({ error: 'Invalid completed top-up session' }, { status: 400 })
+    }
 
-    const lineItemQuantity = checkoutSession.amount_total && checkoutSession.currency === 'usd'
-      ? Math.round(checkoutSession.amount_total / 100)
-      : 0
-    const metadataQuantity = Number.parseInt(checkoutSession.metadata?.stripeQuantity ?? '0', 10) || 0
-    const amountCents =
-      Number.parseInt(checkoutSession.metadata?.amountCents ?? '0', 10) ||
-      quantityToTopUpAmountCents(metadataQuantity || lineItemQuantity)
+    const amountCents = checkoutSession.amount_total
     const autoTopUpEnabled = checkoutSession.metadata?.autoTopUpEnabled === 'true'
     await convex.mutation('subscriptions:recordBudgetTopUpByServer', {
       serverSecret: getInternalApiSecret(),

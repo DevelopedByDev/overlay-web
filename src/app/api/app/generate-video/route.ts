@@ -4,7 +4,7 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { getGatewayVideoModel } from '@/lib/ai-gateway'
 import { getVideoModelsBySubMode, type VideoSubMode } from '@/lib/models'
-import { calculateVideoCost } from '@/lib/model-pricing'
+import { calculateVideoCostOrNull } from '@/lib/model-pricing'
 import { uploadBuffer, keyForOutput, deleteObject } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
@@ -52,6 +52,12 @@ export async function POST(request: NextRequest) {
   if (!prompt?.trim()) {
     return new Response('Prompt is required', { status: 400 })
   }
+  const effectiveSubMode: VideoSubMode = videoSubMode ?? 'text-to-video'
+  const allowedModels = getVideoModelsBySubMode(effectiveSubMode).map((m) => m.id)
+  const selectedModelId = modelId ?? allowedModels[0]
+  if (!selectedModelId || !allowedModels.includes(selectedModelId)) {
+    return new Response('Unsupported video model for this mode', { status: 400 })
+  }
 
   const serverSecret = getInternalApiSecret()
 
@@ -60,6 +66,7 @@ export async function POST(request: NextRequest) {
       const encode = (s: string) => new TextEncoder().encode(s)
       let outputId: string | null = null
       let uploadedR2Key: string | null = null
+      let reservedBudgetCents = 0
 
       const markOutputFailed = async (errorMessage: string) => {
         if (!outputId) return
@@ -74,6 +81,16 @@ export async function POST(request: NextRequest) {
           },
           { throwOnError: true },
         ).catch(() => {})
+      }
+      const releaseReservedBudget = async () => {
+        if (reservedBudgetCents <= 0) return
+        const amount = reservedBudgetCents
+        reservedBudgetCents = 0
+        await convex.mutation('usage:adjustBudgetByServer', {
+          serverSecret,
+          userId: auth.userId,
+          amountCents: -amount,
+        }).catch(() => {})
       }
 
       try {
@@ -112,8 +129,13 @@ export async function POST(request: NextRequest) {
           }
           return Math.min(10, Math.max(3, d))
         }
-        const effectiveDuration = clampDurationForModel(modelId ?? getVideoModelsBySubMode(videoSubMode ?? 'text-to-video')[0]?.id ?? 'google/veo-3.1-generate-001', rawDuration)
-        const estimatedProviderCostUsd = calculateVideoCost(modelId ?? getVideoModelsBySubMode(videoSubMode ?? 'text-to-video')[0]?.id ?? 'google/veo-3.1-generate-001', effectiveDuration)
+        const effectiveDuration = clampDurationForModel(selectedModelId, rawDuration)
+        const estimatedProviderCostUsd = calculateVideoCostOrNull(selectedModelId, effectiveDuration)
+        if (estimatedProviderCostUsd == null) {
+          controller.enqueue(encode(sseChunk({ type: 'error', error: 'pricing_missing', message: 'This video model is not configured for billing.' })))
+          controller.close()
+          return
+        }
         const minimumRequiredCents = billableBudgetCentsFromProviderUsd(estimatedProviderCostUsd)
         let currentEntitlements = entitlements
         let budget = getBudgetTotals(currentEntitlements)
@@ -146,6 +168,12 @@ export async function POST(request: NextRequest) {
           controller.close()
           return
         }
+        await convex.mutation('usage:adjustBudgetByServer', {
+          serverSecret,
+          userId: auth.userId,
+          amountCents: minimumRequiredCents,
+        })
+        reservedBudgetCents = minimumRequiredCents
 
         // ── Create pending output record ────────────────────────────────────
         try {
@@ -158,7 +186,7 @@ export async function POST(request: NextRequest) {
               source: 'video_generation',
               status: 'pending',
               prompt: prompt.trim(),
-              modelId: modelId ?? getVideoModelsBySubMode(videoSubMode ?? 'text-to-video')[0]?.id ?? 'google/veo-3.1-generate-001',
+              modelId: selectedModelId,
               fileName: `overlay-video-${Date.now()}.mp4`,
               mimeType: 'video/mp4',
               ...(conversationId ? { conversationId } : {}),
@@ -168,11 +196,13 @@ export async function POST(request: NextRequest) {
           )
         } catch (err) {
           console.error('[GenerateVideo] Failed to create output record:', err)
+          await releaseReservedBudget()
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'save_failed', message: 'Could not create the output record.' })))
           controller.close()
           return
         }
         if (!outputId) {
+          await releaseReservedBudget()
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'save_failed', message: 'Could not create the output record.' })))
           controller.close()
           return
@@ -183,11 +213,8 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encode(sseChunk({ type: 'started', outputId: persistedOutputId })))
 
         // ── Model fallback chain ────────────────────────────────────────────
-        const effectiveSubMode: VideoSubMode = videoSubMode ?? 'text-to-video'
-        const subModeModels = getVideoModelsBySubMode(effectiveSubMode).map((m) => m.id)
-        const priorityList = modelId
-          ? [modelId, ...subModeModels.filter((id) => id !== modelId)]
-          : subModeModels
+        const subModeModels = allowedModels
+        const priorityList = [selectedModelId, ...subModeModels.filter((id) => id !== selectedModelId)]
 
         let lastError: Error | null = null
         let usedModelId: string | null = null
@@ -254,6 +281,7 @@ export async function POST(request: NextRequest) {
         if (!videoBase64 || !usedModelId) {
           // Update Convex record to failed
           await markOutputFailed(lastError?.message ?? 'All models failed')
+          await releaseReservedBudget()
           controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'All video models failed. Please try again.' })))
           controller.close()
           return
@@ -265,6 +293,7 @@ export async function POST(request: NextRequest) {
         // ── Check per-user storage quota ────────────────────────────────────────
         if ((currentEntitlements.overlayStorageBytesUsed ?? 0) + videoBuffer.length > (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
           await markOutputFailed('Not enough Overlay storage remaining for this video.')
+          await releaseReservedBudget()
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
           controller.close()
           return
@@ -284,10 +313,12 @@ export async function POST(request: NextRequest) {
           console.error('[GenerateVideo] Failed to upload to R2:', err)
           await markOutputFailed(err instanceof Error ? err.message : 'Failed to upload video')
           if (err instanceof R2GlobalBudgetError) {
+            await releaseReservedBudget()
             controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Global R2 storage cap reached. Contact support.' })))
             controller.close()
             return
           }
+          await releaseReservedBudget()
           controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'Failed to save generated video.' })))
           controller.close()
           return
@@ -315,55 +346,40 @@ export async function POST(request: NextRequest) {
           }
           await markOutputFailed(err instanceof Error ? err.message : 'Failed to finalize output record')
           if (err instanceof Error && err.message.includes('storage_limit_exceeded')) {
+            await releaseReservedBudget()
             controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
             controller.close()
             return
           }
+          await releaseReservedBudget()
           controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'Failed to save generated video.' })))
           controller.close()
           return
         }
 
         // ── Usage tracking ────────────────────────────────────────────────────────
-        const costDollars = calculateVideoCost(usedModelId, effectiveDuration)
+        const costDollars = calculateVideoCostOrNull(usedModelId, effectiveDuration)
+        if (costDollars == null) {
+          throw new Error(`Missing video pricing for ${usedModelId}`)
+        }
         const costCents = billableBudgetCentsFromProviderUsd(costDollars)
-        console.log(`[GenerateVideo] 💰 Cost: model=${usedModelId} | duration=${effectiveDuration}s | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
-        if (costCents > 0) {
-          const recordResult = await convex.mutation('usage:recordBatch', {
+        const adjustmentCents = costCents - reservedBudgetCents
+        if (adjustmentCents !== 0) {
+          await convex.mutation('usage:adjustBudgetByServer', {
             serverSecret,
             userId: auth.userId,
-            events: [{
-              type: 'generation',
-              modelId: usedModelId,
-              inputTokens: 0,
-              outputTokens: 0,
-              cachedTokens: 0,
-              cost: costCents,
-              timestamp: Date.now(),
-            }],
+            amountCents: adjustmentCents,
           })
-          if (recordResult) {
-            const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
-              serverSecret,
-              userId: auth.userId,
-            })
-            if (updated) {
-              const totalCents = updated.creditsTotal * 100
-              const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'
-              console.log(`[GenerateVideo] ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ (${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`)
-            }
-          } else {
-            console.error(`[GenerateVideo] ❌ recordBatch returned null — check server logs for Convex error`)
-          }
-        } else {
-          console.log(`[GenerateVideo] ⚠️  Cost is 0¢ for model=${usedModelId} — usage not recorded`)
         }
+        reservedBudgetCents = 0
+        console.log(`[GenerateVideo] 💰 Cost: model=${usedModelId} | duration=${effectiveDuration}s | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
 
         controller.enqueue(encode(sseChunk({ type: 'completed', outputId, url: dataUrl, modelUsed: usedModelId })))
         controller.close()
       } catch (error) {
         console.error('[GenerateVideo] Unexpected error:', error)
         await markOutputFailed(error instanceof Error ? error.message : 'Unexpected error during video generation.')
+        await releaseReservedBudget()
         controller.enqueue(encode(sseChunk({ type: 'failed', error: 'Unexpected error during video generation.' })))
         controller.close()
       }

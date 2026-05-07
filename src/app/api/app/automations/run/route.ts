@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { runActTurnForScheduledAutomation } from '@/lib/agent/run-act-turn'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { convex } from '@/lib/convex'
+import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
 
 export const maxDuration = 300
 
@@ -13,49 +15,59 @@ function verifyInternalSecret(request: NextRequest): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!verifyInternalSecret(request)) {
+    const serviceAuthHeader = request.headers.get(getServiceAuthHeaderName())
+    const serviceAuth = serviceAuthHeader
+      ? await verifyServiceAuthToken(
+          serviceAuthHeader,
+          { method: request.method, path: request.nextUrl.pathname },
+        )
+      : null
+    if (!serviceAuth && !verifyInternalSecret(request)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json() as {
       runId?: string
-      turnId?: string
-      scheduledFor?: number
-      automation?: {
-        id?: string
-        userId?: string
+    }
+    if (!body.runId) return NextResponse.json({ error: 'runId required' }, { status: 400 })
+    const payload = await convex.query<{
+      run: { status: string; scheduledFor: number; turnId?: string; conversationId?: Id<'conversations'> }
+      automation: {
+        _id: string
+        userId: string
         name?: string
+        title?: string
         description?: string
         instructions?: string
+        instructionsMarkdown?: string
         projectId?: string
         modelId?: string
-        conversationId?: string
+        sourceConversationId?: Id<'conversations'>
+        conversationId?: Id<'conversations'>
       }
+    } | null>('automations:getRunForExecutionByServer', {
+      runId: body.runId as Id<'automationRuns'>,
+      serverSecret: getInternalApiSecret(),
+    })
+    if (!payload || payload.run.status !== 'running') {
+      return NextResponse.json({ error: 'Automation run is not executable' }, { status: 409 })
     }
-    const automation = body.automation
-    if (
-      !body.runId ||
-      !body.turnId ||
-      typeof body.scheduledFor !== 'number' ||
-      !automation?.userId ||
-      !automation.name ||
-      !automation.instructions
-    ) {
-      return NextResponse.json({ error: 'Invalid automation run payload' }, { status: 400 })
-    }
+    const { run, automation } = payload
+    const turnId = run.turnId || `automation-${body.runId}-${Date.now()}`
+    const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
 
     const result = await runActTurnForScheduledAutomation({
-      automationId: automation.id,
+      automationId: automation._id,
       runId: body.runId,
       userId: automation.userId,
-      name: automation.name,
-      description: automation.description,
-      instructions: automation.instructions,
+      name: automation.name || automation.title || 'Untitled automation',
+      description: automation.description || '',
+      instructions: automation.instructions || automation.instructionsMarkdown || '',
       projectId: automation.projectId,
       modelId: automation.modelId,
-      conversationId: automation.conversationId as Id<'conversations'> | undefined,
-      turnId: body.turnId,
-      scheduledFor: body.scheduledFor,
+      conversationId,
+      turnId,
+      scheduledFor: run.scheduledFor,
     })
 
     return NextResponse.json({

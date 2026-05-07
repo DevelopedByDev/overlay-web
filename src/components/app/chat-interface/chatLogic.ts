@@ -3,6 +3,7 @@ import { getToolName, isReasoningUIPart, isToolUIPart } from 'ai'
 import type { AutomationDraftSummary } from '@/lib/automation-drafts'
 import type { SkillDraftSummary } from '@/lib/skill-drafts'
 import type { WebSourceItem } from '@/lib/web-sources'
+import { safeHttpUrl } from '@/lib/safe-url'
 import {
   normalizeAgentAssistantText,
   redactOpaqueNotebookFileIdsInVisibleText,
@@ -634,12 +635,7 @@ function safeReadString(value: unknown): string | null {
 }
 
 function normalizeWebUrl(raw: string): string | null {
-  try {
-    const normalized = new URL(raw).toString()
-    return normalized
-  } catch {
-    return null
-  }
+  return safeHttpUrl(raw)
 }
 
 function pickSourceTitle(entry: Record<string, unknown>, fallbackUrl: string): string {

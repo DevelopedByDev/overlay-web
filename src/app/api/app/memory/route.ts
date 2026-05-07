@@ -5,6 +5,7 @@ import { addMemory, listMemories, removeMemory } from '@/lib/app-store'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { memoriesToClientListRows, segmentMemoryForIngestion } from '@/lib/memory-display-segments'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 type MemoryDoc = {
   _id: string
@@ -25,6 +26,9 @@ type MemoryDoc = {
   updatedAt: number
   deletedAt?: number
 }
+
+const MAX_MEMORY_CONTENT_CHARS = 20_000
+const MAX_MEMORY_CHUNKS = 20
 
 function readBooleanParam(value: string | null): boolean | undefined {
   if (value == null) return undefined
@@ -106,16 +110,27 @@ export async function POST(request: NextRequest) {
 
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'memory:write:ip', key: getClientIp(request), limit: 60, windowMs: 10 * 60_000 },
+      { bucket: 'memory:write:user', key: auth.userId, limit: 30, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
     const serverSecret = getInternalApiSecret()
 
     const trimmed = (body.content ?? '').trim()
     if (!trimmed) return NextResponse.json({ error: 'content required' }, { status: 400 })
+    if (trimmed.length > MAX_MEMORY_CONTENT_CHARS) {
+      return NextResponse.json({ error: `content cannot exceed ${MAX_MEMORY_CONTENT_CHARS} characters` }, { status: 413 })
+    }
 
     const raw = body.source ?? 'manual'
     const source =
       raw === 'chat' || raw === 'note' || raw === 'manual' ? raw : 'manual'
 
     const chunks = segmentMemoryForIngestion(trimmed)
+    if (chunks.length > MAX_MEMORY_CHUNKS) {
+      return NextResponse.json({ error: `memory content produced too many chunks` }, { status: 413 })
+    }
     const clientIdSingle = chunks.length === 1 ? body.clientId?.trim() || undefined : undefined
 
     const ids: string[] = []

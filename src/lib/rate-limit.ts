@@ -48,11 +48,18 @@ function getBucketKey(rule: RateLimitRule): string | null {
 }
 
 export function getClientIp(request: NextRequest): string {
-  const vercelForwarded = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim()
-  const cloudflareIp = request.headers.get('cf-connecting-ip')?.trim()
-  const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  const realIp = request.headers.get('x-real-ip')?.trim()
-  return vercelForwarded || cloudflareIp || forwarded || realIp || 'unknown'
+  const trustProxyHeaders =
+    process.env.TRUST_PROXY_HEADERS === 'true' ||
+    Boolean(process.env.VERCEL || process.env.CF_PAGES || process.env.CLOUDFLARE_ACCOUNT_ID)
+  if (!trustProxyHeaders) return 'unknown'
+
+  const candidates = [
+    request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim(),
+    request.headers.get('cf-connecting-ip')?.trim(),
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    request.headers.get('x-real-ip')?.trim(),
+  ]
+  return candidates.find((value) => Boolean(value)) || 'unknown'
 }
 
 function takeRateLimitLocal(rule: RateLimitRule): RateLimitTakeResult {

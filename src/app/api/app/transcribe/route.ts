@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import type { Entitlements } from '@/lib/app-contracts'
+
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024
+const ESTIMATED_TRANSCRIPTION_SECONDS = 60
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,10 +15,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'transcribe:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
+      { bucket: 'transcribe:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+
+    const serverSecret = getInternalApiSecret()
+    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+      serverSecret,
+      userId: auth.userId,
+    })
+    if (!entitlements) return NextResponse.json({ error: 'Could not verify subscription.' }, { status: 401 })
+    const remainingSeconds =
+      (entitlements.transcriptionSecondsLimit ?? 0) - (entitlements.transcriptionSecondsUsed ?? 0)
+    if (!entitlements.localTranscriptionEnabled && remainingSeconds <= 0) {
+      return NextResponse.json({ error: 'transcription_limit_exceeded' }, { status: 403 })
+    }
+
     const formData = await request.formData()
     const audioFile = formData.get('audio') as File
     if (!audioFile) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 })
+    }
+    if (audioFile.size > MAX_AUDIO_BYTES) {
+      return NextResponse.json({ error: 'Audio file is too large' }, { status: 413 })
     }
 
     const groqApiKey = process.env.GROQ_API_KEY
@@ -41,6 +69,16 @@ export async function POST(request: NextRequest) {
       }
 
       const data = await groqResponse.json()
+      await convex.mutation('usage:recordBatch', {
+        serverSecret,
+        userId: auth.userId,
+        events: [{
+          type: 'transcription',
+          modelId: 'groq/whisper-large-v3-turbo',
+          cost: ESTIMATED_TRANSCRIPTION_SECONDS,
+          timestamp: Date.now(),
+        }],
+      })
       return NextResponse.json({ text: data.text })
     }
 

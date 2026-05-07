@@ -4,10 +4,12 @@ import { stripe, getBaseUrl } from '@/lib/stripe'
 import { getTopUpPriceId, getTopUpQuantityForCheckout, isRecognizedTopUpAmount } from '@/lib/stripe-billing'
 import { clampTopUpAmountCents, formatDollarAmount } from '@/lib/billing-pricing'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { sameOriginPathUrl } from '@/lib/safe-url'
 
 function resolveReturnUrl(baseUrl: string, returnPath: unknown, state: 'success' | 'canceled') {
-  const safePath = typeof returnPath === 'string' && returnPath.startsWith('/') ? returnPath : '/account'
-  const url = new URL(safePath, baseUrl)
+  const url = new URL(sameOriginPathUrl(baseUrl, returnPath, '/account'))
   if (state === 'success') {
     const checkoutSessionPlaceholder = 'CHECKOUT_SESSION_ID_PLACEHOLDER'
     url.searchParams.set('topup_success', 'true')
@@ -31,6 +33,14 @@ export async function POST(request: NextRequest) {
       { bucket: 'billing:topup:user', key: session.user.id, limit: 5, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
+
+    const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('usage:getEntitlementsByServer', {
+      serverSecret: getInternalApiSecret(),
+      userId: session.user.id,
+    })
+    if (entitlements?.planKind !== 'paid') {
+      return NextResponse.json({ error: 'Top-ups require an active paid plan.' }, { status: 403 })
+    }
 
     const body = await request.json()
     const requestedAmountCents = Number(body.amountCents)
@@ -70,7 +80,7 @@ export async function POST(request: NextRequest) {
           autoTopUpEnabled: String(autoTopUpEnabled),
         },
       },
-      allow_promotion_codes: true,
+      allow_promotion_codes: false,
     })
 
     console.log(`[TopUp Checkout] Created manual top-up checkout for ${session.user.id}: ${formatDollarAmount(amountCents)}`)

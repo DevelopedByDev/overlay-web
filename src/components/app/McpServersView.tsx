@@ -132,7 +132,6 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
         <div className="shrink-0">
           <h2 className="text-sm font-medium text-[var(--foreground)]">MCP Servers</h2>
-          {!searchOpen && <p className="text-[11px] text-[var(--muted)]">Remote servers that expose tools to the AI agent</p>}
         </div>
         {searchOpen ? (
           <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search servers…" autoFocus className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]" />

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { validatePublicNetworkUrl } from '@/lib/ssrf'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,16 +13,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'url is required' }, { status: 400 })
     }
 
-    let parsed: URL
-    try {
-      parsed = new URL(url)
-    } catch {
-      return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
-    }
-    const isDev = process.env.NODE_ENV === 'development'
-    if (parsed.protocol !== 'https:' && !(isDev && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'))) {
-      return NextResponse.json({ error: 'HTTPS required in production. HTTP allowed for localhost/127.0.0.1 in development only.' }, { status: 400 })
-    }
+    const validation = await validatePublicNetworkUrl(url, { allowLocalDev: true, requireHttps: true })
+    if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
+    const parsed = validation.url
 
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
     let transportInstance

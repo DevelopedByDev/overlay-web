@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createUser } from '@/lib/workos-auth'
-import { rateLimitByIp } from '@/lib/rate-limit'
+import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { email, password, firstName, lastName } = body
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
 
     if (!email || !password) {
       return NextResponse.json(
@@ -25,11 +26,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const emailLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'auth:sign-up:email', key: normalizedEmail, limit: 3, windowMs: 60 * 60_000 },
+      { bucket: 'auth:sign-up:ip-combined', key: getClientIp(request), limit: 10, windowMs: 60 * 60_000 },
+    ])
+    if (emailLimitResponse) return emailLimitResponse
+
     const result = await createUser(email, password, firstName, lastName)
 
     if (!result.success) {
       return NextResponse.json(
-        { error: result.error || 'Failed to create account' },
+        { error: 'If this email can be used, we will send the next step by email.' },
         { status: 400 }
       )
     }

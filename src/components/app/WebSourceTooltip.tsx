@@ -4,6 +4,7 @@ import React, { useRef, useState, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { webSourceDisplayKey } from '@/lib/web-sources'
+import { safeHttpUrl } from '@/lib/safe-url'
 
 const SHOW_DELAY_MS = 200
 const HIDE_GRACE_MS = 120
@@ -137,7 +138,9 @@ export function WebSourceTooltip({
               {sources.length === 1 ? '1 source' : `${sources.length} sources`}
             </div>
             <ul className="flex flex-col gap-0.5">
-              {sources.map((source, i) => {
+              {sources.flatMap((source, i) => {
+                const safeUrl = safeHttpUrl(source.url)
+                if (!safeUrl) return []
                 const host = hostOf(source.url)
                 const shortHost = webSourceDisplayKey(source.url)
                 const fav = faviconUrl(source.url)
@@ -149,7 +152,7 @@ export function WebSourceTooltip({
                 return (
                   <li key={`${source.url}-${i}`}>
                     <a
-                      href={source.url}
+                      href={safeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"

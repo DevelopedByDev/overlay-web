@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendPasswordResetEmail } from '@/lib/workos-auth'
-import { rateLimitByIp } from '@/lib/rate-limit'
+import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { email } = body
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
 
     if (!email) {
       return NextResponse.json(
@@ -16,6 +17,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const emailLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'auth:forgot-password:email', key: normalizedEmail, limit: 3, windowMs: 60 * 60_000 },
+      { bucket: 'auth:forgot-password:ip-combined', key: getClientIp(request), limit: 10, windowMs: 60 * 60_000 },
+    ])
+    if (emailLimitResponse) return emailLimitResponse
 
     await sendPasswordResetEmail(email)
 

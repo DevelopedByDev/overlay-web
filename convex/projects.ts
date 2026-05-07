@@ -64,6 +64,12 @@ export const create = mutation({
   },
   handler: async (ctx, { userId, accessToken, serverSecret, clientId, name, instructions, parentId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    if (parentId) {
+      const parent = await ctx.db.get(parentId as Id<'projects'>)
+      if (!parent || parent.userId !== userId || parent.deletedAt) {
+        throw new Error('Invalid parent project')
+      }
+    }
     if (clientId?.trim()) {
       const existing = await ctx.db
         .query('projects')
@@ -103,9 +109,23 @@ export const update = mutation({
       throw new Error('Unauthorized')
     }
     if (parentId !== undefined && parentId !== null) {
+      if (parentId === projectId) {
+        throw new Error('Project cannot be its own parent')
+      }
       const parent = await ctx.db.get(parentId as Id<'projects'>)
       if (!parent || parent.userId !== userId || parent.deletedAt) {
         throw new Error('Unauthorized')
+      }
+      let cursor: string | undefined = parent.parentId
+      const seen = new Set<string>([projectId])
+      while (cursor) {
+        if (seen.has(cursor)) {
+          throw new Error('Project parent cycle detected')
+        }
+        seen.add(cursor)
+        const ancestor = await ctx.db.get(cursor as Id<'projects'>)
+        if (!ancestor || ancestor.userId !== userId || ancestor.deletedAt) break
+        cursor = ancestor.parentId
       }
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }

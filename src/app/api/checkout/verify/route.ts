@@ -4,6 +4,7 @@ import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { quantityToPlanAmountCents } from '@/lib/billing-pricing'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { resolvePaidUnitPriceId } from '@/lib/stripe-billing'
 
 function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscription) {
   const now = Date.now()
@@ -47,13 +48,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session mismatch' }, { status: 403 })
     }
 
-    if (checkoutSession.payment_status !== 'paid') {
+    if (
+      checkoutSession.status !== 'complete' ||
+      checkoutSession.mode !== 'subscription' ||
+      checkoutSession.metadata?.kind !== 'paid_plan' ||
+      checkoutSession.payment_status !== 'paid'
+    ) {
       return NextResponse.json({ error: 'Payment not completed' }, { status: 400 })
     }
 
     const subscription = checkoutSession.subscription as import('stripe').Stripe.Subscription
+    if (!subscription || typeof subscription === 'string') {
+      return NextResponse.json({ error: 'Subscription not found' }, { status: 400 })
+    }
+    if (subscription.status !== 'active' && subscription.status !== 'trialing') {
+      return NextResponse.json({ error: 'Subscription is not active' }, { status: 400 })
+    }
     const firstItem = subscription.items.data[0]
     const priceId = firstItem?.price?.id
+    const expectedPriceId = resolvePaidUnitPriceId()
+    if (!priceId || (expectedPriceId && priceId !== expectedPriceId)) {
+      return NextResponse.json({ error: 'Unexpected subscription price' }, { status: 400 })
+    }
     const metadataQuantity = Number.parseInt(checkoutSession.metadata?.stripeQuantity ?? '0', 10)
     const quantity = firstItem?.quantity ?? (Number.isFinite(metadataQuantity) && metadataQuantity > 0 ? metadataQuantity : 1)
     const planAmountCents = quantityToPlanAmountCents(quantity)
@@ -76,7 +92,7 @@ export async function POST(request: NextRequest) {
       autoTopUpEnabled,
       autoTopUpAmountCents: topUpAmountCents,
       offSessionConsentAt,
-      status: 'active',
+      status: subscription.status,
       currentPeriodStart,
       currentPeriodEnd,
     })

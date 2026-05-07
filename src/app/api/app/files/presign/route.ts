@@ -38,7 +38,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'sizeBytes required' }, { status: 400 })
     }
 
-    const sizeBytes = Math.max(0, Math.round(Number(sizeBytesRaw)))
+    const sizeBytes = Math.round(Number(sizeBytesRaw))
+    if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+      return NextResponse.json({ error: 'sizeBytes must be greater than 0' }, { status: 400 })
+    }
     const userId = session.user.id
     const serverSecret = getInternalApiSecret()
 

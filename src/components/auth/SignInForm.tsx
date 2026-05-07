@@ -17,7 +17,10 @@ export function SignInForm({ redirectTo, onClose }: SignInFormProps) {
   }
 
   function handleEmailContinue() {
-    const dest = `/auth/sign-in?${email ? `email=${encodeURIComponent(email)}&` : ''}redirect=${encodeURIComponent(redirectTo)}`
+    if (email.trim()) {
+      sessionStorage.setItem('overlay_signin_email', email.trim())
+    }
+    const dest = `/auth/sign-in?redirect=${encodeURIComponent(redirectTo)}`
     window.location.href = dest
   }
 

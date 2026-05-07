@@ -82,6 +82,13 @@ export function calculateVideoCost(modelId: string, durationSeconds: number): nu
   return pricing.rate * durationSeconds
 }
 
+export function calculateVideoCostOrNull(modelId: string, durationSeconds: number): number | null {
+  const pricing = VIDEO_GENERATION_PRICING[modelId]
+  if (!pricing) return null
+  if (pricing.billingUnit === 'per_video') return pricing.rate
+  return pricing.rate * durationSeconds
+}
+
 export function calculateBrowserUseV3TokenCost(
   modelId: 'bu-mini' | 'bu-max',
   inputTokens: number,

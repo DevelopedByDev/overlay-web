@@ -3,6 +3,7 @@ import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 type AutomationSchedule =
   | { kind: 'interval'; intervalMinutes?: number }
@@ -23,6 +24,13 @@ type AutomationForUpdateNote = {
   modelId?: string
   sourceConversationId?: Id<'conversations'>
   conversationId?: Id<'conversations'>
+}
+
+const MIN_INTERVAL_MINUTES = 15
+const MAX_ENABLED_AUTOMATIONS = 25
+
+function scheduleTooFrequent(schedule: AutomationSchedule | undefined): boolean {
+  return schedule?.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES
 }
 
 function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
@@ -219,8 +227,33 @@ export async function POST(request: NextRequest) {
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'automations:write:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
+      { bucket: 'automations:write:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
     if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {
       return NextResponse.json({ error: 'name, description, instructions, and schedule are required' }, { status: 400 })
+    }
+    if (scheduleTooFrequent(body.schedule)) {
+      return NextResponse.json({ error: `Interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.` }, { status: 400 })
+    }
+    if (body.enabled !== false) {
+      const serverSecret = getInternalApiSecret()
+      const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('usage:getEntitlementsByServer', {
+        userId: auth.userId,
+        serverSecret,
+      })
+      if (entitlements?.planKind !== 'paid') {
+        return NextResponse.json({ error: 'Enabled automations require a paid plan.' }, { status: 403 })
+      }
+      const existing = await convex.query<Array<{ enabled?: boolean }>>('automations:list', {
+        userId: auth.userId,
+        serverSecret,
+      })
+      if ((existing || []).filter((item) => item.enabled !== false).length >= MAX_ENABLED_AUTOMATIONS) {
+        return NextResponse.json({ error: `You can enable up to ${MAX_ENABLED_AUTOMATIONS} automations.` }, { status: 403 })
+      }
     }
     const id = await convex.mutation('automations:create', {
       userId: auth.userId,
@@ -265,11 +298,28 @@ export async function PATCH(request: NextRequest) {
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'automations:update:ip', key: getClientIp(request), limit: 60, windowMs: 10 * 60_000 },
+      { bucket: 'automations:update:user', key: auth.userId, limit: 30, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
     if (!body.automationId) {
       return NextResponse.json({ error: 'automationId required' }, { status: 400 })
     }
+    if (scheduleTooFrequent(body.schedule)) {
+      return NextResponse.json({ error: `Interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.` }, { status: 400 })
+    }
 
     const serverSecret = getInternalApiSecret()
+    if (body.action === 'resume' || body.enabled === true) {
+      const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('usage:getEntitlementsByServer', {
+        userId: auth.userId,
+        serverSecret,
+      })
+      if (entitlements?.planKind !== 'paid') {
+        return NextResponse.json({ error: 'Enabled automations require a paid plan.' }, { status: 403 })
+      }
+    }
     const args = {
       automationId: body.automationId as Id<'automations'>,
       userId: auth.userId,
@@ -344,7 +394,6 @@ export async function DELETE(request: NextRequest) {
       serverSecret,
     }) as AutomationForUpdateNote | null
     const linkedConversationIds = [
-      automation?.sourceConversationId,
       automation?.conversationId,
     ].filter((id, index, ids): id is Id<'conversations'> => Boolean(id && ids.indexOf(id) === index))
 

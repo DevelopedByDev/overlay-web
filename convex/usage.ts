@@ -381,16 +381,21 @@ async function enforceFreeTierUsageLimits(
       ask: acc.ask + (record?.askCount ?? 0),
       write: acc.write + (record?.writeCount ?? 0),
       agent: acc.agent + (record?.agentCount ?? 0),
+      transcriptionSeconds: acc.transcriptionSeconds + (record?.transcriptionSeconds ?? 0),
     }),
-    { ask: 0, write: 0, agent: 0 },
+    { ask: 0, write: 0, agent: 0, transcriptionSeconds: 0 },
   )
 
   let batchAsk = 0, batchWrite = 0, batchAgent = 0
+  let batchTranscriptionSeconds = 0
   for (const event of events) {
-    if (!countsTowardFreeTierMessageLimit(event)) continue
-    if (event.type === 'ask') batchAsk++
-    else if (event.type === 'write') batchWrite++
-    else if (event.type === 'agent') batchAgent++
+    if (event.type === 'transcription') {
+      batchTranscriptionSeconds += Math.max(0, Math.round(event.cost))
+    } else if (countsTowardFreeTierMessageLimit(event)) {
+      if (event.type === 'ask') batchAsk++
+      else if (event.type === 'write') batchWrite++
+      else if (event.type === 'agent') batchAgent++
+    }
   }
 
   if (weeklyUsage.ask + batchAsk > FREE_TIER_WEEKLY_LIMITS.ask) {
@@ -401,6 +406,9 @@ async function enforceFreeTierUsageLimits(
   }
   if (weeklyUsage.agent + batchAgent > FREE_TIER_WEEKLY_LIMITS.agent) {
     throw new Error('free_tier_limit_exceeded: weekly agent limit reached')
+  }
+  if (weeklyUsage.transcriptionSeconds + batchTranscriptionSeconds > 600) {
+    throw new Error('free_tier_limit_exceeded: weekly transcription limit reached')
   }
 }
 
@@ -437,6 +445,25 @@ export const recordBatch = mutation({
     await enforceFreeTierUsageLimits(ctx, userId, events)
     return await applyUsageEvents(ctx, userId, events)
   }
+})
+
+export const adjustBudgetByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    amountCents: v.number(),
+  },
+  handler: async (ctx, { serverSecret, userId, amountCents }) => {
+    requireServerSecret(serverSecret)
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    if (!subscription) throw new Error('subscription_not_found')
+    const nextCreditsUsed = Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) + amountCents))
+    await ctx.db.patch(subscription._id, { creditsUsed: nextCreditsUsed })
+    return { success: true, creditsUsed: nextCreditsUsed }
+  },
 })
 
 // Record a single usage event — requires valid access token

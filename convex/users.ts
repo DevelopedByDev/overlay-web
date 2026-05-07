@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
+import type { Id, TableNames } from './_generated/dataModel'
 import { requireAccessToken, requireServerSecret } from './lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
 import {
@@ -421,7 +422,7 @@ export const deleteUserAccountByServer = mutation({
 
     // Helper: delete every row returned by a query.
     async function deleteIndexed(
-      runQuery: () => Promise<Array<{ _id: import('convex/values').GenericId<string> }>>,
+      runQuery: () => Promise<Array<{ _id: Id<TableNames> }>>,
     ): Promise<void> {
       const rows = await runQuery()
       for (const row of rows) {

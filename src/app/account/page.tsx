@@ -231,7 +231,10 @@ function AccountPageContent() {
         const response = await fetch('/api/auth/desktop-link', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ codeChallenge: desktopCodeChallenge }),
+          body: JSON.stringify({
+            codeChallenge: desktopCodeChallenge,
+            chromeExtensionId: chromeExtensionIdRaw,
+          }),
         })
         if (cancelled || !response.ok) {
           extensionHandoffSentRef.current = false

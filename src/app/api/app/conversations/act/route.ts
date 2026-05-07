@@ -70,6 +70,7 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/lib/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 function summarizeToolOutputForLog(output: unknown): string {
@@ -364,6 +365,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const userId = auth.userId
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'conversations:act:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
+      { bucket: 'conversations:act:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
     const serverSecret = getInternalApiSecret()
     pendingServerSecret = serverSecret

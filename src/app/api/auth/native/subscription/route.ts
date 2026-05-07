@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getVerifiedAccessTokenClaims, debugAccessTokenVerification } from '../../../../../../convex/lib/auth'
+import { rateLimitByIp } from '@/lib/rate-limit'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -50,6 +51,8 @@ async function getAuthenticatedUserId(request: NextRequest): Promise<string | nu
 
 export async function GET(request: NextRequest) {
   try {
+    const rateLimitResponse = await rateLimitByIp(request, 'auth:native-subscription:ip', 60, 60_000)
+    if (rateLimitResponse) return rateLimitResponse
     const userId = await getAuthenticatedUserId(request)
     if (!userId) {
       return NextResponse.json(

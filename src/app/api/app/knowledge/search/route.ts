@@ -3,8 +3,10 @@ import { convex } from '@/lib/convex'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { HybridSearchChunk } from '../../../../../../convex/knowledge'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export const maxDuration = 60
+const MAX_QUERY_CHARS = 500
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,9 +27,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'knowledge:search:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
+      { bucket: 'knowledge:search:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+
     const query = body.query?.trim()
     if (!query) {
       return NextResponse.json({ error: 'query is required' }, { status: 400 })
+    }
+    if (query.length > MAX_QUERY_CHARS) {
+      return NextResponse.json({ error: `query cannot exceed ${MAX_QUERY_CHARS} characters` }, { status: 400 })
     }
 
     const serverSecret = getInternalApiSecret()

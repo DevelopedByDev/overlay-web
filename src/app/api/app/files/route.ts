@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
-import { deleteObjects } from '@/lib/r2'
+import { deleteObjects, headObject } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/lib/storage-keys'
+import { checkGlobalR2Budget } from '@/lib/r2-budget'
 
 function storageErrorResponse(error: unknown, fallback = 'Failed to save file') {
   const message = error instanceof Error ? error.message : String(error)
@@ -120,12 +121,23 @@ export async function POST(request: NextRequest) {
       ) {
         return NextResponse.json({ error: 'Invalid storage key' }, { status: 400 })
       }
+      const objectHead = await headObject(r2Key)
+      if (!objectHead) {
+        return NextResponse.json({ error: 'Uploaded object not found' }, { status: 400 })
+      }
+      const declaredSize = typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0
+      const actualSize = Math.max(0, Math.round(objectHead.sizeBytes))
+      if (declaredSize > 0 && actualSize > declaredSize) {
+        await deleteObjects([r2Key]).catch(() => {})
+        return NextResponse.json({ error: 'Uploaded object exceeds authorized size' }, { status: 413 })
+      }
+      await checkGlobalR2Budget(actualSize)
       if (kind === 'output') {
         id = await convex.mutation('files:create', {
           ...args,
           type: 'file',
           r2Key,
-          sizeBytes: typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0,
+          sizeBytes: actualSize,
         })
       } else {
         const { type: _type, ...storageArgs } = args
@@ -133,7 +145,7 @@ export async function POST(request: NextRequest) {
         id = await convex.mutation('files:createWithStorage', {
           ...storageArgs,
           r2Key,
-          sizeBytes: typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0,
+          sizeBytes: actualSize,
         })
       }
     } else if (kind !== 'note' && type === 'file' && typeof (textContent ?? content) === 'string' && String(textContent ?? content).length > 0) {
@@ -205,7 +217,7 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    let body: { accessToken?: string; userId?: string } = {}
+    let body: { accessToken?: string; userId?: string; fileId?: string } = {}
     const contentType = request.headers.get('content-type') || ''
     if (contentType.includes('application/json')) {
       try {
@@ -217,7 +229,7 @@ export async function DELETE(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const fileId = request.nextUrl.searchParams.get('fileId')
+    const fileId = request.nextUrl.searchParams.get('fileId') || body.fileId
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
 
     const r2Entries = await convex.query<Array<{ fileId: string; r2Key?: string; storageId?: string }>>(
@@ -233,16 +245,17 @@ export async function DELETE(request: NextRequest) {
       }
       return [entry.r2Key]
     })
-    if (r2Keys.length > 0) {
-      await deleteObjects(r2Keys)
-      console.log(`[FilesDelete] Deleted ${r2Keys.length} R2 objects for fileId=${fileId}`)
-    }
-
     await convex.mutation('files:remove', {
       fileId,
       userId: auth.userId,
       serverSecret,
     })
+    if (r2Keys.length > 0) {
+      await deleteObjects(r2Keys).catch((error) => {
+        console.warn(`[FilesDelete] Metadata removed but R2 cleanup failed for fileId=${fileId}`, error)
+      })
+      console.log(`[FilesDelete] Deleted ${r2Keys.length} R2 objects for fileId=${fileId}`)
+    }
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: 'Failed to delete file' }, { status: 500 })

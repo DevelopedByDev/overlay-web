@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getSession } from '@/lib/workos-auth'
+import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
 
 type ConvexRequestType = 'query' | 'mutation' | 'action'
 
@@ -23,6 +25,18 @@ export async function POST(
 
     if (!isConvexRequestType(type)) {
       return NextResponse.json({ error: 'Invalid Convex request type' }, { status: 404 })
+    }
+
+    const serviceAuthHeader = request.headers.get(getServiceAuthHeaderName())
+    const serviceAuth = serviceAuthHeader
+      ? await verifyServiceAuthToken(
+          serviceAuthHeader,
+          { method: request.method, path: request.nextUrl.pathname },
+        )
+      : null
+    const session = serviceAuth ? null : await getSession()
+    if (!serviceAuth && !session?.user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
     const convexUrl = resolveConvexUrl()

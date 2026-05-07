@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { FileText, Music, FileQuestion, Download, Loader2, Table, FileType } from 'lucide-react'
+import { safeHttpUrl } from '@/lib/safe-url'
 
 // ─── Type detection ───────────────────────────────────────────────────────────
 
@@ -241,9 +242,14 @@ function DocumentViewer({ url }: { url: string }) {
       })
       .then(async (buf) => {
         const mammoth = await import('mammoth')
+        const DOMPurify = (await import('dompurify')).default
         const result = await mammoth.convertToHtml({ arrayBuffer: buf })
         if (!cancelled) {
-          setHtml(result.value)
+          setHtml(DOMPurify.sanitize(result.value, {
+            USE_PROFILES: { html: true },
+            FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+            FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'style'],
+          }))
           setLoading(false)
         }
       })
@@ -279,7 +285,6 @@ function DocumentViewer({ url }: { url: string }) {
     <div className="flex-1 overflow-y-auto px-8 py-6">
       <div
         className="prose prose-sm max-w-3xl text-[var(--foreground)] prose-headings:font-semibold prose-headings:text-[var(--foreground)] prose-p:text-[var(--foreground)] prose-li:text-[var(--foreground)] prose-strong:text-[var(--foreground)] prose-a:text-blue-600 dark:prose-a:text-sky-400 prose-code:rounded prose-code:bg-[var(--surface-subtle)] prose-code:px-1 prose-code:text-[var(--foreground)] prose-pre:bg-[var(--surface-subtle)] prose-pre:text-[var(--foreground)] prose-blockquote:border-[var(--border)] prose-blockquote:text-[var(--muted)]"
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html ?? '' }}
       />
     </div>
@@ -422,7 +427,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
     epub: 'EPUB Book',
     zip: 'ZIP Archive', gz: 'GZip Archive', tar: 'TAR Archive',
   }
-  const downloadUrl = url || (content.trim() || undefined)
+  const downloadUrl = safeHttpUrl(url) || (content.startsWith('/api/') ? content : undefined)
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-[var(--muted)]">

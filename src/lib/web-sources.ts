@@ -1,6 +1,7 @@
 /**
  * Web search / browser tool sources for chat UI (citation chips + sidebar).
  */
+import { safeHttpUrl } from './safe-url'
 
 export type WebSourceItem = {
   url: string
@@ -33,14 +34,12 @@ export function webCitationRunLabel(sources: WebSourceItem[], indicesOneBased: n
 
 /** Short host label for inline chips (matches common citation UIs). */
 export function webSourceDisplayKey(url: string): string {
+  const safe = safeHttpUrl(url)
+  if (!safe) return 'source'
   try {
-    let host = new URL(url).hostname.toLowerCase()
+    let host = new URL(safe).hostname.toLowerCase()
     if (host.startsWith('www.')) host = host.slice(4)
-    const parts = host.split('.').filter(Boolean)
-    if (parts.length >= 3) {
-      return `${parts[0]}.${parts[1]}`
-    }
-    return parts[0] ?? host
+    return host
   } catch {
     return 'source'
   }

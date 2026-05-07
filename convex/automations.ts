@@ -629,6 +629,22 @@ export const getRunForExecution = internalQuery({
   },
 })
 
+export const getRunForExecutionByServer = query({
+  args: {
+    runId: v.id('automationRuns'),
+    serverSecret: v.string(),
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run) return null
+    const automation = await ctx.db.get(run.automationId)
+    if (!automation || automation.deletedAt) return null
+    return { run, automation }
+  },
+})
+
 export const markRunStarted = internalMutation({
   args: {
     runId: v.id('automationRuns'),

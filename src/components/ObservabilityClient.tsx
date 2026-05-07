@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import * as Sentry from '@sentry/nextjs'
 import posthog from 'posthog-js'
 import { useAuth } from '@/contexts/AuthContext'
+import { redactUrlForTelemetry } from '@/lib/safe-url'
 
 function posthogConfigured(): boolean {
   return Boolean(
@@ -23,8 +24,9 @@ export default function ObservabilityClient() {
     const query = searchParams?.toString() ?? ''
     const pathWithQuery = query ? `${pathname}?${query}` : pathname
     if (!pathname) return
-    const url =
+    const rawUrl =
       typeof window !== 'undefined' ? `${window.location.origin}${pathWithQuery}` : pathWithQuery
+    const url = redactUrlForTelemetry(rawUrl)
     if (lastPageviewUrlRef.current === url) return
     lastPageviewUrlRef.current = url
     posthog.capture('$pageview', {

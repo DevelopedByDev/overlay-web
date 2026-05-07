@@ -12,6 +12,7 @@ import {
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export const maxDuration = 60
 
@@ -52,6 +53,12 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'files:search-text:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
+      { bucket: 'files:search-text:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
 
     const rawIds = Array.isArray(body.fileIds) ? body.fileIds : []
     const fileIds = dedupeFileIdsPreserveOrder(rawIds.map((id) => String(id)))

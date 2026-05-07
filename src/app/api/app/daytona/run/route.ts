@@ -21,7 +21,8 @@ import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import { getSession } from '@/lib/workos-auth'
 import type { Entitlements } from '@/lib/app-contracts'
 import { buildInsufficientCreditsPayload, ensureBudgetAvailable, getBudgetTotals, isPaidPlan } from '@/lib/billing-runtime'
-import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl } from '@/lib/r2'
+import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl, deleteObject } from '@/lib/r2'
+import { checkGlobalR2Budget } from '@/lib/r2-budget'
 
 export const maxDuration = 300
 
@@ -49,6 +50,8 @@ interface SandboxArtifactResponse {
 // These app-side checks are defense-in-depth: they block obviously-abusive
 // payloads before they ever reach the sandbox.
 const MAX_COMMAND_LENGTH = 4096
+const MAX_EXPECTED_OUTPUTS = 10
+const MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
 
 // Target hosts that indicate attempted egress to cloud metadata services or
 // RFC1918 / loopback / link-local address space. If any of these appear in a
@@ -153,11 +156,7 @@ async function readOverlayFileBuffer(file: OverlayFileRecord): Promise<Buffer> {
     return Buffer.from(await response.arrayBuffer())
   }
   if (file.storageId) {
-    const response = await fetch(file.content)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch Overlay file "${file.name}" from storage.`)
-    }
-    return Buffer.from(await response.arrayBuffer())
+    throw new Error(`Legacy Convex storage imports are disabled for "${file.name}". Re-upload this file to Overlay storage.`)
   }
 
   return Buffer.from(file.content ?? '', 'utf8')
@@ -231,6 +230,9 @@ export async function POST(request: NextRequest) {
   }
   if (!Array.isArray(expectedOutputs) || expectedOutputs.length === 0) {
     return NextResponse.json({ error: 'expectedOutputs must include at least one path' }, { status: 400 })
+  }
+  if (expectedOutputs.length > MAX_EXPECTED_OUTPUTS) {
+    return NextResponse.json({ error: `expectedOutputs cannot exceed ${MAX_EXPECTED_OUTPUTS} paths` }, { status: 400 })
   }
 
   let userId: string | null = session?.user.id ?? null
@@ -381,35 +383,46 @@ export async function POST(request: NextRequest) {
       }
 
       const artifactBuffer = await downloadSandboxFile(sandbox, remotePath)
+      if (artifactBuffer.byteLength > MAX_ARTIFACT_BYTES) {
+        throw new Error(`Sandbox artifact "${rawExpected}" exceeds the ${MAX_ARTIFACT_BYTES} byte limit.`)
+      }
       const fileName = sanitizeFileName(pathPosix.basename(remotePath), `artifact-${artifacts.length + 1}`)
       const mimeType = guessMimeType(fileName, artifactBuffer)
 
       const type = classifyOutputType(fileName, mimeType)
       const r2Key = keyForOutput(userId, `tmp-${Date.now()}`, fileName)
+      await checkGlobalR2Budget(artifactBuffer.byteLength)
       await uploadBufferToR2(r2Key, new Uint8Array(artifactBuffer), mimeType ?? 'application/octet-stream')
       console.log(`[Daytona] Uploaded artifact "${fileName}" (${artifactBuffer.byteLength}B) to R2 key=${r2Key}`)
 
-      const createdOutputId = await convex.mutation<string | null>('outputs:create', {
-        userId,
-        serverSecret,
-        type,
-        source: 'sandbox',
-        status: 'completed',
-        prompt: normalizedTask,
-        modelId: 'daytona/default',
-        r2Key,
-        fileName,
-        mimeType,
-        sizeBytes: artifactBuffer.byteLength,
-        metadata: {
-          runtime,
-          command: normalizedCommand,
-          remotePath,
-        },
-        ...(conversationId ? { conversationId } : {}),
-        ...(turnId ? { turnId } : {}),
-      })
+      let createdOutputId: string | null = null
+      try {
+        createdOutputId = await convex.mutation<string | null>('outputs:create', {
+          userId,
+          serverSecret,
+          type,
+          source: 'sandbox',
+          status: 'completed',
+          prompt: normalizedTask,
+          modelId: 'daytona/default',
+          r2Key,
+          fileName,
+          mimeType,
+          sizeBytes: artifactBuffer.byteLength,
+          metadata: {
+            runtime,
+            command: normalizedCommand,
+            remotePath,
+          },
+          ...(conversationId ? { conversationId } : {}),
+          ...(turnId ? { turnId } : {}),
+        })
+      } catch (error) {
+        await deleteObject(r2Key).catch(() => {})
+        throw error
+      }
       if (!createdOutputId) {
+        await deleteObject(r2Key).catch(() => {})
         throw new Error(`Failed to create Output record for sandbox artifact "${fileName}".`)
       }
 

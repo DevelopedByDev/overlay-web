@@ -1,12 +1,18 @@
 export async function generatePdfFromHtml(title: string, html: string): Promise<Blob> {
   const { jsPDF } = await import('jspdf')
   const html2canvas = (await import('html2canvas')).default
+  const DOMPurify = (await import('dompurify')).default
+  const safeHtml = DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'style'],
+  })
 
   const container = document.createElement('div')
   container.innerHTML = `
     <div style="font-family: system-ui, sans-serif; padding: 40px; max-width: 700px; margin: 0 auto; color: #1a1a1a;">
       <h1 style="font-size: 22px; margin-bottom: 24px; font-weight: 600;">${escapeHtml(title)}</h1>
-      <div style="line-height: 1.6; font-size: 14px;">${html}</div>
+      <div style="line-height: 1.6; font-size: 14px;">${safeHtml}</div>
     </div>
   `
   container.style.position = 'absolute'
@@ -36,15 +42,19 @@ export async function generatePdfFromHtml(title: string, html: string): Promise<
 }
 
 export async function generatePdfFromMarkdown(title: string, markdown: string): Promise<Blob> {
-  const { htmlToMarkdown } = await import('./markdown')
-  const plainHtml = markdown
+  const { safeHttpUrl } = await import('@/lib/safe-url')
+  const escaped = escapeHtml(markdown)
+  const plainHtml = escaped
     .replace(/^#+\s/gm, (m) => `<h${m.match(/#/g)?.length || 1}>${m.replace(/#/g, '').trim()}</h${m.match(/#/g)?.length || 1}>`)
     .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/~~([^~]+)~~/g, '<s>$1</s>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
+      const safeHref = safeHttpUrl(href.replace(/&amp;/g, '&'))
+      return safeHref ? `<a href="${escapeHtml(safeHref)}">${label}</a>` : label
+    })
     .replace(/^\n/gm, '<br/>')
 
   const wrappedHtml = `<div style="line-height: 1.6;">${plainHtml.replace(/\n/g, '<br/>')}</div>`

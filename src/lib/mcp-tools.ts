@@ -4,6 +4,7 @@ import { convex } from '@/lib/convex'
 import { jsonSchemaToZod } from './mcp-schema-to-zod'
 import { getInternalApiSecret } from './internal-api-secret'
 import { fireAndForgetRecordToolInvocation } from './tools/record-tool-invocation'
+import { validatePublicNetworkUrl } from './ssrf'
 
 // Dynamic import of MCP SDK (ESM)
 type McpClientModule = typeof import('@modelcontextprotocol/sdk/client/index.js')
@@ -98,7 +99,9 @@ async function createMcpTransportAndClient(config: McpServerConfig) {
     StreamableHTTPClientTransport,
   } = await loadMcpModules()
 
-  const url = new URL(config.url)
+  const validation = await validatePublicNetworkUrl(config.url, { allowLocalDev: true, requireHttps: true })
+  if (!validation.ok) throw new Error(validation.error)
+  const url = validation.url
   const headers = buildAuthHeaders(config)
   const timeoutMs = config.timeoutMs ?? 30_000
 
@@ -167,7 +170,12 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
     StreamableHTTPClientTransport,
   } = await loadMcpModules()
 
-  const url = new URL(config.url)
+  const validation = await validatePublicNetworkUrl(config.url, { allowLocalDev: true, requireHttps: true })
+  if (!validation.ok) {
+    console.warn(`[MCP] Refusing server ${config.name}: ${validation.error}`)
+    return {}
+  }
+  const url = validation.url
   const headers = buildAuthHeaders(config)
   const timeoutMs = config.timeoutMs ?? 30_000
 
