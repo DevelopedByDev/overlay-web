@@ -98,7 +98,20 @@ export async function POST(request: NextRequest) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const form = await request.formData()
+    let form: FormData
+    try {
+      form = await request.formData()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (msg.includes('Failed to parse body as FormData') || msg.includes('exceeded') || msg.includes('payload')) {
+        return NextResponse.json(
+          { error: 'File too large. Maximum upload size is 12 MB.' },
+          { status: 413 },
+        )
+      }
+      throw e
+    }
+
     const raw = form.get('file')
     const projectId = sanitizeConvexIdParam(
       typeof form.get('projectId') === 'string' ? (form.get('projectId') as string) : undefined,

@@ -421,7 +421,7 @@ export const deleteUserAccountByServer = mutation({
 
     // Helper: delete every row returned by a query.
     async function deleteIndexed(
-      runQuery: () => Promise<Array<{ _id: import('./_generated/dataModel').GenericId<string> }>>,
+      runQuery: () => Promise<Array<{ _id: import('convex/values').GenericId<string> }>>,
     ): Promise<void> {
       const rows = await runQuery()
       for (const row of rows) {

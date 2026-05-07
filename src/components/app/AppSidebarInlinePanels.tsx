@@ -20,6 +20,7 @@ import { useAsyncSessions } from '@/lib/async-sessions-store'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
+  CHAT_MODIFIED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatDeleted,
   dispatchChatTitleUpdated,
@@ -81,9 +82,9 @@ export function ChatInlinePanel({
   const [confirmDeleteChat, setConfirmDeleteChat] = useState<Conversation | null>(null)
   const activeId = searchParams?.get('id') ?? null
 
-  const loadChats = useCallback(async () => {
+  const loadChats = useCallback(async (options: { force?: boolean } = {}) => {
     try {
-      setChats(await fetchChatList())
+      setChats(await fetchChatList(options))
     } catch {
       // ignore
     } finally {
@@ -97,10 +98,10 @@ export function ChatInlinePanel({
   }, [loadChats, refreshKey])
 
   useEffect(() => {
-    function handleChatCreated(event: Event) {
+    function handleChatUpserted(event: Event) {
       const { detail } = event as CustomEvent<ChatCreatedDetail>
       const nextChat = detail?.chat
-        if (!nextChat?._id) return
+      if (!nextChat?._id) return
       upsertCachedChat(nextChat)
       setLoading(false)
       setChats((prev) => {
@@ -125,9 +126,12 @@ export function ChatInlinePanel({
         title: detail.title,
         lastModified: Date.now(),
       })
-      setChats((prev) => prev.map((chat) => (
-        chat._id === detail.chatId ? { ...chat, title: detail.title } : chat
-      )))
+      setChats((prev) => {
+        const existing = prev.find((chat) => chat._id === detail.chatId)
+        if (!existing) return prev
+        const updated = { ...existing, title: detail.title, lastModified: Date.now() }
+        return [updated, ...prev.filter((chat) => chat._id !== detail.chatId)]
+      })
     }
 
     function handleChatDeleted(event: Event) {
@@ -143,11 +147,13 @@ export function ChatInlinePanel({
         setDeletingChatIds((prev) => prev.filter((id) => id !== deletedChatId))
       }, 180)
     }
-    window.addEventListener(CHAT_CREATED_EVENT, handleChatCreated)
+    window.addEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
+    window.addEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
     window.addEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     return () => {
-      window.removeEventListener(CHAT_CREATED_EVENT, handleChatCreated)
+      window.removeEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
+      window.removeEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
       window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
       window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     }

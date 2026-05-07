@@ -165,7 +165,7 @@ export const list = query({
     }
     const all = await ctx.db
       .query('conversations')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_userId_lastModified', (q) => q.eq('userId', userId))
       .order('desc')
       .take(200)
     return all
@@ -202,6 +202,7 @@ export const listByProject = query({
       .filter((conversation) => conversation.userId === userId)
       .filter((conversation) => (updatedSince !== undefined ? conversation.updatedAt > updatedSince : true))
       .filter((conversation) => (includeDeleted ? true : !conversation.deletedAt))
+      .sort((a, b) => (b.lastModified ?? b.createdAt) - (a.lastModified ?? a.createdAt))
   },
 })
 

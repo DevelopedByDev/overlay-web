@@ -16,12 +16,20 @@ let cachedChats: CachedConversation[] | null = null
 let cachedAt = 0
 let inFlight: Promise<CachedConversation[]> | null = null
 
+function sortByLastModified(chats: CachedConversation[]): CachedConversation[] {
+  return [...chats].sort((a, b) => {
+    const bTime = b.lastModified ?? b.updatedAt ?? b.createdAt ?? 0
+    const aTime = a.lastModified ?? a.updatedAt ?? a.createdAt ?? 0
+    return bTime - aTime
+  })
+}
+
 export function getCachedChatList(): CachedConversation[] | null {
   return cachedChats
 }
 
 export function primeChatList(chats: CachedConversation[]) {
-  cachedChats = chats
+  cachedChats = sortByLastModified(chats)
   cachedAt = Date.now()
 }
 
@@ -29,7 +37,7 @@ export function upsertCachedChat(chat: CachedConversation) {
   const current = cachedChats ?? []
   const existing = current.find((item) => item._id === chat._id)
   const merged = existing ? { ...existing, ...chat } : chat
-  cachedChats = [merged, ...current.filter((item) => item._id !== chat._id)]
+  cachedChats = sortByLastModified([merged, ...current.filter((item) => item._id !== chat._id)])
   cachedAt = Date.now()
 }
 

@@ -67,12 +67,15 @@ import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeTogg
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
+  CHAT_MODIFIED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatCreated,
   dispatchChatDeleted,
+  dispatchChatModified,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
   type ChatCreatedDetail,
+  type ChatModifiedDetail,
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
@@ -2530,7 +2533,7 @@ export default function ChatInterface({
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const dragCounterRef = useRef(0)
-  const [input, setInput] = useState(() => {
+  const [input, setInputState] = useState(() => {
     if (typeof window === 'undefined') return ''
     try {
       const draft = sessionStorage.getItem('overlay:guest-draft')
@@ -2538,6 +2541,19 @@ export default function ChatInterface({
     } catch { /* ignore */ }
     return ''
   })
+  const [, startInputTransition] = React.useTransition()
+  const inputRef = useRef(input)
+  const setInput = useCallback((next: string | ((previous: string) => string)) => {
+    const resolved = typeof next === 'function' ? next(inputRef.current) : next
+    inputRef.current = resolved
+    setInputState(resolved)
+  }, [])
+  const handleComposerInputChange = useCallback((text: string) => {
+    inputRef.current = text
+    startInputTransition(() => {
+      setInputState(text)
+    })
+  }, [startInputTransition])
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
@@ -2782,8 +2798,8 @@ export default function ChatInterface({
   ])
 
   useEffect(() => {
-    function handleChatCreated(event: Event) {
-      const { detail } = event as CustomEvent<ChatCreatedDetail>
+    function handleChatUpserted(event: Event) {
+      const { detail } = event as CustomEvent<ChatCreatedDetail | ChatModifiedDetail>
       const nextChat = detail?.chat
       if (!nextChat?._id) return
       upsertCachedChat(nextChat)
@@ -2809,9 +2825,12 @@ export default function ChatInterface({
         title: detail.title,
         lastModified: Date.now(),
       })
-      setChats((prev) => prev.map((chat) => (
-        chat._id === detail.chatId ? { ...chat, title: detail.title } : chat
-      )))
+      setChats((prev) => {
+        const existing = prev.find((chat) => chat._id === detail.chatId)
+        if (!existing) return prev
+        const updated = { ...existing, title: detail.title, lastModified: Date.now() }
+        return [updated, ...prev.filter((chat) => chat._id !== detail.chatId)]
+      })
       updateRuntimeUiState(detail.chatId, (prev) => ({ ...prev, activeChatTitle: detail.title }))
       if (activeChatIdRef.current === detail.chatId) {
         setActiveChatTitle(detail.title)
@@ -2838,11 +2857,13 @@ export default function ChatInterface({
         setActiveChatDeleting(false)
       }, 180)
     }
-    window.addEventListener(CHAT_CREATED_EVENT, handleChatCreated)
+    window.addEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
+    window.addEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
     window.addEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     return () => {
-      window.removeEventListener(CHAT_CREATED_EVENT, handleChatCreated)
+      window.removeEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
+      window.removeEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
       window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
       window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     }
@@ -3056,7 +3077,7 @@ export default function ChatInterface({
   const loadChats = useCallback(async () => {
     try {
       const pending = pendingTitleRef.current
-      const serverChats = await fetchChatList()
+      const serverChats = await fetchChatList({ force: true })
       const nextChats = pending
         ? serverChats.map((c) => (c._id === pending.chatId ? { ...c, title: pending.title } : c))
         : serverChats
@@ -3361,6 +3382,26 @@ export default function ChatInterface({
     dispatchChatTitleUpdated({ chatId, title: nextTitle })
     return nextTitle
   }, [updateRuntimeUiState])
+
+  const markChatModified = useCallback((chatId: string, title?: string | null) => {
+    const existingTitle =
+      title ||
+      activeChatTitle ||
+      chats.find((chat) => chat._id === chatId)?.title ||
+      DEFAULT_CHAT_TITLE
+    const chat = {
+      _id: chatId,
+      title: existingTitle,
+      lastModified: Date.now(),
+    }
+    upsertCachedChat(chat)
+    setChats((prev) => {
+      const existing = prev.find((item) => item._id === chatId)
+      const merged = { ...existing, ...chat, title: chat.title || existing?.title || DEFAULT_CHAT_TITLE }
+      return [merged, ...prev.filter((item) => item._id !== chatId)]
+    })
+    dispatchChatModified({ chat })
+  }, [activeChatTitle, chats])
 
   const beginChatRename = useCallback((chatId: string, title: string, event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
@@ -4716,12 +4757,12 @@ export default function ChatInterface({
 
   async function handleSend() {
     if (!userId && !authUser) {
-      try { sessionStorage.setItem('overlay:guest-draft', input) } catch { /* ignore */ }
+      try { sessionStorage.setItem('overlay:guest-draft', inputRef.current) } catch { /* ignore */ }
       requireAuth('send')
       return
     }
     const replyCtxSnapshot = replyContext
-    const text = input.trim()
+    const text = inputRef.current.trim()
     const hasReadyDocs = pendingChatDocuments.some((d) => d.status === 'ready')
     const selectedActModelSnapshot = selectedActModel
     const textModelsForTurn =
@@ -4760,6 +4801,7 @@ export default function ChatInterface({
       if (isSendBlocked) return
       const chatId = activeChatId || await createNewChat()
       if (!chatId) return
+      markChatModified(chatId, activeChatTitleSnapshot)
       const targetRuntime = ensureConversationRuntime(chatId)
 
       setInput('')
@@ -5074,6 +5116,7 @@ export default function ChatInterface({
     const wasFirst = isFirstMessage
     const chatId = activeChatId || await createNewChat()
     if (!chatId) return
+    markChatModified(chatId, activeChatTitleSnapshot)
     const targetRuntime = ensureConversationRuntime(chatId)
 
     shouldScrollRef.current = true
@@ -6653,7 +6696,7 @@ export default function ChatInterface({
                 <MentionInput
                   ref={textareaRef}
                   value={input}
-                  onChange={setInput}
+                  onChange={handleComposerInputChange}
                   onMentionsChange={setMentions}
                   onPaste={handlePaste}
                   onUploadFile={() => docInputRef.current?.click()}
