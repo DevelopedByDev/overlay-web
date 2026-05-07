@@ -177,6 +177,7 @@ import type {
   LiveConversationMessage,
   LiveMessageDelta,
   PendingChatDocument,
+  ToolGroupItem,
   ToolVisualBlock,
 } from './chat-interface/types'
 import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
@@ -1316,24 +1317,27 @@ function SingleToolCallRow({
 }
 
 function ToolCallsCollapsedGroup({
-  tools,
+  items,
   connectTop,
   connectBottom,
 }: {
-  tools: ToolVisualBlock[]
+  items: ToolGroupItem[]
   connectTop: boolean
   connectBottom: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const tools = items.filter((it): it is ToolVisualBlock => it.kind === 'tool')
   const n = tools.length
-  const anyRunning = tools.some((t) => !TOOL_UI_DONE_STATES.has(t.state))
+  const anyRunning =
+    tools.some((t) => !TOOL_UI_DONE_STATES.has(t.state)) ||
+    items.some((it) => it.kind === 'reasoning' && it.state !== 'done')
   const anyErr = tools.some((t) => t.state === 'output-error' || t.state === 'output-denied')
   const summary =
     anyErr
       ? `${n} tools called`
       : anyRunning
-        ? `${n} tools in progress`
-        : `${n} tools called`
+        ? n === 1 ? '1 tool in progress' : `${n} tools in progress`
+        : n === 1 ? '1 tool called' : `${n} tools called`
 
   return (
     <div className="w-full px-1 py-0.5">
@@ -1355,24 +1359,37 @@ function ToolCallsCollapsedGroup({
       </button>
       {open && (
         <div className="mt-2 space-y-2">
-          {tools.map((t, idx) =>
-            isOverlayGatedToolOutput(t.toolOutput) ? (
+          {items.map((it, idx) => {
+            const top = idx > 0
+            const bot = idx < items.length - 1
+            if (it.kind === 'reasoning') {
+              return (
+                <ReasoningBlock
+                  key={`r-${it.key}`}
+                  text={it.text}
+                  streaming={it.state === 'streaming'}
+                  connectTop={top}
+                  connectBottom={bot}
+                />
+              )
+            }
+            return isOverlayGatedToolOutput(it.toolOutput) ? (
               <GatedPaidFeatureCallout
-                key={t.key}
-                block={t}
-                connectTop={idx > 0}
-                connectBottom={idx < tools.length - 1}
+                key={it.key}
+                block={it}
+                connectTop={top}
+                connectBottom={bot}
               />
             ) : (
               <ToolCallRowWithReasoning
-                key={t.key}
-                block={t}
+                key={it.key}
+                block={it}
                 variant="nested"
-                connectTop={idx > 0}
-                connectBottom={idx < tools.length - 1}
+                connectTop={top}
+                connectBottom={bot}
               />
-            ),
-          )}
+            )
+          })}
         </div>
       )}
     </div>
@@ -1853,8 +1870,9 @@ function ExchangeBlock({
             )
           }
           if (seg.kind === 'tools') {
-            if (seg.tools.length === 1) {
-              const t = seg.tools[0]!
+            const onlyTools = seg.items.every((it): it is ToolVisualBlock => it.kind === 'tool')
+            if (onlyTools && seg.items.length === 1) {
+              const t = seg.items[0] as ToolVisualBlock
               const draft = getDraftFromToolBlock(t)
               if (draft) {
                 const isAutomationDraft = draft.kind === 'automation'
@@ -1914,7 +1932,7 @@ function ExchangeBlock({
             return (
               <ToolCallsCollapsedGroup
                 key={`${exchIdx}-seq-tools-${seg.originIndex}`}
-                tools={seg.tools}
+                items={seg.items}
                 connectTop={chain.chainTop}
                 connectBottom={chain.chainBottom}
               />
@@ -2365,12 +2383,16 @@ export default function ChatInterface({
   hideSidebar,
   projectName,
   mode = 'chat',
+  hideHeader = false,
+  belowEmptyComposer,
 }: {
   userId: string | null
   firstName?: string
   hideSidebar?: boolean
   projectName?: string
   mode?: 'chat' | 'automate'
+  hideHeader?: boolean
+  belowEmptyComposer?: React.ReactNode
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -4076,6 +4098,9 @@ export default function ChatInterface({
   }
 
   async function createNewChat(): Promise<string | null> {
+    // Invalidate any in-flight loadChat request before this newly-created runtime
+    // becomes active; otherwise an older load can repaint the view after send.
+    ++loadChatRequestRef.current
     persistActiveRuntimeUiState()
     const initialTitle = mode === 'automate' ? 'New Automation' : DEFAULT_CHAT_TITLE
     const res = await fetch('/api/app/conversations', {
@@ -4802,7 +4827,7 @@ export default function ChatInterface({
     if (effectiveGenType === 'image' || effectiveGenType === 'video') {
       if (!text && attachedImages.length === 0) return
       if (isSendBlocked) return
-      const chatId = activeChatId || await createNewChat()
+      const chatId = (activeChatIdRef.current ?? activeChatId) || await createNewChat()
       if (!chatId) return
       markChatModified(chatId, activeChatTitleSnapshot)
       const targetRuntime = ensureConversationRuntime(chatId)
@@ -5117,7 +5142,7 @@ export default function ChatInterface({
 
     // Capture before any await — isFirstMessage is true for the first message of a new/fresh chat
     const wasFirst = isFirstMessage
-    const chatId = activeChatId || await createNewChat()
+    const chatId = (activeChatIdRef.current ?? activeChatId) || await createNewChat()
     if (!chatId) return
     markChatModified(chatId, activeChatTitleSnapshot)
     const targetRuntime = ensureConversationRuntime(chatId)
@@ -5672,7 +5697,7 @@ export default function ChatInterface({
           </div>
         )}
         {/* Sticky header — md: h-16 aligns with AppSidebar brand row border; mobile: no title; model left + mode menu right */}
-        <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:py-0 md:px-4">
+        <div className={`flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:py-0 md:px-4 ${hideHeader ? 'hidden' : ''}`}>
             <div
               className={`group/header-title min-w-0 items-center gap-2 ${
                 activeChatId && editingChatId === activeChatId
@@ -6139,12 +6164,6 @@ export default function ChatInterface({
             )}
           </div>
         </div>
-
-        {mode === 'automate' && automationIdParam && selectedAutomationLoading && !selectedAutomation && (
-          <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
-            <div className="h-5 w-5 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin" aria-label="Loading automation" />
-          </div>
-        )}
 
         {hasAutomationContext && !selectedAutomationLoading && !selectedAutomation && !showAutomationChatTab && (
           <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
@@ -6897,6 +6916,11 @@ export default function ChatInterface({
               </motion.div>
             )}
           </AnimatePresence>
+          {showCenteredEmptyChat && belowEmptyComposer ? (
+            <div className="mx-auto mt-8 w-full max-w-[36rem] min-w-0 px-0">
+              {belowEmptyComposer}
+            </div>
+          ) : null}
         </div>
           </>
         )}

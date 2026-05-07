@@ -655,7 +655,7 @@ function AccountPageContent() {
             </div>
           )}
 
-          <h1 className={`text-3xl font-serif md:text-4xl mb-8 ${t.title}`}>account</h1>
+          <h1 className={`text-3xl font-serif md:text-4xl mb-8 ${t.title}`}>Account</h1>
 
           {loading || authLoading || !sessionCheckComplete ? (
             <div className="text-center py-16">

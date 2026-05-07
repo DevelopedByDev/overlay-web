@@ -9,6 +9,7 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  Loader2,
   Pencil,
   MessageSquare,
   Trash2,
@@ -1079,6 +1080,7 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
   const [editingAutomationName, setEditingAutomationName] = useState('')
   const [confirmDeleteAutomation, setConfirmDeleteAutomation] = useState<Automation | null>(null)
   const [deletingAutomationIds, setDeletingAutomationIds] = useState<string[]>([])
+  const [pendingNavId, setPendingNavId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
   const activeAutomationId = searchParams?.get('automationId') ?? null
 
@@ -1212,15 +1214,30 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
           >
             <button
               type="button"
-              disabled={isDeleting}
-              onClick={() => {
+              disabled={isDeleting || pendingNavId === automation._id}
+              onClick={async () => {
                 if (isEditing) return
-                router.push(automationHref(automation))
-                onNavigate?.()
+                // Prefetch automation detail before navigating so the destination
+                // page renders fully populated instead of a loading shell.
+                setPendingNavId(automation._id)
+                try {
+                  await fetch(
+                    `/api/app/automations?automationId=${encodeURIComponent(automation._id)}`,
+                    { credentials: 'same-origin', cache: 'no-store' },
+                  ).catch(() => null)
+                } finally {
+                  setPendingNavId(null)
+                  router.push(automationHref(automation))
+                  onNavigate?.()
+                }
               }}
               className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-0.5 text-left disabled:cursor-default disabled:opacity-50"
             >
-              <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
+              {pendingNavId === automation._id ? (
+                <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-[var(--muted)]" />
+              ) : (
+                <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
+              )}
               {isEditing ? (
                 <input
                   autoFocus

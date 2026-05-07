@@ -154,6 +154,7 @@ export async function GET(request: NextRequest) {
           lastName: session.user.lastName || '',
           accessToken: session.accessToken,
           refreshToken: session.refreshToken,
+          expiresAt: session.expiresAt,
         }
 
         const token = randomBytes(16).toString('hex')

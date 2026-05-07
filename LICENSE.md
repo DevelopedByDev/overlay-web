@@ -1,6 +1,6 @@
 # Overlay License
 
-Copyright © 2026 LayerNorm Co. (contact: divyansh@layernorm.co)
+Copyright © 2026 LayerNorm Inc. (contact: divyansh@layernorm.co)
 
 Depending on the type of your legal entity, you are granted permission to use Overlay for your project. Individuals and single-person companies are allowed to use Overlay for free (even commercially), while an enterprise license is required for organizations of 2 or more people. This two-tier system was designed to ensure funding for this project while still allowing the source code to be available and the program to be free for most. Read below for the exact terms of use.
 

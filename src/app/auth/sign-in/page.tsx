@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PageNavbar } from "@/components/PageNavbar";
 import { LandingThemeProvider, useLandingTheme } from "@/contexts/LandingThemeContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { sanitizeClientAuthRedirect } from "@/lib/auth-redirect";
 import {
   persistMobilePkceChallengeFromUrl,
@@ -21,6 +22,7 @@ import {
 
 function SignInContent() {
   const { isLandingDark } = useLandingTheme();
+  const { refreshSession } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -90,10 +92,13 @@ function SignInContent() {
         return;
       }
 
+      await refreshSession();
+      router.refresh();
+
       if (redirectUrl.startsWith("overlay://")) {
         window.location.href = redirectUrl;
       } else {
-        router.push(redirectUrl);
+        router.replace(redirectUrl);
       }
     } catch {
       setError("An unexpected error occurred");
@@ -127,11 +132,9 @@ function SignInContent() {
     <div className="flex min-h-screen w-full flex-col gradient-bg">
       <div className="liquid-glass" />
 
-      <div className="hidden md:block">
-        <PageNavbar />
-      </div>
+      <PageNavbar />
 
-      <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-8 pt-20 md:px-6 md:py-12 md:pt-12">
+      <main className="relative z-10 flex flex-1 items-center justify-center px-4 pb-10 pt-28 md:px-6 md:pb-14 md:pt-32">
         <div className="w-full max-w-md">
           <div className={card}>
             <h1 className={`text-2xl font-serif text-center mb-2 ${labelText}`}>Welcome back</h1>

@@ -80,7 +80,7 @@ export function GuestGateProvider({ children }: { children: ReactNode }) {
   return (
     <GuestGateContext.Provider value={{ requireAuth, isModalOpen: !!modalReason }}>
       {children}
-      {(!isLoading && !isAuthenticated && !!modalReason) || modalClosing ? (
+      {!isAuthenticated && (((!isLoading && !!modalReason) || modalClosing)) ? (
         <SignInFullScreenModal
           reason={modalReason ?? 'nav'}
           onClose={closeModal}

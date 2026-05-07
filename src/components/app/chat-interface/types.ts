@@ -76,13 +76,15 @@ export type AssistantVisualBlock =
   | { kind: 'reasoning'; key: string; text: string; state?: string }
 
 export type ToolVisualBlock = Extract<AssistantVisualBlock, { kind: 'tool' }>
+export type ReasoningVisualBlock = Extract<AssistantVisualBlock, { kind: 'reasoning' }>
+export type ToolGroupItem = ToolVisualBlock | ReasoningVisualBlock
 
 export type AssistantVisualSegment =
-  | { kind: 'reasoning'; block: Extract<AssistantVisualBlock, { kind: 'reasoning' }>; originIndex: number }
+  | { kind: 'reasoning'; block: ReasoningVisualBlock; originIndex: number }
   | { kind: 'text'; block: Extract<AssistantVisualBlock, { kind: 'text' }>; originIndex: number }
   | { kind: 'file'; block: Extract<AssistantVisualBlock, { kind: 'file' }>; originIndex: number }
   | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
-  | { kind: 'tools'; tools: ToolVisualBlock[]; originIndex: number }
+  | { kind: 'tools'; items: ToolGroupItem[]; originIndex: number }
 
 export type MentionType = 'file' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat'
 

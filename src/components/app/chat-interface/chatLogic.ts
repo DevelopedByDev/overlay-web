@@ -19,6 +19,7 @@ import type {
   LiveMessageDelta,
   RestoredOutputGroup,
   ServerConversationMessage,
+  ToolGroupItem,
   ToolVisualBlock,
 } from './types'
 
@@ -371,14 +372,25 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
     }
     if (b.kind === 'tool') {
       const start = i
-      const group: ToolVisualBlock[] = []
+      const group: ToolGroupItem[] = []
+      // Greedily absorb consecutive non-browser tool blocks AND any reasoning
+      // blocks interleaved between them. Stops at text/file/browser-tool boundaries.
       while (i < blocks.length) {
         const t = blocks[i]!
-        if (t.kind !== 'tool' || t.name === 'browser_run_task' || t.name === 'interactive_browser_session') break
-        group.push(t)
-        i++
+        if (t.kind === 'tool') {
+          if (t.name === 'browser_run_task' || t.name === 'interactive_browser_session') break
+          group.push(t)
+          i++
+          continue
+        }
+        if (t.kind === 'reasoning') {
+          group.push(t)
+          i++
+          continue
+        }
+        break
       }
-      out.push({ kind: 'tools', tools: group, originIndex: start })
+      out.push({ kind: 'tools', items: group, originIndex: start })
       continue
     }
     if (b.kind === 'file') {

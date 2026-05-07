@@ -75,6 +75,7 @@ export async function POST(request: Request) {
       lastName: session.user.lastName || '',
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
+      expiresAt: session.expiresAt,
     }
 
     const token = randomBytes(16).toString('hex')

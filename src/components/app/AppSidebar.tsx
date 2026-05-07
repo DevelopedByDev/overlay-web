@@ -211,6 +211,14 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
 
+  useEffect(() => {
+    function onProjectsChanged() {
+      setProjectsPanelRefreshKey((v) => v + 1)
+    }
+    window.addEventListener('overlay:projects-changed', onProjectsChanged)
+    return () => window.removeEventListener('overlay:projects-changed', onProjectsChanged)
+  }, [])
+
   const effectivePendingHref =
     pendingNav && pathname === pendingNav.fromPath ? pendingNav.href : null
   const projectsOpen = pathname.startsWith('/app/projects')
