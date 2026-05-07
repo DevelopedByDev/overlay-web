@@ -58,3 +58,12 @@ renders/*
 .windsurf/*
 
 # surface folders
+
+# codealmanac
+.almanac/index.db
+.almanac/index.db-wal
+.almanac/index.db-shm
+.almanac/logs/
+.almanac/.capture-*
+.almanac/.bootstrap-*
+.almanac/.ingest-*
