@@ -19,6 +19,7 @@ import {
   Copy,
   RotateCw,
   Reply,
+  GitBranch,
   Pencil,
   BrainCircuit,
   ArrowUp,
@@ -1694,6 +1695,7 @@ interface ExchangeBlockProps {
   modelLabel: string
   onDeleteTurn: () => void
   onReply: () => void
+  onBranch: () => void
   /** User stopped streaming for this exchange; show notice + footer actions. */
   interrupted?: boolean
   actionsLocked: boolean
@@ -1714,7 +1716,7 @@ interface ExchangeBlockProps {
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
-  turnIdForActions, modelLabel, onDeleteTurn, onReply, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
+  turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, userMentions,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
@@ -2060,6 +2062,16 @@ function ExchangeBlock({
               aria-label="Reply"
             >
               <Reply size={14} strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              onClick={onBranch}
+              disabled={!turnIdForActions || actionsLocked || isExiting}
+              className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
+              aria-label="Branch chat from here"
+              title="Branch chat from here"
+            >
+              <GitBranch size={14} strokeWidth={1.75} />
             </button>
             {webSources.length > 0 ? (
               <button
@@ -4097,18 +4109,20 @@ export default function ChatInterface({
     router.replace(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
   }
 
-  async function createNewChat(): Promise<string | null> {
+  async function createNewChat(options: { title?: string } = {}): Promise<string | null> {
     // Invalidate any in-flight loadChat request before this newly-created runtime
     // becomes active; otherwise an older load can repaint the view after send.
     ++loadChatRequestRef.current
     persistActiveRuntimeUiState()
-    const initialTitle = mode === 'automate' ? 'New Automation' : DEFAULT_CHAT_TITLE
+    const initialTitle = options.title ?? (mode === 'automate' ? 'New Automation' : DEFAULT_CHAT_TITLE)
+    const initialSelectedModels = askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4)
+    const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
     const res = await fetch('/api/app/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: initialTitle,
-        askModelIds: selectedModels,
+        askModelIds: initialSelectedModels,
         actModelId: selectedActModel,
         lastMode: 'act',
         ...(embedProjectId ? { projectId: embedProjectId } : {}),
@@ -4122,7 +4136,7 @@ export default function ChatInterface({
         title: initialTitle,
         lastModified: Date.now(),
         lastMode: 'act',
-        askModelIds: selectedModels,
+        askModelIds: initialSelectedModels,
         actModelId: selectedActModel,
       }
       upsertCachedChat(newChat)
@@ -4131,15 +4145,15 @@ export default function ChatInterface({
       posthog.capture('chat_new_chat_created', { mode: 'act' })
       const runtime = ensureConversationRuntime(data.id, {
         selectedActModel,
-        selectedModels: [selectedActModel],
-        askModelSelectionMode: 'single',
+        selectedModels: initialSelectedModels,
+        askModelSelectionMode: initialAskModelSelectionMode,
         activeChatTitle: initialTitle,
         isFirstMessage: true,
       })
       resetRuntimeState(runtime, {
         selectedActModel,
-        selectedModels: [selectedActModel],
-        askModelSelectionMode: 'single',
+        selectedModels: initialSelectedModels,
+        askModelSelectionMode: initialAskModelSelectionMode,
         activeChatTitle: initialTitle,
         isFirstMessage: true,
       })
@@ -4153,6 +4167,72 @@ export default function ChatInterface({
       return data.id
     }
     return null
+  }
+
+  async function handleBranchConversationAtTurn(turnId: string | null) {
+    const sourceChatId = activeChatIdRef.current ?? activeChatId
+    const targetTurnId = turnId?.trim()
+    if (!sourceChatId || !targetTurnId || isActiveLoading) return
+    try {
+      setComposerNotice('Creating branch…')
+      const sourceRes = await fetch(`/api/app/conversations?conversationId=${sourceChatId}&messages=true`)
+      if (!sourceRes.ok) throw new Error('Could not load source chat')
+      const sourceData = await sourceRes.json() as {
+        messages?: Array<{
+          turnId?: string
+          mode?: 'ask' | 'act'
+          role?: 'user' | 'assistant'
+          contentType?: 'text' | 'image' | 'video'
+          parts?: Array<{ type: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
+          model?: string
+          variantIndex?: number
+          replyToTurnId?: string
+          replySnippet?: string
+        }>
+      }
+      const rows: NonNullable<typeof sourceData.messages> = []
+      for (const message of sourceData.messages ?? []) {
+        rows.push(message)
+        if (message.turnId === targetTurnId && message.role === 'assistant') {
+          continue
+        }
+      }
+      const targetIdx = rows.findLastIndex((message) => message.turnId === targetTurnId)
+      if (targetIdx < 0) throw new Error('Could not find that turn')
+      const branchRows = rows.slice(0, targetIdx + 1)
+      const branchChatId = await createNewChat({ title: `${activeChatTitle || DEFAULT_CHAT_TITLE} branch` })
+      if (!branchChatId) throw new Error('Could not create branch')
+      for (const message of branchRows) {
+        const content = (message.parts ?? [])
+          .filter((part) => part.type === 'text' && part.text?.trim())
+          .map((part) => part.text!.trim())
+          .join('\n\n') || (message.role === 'assistant' ? '[Response]' : '[Message]')
+        const parts = (message.parts ?? []).filter((part) => part.type === 'text' || part.type === 'file')
+        const res = await fetch('/api/app/conversations/message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: branchChatId,
+            turnId: message.turnId,
+            mode: message.mode ?? 'act',
+            role: message.role,
+            content,
+            parts,
+            modelId: message.model,
+            contentType: message.contentType ?? 'text',
+            variantIndex: message.variantIndex,
+            ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId, replySnippet: message.replySnippet } : {}),
+          }),
+        })
+        if (!res.ok) throw new Error('Could not copy branch messages')
+      }
+      await loadChat(branchChatId)
+      setComposerNotice('Branch created.')
+      window.setTimeout(() => setComposerNotice(null), 2500)
+    } catch (error) {
+      setComposerNotice(error instanceof Error ? error.message : 'Could not create branch')
+      window.setTimeout(() => setComposerNotice(null), 5000)
+    }
   }
 
   async function loadChat(chatId: string, options: { replaceUrl?: boolean } = {}) {
@@ -5506,7 +5586,7 @@ export default function ChatInterface({
           <div className="hidden h-full w-52 flex-col border-r border-[var(--border)] bg-[var(--surface-muted)] md:flex">
             <div className="flex h-16 items-center border-b border-[var(--border)] px-3">
               <button
-                onClick={createNewChat}
+                onClick={() => void createNewChat()}
                 className="flex w-full items-center gap-1.5 rounded-md bg-[var(--foreground)] px-3 py-1.5 text-sm text-[var(--background)] transition-colors hover:opacity-80"
               >
                 <Plus size={13} />
@@ -6544,6 +6624,7 @@ export default function ChatInterface({
                     onReply={() =>
                       beginReplyToAssistantText(replyPlainForInterrupt, getUserTurnId(msg))
                     }
+                    onBranch={() => void handleBranchConversationAtTurn(getUserTurnId(msg))}
                     interrupted={interruptedHere}
                     actionsLocked={isLatest && isActiveLoading}
                     isExiting={textIsExiting}
