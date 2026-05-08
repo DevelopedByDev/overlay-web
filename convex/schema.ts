@@ -451,7 +451,8 @@ export default defineSchema({
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
     .index('by_userId', ['userId'])
-    .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt']),
+    .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
+    .index('by_status_updatedAt', ['status', 'updatedAt']),
 
   conversationMessageDeltas: defineTable({
     conversationId: v.id('conversations'),

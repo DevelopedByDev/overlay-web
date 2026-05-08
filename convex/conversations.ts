@@ -578,6 +578,37 @@ export const failGeneratingMessage = mutation({
   },
 })
 
+export const finalizeStaleGeneratingMessages = mutation({
+  args: {
+    cutoffMinutes: v.optional(v.number()),
+    limit: v.optional(v.number()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, { cutoffMinutes, limit, serverSecret }) => {
+    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
+    const thresholdMs = (cutoffMinutes ?? 5) * 60 * 1000
+    const cutoff = Date.now() - thresholdMs
+
+    const stale = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_status_updatedAt', (q) =>
+        q.eq('status', 'generating').lt('updatedAt', cutoff)
+      )
+      .take(limit ?? 50)
+
+    let finalizedCount = 0
+    for (const message of stale) {
+      await ctx.db.patch(message._id, {
+        status: 'completed',
+        updatedAt: Date.now(),
+      })
+      finalizedCount++
+    }
+
+    return { finalizedCount, remaining: stale.length - finalizedCount }
+  },
+})
+
 export const watchGeneratingMessages = query({
   args: {
     conversationId: v.id('conversations'),
