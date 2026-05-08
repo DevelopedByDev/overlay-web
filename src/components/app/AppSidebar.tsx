@@ -21,14 +21,14 @@ import { upsertCachedChat } from '@/lib/chat-list-cache'
 import { useAppSettings } from './AppSettingsProvider'
 import { formatBytes } from '@/lib/storage-limits'
 import {
-  AutomationsInlinePanel,
-  ChatInlinePanel,
   FilesInlinePanel,
   InlineNavChildren,
   NotesInlinePanel,
   ProjectsInlinePanel,
   toolsInlineItems,
 } from './AppSidebarInlinePanels'
+import { ChatInlinePanel } from './ChatInlinePanel'
+import { AutomationsInlinePanel } from './AutomationsInlinePanel'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
 import dynamic from 'next/dynamic'
