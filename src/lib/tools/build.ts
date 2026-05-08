@@ -1,6 +1,6 @@
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
-import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/lib/models'
+import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/lib/model-data'
 import {
   executeCreateNote,
   executeDeleteNote,

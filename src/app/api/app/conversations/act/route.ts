@@ -15,7 +15,7 @@ import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
 import { createMcpToolSet } from '@/lib/mcp-tools'
-import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/models'
+import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/model-types'
 import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
 import {
   allowedOverlayToolIdsForTurn,
@@ -24,17 +24,7 @@ import {
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import { buildDocumentContextBundle } from '@/lib/document-context-builder'
-import {
-  ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
-  ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
-  ACT_PAID_PLAN_ACT_TOOLS_REALITY,
-  FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
-  MEMORY_SAVE_PROTOCOL,
-  cloneMessagesWithIndexedFileHint,
-  indexedFilesSystemNote,
-  indexedFilesSystemNotePreloaded,
-  parseIndexedAttachmentsFromRequest,
-} from '@/lib/knowledge-agent-instructions'
+import { parseIndexedAttachmentsFromRequest } from '@/lib/knowledge-agent-types'
 import {
   filterComposioToolSet,
   filterComposioToolSetForPaidOnlyFeatures,
@@ -42,8 +32,6 @@ import {
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
 import { createFreeTierGatedStubTools } from '@/lib/tools/free-tier-gated-stub-tools'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
-import { MATH_FORMAT_INSTRUCTION } from '@/lib/math-format-instructions'
-import { TABLE_FORMAT_INSTRUCTION } from '@/lib/markdown-table-instructions'
 import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
@@ -318,6 +306,18 @@ export async function POST(request: NextRequest) {
   let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
   let pendingServerSecret: string | undefined
   try {
+    const {
+      ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
+      ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
+      ACT_PAID_PLAN_ACT_TOOLS_REALITY,
+      FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
+      MEMORY_SAVE_PROTOCOL,
+      cloneMessagesWithIndexedFileHint,
+      indexedFilesSystemNote,
+      indexedFilesSystemNotePreloaded,
+    } = await import('@/lib/knowledge-agent-instructions')
+    const { MATH_FORMAT_INSTRUCTION } = await import('@/lib/math-format-instructions')
+    const { TABLE_FORMAT_INSTRUCTION } = await import('@/lib/markdown-table-instructions')
     const _ttftDebug = process.env.TTFT_DEBUG === 'true'
     let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
     if (_ttftDebug) _t0 = performance.now()

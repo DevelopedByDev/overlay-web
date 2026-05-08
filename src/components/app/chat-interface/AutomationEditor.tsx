@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Play, MessageSquare, SlidersHorizontal } from 'lucide-react'
 import { AutomationInstructionsEditor } from './AutomationInstructionsEditor'
-import { getModelsByIntelligence, DEFAULT_MODEL_ID } from '@/lib/models'
+import { DEFAULT_MODEL_ID } from '@/lib/model-types'
+import { getModelsByIntelligence } from '@/lib/model-data'
 
 export type AutomationDetailTab = 'chat' | 'edit'
 

@@ -1,5 +1,5 @@
 import type { StepResult, ToolSet } from 'ai'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/models'
+import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/model-types'
 
 function stepsHavePerplexitySearchWithOutput(
   steps: StepResult<ToolSet>[] | undefined,

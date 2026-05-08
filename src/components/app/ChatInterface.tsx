@@ -43,22 +43,24 @@ import {
   DEFAULT_MODEL_ID,
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
-  IMAGE_MODELS,
-  VIDEO_MODELS,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
+  isNvidiaNimChatModelId,
+  type ChatModel,
+  type GenerationMode,
+  type VideoSubMode,
+} from '@/lib/model-types'
+import {
+  IMAGE_MODELS,
+  VIDEO_MODELS,
   costToBarFill5,
   getChatModelDisplayName,
   getModel,
   getModelsByIntelligence,
   getVideoModelsBySubMode,
   intelligenceToBarFill5,
-  isNvidiaNimChatModelId,
   speedTierToBarFill5,
-  type ChatModel,
-  type GenerationMode,
-  type VideoSubMode,
-} from '@/lib/models'
+} from '@/lib/model-data'
 import { ACT_MODEL_KEY, CHAT_MODEL_KEY } from '@/lib/chat-model-prefs'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'

@@ -80,7 +80,7 @@ import { readStoredActModelId, ACT_MODEL_KEY } from '@/lib/chat-model-prefs'
 import {
   getModelsByIntelligence,
   getChatModelDisplayName,
-} from '@/lib/models'
+} from '@/lib/model-data'
 const MarkdownMessage = dynamic(() => import('./MarkdownMessage').then((mod) => ({ default: mod.MarkdownMessage })))
 import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from './chat-interface/mention-types'

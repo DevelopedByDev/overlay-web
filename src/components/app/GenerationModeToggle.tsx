@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ComponentType } from 'react'
 import { MessageSquare, ImageIcon, Video, ChevronDown, Check } from 'lucide-react'
-import type { GenerationMode } from '@/lib/models'
+import type { GenerationMode } from '@/lib/model-types'
 
 interface GenerationModeToggleProps {
   mode: GenerationMode

@@ -3,7 +3,7 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/lib/service-auth'
 import { getBaseUrl } from '@/lib/url'
-import { DEFAULT_MODEL_ID } from '@/lib/models'
+import { DEFAULT_MODEL_ID } from '@/lib/model-types'
 import { parseMentionTokens } from '@/lib/mention-tokens'
 import type { Id } from '../../../convex/_generated/dataModel'
 

@@ -7,7 +7,7 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
-import { NVIDIA_NIM_MODEL_IDS } from '@/lib/models'
+import { NVIDIA_NIM_MODEL_IDS } from '@/lib/model-types'
 
 export const NVIDIA_NIM_BASE_URL = 'https://integrate.api.nvidia.com/v1' as const
 

@@ -11,13 +11,15 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import {
-  AVAILABLE_MODELS,
   DEFAULT_MODEL_ID,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
+} from '@/lib/model-types'
+import {
+  AVAILABLE_MODELS,
   IMAGE_MODELS,
   VIDEO_MODELS,
-} from '@/lib/models'
+} from '@/lib/model-data'
 
 export async function GET(request: NextRequest) {
   try {

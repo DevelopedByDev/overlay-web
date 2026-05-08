@@ -7,7 +7,7 @@
 
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import type { IndexedAttachmentRef } from './knowledge-agent-instructions'
+import type { IndexedAttachmentRef } from './knowledge-agent-types'
 import { findSubstringMatchesInText } from './file-text-search'
 import type { Id } from '../../convex/_generated/dataModel'
 

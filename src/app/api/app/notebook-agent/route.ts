@@ -19,7 +19,7 @@ import {
   DEFAULT_MODEL_ID,
   FREE_TIER_AUTO_MODEL_ID,
   isNvidiaNimChatModelId,
-} from '@/lib/models'
+} from '@/lib/model-types'
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { executeSearchKnowledge } from '@/lib/tools/overlay-executes'
 import type { OverlayToolsOptions } from '@/lib/tools/types'

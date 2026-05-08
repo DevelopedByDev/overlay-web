@@ -1,69 +1,9 @@
-export type GenerationMode = 'text' | 'image' | 'video'
-
-export type VideoSubMode =
-  | 'text-to-video'
-  | 'image-to-video'
-  | 'reference-to-video'
-  | 'motion-control'
-  | 'video-editing'
-
-export interface ChatModel {
-  id: string
-  name: string
-  provider:
-    | 'openai'
-    | 'anthropic'
-    | 'google'
-    | 'minimax'
-    | 'groq'
-    | 'xai'
-    | 'openrouter'
-    | 'moonshotai'
-    | 'zai'
-    | 'alibaba'
-    | 'nvidia'
-    | 'deepseek'
-  description?: string
-  intelligence: number
-  /** 0 = free, 1 = cheap, 2 = mid, 3 = expensive */
-  cost: 0 | 1 | 2 | 3
-  /** Relative latency: 1 = heavier/slower, 3 = faster/lighter (for model picker UI). */
-  speedTier: 1 | 2 | 3
-  supportsVision: boolean
-  supportsReasoning: boolean
-  supportsSearch: boolean
-}
-
-export interface ImageModel {
-  id: string
-  name: string
-  provider: string
-  description?: string
-  defaultAspectRatio?: string
-}
-
-export interface VideoModel {
-  id: string
-  name: string
-  provider: string
-  description?: string
-  billingUnit: 'per_video' | 'per_second'
-  defaultDuration?: number
-  defaultAspectRatio?: string
-  subModes: VideoSubMode[]
-}
-
-export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
-export const FREE_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2-thinking'
-
-export const NVIDIA_NIM_MODEL_IDS = [
-  'deepseek-ai/deepseek-v3.2',
-  'moonshotai/kimi-k2-thinking',
-] as const
-
-export function isNvidiaNimChatModelId(modelId: string): boolean {
-  return (NVIDIA_NIM_MODEL_IDS as readonly string[]).includes(modelId)
-}
+import type { ChatModel, ImageModel, VideoModel, VideoSubMode } from './model-types'
+import {
+  FREE_TIER_AUTO_MODEL_ID,
+  DEFAULT_MODEL_ID,
+  isNvidiaNimChatModelId,
+} from './model-types'
 
 export const AVAILABLE_MODELS: ChatModel[] = [
   // Google Models
@@ -105,8 +45,6 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'Free model', intelligence: 1.65, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Free model', intelligence: 1.7, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 ]
-
-export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
 
 /**
  * Highest quality first — used when picking a default Act model from a multi-model
@@ -246,8 +184,6 @@ export const IMAGE_MODELS: ImageModel[] = [
   { id: 'bytedance/seedream-4.5', name: 'Seedream 4.5', provider: 'bytedance', description: 'Balanced quality', defaultAspectRatio: '1:1' },
 ]
 
-export const DEFAULT_IMAGE_MODEL_ID = 'openai/gpt-image-1.5'
-
 export function getImageModel(id: string): ImageModel | undefined {
   return IMAGE_MODELS.find((m) => m.id === id)
 }
@@ -271,8 +207,6 @@ export const VIDEO_MODELS: VideoModel[] = [
   // Motion control
   { id: 'klingai/kling-v2.6-motion-control', name: 'Kling Motion Control', provider: 'klingai', description: 'Transfer motion', billingUnit: 'per_video', defaultDuration: 5, defaultAspectRatio: '16:9', subModes: ['motion-control'] },
 ]
-
-export const DEFAULT_VIDEO_MODEL_ID = 'google/veo-3.1-generate-001'
 
 export function getVideoModel(id: string): VideoModel | undefined {
   return VIDEO_MODELS.find((m) => m.id === id)

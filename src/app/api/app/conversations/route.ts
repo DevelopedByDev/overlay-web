@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID, FREE_TIER_DEFAULT_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/models'
+import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID, FREE_TIER_DEFAULT_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/model-types'
 import { isPaidPlan } from '@/lib/billing-runtime'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'

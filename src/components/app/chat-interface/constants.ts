@@ -1,4 +1,4 @@
-import type { VideoSubMode } from '@/lib/models'
+import type { VideoSubMode } from '@/lib/model-types'
 
 export const TOOL_UI_DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
 

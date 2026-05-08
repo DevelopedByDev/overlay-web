@@ -1,4 +1,5 @@
-import { DEFAULT_MODEL_ID, getModel } from '@/lib/models'
+import { DEFAULT_MODEL_ID } from '@/lib/model-types'
+import { getModel } from '@/lib/model-data'
 
 /** Persisted chat model selection — shared with ChatInterface and sidebar "new chat" actions. */
 export const CHAT_MODEL_KEY = 'overlay_chat_model'

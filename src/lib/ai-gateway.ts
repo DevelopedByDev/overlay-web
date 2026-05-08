@@ -1,7 +1,8 @@
 import { createGateway, generateText, type ToolSet, stepCountIs, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
-import { FREE_TIER_AUTO_MODEL_ID, getModel, isNvidiaNimChatModelId, modelUsesOpenRouterTransport } from '@/lib/models'
+import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/model-types'
+import { getModel, modelUsesOpenRouterTransport } from '@/lib/model-data'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
 
