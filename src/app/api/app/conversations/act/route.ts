@@ -23,6 +23,7 @@ import {
 } from '@/lib/tools/exposure-policy'
 import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
+import { buildDocumentContextBundle } from '@/lib/document-context-builder'
 import {
   ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
   ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
@@ -31,6 +32,7 @@ import {
   MEMORY_SAVE_PROTOCOL,
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
+  indexedFilesSystemNotePreloaded,
   parseIndexedAttachmentsFromRequest,
 } from '@/lib/knowledge-agent-instructions'
 import {
@@ -651,14 +653,30 @@ export async function POST(request: NextRequest) {
       indexedAttachments: rawIndexedAttachments,
       indexedFileNames,
     })
+
+    // Pre-fetch attached document content server-side so the model doesn't need
+    // to loop through search_in_files / search_knowledge for its own uploads.
+    const docContextBundle =
+      indexedAttachmentList.length > 0
+        ? await buildDocumentContextBundle({
+            attachments: indexedAttachmentList,
+            userId,
+            accessToken: auth.accessToken || undefined,
+            userQuery: latestUserText ?? undefined,
+          })
+        : { contextText: '', hasContent: false, totalChars: 0 }
+    const hasPreloadedDocContext = docContextBundle.hasContent && docContextBundle.totalChars > 0
+
     const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
       latestUserText,
       automationMode: automationMode === true || mode === 'automate',
       automationExecution: automationExecution === true,
     })
 
-    const indexedNote = indexedFilesSystemNote(indexedAttachmentList)
-    let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedAttachmentList)
+    const indexedNote = hasPreloadedDocContext
+      ? indexedFilesSystemNotePreloaded(indexedAttachmentList)
+      : indexedFilesSystemNote(indexedAttachmentList)
+    let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedAttachmentList, hasPreloadedDocContext)
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
     messagesForModel = sanitizeUiMessagesForModelApi(messagesForModel)
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
@@ -789,6 +807,19 @@ export async function POST(request: NextRequest) {
       '5. When notebook or PDF files are attached, **zero** user-visible characters may appear before the first `search_in_files` or `search_knowledge` tool call: no intro, no checklist, no "I will search…". For attached PDFs, try `search_in_files` with short distinctive queries and `search_knowledge` by file name; if text is not available yet, say so in one short sentence without implementation details.\n' +
       '6. If the user explicitly asks to see your reasoning, you may still reason inside `<think>...</think>` and then summarize the key steps in the final body — but only as a summary, not a live transcript.'
 
+    const freeTierNote = !paid && (effectiveModelId === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(effectiveModelId))
+      ? hasPreloadedDocContext
+        ? '\n\n(Free tier — user-visible reply) THINKING / REASONING RULES (MANDATORY):\n' +
+          '1. Put **every** chain-of-thought, plan, reflection, self-talk, and tool-narration step strictly inside ` thinking...\` tags. Open with ` thinking` BEFORE any reasoning and close with ` \` BEFORE you start the final answer.\n' +
+          '2. The body text that follows ` \` must contain ONLY the final answer the user sees. No phrases like "Let me think", "The user is asking", "I should", "I need to", "My response should be", numbered plans, or checklists of intentions. If you catch yourself writing those, wrap them in ` thinking...\` and rewrite the body.\n' +
+          '3. Never print raw tool calls, tool names on their own lines, JSON payloads, or prefixes like TOOLCALL/OLCALL. Use the real tool-calling channel.\n' +
+          '4. Never mention internal file ids, Convex, backend storage names, or that you are "searching the knowledge" in prose — use tools quietly.\n' +
+          '5. For attached documents whose content is provided in the ATTACHED DOCUMENT CONTENT block above, answer directly from that text — do not call search_in_files or search_knowledge for those specific files. Only call tools for cross-document or knowledge-base queries.\n' +
+          '6. If the user explicitly asks to see your reasoning, you may still reason inside ` thinking...\` and then summarize the key steps in the final body — but only as a summary, not a live transcript.\n\n' +
+          '[OVERRIDE — highest priority]: For attached documents whose full content is provided above, answer directly from that text. Do not call search_in_files or search_knowledge for them. This supersedes any earlier instruction requiring tool calls for those files.'
+        : freeTierModelLeakNote
+      : ''
+
     const multiCompareSlotNote = isMultiModelFollowUpSlot
       ? "\n\n(Parallel model comparison slot) Composio and other third-party account action tools are not in your tool set for this run. Another parallel model may have them. Use only the tools you actually have. Answer using reasoning and the tools still available (e.g. search, memory, image/video, sandbox, browser, if present). Do not try to use integrations you cannot call."
       : ''
@@ -820,6 +851,7 @@ export async function POST(request: NextRequest) {
         toolAuthorizationNote +
         knowledgeNote +
         memoryContext +
+        (docContextBundle.contextText ? '\n\n' + docContextBundle.contextText : '') +
         autoRetrieval +
         indexedNote +
         (paid ? '\n\n' + ACT_PAID_PLAN_ACT_TOOLS_REALITY : '\n\n' + FREE_TIER_NO_PAID_AGENT_CAPABILITIES) +
@@ -827,7 +859,7 @@ export async function POST(request: NextRequest) {
         MATH_FORMAT_INSTRUCTION +
         '\n\n' +
         TABLE_FORMAT_INSTRUCTION +
-        (!paid && (effectiveModelId === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(effectiveModelId)) ? freeTierModelLeakNote : ''),
+        freeTierNote,
     })
 
     const toolFailuresByCallId = new Map<string, { toolName: string; error: string }>()
