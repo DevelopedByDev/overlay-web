@@ -1,7 +1,11 @@
 import { Suspense } from 'react'
-import KnowledgeView from '@/components/app/KnowledgeView'
+import dynamic from 'next/dynamic'
 import { getSession } from '@/lib/workos-auth'
 import { redirect } from 'next/navigation'
+
+const KnowledgeView = dynamic(() => import('@/components/app/KnowledgeView'), {
+  loading: () => <div className="flex min-h-[40vh] items-center justify-center text-sm text-[#888]">Loading...</div>,
+})
 
 export default async function KnowledgePage({
   searchParams,

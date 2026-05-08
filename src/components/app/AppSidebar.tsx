@@ -31,7 +31,8 @@ import {
 } from './AppSidebarInlinePanels'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
-import { GlobalSearchDialog } from './GlobalSearchDialog'
+import dynamic from 'next/dynamic'
+const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from './chat-interface/mention-types'
 
 const NAV_ITEMS: Array<{

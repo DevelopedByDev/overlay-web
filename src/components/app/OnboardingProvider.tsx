@@ -11,7 +11,10 @@ import {
 } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { OnboardingTour, type TourStep } from './OnboardingTour'
+import dynamic from 'next/dynamic'
+import type { TourStep } from './OnboardingTour'
+
+const OnboardingTour = dynamic(() => import('./OnboardingTour').then((mod) => ({ default: mod.OnboardingTour })))
 
 /** Client hint when server onboarding flag could not be persisted (cross-tab UX). */
 const ONBOARDING_COMPLETE_LS_KEY = 'overlay:onboarding-completed'

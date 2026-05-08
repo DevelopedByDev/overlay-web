@@ -89,7 +89,8 @@ import {
   upsertCachedChat,
 } from '@/lib/chat-list-cache'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
-import { MarkdownMessage } from './MarkdownMessage'
+import dynamic from 'next/dynamic'
+const MarkdownMessage = dynamic(() => import('./MarkdownMessage').then((mod) => ({ default: mod.MarkdownMessage })))
 import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { FileViewerPanel } from './FileViewer'
 import { DelayedTooltip } from './DelayedTooltip'

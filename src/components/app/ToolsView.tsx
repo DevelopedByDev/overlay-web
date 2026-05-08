@@ -2,9 +2,11 @@
 
 import { useSearchParams } from 'next/navigation'
 import { Lock, LayoutGrid } from 'lucide-react'
-import IntegrationsView from './IntegrationsView'
-import SkillsView from './SkillsView'
-import McpServersView from './McpServersView'
+import dynamic from 'next/dynamic'
+
+const IntegrationsView = dynamic(() => import('./IntegrationsView'))
+const SkillsView = dynamic(() => import('./SkillsView'))
+const McpServersView = dynamic(() => import('./McpServersView'))
 
 function ComingSoonView({ title, icon: Icon }: {
   title: string

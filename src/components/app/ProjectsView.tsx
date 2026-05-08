@@ -47,9 +47,11 @@ function opensInDocumentEditor(file: ProjectFileRecord): boolean {
 }
 
 import { FileViewerSkeleton } from '@/components/ui/Skeleton'
-import ChatInterface from './ChatInterface'
-import NotebookEditor from './NotebookEditor'
+import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from './FileViewer'
+
+const ChatInterface = dynamic(() => import('./ChatInterface'))
+const NotebookEditor = dynamic(() => import('./NotebookEditor'))
 
 // ─── File viewer fetched by ID ────────────────────────────────────────────────
 

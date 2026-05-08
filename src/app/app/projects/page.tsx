@@ -1,6 +1,10 @@
 import { getSession } from '@/lib/workos-auth'
-import ProjectsView from '@/components/app/ProjectsView'
+import dynamic from 'next/dynamic'
 import { redirect } from 'next/navigation'
+
+const ProjectsView = dynamic(() => import('@/components/app/ProjectsView'), {
+  loading: () => <div className="flex min-h-[40vh] items-center justify-center text-sm text-[#888]">Loading...</div>,
+})
 
 export default async function ProjectsPage() {
   const session = await getSession()

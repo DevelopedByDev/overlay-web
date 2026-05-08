@@ -8,7 +8,9 @@ import { Mail, Moon, PanelsLeftRight, Sun, Play } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
-import MemoriesView from '@/components/app/MemoriesView'
+import dynamic from 'next/dynamic'
+
+const MemoriesView = dynamic(() => import('@/components/app/MemoriesView'))
 
 const SECTIONS = [
   { id: 'general', label: 'General' },

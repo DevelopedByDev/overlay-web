@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import NextImage from 'next/image'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -80,7 +81,7 @@ import {
   getModelsByIntelligence,
   getChatModelDisplayName,
 } from '@/lib/models'
-import { MarkdownMessage } from './MarkdownMessage'
+const MarkdownMessage = dynamic(() => import('./MarkdownMessage').then((mod) => ({ default: mod.MarkdownMessage })))
 import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from './chat-interface/mention-types'
 
