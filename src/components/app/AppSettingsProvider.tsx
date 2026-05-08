@@ -37,10 +37,12 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   ) {
     return false
   }
+  if (candidate.autoContinue !== undefined && typeof candidate.autoContinue !== 'boolean') return false
   return (
     typeof candidate.theme === 'string' ||
     typeof candidate.useSecondarySidebar === 'boolean' ||
-    typeof candidate.chatStreamingMode === 'string'
+    typeof candidate.chatStreamingMode === 'string' ||
+    typeof candidate.autoContinue === 'boolean'
   )
 }
 

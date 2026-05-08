@@ -219,6 +219,14 @@ export default function SettingsPage() {
                 disabled={busy}
                 onChange={() => void updateSettings({ useSecondarySidebar: !settings.useSecondarySidebar })}
               />
+              <SettingRow
+                icon={<Play size={18} strokeWidth={1.8} />}
+                title="Auto-continue"
+                description="Automatically resume chats when the assistant times out or is interrupted."
+                checked={settings.autoContinue}
+                disabled={busy}
+                onChange={() => void updateSettings({ autoContinue: !settings.autoContinue })}
+              />
               <div className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">

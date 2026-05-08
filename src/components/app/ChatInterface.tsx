@@ -119,7 +119,6 @@ import { warmIntegrationLogoCache } from '@/lib/integration-logo-cache'
 import { ConfirmDialog } from './ConfirmDialog'
 import {
   ASSISTANT_COLLAPSIBLE_BODY_CLASS,
-  AUTO_CONTINUE_KEY,
   CHAT_GEN_MODE_KEY,
   DEFAULT_CHAT_TITLE,
   IMAGE_MODEL_SELECTION_MODE_KEY,
@@ -1730,7 +1729,7 @@ export default function ChatInterface({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const { settings } = useAppSettings()
+  const { settings, updateSettings } = useAppSettings()
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexWorkOSToken()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
@@ -1790,7 +1789,6 @@ export default function ChatInterface({
   const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
   /** After first paint — avoids free-tier Auto reset racing ahead of localStorage restore. */
   const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
-  const [autoContinue, setAutoContinue] = useState(false)
   const [isSwitchingChat, setIsSwitchingChat] = useState(false)
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
 
@@ -1851,8 +1849,6 @@ export default function ChatInterface({
     } catch {
       /* keep default */
     }
-    const savedAutoContinue = localStorage.getItem(AUTO_CONTINUE_KEY)
-    if (savedAutoContinue === 'true') setAutoContinue(true)
 
     setChatPrefsHydrated(true)
   }, [])
@@ -5014,7 +5010,7 @@ export default function ChatInterface({
   // Auto-continue: when the latest assistant message contains a timeout sentinel
   // and the user has enabled auto-continue, automatically send "continue".
   useEffect(() => {
-    if (!autoContinue || !activeChatId) return
+    if (!settings.autoContinue || !activeChatId) return
     const latestAssistantMsg = [...primaryMessages].reverse().find((m) => {
       const um = m as unknown as { role?: string }
       return um.role === 'assistant'
@@ -5037,7 +5033,7 @@ export default function ChatInterface({
       void handleSendRef.current()
     }, 1000)
     return () => clearTimeout(timer)
-  }, [autoContinue, activeChatId, primaryMessages, setInput])
+  }, [settings.autoContinue, activeChatId, primaryMessages, setInput])
 
   // Reset auto-continue tracking when switching chats.
   useEffect(() => {
@@ -6537,16 +6533,14 @@ export default function ChatInterface({
                         </div>
                       )}
                     </div>
-                    <DelayedTooltip label={autoContinue ? 'Auto-continue on' : 'Auto-continue off'} side="top">
+                    <DelayedTooltip label={settings.autoContinue ? 'Auto-continue on' : 'Auto-continue off'} side="top">
                       <button
                         type="button"
                         onClick={() => {
-                          const next = !autoContinue
-                          setAutoContinue(next)
-                          localStorage.setItem(AUTO_CONTINUE_KEY, String(next))
+                          void updateSettings({ autoContinue: !settings.autoContinue })
                         }}
                         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--surface-muted)] ${
-                          autoContinue ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
+                          settings.autoContinue ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
                         }`}
                         aria-label="Toggle auto-continue"
                       >

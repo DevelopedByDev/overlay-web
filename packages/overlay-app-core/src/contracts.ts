@@ -6,12 +6,14 @@ export interface AppSettings {
   theme: ThemePreference
   useSecondarySidebar: boolean
   chatStreamingMode: ChatStreamingMode
+  autoContinue: boolean
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: 'light',
   useSecondarySidebar: false,
   chatStreamingMode: 'token',
+  autoContinue: false,
 }
 
 export interface AuthUser {
