@@ -3828,6 +3828,14 @@ export default function ChatInterface({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       runtime.actChat.messages = actLinear as any
 
+      // Ensure useChat instances are synced with the loaded messages so the UI
+      // updates immediately and the empty-chat greeting disappears.
+      chat0.setMessages([...runtime.askChats[0].messages] as UIMessage[])
+      chat1.setMessages([...runtime.askChats[1].messages] as UIMessage[])
+      chat2.setMessages([...runtime.askChats[2].messages] as UIMessage[])
+      chat3.setMessages([...runtime.askChats[3].messages] as UIMessage[])
+      actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
+
       const restoredGenTypes: ('text' | 'image' | 'video')[] = exchanges.map(() => 'text')
       const restoredResults = new Map<number, GenerationResult[]>()
       const restoredExchangeModels = exchanges.map((ex) => ex.responses.map((r) => r.model))

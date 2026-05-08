@@ -70,11 +70,12 @@ export default function KnowledgeView({
       ? 'files'
       : viewParam === 'files' ? 'files' : viewParam === 'outputs' ? 'outputs' : 'memories'
 
-  const layout: 'list' | 'cards' = useMemo(() => {
+  function getLayout(): 'list' | 'cards' {
     const L = searchParams?.get('layout')
     if (L === 'cards' || L === 'list') return L
     return activeTab === 'outputs' ? 'cards' : 'list'
-  }, [searchParams, activeTab])
+  }
+  const layout = getLayout()
 
   function updateQuery(updates: Record<string, string | null | undefined>) {
     const p = new URLSearchParams(searchParams?.toString() ?? '')
@@ -89,11 +90,12 @@ export default function KnowledgeView({
   const [outputFilterOpen, setOutputFilterOpen] = useState(false)
   const outputFilterRef = useRef<HTMLDivElement>(null)
 
-  const outputFilter: OutputFilter = useMemo(() => {
+  function getOutputFilter(): OutputFilter {
     const o = searchParams?.get('out')
     if (o === 'image' || o === 'video' || o === 'files') return o
     return 'all'
-  }, [searchParams])
+  }
+  const outputFilter = getOutputFilter()
 
   function commitOutputFilter(next: OutputFilter) {
     if (next === 'all') updateQuery({ out: null })
@@ -686,32 +688,23 @@ export default function KnowledgeView({
   }, [memories, memorySearchQuery])
 
   const currentParentId = activeFolder?._id ?? null
-  const rootNodes = useMemo(
-    () =>
-      filesFiltered
-        .filter((f) => f.parentId === currentParentId)
-        .sort((a, b) => {
-          if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
-          return a.name.localeCompare(b.name)
-        }),
-    [filesFiltered, currentParentId],
-  )
+  const rootNodes =
+    filesFiltered
+      .filter((f) => f.parentId === currentParentId)
+      .sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
 
-  const flatFilesSorted = useMemo(
-    () =>
-      filesFiltered
-        .filter((f) => f.parentId === currentParentId && f.type === 'file')
-        .sort((a, b) => b.updatedAt - a.updatedAt),
-    [filesFiltered, currentParentId],
-  )
+  const flatFilesSorted =
+    filesFiltered
+      .filter((f) => f.parentId === currentParentId && f.type === 'file')
+      .sort((a, b) => b.updatedAt - a.updatedAt)
 
-  const folderCardsSorted = useMemo(
-    () =>
-      filesFiltered
-        .filter((f) => f.parentId === currentParentId && f.type === 'folder')
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [filesFiltered, currentParentId],
-  )
+  const folderCardsSorted =
+    filesFiltered
+      .filter((f) => f.parentId === currentParentId && f.type === 'folder')
+      .sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <div className="flex flex-col h-full">
