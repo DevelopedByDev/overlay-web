@@ -2094,8 +2094,8 @@ export default function ChatInterface({
   const persistActiveRuntimeUiState = useCallback(() => {
     if (!activeChatId) return
     const runtime = ensureConversationRuntime(activeChatId)
+    if (!runtime.hydrated) return
     runtime.ui = buildActiveUiStateSnapshot()
-    runtime.hydrated = true
   }, [activeChatId, buildActiveUiStateSnapshot, ensureConversationRuntime])
 
   const updateRuntimeUiState = useCallback((
@@ -2218,6 +2218,16 @@ export default function ChatInterface({
   const chat2 = useChat({ chat: activeRuntime.askChats[2] })
   const chat3 = useChat({ chat: activeRuntime.askChats[3] })
   const actChat = useChat({ chat: activeRuntime.actChat })
+  const chat0Ref = useRef(chat0)
+  const chat1Ref = useRef(chat1)
+  const chat2Ref = useRef(chat2)
+  const chat3Ref = useRef(chat3)
+  const actChatRef = useRef(actChat)
+  chat0Ref.current = chat0
+  chat1Ref.current = chat1
+  chat2Ref.current = chat2
+  chat3Ref.current = chat3
+  actChatRef.current = actChat
   const liveMessages = useQuery(
     api.conversations.watchGeneratingMessages,
     activeChatId && authUser?.id && convexAccessToken
@@ -2587,6 +2597,30 @@ export default function ChatInterface({
     forceLiveSyncRender((value) => value + 1)
   }, [activeChatId, actChat, chat0, chat1, chat2, chat3, liveMessageDeltas, liveMessages])
 
+  // When loadChat finishes it bumps runtimeHydrationVersion. Explicitly sync the
+  // runtime's loaded messages to the current useChat instances so the greeting
+  // disappears immediately. Using refs avoids stale closures from loadChat.
+  useEffect(() => {
+    if (!activeChatId) return
+    const runtime = runtimesRef.current.get(activeChatId)
+    if (!runtime) return
+    if (chat0Ref.current.messages !== runtime.askChats[0].messages) {
+      chat0Ref.current.setMessages([...runtime.askChats[0].messages] as UIMessage[])
+    }
+    if (chat1Ref.current.messages !== runtime.askChats[1].messages) {
+      chat1Ref.current.setMessages([...runtime.askChats[1].messages] as UIMessage[])
+    }
+    if (chat2Ref.current.messages !== runtime.askChats[2].messages) {
+      chat2Ref.current.setMessages([...runtime.askChats[2].messages] as UIMessage[])
+    }
+    if (chat3Ref.current.messages !== runtime.askChats[3].messages) {
+      chat3Ref.current.setMessages([...runtime.askChats[3].messages] as UIMessage[])
+    }
+    if (actChatRef.current.messages !== runtime.actChat.messages) {
+      actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
+    }
+  }, [activeChatId, runtimeHydrationVersion])
+
   useEffect(() => {
     if (!activeChatId) return
     const hasLocalHttpStream =
@@ -2865,6 +2899,46 @@ export default function ChatInterface({
     rawEmbedProjectId.length <= 64
       ? rawEmbedProjectId
       : null
+
+  useEffect(() => {
+    if (hideSidebar) return
+    const shouldResetToEmptySurface =
+      (mode === 'chat' && !idParam) ||
+      (mode === 'automate' && !idParam && !automationIdParam)
+    if (!shouldResetToEmptySurface) return
+    if (!activeChatIdRef.current && !activeChatId) return
+
+    persistActiveRuntimeUiState()
+    activeChatIdRef.current = null
+    pendingTitleRef.current = null
+    setActiveChatId(null)
+    setActiveChatTitle(null)
+    setInterruptedExchangeIdx(null)
+    setSourcesPanel(null)
+    setMobileChatListOpen(false)
+    setActiveViewer(null)
+    applyUiStateToView(createConversationUiState({
+      selectedActModel,
+      selectedModels,
+      askModelSelectionMode,
+      activeChatTitle: null,
+      isFirstMessage: true,
+    }))
+    clearTransientComposerState()
+  }, [
+    activeChatId,
+    applyUiStateToView,
+    automationIdParam,
+    askModelSelectionMode,
+    hideSidebar,
+    idParam,
+    mode,
+    persistActiveRuntimeUiState,
+    selectedActModel,
+    selectedModels,
+    setActiveViewer,
+  ])
+
   // Skip reloading the same chat we just created/switched to locally; otherwise the
   // route update can race the optimistic first-turn state and snap the UI back to empty.
   useEffect(() => {
@@ -2939,15 +3013,14 @@ export default function ChatInterface({
     const _ttft = performance.now() - ttftSendTimeRef.current
     const _model = selectedActModel
     console.log(`[TTFT][client] first-token | ${_ttft.toFixed(1)}ms | mode=act | model=${_model}`)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActiveLoading, chat0.messages, actChat.messages, selectedActModel])
+  }, [isActiveLoading, actChat.messages, selectedActModel])
 
   useEffect(() => {
     if (shouldScrollRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       shouldScrollRef.current = false
     }
-  }, [chat0.messages, actChat.messages])
+  }, [chat0.messages.length, actChat.messages.length])
 
   useEffect(() => {
     if (!showModelPicker) {
@@ -3420,7 +3493,7 @@ export default function ChatInterface({
     // becomes active; otherwise an older load can repaint the view after send.
     ++loadChatRequestRef.current
     persistActiveRuntimeUiState()
-    const initialTitle = options.title ?? (mode === 'automate' ? 'New Automation' : DEFAULT_CHAT_TITLE)
+    const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
     const initialSelectedModels = askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4)
     const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
     const res = await fetch('/api/app/conversations', {
@@ -3827,14 +3900,6 @@ export default function ChatInterface({
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       runtime.actChat.messages = actLinear as any
-
-      // Ensure useChat instances are synced with the loaded messages so the UI
-      // updates immediately and the empty-chat greeting disappears.
-      chat0.setMessages([...runtime.askChats[0].messages] as UIMessage[])
-      chat1.setMessages([...runtime.askChats[1].messages] as UIMessage[])
-      chat2.setMessages([...runtime.askChats[2].messages] as UIMessage[])
-      chat3.setMessages([...runtime.askChats[3].messages] as UIMessage[])
-      actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
 
       const restoredGenTypes: ('text' | 'image' | 'video')[] = exchanges.map(() => 'text')
       const restoredResults = new Map<number, GenerationResult[]>()
@@ -4774,7 +4839,7 @@ export default function ChatInterface({
 
   function stopActiveChat() {
     if (!isActiveLoading) return
-    const userTurns = chat0.messages.filter((m) => m.role === 'user').length
+    const userTurns = primaryMessages.filter((m) => m.role === 'user').length
     const idx = userTurns > 0 ? userTurns - 1 : -1
 
     // Normal stop
@@ -4852,11 +4917,20 @@ export default function ChatInterface({
       ? `${selectedModels.length} models`
       : (getChatModelDisplayName(selectedActModel) || 'Select model'))
 
-  const primaryMessages = chat0.messages
-  const hasMessages = primaryMessages.some((m) => m.role === 'user')
-  const hasHistory = hasMessages || generationResults.size > 0
-  /** Empty chat (any modality): center composer + suggestions; after first message, dock composer to bottom. */
-  const showCenteredEmptyChat = !hasHistory
+  // Read messages directly from the runtime Chat instance so the UI never lags
+  // behind the loaded state (useChat's useSyncExternalStore can be one beat late).
+  const primaryMessageSource =
+    activeRuntime.askChats.find((chat) => chat.messages.some((message) => message.role === 'user')) ??
+    (activeRuntime.actChat.messages.some((message) => message.role === 'user') ? activeRuntime.actChat : activeRuntime.askChats[0])
+  const primaryMessages = (primaryMessageSource.messages as UIMessage[]) ?? []
+  const hasRuntimeMessages =
+    activeRuntime.actChat.messages.some((message) => message.role === 'user') ||
+    activeRuntime.askChats.some((chat) => chat.messages.some((message) => message.role === 'user'))
+  const hasHistory = hasRuntimeMessages || generationResults.size > 0
+  const isExistingConversationView = Boolean(idParam || activeChatId)
+  const showChatLoadingState = showAutomationChatTab && isExistingConversationView && !hasHistory && !activeChatHydrated
+  /** Empty chat (any modality): center composer + suggestions only on the true new-chat surface. */
+  const showCenteredEmptyChat = !hasHistory && (!isExistingConversationView || activeChatHydrated)
   const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
   const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
 
@@ -5186,16 +5260,11 @@ export default function ChatInterface({
               ) : (
                 <div className="flex min-w-0 items-center gap-1">
                   <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] md:truncate lg:max-w-[24rem]">
-                    <span className="line-clamp-2 md:line-clamp-1 md:truncate">
-                      {selectedAutomation?.name || activeChatTitle || activeChat?.title || 'New conversation'}
+                    <span className={`line-clamp-2 md:line-clamp-1 md:truncate ${isSwitchingChat ? 'tool-line-shimmer' : ''}`}>
+                      {selectedAutomation?.name || activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation')}
                     </span>
                   </h2>
-                  {isSwitchingChat ? (
-                    <div
-                      className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#e0e0e0] border-t-[#525252] animate-spin"
-                      aria-label="Loading chat"
-                    />
-                  ) : activeChatId && activeChatHydrated && !selectedAutomation ? (
+                  {!isSwitchingChat && activeChatId && activeChatHydrated && !selectedAutomation ? (
                     <button
                       type="button"
                       onClick={beginHeaderChatRename}
@@ -5590,12 +5659,30 @@ export default function ChatInterface({
                   </>
               )}
             </div>
-                <GenerationModeSelect
-                  mode={generationMode}
-                  onChange={handleModeChange}
-                  disabled={isActiveLoading}
-                  className="md:hidden"
-                />
+                <div className="flex shrink-0 items-center gap-1.5 md:hidden">
+                  <GenerationModeSelect
+                    mode={generationMode}
+                    onChange={handleModeChange}
+                    disabled={isActiveLoading}
+                  />
+                  {activeChatId && !selectedAutomation && primaryMessages.length > 0 && (
+                    <ExportMenu
+                      className="shrink-0"
+                      type="chat"
+                      title={activeChatTitle || activeChat?.title || 'New conversation'}
+                      content={primaryMessages.map((m) => ({
+                        role: m.role,
+                        content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
+                        parts: m.parts as Array<{ type: string; text?: string }>,
+                      }))}
+                      metadata={{
+                        createdAt: activeChat?.createdAt,
+                        updatedAt: activeChat?.updatedAt,
+                        modelIds: activeChat?.modelIds,
+                      }}
+                    />
+                  )}
+                </div>
               </div>
             <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
               <span data-tour="generation-mode-toggle" className="hidden md:inline-flex">
@@ -5606,6 +5693,7 @@ export default function ChatInterface({
             {/* Export Menu */}
             {activeChatId && !selectedAutomation && primaryMessages.length > 0 && (
               <ExportMenu
+                className="hidden md:block"
                 type="chat"
                 title={activeChatTitle || activeChat?.title || 'New conversation'}
                 content={primaryMessages.map((m) => ({
@@ -5644,14 +5732,27 @@ export default function ChatInterface({
           />
         )}
 
-        {/* Messages — only after first exchange; empty chat keeps composer centered below */}
-        {showAutomationChatTab && hasHistory && (
+        {/* Messages — only after first exchange; existing chat loading reserves this area so the composer stays docked. */}
+        {showAutomationChatTab && (hasHistory || showChatLoadingState) && (
         <div
           ref={messagesScrollRef}
           className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
         >
           <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
-            {(() => {
+            {showChatLoadingState ? (
+              <div className="flex min-h-full flex-col justify-start pt-4 sm:pt-6">
+                <div className="max-w-2xl space-y-4">
+                  <div className="tool-line-shimmer w-fit text-sm font-medium">
+                    Loading conversation
+                  </div>
+                  <div className="space-y-2.5">
+                    <div className="ui-skeleton-line h-3 w-[min(72%,34rem)]" />
+                    <div className="ui-skeleton-line h-3 w-[min(88%,42rem)]" />
+                    <div className="ui-skeleton-line h-3 w-[min(54%,26rem)]" />
+                  </div>
+                </div>
+              </div>
+            ) : (() => {
               const blocks: React.ReactNode[] = []
               let exchIdx = 0
 
@@ -5824,7 +5925,7 @@ export default function ChatInterface({
 
                 // Act (single): assistant streams into actChat; align with chat0 user index (see resolveActAssistant).
                 if (isActExch && !isMultiAct) {
-                  const paired = resolveActAssistant(chat0.messages, actChat.messages, msg.id)
+                  const paired = resolveActAssistant(primaryMessages, actChat.messages, msg.id)
                   if (paired) {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     responseMsg = paired as any

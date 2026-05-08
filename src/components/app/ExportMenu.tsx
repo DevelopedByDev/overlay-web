@@ -8,6 +8,7 @@ interface ExportMenuProps {
   type: 'chat' | 'note'
   title: string
   content: string | Array<{ role: string; content: string; parts?: Array<{ type: string; text?: string }> }>
+  className?: string
   metadata?: {
     createdAt?: number
     updatedAt?: number
@@ -15,7 +16,7 @@ interface ExportMenuProps {
   }
 }
 
-export function ExportMenu({ type, title, content, metadata }: ExportMenuProps) {
+export function ExportMenu({ type, title, content, className = '', metadata }: ExportMenuProps) {
   const [showMenu, setShowMenu] = useState(false)
   const [showExportSubmenu, setShowExportSubmenu] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -67,7 +68,7 @@ export function ExportMenu({ type, title, content, metadata }: ExportMenuProps) 
   ]
 
   return (
-    <div ref={menuRef} className="relative">
+    <div ref={menuRef} className={`relative ${className}`}>
       <button
         type="button"
         onClick={() => setShowMenu(!showMenu)}

@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import dynamic from 'next/dynamic'
 import type { TourStep } from './OnboardingTour'
@@ -111,7 +111,6 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth()
-  const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
   const [active, setActive] = useState(false)
@@ -141,7 +140,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     if (isLoading || !isAuthenticated || !user?.id || checkedRef.current) return
     checkedRef.current = true
 
-    const fromCallback = searchParams?.get('onboarding') === '1'
+    const params = new URLSearchParams(window.location.search)
+    const fromCallback = params.get('onboarding') === '1'
     const uid = user.id
 
     if (fromCallback) {
@@ -183,15 +183,16 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         // non-fatal
       }
     })()
-  }, [isLoading, isAuthenticated, user?.id, searchParams])
+  }, [isLoading, isAuthenticated, user?.id, pathname])
 
   // Replay from settings: ?tour=replay can arrive at any time (no checkedRef guard)
   useEffect(() => {
-    if (!isAuthenticated || searchParams?.get('tour') !== 'replay') return
+    const params = new URLSearchParams(window.location.search)
+    if (!isAuthenticated || params.get('tour') !== 'replay') return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentStep(0)
     setActive(true)
-  }, [isAuthenticated, searchParams])
+  }, [isAuthenticated, pathname])
 
   const startTour = useCallback(() => {
     setCurrentStep(0)

@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { SignInFullScreenModal } from './SignInFullScreenModal'
 import { SignInCornerPopover } from './SignInCornerPopover'
@@ -37,18 +37,19 @@ const FADE_MS = 200
 
 export function GuestGateProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
-  const searchParams = useSearchParams()
+  const pathname = usePathname()
   const [modalReason, setModalReason] = useState<GateReason | null>(null)
   const [modalClosing, setModalClosing] = useState(false)
   const [cornerDismissed, setCornerDismissed] = useState(readCornerDismissed)
   const [cornerClosing, setCornerClosing] = useState(false)
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && searchParams?.get('signin') === 'nav') {
+    const params = new URLSearchParams(window.location.search)
+    if (!isLoading && !isAuthenticated && params.get('signin') === 'nav') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setModalReason('nav')
     }
-  }, [isLoading, isAuthenticated, searchParams])
+  }, [isLoading, isAuthenticated, pathname])
 
   const requireAuth = useCallback(
     (reason: GateReason) => {

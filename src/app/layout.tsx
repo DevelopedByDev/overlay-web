@@ -61,6 +61,25 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                try {
+                  var raw = window.localStorage.getItem('overlay.app.settings');
+                  if (!raw) return;
+                  var theme = JSON.parse(raw).theme;
+                  if (theme === 'light' || theme === 'dark') {
+                    document.documentElement.dataset.theme = theme;
+                    document.documentElement.style.colorScheme = theme;
+                  }
+                } catch (_) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className="antialiased bg-background text-foreground">
         <AppSettingsProvider>
           <AuthProvider>

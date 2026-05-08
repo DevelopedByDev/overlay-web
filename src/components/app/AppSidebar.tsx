@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -188,7 +188,7 @@ function StorageBar({ entitlements }: { entitlements: Entitlements | null }) {
 export default function AppSidebar({ user: serverUser }: { user: AuthUser | null }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const currentSearchParams = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search)
   const { settings } = useAppSettings()
   const { requireAuth } = useGuestGate()
   const { user: authUser, isLoading: authLoading } = useAuth()
@@ -231,10 +231,10 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   const toolsOpen = pathname.startsWith('/app/tools')
   const automationsOpen = pathname.startsWith('/app/automations')
   const settingsPathActive = pathname.startsWith('/app/settings')
-  const settingsSection = searchParams?.get('section') ?? 'general'
+  const settingsSection = currentSearchParams.get('section') ?? 'general'
   const inlineSecondaryDisabled = !settings.useSecondarySidebar
   const toolsView = (() => {
-    const current = searchParams?.get('view')
+    const current = currentSearchParams.get('view')
     if (current === 'skills') return 'skills'
     if (current === 'mcps') return 'mcps'
     if (current === 'apps') return 'apps'
@@ -248,7 +248,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     } catch {
       // ignore
     }
-  }, [])
+  }, [setEntitlements])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -363,6 +363,29 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     setChatPanelRefreshKey((value) => value + 1)
     setMobileMenuOpen(false)
     router.push(`/app/chat?id=${encodeURIComponent(data.id)}`)
+  }
+
+  async function handleCreateAutomationConversation() {
+    if (!user) { requireAuth('send'); return }
+    const models = readNewChatModelFieldsFromStorage()
+    const res = await fetch('/api/app/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'New automation',
+        askModelIds: models.askModelIds,
+        actModelId: models.actModelId,
+        lastMode: 'act',
+      }),
+    })
+    if (!res.ok) return
+    const data = await res.json() as { id?: string; conversation?: { _id: string; title: string; lastModified: number } }
+    if (!data.id) return
+    const chat = data.conversation ?? { _id: data.id, title: 'New automation', lastModified: 0 }
+    upsertCachedChat(chat)
+    dispatchChatCreated({ chat })
+    setMobileMenuOpen(false)
+    router.push(`/app/automations?id=${encodeURIComponent(data.id)}`)
   }
 
   async function handleCreateNote() {
@@ -489,10 +512,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
           : automationsOpen
             ? {
                 label: 'New automation',
-                // Always navigate to the bare automations page. If an automation is
-                // already open (URL has automationId/id/tab params), this clears them
-                // and brings the user back to the empty composer / new-automation entry.
-                onClick: () => router.push('/app/automations'),
+                onClick: handleCreateAutomationConversation,
               }
             : null
     : null
