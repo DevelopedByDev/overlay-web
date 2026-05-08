@@ -119,6 +119,7 @@ import { warmIntegrationLogoCache } from '@/lib/integration-logo-cache'
 import { ConfirmDialog } from './ConfirmDialog'
 import {
   ASSISTANT_COLLAPSIBLE_BODY_CLASS,
+  AUTO_CONTINUE_KEY,
   CHAT_GEN_MODE_KEY,
   DEFAULT_CHAT_TITLE,
   IMAGE_MODEL_SELECTION_MODE_KEY,
@@ -1029,13 +1030,14 @@ interface ExchangeBlockProps {
   retryDisabled?: boolean
   onOpenFilePreview?: (name: string, fileIds: string[]) => void
   userMentions?: Array<{ type: string; id: string; name: string }>
+  onContinue?: () => void
 }
 
 function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, userMentions,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, userMentions, onContinue,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -1329,6 +1331,19 @@ function ExchangeBlock({
         {interrupted && responseSettled && !errorMessage && (
           <div className="flex justify-start px-1 py-1">
             <p className="text-sm text-[var(--muted)]">Response was interrupted.</p>
+          </div>
+        )}
+
+        {onContinue && responseSettled && !errorMessage && (
+          <div className="flex justify-start px-1 py-1">
+            <button
+              type="button"
+              onClick={onContinue}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+            >
+              <Play size={13} strokeWidth={1.75} />
+              Continue
+            </button>
           </div>
         )}
 
@@ -1775,6 +1790,7 @@ export default function ChatInterface({
   const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
   /** After first paint — avoids free-tier Auto reset racing ahead of localStorage restore. */
   const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
+  const [autoContinue, setAutoContinue] = useState(false)
   const [isSwitchingChat, setIsSwitchingChat] = useState(false)
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
 
@@ -1835,6 +1851,8 @@ export default function ChatInterface({
     } catch {
       /* keep default */
     }
+    const savedAutoContinue = localStorage.getItem(AUTO_CONTINUE_KEY)
+    if (savedAutoContinue === 'true') setAutoContinue(true)
 
     setChatPrefsHydrated(true)
   }, [])
@@ -1876,6 +1894,8 @@ export default function ChatInterface({
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const dragCounterRef = useRef(0)
+  const lastStreamChunkAtRef = useRef<number>(Date.now())
+  const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
   const [input, setInputState] = useState(() => {
     if (typeof window === 'undefined') return ''
     try {
@@ -2595,6 +2615,7 @@ export default function ChatInterface({
       chat3.setMessages([...runtime.askChats[3]!.messages] as UIMessage[])
     }
     forceLiveSyncRender((value) => value + 1)
+    lastStreamChunkAtRef.current = Date.now()
   }, [activeChatId, actChat, chat0, chat1, chat2, chat3, liveMessageDeltas, liveMessages])
 
   // When loadChat finishes it bumps runtimeHydrationVersion. Explicitly sync the
@@ -4837,17 +4858,37 @@ export default function ChatInterface({
     return () => window.removeEventListener('keydown', onGlobalKeyDown, true)
   }, [])
 
-  function stopActiveChat() {
+  async function stopActiveChat() {
     if (!isActiveLoading) return
     const userTurns = primaryMessages.filter((m) => m.role === 'user').length
     const idx = userTurns > 0 ? userTurns - 1 : -1
 
-    // Normal stop
+    // 1. Stop local streams immediately
     activeAskChats.forEach((chat) => chat.stop())
     activeRuntime.actChat.stop()
 
-    // Clear any stuck 'generating' status from local messages so
-    // activePersistedGenerating drops immediately.
+    // 2. Tell the backend to finalize the generating message before we clear
+    //    local state, so patchFromServer doesn't race and restore the spinner.
+    const chatId = activeChatIdRef.current ?? activeChatId
+    if (chatId) {
+      try {
+        await Promise.race([
+          fetch('/api/app/conversations/stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conversationId: chatId }),
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), 5000),
+          ),
+        ])
+      } catch {
+        // Backend call failed or timed out — proceed with local cleanup anyway
+      }
+    }
+
+    // 3. Clear any stuck 'generating' status from local messages so
+    //    activePersistedGenerating drops immediately.
     for (const chat of activeRuntime.askChats) {
       let changed = false
       for (const msg of chat.messages) {
@@ -4881,7 +4922,6 @@ export default function ChatInterface({
 
     // Nuclear option: if Chat.status itself is still stuck after 3s,
     // delete and recreate the runtime with fresh Chat objects.
-    const chatId = activeChatIdRef.current
     if (!chatId) return
     setTimeout(() => {
       const runtime = runtimesRef.current.get(chatId)
@@ -4905,6 +4945,40 @@ export default function ChatInterface({
       }
     }, 400)
   }
+
+  const stopActiveChatRef = useRef(stopActiveChat)
+  stopActiveChatRef.current = stopActiveChat
+
+  function handleContinue() {
+    setInput('continue')
+    void handleSend()
+  }
+
+  // Stale-chat client-side guard: if the backend says a message is still generating
+  // but no local HTTP stream has produced activity in >30s, force-stop the chat.
+  useEffect(() => {
+    if (!activeChatId) return
+    const id = setInterval(() => {
+      const runtime = runtimesRef.current.get(activeChatId)
+      if (!runtime) return
+      const hasLocalStream =
+        runtime.askChats.some((c) => c.status === 'streaming' || c.status === 'submitted') ||
+        runtime.actChat.status === 'streaming' ||
+        runtime.actChat.status === 'submitted'
+      if (hasLocalStream) {
+        lastStreamChunkAtRef.current = Date.now()
+        return
+      }
+      const hasPersistedGenerating = (liveMessages ?? []).some(
+        (message) => message.role === 'assistant' && message.status === 'generating',
+      )
+      if (!hasPersistedGenerating) return
+      if (Date.now() - lastStreamChunkAtRef.current > 30000) {
+        stopActiveChatRef.current()
+      }
+    }, 5000)
+    return () => clearInterval(id)
+  }, [activeChatId, liveMessages])
 
   // ── derived values for header ─────────────────────────────────────────────
 
@@ -4933,6 +5007,42 @@ export default function ChatInterface({
   const showCenteredEmptyChat = !hasHistory && (!isExistingConversationView || activeChatHydrated)
   const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
   const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
+
+  const handleSendRef = useRef(handleSend)
+  handleSendRef.current = handleSend
+
+  // Auto-continue: when the latest assistant message contains a timeout sentinel
+  // and the user has enabled auto-continue, automatically send "continue".
+  useEffect(() => {
+    if (!autoContinue || !activeChatId) return
+    const latestAssistantMsg = [...primaryMessages].reverse().find((m) => {
+      const um = m as unknown as { role?: string }
+      return um.role === 'assistant'
+    })
+    if (!latestAssistantMsg) return
+    const msgId = (latestAssistantMsg as unknown as { id?: string }).id
+    if (!msgId || autoContinuedForMessageRef.current.has(msgId)) return
+
+    const text = assistantBlocksToPlainText(
+      buildAssistantVisualSequence(
+        (latestAssistantMsg as unknown as { parts?: unknown[] }).parts,
+      ),
+    )
+    if (!text.includes('[Request timed out after 300s. Continue?]')) return
+    if ((latestAssistantMsg as unknown as { status?: string }).status !== 'completed') return
+
+    autoContinuedForMessageRef.current.add(msgId)
+    const timer = setTimeout(() => {
+      setInput('continue')
+      void handleSendRef.current()
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [autoContinue, activeChatId, primaryMessages, setInput])
+
+  // Reset auto-continue tracking when switching chats.
+  useEffect(() => {
+    autoContinuedForMessageRef.current.clear()
+  }, [activeChatId])
 
   const greetingLine = mode === 'automate' ? 'What are we automating today?' : chatGreetingLine(firstName)
 
@@ -6071,6 +6181,13 @@ export default function ChatInterface({
                     }
                     onOpenFilePreview={openFilePreview}
                     userMentions={(msg as { metadata?: { mentions?: Array<{ type: string; id: string; name: string }> } })?.metadata?.mentions}
+                    onContinue={
+                      (['[Request timed out after 300s. Continue?]', '[Interrupted by user. Continue?]'] as const).some((s) =>
+                        assistantPlainForReply.includes(s),
+                      )
+                        ? handleContinue
+                        : undefined
+                    }
                   />
                 )
               }
@@ -6420,6 +6537,22 @@ export default function ChatInterface({
                         </div>
                       )}
                     </div>
+                    <DelayedTooltip label={autoContinue ? 'Auto-continue on' : 'Auto-continue off'} side="top">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !autoContinue
+                          setAutoContinue(next)
+                          localStorage.setItem(AUTO_CONTINUE_KEY, String(next))
+                        }}
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--surface-muted)] ${
+                          autoContinue ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
+                        }`}
+                        aria-label="Toggle auto-continue"
+                      >
+                        <Play size={16} strokeWidth={1.75} />
+                      </button>
+                    </DelayedTooltip>
                     {isActiveLoading ? (
                       <DelayedTooltip label="Stop generating" side="top">
                         <button

@@ -34,6 +34,7 @@ export const SELECTED_IMAGE_MODELS_KEY = 'overlay_selected_image_models'
 export const SELECTED_VIDEO_MODELS_KEY = 'overlay_selected_video_models'
 export const CHAT_GEN_MODE_KEY = 'overlay_chat_generation_mode'
 export const VIDEO_SUB_MODE_KEY = 'overlay_video_sub_mode'
+export const AUTO_CONTINUE_KEY = 'overlay_auto_continue'
 
 export const VIDEO_SUB_MODES: { value: VideoSubMode; label: string }[] = [
   { value: 'text-to-video', label: 'Text to Video' },
