@@ -73,7 +73,7 @@ function summarizeToolOutputForLog(output: unknown): string {
   return typeof output
 }
 
-export const maxDuration = 120
+export const maxDuration = 300
 
 type UiStreamPersistenceEvent =
   | { kind: 'text-delta'; text: string }
@@ -865,9 +865,18 @@ export async function POST(request: NextRequest) {
     const toolFailuresByCallId = new Map<string, { toolName: string; error: string }>()
     const finishedToolCallIds = new Set<string>()
 
+    // Abort before Vercel's 300s hard kill so onFinish can finalize gracefully.
+    let wasAbortedByTimeout = false
+    const abortController = new AbortController()
+    const hardTimeout = setTimeout(() => {
+      wasAbortedByTimeout = true
+      abortController.abort()
+    }, 290_000)
+
     if (_ttftDebug) _tStreamCall = performance.now()
     const result = await agent.stream({
       messages: modelMessages,
+      abortSignal: abortController.signal,
       experimental_onToolCallStart: ({ toolCall }) => {
         if (!toolCall) return
         const n = toolCall.toolName
@@ -970,10 +979,11 @@ export async function POST(request: NextRequest) {
               }
             }
           }
-          const { content: persistContent, parts: persistParts } = persistOverride
+          const { content: rawPersistContent, parts: persistParts } = persistOverride
             ? persistOverride
             : buildAssistantPersistenceFromSteps(event.steps, event.text)
-          const normalizedPersistParts = persistParts.map((part) => {
+          let persistContent = rawPersistContent
+          let normalizedPersistParts = persistParts.map((part) => {
             if (part.type !== 'tool-invocation') return part
             const invocation = part.toolInvocation as
               | {
@@ -1028,6 +1038,12 @@ export async function POST(request: NextRequest) {
             return part
           })
 
+          if (wasAbortedByTimeout) {
+            const sentinel = '\n\n[Request timed out after 300s. Continue?]'
+            persistContent = persistContent.trimEnd() + sentinel
+            normalizedPersistParts = [...normalizedPersistParts, { type: 'text', text: sentinel }]
+          }
+
           if (cid) {
             const routedModelId =
               effectiveModelId === FREE_TIER_AUTO_MODEL_ID
@@ -1066,6 +1082,8 @@ export async function POST(request: NextRequest) {
         }
       },
     })
+
+    clearTimeout(hardTimeout)
 
     const hasCitations = Object.keys(sourceCitationMap).length > 0
 

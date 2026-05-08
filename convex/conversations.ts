@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../src/lib/model-types'
-import { mutation, query } from './_generated/server'
+import { internalMutation, mutation, query } from './_generated/server'
 import { internal } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
@@ -606,6 +606,82 @@ export const finalizeStaleGeneratingMessages = mutation({
     }
 
     return { finalizedCount, remaining: stale.length - finalizedCount }
+  },
+})
+
+export const stopGeneratingMessage = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    messageId: v.optional(v.id('conversationMessages')),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, { conversationId, messageId, serverSecret }) => {
+    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
+
+    const messages = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId_status_updatedAt', (q) =>
+        q.eq('conversationId', conversationId).eq('status', 'generating')
+      )
+      .collect()
+
+    const targets = messageId
+      ? messages.filter((m) => m._id === messageId)
+      : messages
+
+    for (const message of targets) {
+      const deltas = await ctx.db
+        .query('conversationMessageDeltas')
+        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
+        .collect()
+
+      const hydrated = applyStreamingDeltas(message, deltas)
+      const sentinel = '\n\n[Interrupted by user. Continue?]'
+      const finalContent = hydrated.content.trimEnd() + sentinel
+      const baseParts = Array.isArray(hydrated.parts) ? hydrated.parts : [{ type: 'text' as const, text: hydrated.content }]
+      const finalParts = [...baseParts, { type: 'text' as const, text: sentinel }]
+
+      await ctx.db.patch(message._id, {
+        content: finalContent,
+        parts: finalParts,
+        status: 'completed',
+        updatedAt: Date.now(),
+      })
+
+      for (const delta of deltas) {
+        await ctx.db.delete(delta._id)
+      }
+
+      await ctx.db.patch(conversationId, { lastModified: Date.now(), updatedAt: Date.now() })
+    }
+
+    return { stoppedCount: targets.length }
+  },
+})
+
+export const runStaleGeneratingCleanup = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const thresholdMs = 5 * 60 * 1000
+    const cutoff = Date.now() - thresholdMs
+
+    const stale = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_status_updatedAt', (q) =>
+        q.eq('status', 'generating').lt('updatedAt', cutoff)
+      )
+      .take(50)
+
+    let finalizedCount = 0
+    for (const message of stale) {
+      await ctx.db.patch(message._id, {
+        status: 'completed',
+        updatedAt: Date.now(),
+      })
+      finalizedCount++
+    }
+
+    return { finalizedCount }
   },
 })
 

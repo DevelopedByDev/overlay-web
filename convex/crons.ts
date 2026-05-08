@@ -16,4 +16,10 @@ crons.interval(
   internal.automationRunner.runMinuteTick,
 )
 
+crons.interval(
+  'stale generating message cleanup',
+  { minutes: 2 },
+  internal.conversations.runStaleGeneratingCleanup,
+)
+
 export default crons
