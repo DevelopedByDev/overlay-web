@@ -25,6 +25,7 @@ import {
   ChatInlinePanel,
   FilesInlinePanel,
   InlineNavChildren,
+  NotesInlinePanel,
   ProjectsInlinePanel,
   toolsInlineItems,
 } from './AppSidebarInlinePanels'
@@ -374,6 +375,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     const data = await res.json() as { id?: string; file?: { _id: string; name?: string; content?: string; textContent?: string; createdAt?: number; updatedAt?: number } }
     if (!data.id) return
     const file = data.file
+    const updatedAt = file?.updatedAt ?? file?.createdAt ?? Number.MAX_SAFE_INTEGER
     window.dispatchEvent(new CustomEvent('overlay:notes-changed', {
       detail: {
         note: {
@@ -381,8 +383,8 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
           title: file?.name || 'Untitled',
           content: file?.textContent ?? file?.content ?? '',
           tags: [],
-          createdAt: file?.createdAt ?? 0,
-          updatedAt: file?.updatedAt ?? 0,
+          createdAt: file?.createdAt ?? updatedAt,
+          updatedAt,
         },
       },
     }))
@@ -757,7 +759,13 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
-              {filesSectionOpen ? (
+              {notesOpen ? (
+                <NotesInlinePanel
+                  refreshKey={0}
+                  searchQuery=""
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
+              ) : filesOpen ? (
                 <FilesInlinePanel
                   searchQuery=""
                   onNavigate={() => setMobileMenuOpen(false)}

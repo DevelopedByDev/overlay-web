@@ -36,6 +36,10 @@ const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
 const FILES_CHANGED_EVENT = 'overlay:files-changed'
 
+function sortNotes(notes: Note[]) {
+  return [...notes].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+}
+
 type Conversation = { _id: string; title: string; lastModified: number }
 type Note = { _id: string; title: string; updatedAt: number }
 type CanonicalNoteFile = { _id: string; name?: string; updatedAt?: number }
@@ -341,11 +345,11 @@ export function NotesInlinePanel({
       const res = await fetch('/api/app/files?kind=note')
       if (res.ok) {
         const rows = (await res.json()) as CanonicalNoteFile[]
-        setNotes(rows.map((file) => ({
+        setNotes(sortNotes(rows.map((file) => ({
           _id: file._id,
           title: file.name || 'Untitled',
           updatedAt: file.updatedAt ?? 0,
-        })))
+        }))))
       }
     } catch {
       // ignore
@@ -363,7 +367,7 @@ export function NotesInlinePanel({
     function handleNotesChanged(event: Event) {
       const note = (event as CustomEvent<{ note?: Note }>).detail?.note
       if (note?._id) {
-        setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
+        setNotes((prev) => sortNotes([note, ...prev.filter((item) => item._id !== note._id)]))
         setLoading(false)
         return
       }

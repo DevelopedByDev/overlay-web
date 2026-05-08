@@ -1668,6 +1668,37 @@ function DraftSuggestionCard({
   )
 }
 
+function renderInlineMentions(
+  text: string,
+  mentions?: Array<{ type: string; id: string; name: string }>
+): React.ReactNode {
+  if (!mentions?.length || !text) return text
+  const sorted = [...mentions].sort((a, b) => b.name.length - a.name.length)
+  const escaped = sorted.map((m) => m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const regex = new RegExp(`@(${escaped.join('|')})`, 'g')
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+    parts.push(
+      <span
+        key={match.index}
+        className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] px-1.5 py-0.5 text-xs font-medium text-[var(--foreground)] align-middle mx-0.5"
+      >
+        {match[0]}
+      </span>
+    )
+    lastIndex = regex.lastIndex
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex))
+  }
+  return parts.length === 1 && typeof parts[0] === 'string' ? parts[0] : parts
+}
+
 
 // ─── ExchangeBlock ───────────────────────────────────────────────────────────
 
@@ -1801,19 +1832,7 @@ function ExchangeBlock({
             )}
             {showTextBubble && (
               <div className="chat-user-bubble ml-auto min-w-0 max-w-full break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:px-4">
-                <span className="whitespace-pre-wrap">{userBodyText}</span>
-                {userMentions && userMentions.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {userMentions.map((m) => (
-                      <span
-                        key={`${m.type}-${m.id}`}
-                        className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] px-1.5 py-0.5 text-xs font-medium text-[var(--foreground)]"
-                      >
-                        @{m.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <span className="whitespace-pre-wrap">{renderInlineMentions(userBodyText, userMentions)}</span>
               </div>
             )}
           </div>
@@ -4175,6 +4194,7 @@ export default function ChatInterface({
     if (!sourceChatId || !targetTurnId || isActiveLoading) return
     try {
       setComposerNotice('Creating branch…')
+      setIsSwitchingChat(true)
       const sourceRes = await fetch(`/api/app/conversations?conversationId=${sourceChatId}&messages=true`)
       if (!sourceRes.ok) throw new Error('Could not load source chat')
       const sourceData = await sourceRes.json() as {
@@ -4226,12 +4246,15 @@ export default function ChatInterface({
         })
         if (!res.ok) throw new Error('Could not copy branch messages')
       }
+      const branchRuntime = runtimesRef.current.get(branchChatId)
+      if (branchRuntime) branchRuntime.hydrated = false
       await loadChat(branchChatId)
       setComposerNotice('Branch created.')
       window.setTimeout(() => setComposerNotice(null), 2500)
     } catch (error) {
       setComposerNotice(error instanceof Error ? error.message : 'Could not create branch')
       window.setTimeout(() => setComposerNotice(null), 5000)
+      setIsSwitchingChat(false)
     }
   }
 

@@ -417,7 +417,7 @@ export default function NotebookEditor({
   const pendingNoteIdRef = useRef<string | null>(null)
   const pendingTitleRef = useRef('')
   const pendingContentRef = useRef('')
-  const flushSaveRef = useRef<() => void>(() => {})
+  const flushSaveRef = useRef<() => Promise<void> | void>(() => {})
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -980,33 +980,57 @@ export default function NotebookEditor({
     return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [showSlashMenu, filteredSlashItems, selectedSlashIndex, executeSlashCommand])
 
-  function flushSave() {
+  async function flushSave() {
     if (!isDirtyRef.current || !pendingNoteIdRef.current) return
     isDirtyRef.current = false
     setIsDirty(false)
     const noteId = pendingNoteIdRef.current
     const noteTitle = pendingTitleRef.current
     const content = pendingContentRef.current
-    void fetch('/api/app/files', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileId: noteId, name: noteTitle, textContent: content }),
-      keepalive: true,
-    }).then(async (res) => {
-      if (!res.ok) return
-      const data = (await res.json()) as { file?: CanonicalNoteFile }
-      if (data.file) {
-        const note = canonicalFileToNote(data.file)
-        setNotes((prev) => {
-          const next = prev.filter((item) => item._id !== note._id)
-          return [note, ...next]
-        })
-        window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
-        window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
+    try {
+      const res = await fetch('/api/app/files', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: noteId, name: noteTitle, textContent: content }),
+      })
+      if (!res.ok) {
+        isDirtyRef.current = true
+        setIsDirty(true)
+        return
       }
-    }).catch(() => {})
+      const data = (await res.json()) as { file?: CanonicalNoteFile }
+      const note = data.file
+        ? canonicalFileToNote(data.file)
+        : {
+            _id: noteId,
+            title: noteTitle.trim() || 'Untitled',
+            content,
+            tags: [],
+            createdAt: activeNoteRef.current?.createdAt ?? Date.now(),
+            updatedAt: Date.now(),
+          }
+      setNotes((prev) => {
+        const next = prev.filter((item) => item._id !== note._id)
+        return [note, ...next]
+      })
+      window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
+      window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
+    } catch {
+      isDirtyRef.current = true
+      setIsDirty(true)
+    }
   }
   flushSaveRef.current = flushSave
+
+  const handleBackToFiles = useCallback(async () => {
+    await flushSaveRef.current()
+    router.push('/app/files')
+  }, [router])
+
+  const handleToggleAgentPanel = useCallback(async () => {
+    await flushSaveRef.current()
+    setAgentPanelOpen((open) => !open)
+  }, [])
 
   const stopNotebookAgent = useCallback(() => {
     notebookAgentAbortRef.current?.abort()
@@ -1162,7 +1186,6 @@ export default function NotebookEditor({
       setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
       window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
       window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
-      await loadNotes()
       openNote(note)
     }
   }
@@ -1190,11 +1213,22 @@ export default function NotebookEditor({
     setTitle(newTitle)
     titleRef.current = newTitle
     if (activeNote) {
+      const updatedAt = Date.now()
       isDirtyRef.current = true
       pendingNoteIdRef.current = activeNote._id
       pendingTitleRef.current = newTitle
       pendingContentRef.current = editor?.getHTML() || ''
       setIsDirty(true)
+      const note = {
+        ...activeNote,
+        title: newTitle.trim() || 'Untitled',
+        content: pendingContentRef.current,
+        updatedAt,
+      }
+      setActiveNote(note)
+      activeNoteRef.current = note
+      setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
+      window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
     }
   }
 
@@ -1215,7 +1249,7 @@ export default function NotebookEditor({
           <div className="flex flex-1 items-center justify-between gap-3 px-6">
             <button
               type="button"
-              onClick={() => router.push('/app/files')}
+              onClick={() => void handleBackToFiles()}
               title="Back to files"
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
             >
@@ -1250,7 +1284,7 @@ export default function NotebookEditor({
               )}
               <button
                 type="button"
-                onClick={() => setAgentPanelOpen((open) => !open)}
+                onClick={() => void handleToggleAgentPanel()}
                 className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
                   agentPanelOpen ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
                 }`}
