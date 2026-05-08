@@ -1729,7 +1729,7 @@ export default function ChatInterface({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const { settings, updateSettings } = useAppSettings()
+  const { settings } = useAppSettings()
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexWorkOSToken()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
@@ -6533,20 +6533,6 @@ export default function ChatInterface({
                         </div>
                       )}
                     </div>
-                    <DelayedTooltip label={settings.autoContinue ? 'Auto-continue on' : 'Auto-continue off'} side="top">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void updateSettings({ autoContinue: !settings.autoContinue })
-                        }}
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--surface-muted)] ${
-                          settings.autoContinue ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
-                        }`}
-                        aria-label="Toggle auto-continue"
-                      >
-                        <Play size={16} strokeWidth={1.75} />
-                      </button>
-                    </DelayedTooltip>
                     {isActiveLoading ? (
                       <DelayedTooltip label="Stop generating" side="top">
                         <button
