@@ -185,12 +185,15 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
 
     const { search, loading } = useMentionData()
 
-    // Sync external value changes into the editor (only when value is cleared externally, e.g. on send)
+    // Sync external value changes into the editor (clear on send, populate restored draft after hydration)
     useEffect(() => {
       const el = editorRef.current
       if (!el) return
       if (value === '' && lastValueRef.current !== '') {
         el.innerHTML = ''
+      } else if (value && el.innerHTML === '' && lastValueRef.current === '') {
+        // Initial non-empty value from parent (e.g. restored guest draft after hydration)
+        el.textContent = value
       }
       lastValueRef.current = value
     }, [value])
@@ -420,9 +423,28 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       const el = editorRef.current
       if (!el) return
       const maxHeight = 160
+      const savedScrollTop = el.scrollTop
       el.style.height = 'auto'
       el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
       el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+
+      // Prevent scroll from jumping to top when resizing; keep caret visible
+      if (el.scrollHeight > maxHeight) {
+        el.scrollTop = savedScrollTop
+        const sel = window.getSelection()
+        if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+          const caretRect = sel.getRangeAt(0).getBoundingClientRect()
+          // Collapsed ranges after a <br> or inside an empty <div> can return
+          // an empty rect — skip adjustment so we don't scroll to the top.
+          if (caretRect.width === 0 && caretRect.height === 0) return
+          const elRect = el.getBoundingClientRect()
+          if (caretRect.bottom > elRect.bottom) {
+            el.scrollTop += caretRect.bottom - elRect.bottom + 4
+          } else if (caretRect.top < elRect.top) {
+            el.scrollTop -= elRect.top - caretRect.top
+          }
+        }
+      }
     }, [value])
 
     return (

@@ -1892,14 +1892,7 @@ export default function ChatInterface({
   const dragCounterRef = useRef(0)
   const lastStreamChunkAtRef = useRef<number>(Date.now())
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
-  const [input, setInputState] = useState(() => {
-    if (typeof window === 'undefined') return ''
-    try {
-      const draft = sessionStorage.getItem('overlay:guest-draft')
-      if (draft) { sessionStorage.removeItem('overlay:guest-draft'); return draft }
-    } catch { /* ignore */ }
-    return ''
-  })
+  const [input, setInputState] = useState('')
   const [, startInputTransition] = React.useTransition()
   const inputRef = useRef(input)
   const setInput = useCallback((next: string | ((previous: string) => string)) => {
@@ -1913,6 +1906,19 @@ export default function ChatInterface({
       setInputState(text)
     })
   }, [startInputTransition])
+
+  // Restore guest draft after hydration so server/client initial renders match
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const draft = sessionStorage.getItem('overlay:guest-draft')
+      if (draft) {
+        sessionStorage.removeItem('overlay:guest-draft')
+        setInput(draft)
+      }
+    } catch { /* ignore */ }
+  }, [setInput])
+
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
