@@ -5,6 +5,8 @@ export default defineSchema({
   userUiSettings: defineTable({
     userId: v.string(),
     theme: v.union(v.literal('light'), v.literal('dark')),
+    lightThemePreset: v.optional(v.string()),
+    darkThemePreset: v.optional(v.string()),
     useSecondarySidebar: v.boolean(),
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     createdAt: v.number(),

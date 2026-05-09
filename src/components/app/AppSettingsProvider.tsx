@@ -1,6 +1,6 @@
 'use client'
 
-import type { AppSettings, ChatStreamingMode, ThemePreference } from '@overlay/app-core'
+import type { AppSettings, ChatStreamingMode, ThemePreference, ThemePresetId } from '@overlay/app-core'
 import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
 import {
   createContext,
@@ -9,10 +9,12 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
+import { getPresetCssVars } from '@/lib/themes'
 
-export type { AppSettings, ChatStreamingMode, ThemePreference } from '@overlay/app-core'
+export type { AppSettings, ChatStreamingMode, ThemePreference, ThemePresetId } from '@overlay/app-core'
 
 type AppSettingsContextValue = {
   settings: AppSettings
@@ -24,11 +26,18 @@ type AppSettingsContextValue = {
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
 const APP_SETTINGS_STORAGE_KEY = 'overlay.app.settings'
+const VALID_PRESET_IDS = new Set<string>(['default-light', 'default-dark', 'codex', 'catppuccin'])
+
+function isValidPresetId(value: unknown): value is ThemePresetId {
+  return typeof value === 'string' && VALID_PRESET_IDS.has(value)
+}
 
 function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<AppSettings>
   if (candidate.theme !== undefined && candidate.theme !== 'light' && candidate.theme !== 'dark') return false
+  if (candidate.lightThemePreset !== undefined && !isValidPresetId(candidate.lightThemePreset)) return false
+  if (candidate.darkThemePreset !== undefined && !isValidPresetId(candidate.darkThemePreset)) return false
   if (candidate.useSecondarySidebar !== undefined && typeof candidate.useSecondarySidebar !== 'boolean') return false
   if (
     candidate.chatStreamingMode !== undefined &&
@@ -40,6 +49,8 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   if (candidate.autoContinue !== undefined && typeof candidate.autoContinue !== 'boolean') return false
   return (
     typeof candidate.theme === 'string' ||
+    typeof candidate.lightThemePreset === 'string' ||
+    typeof candidate.darkThemePreset === 'string' ||
     typeof candidate.useSecondarySidebar === 'boolean' ||
     typeof candidate.chatStreamingMode === 'string' ||
     typeof candidate.autoContinue === 'boolean'
@@ -110,11 +121,34 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     void refresh()
   }, [refresh])
 
+  const prevPresetVarsRef = useRef<Set<string>>(new Set())
+
   useLayoutEffect(() => {
     const root = document.documentElement
     root.dataset.theme = settings.theme
     root.style.colorScheme = settings.theme
-  }, [settings.theme])
+
+    const activePreset =
+      settings.theme === 'dark'
+        ? settings.darkThemePreset ?? 'default-dark'
+        : settings.lightThemePreset ?? 'default-light'
+    root.dataset.themePreset = activePreset
+
+    const presetVars = getPresetCssVars(activePreset as ThemePresetId)
+    const applied = new Set<string>()
+    for (const [key, val] of Object.entries(presetVars)) {
+      root.style.setProperty(key, val)
+      applied.add(key)
+    }
+
+    // Reset any previously-applied preset vars that are no longer in the active preset
+    for (const key of prevPresetVarsRef.current) {
+      if (!applied.has(key)) {
+        root.style.removeProperty(key)
+      }
+    }
+    prevPresetVarsRef.current = applied
+  }, [settings.theme, settings.lightThemePreset, settings.darkThemePreset])
 
   const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
     const optimistic = coerceChatStreamingMode({ ...settings, ...patch })

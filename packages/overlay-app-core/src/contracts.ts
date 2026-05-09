@@ -2,8 +2,12 @@ export type ThemePreference = 'light' | 'dark'
 /** Token streaming is the only supported mode; the field remains for API/storage compatibility. */
 export type ChatStreamingMode = 'token'
 
+export type ThemePresetId = 'default-light' | 'default-dark' | 'codex' | 'catppuccin'
+
 export interface AppSettings {
   theme: ThemePreference
+  lightThemePreset: ThemePresetId
+  darkThemePreset: ThemePresetId
   useSecondarySidebar: boolean
   chatStreamingMode: ChatStreamingMode
   autoContinue: boolean
@@ -11,6 +15,8 @@ export interface AppSettings {
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: 'light',
+  lightThemePreset: 'default-light',
+  darkThemePreset: 'default-dark',
   useSecondarySidebar: false,
   chatStreamingMode: 'token',
   autoContinue: false,

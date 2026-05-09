@@ -4,8 +4,11 @@ import { requireServerSecret } from './lib/auth'
 
 const themeValidator = v.union(v.literal('light'), v.literal('dark'))
 const chatStreamingModeValidator = v.literal('token')
+const themePresetValidator = v.optional(v.string())
 const uiSettingsValidator = v.object({
   theme: themeValidator,
+  lightThemePreset: v.optional(v.string()),
+  darkThemePreset: v.optional(v.string()),
   useSecondarySidebar: v.boolean(),
   chatStreamingMode: chatStreamingModeValidator,
 })
@@ -13,6 +16,8 @@ const uiSettingsValidator = v.object({
 function defaultUiSettings() {
   return {
     theme: 'light' as const,
+    lightThemePreset: 'default-light' as const,
+    darkThemePreset: 'default-dark' as const,
     useSecondarySidebar: false,
     chatStreamingMode: 'token' as const,
   }
@@ -40,6 +45,8 @@ export const getByServer = query({
     if (!existing) return defaultUiSettings()
     return {
       theme: existing.theme,
+      lightThemePreset: existing.lightThemePreset ?? 'default-light',
+      darkThemePreset: existing.darkThemePreset ?? 'default-dark',
       useSecondarySidebar: existing.useSecondarySidebar,
       // Legacy rows may still store 'chunk'; always expose token-only to clients.
       chatStreamingMode:
@@ -53,6 +60,8 @@ export const upsertByServer = mutation({
     userId: v.string(),
     serverSecret: v.string(),
     theme: v.optional(themeValidator),
+    lightThemePreset: themePresetValidator,
+    darkThemePreset: themePresetValidator,
     useSecondarySidebar: v.optional(v.boolean()),
     /** Ignored if sent; persisted value is always `token`. */
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
@@ -64,6 +73,8 @@ export const upsertByServer = mutation({
     const existing = await getExistingSettings(ctx, args.userId)
     const next = {
       theme: args.theme ?? existing?.theme ?? 'light' as const,
+      lightThemePreset: args.lightThemePreset ?? existing?.lightThemePreset ?? 'default-light' as const,
+      darkThemePreset: args.darkThemePreset ?? existing?.darkThemePreset ?? 'default-dark' as const,
       useSecondarySidebar: args.useSecondarySidebar ?? existing?.useSecondarySidebar ?? false,
       chatStreamingMode: 'token' as const,
     }

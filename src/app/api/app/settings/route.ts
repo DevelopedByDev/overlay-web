@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppSettings } from '@overlay/app-core'
+import type { AppSettings, ThemePresetId } from '@overlay/app-core'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+
+const VALID_PRESET_IDS = new Set<string>(['default-light', 'default-dark', 'codex', 'catppuccin'])
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,6 +30,8 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = (await request.json()) as {
       theme?: 'light' | 'dark'
+      lightThemePreset?: ThemePresetId
+      darkThemePreset?: ThemePresetId
       useSecondarySidebar?: boolean
       /** @deprecated Only `token` is supported; `chunk` is accepted for compatibility and normalized away. */
       chatStreamingMode?: 'token' | 'chunk'
@@ -37,6 +41,12 @@ export async function PATCH(request: NextRequest) {
 
     if (body.theme !== undefined && body.theme !== 'light' && body.theme !== 'dark') {
       return NextResponse.json({ error: 'Invalid theme' }, { status: 400 })
+    }
+    if (body.lightThemePreset !== undefined && !VALID_PRESET_IDS.has(body.lightThemePreset)) {
+      return NextResponse.json({ error: 'Invalid lightThemePreset' }, { status: 400 })
+    }
+    if (body.darkThemePreset !== undefined && !VALID_PRESET_IDS.has(body.darkThemePreset)) {
+      return NextResponse.json({ error: 'Invalid darkThemePreset' }, { status: 400 })
     }
     if (
       body.chatStreamingMode !== undefined &&
@@ -53,6 +63,8 @@ export async function PATCH(request: NextRequest) {
       userId: string
       serverSecret: string
       theme?: 'light' | 'dark'
+      lightThemePreset?: string
+      darkThemePreset?: string
       useSecondarySidebar?: boolean
     } = {
       userId: auth.userId,
@@ -61,6 +73,12 @@ export async function PATCH(request: NextRequest) {
 
     if (body.theme !== undefined) {
       mutationArgs.theme = body.theme
+    }
+    if (body.lightThemePreset !== undefined) {
+      mutationArgs.lightThemePreset = body.lightThemePreset
+    }
+    if (body.darkThemePreset !== undefined) {
+      mutationArgs.darkThemePreset = body.darkThemePreset
     }
     if (body.useSecondarySidebar !== undefined) {
       mutationArgs.useSecondarySidebar = body.useSecondarySidebar

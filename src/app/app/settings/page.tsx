@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Mail, Moon, PanelsLeftRight, Sun, Play } from 'lucide-react'
+import { Mail, Moon, PanelsLeftRight, Sun, Play, Palette } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
+import { LIGHT_PRESETS, DARK_PRESETS } from '@/lib/themes'
+import type { ThemePresetId } from '@overlay/app-core'
 import dynamic from 'next/dynamic'
 
 const MemoriesView = dynamic(() => import('@/components/app/MemoriesView'))
@@ -83,6 +85,63 @@ function SettingRow({
         </div>
       </div>
       <SettingsToggle checked={checked} disabled={disabled} onChange={onChange} />
+    </div>
+  )
+}
+
+function PresetRow({
+  label,
+  description,
+  presets,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  description: string
+  presets: { id: ThemePresetId; name: string; previewColors: { background: string; accent: string } }[]
+  value: ThemePresetId
+  disabled?: boolean
+  onChange: (id: ThemePresetId) => void
+}) {
+  const active = presets.find((p) => p.id === value)
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">
+          <Palette size={18} strokeWidth={1.8} />
+        </div>
+        <div className="min-w-0">
+          <h2 className="text-sm font-medium text-[var(--foreground)]">{label}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{description}</p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {active && (
+          <div className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1.5">
+            <span
+              className="inline-block h-3.5 w-3.5 rounded-full border border-[var(--border)]"
+              style={{ backgroundColor: active.previewColors.background }}
+            />
+            <span
+              className="inline-block h-3.5 w-3.5 rounded-full border border-[var(--border)]"
+              style={{ backgroundColor: active.previewColors.accent }}
+            />
+          </div>
+        )}
+        <select
+          disabled={disabled}
+          value={value}
+          onChange={(e) => onChange(e.target.value as ThemePresetId)}
+          className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] disabled:opacity-60"
+        >
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   )
 }
@@ -300,9 +359,24 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'customization' && (
-            <SectionPlaceholder title="Customization">
-              <p>Additional appearance and layout options will appear here as they ship.</p>
-            </SectionPlaceholder>
+            <>
+              <PresetRow
+                label="Light theme"
+                description="Choose the color preset used when the app is in light mode."
+                presets={LIGHT_PRESETS}
+                value={settings.lightThemePreset}
+                disabled={busy}
+                onChange={(id) => void updateSettings({ lightThemePreset: id })}
+              />
+              <PresetRow
+                label="Dark theme"
+                description="Choose the color preset used when the app is in dark mode."
+                presets={DARK_PRESETS}
+                value={settings.darkThemePreset}
+                disabled={busy}
+                onChange={(id) => void updateSettings({ darkThemePreset: id })}
+              />
+            </>
           )}
 
           {!isLoading && section === 'memories' && (

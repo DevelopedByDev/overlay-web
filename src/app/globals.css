@@ -34,6 +34,8 @@
   font-display: swap;
 }
 
+/* Base semantic palette. JS-injected preset variables override these when
+   `data-theme-preset` is set (see AppSettingsProvider). */
 :root {
   --background: #fafafa;
   --foreground: #0a0a0a;
