@@ -22,6 +22,7 @@ import {
   GitBranch,
   Pencil,
   BrainCircuit,
+  DollarSign,
   ArrowUp,
   Play,
   MessageSquare,
@@ -53,15 +54,17 @@ import {
 import {
   IMAGE_MODELS,
   VIDEO_MODELS,
-  costToBarFill5,
   getChatModelDisplayName,
   getModel,
   getModelsByIntelligence,
   getVideoModelsBySubMode,
-  intelligenceToBarFill5,
-  speedTierToBarFill5,
 } from '@/lib/model-data'
-import { ACT_MODEL_KEY, CHAT_MODEL_KEY } from '@/lib/chat-model-prefs'
+import {
+  ACT_MODEL_KEY,
+  CHAT_MODEL_KEY,
+  readStoredActModelId,
+  readStoredAskModelIds,
+} from '@/lib/chat-model-prefs'
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { webSourceDisplayKey } from '@/lib/web-sources'
@@ -226,23 +229,22 @@ function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   )
 }
 
-function QualBarRow({ label, filled, hint }: { label: string; filled: number; hint?: string }) {
-  const segments = 4
-  const lit = Math.min(segments, Math.max(0, Math.round((filled / 5) * segments)))
+function MetricRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
+  label: string
+  value: string | number
+}) {
   return (
-    <div className="flex flex-col gap-px">
-      <div className="flex items-center justify-between gap-1">
-        <span className="text-[8px] font-medium uppercase tracking-wide text-[var(--muted-light)]">{label}</span>
-        {hint ? <span className="text-[8px] tabular-nums text-[var(--muted)]">{hint}</span> : null}
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
+        <Icon size={11} strokeWidth={1.75} className="shrink-0 text-[var(--muted-light)]" />
+        <span>{label}</span>
       </div>
-      <div className="flex gap-px">
-        {Array.from({ length: segments }, (_, i) => (
-          <span
-            key={i}
-            className={`h-1 min-w-0 flex-1 rounded-[1px] ${i < lit ? 'bg-[var(--foreground)]' : 'bg-[var(--border)]'}`}
-          />
-        ))}
-      </div>
+      <span className="whitespace-nowrap text-[11px] font-medium tabular-nums text-[var(--foreground)]">{value}</span>
     </div>
   )
 }
@@ -250,12 +252,23 @@ function QualBarRow({ label, filled, hint }: { label: string; filled: number; hi
 function ModelQualitiesPanel({ modelId }: { modelId: string }) {
   const m = getModel(modelId)
   if (!m) return null
-  const priceHint = m.cost === 0 ? 'Free' : '$'.repeat(m.cost)
   return (
-    <div className="pointer-events-none flex flex-col gap-1.5">
-      <QualBarRow label="Speed" filled={speedTierToBarFill5(m.speedTier)} />
-      <QualBarRow label="Price" filled={costToBarFill5(m.cost)} hint={priceHint} />
-      <QualBarRow label="Intel" filled={intelligenceToBarFill5(m)} />
+    <div className="pointer-events-none flex flex-col gap-1">
+      <MetricRow
+        icon={BrainCircuit}
+        label="Intelligence"
+        value={Math.round(m.intelligence)}
+      />
+      <MetricRow
+        icon={DollarSign}
+        label="Cost"
+        value={m.cost === 0 ? 'Free' : `$${(m.pricePer1mTokens ?? m.cost).toFixed(2)}/M`}
+      />
+      <MetricRow
+        icon={Zap}
+        label="Speed"
+        value={m.medianOutputTokensPerSecond ? `${Math.round(m.medianOutputTokensPerSecond)} t/s` : 'N/A'}
+      />
     </div>
   )
 }
@@ -2142,10 +2155,12 @@ export default function ChatInterface({
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
     setMobileChatListOpen(false)
+    const storedAsk = readStoredAskModelIds()
+    const storedAct = readStoredActModelId()
     applyUiStateToView(createConversationUiState({
-      selectedActModel,
-      selectedModels,
-      askModelSelectionMode,
+      selectedActModel: storedAct,
+      selectedModels: storedAsk,
+      askModelSelectionMode: storedAsk.length > 1 ? 'multiple' : 'single',
       activeChatTitle: null,
       isFirstMessage: true,
     }))
@@ -2154,11 +2169,8 @@ export default function ChatInterface({
     if (!hideSidebar) router.replace('/app/chat')
   }, [
     applyUiStateToView,
-    askModelSelectionMode,
     hideSidebar,
     router,
-    selectedActModel,
-    selectedModels,
     setActiveViewer,
   ])
 
@@ -2913,6 +2925,18 @@ export default function ChatInterface({
     selectedAutomation?.sourceConversationId || selectedAutomation?.conversationId || null
   const hasAutomationContext = mode === 'automate' && Boolean(automationIdParam)
   const showAutomationChatTab = !hasAutomationContext || automationDetailTab === 'chat'
+
+  // Automations must always run with exactly one model. Collapse multi-model selection
+  // whenever the user is working inside an automation surface so saved automations and
+  // automation-chat runs never inherit a stale multi-model state.
+  useEffect(() => {
+    if (!hasAutomationContext) return
+    if (askModelSelectionMode !== 'multiple' && selectedModels.length <= 1) return
+    const primary = selectedActModel || selectedModels[0] || DEFAULT_MODEL_ID
+    setAskModelSelectionMode('single')
+    setSelectedModels([primary])
+    setSelectedActModel(primary)
+  }, [hasAutomationContext, askModelSelectionMode, selectedModels, selectedActModel])
   /** When chat is opened inside a project, files/docs attach to this project for search scoping. */
   const rawEmbedProjectId = hideSidebar ? searchParams?.get('projectId')?.trim() ?? null : null
   const embedProjectId =
@@ -2940,10 +2964,14 @@ export default function ChatInterface({
     setSourcesPanel(null)
     setMobileChatListOpen(false)
     setActiveViewer(null)
+    // Restore the user's saved new-chat defaults from localStorage rather than the last
+    // viewed chat's models (which live in the view state after a chat switch).
+    const storedAsk = readStoredAskModelIds()
+    const storedAct = readStoredActModelId()
     applyUiStateToView(createConversationUiState({
-      selectedActModel,
-      selectedModels,
-      askModelSelectionMode,
+      selectedActModel: storedAct,
+      selectedModels: storedAsk,
+      askModelSelectionMode: storedAsk.length > 1 ? 'multiple' : 'single',
       activeChatTitle: null,
       isFirstMessage: true,
     }))
@@ -2952,13 +2980,10 @@ export default function ChatInterface({
     activeChatId,
     applyUiStateToView,
     automationIdParam,
-    askModelSelectionMode,
     hideSidebar,
     idParam,
     mode,
     persistActiveRuntimeUiState,
-    selectedActModel,
-    selectedModels,
     setActiveViewer,
   ])
 
@@ -3376,24 +3401,51 @@ export default function ChatInterface({
     }
   }
 
+  /**
+   * `localStorage` CHAT_MODEL_KEY / ACT_MODEL_KEY represent the user's **default for new chats**,
+   * not the last-viewed chat's models. Per-chat selections are held in `runtime.ui` and restored
+   * on chat switch. We only write to localStorage when the user is composing on the empty
+   * surface (no active chat), so switching between existing chats never mutates the new-chat
+   * default and a page reload restores the user's actual preference.
+   */
+  const isOnNewChatSurface = !activeChatId
+  const persistNewChatAskModels = useCallback((ids: string[]) => {
+    if (!isOnNewChatSurface) return
+    try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(ids)) } catch { /* ignore */ }
+  }, [isOnNewChatSurface])
+  const persistNewChatActModel = useCallback((id: string) => {
+    if (!isOnNewChatSurface) return
+    try { localStorage.setItem(ACT_MODEL_KEY, id) } catch { /* ignore */ }
+  }, [isOnNewChatSurface])
+
   const handleTextModelSelectionModeChange = useCallback(
     (next: AskModelSelectionMode) => {
       if (isActiveLoading || generationMode !== 'text') return
       if (next === askModelSelectionMode) return
       if (isFreeTier && next === 'multiple') return
+      if (hasAutomationContext && next === 'multiple') return
       setAskModelSelectionMode(next)
       if (next === 'single' && selectedModels.length > 1) {
         const one = [selectedModels[0]!]
         setSelectedModels(one)
         setSelectedActModel(one[0]!)
-        localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(one))
-        localStorage.setItem(ACT_MODEL_KEY, one[0]!)
+        persistNewChatAskModels(one)
+        persistNewChatActModel(one[0]!)
       } else if (next === 'multiple' && selectedModels.length > 0) {
         setSelectedActModel(selectedModels[0]!)
-        localStorage.setItem(ACT_MODEL_KEY, selectedModels[0]!)
+        persistNewChatActModel(selectedModels[0]!)
       }
     },
-    [generationMode, askModelSelectionMode, isActiveLoading, isFreeTier, selectedModels],
+    [
+      generationMode,
+      askModelSelectionMode,
+      isActiveLoading,
+      isFreeTier,
+      hasAutomationContext,
+      selectedModels,
+      persistNewChatAskModels,
+      persistNewChatActModel,
+    ],
   )
 
   function toggleTextModelInPicker(modelId: string) {
@@ -3403,10 +3455,8 @@ export default function ChatInterface({
       const next = [modelId]
       setSelectedActModel(modelId)
       setSelectedModels(next)
-      try {
-        localStorage.setItem(ACT_MODEL_KEY, modelId)
-        localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(next))
-      } catch { /* ignore */ }
+      persistNewChatActModel(modelId)
+      persistNewChatAskModels(next)
       setShowModelPicker(false)
       return
     }
@@ -3417,18 +3467,18 @@ export default function ChatInterface({
       setSelectedModels(next)
       if (!next.includes(selectedActModel)) {
         setSelectedActModel(next[0]!)
-        try { localStorage.setItem(ACT_MODEL_KEY, next[0]!) } catch { /* ignore */ }
+        persistNewChatActModel(next[0]!)
       }
-      try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+      persistNewChatAskModels(next)
     } else {
       if (selectedModels.length >= 4) return
       const next = [...selectedModels, modelId]
       setSelectedModels(next)
       if (next.length === 1) {
         setSelectedActModel(modelId)
-        try { localStorage.setItem(ACT_MODEL_KEY, modelId) } catch { /* ignore */ }
+        persistNewChatActModel(modelId)
       }
-      try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+      persistNewChatAskModels(next)
     }
   }
 
@@ -3796,11 +3846,9 @@ export default function ChatInterface({
         if (meta.title) resolvedTitle = meta.title
         if (meta.askModelIds?.length) {
           resolvedSelectedModels = meta.askModelIds.slice(0, 4)
-          localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(resolvedSelectedModels))
         }
         if (meta.actModelId) {
           resolvedActModel = meta.actModelId
-          localStorage.setItem(ACT_MODEL_KEY, meta.actModelId)
         }
       }
 
@@ -3900,7 +3948,6 @@ export default function ChatInterface({
         runtime.askChats[0].messages = linear as any
       } else {
         const slotModels = uniqueModels.slice(0, 4)
-        localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(slotModels))
         resolvedSelectedModels = slotModels
 
         slotModels.forEach((modelId, slotIdx) => {
@@ -5418,11 +5465,11 @@ export default function ChatInterface({
                       {hoveredModelId && modelQualitiesPos ? (
                         <div
                           aria-hidden
-                          className="pointer-events-none fixed z-[100] hidden w-[6rem] rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 shadow-md md:block"
+                          className="pointer-events-none fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
                           style={{
                             left: modelQualitiesPos.x,
                             top: modelQualitiesPos.y,
-                            transform: 'translate(calc(-100% - 6px), -50%)',
+                            transform: 'translate(calc(-100% - 8px), -50%)',
                           }}
                         >
                           <ModelQualitiesPanel modelId={hoveredModelId} />
@@ -5576,11 +5623,11 @@ export default function ChatInterface({
                   {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
                     <div
                       aria-hidden
-                      className="pointer-events-none fixed z-[100] hidden w-[6rem] rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 shadow-md md:block"
+                      className="pointer-events-none fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
                       style={{
                         left: modelQualitiesPos.x,
                         top: modelQualitiesPos.y,
-                        transform: 'translate(calc(-100% - 6px), -50%)',
+                        transform: 'translate(calc(-100% - 8px), -50%)',
                       }}
                     >
                       <ModelQualitiesPanel modelId={hoveredModelId} />
@@ -5741,26 +5788,27 @@ export default function ChatInterface({
                       </div>
                     </div>
                   )}
-                  {generationMode === 'text' && (
+                  {generationMode === 'text' && !hasAutomationContext && (
                     <div className="border-t border-[var(--border)] px-2 py-2">
                       <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((mode) => {
-                          const isActive = askModelSelectionMode === mode
+                        {(['single', 'multiple'] as const).map((selMode) => {
+                          const isActive = askModelSelectionMode === selMode
+                          const multipleDisabled = isFreeTier && selMode === 'multiple'
                           return (
                             <button
-                              key={mode}
+                              key={selMode}
                               type="button"
-                              onClick={() => handleTextModelSelectionModeChange(mode)}
-                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
+                              onClick={() => handleTextModelSelectionModeChange(selMode)}
+                              disabled={isActiveLoading || multipleDisabled}
                               className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
                                 isActive
                                   ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
                                   : 'text-[var(--muted)] hover:text-[var(--foreground)]'
                               } ${
-                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
+                                isActiveLoading || multipleDisabled ? 'cursor-not-allowed opacity-40' : ''
                               }`}
                             >
-                              {mode}
+                              {selMode}
                             </button>
                           )
                         })}

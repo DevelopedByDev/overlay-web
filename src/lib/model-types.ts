@@ -32,6 +32,10 @@ export interface ChatModel {
   supportsVision: boolean
   supportsReasoning: boolean
   supportsSearch: boolean
+  /** Price per 1M blended tokens ($). */
+  pricePer1mTokens?: number
+  /** Median output tokens per second. */
+  medianOutputTokensPerSecond?: number
 }
 
 export interface ImageModel {
