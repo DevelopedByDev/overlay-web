@@ -44,7 +44,10 @@ function opensInDocumentEditor(file: ProjectFile): boolean {
 }
 
 const panelItemClass =
-  'group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+
+const inlineConfirmDeleteButtonClass =
+  'ml-1 inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25'
 
 export function NotesInlinePanel({
   refreshKey,
@@ -59,6 +62,7 @@ export function NotesInlinePanel({
   const searchParams = useSearchParams()
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
+  const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
 
   const loadNotes = useCallback(async () => {
@@ -101,6 +105,7 @@ export function NotesInlinePanel({
 
   async function deleteNote(noteId: string, event: MouseEvent) {
     event.stopPropagation()
+    setPendingDeleteNoteId(null)
     await fetch(`/api/app/files?fileId=${noteId}`, { method: 'DELETE' })
     setNotes((prev) => prev.filter((note) => note._id !== noteId))
     if (activeId === noteId) {
@@ -120,9 +125,13 @@ export function NotesInlinePanel({
         <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{notes.length === 0 ? 'No notes yet' : 'No results'}</p>
       ) : filteredNotes.map((note) => {
         const active = activeId === note._id
+        const isConfirmingDelete = pendingDeleteNoteId === note._id
         return (
           <div
             key={note._id}
+            onMouseLeave={() => {
+              if (isConfirmingDelete) setPendingDeleteNoteId(null)
+            }}
             onClick={() => {
               router.push(`/app/notes?id=${encodeURIComponent(note._id)}`)
               onNavigate?.()
@@ -131,13 +140,28 @@ export function NotesInlinePanel({
           >
             <BookOpen size={12} className="shrink-0" />
             <span className="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
-            <button
-              type="button"
-              onClick={(event) => void deleteNote(note._id, event)}
-              className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-            >
-              <Trash2 size={11} />
-            </button>
+            {isConfirmingDelete ? (
+              <button
+                type="button"
+                onClick={(event) => void deleteNote(note._id, event)}
+                className={inlineConfirmDeleteButtonClass}
+                aria-label="Confirm delete note"
+              >
+                Confirm
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setPendingDeleteNoteId(note._id)
+                }}
+                className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                aria-label="Delete note"
+              >
+                <Trash2 size={11} />
+              </button>
+            )}
           </div>
         )
       })}
@@ -420,6 +444,8 @@ function ProjectBranch({
 }) {
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
+  const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null)
+  const [pendingDeleteItemKey, setPendingDeleteItemKey] = useState<string | null>(null)
 
   const children = allProjects.filter((candidate) => candidate.parentId === project._id)
   const open = expanded.has(project._id)
@@ -454,11 +480,25 @@ function ProjectBranch({
     }
   }
 
+  function requestProjectDelete(event: MouseEvent) {
+    event.stopPropagation()
+    setRenamingProjectId(null)
+    setPendingDeleteProjectId(project._id)
+  }
+
+  function requestProjectItemDelete(type: 'chat' | 'note', id: string, event: MouseEvent) {
+    event.stopPropagation()
+    setPendingDeleteItemKey(`${type}:${id}`)
+  }
+
   return (
     <div>
       <div
         role="button"
         tabIndex={0}
+        onMouseLeave={() => {
+          if (pendingDeleteProjectId === project._id) setPendingDeleteProjectId(null)
+        }}
         onClick={() => {
           if (renamingProjectId === project._id) return
           onOpenProject(project)
@@ -511,6 +551,7 @@ function ProjectBranch({
           type="button"
           onClick={(event) => {
             event.stopPropagation()
+            setPendingDeleteProjectId(null)
             setRenamingProjectId(project._id)
             setRenameDraft(project.name)
           }}
@@ -519,13 +560,28 @@ function ProjectBranch({
         >
           <Pencil size={11} />
         </button>
-        <button
-          type="button"
-          onClick={(event) => onDeleteProject(project._id, event)}
-          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-        >
-          <Trash2 size={11} />
-        </button>
+        {pendingDeleteProjectId === project._id ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              setPendingDeleteProjectId(null)
+              onDeleteProject(project._id, event)
+            }}
+            className={inlineConfirmDeleteButtonClass}
+            aria-label="Confirm delete project"
+          >
+            Confirm
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={requestProjectDelete}
+            className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+            aria-label="Delete project"
+          >
+            <Trash2 size={11} />
+          </button>
+        )}
       </div>
 
       {open && (
@@ -566,37 +622,73 @@ function ProjectBranch({
               {projectItems.chats.map((chat) => (
                 <div
                   key={chat._id}
+                  onMouseLeave={() => {
+                    if (pendingDeleteItemKey === `chat:${chat._id}`) setPendingDeleteItemKey(null)
+                  }}
                   onClick={() => onNavigateItem(project, 'chat', chat._id)}
                   className={`${panelItemClass} cursor-pointer`}
                   style={{ paddingLeft: `${34 + depth * 14}px` }}
                 >
                   <MessageSquare size={11} className="shrink-0 text-[var(--muted-light)]" />
                   <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-                  <button
-                    type="button"
-                    onClick={(event) => onDeleteItem('chat', chat._id, event)}
-                    className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                  >
-                    <Trash2 size={10} />
-                  </button>
+                  {pendingDeleteItemKey === `chat:${chat._id}` ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        setPendingDeleteItemKey(null)
+                        onDeleteItem('chat', chat._id, event)
+                      }}
+                      className={inlineConfirmDeleteButtonClass}
+                      aria-label="Confirm delete project chat"
+                    >
+                      Confirm
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(event) => requestProjectItemDelete('chat', chat._id, event)}
+                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                      aria-label="Delete project chat"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  )}
                 </div>
               ))}
               {projectItems.notes.map((note) => (
                 <div
                   key={note._id}
+                  onMouseLeave={() => {
+                    if (pendingDeleteItemKey === `note:${note._id}`) setPendingDeleteItemKey(null)
+                  }}
                   onClick={() => onNavigateItem(project, 'note', note._id)}
                   className={`${panelItemClass} cursor-pointer`}
                   style={{ paddingLeft: `${34 + depth * 14}px` }}
                 >
                   <BookOpen size={11} className="shrink-0 text-[var(--muted-light)]" />
                   <span className="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
-                  <button
-                    type="button"
-                    onClick={(event) => onDeleteItem('note', note._id, event)}
-                    className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                  >
-                    <Trash2 size={10} />
-                  </button>
+                  {pendingDeleteItemKey === `note:${note._id}` ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        setPendingDeleteItemKey(null)
+                        onDeleteItem('note', note._id, event)
+                      }}
+                      className={inlineConfirmDeleteButtonClass}
+                      aria-label="Confirm delete project note"
+                    >
+                      Confirm
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(event) => requestProjectItemDelete('note', note._id, event)}
+                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                      aria-label="Delete project note"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  )}
                 </div>
               ))}
               {rootFiles.map((file) => (

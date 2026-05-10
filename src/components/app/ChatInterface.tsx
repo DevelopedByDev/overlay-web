@@ -288,9 +288,9 @@ function ToolLineLogo() {
     <Image
       src={OVERLAY_LOGO_SRC}
       alt=""
-      width={16}
-      height={16}
-      className="mt-0.5 size-4 shrink-0 select-none"
+      width={15}
+      height={15}
+      className="mt-0.5 size-[15px] shrink-0 select-none"
       draggable={false}
     />
   )
@@ -299,9 +299,9 @@ function ToolLineLogo() {
 /** Vertical connector between consecutive tool rows (logo stays top-aligned; line in logo column). */
 function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; connectBottom: boolean }) {
   const showLine = connectTop || connectBottom
-  const logoBottom = 'calc(0.125rem + 1rem)' /* mt-0.5 + size-4 */
+  const logoBottom = 'calc(0.125rem + 15px)' /* mt-0.5 + 15px */
   return (
-    <div className="relative flex w-4 shrink-0 flex-col items-center self-stretch">
+    <div className="relative flex w-[15px] shrink-0 flex-col items-center self-stretch">
       {showLine && (
         <div
           className="absolute left-1/2 z-0 w-px -translate-x-1/2 bg-[var(--surface-subtle)]"
@@ -315,7 +315,7 @@ function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; co
           }
         />
       )}
-      <div className="relative z-[1] shrink-0 rounded-full bg-[var(--background)] p-px">
+      <div className="relative z-[1] shrink-0 rounded-full bg-[var(--background)]">
         <ToolLineLogo />
       </div>
       <div className="min-h-0 flex-1" />
@@ -353,10 +353,10 @@ function ReasoningBlock({
   return (
     <div className="w-full px-1 py-0.5">
       <div className="max-w-[min(100%,36rem)]">
-        <div className="flex items-stretch gap-2.5 text-[13px] leading-snug">
+        <div className="flex items-stretch gap-2.5 py-1 text-[13px] leading-snug">
           <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className={streaming ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>
                 {label}
               </span>

@@ -4,10 +4,11 @@ import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Workflow, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
-import { ConfirmDialog } from '@/components/app/ConfirmDialog'
 import { dispatchChatDeleted } from '@/lib/chat-title'
 
 const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
+const inlineConfirmDeleteButtonClass =
+  'inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25'
 
 type Automation = {
   _id: string
@@ -28,7 +29,7 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
   const [loading, setLoading] = useState(true)
   const [editingAutomationId, setEditingAutomationId] = useState<string | null>(null)
   const [editingAutomationName, setEditingAutomationName] = useState('')
-  const [confirmDeleteAutomation, setConfirmDeleteAutomation] = useState<Automation | null>(null)
+  const [pendingDeleteAutomationId, setPendingDeleteAutomationId] = useState<string | null>(null)
   const [deletingAutomationIds, setDeletingAutomationIds] = useState<string[]>([])
   const [pendingNavId, setPendingNavId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
@@ -68,6 +69,7 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
   function beginAutomationRename(automation: Automation, event: MouseEvent) {
     event.stopPropagation()
     const label = automation.name || automation.title || 'Untitled automation'
+    setPendingDeleteAutomationId(null)
     setEditingAutomationId(automation._id)
     setEditingAutomationName(label)
   }
@@ -104,9 +106,9 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
     }
   }
 
-  async function performDeleteAutomation() {
-    const automation = confirmDeleteAutomation
-    if (!automation) return
+  async function performDeleteAutomation(automation: Automation, event: MouseEvent) {
+    event.stopPropagation()
+    setPendingDeleteAutomationId(null)
     setDeletingAutomationIds((prev) => prev.includes(automation._id) ? prev : [...prev, automation._id])
     try {
       const res = await fetch(`/api/app/automations?automationId=${encodeURIComponent(automation._id)}`, {
@@ -123,7 +125,6 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
       // keep row in place
     } finally {
       setDeletingAutomationIds((prev) => prev.filter((id) => id !== automation._id))
-      setConfirmDeleteAutomation(null)
     }
   }
 
@@ -152,11 +153,15 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
         const isActive = activeAutomationId === automation._id || activeId === automation._id || activeId === conversationId
         const isEditing = editingAutomationId === automation._id
         const isDeleting = deletingAutomationIds.includes(automation._id)
+        const isConfirmingDelete = pendingDeleteAutomationId === automation._id
         return (
           <div
             key={automation._id}
             title={automation.lastError || statusLabel}
-            className={`group/automation-row flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors ${
+            onMouseLeave={() => {
+              if (isConfirmingDelete) setPendingDeleteAutomationId(null)
+            }}
+            className={`group/automation-row flex h-7 w-full items-center gap-1 rounded-md px-2 py-0 text-xs transition-colors ${
               isActive
                 ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                 : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -210,41 +215,47 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
             </button>
             {!isEditing ? (
               <>
-                <button
-                  type="button"
-                  onClick={(event) => beginAutomationRename(automation, event)}
-                  disabled={isDeleting}
-                  className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
-                  aria-label="Rename automation"
-                >
-                  <Pencil size={11} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setConfirmDeleteAutomation(automation)
-                  }}
-                  disabled={isDeleting}
-                  className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-red-500 disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
-                  aria-label="Delete automation"
-                >
-                  <Trash2 size={11} />
-                </button>
+                {isConfirmingDelete ? (
+                  <button
+                    type="button"
+                    onClick={(event) => void performDeleteAutomation(automation, event)}
+                    disabled={isDeleting}
+                    className={`${inlineConfirmDeleteButtonClass} disabled:opacity-30`}
+                    aria-label="Confirm delete automation"
+                  >
+                    Confirm
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(event) => beginAutomationRename(automation, event)}
+                      disabled={isDeleting}
+                      className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
+                      aria-label="Rename automation"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setPendingDeleteAutomationId(automation._id)
+                      }}
+                      disabled={isDeleting}
+                      className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-red-500 disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
+                      aria-label="Delete automation"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </>
+                )}
               </>
             ) : null}
           </div>
         )
       })}
     </div>
-    <ConfirmDialog
-      isOpen={confirmDeleteAutomation !== null}
-      title="Delete automation?"
-      description={confirmDeleteAutomation ? `"${confirmDeleteAutomation.name || confirmDeleteAutomation.title || 'Untitled automation'}" will be deleted. This can't be undone.` : undefined}
-      confirmLabel="Delete"
-      onConfirm={() => void performDeleteAutomation()}
-      onCancel={() => setConfirmDeleteAutomation(null)}
-    />
     </>
   )
 }

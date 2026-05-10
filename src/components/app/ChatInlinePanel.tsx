@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { MessageSquare, Check, Pencil, Trash2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
-import { ConfirmDialog } from '@/components/app/ConfirmDialog'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
 import {
   CHAT_CREATED_EVENT,
@@ -21,7 +20,9 @@ import {
 import { fetchChatList, getCachedChatList, removeCachedChat, upsertCachedChat } from '@/lib/chat-list-cache'
 
 const panelItemClass =
-  'group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+const inlineConfirmDeleteButtonClass =
+  'ml-1 inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25'
 
 type Conversation = { _id: string; title: string; lastModified: number }
 
@@ -42,7 +43,7 @@ export function ChatInlinePanel({
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
-  const [confirmDeleteChat, setConfirmDeleteChat] = useState<Conversation | null>(null)
+  const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
 
   const loadChats = useCallback(async (options: { force?: boolean } = {}) => {
@@ -124,6 +125,7 @@ export function ChatInlinePanel({
 
   function beginRename(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
+    setPendingDeleteChatId(null)
     setEditingChatId(chat._id)
     setEditingTitle(chat.title)
   }
@@ -161,14 +163,13 @@ export function ChatInlinePanel({
 
   function requestDeleteChat(chat: Conversation, event: MouseEvent) {
     event.stopPropagation()
-    setConfirmDeleteChat(chat)
+    setEditingChatId(null)
+    setPendingDeleteChatId(chat._id)
   }
 
-  async function confirmDeleteChatAction() {
-    const chat = confirmDeleteChat
-    if (!chat) return
-    const chatId = chat._id
-    setConfirmDeleteChat(null)
+  async function confirmDeleteChatAction(chatId: string, event: MouseEvent) {
+    event.stopPropagation()
+    setPendingDeleteChatId(null)
     dispatchChatDeleted({ chatId })
     await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
     if (activeId === chatId) {
@@ -192,9 +193,13 @@ export function ChatInlinePanel({
         const active = activeId === chat._id
         const isEditing = editingChatId === chat._id
         const isDeleting = deletingChatIds.includes(chat._id)
+        const isConfirmingDelete = pendingDeleteChatId === chat._id
         return (
           <div
             key={chat._id}
+            onMouseLeave={() => {
+              if (isConfirmingDelete) setPendingDeleteChatId(null)
+            }}
             onClick={() => {
               if (isDeleting) return
               if (isEditing) return
@@ -202,7 +207,7 @@ export function ChatInlinePanel({
               onNavigate?.()
             }}
             className={`${panelItemClass} cursor-pointer overflow-hidden transition-all duration-200 ${
-              isDeleting ? 'max-h-0 -translate-y-1 py-0 opacity-0' : 'max-h-10 opacity-100'
+              isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100'
             } ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
           >
             <MessageSquare size={12} className="shrink-0" />
@@ -250,35 +255,40 @@ export function ChatInlinePanel({
               </button>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={(event) => beginRename(chat, event)}
-                  className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                  aria-label="Rename chat"
-                >
-                  <Pencil size={11} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => requestDeleteChat(chat, event)}
-                  className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                  aria-label="Delete chat"
-                >
-                  <Trash2 size={11} />
-                </button>
+                {isConfirmingDelete ? (
+                  <button
+                    type="button"
+                    onClick={(event) => void confirmDeleteChatAction(chat._id, event)}
+                    className={inlineConfirmDeleteButtonClass}
+                    aria-label="Confirm delete chat"
+                  >
+                    Confirm
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(event) => beginRename(chat, event)}
+                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                      aria-label="Rename chat"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => requestDeleteChat(chat, event)}
+                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                      aria-label="Delete chat"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </>
+                )}
               </>
             )}
           </div>
         )
       })}
-      <ConfirmDialog
-        isOpen={confirmDeleteChat !== null}
-        title="Delete chat?"
-        description={confirmDeleteChat ? `"${confirmDeleteChat.title || 'Untitled chat'}" will be permanently deleted. This can't be undone.` : undefined}
-        confirmLabel="Delete"
-        onConfirm={() => void confirmDeleteChatAction()}
-        onCancel={() => setConfirmDeleteChat(null)}
-      />
     </div>
   )
 }
