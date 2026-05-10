@@ -1,0 +1,22 @@
+# @enterprise-future — not wired to production
+# Optional: add Ollama for self-hosted AI inference.
+# Usage: docker compose -f docker-compose.enterprise.yml -f docker-compose.ollama.yml up -d
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollamadata:/root/.ollama
+    ports:
+      - "11434:11434"
+    # Uncomment for GPU passthrough (requires nvidia-container-toolkit)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  ollamadata:

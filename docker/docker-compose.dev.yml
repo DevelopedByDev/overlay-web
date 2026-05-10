@@ -1,0 +1,19 @@
+# @enterprise-future — not wired to production
+# Development override: mounts source code for live reload.
+# Usage: docker compose -f docker-compose.enterprise.yml -f docker-compose.dev.yml up -d
+
+services:
+  overlay-web:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.enterprise
+    volumes:
+      - ../:/app
+      - /app/node_modules
+      - /app/.next
+    command: ["npm", "run", "dev"]
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    stdin_open: true
+    tty: true

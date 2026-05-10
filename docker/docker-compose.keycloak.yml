@@ -1,0 +1,22 @@
+# @enterprise-future — not wired to production
+# Optional: add Keycloak for OIDC/SAML auth.
+# Usage: docker compose -f docker-compose.enterprise.yml -f docker-compose.keycloak.yml up -d
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/overlay
+      KC_DB_USERNAME: overlay
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HOSTNAME: localhost
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
