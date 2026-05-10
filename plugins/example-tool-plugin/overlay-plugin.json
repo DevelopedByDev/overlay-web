@@ -1,0 +1,19 @@
+{
+  "id": "overlay.example.tool",
+  "name": "Example Tool Plugin",
+  "version": "1.0.0",
+  "description": "A demo plugin that registers a simple greeting tool.",
+  "entrypoints": {
+    "server": "./server.ts"
+  },
+  "capabilities": ["tool"],
+  "permissions": ["read:conversations"],
+  "configSchema": {
+    "defaultGreeting": {
+      "type": "string",
+      "required": false,
+      "description": "Default greeting message",
+      "default": "Hello"
+    }
+  }
+}

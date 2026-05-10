@@ -1,0 +1,11 @@
+{
+  "id": "overlay.example.panel",
+  "name": "Example UI Panel Plugin",
+  "version": "1.0.0",
+  "description": "A demo plugin that adds a stats panel to the sidebar.",
+  "entrypoints": {
+    "client": "./client.ts"
+  },
+  "capabilities": ["ui-panel"],
+  "permissions": ["read:conversations"]
+}

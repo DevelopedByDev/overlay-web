@@ -2,6 +2,9 @@
   "name": "getoverlay-landing",
   "version": "0.1.1",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "convex:push:prod": "convex deploy -y",
     "convex:push:dev": "convex dev --once --env-file .env.local",
@@ -129,7 +132,6 @@
   "devDependencies": {
     "@remotion/cli": "^4.0.441",
     "@remotion/player": "^4.0.441",
-    "remotion": "^4.0.441",
     "@types/dompurify": "^3.0.5",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -138,7 +140,9 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "postcss": "^8.5.12",
+    "remotion": "^4.0.441",
     "tailwindcss": "^3.4.19",
+    "tsup": "^8.5.1",
     "typescript": "^5",
     "vercel": "^50.44.0"
   },

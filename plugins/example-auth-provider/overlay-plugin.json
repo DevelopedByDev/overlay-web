@@ -1,0 +1,29 @@
+{
+  "id": "overlay.example.auth",
+  "name": "Example Auth Provider Plugin",
+  "version": "1.0.0",
+  "description": "A demo plugin that provides an OIDC authentication provider.",
+  "entrypoints": {
+    "server": "./server.ts"
+  },
+  "capabilities": ["auth-provider"],
+  "permissions": ["read:users", "write:users"],
+  "configSchema": {
+    "issuerUrl": {
+      "type": "string",
+      "required": true,
+      "description": "OIDC issuer URL"
+    },
+    "clientId": {
+      "type": "string",
+      "required": true,
+      "description": "OIDC client ID"
+    },
+    "clientSecret": {
+      "type": "string",
+      "required": true,
+      "secret": true,
+      "description": "OIDC client secret"
+    }
+  }
+}
