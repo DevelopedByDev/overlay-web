@@ -592,3 +592,22 @@ export const deleteUserAccountByServer = mutation({
     }
   },
 })
+
+/** Server-only: list all users for the admin dashboard. */
+export const listAllUsersForAdmin = query({
+  args: { serverSecret: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, { serverSecret, limit }) => {
+    requireServerSecret(serverSecret)
+    const all = await ctx.db.query('subscriptions').collect()
+    const sliced = limit ? all.slice(0, limit) : all
+    return sliced.map((sub) => ({
+      id: sub.userId,
+      email: sub.email ?? '',
+      name: sub.name ?? '',
+      firstName: sub.firstName ?? '',
+      lastName: sub.lastName ?? '',
+      tier: sub.tier,
+      lastLoginAt: sub.lastLoginAt,
+    }))
+  },
+})
