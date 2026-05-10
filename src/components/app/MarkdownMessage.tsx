@@ -70,34 +70,9 @@ const mdSanitizeSchema = {
   },
 }
 
-const STREAM_MARKER_HTML = '<span class="overlay-stream-marker" aria-hidden="true"></span>'
-
-/**
- * Append the streaming indicator span to `text` so it renders inline at the end
- * of the last token. If the last line is a structural marker (fence, math delim,
- * table row, horizontal rule), the span is placed on its own new line so we
- * don't break the preceding block’s parsing.
- */
-function appendStreamMarker(text: string): string {
-  if (!text) return STREAM_MARKER_HTML
-  const lastNewline = text.lastIndexOf('\n')
-  const lastLine = lastNewline >= 0 ? text.slice(lastNewline + 1) : text
-  const trimmed = lastLine.trim()
-  const isStructural =
-    trimmed === '' ||
-    trimmed.startsWith('```') ||
-    trimmed === '$$' ||
-    trimmed.startsWith('|') ||
-    /^[-*_]{3,}\s*$/.test(trimmed)
-  if (isStructural) {
-    const sep = text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n'
-    return text + sep + STREAM_MARKER_HTML
-  }
-  return text + STREAM_MARKER_HTML
-}
-
 function stripHtmlishToMarkdown(text: string): string {
   return text
+    .replace(/<span\s+class=["']overlay-stream-marker["']\s+aria-hidden=["']true["']\s*><\/span>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>\s*<p>/gi, '\n\n')
     .replace(/<p>/gi, '')
@@ -613,8 +588,7 @@ export function MarkdownMessage({
   // marker inline so the Overlay logo sits at the right side of the most recent token.
   const tokenDisplay = useMemo(() => {
     if (!isStreaming) return normalizedDisplay
-    const shimmed = shimIncompleteMarkdown(pacedDisplay)
-    return appendStreamMarker(shimmed)
+    return shimIncompleteMarkdown(pacedDisplay)
   }, [normalizedDisplay, pacedDisplay, isStreaming])
 
   // While streaming, deprioritize markdown reconciliation so input stays responsive.
@@ -635,6 +609,9 @@ export function MarkdownMessage({
       >
         {markdownChildren}
       </ReactMarkdown>
+      {isStreaming && !suppressTypingIndicator ? (
+        <span className="overlay-stream-marker" aria-hidden="true" />
+      ) : null}
     </div>
   )
 }

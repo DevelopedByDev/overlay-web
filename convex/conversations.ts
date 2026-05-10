@@ -673,7 +673,20 @@ export const runStaleGeneratingCleanup = internalMutation({
       .take(50)
 
     let finalizedCount = 0
+    let deletedDeltas = 0
     for (const message of stale) {
+      // Drop the message's accumulated deltas. Once a message is finalized we never
+      // replay deltas — the client renders from `parts`. The happy-path mutations
+      // (finalize / fail / stop) already drop them; stale cleanup must do the same or
+      // abandoned streams leak unbounded delta rows forever.
+      const deltas = await ctx.db
+        .query('conversationMessageDeltas')
+        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
+        .collect()
+      for (const delta of deltas) {
+        await ctx.db.delete(delta._id)
+        deletedDeltas++
+      }
       await ctx.db.patch(message._id, {
         status: 'completed',
         updatedAt: Date.now(),
@@ -681,7 +694,66 @@ export const runStaleGeneratingCleanup = internalMutation({
       finalizedCount++
     }
 
-    return { finalizedCount }
+    return { finalizedCount, deletedDeltas }
+  },
+})
+
+/**
+ * Sweeps deltas whose parent message is no longer `generating` (or is missing). Deltas
+ * are only useful while a stream is in flight — once the message is completed/errored
+ * the client reads from `parts`. This catches legacy rows from earlier code paths that
+ * didn't delete deltas (notably pre-fix `runStaleGeneratingCleanup` runs).
+ */
+export const runOrphanDeltaCleanup = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const deltas = await ctx.db.query('conversationMessageDeltas').take(500)
+    let deleted = 0
+    for (const delta of deltas) {
+      const message = await ctx.db.get(delta.messageId)
+      if (!message || message.status !== 'generating') {
+        await ctx.db.delete(delta._id)
+        deleted++
+      }
+    }
+    return { deleted, scanned: deltas.length }
+  },
+})
+
+/**
+ * Removes conversations that were created but never received a single message. The chat
+ * UI creates a conversation row optimistically when the user opens the new-chat surface;
+ * if the user navigates away without sending anything, that row would otherwise sit in
+ * the sidebar forever and waste storage. We only target conversations older than 1 hour
+ * with zero `conversationMessages` rows, so any chat with even one user/assistant turn
+ * is preserved.
+ */
+export const runEmptyConversationCleanup = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const thresholdMs = 60 * 60 * 1000
+    const cutoff = Date.now() - thresholdMs
+    const candidates = await ctx.db.query('conversations').collect()
+    const targets = candidates
+      .filter((conversation) => !conversation.deletedAt && conversation.createdAt < cutoff)
+      .slice(0, 100)
+    let deleted = 0
+    for (const conversation of targets) {
+      const firstMessage = await ctx.db
+        .query('conversationMessages')
+        .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
+        .first()
+      if (firstMessage) continue
+      // Defensive: drop any orphan deltas that point at this conversation.
+      const deltas = await ctx.db
+        .query('conversationMessageDeltas')
+        .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
+        .collect()
+      for (const delta of deltas) await ctx.db.delete(delta._id)
+      await ctx.db.delete(conversation._id)
+      deleted++
+    }
+    return { deleted, scanned: targets.length }
   },
 })
 

@@ -22,4 +22,21 @@ crons.interval(
   internal.conversations.runStaleGeneratingCleanup,
 )
 
+// Defense-in-depth: catches legacy delta rows whose parent message is no longer
+// `generating`. The 5-minute cadence trails the stale-generating cleanup so any
+// deltas it forgot to drop are reaped on the next sweep.
+crons.interval(
+  'orphan message delta cleanup',
+  { minutes: 5 },
+  internal.conversations.runOrphanDeltaCleanup,
+)
+
+// Removes conversations that were created (e.g. user opened a new chat) but never
+// received a single message. Reduces storage and keeps the sidebar list clean.
+crons.interval(
+  'empty conversation cleanup',
+  { minutes: 30 },
+  internal.conversations.runEmptyConversationCleanup,
+)
+
 export default crons

@@ -461,6 +461,11 @@ html {
   font-size: 1.2em;
 }
 
+.markdown-content .katex-error {
+  color: inherit !important;
+  border-bottom: 1px dotted color-mix(in srgb, currentColor 35%, transparent);
+}
+
 .markdown-content pre,
 .app-note-editor pre {
   margin: 0 0 1em;

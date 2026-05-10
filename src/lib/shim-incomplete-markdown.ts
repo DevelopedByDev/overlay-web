@@ -156,15 +156,24 @@ function shimIncompleteInlineSpans(text: string): string {
     closers += '`'
     considered += '`'
   }
-  if (countUnescapedPair(considered, '**') % 2 === 1) {
+  if (
+    countUnescapedPair(considered, '**') % 2 === 1 &&
+    !lastDelimiterWrapsInlineMath(considered, '**')
+  ) {
     closers += '**'
     considered += '**'
   }
-  if (countStandaloneAsterisks(considered) % 2 === 1) {
+  if (
+    countStandaloneAsterisks(considered) % 2 === 1 &&
+    !lastDelimiterWrapsInlineMath(considered, '*')
+  ) {
     closers += '*'
     considered += '*'
   }
-  if (countUnescaped(considered, '_') % 2 === 1) {
+  if (
+    countUnescaped(considered, '_') % 2 === 1 &&
+    !lastDelimiterWrapsInlineMath(considered, '_')
+  ) {
     closers += '_'
   }
 
@@ -204,4 +213,20 @@ function countStandaloneAsterisks(s: string): number {
     count++
   }
   return count
+}
+
+/**
+ * True when the last occurrence of `delim` on the line is immediately followed by a `$`
+ * (start of inline math) with no closing `$` yet. In that case the delimiter is likely
+ * wrapping an in-flight math expression (e.g. `**$L` → `**$L$**`) and shimming it would
+ * break the intended structure once the closing `$` and delimiter arrive.
+ */
+function lastDelimiterWrapsInlineMath(s: string, delim: string): boolean {
+  const lastIdx = s.lastIndexOf(delim)
+  if (lastIdx < 0) return false
+  const after = s.slice(lastIdx + delim.length)
+  // If the delimiter appears again later, it's not a simple wrapper.
+  if (after.includes(delim)) return false
+  // A `$` immediately after the delimiter signals an inline-math wrapper.
+  return after.includes('$')
 }
