@@ -436,7 +436,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       className="flex min-w-0 items-center gap-2"
       onClick={() => setMobileMenuOpen(false)}
     >
-      <Image src="/assets/overlay-logo.png" alt="" width={24} height={24} className="shrink-0" />
+      <Image src="/assets/overlay-logo.png" alt="" width={10} height={10} className="shrink-0" />
       <span
         className="truncate text-xl font-medium tracking-tight"
         style={{ fontFamily: 'var(--font-serif)' }}
@@ -454,7 +454,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       aria-label="Expand sidebar"
       title="Expand sidebar"
     >
-      <Image src="/assets/overlay-logo.png" alt="" width={24} height={24} className="shrink-0 group-hover:hidden" />
+      <Image src="/assets/overlay-logo.png" alt="" width={10} height={10} className="shrink-0 group-hover:hidden" />
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
   ) : (
@@ -468,7 +468,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
       onClick={() => setMobileMenuOpen(false)}
     >
-      <Image src="/assets/overlay-logo.png" alt="" width={22} height={22} className="shrink-0" />
+      <Image src="/assets/overlay-logo.png" alt="" width={10} height={10} className="shrink-0" />
       <span
         className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
         style={{ fontFamily: 'var(--font-serif)' }}

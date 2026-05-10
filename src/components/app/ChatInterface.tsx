@@ -288,9 +288,9 @@ function ToolLineLogo() {
     <Image
       src={OVERLAY_LOGO_SRC}
       alt=""
-      width={15}
-      height={15}
-      className="mt-0.5 size-[15px] shrink-0 select-none"
+      width={8}
+      height={8}
+      className="mt-[5px] size-2 shrink-0 select-none"
       draggable={false}
     />
   )
@@ -299,9 +299,9 @@ function ToolLineLogo() {
 /** Vertical connector between consecutive tool rows (logo stays top-aligned; line in logo column). */
 function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; connectBottom: boolean }) {
   const showLine = connectTop || connectBottom
-  const logoBottom = 'calc(0.125rem + 15px)' /* mt-0.5 + 15px */
+  const logoBottom = 'calc(0.3125rem + 0.5rem)' /* mt-[5px] + size-2 */
   return (
-    <div className="relative flex w-[15px] shrink-0 flex-col items-center self-stretch">
+    <div className="relative flex w-2 shrink-0 flex-col items-center self-stretch">
       {showLine && (
         <div
           className="absolute left-1/2 z-0 w-px -translate-x-1/2 bg-[var(--surface-subtle)]"
@@ -1662,7 +1662,7 @@ function MediaCompletedReveal({
       style={singleBoxStyle}
     >
       <div
-        className={`media-gen-mesh pointer-events-none absolute inset-0 z-10 rounded-xl transition-opacity duration-300 ease-out ${
+        className={`media-gen-mesh media-gen-mesh--fill pointer-events-none z-10 rounded-xl transition-opacity duration-300 ease-out ${
           ready ? 'opacity-0' : 'opacity-100'
         }`}
         aria-hidden

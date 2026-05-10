@@ -859,7 +859,7 @@ export function errorLabel(err: Error | null | undefined): string | null {
 
 export function chatGreetingLine(firstName: string | undefined) {
   const raw = firstName?.trim()
-  if (!raw) return 'hi there'
+  if (!raw) return 'Hi there!'
   const word = raw.split(/\s+/)[0] ?? raw
   const nice = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
   return `Hi ${nice}!`
