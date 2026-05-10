@@ -6,6 +6,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ObservabilityClient from "@/components/ObservabilityClient";
 import { AppSettingsProvider } from "@/components/app/AppSettingsProvider";
 import { ConvexProviderWithWorkOS } from "@/components/ConvexProviderWithWorkOS";
+import { ThemeProvider } from "@overlay/ui";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -84,10 +85,12 @@ export default function RootLayout({
         <AppSettingsProvider>
           <AuthProvider>
             <ConvexProviderWithWorkOS>
-              <Suspense fallback={null}>
-                <ObservabilityClient />
-              </Suspense>
-              {children}
+              <ThemeProvider>
+                <Suspense fallback={null}>
+                  <ObservabilityClient />
+                </Suspense>
+                {children}
+              </ThemeProvider>
             </ConvexProviderWithWorkOS>
           </AuthProvider>
         </AppSettingsProvider>
