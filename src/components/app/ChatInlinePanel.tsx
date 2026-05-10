@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, type MouseEvent } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { MessageSquare, Check, Pencil, Trash2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
@@ -36,6 +36,7 @@ export function ChatInlinePanel({
   onNavigate?: () => void
 }) {
   const router = useRouter()
+  const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const { sessions, getUnread } = useAsyncSessions()
   const [chats, setChats] = useState<Conversation[]>(() => getCachedChatList() ?? [])
@@ -203,7 +204,15 @@ export function ChatInlinePanel({
             onClick={() => {
               if (isDeleting) return
               if (isEditing) return
-              router.push(`/app/chat?id=${encodeURIComponent(chat._id)}`)
+              const href = `/app/chat?id=${encodeURIComponent(chat._id)}`
+              if (pathname === '/app/chat') {
+                window.history.pushState(null, '', href)
+                window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
+                  detail: { chatId: chat._id },
+                }))
+              } else {
+                router.push(href)
+              }
               onNavigate?.()
             }}
             className={`${panelItemClass} cursor-pointer overflow-hidden transition-all duration-200 ${

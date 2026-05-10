@@ -2949,9 +2949,14 @@ export default function ChatInterface({
 
   useEffect(() => {
     if (hideSidebar) return
+    const browserIdParam =
+      typeof window === 'undefined'
+        ? idParam
+        : new URLSearchParams(window.location.search).get('id')
+    const effectiveIdParam = idParam ?? browserIdParam
     const shouldResetToEmptySurface =
-      (mode === 'chat' && !idParam) ||
-      (mode === 'automate' && !idParam && !automationIdParam)
+      (mode === 'chat' && !effectiveIdParam) ||
+      (mode === 'automate' && !effectiveIdParam && !automationIdParam)
     if (!shouldResetToEmptySurface) return
     if (!activeChatIdRef.current && !activeChatId) return
 
@@ -2995,6 +3000,18 @@ export default function ChatInterface({
     // `loadChat` is intentionally excluded so this only reacts to route changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idParam])
+
+  useEffect(() => {
+    function handleChatRouteSelected(event: Event) {
+      const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId
+      if (!chatId || activeChatIdRef.current === chatId) return
+      void loadChat(chatId, { replaceUrl: false })
+    }
+    window.addEventListener('overlay:chat-route-selected', handleChatRouteSelected)
+    return () => window.removeEventListener('overlay:chat-route-selected', handleChatRouteSelected)
+    // `loadChat` is intentionally excluded so this listener does not churn on render-only state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (mode !== 'automate' || !automationIdParam) {
@@ -3546,6 +3563,9 @@ export default function ChatInterface({
 
   function syncStandaloneChatUrl(chatId: string | null, options: { replaceUrl?: boolean } = {}) {
     if (hideSidebar || options.replaceUrl === false) return
+    const replaceUrl = (href: string) => {
+      window.history.replaceState(null, '', href)
+    }
     if (mode === 'automate') {
       const params = new URLSearchParams()
       if (chatId) params.set('id', chatId)
@@ -3554,11 +3574,11 @@ export default function ChatInterface({
       const tab = normalizeAutomationDetailTab(searchParams?.get('tab'))
       if (tab !== 'chat') params.set('tab', tab)
       const query = params.toString()
-      router.replace(`/app/automations${query ? `?${query}` : ''}`)
+      replaceUrl(`/app/automations${query ? `?${query}` : ''}`)
       return
     }
     const basePath = '/app/chat'
-    router.replace(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
+    replaceUrl(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
   }
 
   async function createNewChat(options: { title?: string } = {}): Promise<string | null> {
@@ -3703,6 +3723,8 @@ export default function ChatInterface({
     setActiveChatId(chatId)
     syncStandaloneChatUrl(chatId, options)
     const runtime = ensureConversationRuntime(chatId)
+    const existingChat = chats.find((chat) => chat._id === chatId)
+    setActiveChatTitle(existingChat?.title ?? runtime.ui.activeChatTitle ?? null)
     pendingTitleRef.current = null
 
     // Fast path: runtime already loaded — switch instantly with no spinner or API calls.
@@ -3713,7 +3735,6 @@ export default function ChatInterface({
       return
     }
 
-    const existingChat = chats.find((chat) => chat._id === chatId)
     setIsSwitchingChat(true)
     runtime.hydrated = false
     try {
@@ -5419,11 +5440,11 @@ export default function ChatInterface({
               ) : (
                 <div className="flex min-w-0 items-center gap-1">
                   <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] md:truncate lg:max-w-[24rem]">
-                    <span className={`line-clamp-2 md:line-clamp-1 md:truncate ${isSwitchingChat ? 'tool-line-shimmer' : ''}`}>
+                    <span className="line-clamp-2 md:line-clamp-1 md:truncate">
                       {selectedAutomation?.name || activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation')}
                     </span>
                   </h2>
-                  {!isSwitchingChat && activeChatId && activeChatHydrated && !selectedAutomation ? (
+                  {activeChatId && !selectedAutomation ? (
                     <button
                       type="button"
                       onClick={beginHeaderChatRename}
