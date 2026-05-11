@@ -45,7 +45,10 @@
     "billing:migrate:staging": "node --env-file=.env.local --experimental-strip-types scripts/variable-pricing-migration.ts",
     "billing:audit:stripe": "node --experimental-strip-types scripts/stripe-dynamic-pricing-audit.ts",
     "test:auth:native-validation": "node --test --experimental-strip-types src/lib/native-auth-validation.test.ts src/lib/native-refresh-rate-limit.test.ts",
-    "test:auth:native-smoke": "node --env-file=.env.local --experimental-strip-types scripts/native-auth-security-smoke.ts"
+    "test:auth:native-smoke": "node --env-file=.env.local --experimental-strip-types scripts/native-auth-security-smoke.ts",
+    "docs:dev": "cd docs-site && npx mintlify dev",
+    "docs:build": "cd docs-site && npx mintlify build",
+    "docs:verify": "node --experimental-strip-types scripts/verify-phase6.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
@@ -141,6 +144,7 @@
     "autoprefixer": "^10.5.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "mintlify": "^4.2.558",
     "postcss": "^8.5.12",
     "remotion": "^4.0.441",
     "tailwindcss": "^3.4.19",

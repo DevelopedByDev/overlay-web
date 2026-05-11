@@ -1,0 +1,119 @@
+{
+  "name": "Overlay Enterprise Docs",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0A0A0A",
+    "light": "#FAFAFA",
+    "dark": "#0A0A0A",
+    "anchors": {
+      "from": "#6B7280",
+      "to": "#0A0A0A"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/getoverlay/overlay"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get Started",
+    "url": "/quickstart"
+  },
+  "anchors": [
+    {
+      "name": "API Reference",
+      "icon": "code",
+      "url": "api-reference"
+    },
+    {
+      "name": "Changelog",
+      "icon": "clock",
+      "url": "https://github.com/getoverlay/overlay/releases"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "quickstart",
+        "architecture",
+        "configuration"
+      ]
+    },
+    {
+      "group": "Deployment",
+      "pages": [
+        "deployment/docker",
+        "deployment/kubernetes",
+        "deployment/bare-metal"
+      ]
+    },
+    {
+      "group": "Authentication",
+      "pages": [
+        "auth/workos",
+        "auth/saml-oidc",
+        "auth/keycloak"
+      ]
+    },
+    {
+      "group": "AI Providers",
+      "pages": [
+        "ai/vercel-gateway",
+        "ai/ollama",
+        "ai/vllm"
+      ]
+    },
+    {
+      "group": "Storage",
+      "pages": [
+        "storage/r2",
+        "storage/minio",
+        "storage/s3"
+      ]
+    },
+    {
+      "group": "Enterprise",
+      "pages": [
+        "admin-dashboard",
+        "rbac",
+        "audit-logging",
+        "white-labeling"
+      ]
+    },
+    {
+      "group": "Reference",
+      "pages": [
+        "api-reference",
+        "sdk/javascript",
+        "sdk/python"
+      ]
+    },
+    {
+      "group": "Operations",
+      "pages": [
+        "troubleshooting"
+      ]
+    },
+    {
+      "group": "Migration",
+      "pages": [
+        "migration/convex-to-postgres"
+      ]
+    },
+    {
+      "group": "Internal",
+      "pages": [
+        "phase7-roadmap"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/getoverlay/overlay"
+  }
+}
