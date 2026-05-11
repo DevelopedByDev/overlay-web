@@ -94,6 +94,82 @@ function resolveActAbortTimeoutMs(params: {
   )
 }
 
+function uiMessageTextLength(message: UIMessage): number {
+  return (message.parts ?? []).reduce((total, part) => {
+    if (part.type === 'text' && 'text' in part && typeof part.text === 'string') {
+      return total + part.text.length
+    }
+    if (part.type === 'file') return total + 1000
+    return total
+  }, 0)
+}
+
+function trimMessagesForModel(messages: UIMessage[], maxTextChars = 180_000): UIMessage[] {
+  let remaining = maxTextChars
+  const kept: UIMessage[] = []
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (!message) continue
+    const cost = Math.max(1, uiMessageTextLength(message))
+    const isLatest = index === messages.length - 1
+    if (!isLatest && kept.length > 0 && remaining - cost < 0) break
+    kept.push(message)
+    remaining -= cost
+  }
+  return kept.reverse()
+}
+
+function toUiMessageFromPersisted(message: {
+  _id: string
+  role: 'user' | 'assistant'
+  parts?: UIMessage['parts']
+  content?: string
+  routedModelId?: string
+}): UIMessage {
+  return {
+    id: message._id,
+    role: message.role,
+    parts: message.parts?.length
+      ? message.parts
+      : [{ type: 'text' as const, text: message.content ?? '' }],
+    ...(message.routedModelId ? { metadata: { routedModelId: message.routedModelId } } : {}),
+  }
+}
+
+async function buildMessagesForModel(params: {
+  requestMessages: UIMessage[]
+  latestUserMessage?: UIMessage
+  latestTurnId?: string
+  conversationId?: Id<'conversations'>
+  userId: string
+  serverSecret: string
+}): Promise<UIMessage[]> {
+  if (!params.conversationId) return params.requestMessages
+
+  const persisted = await convex.query<Array<{
+    _id: string
+    turnId: string
+    role: 'user' | 'assistant'
+    content: string
+    parts?: UIMessage['parts']
+    routedModelId?: string
+  }>>('conversations:getMessages', {
+    conversationId: params.conversationId,
+    userId: params.userId,
+    serverSecret: params.serverSecret,
+  }, { throwOnError: true })
+
+  const historyRows = params.latestTurnId
+    ? (persisted ?? []).filter((message) => message.turnId !== params.latestTurnId)
+    : (persisted ?? [])
+  const history = historyRows.map(toUiMessageFromPersisted)
+  const latest = params.latestUserMessage
+  if (!latest) return history.length > 0 ? history : params.requestMessages
+
+  const latestAlreadyPersisted = history.some((message) => message.id === latest.id)
+  return latestAlreadyPersisted ? history : [...history, latest]
+}
+
 type UiStreamPersistenceEvent =
   | { kind: 'text-delta'; text: string }
   | { kind: 'reasoning-delta'; text: string }
@@ -697,9 +773,18 @@ export async function POST(request: NextRequest) {
     const indexedNote = hasPreloadedDocContext
       ? indexedFilesSystemNotePreloaded(indexedAttachmentList)
       : indexedFilesSystemNote(indexedAttachmentList)
-    let messagesForModel = cloneMessagesWithIndexedFileHint(messages, indexedAttachmentList, hasPreloadedDocContext)
+    let messagesForModel = await buildMessagesForModel({
+      requestMessages: messages,
+      latestUserMessage,
+      latestTurnId: tid,
+      conversationId: cid,
+      userId,
+      serverSecret,
+    })
+    messagesForModel = cloneMessagesWithIndexedFileHint(messagesForModel, indexedAttachmentList, hasPreloadedDocContext)
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
     messagesForModel = sanitizeUiMessagesForModelApi(messagesForModel)
+    messagesForModel = trimMessagesForModel(messagesForModel)
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
     const projectInstructionsExtension = projectInstructions
       ? `\n\nProject instructions:\n${projectInstructions}`

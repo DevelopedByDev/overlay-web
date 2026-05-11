@@ -1494,22 +1494,37 @@ function createConversationRuntime(
   uiOverrides: Partial<ConversationUiState> = {},
 ): ConversationRuntime {
   const actTransport = '/api/app/conversations/act'
+  const transport = () => new DefaultChatTransport({
+    api: actTransport,
+    prepareSendMessagesRequest: ({ api, id, messages, body, headers, credentials, trigger, messageId }) => ({
+      api,
+      headers,
+      credentials,
+      body: {
+        ...body,
+        id,
+        messages: messages.at(-1) ? [messages.at(-1)] : [],
+        trigger,
+        messageId,
+      },
+    }),
+  })
   const askChats: ConversationRuntime['askChats'] = [
     new Chat({
       id: `${chatId}:ask:0`,
-      transport: new DefaultChatTransport({ api: actTransport }),
+      transport: transport(),
     }),
     new Chat({
       id: `${chatId}:ask:1`,
-      transport: new DefaultChatTransport({ api: actTransport }),
+      transport: transport(),
     }),
     new Chat({
       id: `${chatId}:ask:2`,
-      transport: new DefaultChatTransport({ api: actTransport }),
+      transport: transport(),
     }),
     new Chat({
       id: `${chatId}:ask:3`,
-      transport: new DefaultChatTransport({ api: actTransport }),
+      transport: transport(),
     }),
   ]
 
@@ -1517,7 +1532,7 @@ function createConversationRuntime(
     askChats,
     actChat: new Chat({
       id: `${chatId}:act`,
-      transport: new DefaultChatTransport({ api: '/api/app/conversations/act' }),
+      transport: transport(),
       onFinish: ({ messages }) => {
         askChats[0].messages = [...messages]
       },
