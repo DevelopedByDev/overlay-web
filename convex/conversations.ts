@@ -677,20 +677,7 @@ export const runStaleGeneratingCleanup = internalMutation({
       .take(50)
 
     let finalizedCount = 0
-    let deletedDeltas = 0
     for (const message of stale) {
-      // Drop the message's accumulated deltas. Once a message is finalized we never
-      // replay deltas — the client renders from `parts`. The happy-path mutations
-      // (finalize / fail / stop) already drop them; stale cleanup must do the same or
-      // abandoned streams leak unbounded delta rows forever.
-      const deltas = await ctx.db
-        .query('conversationMessageDeltas')
-        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
-        .collect()
-      for (const delta of deltas) {
-        await ctx.db.delete(delta._id)
-        deletedDeltas++
-      }
       await ctx.db.patch(message._id, {
         status: 'completed',
         updatedAt: Date.now(),
@@ -698,7 +685,7 @@ export const runStaleGeneratingCleanup = internalMutation({
       finalizedCount++
     }
 
-    return { finalizedCount, deletedDeltas }
+    return { finalizedCount, deletedDeltas: 0 }
   },
 })
 

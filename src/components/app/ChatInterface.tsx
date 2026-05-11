@@ -5075,7 +5075,7 @@ export default function ChatInterface({
     activeRuntime.actChat.messages.some((message) => message.role === 'user') ||
     activeRuntime.askChats.some((chat) => chat.messages.some((message) => message.role === 'user'))
   const hasHistory = hasRuntimeMessages || generationResults.size > 0
-  const isExistingConversationView = Boolean(idParam || activeChatId)
+  const isExistingConversationView = Boolean(idParam || activeChatId || automationConversationId)
   const showChatLoadingState = showAutomationChatTab && isExistingConversationView && !hasHistory && !activeChatHydrated
   /** Empty chat (any modality): center composer + suggestions only on the true new-chat surface. */
   const showCenteredEmptyChat = !hasHistory && (!isExistingConversationView || activeChatHydrated)
