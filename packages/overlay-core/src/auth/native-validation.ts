@@ -1,0 +1,58 @@
+// @overlay/core — extracted from src/lib/native-auth-validation.ts
+// Pure validation helpers for native/mobile auth flows. Zero framework dependencies.
+
+export const NATIVE_AUTH_ALLOWED_REDIRECT_ORIGINS = [
+  'https://www.getoverlay.io/auth/native/callback',
+] as const
+
+const NATIVE_AUTH_PROVIDERS = ['GoogleOAuth', 'AppleOAuth', 'MicrosoftOAuth', 'authkit'] as const
+
+export type NativeAuthProvider = (typeof NATIVE_AUTH_PROVIDERS)[number]
+
+export function isNativeAuthProvider(value: unknown): value is NativeAuthProvider {
+  return typeof value === 'string' && (NATIVE_AUTH_PROVIDERS as readonly string[]).includes(value)
+}
+
+export function isAllowedNativeRedirectUri(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed) return false
+
+  try {
+    const url = new URL(trimmed)
+    const hasNoInjectedParams = url.search === '' && url.hash === ''
+    return (
+      hasNoInjectedParams &&
+      url.protocol === 'https:' &&
+      url.hostname === 'www.getoverlay.io' &&
+      url.pathname === '/auth/native/callback'
+    )
+  } catch {
+    return false
+  }
+}
+
+export function isValidNativeAuthState(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{32,128}$/.test(value.trim())
+}
+
+export function isValidNativeAuthCode(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9._~+/=-]{8,4096}$/.test(value.trim())
+}
+
+export function isValidPkceVerifier(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9._~-]{43,128}$/.test(value.trim())
+}
+
+export function isAllowedWorkOsAuthorizationUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' &&
+      url.hostname === 'api.workos.com' &&
+      url.pathname === '/user_management/authorize'
+  } catch {
+    return false
+  }
+}

@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { createHandler } from '@/app/api/lib/middleware'
 import {
   CANONICAL_APP_DESTINATIONS,
   DEFAULT_APP_SETTINGS,
@@ -21,8 +22,9 @@ import {
   VIDEO_MODELS,
 } from '@/lib/model-data'
 
-export async function GET(request: NextRequest) {
-  try {
+export const GET = createHandler(
+  {},
+  async (request) => {
     const auth = await resolveAuthenticatedAppUser(request, {})
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -93,8 +95,5 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(response)
-  } catch (error) {
-    console.error('[app/bootstrap] GET error:', error)
-    return NextResponse.json({ error: 'Failed to load app bootstrap' }, { status: 500 })
-  }
-}
+  },
+)

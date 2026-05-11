@@ -3,8 +3,7 @@
 // PUT /api/admin/settings — stubbed (returns 501, logs audit event)
 
 import { NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/admin-auth'
-import { logAuditEvent } from '@/lib/audit'
+import { createHandler, withRequireAuth, withAdmin, auditLog } from '@/app/api/lib/middleware'
 
 function buildConfigItems() {
   const envVars: Array<{
@@ -41,42 +40,26 @@ function buildConfigItems() {
   })
 }
 
-export async function GET() {
-  const { isAdmin, userId } = await requireAdmin()
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+export const GET = createHandler(
+  { middleware: [withRequireAuth, withAdmin] },
+  async (_request, ctx) => {
+    auditLog(ctx, { action: 'view_settings', resource: 'admin' })
+    return NextResponse.json({ config: buildConfigItems() })
+  },
+)
 
-  if (userId) {
-    logAuditEvent({
-      actorId: userId,
-      actorType: 'user',
-      action: 'view_settings',
-      resource: 'admin',
-    })
-  }
-
-  return NextResponse.json({ config: buildConfigItems() })
-}
-
-export async function PUT(request: Request) {
-  const { isAdmin, userId } = await requireAdmin()
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  if (userId) {
-    logAuditEvent({
-      actorId: userId,
-      actorType: 'user',
+export const PUT = createHandler(
+  { middleware: [withRequireAuth, withAdmin] },
+  async (request, ctx) => {
+    const body = await request.text()
+    auditLog(ctx, {
       action: 'update_settings_attempt',
       resource: 'admin',
-      metadata: { body: await request.text() },
+      metadata: { body },
     })
-  }
-
-  return NextResponse.json(
-    { error: 'Not implemented yet — coming in Phase 4' },
-    { status: 501 },
-  )
-}
+    return NextResponse.json(
+      { error: 'Not implemented yet — coming in Phase 4' },
+      { status: 501 },
+    )
+  },
+)

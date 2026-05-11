@@ -63,6 +63,7 @@
     "@openrouter/ai-sdk-provider": "^2.3.3",
     "@opentelemetry/context-async-hooks": "^2.2.0",
     "@overlay/app-core": "file:./packages/overlay-app-core",
+    "@overlay/core": "file:./packages/overlay-core",
     "@overlay/ui": "file:./packages/overlay-ui",
     "@sentry/nextjs": "^10.46.0",
     "@tiptap/extension-code-block-lowlight": "^3.20.1",

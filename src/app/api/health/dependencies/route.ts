@@ -3,6 +3,7 @@
 // Returns 503 if any critical provider is unreachable.
 
 import { NextResponse } from 'next/server'
+import { createHandler } from '@/app/api/lib/middleware'
 import { convex } from '@/lib/convex'
 import { getSession } from '@/lib/workos-auth'
 
@@ -12,68 +13,57 @@ interface CheckResult {
   message?: string
 }
 
-export async function GET() {
-  const checks: Record<string, CheckResult> = {}
-  let overallStatus: 'ok' | 'degraded' = 'ok'
-
-  // Database (Convex)
+async function checkDatabase(): Promise<CheckResult> {
   try {
     const start = Date.now()
     await convex.query('health:ping', {})
-    checks.database = { status: 'ok', latencyMs: Date.now() - start }
+    return { status: 'ok', latencyMs: Date.now() - start }
   } catch (err) {
-    checks.database = {
-      status: 'error',
-      message: err instanceof Error ? err.message : String(err),
-    }
-    overallStatus = 'degraded'
+    return { status: 'error', message: err instanceof Error ? err.message : String(err) }
   }
+}
 
-  // Auth (WorkOS)
-  const authStart = Date.now()
+async function checkAuth(): Promise<CheckResult> {
+  const start = Date.now()
   try {
     await getSession()
-    checks.auth = { status: 'ok', latencyMs: Date.now() - authStart }
+    return { status: 'ok', latencyMs: Date.now() - start }
   } catch (err) {
-    // WorkOS session may be missing (no cookie); that's expected for unauthenticated calls
     if (err instanceof Error && err.message.includes('No session')) {
-      checks.auth = { status: 'ok', latencyMs: Date.now() - authStart }
-    } else {
-      checks.auth = {
-        status: 'error',
-        message: err instanceof Error ? err.message : String(err),
-      }
-      overallStatus = 'degraded'
+      return { status: 'ok', latencyMs: Date.now() - start }
     }
+    return { status: 'error', message: err instanceof Error ? err.message : String(err) }
   }
-
-  // AI gateway — check env vars present (lightweight, no live inference)
-  if (process.env.AI_GATEWAY_URL) {
-    checks.ai = { status: 'ok', message: 'AI_GATEWAY_URL configured' }
-  } else {
-    checks.ai = { status: 'ok', message: 'AI gateway not configured (optional)' }
-  }
-
-  // Storage — check env vars present
-  if (process.env.R2_ENDPOINT || process.env.MINIO_ENDPOINT) {
-    checks.storage = { status: 'ok', message: 'Storage configured' }
-  } else {
-    checks.storage = { status: 'ok', message: 'Storage not configured (optional)' }
-  }
-
-  // Billing — check env vars present
-  if (process.env.STRIPE_SECRET_KEY) {
-    checks.billing = { status: 'ok', message: 'Stripe configured' }
-  } else {
-    checks.billing = { status: 'ok', message: 'Billing not configured (optional)' }
-  }
-
-  const response = {
-    status: overallStatus,
-    timestamp: Date.now(),
-    checks,
-  }
-
-  const statusCode = overallStatus === 'degraded' ? 503 : 200
-  return NextResponse.json(response, { status: statusCode })
 }
+
+function checkEnvVar(name: string, label: string): CheckResult {
+  return process.env[name]
+    ? { status: 'ok', message: `${label} configured` }
+    : { status: 'ok', message: `${label} not configured (optional)` }
+}
+
+export const GET = createHandler(
+  {},
+  async () => {
+    const checks: Record<string, CheckResult> = {}
+    let overallStatus: 'ok' | 'degraded' = 'ok'
+
+    const database = await checkDatabase()
+    checks.database = database
+    if (database.status === 'error') overallStatus = 'degraded'
+
+    const auth = await checkAuth()
+    checks.auth = auth
+    if (auth.status === 'error') overallStatus = 'degraded'
+
+    checks.ai = checkEnvVar('AI_GATEWAY_URL', 'AI gateway')
+    checks.storage = checkEnvVar('R2_ENDPOINT', 'Storage')
+    checks.billing = checkEnvVar('STRIPE_SECRET_KEY', 'Billing')
+
+    const statusCode = overallStatus === 'degraded' ? 503 : 200
+    return NextResponse.json(
+      { status: overallStatus, timestamp: Date.now(), checks },
+      { status: statusCode },
+    )
+  },
+)
