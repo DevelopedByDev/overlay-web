@@ -21,6 +21,8 @@ export type ScheduledAutomationTurn = {
   scheduledFor: number
 }
 
+const SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS = 240_000
+
 async function drainResponseBody(response: Response): Promise<void> {
   if (!response.body) return
   const reader = response.body.getReader()
@@ -108,6 +110,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
       modelId: input.modelId || DEFAULT_MODEL_ID,
       userId: input.userId,
       automationExecution: true,
+      actAbortTimeoutMs: SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS,
       // Forward any @mention tokens embedded in the saved instructions so the act
       // route's mention-context resolver can inject the same lightweight metadata
       // that interactive chats use.

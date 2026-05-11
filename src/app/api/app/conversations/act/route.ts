@@ -75,6 +75,25 @@ function summarizeToolOutputForLog(output: unknown): string {
 
 export const maxDuration = 300
 
+const DEFAULT_ACT_ABORT_TIMEOUT_MS = 290_000
+const AUTOMATION_ACT_ABORT_TIMEOUT_MS = 240_000
+const MIN_ACT_ABORT_TIMEOUT_MS = 30_000
+const MAX_ACT_ABORT_TIMEOUT_MS = 290_000
+
+function resolveActAbortTimeoutMs(params: {
+  requestedTimeoutMs?: number
+  automationExecution?: boolean
+}): number {
+  const fallback = params.automationExecution
+    ? AUTOMATION_ACT_ABORT_TIMEOUT_MS
+    : DEFAULT_ACT_ABORT_TIMEOUT_MS
+  if (!Number.isFinite(params.requestedTimeoutMs)) return fallback
+  return Math.min(
+    MAX_ACT_ABORT_TIMEOUT_MS,
+    Math.max(MIN_ACT_ABORT_TIMEOUT_MS, Math.floor(params.requestedTimeoutMs!)),
+  )
+}
+
 type UiStreamPersistenceEvent =
   | { kind: 'text-delta'; text: string }
   | { kind: 'reasoning-delta'; text: string }
@@ -336,6 +355,7 @@ export async function POST(request: NextRequest) {
       mode,
       automationMode,
       automationExecution,
+      actAbortTimeoutMs,
       mentions: rawMentions,
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
@@ -355,6 +375,7 @@ export async function POST(request: NextRequest) {
       mode?: 'chat' | 'automate'
       automationMode?: boolean
       automationExecution?: boolean
+      actAbortTimeoutMs?: number
       mentions?: Array<{ type: string; id: string; name: string; fileIds?: string[] }>
       multiModelSlotIndex?: number
       multiModelTotal?: number
@@ -865,13 +886,17 @@ export async function POST(request: NextRequest) {
     const toolFailuresByCallId = new Map<string, { toolName: string; error: string }>()
     const finishedToolCallIds = new Set<string>()
 
-    // Abort before Vercel's 300s hard kill so onFinish can finalize gracefully.
+    // Abort before Vercel's hard kill so onFinish can finalize gracefully.
+    const actAbortTimeoutMsResolved = resolveActAbortTimeoutMs({
+      requestedTimeoutMs: actAbortTimeoutMs,
+      automationExecution: automationExecution === true,
+    })
     let wasAbortedByTimeout = false
     const abortController = new AbortController()
     const hardTimeout = setTimeout(() => {
       wasAbortedByTimeout = true
       abortController.abort()
-    }, 290_000)
+    }, actAbortTimeoutMsResolved)
 
     if (_ttftDebug) _tStreamCall = performance.now()
     const result = await agent.stream({
@@ -1039,7 +1064,8 @@ export async function POST(request: NextRequest) {
           })
 
           if (wasAbortedByTimeout) {
-            const sentinel = '\n\n[Request timed out after 300s. Continue?]'
+            const timedOutAfterSeconds = Math.round(actAbortTimeoutMsResolved / 1000)
+            const sentinel = `\n\n[Request timed out after ${timedOutAfterSeconds}s. Continue?]`
             persistContent = persistContent.trimEnd() + sentinel
             normalizedPersistParts = [...normalizedPersistParts, { type: 'text', text: sentinel }]
           }

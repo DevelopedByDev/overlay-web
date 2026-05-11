@@ -545,8 +545,10 @@ export const finalizeGeneratingMessage = mutation({
     const deltas = await ctx.db
       .query('conversationMessageDeltas')
       .withIndex('by_messageId', (q) => q.eq('messageId', args.messageId))
-      .collect()
-    await Promise.all(deltas.map((delta) => ctx.db.delete(delta._id)))
+      .take(500)
+    for (const delta of deltas) {
+      await ctx.db.delete(delta._id)
+    }
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
   },
 })
@@ -572,8 +574,10 @@ export const failGeneratingMessage = mutation({
     const deltas = await ctx.db
       .query('conversationMessageDeltas')
       .withIndex('by_messageId', (q) => q.eq('messageId', messageId))
-      .collect()
-    await Promise.all(deltas.map((delta) => ctx.db.delete(delta._id)))
+      .take(500)
+    for (const delta of deltas) {
+      await ctx.db.delete(delta._id)
+    }
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
   },
 })
