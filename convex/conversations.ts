@@ -566,8 +566,8 @@ export const failGeneratingMessage = mutation({
     const now = Date.now()
     const text = errorText?.trim() || 'Generation failed.'
     await ctx.db.patch(messageId, {
-      content: message.content?.trim() ? message.content : text,
-      parts: message.parts?.length ? message.parts : [{ type: 'text', text }],
+      content: text,
+      parts: [{ type: 'text', text }],
       status: 'error',
       updatedAt: now,
     })

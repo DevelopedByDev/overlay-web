@@ -3728,7 +3728,11 @@ export default function ChatInterface({
     pendingTitleRef.current = null
 
     // Fast path: runtime already loaded — switch instantly with no spinner or API calls.
-    if (runtime.hydrated) {
+    const runtimeHasLoadedHistory =
+      runtime.actChat.messages.some((message) => message.role === 'user') ||
+      runtime.askChats.some((chat) => chat.messages.some((message) => message.role === 'user')) ||
+      runtime.ui.generationResults.size > 0
+    if (runtime.hydrated && runtimeHasLoadedHistory) {
       shouldScrollRef.current = true
       applyUiStateToView(runtime.ui)
       setRuntimeHydrationVersion((value) => value + 1)
