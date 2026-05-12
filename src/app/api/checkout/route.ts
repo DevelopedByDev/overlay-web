@@ -9,6 +9,13 @@ import {
 } from '@/lib/billing-pricing'
 import { getPlanQuantityForCheckout, isRecognizedTopUpAmount, resolvePaidUnitPriceId } from '@/lib/stripe-billing'
 
+import { z } from '@/lib/api-schemas'
+
+const CheckoutRequestSchema = z.object({ planAmountCents: z.number().optional(), topUpAmountCents: z.number().optional(), autoTopUpEnabled: z.boolean().optional() }).passthrough().openapi('CheckoutRequest')
+const CheckoutResponseSchema = z.unknown().openapi('CheckoutResponse')
+void CheckoutRequestSchema
+void CheckoutResponseSchema
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession()

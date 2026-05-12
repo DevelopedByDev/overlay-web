@@ -6,6 +6,13 @@ import { quantityToPlanAmountCents } from '@/lib/billing-pricing'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolvePaidUnitPriceId } from '@/lib/stripe-billing'
 
+import { z } from '@/lib/api-schemas'
+
+const CheckoutVerifyRequestSchema = z.object({ sessionId: z.string().optional() }).openapi('CheckoutVerifyRequest')
+const CheckoutVerifyResponseSchema = z.unknown().openapi('CheckoutVerifyResponse')
+void CheckoutVerifyRequestSchema
+void CheckoutVerifyResponseSchema
+
 function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscription) {
   const now = Date.now()
   const thirtyDays = 30 * 24 * 60 * 60 * 1000

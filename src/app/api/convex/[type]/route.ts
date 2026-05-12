@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const ConvexProxyRequestSchema = z.object({ type: z.enum(['query', 'mutation', 'action']).optional() }).passthrough().openapi('ConvexProxyRequest')
+const ConvexProxyResponseSchema = z.unknown().openapi('ConvexProxyResponse')
+void ConvexProxyRequestSchema
+void ConvexProxyResponseSchema
+
 type ConvexRequestType = 'query' | 'mutation' | 'action'
 
 function resolveConvexUrl(): string | undefined {

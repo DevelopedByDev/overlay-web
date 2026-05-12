@@ -8,6 +8,13 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { sameOriginPathUrl } from '@/lib/safe-url'
 
+import { z } from '@/lib/api-schemas'
+
+const TopupsCheckoutRequestSchema = z.object({ amountCents: z.number().optional(), autoTopUpEnabled: z.boolean().optional(), returnPath: z.string().optional() }).passthrough().openapi('TopupsCheckoutRequest')
+const TopupsCheckoutResponseSchema = z.unknown().openapi('TopupsCheckoutResponse')
+void TopupsCheckoutRequestSchema
+void TopupsCheckoutResponseSchema
+
 function resolveReturnUrl(baseUrl: string, returnPath: unknown, state: 'success' | 'canceled') {
   const url = new URL(sameOriginPathUrl(baseUrl, returnPath, '/account'))
   if (state === 'success') {

@@ -4,6 +4,13 @@ import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const SubscriptionRequestSchema = z.object({ userId: z.string().optional() }).openapi('SubscriptionRequest')
+const SubscriptionResponseSchema = z.unknown().openapi('SubscriptionResponse')
+void SubscriptionRequestSchema
+void SubscriptionResponseSchema
+
 type ConvexEntitlements = {
   tier: 'free' | 'pro' | 'max'
   planKind: 'free' | 'paid'

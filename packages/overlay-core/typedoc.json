@@ -1,0 +1,9 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "tsconfig": "tsconfig.json",
+  "out": "../../docs-site/core",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "readme": "README.md",
+  "name": "Overlay Core"
+}

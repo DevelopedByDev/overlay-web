@@ -5,6 +5,13 @@ import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const EntitlementsRequestSchema = z.object({}).openapi('EntitlementsRequest')
+const EntitlementsResponseSchema = z.unknown().openapi('EntitlementsResponse')
+void EntitlementsRequestSchema
+void EntitlementsResponseSchema
+
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   planKind: 'free' | 'paid'

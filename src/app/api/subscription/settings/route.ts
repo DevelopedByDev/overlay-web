@@ -5,6 +5,13 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getDynamicTopUpConfig, isRecognizedTopUpAmount } from '@/lib/stripe-billing'
 import { TOP_UP_MIN_AMOUNT_CENTS, derivePlanKind } from '@/lib/billing-pricing'
 
+import { z } from '@/lib/api-schemas'
+
+const SubscriptionSettingsRequestSchema = z.object({ autoTopUpEnabled: z.boolean().optional(), topUpAmountCents: z.number().optional(), autoTopUpAmountCents: z.number().optional(), grantOffSessionConsent: z.boolean().optional() }).passthrough().openapi('SubscriptionSettingsRequest')
+const SubscriptionSettingsResponseSchema = z.unknown().openapi('SubscriptionSettingsResponse')
+void SubscriptionSettingsRequestSchema
+void SubscriptionSettingsResponseSchema
+
 type BillingSettingsResponse = {
   planKind: 'free' | 'paid'
   autoTopUpEnabled: boolean

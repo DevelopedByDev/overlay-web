@@ -3,6 +3,13 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const TopupsHistoryRequestSchema = z.object({}).openapi('TopupsHistoryRequest')
+const TopupsHistoryResponseSchema = z.unknown().openapi('TopupsHistoryResponse')
+void TopupsHistoryRequestSchema
+void TopupsHistoryResponseSchema
+
 export async function GET() {
   const session = await getSession()
   if (!session?.user) {

@@ -1,3 +1,10 @@
+import { z } from '@/lib/api-schemas'
+
+const HealthRequestSchema = z.object({}).openapi('HealthRequest')
+const HealthResponseSchema = z.unknown().openapi('HealthResponse')
+void HealthRequestSchema
+void HealthResponseSchema
+
 // @enterprise-future — not wired to production
 // Lightweight liveness probe. Always returns 200 if the web server is up.
 

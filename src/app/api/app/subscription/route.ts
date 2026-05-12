@@ -5,6 +5,13 @@ import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
 import type { NextRequest } from 'next/server'
 
+import { z } from '@/lib/api-schemas'
+
+const AppSubscriptionRequestSchema = z.object({ accessToken: z.string().optional(), userId: z.string().optional() }).openapi('AppSubscriptionRequest')
+const AppSubscriptionResponseSchema = z.unknown().openapi('AppSubscriptionResponse')
+void AppSubscriptionRequestSchema
+void AppSubscriptionResponseSchema
+
 type AppSubscriptionResponse = {
   tier: 'free' | 'pro' | 'max'
   planKind?: 'free' | 'paid'

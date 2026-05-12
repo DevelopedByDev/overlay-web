@@ -1,3 +1,10 @@
+import { z } from '@/lib/api-schemas'
+
+const AdminImpersonateRequestSchema = z.object({ targetUserId: z.string().optional(), reason: z.string().optional() }).passthrough().openapi('AdminImpersonateRequest')
+const AdminImpersonateResponseSchema = z.unknown().openapi('AdminImpersonateResponse')
+void AdminImpersonateRequestSchema
+void AdminImpersonateResponseSchema
+
 // @enterprise-future — not wired to production
 // POST /api/admin/impersonate — stubbed (returns 501, logs audit event)
 

@@ -5,6 +5,13 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const TopupsVerifyRequestSchema = z.object({ sessionId: z.string().optional() }).openapi('TopupsVerifyRequest')
+const TopupsVerifyResponseSchema = z.unknown().openapi('TopupsVerifyResponse')
+void TopupsVerifyRequestSchema
+void TopupsVerifyResponseSchema
+
 async function findLatestPaidTopUpSession(userId: string) {
   const page = await stripe.checkout.sessions.list({ limit: 50 })
   return (

@@ -6,6 +6,13 @@ import { resolvePortalConfigurationId } from '@/lib/stripe-billing'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const PortalRequestSchema = z.object({ sessionId: z.string().optional() }).passthrough().openapi('PortalRequest')
+const PortalResponseSchema = z.unknown().openapi('PortalResponse')
+void PortalRequestSchema
+void PortalResponseSchema
+
 interface Subscription {
   userId: string
   email?: string

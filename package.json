@@ -46,8 +46,12 @@
     "billing:audit:stripe": "node --experimental-strip-types scripts/stripe-dynamic-pricing-audit.ts",
     "test:auth:native-validation": "node --test --experimental-strip-types src/lib/native-auth-validation.test.ts src/lib/native-refresh-rate-limit.test.ts",
     "test:auth:native-smoke": "node --env-file=.env.local --experimental-strip-types scripts/native-auth-security-smoke.ts",
-    "docs:dev": "cd docs-site && npx mintlify dev",
-    "docs:build": "cd docs-site && npx mintlify build",
+    "docs:dev": "cd docs-site && mintlify dev",
+    "docs:build": "cd docs-site && mintlify build",
+    "docs:generate:openapi": "node --experimental-strip-types scripts/generate-openapi.ts",
+    "docs:generate:typedoc": "typedoc --options packages/overlay-core/typedoc.json",
+    "docs:generate:storybook": "cd packages/overlay-ui && STORYBOOK_DISABLE_TELEMETRY=1 storybook build -o ../../docs-site/storybook",
+    "docs:generate": "npm run docs:generate:openapi && npm run docs:generate:typedoc && npm run docs:generate:storybook",
     "docs:verify": "node --experimental-strip-types scripts/verify-phase6.ts"
   },
   "dependencies": {
@@ -135,6 +139,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@remotion/cli": "^4.0.441",
     "@remotion/player": "^4.0.441",
     "@types/dompurify": "^3.0.5",
@@ -149,6 +154,7 @@
     "remotion": "^4.0.441",
     "tailwindcss": "^3.4.19",
     "tsup": "^8.5.1",
+    "typedoc": "^0.28.19",
     "typescript": "^5",
     "vercel": "^50.44.0"
   },

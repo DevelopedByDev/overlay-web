@@ -1,3 +1,10 @@
+import { z } from '@/lib/api-schemas'
+
+const AdminUsersRequestSchema = z.object({ limit: z.coerce.number().int().optional() }).openapi('AdminUsersRequest')
+const AdminUsersResponseSchema = z.unknown().openapi('AdminUsersResponse')
+void AdminUsersRequestSchema
+void AdminUsersResponseSchema
+
 // @enterprise-future — not wired to production
 // GET /api/admin/users — list users (read-only, admin-only)
 

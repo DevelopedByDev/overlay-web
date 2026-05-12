@@ -1,3 +1,10 @@
+import { z } from '@/lib/api-schemas'
+
+const AdminSettingsRequestSchema = z.object({}).passthrough().openapi('AdminSettingsRequest')
+const AdminSettingsResponseSchema = z.unknown().openapi('AdminSettingsResponse')
+void AdminSettingsRequestSchema
+void AdminSettingsResponseSchema
+
 // @enterprise-future — not wired to production
 // GET /api/admin/settings — read-only config status
 // PUT /api/admin/settings — stubbed (returns 501, logs audit event)

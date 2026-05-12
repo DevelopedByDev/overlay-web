@@ -12,7 +12,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "paths": {
+      "@overlay/plugin-sdk": ["../overlay-plugin-sdk/src/index.ts"],
+      "@overlay/plugin-sdk/server": ["../overlay-plugin-sdk/src/server.ts"],
+      "@overlay/plugin-sdk/client": ["../overlay-plugin-sdk/src/client.ts"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

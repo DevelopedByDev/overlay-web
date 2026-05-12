@@ -18,6 +18,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "docs:typedoc": "typedoc --options typedoc.json",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "tsup": "^8.5.0",
+    "typedoc": "^0.28.19",
     "typescript": "^5"
   }
 }

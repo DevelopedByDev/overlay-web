@@ -4,6 +4,13 @@ import {
   fetchLatestReleaseInfo,
 } from "@/lib/latest-release";
 
+import { z } from '@/lib/api-schemas'
+
+const LatestReleaseDownloadRequestSchema = z.object({}).openapi('LatestReleaseDownloadRequest')
+const LatestReleaseDownloadResponseSchema = z.unknown().openapi('LatestReleaseDownloadResponse')
+void LatestReleaseDownloadRequestSchema
+void LatestReleaseDownloadResponseSchema
+
 export async function GET() {
   try {
     const { downloadUrl } = await fetchLatestReleaseInfo();

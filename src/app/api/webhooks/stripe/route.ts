@@ -1,3 +1,10 @@
+import { z } from '@/lib/api-schemas'
+
+const WebhooksStripeRequestSchema = z.object({}).passthrough().openapi('WebhooksStripeRequest')
+const WebhooksStripeResponseSchema = z.unknown().openapi('WebhooksStripeResponse')
+void WebhooksStripeRequestSchema
+void WebhooksStripeResponseSchema
+
 // This webhook handler has been removed.
 // All Stripe webhook processing is handled by the Convex HTTP handler in convex/http.ts
 // which uses properly secured internalMutation calls.

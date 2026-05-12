@@ -1,3 +1,10 @@
+import { z } from '@/lib/api-schemas'
+
+const AdminAuditRequestSchema = z.object({ limit: z.coerce.number().int().optional(), action: z.string().optional(), actorId: z.string().optional() }).openapi('AdminAuditRequest')
+const AdminAuditResponseSchema = z.unknown().openapi('AdminAuditResponse')
+void AdminAuditRequestSchema
+void AdminAuditResponseSchema
+
 // @enterprise-future — not wired to production
 // GET /api/admin/audit — recent audit events (admin-only)
 

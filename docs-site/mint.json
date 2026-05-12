@@ -24,6 +24,10 @@
     "name": "Get Started",
     "url": "/quickstart"
   },
+  "api": {
+    "baseUrl": "https://getoverlay.io/api",
+    "openapi": "/api/openapi.json"
+  },
   "anchors": [
     {
       "name": "API Reference",
@@ -90,6 +94,7 @@
       "group": "Reference",
       "pages": [
         "api-reference",
+        "contributing",
         "sdk/javascript",
         "sdk/python"
       ]

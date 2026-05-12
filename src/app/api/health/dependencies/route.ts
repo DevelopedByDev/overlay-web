@@ -1,3 +1,10 @@
+import { z } from '@/lib/api-schemas'
+
+const HealthDependenciesRequestSchema = z.object({}).openapi('HealthDependenciesRequest')
+const HealthDependenciesResponseSchema = z.unknown().openapi('HealthDependenciesResponse')
+void HealthDependenciesRequestSchema
+void HealthDependenciesResponseSchema
+
 // @enterprise-future — not wired to production
 // Deep readiness probe. Checks each configured backend provider.
 // Returns 503 if any critical provider is unreachable.
