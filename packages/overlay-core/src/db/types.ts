@@ -5,6 +5,7 @@
 
 export interface Conversation {
   id: string
+  orgId: string
   title: string
   lastModified: number
   createdAt: number
@@ -18,6 +19,7 @@ export interface Conversation {
 }
 
 export interface NewConversation {
+  orgId?: string
   title: string
   userId: string
   lastMode: 'ask' | 'act'
@@ -28,6 +30,7 @@ export interface NewConversation {
 
 export interface User {
   id: string
+  orgId: string
   email: string
   firstName?: string
   lastName?: string
@@ -39,6 +42,7 @@ export interface User {
 }
 
 export interface NewUser {
+  orgId?: string
   email: string
   firstName?: string
   lastName?: string
@@ -48,6 +52,7 @@ export interface NewUser {
 
 export interface Memory {
   id: string
+  orgId: string
   key: string
   segmentIndex: number
   content: string
@@ -64,6 +69,7 @@ export interface Memory {
 }
 
 export interface NewMemory {
+  orgId?: string
   key: string
   content: string
   userId: string
@@ -75,12 +81,14 @@ export interface NewMemory {
 
 export interface FileRecord {
   id: string
+  orgId: string
   name: string
   type: 'file' | 'folder'
   parentId: string | null
   content?: string
   sizeBytes?: number
   isStorageBacked?: boolean
+  storageKey?: string
   downloadUrl?: string
   userId: string
   projectId?: string
@@ -89,6 +97,7 @@ export interface FileRecord {
 }
 
 export interface NewFileRecord {
+  orgId?: string
   name: string
   type: 'file' | 'folder'
   parentId: string | null
@@ -96,10 +105,12 @@ export interface NewFileRecord {
   projectId?: string
   content?: string
   sizeBytes?: number
+  storageKey?: string
 }
 
 export interface Note {
   id: string
+  orgId: string
   title: string
   content: string
   tags: string[]
@@ -110,6 +121,7 @@ export interface Note {
 }
 
 export interface NewNote {
+  orgId?: string
   title: string
   content: string
   userId: string
@@ -123,3 +135,152 @@ export interface ListOptions {
   orderBy?: 'createdAt' | 'updatedAt' | 'lastModified'
   orderDirection?: 'asc' | 'desc'
 }
+
+export interface Organization {
+  id: string
+  name: string
+  slug?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface NewOrganization {
+  id?: string
+  name: string
+  slug?: string
+}
+
+export interface Project {
+  id: string
+  orgId: string
+  userId: string
+  name: string
+  parentId?: string
+  instructions?: string
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+}
+
+export interface NewProject {
+  orgId?: string
+  userId: string
+  name: string
+  parentId?: string
+  instructions?: string
+}
+
+export interface ConversationMessage {
+  id: string
+  orgId: string
+  conversationId: string
+  userId: string
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: string
+  status?: 'pending' | 'generating' | 'completed' | 'failed' | 'stopped'
+  modelId?: string
+  metadata?: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface NewConversationMessage {
+  orgId?: string
+  conversationId: string
+  userId: string
+  role: ConversationMessage['role']
+  content: string
+  status?: ConversationMessage['status']
+  modelId?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface OutputRecord {
+  id: string
+  orgId: string
+  userId: string
+  type: 'image' | 'video' | 'document' | 'other'
+  storageKey?: string
+  status: 'pending' | 'completed' | 'failed'
+  metadata?: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface NewOutputRecord {
+  orgId?: string
+  userId: string
+  type: OutputRecord['type']
+  storageKey?: string
+  status?: OutputRecord['status']
+  metadata?: Record<string, unknown>
+}
+
+export interface SkillRecord {
+  id: string
+  orgId: string
+  userId: string
+  name: string
+  content: string
+  enabled: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface McpServerRecord {
+  id: string
+  orgId: string
+  userId: string
+  name: string
+  url?: string
+  config?: Record<string, unknown>
+  enabled: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface UsageEntitlements {
+  orgId: string
+  userId: string
+  tier: 'free' | 'pro' | 'max' | 'enterprise'
+  planKind?: 'free' | 'paid' | 'manual'
+  dailyUsage?: Record<string, number>
+  dailyLimits?: Record<string, number>
+  budgetUsedCents?: number
+  budgetTotalCents?: number
+  resetAt?: number
+  billingPeriodEnd?: number
+  lastSyncedAt?: number
+}
+
+export interface AppSettings {
+  orgId: string
+  userId: string
+  settings: Record<string, unknown>
+  updatedAt: number
+}
+
+export interface AutomationRecord {
+  id: string
+  orgId: string
+  userId: string
+  name: string
+  status: 'active' | 'paused' | 'disabled'
+  schedule?: string
+  payload?: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DatabaseAuditEvent {
+  id: string
+  orgId: string
+  userId?: string
+  action: string
+  resourceType?: string
+  resourceId?: string
+  metadata?: Record<string, unknown>
+  createdAt: number
+}
+
+export const DEFAULT_ORG_ID = 'default'

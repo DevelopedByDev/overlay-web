@@ -52,7 +52,12 @@
     "docs:generate:typedoc": "typedoc --options packages/overlay-core/typedoc.json",
     "docs:generate:storybook": "cd packages/overlay-ui && STORYBOOK_DISABLE_TELEMETRY=1 storybook build -o ../../docs-site/storybook",
     "docs:generate": "npm run docs:generate:openapi && npm run docs:generate:typedoc && npm run docs:generate:storybook",
-    "docs:verify": "node --experimental-strip-types scripts/verify-phase6.ts"
+    "docs:verify": "node --experimental-strip-types scripts/verify-phase6.ts",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:seed": "tsx scripts/db-seed.ts",
+    "convex:export": "tsx scripts/convex-export.ts",
+    "db:import": "tsx scripts/db-import.ts",
+    "verify:phase13-14": "tsx scripts/verify-phase13-14.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
@@ -109,6 +114,7 @@
     "convex": "^1.32.0",
     "docx": "^9.6.1",
     "dompurify": "^3.4.2",
+    "drizzle-orm": "^0.45.1",
     "eventsource": "^4.1.0",
     "framer-motion": "^12.26.2",
     "groq-sdk": "^1.1.1",
@@ -121,6 +127,7 @@
     "mermaid": "^11.14.0",
     "next": "^15.5.15",
     "pdf-parse": "^1.1.1",
+    "pg": "^8.16.3",
     "picomatch": "^2.3.2",
     "posthog-js": "^1.369.0",
     "posthog-node": "^5.29.2",
@@ -144,6 +151,7 @@
     "@remotion/player": "^4.0.441",
     "@types/dompurify": "^3.0.5",
     "@types/node": "^20",
+    "@types/pg": "^8.15.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.5.0",

@@ -11,8 +11,7 @@ void HealthDependenciesResponseSchema
 
 import { NextResponse } from 'next/server'
 import { createHandler } from '@/app/api/lib/middleware'
-import { convex } from '@/lib/convex'
-import { getSession } from '@/lib/workos-auth'
+import { getOverlayProviders } from '@/lib/provider-runtime'
 
 interface CheckResult {
   status: 'ok' | 'error'
@@ -23,8 +22,12 @@ interface CheckResult {
 async function checkDatabase(): Promise<CheckResult> {
   try {
     const start = Date.now()
-    await convex.query('health:ping', {})
-    return { status: 'ok', latencyMs: Date.now() - start }
+    const result = await getOverlayProviders().database.health()
+    return {
+      status: result.ok ? 'ok' : 'error',
+      latencyMs: result.latencyMs ?? Date.now() - start,
+      message: result.message,
+    }
   } catch (err) {
     return { status: 'error', message: err instanceof Error ? err.message : String(err) }
   }
@@ -33,12 +36,13 @@ async function checkDatabase(): Promise<CheckResult> {
 async function checkAuth(): Promise<CheckResult> {
   const start = Date.now()
   try {
-    await getSession()
-    return { status: 'ok', latencyMs: Date.now() - start }
-  } catch (err) {
-    if (err instanceof Error && err.message.includes('No session')) {
-      return { status: 'ok', latencyMs: Date.now() - start }
+    const result = await getOverlayProviders().auth.health?.()
+    return {
+      status: result?.ok === false ? 'error' : 'ok',
+      latencyMs: result?.latencyMs ?? Date.now() - start,
+      message: result?.message,
     }
+  } catch (err) {
     return { status: 'error', message: err instanceof Error ? err.message : String(err) }
   }
 }

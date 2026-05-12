@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@overlay/core": [
+        "./packages/overlay-core/src/index.ts"
       ]
     }
   },

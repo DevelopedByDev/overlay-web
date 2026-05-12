@@ -42,10 +42,29 @@ function envOverrides(env: NodeJS.ProcessEnv): MutableRecord {
   setNested(overrides, ['deployment', 'domain'], env.OVERLAY_DOMAIN || env.NEXT_PUBLIC_APP_URL)
   setNested(overrides, ['deployment', 'tls'], env.OVERLAY_TLS)
   setNested(overrides, ['deployment', 'trustProxyHeaders'], parseBoolean(env.TRUST_PROXY_HEADERS))
+  setNested(overrides, ['providers', 'database'], env.OVERLAY_DATABASE_PROVIDER)
+  setNested(overrides, ['providers', 'auth'], env.OVERLAY_AUTH_PROVIDER)
+  setNested(overrides, ['providers', 'storage'], env.OVERLAY_STORAGE_PROVIDER)
+  setNested(overrides, ['providers', 'aiGateway'], env.OVERLAY_AI_GATEWAY)
+  setNested(overrides, ['providers', 'billing'], env.OVERLAY_BILLING_PROVIDER)
+  setNested(overrides, ['providers', 'queue'], env.OVERLAY_QUEUE_PROVIDER)
+  setNested(overrides, ['providers', 'search'], env.OVERLAY_SEARCH_PROVIDER)
+  setNested(overrides, ['database', 'convex', 'url'], env.DEV_NEXT_PUBLIC_CONVEX_URL || env.NEXT_PUBLIC_CONVEX_URL)
+  setNested(overrides, ['database', 'postgres', 'url'], env.DATABASE_URL || env.POSTGRES_URL)
+  setNested(overrides, ['database', 'postgres', 'migrationMode'], env.OVERLAY_DB_MIGRATION_MODE)
+  setNested(overrides, ['database', 'postgres', 'pool', 'max'], parseInteger(env.POSTGRES_POOL_MAX))
   setNested(overrides, ['auth', 'provider'], env.OVERLAY_AUTH_PROVIDER)
   setNested(overrides, ['auth', 'sessionTTLMinutes'], parseInteger(env.AUTH_SESSION_TTL_MINUTES))
   setNested(overrides, ['auth', 'mfaRequired'], parseBoolean(env.AUTH_MFA_REQUIRED))
   setNested(overrides, ['auth', 'allowedRedirectOrigins'], parseCsv(env.AUTH_ALLOWED_REDIRECT_ORIGINS))
+  setNested(overrides, ['auth', 'oidc', 'issuer'], env.OIDC_ISSUER || env.KEYCLOAK_ISSUER)
+  setNested(overrides, ['auth', 'oidc', 'clientId'], env.OIDC_CLIENT_ID || env.KEYCLOAK_CLIENT_ID)
+  setNested(overrides, ['auth', 'oidc', 'clientSecret'], env.OIDC_CLIENT_SECRET || env.KEYCLOAK_CLIENT_SECRET)
+  setNested(overrides, ['auth', 'oidc', 'scopes'], parseCsv(env.OIDC_SCOPES))
+  setNested(overrides, ['auth', 'saml', 'metadataUrl'], env.SAML_METADATA_URL)
+  setNested(overrides, ['auth', 'saml', 'metadataXml'], env.SAML_METADATA_XML)
+  setNested(overrides, ['auth', 'saml', 'entryPoint'], env.SAML_ENTRY_POINT)
+  setNested(overrides, ['auth', 'saml', 'issuer'], env.SAML_ISSUER)
   setNested(overrides, ['ai', 'gateway'], env.OVERLAY_AI_GATEWAY)
   setNested(overrides, ['ai', 'fallbackProvider'], env.OVERLAY_AI_FALLBACK_PROVIDER)
   setNested(overrides, ['ai', 'ollama', 'baseUrl'], env.OLLAMA_BASE_URL)
@@ -103,5 +122,33 @@ export function loadConfig(path = join(process.cwd(), 'overlay.config.json')): O
     ? JSON.parse(readFileSync(path, 'utf8')) as unknown
     : {}
   const mergedFile = deepMerge(defaults, fileConfig)
-  return OverlayConfig.parse(deepMerge(mergedFile, envOverrides(process.env)))
+  const config = OverlayConfig.parse(deepMerge(mergedFile, envOverrides(process.env)))
+  validateRuntimeConfig(config)
+  return config
+}
+
+export function validateRuntimeConfig(config: OverlayConfigType): void {
+  const databaseProvider = config.providers.database
+  const authProvider = config.providers.auth === 'keycloak' ? 'oidc' : config.providers.auth
+
+  if (config.deployment.mode === 'self-hosted' && databaseProvider === 'convex') {
+    throw new Error('Self-hosted deployments must set OVERLAY_DATABASE_PROVIDER=postgres, sqlite, or memory.')
+  }
+
+  if (databaseProvider === 'postgres' && !config.database.postgres.url) {
+    throw new Error('Postgres database provider requires DATABASE_URL or POSTGRES_URL.')
+  }
+
+  if (authProvider === 'oidc' && !config.auth.oidc.issuer) {
+    throw new Error('OIDC/Keycloak auth requires OIDC_ISSUER or KEYCLOAK_ISSUER.')
+  }
+
+  if (
+    authProvider === 'saml' &&
+    !config.auth.saml.metadataUrl &&
+    !config.auth.saml.metadataXml &&
+    !config.auth.saml.entryPoint
+  ) {
+    throw new Error('SAML auth requires SAML_METADATA_URL, SAML_METADATA_XML, or SAML_ENTRY_POINT.')
+  }
 }

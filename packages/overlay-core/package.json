@@ -23,9 +23,13 @@
   },
   "dependencies": {
     "@overlay/plugin-sdk": "0.0.1",
+    "drizzle-orm": "^0.45.1",
+    "pg": "^8.16.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/pg": "^8.15.6",
+    "drizzle-kit": "^0.31.7",
     "tsup": "^8.5.0",
     "typedoc": "^0.28.19",
     "typescript": "^5"

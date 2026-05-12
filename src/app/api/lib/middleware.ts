@@ -3,7 +3,8 @@
 // Usage: export const GET = createHandler([withAuth, withAdmin], async (req, ctx) => { ... })
 
 import { NextResponse } from 'next/server'
-import { getSession, type AuthSession, type AuthUser } from '@/lib/workos-auth'
+import type { AuthSession, AuthUser } from '@/lib/workos-auth'
+import { getAuthProvider } from '@/lib/provider-runtime'
 import { requireAdmin, type AdminAuthResult } from '@/lib/admin-auth'
 import { logAuditEvent, type AuditEvent } from '@/lib/audit'
 import { createHash } from 'node:crypto'
@@ -109,7 +110,7 @@ export function createValidatedHandler<TBody, TQuery>(
 
 /** Resolve session from cookie; attach user to context. Return 401 if auth is required. */
 export const withAuth: Middleware = async (_req, ctx) => {
-  const session = await getSession()
+  const session = await getAuthProvider().getSession() as AuthSession | null
   if (session) {
     ctx.session = session
     ctx.user = session.user
@@ -123,7 +124,7 @@ export const withAuth: Middleware = async (_req, ctx) => {
 
 /** Require a valid session; return 401 otherwise. */
 export const withRequireAuth: Middleware = async (_req, ctx) => {
-  const session = await getSession()
+  const session = await getAuthProvider().getSession() as AuthSession | null
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
