@@ -9,6 +9,42 @@ export function ensureAssistantPersistContent(content: string): string {
   return content.trim() ? content : ASSISTANT_EMPTY_CONTENT_PLACEHOLDER
 }
 
+const MAX_PERSISTED_ASSISTANT_CONTENT_CHARS = 160_000
+const MAX_PERSISTED_TEXT_PART_CHARS = 80_000
+const MAX_PERSISTED_REASONING_PART_CHARS = 24_000
+const MAX_PERSISTED_TOOL_VALUE_CHARS = 4_000
+const MAX_PERSISTED_PART_TEXT_TOTAL_CHARS = 180_000
+const MAX_PERSISTED_ASSISTANT_PARTS = 80
+
+function truncateForPersistence(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  return `${text.slice(0, maxChars).trimEnd()}\n\n[truncated ${text.length - maxChars} chars for storage]`
+}
+
+function stringifyForPersistence(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function compactToolValueForPersistence(value: unknown): unknown {
+  if (value == null) return value
+  if (typeof value === 'string') return truncateForPersistence(value, MAX_PERSISTED_TOOL_VALUE_CHARS)
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+
+  const serialized = stringifyForPersistence(value)
+  if (serialized.length <= MAX_PERSISTED_TOOL_VALUE_CHARS) {
+    return clampNestingDepth(value)
+  }
+  return {
+    truncated: true,
+    summary: truncateForPersistence(serialized, MAX_PERSISTED_TOOL_VALUE_CHARS),
+  }
+}
+
 /**
  * Convex documents may not exceed 16 levels of nesting. Tool outputs (e.g. Notion API
  * responses) can easily exceed this. This helper truncates any object/array that is
@@ -32,6 +68,68 @@ function clampNestingDepth(value: unknown, maxDepth = 10, currentDepth = 0): unk
     return result
   }
   return value
+}
+
+export function compactAssistantPersistenceForConvex(input: {
+  content: string
+  parts: Array<Record<string, unknown>>
+}): { content: string; parts: Array<Record<string, unknown>> } {
+  const content = truncateForPersistence(input.content, MAX_PERSISTED_ASSISTANT_CONTENT_CHARS)
+  const parts: Array<Record<string, unknown>> = []
+  let remainingPartTextChars = MAX_PERSISTED_PART_TEXT_TOTAL_CHARS
+
+  for (const part of input.parts) {
+    if (parts.length >= MAX_PERSISTED_ASSISTANT_PARTS) break
+
+    if (part.type === 'text') {
+      const text = typeof part.text === 'string' ? part.text : ''
+      const max = Math.min(MAX_PERSISTED_TEXT_PART_CHARS, Math.max(0, remainingPartTextChars))
+      if (!max) continue
+      const nextText = truncateForPersistence(text, max)
+      remainingPartTextChars -= Math.min(text.length, max)
+      parts.push({ ...part, text: nextText })
+      continue
+    }
+
+    if (part.type === 'reasoning') {
+      const text = typeof part.text === 'string' ? part.text : ''
+      const max = Math.min(MAX_PERSISTED_REASONING_PART_CHARS, Math.max(0, remainingPartTextChars))
+      if (!max) continue
+      const nextText = truncateForPersistence(text, max)
+      remainingPartTextChars -= Math.min(text.length, max)
+      parts.push({ ...part, text: nextText, state: part.state ?? 'done' })
+      continue
+    }
+
+    if (part.type === 'tool-invocation') {
+      const invocation = part.toolInvocation && typeof part.toolInvocation === 'object'
+        ? (part.toolInvocation as Record<string, unknown>)
+        : {}
+      parts.push({
+        ...part,
+        toolInvocation: {
+          ...invocation,
+          toolInput: compactToolValueForPersistence(invocation.toolInput),
+          toolOutput: compactToolValueForPersistence(invocation.toolOutput),
+        },
+      })
+      continue
+    }
+
+    parts.push(clampNestingDepth(part) as Record<string, unknown>)
+  }
+
+  if (input.parts.length > parts.length) {
+    parts.push({
+      type: 'text',
+      text: `[${input.parts.length - parts.length} additional assistant parts omitted for storage]`,
+    })
+  }
+
+  return {
+    content,
+    parts: parts.length > 0 ? parts : [{ type: 'text', text: content }],
+  }
 }
 
 /**

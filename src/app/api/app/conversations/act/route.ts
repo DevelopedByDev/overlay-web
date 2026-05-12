@@ -32,7 +32,10 @@ import {
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
 import { createFreeTierGatedStubTools } from '@/lib/tools/free-tier-gated-stub-tools'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
-import { buildAssistantPersistenceFromSteps } from '@/lib/persist-assistant-turn'
+import {
+  buildAssistantPersistenceFromSteps,
+  compactAssistantPersistenceForConvex,
+} from '@/lib/persist-assistant-turn'
 import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
 import { getInternalApiBaseUrl } from '@/lib/url'
@@ -324,9 +327,13 @@ function createGeneratingPersistenceTransform(params: {
       }
       if (newParts.length > 0 && params.messageId) {
         try {
+          const compactedParts = compactAssistantPersistenceForConvex({
+            content: '',
+            parts: newParts,
+          }).parts
           await convex.mutation('conversations:appendGeneratingMessageDelta', {
             messageId: params.messageId,
-            newParts: newParts as never,
+            newParts: compactedParts as never,
             serverSecret: params.serverSecret,
           })
         } catch (err) {
@@ -370,9 +377,13 @@ function createGeneratingPersistenceTransform(params: {
         }
         if (newParts.length > 0 && params.messageId) {
           try {
+            const compactedParts = compactAssistantPersistenceForConvex({
+              content: '',
+              parts: newParts,
+            }).parts
             await convex.mutation('conversations:appendGeneratingMessageDelta', {
               messageId: params.messageId,
-              newParts: newParts as never,
+              newParts: compactedParts as never,
               serverSecret: params.serverSecret,
             })
           } catch (err) {
@@ -1154,6 +1165,13 @@ export async function POST(request: NextRequest) {
             persistContent = persistContent.trimEnd() + sentinel
             normalizedPersistParts = [...normalizedPersistParts, { type: 'text', text: sentinel }]
           }
+
+          const compactedPersistence = compactAssistantPersistenceForConvex({
+            content: persistContent,
+            parts: normalizedPersistParts,
+          })
+          persistContent = compactedPersistence.content
+          normalizedPersistParts = compactedPersistence.parts
 
           if (cid) {
             const routedModelId =

@@ -1,8 +1,7 @@
 import { createGateway, generateText, type ToolSet, stepCountIs, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
-import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/model-types'
-import { getModel, modelUsesOpenRouterTransport } from '@/lib/model-data'
+import { getModel } from '@/lib/model-data'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
 
@@ -196,24 +195,13 @@ export async function getGatewayVideoModel(modelId: string, accessToken?: string
 }
 
 /**
- * Small but reliable Gateway model to force a real provider tool round-trip (OpenRouter cannot send provider tools).
- * gpt-4.1-mini follows forced tool-calling more reliably than ultra-small OSS models.
- */
-const GATEWAY_TOOL_PROXY_MODEL_ID = 'openai/gpt-4.1-mini'
-
-/**
  * Model for the inner `generateText` pass that must call Gateway provider tools (Perplexity / Parallel).
- * Prefer the same chat model as the user when it is available on the AI Gateway; otherwise a small
- * reliable OpenAI model (OpenRouter-only and free-router ids cannot run provider tools on Gateway).
+ * Use the selected chat model so provider-tool behavior matches the user's active model choice.
  */
-export function resolveGatewayProviderToolProxyModelId(chatModelId: string): string {
-  if (!getModel(chatModelId)) {
-    return GATEWAY_TOOL_PROXY_MODEL_ID
-  }
-  if (chatModelId === FREE_TIER_AUTO_MODEL_ID || modelUsesOpenRouterTransport(chatModelId) || isNvidiaNimChatModelId(chatModelId)) {
-    return GATEWAY_TOOL_PROXY_MODEL_ID
-  }
-  return getGatewayModelId(chatModelId)
+const DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID = 'deepseek/deepseek-v4-flash'
+
+export function resolveGatewayProviderToolProxyModelId(chatModelId?: string): string {
+  return chatModelId ?? DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID
 }
 
 const PERPLEXITY_DEFAULTS = {
@@ -285,7 +273,7 @@ export async function runPerplexitySearchDirectForRepair(
   accessToken: string | undefined,
   query: string | string[],
   options?: Partial<Omit<GatewayPerplexitySearchParams, 'query'>>,
-  innerProxyModelId: string = GATEWAY_TOOL_PROXY_MODEL_ID,
+  innerProxyModelId: string = resolveGatewayProviderToolProxyModelId(),
 ): Promise<unknown> {
   return executeGatewayPerplexitySearch(accessToken, { query, ...options }, innerProxyModelId)
 }
@@ -414,7 +402,7 @@ const INNER_TOOL_ATTEMPTS = 3
 export async function executeGatewayPerplexitySearch(
   accessToken: string | undefined,
   params: GatewayPerplexitySearchParams,
-  innerProxyModelId: string = GATEWAY_TOOL_PROXY_MODEL_ID,
+  innerProxyModelId: string = resolveGatewayProviderToolProxyModelId(),
 ): Promise<unknown> {
   const apiKey = await resolveGatewayApiKey(accessToken)
   if (!apiKey) {
@@ -492,7 +480,7 @@ function buildParallelProviderPayload(
 export async function executeGatewayParallelSearch(
   accessToken: string | undefined,
   params: GatewayParallelSearchParams,
-  innerProxyModelId: string = GATEWAY_TOOL_PROXY_MODEL_ID,
+  innerProxyModelId: string = resolveGatewayProviderToolProxyModelId(),
 ): Promise<unknown> {
   const apiKey = await resolveGatewayApiKey(accessToken)
   if (!apiKey) {
@@ -653,9 +641,7 @@ function createParallelSearchFunctionTool(accessToken: string | undefined, inner
 export async function getGatewayPerplexitySearchTool(accessToken?: string, chatModelId?: string) {
   try {
     await getOrCreateGateway(accessToken)
-    const innerProxyModelId = chatModelId
-      ? resolveGatewayProviderToolProxyModelId(chatModelId)
-      : GATEWAY_TOOL_PROXY_MODEL_ID
+    const innerProxyModelId = resolveGatewayProviderToolProxyModelId(chatModelId)
     console.log('[AI Gateway] perplexity_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
       innerProxyModelId,
     })
@@ -669,9 +655,7 @@ export async function getGatewayPerplexitySearchTool(accessToken?: string, chatM
 export async function getGatewayParallelSearchTool(accessToken?: string, chatModelId?: string) {
   try {
     await getOrCreateGateway(accessToken)
-    const innerProxyModelId = chatModelId
-      ? resolveGatewayProviderToolProxyModelId(chatModelId)
-      : GATEWAY_TOOL_PROXY_MODEL_ID
+    const innerProxyModelId = resolveGatewayProviderToolProxyModelId(chatModelId)
     console.log('[AI Gateway] parallel_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
       innerProxyModelId,
     })
