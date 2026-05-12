@@ -15,7 +15,7 @@ import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
 import { createMcpToolSet } from '@/lib/mcp-tools'
-import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/model-types'
+import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId, isNvidiaNimChatModelId } from '@/lib/model-types'
 import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
 import {
   allowedOverlayToolIdsForTurn,
@@ -499,9 +499,9 @@ export async function POST(request: NextRequest) {
     const budget = getBudgetTotals(entitlements)
 
     if (!isPaidPlan(entitlements)) {
-      if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID && !isNvidiaNimChatModelId(effectiveModelId)) {
+      if (!isFreeTierChatModelId(effectiveModelId)) {
         return NextResponse.json(
-          { error: 'premium_model_not_allowed', message: 'Free tier is limited to Auto and NVIDIA NIM models. Upgrade to a paid plan to use premium models.' },
+          { error: 'premium_model_not_allowed', message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.' },
           { status: 403 },
         )
       }
@@ -924,7 +924,7 @@ export async function POST(request: NextRequest) {
       '5. When notebook or PDF files are attached, **zero** user-visible characters may appear before the first `search_in_files` or `search_knowledge` tool call: no intro, no checklist, no "I will search…". For attached PDFs, try `search_in_files` with short distinctive queries and `search_knowledge` by file name; if text is not available yet, say so in one short sentence without implementation details.\n' +
       '6. If the user explicitly asks to see your reasoning, you may still reason inside `<think>...</think>` and then summarize the key steps in the final body — but only as a summary, not a live transcript.'
 
-    const freeTierNote = !paid && (effectiveModelId === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(effectiveModelId))
+    const freeTierNote = !paid && isFreeTierChatModelId(effectiveModelId)
       ? hasPreloadedDocContext
         ? '\n\n(Free tier — user-visible reply) THINKING / REASONING RULES (MANDATORY):\n' +
           '1. Put **every** chain-of-thought, plan, reflection, self-talk, and tool-narration step strictly inside ` thinking...\` tags. Open with ` thinking` BEFORE any reasoning and close with ` \` BEFORE you start the final answer.\n' +

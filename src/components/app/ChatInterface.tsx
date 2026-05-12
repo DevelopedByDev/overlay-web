@@ -46,7 +46,7 @@ import {
   FREE_TIER_DEFAULT_MODEL_ID,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
-  isNvidiaNimChatModelId,
+  isFreeTierChatModelId,
   type ChatModel,
   type GenerationMode,
   type VideoSubMode,
@@ -2327,7 +2327,7 @@ export default function ChatInterface({
 
   const isFreeTier = (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'free'
   const premiumModelBlocked =
-    isFreeTier && selectedActModel !== FREE_TIER_AUTO_MODEL_ID && !isNvidiaNimChatModelId(selectedActModel)
+    isFreeTier && !isFreeTierChatModelId(selectedActModel)
   const creditsExhausted =
     !isFreeTier &&
     entitlements != null &&
@@ -2341,7 +2341,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
-    if (selectedActModel === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(selectedActModel)) return
+    if (isFreeTierChatModelId(selectedActModel)) return
 
     setSelectedModels([FREE_TIER_DEFAULT_MODEL_ID])
     setAskModelSelectionMode('single')
@@ -5528,11 +5528,9 @@ export default function ChatInterface({
                             .filter((m) => m.id !== 'nvidia/nemotron-nano-9b-v2')
                             .map((m, index, models) => {
                               const isSel = m.id === (selectedAutomation.modelId ?? DEFAULT_MODEL_ID)
-                              const isFreeModelRow = m.id === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(m.id)
+                              const isFreeModelRow = isFreeTierChatModelId(m.id)
                               const previous = models[index - 1]
-                              const previousIsFreeModelRow =
-                                previous?.id === FREE_TIER_AUTO_MODEL_ID ||
-                                (previous ? isNvidiaNimChatModelId(previous.id) : false)
+                              const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
                               const showFreeTierGroupDivider =
                                 isFreeTier && !isFreeModelRow && previousIsFreeModelRow
                               const showFreeGroupDivider =
@@ -5730,11 +5728,9 @@ export default function ChatInterface({
                           : selectedModels.includes(m.id)
                       const isDisabled =
                         askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
-                      const isFreeModelRow = m.id === FREE_TIER_AUTO_MODEL_ID || isNvidiaNimChatModelId(m.id)
+                      const isFreeModelRow = isFreeTierChatModelId(m.id)
                       const previous = models[index - 1]
-                      const previousIsFreeModelRow =
-                        previous?.id === FREE_TIER_AUTO_MODEL_ID ||
-                        (previous ? isNvidiaNimChatModelId(previous.id) : false)
+                      const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
                       // Free-tier users see free models first; the divider then
                       // marks the start of the (locked) premium section. Otherwise
                       // it marks the start of the free section appended at the end.

@@ -105,6 +105,12 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'openrouter/healer-alpha': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'openrouter/arcee-ai/trinity-large-preview:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'arcee-ai/trinity-large-preview:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'openrouter/inclusionai/ring-2.6-1t:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'openrouter/minimax/minimax-m2.5:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'openrouter/arcee-ai/trinity-large-thinking:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'openrouter/openai/gpt-oss-120b:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'openrouter/z-ai/glm-4.5-air:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'openrouter/nvidia/nemotron-3-super-120b-a12b:free': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
 
   // Anthropic Claude
   'claude-opus-4-6': { inputPer1M: 5.0, cachedInputPer1M: 0.5, outputPer1M: 25.0, isFree: false },
@@ -152,6 +158,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // NVIDIA NIM catalog rows. Free-tier requests are not charged to user budget;
   // paid requests bill against the selected catalog id.
   'minimaxai/minimax-m2.7': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
+  'stepfun-ai/step-3.5-flash': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
 }
 
 /**

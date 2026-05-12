@@ -17,7 +17,7 @@ import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
 import { createNotebookTextEmitter } from '@/lib/notebook-agent-stream'
 import {
   DEFAULT_MODEL_ID,
-  FREE_TIER_AUTO_MODEL_ID,
+  isFreeTierChatModelId,
   isNvidiaNimChatModelId,
 } from '@/lib/model-types'
 import { getInternalApiBaseUrl } from '@/lib/url'
@@ -222,12 +222,12 @@ export async function POST(request: NextRequest) {
   const effectiveModelId = (modelId?.trim() && modelId.trim()) || DEFAULT_MODEL_ID
 
   if (!isPaidPlan(entitlements)) {
-    if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID && !isNvidiaNimChatModelId(effectiveModelId)) {
+    if (!isFreeTierChatModelId(effectiveModelId)) {
       return new Response(
         JSON.stringify({
           error: 'premium_model_not_allowed',
           message:
-            'Free tier is limited to Auto and NVIDIA NIM models. Upgrade to a paid plan to use premium models.',
+            'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
         }),
         { status: 403, headers: { 'Content-Type': 'application/json' } },
       )
