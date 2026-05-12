@@ -3,6 +3,18 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { z } from '@/lib/api-schemas'
+
+const AppConversationsStopRequestSchema = z.object({
+  conversationId: z.string().optional(),
+  messageId: z.string().optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).openapi('AppConversationsStopRequest')
+const AppConversationsStopResponseSchema = z.unknown().openapi('AppConversationsStopResponse')
+void AppConversationsStopRequestSchema
+void AppConversationsStopResponseSchema
+
 
 export async function POST(request: NextRequest) {
   try {

@@ -6,6 +6,28 @@ import { deleteObjects, headObject } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/lib/storage-keys'
 import { checkGlobalR2Budget } from '@/lib/r2-budget'
+import { z } from '@/lib/api-schemas'
+
+const AppFilesRequestSchema = z.object({
+  fileId: z.string().optional(),
+  projectId: z.string().nullable().optional(),
+  kind: z.enum(['folder', 'note', 'upload', 'output']).optional(),
+  parentId: z.string().nullable().optional(),
+  conversationId: z.string().optional(),
+  outputType: z.string().optional(),
+  name: z.string().optional(),
+  type: z.string().optional(),
+  content: z.string().optional(),
+  textContent: z.string().optional(),
+  r2Key: z.string().optional(),
+  sizeBytes: z.number().int().optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).passthrough().openapi('AppFilesRequest')
+const AppFilesResponseSchema = z.unknown().openapi('AppFilesResponse')
+void AppFilesRequestSchema
+void AppFilesResponseSchema
+
 
 function storageErrorResponse(error: unknown, fallback = 'Failed to save file') {
   const message = error instanceof Error ? error.message : String(error)

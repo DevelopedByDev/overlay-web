@@ -19,6 +19,7 @@ import {
   SESSION_TRANSFER_DEEP_LINK_PREFIX,
 } from './auth-constants'
 import { getBaseUrl } from './url'
+import { getConfig } from './config/singleton'
 
 const isDev = process.env.NODE_ENV === 'development'
 const workosApiKey = isDev 
@@ -30,10 +31,23 @@ const clientId = isDev
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 const AUTH_STATE_COOKIE_NAME = 'overlay_auth_state'
-const SESSION_MAX_AGE = 60 * 60 * 24 * 30
 const AUTH_STATE_MAX_AGE = 60 * 10
 const EMAIL_VERIFICATION_TICKET_MAX_AGE_MS = 24 * 60 * 60 * 1000
 export const MOBILE_AUTH_REDIRECT_PATH = '/auth/mobile-complete'
+
+function getSessionMaxAgeSeconds(): number {
+  return getConfig().auth.sessionTTLMinutes * 60
+}
+
+function getSessionCookieOptions() {
+  const config = getConfig()
+  return {
+    httpOnly: config.security.sessionCookie.httpOnly,
+    secure: process.env.NODE_ENV === 'production' ? config.security.sessionCookie.secure : false,
+    sameSite: config.security.sessionCookie.sameSite,
+    path: '/',
+  } as const
+}
 
 type AuthorizationState = {
   codeChallenge?: string
@@ -134,11 +148,8 @@ function decodeSignedValue(value: string): string | null {
 async function clearAuthorizationStateCookie(): Promise<void> {
   const cookieStore = await cookies()
   cookieStore.set(AUTH_STATE_COOKIE_NAME, '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    ...getSessionCookieOptions(),
     maxAge: 0,
-    path: '/',
   })
 }
 
@@ -276,11 +287,8 @@ async function createAuthorizationState(params: {
   const encoded = encodeSignedValue(JSON.stringify(state))
   const cookieStore = await cookies()
   cookieStore.set(AUTH_STATE_COOKIE_NAME, encoded, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    ...getSessionCookieOptions(),
     maxAge: AUTH_STATE_MAX_AGE,
-    path: '/',
   })
   return encoded
 }
@@ -427,7 +435,7 @@ export async function authenticateNativeWithCode(
     accessToken: response.accessToken,
     refreshToken: response.refreshToken,
     user: toAuthUser(response.user),
-    expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+    expiresAt: Date.now() + getSessionMaxAgeSeconds() * 1000,
   }
 }
 
@@ -451,7 +459,7 @@ export async function authenticateWithPassword(
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       user,
-      expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+      expiresAt: Date.now() + getSessionMaxAgeSeconds() * 1000,
     })
 
     return { success: true, user }
@@ -540,7 +548,7 @@ export async function handleCallback(
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       user,
-      expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+      expiresAt: Date.now() + getSessionMaxAgeSeconds() * 1000,
     })
 
     return { success: true, user }
@@ -633,11 +641,8 @@ export async function createSession(session: AuthSession): Promise<void> {
   logAuthDebug('createSession', summarizeSessionForLog(session))
   
   cookieStore.set(SESSION_COOKIE_NAME, signedCookie, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: SESSION_MAX_AGE,
-    path: '/',
+    ...getSessionCookieOptions(),
+    maxAge: getSessionMaxAgeSeconds(),
   })
 }
 
@@ -682,7 +687,7 @@ async function rotateAccessTokenWithWorkOs(session: AuthSession): Promise<AuthSe
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       user: toAuthUser(response.user),
-      expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+      expiresAt: Date.now() + getSessionMaxAgeSeconds() * 1000,
     }
     await createSession(newSession)
     logAuthDebug('rotateAccessTokenWithWorkOs success', {
@@ -715,7 +720,7 @@ async function refreshAccessTokenDeduped(session: AuthSession): Promise<AuthSess
 async function locallyExtendSessionCookie(session: AuthSession): Promise<AuthSession> {
   const extendedSession: AuthSession = {
     ...session,
-    expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+    expiresAt: Date.now() + getSessionMaxAgeSeconds() * 1000,
   }
   await createSession(extendedSession)
   return extendedSession
@@ -901,7 +906,7 @@ export async function refreshSessionFromRefreshToken(
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       user: toAuthUser(response.user),
-      expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+      expiresAt: Date.now() + getSessionMaxAgeSeconds() * 1000,
     }
   } catch (error) {
     logAuthDebug('refreshSessionFromRefreshToken error', {

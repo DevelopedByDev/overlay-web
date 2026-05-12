@@ -3,6 +3,21 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+import { z } from '@/lib/api-schemas'
+
+const AppProjectsRequestSchema = z.object({
+  projectId: z.string().optional(),
+  name: z.string().optional(),
+  parentId: z.string().nullable().optional(),
+  instructions: z.string().optional(),
+  clientId: z.string().optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).openapi('AppProjectsRequest')
+const AppProjectsResponseSchema = z.unknown().openapi('AppProjectsResponse')
+void AppProjectsRequestSchema
+void AppProjectsResponseSchema
+
 
 type ProjectDoc = {
   _id: string

@@ -4,6 +4,13 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { generatePresignedDownloadUrl } from '@/lib/r2'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/lib/storage-keys'
+import { z } from '@/lib/api-schemas'
+
+const AppFileContentRequestSchema = z.object({ fileId: z.string().min(1) }).openapi('AppFileContentRequest')
+const AppFileContentResponseSchema = z.unknown().openapi('AppFileContentResponse')
+void AppFileContentRequestSchema
+void AppFileContentResponseSchema
+
 
 export const runtime = 'nodejs'
 

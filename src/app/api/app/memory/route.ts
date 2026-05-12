@@ -6,6 +6,27 @@ import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { memoriesToClientListRows, segmentMemoryForIngestion } from '@/lib/memory-display-segments'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { z } from '@/lib/api-schemas'
+
+const AppMemoryRequestSchema = z.object({
+  memoryId: z.string().optional(),
+  content: z.string().optional(),
+  source: z.enum(['chat', 'note', 'manual']).optional(),
+  clientId: z.string().optional(),
+  type: z.enum(['preference', 'fact', 'project', 'decision', 'agent']).optional(),
+  importance: z.number().optional(),
+  projectId: z.string().optional(),
+  conversationId: z.string().optional(),
+  noteId: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  actor: z.enum(['user', 'agent']).optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).passthrough().openapi('AppMemoryRequest')
+const AppMemoryResponseSchema = z.unknown().openapi('AppMemoryResponse')
+void AppMemoryRequestSchema
+void AppMemoryResponseSchema
+
 
 type MemoryDoc = {
   _id: string

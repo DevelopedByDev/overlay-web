@@ -5,6 +5,18 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { generatePresignedUploadUrl, keyForFile } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
+import { getConfig } from '@/lib/config/singleton'
+import { z } from '@/lib/api-schemas'
+
+const AppFilesPresignRequestSchema = z.object({
+  name: z.string().min(1),
+  mimeType: z.string().optional(),
+  sizeBytes: z.coerce.number().int().positive(),
+}).openapi('AppFilesPresignRequest')
+const AppFilesPresignResponseSchema = z.unknown().openapi('AppFilesPresignResponse')
+void AppFilesPresignRequestSchema
+void AppFilesPresignResponseSchema
+
 
 interface Entitlements {
   overlayStorageBytesUsed: number
@@ -69,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     console.log(`[FilesPresign] Generated PUT URL for userId=${userId} key=${r2Key} size=${sizeBytes}B`)
 
-    return NextResponse.json({ r2Key, presignedUrl, expiresIn: Number(process.env['R2_PRESIGN_TTL_SECONDS'] ?? 300) })
+    return NextResponse.json({ r2Key, presignedUrl, expiresIn: getConfig().storage.publicUrlTtlSeconds })
   } catch (err) {
     if (err instanceof R2GlobalBudgetError) {
       return NextResponse.json(

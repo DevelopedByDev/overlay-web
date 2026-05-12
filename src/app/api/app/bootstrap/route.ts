@@ -16,11 +16,17 @@ import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
 } from '@/lib/model-types'
+import { z } from '@/lib/api-schemas'
 import {
   AVAILABLE_MODELS,
   IMAGE_MODELS,
   VIDEO_MODELS,
 } from '@/lib/model-data'
+
+const AppBootstrapRequestSchema = z.object({}).openapi('AppBootstrapRequest')
+const AppBootstrapResponseSchema = z.unknown().openapi('AppBootstrapResponse')
+void AppBootstrapRequestSchema
+void AppBootstrapResponseSchema
 
 export const GET = createHandler(
   {},

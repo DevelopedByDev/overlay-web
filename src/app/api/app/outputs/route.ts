@@ -5,6 +5,20 @@ import { deleteObject } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { isOwnedOutputR2Key } from '@/lib/storage-keys'
 import { convex } from '@/lib/convex'
+import { z } from '@/lib/api-schemas'
+
+const AppOutputsRequestSchema = z.object({
+  outputId: z.string().optional(),
+  type: z.string().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+  conversationId: z.string().optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).openapi('AppOutputsRequest')
+const AppOutputsResponseSchema = z.unknown().openapi('AppOutputsResponse')
+void AppOutputsRequestSchema
+void AppOutputsResponseSchema
+
 
 type OutputFile = {
   _id: string

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateObject } from 'ai'
-import { z } from 'zod'
+import { z } from '@/lib/api-schemas'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/model-types'
@@ -9,6 +9,17 @@ import { getGatewayLanguageModel } from '@/lib/ai-gateway'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import type { Entitlements } from '@/lib/app-contracts'
 import { buildInsufficientCreditsPayload, ensureBudgetAvailable, getBudgetTotals, isPaidPlan } from '@/lib/billing-runtime'
+
+const AppConversationsActExtensionPlanRequestSchema = z.object({
+  messages: z.array(z.any()).optional(),
+  modelId: z.string().optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).passthrough().openapi('AppConversationsActExtensionPlanRequest')
+const AppConversationsActExtensionPlanResponseSchema = z.unknown().openapi('AppConversationsActExtensionPlanResponse')
+void AppConversationsActExtensionPlanRequestSchema
+void AppConversationsActExtensionPlanResponseSchema
+
 
 export const maxDuration = 120
 

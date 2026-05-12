@@ -7,6 +7,29 @@ import {
   sanitizeMessagePartsForPersistence,
 } from '@/lib/chat-message-persistence'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { z } from '@/lib/api-schemas'
+
+const AppConversationsMessageRequestSchema = z.object({
+  conversationId: z.string().optional(),
+  turnId: z.string().optional(),
+  mode: z.enum(['ask', 'act']).optional(),
+  role: z.enum(['user', 'assistant']).optional(),
+  content: z.string().optional(),
+  parts: z.array(z.object({ type: z.string() }).passthrough()).optional(),
+  attachmentNames: z.array(z.string()).optional(),
+  model: z.string().optional(),
+  modelId: z.string().optional(),
+  contentType: z.enum(['text', 'image', 'video']).optional(),
+  variantIndex: z.number().int().optional(),
+  replyToTurnId: z.string().optional(),
+  replySnippet: z.string().optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).openapi('AppConversationsMessageRequest')
+const AppConversationsMessageResponseSchema = z.unknown().openapi('AppConversationsMessageResponse')
+void AppConversationsMessageRequestSchema
+void AppConversationsMessageResponseSchema
+
 
 export async function POST(request: NextRequest) {
   try {

@@ -7,6 +7,7 @@ import ObservabilityClient from "@/components/ObservabilityClient";
 import { AppSettingsProvider } from "@/components/app/AppSettingsProvider";
 import { ConvexProviderWithWorkOS } from "@/components/ConvexProviderWithWorkOS";
 import { ThemeProvider } from "@overlay/ui";
+import { ConfigProvider } from "@/lib/config/ConfigProvider";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -82,18 +83,20 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased bg-background text-foreground">
-        <AppSettingsProvider>
-          <AuthProvider>
-            <ConvexProviderWithWorkOS>
-              <ThemeProvider>
-                <Suspense fallback={null}>
-                  <ObservabilityClient />
-                </Suspense>
-                {children}
-              </ThemeProvider>
-            </ConvexProviderWithWorkOS>
-          </AuthProvider>
-        </AppSettingsProvider>
+        <ConfigProvider>
+          <AppSettingsProvider>
+            <AuthProvider>
+              <ConvexProviderWithWorkOS>
+                <ThemeProvider>
+                  <Suspense fallback={null}>
+                    <ObservabilityClient />
+                  </Suspense>
+                  {children}
+                </ThemeProvider>
+              </ConvexProviderWithWorkOS>
+            </AuthProvider>
+          </AppSettingsProvider>
+        </ConfigProvider>
         <Analytics />
         <SpeedInsights />
       </body>

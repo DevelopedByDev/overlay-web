@@ -4,6 +4,13 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { generatePresignedDownloadUrl } from '@/lib/r2'
 import { isOwnedOutputR2Key } from '@/lib/storage-keys'
+import { z } from '@/lib/api-schemas'
+
+const AppOutputContentRequestSchema = z.object({ outputId: z.string().min(1) }).openapi('AppOutputContentRequest')
+const AppOutputContentResponseSchema = z.unknown().openapi('AppOutputContentResponse')
+void AppOutputContentRequestSchema
+void AppOutputContentResponseSchema
+
 
 export const runtime = 'nodejs'
 

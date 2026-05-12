@@ -13,6 +13,21 @@ import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { z } from '@/lib/api-schemas'
+
+const AppFilesSearchTextRequestSchema = z.object({
+  fileIds: z.array(z.string()).default([]),
+  query: z.string().optional(),
+  contextChars: z.number().int().optional(),
+  maxMatchesPerFile: z.number().int().optional(),
+  maxTotalSnippetChars: z.number().int().optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).openapi('AppFilesSearchTextRequest')
+const AppFilesSearchTextResponseSchema = z.unknown().openapi('AppFilesSearchTextResponse')
+void AppFilesSearchTextRequestSchema
+void AppFilesSearchTextResponseSchema
+
 
 export const maxDuration = 60
 

@@ -62,6 +62,22 @@ import {
 } from '@/lib/billing-runtime'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { z } from '@/lib/api-schemas'
+
+const AppConversationsActRequestSchema = z.object({
+  conversationId: z.string().optional(),
+  message: z.string().optional(),
+  messages: z.array(z.any()).optional(),
+  modelId: z.string().optional(),
+  selectedModelIds: z.array(z.string()).optional(),
+  mode: z.enum(['ask', 'act']).optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).passthrough().openapi('AppConversationsActRequest')
+const AppConversationsActResponseSchema = z.unknown().openapi('AppConversationsActResponse')
+void AppConversationsActRequestSchema
+void AppConversationsActResponseSchema
+
 
 function summarizeToolOutputForLog(output: unknown): string {
   if (output == null) return 'null/undefined'

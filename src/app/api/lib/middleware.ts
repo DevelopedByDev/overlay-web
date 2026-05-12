@@ -7,6 +7,8 @@ import { getSession, type AuthSession, type AuthUser } from '@/lib/workos-auth'
 import { requireAdmin, type AdminAuthResult } from '@/lib/admin-auth'
 import { logAuditEvent, type AuditEvent } from '@/lib/audit'
 import { createHash } from 'node:crypto'
+import type { z } from 'zod'
+import { getConfig } from '@/lib/config/singleton'
 
 type Middleware = (
   req: Request,
@@ -18,10 +20,14 @@ export interface HandlerContext {
   session: AuthSession | null
   adminResult: AdminAuthResult | null
   auditBase: Omit<AuditEvent, 'id' | 'timestamp'>
+  body?: unknown
+  query?: unknown
 }
 
 export interface CreateHandlerOptions {
   middleware?: Middleware[]
+  body?: z.ZodType
+  query?: z.ZodType
 }
 
 function createBaseContext(): HandlerContext {
@@ -61,13 +67,42 @@ export function createHandler(
     }
 
     try {
+      if (options.query) {
+        ctx.query = options.query.parse(Object.fromEntries(new URL(req.url).searchParams.entries()))
+      }
+      if (options.body) {
+        const contentType = req.headers.get('content-type') || ''
+        const payload = contentType.includes('application/json') ? await req.json() : {}
+        ctx.body = options.body.parse(payload)
+      }
       return await handler(req, ctx)
     } catch (error) {
+      if (error && typeof error === 'object' && 'issues' in error) {
+        return NextResponse.json(
+          { error: 'Invalid request', details: (error as { issues: unknown }).issues },
+          { status: 400 },
+        )
+      }
       const message = error instanceof Error ? error.message : String(error)
       console.error(`[API] ${req.method} ${req.url} error:`, message)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
   }
+}
+
+export function createValidatedHandler<TBody, TQuery>(
+  schemas: { body?: z.ZodType<TBody>; query?: z.ZodType<TQuery> } = {},
+  handler: (
+    req: Request,
+    parsed: { body?: TBody; query?: TQuery },
+    ctx: HandlerContext,
+  ) => Promise<Response>,
+  options: Omit<CreateHandlerOptions, 'body' | 'query'> = {},
+): (req: Request) => Promise<Response> {
+  return createHandler(
+    { ...options, body: schemas.body, query: schemas.query },
+    (req, ctx) => handler(req, { body: ctx.body as TBody | undefined, query: ctx.query as TQuery | undefined }, ctx),
+  )
 }
 
 // ─── Middleware pieces ───────────────────────────────────────────────
@@ -209,8 +244,9 @@ export function withRateLimit(
 // ─── Utilities ─────────────────────────────────────────────────────
 
 export function getClientIp(req: Request): string {
+  const config = getConfig()
   const trustProxyHeaders =
-    process.env.TRUST_PROXY_HEADERS === 'true' ||
+    config.deployment.trustProxyHeaders ||
     Boolean(process.env.VERCEL || process.env.CF_PAGES || process.env.CLOUDFLARE_ACCOUNT_ID)
   if (!trustProxyHeaders) return 'unknown'
 

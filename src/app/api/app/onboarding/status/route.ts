@@ -4,6 +4,14 @@ import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { ONBOARDING_SEEN_COOKIE } from '@/lib/onboarding-cookie'
+import { getConfig } from '@/lib/config/singleton'
+import { z } from '@/lib/api-schemas'
+
+const AppOnboardingStatusRequestSchema = z.object({}).openapi('AppOnboardingStatusRequest')
+const AppOnboardingStatusResponseSchema = z.unknown().openapi('AppOnboardingStatusResponse')
+void AppOnboardingStatusRequestSchema
+void AppOnboardingStatusResponseSchema
+
 
 export async function GET() {
   const session = await getSession()
@@ -27,12 +35,13 @@ export async function GET() {
 
   // Heal: Convex says done but cookie missing (new browser, cleared cookies once, etc.)
   if (hasSeen && cookieUid !== session.user.id) {
+    const cookieConfig = getConfig().security.sessionCookie
     response.cookies.set(ONBOARDING_SEEN_COOKIE, session.user.id, {
       path: '/',
       maxAge: 60 * 60 * 24 * 365,
-      sameSite: 'lax',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      sameSite: cookieConfig.sameSite,
+      httpOnly: cookieConfig.httpOnly,
+      secure: process.env.NODE_ENV === 'production' ? cookieConfig.secure : false,
     })
   }
 

@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { logSecurityEvent } from '@/lib/security-events'
+import { getConfig } from '@/lib/config/singleton'
 
 type RateLimitWindow = {
   count: number
@@ -48,8 +49,9 @@ function getBucketKey(rule: RateLimitRule): string | null {
 }
 
 export function getClientIp(request: NextRequest): string {
+  const config = getConfig()
   const trustProxyHeaders =
-    process.env.TRUST_PROXY_HEADERS === 'true' ||
+    config.deployment.trustProxyHeaders ||
     Boolean(process.env.VERCEL || process.env.CF_PAGES || process.env.CLOUDFLARE_ACCOUNT_ID)
   if (!trustProxyHeaders) return 'unknown'
 

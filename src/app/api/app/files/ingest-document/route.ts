@@ -7,6 +7,17 @@ import { convex } from '@/lib/convex'
 import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
 import { keyForFile, uploadBuffer } from '@/lib/r2'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { z } from '@/lib/api-schemas'
+
+const AppFilesIngestDocumentRequestSchema = z.object({
+  projectId: z.string().optional(),
+  conversationId: z.string().optional(),
+  parentId: z.string().optional(),
+}).passthrough().openapi('AppFilesIngestDocumentRequest')
+const AppFilesIngestDocumentResponseSchema = z.unknown().openapi('AppFilesIngestDocumentResponse')
+void AppFilesIngestDocumentRequestSchema
+void AppFilesIngestDocumentResponseSchema
+
 
 export const runtime = 'nodejs'
 

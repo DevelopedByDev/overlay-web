@@ -5,6 +5,26 @@ import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID, FREE_TIER_DEFAULT_MODEL_ID, 
 import { isPaidPlan } from '@/lib/billing-runtime'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+import { z } from '@/lib/api-schemas'
+
+const AppConversationsRequestSchema = z.object({
+  conversationId: z.string().optional(),
+  messages: z.enum(['true', 'false']).optional(),
+  projectId: z.string().optional(),
+  updatedSince: z.coerce.number().optional(),
+  includeDeleted: z.enum(['true', 'false', '1', '0']).optional(),
+  title: z.string().optional(),
+  askModelIds: z.array(z.string()).optional(),
+  actModelId: z.string().optional(),
+  lastMode: z.enum(['ask', 'act']).optional(),
+  clientId: z.string().optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).passthrough().openapi('AppConversationsRequest')
+const AppConversationsResponseSchema = z.unknown().openapi('AppConversationsResponse')
+void AppConversationsRequestSchema
+void AppConversationsResponseSchema
+
 
 type ConversationDoc = {
   _id: string

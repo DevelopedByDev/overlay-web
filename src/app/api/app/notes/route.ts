@@ -3,6 +3,21 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 import { hashTextContent } from '@/lib/convex-file-content'
+import { z } from '@/lib/api-schemas'
+
+const AppNotesRequestSchema = z.object({
+  noteId: z.string().optional(),
+  title: z.string().optional(),
+  content: z.string().optional(),
+  projectId: z.string().optional(),
+  clientId: z.string().optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).passthrough().openapi('AppNotesRequest')
+const AppNotesResponseSchema = z.unknown().openapi('AppNotesResponse')
+void AppNotesRequestSchema
+void AppNotesResponseSchema
+
 
 type CanonicalFile = {
   _id: string

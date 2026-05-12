@@ -6,6 +6,17 @@ import { convex } from '@/lib/convex'
 import { generatePresignedUploadUrl, keyForFile } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
 import { formatBytes } from '@/lib/storage-limits'
+import { z } from '@/lib/api-schemas'
+
+const AppFilesUploadUrlRequestSchema = z.object({
+  sizeBytes: z.number().positive(),
+  name: z.string().optional(),
+  mimeType: z.string().optional(),
+}).openapi('AppFilesUploadUrlRequest')
+const AppFilesUploadUrlResponseSchema = z.unknown().openapi('AppFilesUploadUrlResponse')
+void AppFilesUploadUrlRequestSchema
+void AppFilesUploadUrlResponseSchema
+
 
 interface Entitlements {
   overlayStorageBytesUsed: number

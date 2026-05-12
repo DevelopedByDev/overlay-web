@@ -3,6 +3,21 @@ import type { AppSettings, ThemePresetId } from '@overlay/app-core'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { z } from '@/lib/api-schemas'
+
+const AppSettingsRequestSchema = z.object({
+  theme: z.enum(['light', 'dark']).optional(),
+  lightThemePreset: z.string().optional(),
+  darkThemePreset: z.string().optional(),
+  useSecondarySidebar: z.boolean().optional(),
+  chatStreamingMode: z.enum(['token', 'chunk']).optional(),
+  accessToken: z.string().optional(),
+  userId: z.string().optional(),
+}).openapi('AppSettingsRequest')
+const AppSettingsResponseSchema = z.unknown().openapi('AppSettingsResponse')
+void AppSettingsRequestSchema
+void AppSettingsResponseSchema
+
 
 const VALID_PRESET_IDS = new Set<string>(['default-light', 'default-dark', 'codex', 'catppuccin'])
 

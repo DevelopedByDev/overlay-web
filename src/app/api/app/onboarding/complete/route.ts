@@ -3,6 +3,14 @@ import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { ONBOARDING_SEEN_COOKIE } from '@/lib/onboarding-cookie'
+import { getConfig } from '@/lib/config/singleton'
+import { z } from '@/lib/api-schemas'
+
+const AppOnboardingCompleteRequestSchema = z.object({}).openapi('AppOnboardingCompleteRequest')
+const AppOnboardingCompleteResponseSchema = z.unknown().openapi('AppOnboardingCompleteResponse')
+void AppOnboardingCompleteRequestSchema
+void AppOnboardingCompleteResponseSchema
+
 
 export async function POST() {
   const session = await getSession()
@@ -32,12 +40,13 @@ export async function POST() {
   }
 
   const response = NextResponse.json({ ok: true as const, persistedToConvex })
+  const cookieConfig = getConfig().security.sessionCookie
   response.cookies.set(ONBOARDING_SEEN_COOKIE, session.user.id, {
     path: '/',
     maxAge: 60 * 60 * 24 * 365,
-    sameSite: 'lax',
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: cookieConfig.sameSite,
+    httpOnly: cookieConfig.httpOnly,
+    secure: process.env.NODE_ENV === 'production' ? cookieConfig.secure : false,
   })
   return response
 }

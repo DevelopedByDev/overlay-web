@@ -1,0 +1,64 @@
+{
+  "version": "1.0.0",
+  "deployment": {
+    "mode": "self-hosted",
+    "domain": "http://localhost:3000",
+    "tls": "auto",
+    "trustProxyHeaders": false
+  },
+  "auth": {
+    "provider": "workos",
+    "sessionTTLMinutes": 43200,
+    "mfaRequired": false,
+    "allowedRedirectOrigins": []
+  },
+  "ai": {
+    "gateway": "vercel",
+    "modelTiering": {
+      "free": [],
+      "cheap": [],
+      "premium": []
+    }
+  },
+  "billing": {
+    "provider": "stripe",
+    "currency": "usd",
+    "markupBasisPoints": 2500
+  },
+  "storage": {
+    "provider": "minio",
+    "publicUrlTtlSeconds": 3600,
+    "maxUploadSizeBytes": 104857600
+  },
+  "rateLimit": {
+    "auth": { "windowMs": 60000, "maxRequests": 10 },
+    "ai": { "windowMs": 60000, "maxRequests": 30 },
+    "storage": { "windowMs": 60000, "maxRequests": 60 }
+  },
+  "security": {
+    "cspEnforce": true,
+    "allowedFrameAncestors": [],
+    "sessionCookie": {
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "lax"
+    }
+  },
+  "whiteLabel": {
+    "appName": "Overlay",
+    "logoUrl": "/logo.svg",
+    "faviconUrl": "/favicon.svg",
+    "primaryColor": "#0A0A0A",
+    "accentColor": "#3B82F6",
+    "fontFamily": "Inter, system-ui, sans-serif"
+  },
+  "rbac": {
+    "roles": {},
+    "contentFilter": {}
+  },
+  "audit": {
+    "retentionDays": 90,
+    "exportFormat": "jsonl",
+    "forwarders": []
+  }
+}
