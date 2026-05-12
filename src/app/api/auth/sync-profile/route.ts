@@ -4,6 +4,13 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 import { getPostHogClient } from '@/lib/posthog-server'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthSyncProfileRequestSchema = z.object({}).openapi('AuthSyncProfileRequest')
+const AuthSyncProfileResponseSchema = z.unknown().openapi('AuthSyncProfileResponse')
+void AuthSyncProfileRequestSchema
+void AuthSyncProfileResponseSchema
+
 export async function POST() {
   try {
     const session = await getSession()

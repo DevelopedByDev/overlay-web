@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from 'ai'
-import { z } from 'zod'
+import { z } from '@/lib/api-schemas'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
@@ -28,6 +28,12 @@ import { NOTEBOOK_AGENT_PROMPT } from '@/lib/notebook-agent-prompts'
 import { resolveMentionsContext } from '@/lib/mention-resolver'
 import { summarizeErrorForLog } from '@/lib/safe-log'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+
+
+const AppNotebookAgentRequestSchema = z.object({ noteContent: z.string().optional(), noteTitle: z.string().optional(), message: z.string().optional(), modelId: z.string().optional(), mode: z.enum(['ask', 'write']).optional(), projectId: z.string().optional(), accessToken: z.string().optional(), userId: z.string().optional(), mentions: z.array(z.object({ type: z.string(), id: z.string(), name: z.string(), fileIds: z.array(z.string()).optional() })).optional() }).openapi('AppNotebookAgentRequest')
+const AppNotebookAgentResponseSchema = z.unknown().openapi('AppNotebookAgentResponse')
+void AppNotebookAgentRequestSchema
+void AppNotebookAgentResponseSchema
 
 export const maxDuration = 120
 

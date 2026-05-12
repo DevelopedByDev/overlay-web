@@ -9,6 +9,13 @@ import {
   isValidNativeAuthState,
 } from '@/lib/native-auth-validation'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthNativeAuthorizeRequestSchema = z.object({ provider: z.string().optional(), redirectUri: z.string().optional(), codeChallenge: z.string().optional(), state: z.string().optional(), forceSignIn: z.boolean().optional() }).openapi('AuthNativeAuthorizeRequest')
+const AuthNativeAuthorizeResponseSchema = z.unknown().openapi('AuthNativeAuthorizeResponse')
+void AuthNativeAuthorizeRequestSchema
+void AuthNativeAuthorizeResponseSchema
+
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
   Pragma: 'no-cache',

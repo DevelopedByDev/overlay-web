@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateObject } from 'ai'
-import { z } from 'zod'
+import { z } from '@/lib/api-schemas'
 import { sanitizeChatTitle } from '@/lib/chat-title'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
+
+
+const AppGenerateTitleRequestSchema = z.object({ text: z.string().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).openapi('AppGenerateTitleRequest')
+const AppGenerateTitleResponseSchema = z.unknown().openapi('AppGenerateTitleResponse')
+void AppGenerateTitleRequestSchema
+void AppGenerateTitleResponseSchema
 
 const TITLE_MODEL = 'nvidia/nemotron-nano-9b-v2'
 const FALLBACK_TITLE = 'New Chat'

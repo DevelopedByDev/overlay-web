@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthNativeProviderKeysRequestSchema = z.object({}).passthrough().openapi('AuthNativeProviderKeysRequest')
+const AuthNativeProviderKeysResponseSchema = z.unknown().openapi('AuthNativeProviderKeysResponse')
+void AuthNativeProviderKeysRequestSchema
+void AuthNativeProviderKeysResponseSchema
+
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
   Pragma: 'no-cache',

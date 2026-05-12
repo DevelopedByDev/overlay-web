@@ -3,6 +3,13 @@ import { refreshSessionFromRefreshToken } from '@/lib/workos-auth'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import { getNativeRefreshTokenBucketKey } from '@/lib/native-refresh-rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthNativeRefreshRequestSchema = z.object({ refreshToken: z.string().optional(), userId: z.string().optional(), user: z.object({ id: z.string().optional() }).optional() }).passthrough().openapi('AuthNativeRefreshRequest')
+const AuthNativeRefreshResponseSchema = z.unknown().openapi('AuthNativeRefreshResponse')
+void AuthNativeRefreshRequestSchema
+void AuthNativeRefreshResponseSchema
+
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
   Pragma: 'no-cache',

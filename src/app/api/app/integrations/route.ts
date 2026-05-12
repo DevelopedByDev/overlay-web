@@ -5,6 +5,13 @@ import { getServerProviderKey } from '@/lib/server-provider-keys'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getBaseUrl } from '@/lib/url'
 
+import { z } from '@/lib/api-schemas'
+
+const AppIntegrationsRequestSchema = z.object({ q: z.string().optional(), slug: z.string().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).passthrough().openapi('AppIntegrationsRequest')
+const AppIntegrationsResponseSchema = z.unknown().openapi('AppIntegrationsResponse')
+void AppIntegrationsRequestSchema
+void AppIntegrationsResponseSchema
+
 type ComposioAppRecord = {
   key?: string
   slug?: string

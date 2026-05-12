@@ -3,6 +3,13 @@ import { logAuthDebug, summarizeSessionForLog } from '@/lib/auth-debug'
 import { getSession } from '@/lib/workos-auth'
 import { rateLimitByIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthSessionRequestSchema = z.object({}).openapi('AuthSessionRequest')
+const AuthSessionResponseSchema = z.unknown().openapi('AuthSessionResponse')
+void AuthSessionRequestSchema
+void AuthSessionResponseSchema
+
 export async function GET(request: NextRequest) {
   try {
     const rateLimitResponse = await rateLimitByIp(request, 'auth:session', 60, 60_000)

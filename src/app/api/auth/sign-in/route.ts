@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticateWithPassword } from '@/lib/workos-auth'
 import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthSignInRequestSchema = z.object({ email: z.string().email().optional(), password: z.string().optional() }).openapi('AuthSignInRequest')
+const AuthSignInResponseSchema = z.unknown().openapi('AuthSignInResponse')
+void AuthSignInRequestSchema
+void AuthSignInResponseSchema
+
 export async function POST(request: NextRequest) {
   try {
     // First-line reject: per-IP limit (cheap, runs before body parse).

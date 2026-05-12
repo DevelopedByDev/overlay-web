@@ -3,6 +3,13 @@ import Groq from 'groq-sdk'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
 
+import { z } from '@/lib/api-schemas'
+
+const AppGenerateTabGroupLabelRequestSchema = z.object({ text: z.string().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).openapi('AppGenerateTabGroupLabelRequest')
+const AppGenerateTabGroupLabelResponseSchema = z.unknown().openapi('AppGenerateTabGroupLabelResponse')
+void AppGenerateTabGroupLabelRequestSchema
+void AppGenerateTabGroupLabelResponseSchema
+
 async function resolveGroqApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
     const serverKey = await getServerProviderKey('groq')

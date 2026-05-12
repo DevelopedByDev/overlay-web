@@ -19,6 +19,13 @@ import {
 } from '@/lib/billing-runtime'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AppGenerateImageRequestSchema = z.object({ prompt: z.string().optional(), modelId: z.string().optional(), aspectRatio: z.string().optional(), conversationId: z.string().optional(), turnId: z.string().optional(), imageUrl: z.string().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).openapi('AppGenerateImageRequest')
+const AppGenerateImageResponseSchema = z.unknown().openapi('AppGenerateImageResponse')
+void AppGenerateImageRequestSchema
+void AppGenerateImageResponseSchema
+
 export const maxDuration = 120
 
 export async function POST(request: NextRequest) {

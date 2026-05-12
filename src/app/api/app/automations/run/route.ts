@@ -5,6 +5,13 @@ import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { convex } from '@/lib/convex'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const AppAutomationsRunRequestSchema = z.object({ runId: z.string().optional() }).openapi('AppAutomationsRunRequest')
+const AppAutomationsRunResponseSchema = z.unknown().openapi('AppAutomationsRunResponse')
+void AppAutomationsRunRequestSchema
+void AppAutomationsRunResponseSchema
+
 export const maxDuration = 300
 
 function verifyInternalSecret(request: NextRequest): boolean {

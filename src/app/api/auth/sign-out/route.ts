@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { clearSession } from '@/lib/workos-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthSignOutRequestSchema = z.object({}).openapi('AuthSignOutRequest')
+const AuthSignOutResponseSchema = z.unknown().openapi('AuthSignOutResponse')
+void AuthSignOutRequestSchema
+void AuthSignOutResponseSchema
+
 export async function POST() {
   try {
     await clearSession()

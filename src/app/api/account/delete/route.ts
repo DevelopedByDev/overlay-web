@@ -8,6 +8,13 @@ import { deleteObjects } from '@/lib/r2'
 import { stripe } from '@/lib/stripe'
 import { WorkOS } from '@workos-inc/node'
 
+import { z } from '@/lib/api-schemas'
+
+const AccountDeleteRequestSchema = z.object({}).openapi('AccountDeleteRequest')
+const AccountDeleteResponseSchema = z.unknown().openapi('AccountDeleteResponse')
+void AccountDeleteRequestSchema
+void AccountDeleteResponseSchema
+
 /**
  * POST /api/account/delete
  *

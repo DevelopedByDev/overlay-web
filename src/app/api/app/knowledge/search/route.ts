@@ -5,6 +5,13 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { HybridSearchChunk } from '../../../../../../convex/knowledge'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AppKnowledgeSearchRequestSchema = z.object({ query: z.string().optional(), projectId: z.string().optional(), sourceKind: z.enum(['file', 'memory']).optional(), kVec: z.number().optional(), kLex: z.number().optional(), m: z.number().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).openapi('AppKnowledgeSearchRequest')
+const AppKnowledgeSearchResponseSchema = z.unknown().openapi('AppKnowledgeSearchResponse')
+void AppKnowledgeSearchRequestSchema
+void AppKnowledgeSearchResponseSchema
+
 export const maxDuration = 60
 const MAX_QUERY_CHARS = 500
 

@@ -12,6 +12,13 @@ import { createHash, randomBytes } from 'crypto'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { encryptSessionTransferPayload } from '@/lib/session-transfer-crypto'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthCallbackRequestSchema = z.object({ code: z.string().optional(), state: z.string().optional(), error: z.string().optional(), error_description: z.string().optional() }).openapi('AuthCallbackRequest')
+const AuthCallbackResponseSchema = z.unknown().openapi('AuthCallbackResponse')
+void AuthCallbackRequestSchema
+void AuthCallbackResponseSchema
+
 const SESSION_TRANSFER_TTL_MS = 90 * 1000
 
 function hashTransferTokenForLog(token: string): string {

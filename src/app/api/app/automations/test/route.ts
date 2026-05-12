@@ -5,6 +5,13 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
+import { z } from '@/lib/api-schemas'
+
+const AppAutomationsTestRequestSchema = z.object({ automationId: z.string().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).openapi('AppAutomationsTestRequest')
+const AppAutomationsTestResponseSchema = z.unknown().openapi('AppAutomationsTestResponse')
+void AppAutomationsTestRequestSchema
+void AppAutomationsTestResponseSchema
+
 export const maxDuration = 300
 
 type AutomationRunTarget = {

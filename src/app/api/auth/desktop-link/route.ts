@@ -10,6 +10,13 @@ import {
 } from '@/lib/session-transfer-crypto'
 import { normalizeCodeChallenge } from '@/lib/workos-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthDesktopLinkRequestSchema = z.object({ token: z.string().optional(), codeChallenge: z.string().optional(), chromeExtensionId: z.string().optional() }).passthrough().openapi('AuthDesktopLinkRequest')
+const AuthDesktopLinkResponseSchema = z.unknown().openapi('AuthDesktopLinkResponse')
+void AuthDesktopLinkRequestSchema
+void AuthDesktopLinkResponseSchema
+
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
   Pragma: 'no-cache',

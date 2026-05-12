@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createUser } from '@/lib/workos-auth'
 import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthSignUpRequestSchema = z.object({ email: z.string().email().optional(), password: z.string().optional(), firstName: z.string().optional(), lastName: z.string().optional() }).openapi('AuthSignUpRequest')
+const AuthSignUpResponseSchema = z.unknown().openapi('AuthSignUpResponse')
+void AuthSignUpRequestSchema
+void AuthSignUpResponseSchema
+
 export async function POST(request: NextRequest) {
   try {
     const rateLimitResponse = await rateLimitByIp(request, 'auth:sign-up', 5, 10 * 60_000)

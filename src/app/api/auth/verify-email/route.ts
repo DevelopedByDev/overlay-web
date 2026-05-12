@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readEmailVerificationTicket, verifyEmail, resendVerificationEmail } from '@/lib/workos-auth'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthVerifyEmailRequestSchema = z.object({ action: z.enum(['resend']).optional(), code: z.string().optional(), ticket: z.string().optional() }).openapi('AuthVerifyEmailRequest')
+const AuthVerifyEmailResponseSchema = z.unknown().openapi('AuthVerifyEmailResponse')
+void AuthVerifyEmailRequestSchema
+void AuthVerifyEmailResponseSchema
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()

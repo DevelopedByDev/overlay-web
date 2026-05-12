@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logSecurityEvent } from '@/lib/security-events'
 import { rateLimitByIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const SecurityCspReportRequestSchema = z.object({ 'csp-report': z.record(z.unknown()).optional() }).passthrough().openapi('SecurityCspReportRequest')
+const SecurityCspReportResponseSchema = z.unknown().openapi('SecurityCspReportResponse')
+void SecurityCspReportRequestSchema
+void SecurityCspReportResponseSchema
+
 export async function POST(request: NextRequest) {
   try {
     const rateLimitResponse = await rateLimitByIp(request, 'security:csp-report:ip', 30, 60_000)

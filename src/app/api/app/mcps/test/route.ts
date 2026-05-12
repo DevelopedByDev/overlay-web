@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { validatePublicNetworkUrl } from '@/lib/ssrf'
 
+import { z } from '@/lib/api-schemas'
+
+const AppMcpsTestRequestSchema = z.object({ url: z.string().optional(), transport: z.string().optional(), authType: z.string().optional(), authConfig: z.record(z.unknown()).optional(), accessToken: z.string().optional(), userId: z.string().optional() }).passthrough().openapi('AppMcpsTestRequest')
+const AppMcpsTestResponseSchema = z.unknown().openapi('AppMcpsTestResponse')
+void AppMcpsTestRequestSchema
+void AppMcpsTestResponseSchema
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()

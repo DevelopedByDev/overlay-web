@@ -19,6 +19,13 @@ import {
 } from '@/lib/billing-runtime'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AppGenerateVideoRequestSchema = z.object({ prompt: z.string().optional(), modelId: z.string().optional(), aspectRatio: z.string().optional(), duration: z.number().optional(), conversationId: z.string().optional(), turnId: z.string().optional(), videoSubMode: z.enum(['text-to-video', 'image-to-video']).optional(), imageUrl: z.string().nullable().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).openapi('AppGenerateVideoRequest')
+const AppGenerateVideoResponseSchema = z.unknown().openapi('AppGenerateVideoResponse')
+void AppGenerateVideoRequestSchema
+void AppGenerateVideoResponseSchema
+
 export const maxDuration = 300
 
 function sseChunk(data: Record<string, unknown>): string {

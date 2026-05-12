@@ -24,6 +24,13 @@ import { buildInsufficientCreditsPayload, ensureBudgetAvailable, getBudgetTotals
 import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl, deleteObject } from '@/lib/r2'
 import { checkGlobalR2Budget } from '@/lib/r2-budget'
 
+import { z } from '@/lib/api-schemas'
+
+const AppDaytonaRunRequestSchema = z.object({ command: z.string().optional(), runtime: z.string().optional(), files: z.array(z.any()).optional(), expectedOutputs: z.array(z.string()).optional(), accessToken: z.string().optional(), userId: z.string().optional() }).passthrough().openapi('AppDaytonaRunRequest')
+const AppDaytonaRunResponseSchema = z.unknown().openapi('AppDaytonaRunResponse')
+void AppDaytonaRunRequestSchema
+void AppDaytonaRunResponseSchema
+
 export const maxDuration = 300
 
 interface OverlayFileRecord {

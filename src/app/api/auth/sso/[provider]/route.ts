@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthorizationUrl, normalizeAuthRedirect, normalizeCodeChallenge } from '@/lib/workos-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthSsoProviderRequestSchema = z.object({ provider: z.enum(['google', 'apple', 'microsoft']).optional(), redirect: z.string().optional(), codeChallenge: z.string().optional(), force: z.enum(['true', 'false']).optional() }).openapi('AuthSsoProviderRequest')
+const AuthSsoProviderResponseSchema = z.unknown().openapi('AuthSsoProviderResponse')
+void AuthSsoProviderRequestSchema
+void AuthSsoProviderResponseSchema
+
 type SSOProvider = 'google' | 'apple' | 'microsoft'
 
 const providerMap: Record<SSOProvider, 'GoogleOAuth' | 'AppleOAuth' | 'MicrosoftOAuth'> = {

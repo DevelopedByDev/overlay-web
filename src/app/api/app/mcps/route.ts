@@ -4,6 +4,13 @@ import { convex } from '@/lib/convex'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { validatePublicNetworkUrl } from '@/lib/ssrf'
 
+import { z } from '@/lib/api-schemas'
+
+const AppMcpsRequestSchema = z.object({ mcpServerId: z.string().optional(), name: z.string().optional(), description: z.string().optional(), transport: z.string().optional(), url: z.string().optional(), enabled: z.boolean().optional(), authType: z.string().optional(), authConfig: z.record(z.unknown()).optional(), timeoutMs: z.number().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).passthrough().openapi('AppMcpsRequest')
+const AppMcpsResponseSchema = z.unknown().openapi('AppMcpsResponse')
+void AppMcpsRequestSchema
+void AppMcpsResponseSchema
+
 async function validateMcpUrl(url: unknown): Promise<string | null> {
   const result = await validatePublicNetworkUrl(url, { allowLocalDev: true, requireHttps: true })
   return result.ok ? null : result.error

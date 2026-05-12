@@ -5,6 +5,13 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AppAutomationsRequestSchema = z.object({ automationId: z.string().optional(), name: z.string().optional(), title: z.string().optional(), description: z.string().optional(), instructions: z.string().optional(), enabled: z.boolean().optional(), schedule: z.any().optional(), timezone: z.string().optional(), modelId: z.string().optional(), projectId: z.string().optional(), sourceConversationId: z.string().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).passthrough().openapi('AppAutomationsRequest')
+const AppAutomationsResponseSchema = z.unknown().openapi('AppAutomationsResponse')
+void AppAutomationsRequestSchema
+void AppAutomationsResponseSchema
+
 type AutomationSchedule =
   | { kind: 'interval'; intervalMinutes?: number }
   | { kind: 'daily'; hourUTC?: number; minuteUTC?: number }

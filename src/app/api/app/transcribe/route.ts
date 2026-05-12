@@ -5,6 +5,13 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import type { Entitlements } from '@/lib/app-contracts'
 
+import { z } from '@/lib/api-schemas'
+
+const AppTranscribeRequestSchema = z.object({}).openapi('AppTranscribeRequest')
+const AppTranscribeResponseSchema = z.unknown().openapi('AppTranscribeResponse')
+void AppTranscribeRequestSchema
+void AppTranscribeResponseSchema
+
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 const ESTIMATED_TRANSCRIPTION_SECONDS = 60
 

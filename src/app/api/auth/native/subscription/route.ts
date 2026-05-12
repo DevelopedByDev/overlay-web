@@ -4,6 +4,13 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getVerifiedAccessTokenClaims, debugAccessTokenVerification } from '../../../../../../convex/lib/auth'
 import { rateLimitByIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthNativeSubscriptionRequestSchema = z.object({}).openapi('AuthNativeSubscriptionRequest')
+const AuthNativeSubscriptionResponseSchema = z.unknown().openapi('AuthNativeSubscriptionResponse')
+void AuthNativeSubscriptionRequestSchema
+void AuthNativeSubscriptionResponseSchema
+
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
   Pragma: 'no-cache',

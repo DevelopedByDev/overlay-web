@@ -9,6 +9,13 @@ import {
   isValidPkceVerifier,
 } from '@/lib/native-auth-validation'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthNativeExchangeRequestSchema = z.object({ code: z.string().optional(), codeVerifier: z.string().optional() }).openapi('AuthNativeExchangeRequest')
+const AuthNativeExchangeResponseSchema = z.unknown().openapi('AuthNativeExchangeResponse')
+void AuthNativeExchangeRequestSchema
+void AuthNativeExchangeResponseSchema
+
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
   Pragma: 'no-cache',

@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sendPasswordResetEmail } from '@/lib/workos-auth'
 import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthForgotPasswordRequestSchema = z.object({ email: z.string().email().optional() }).openapi('AuthForgotPasswordRequest')
+const AuthForgotPasswordResponseSchema = z.unknown().openapi('AuthForgotPasswordResponse')
+void AuthForgotPasswordRequestSchema
+void AuthForgotPasswordResponseSchema
+
 export async function POST(request: NextRequest) {
   try {
     const rateLimitResponse = await rateLimitByIp(request, 'auth:forgot-password', 5, 10 * 60_000)

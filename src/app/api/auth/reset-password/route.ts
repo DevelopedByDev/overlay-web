@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resetPassword } from '@/lib/workos-auth'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AuthResetPasswordRequestSchema = z.object({ token: z.string().optional(), password: z.string().optional() }).openapi('AuthResetPasswordRequest')
+const AuthResetPasswordResponseSchema = z.unknown().openapi('AuthResetPasswordResponse')
+void AuthResetPasswordRequestSchema
+void AuthResetPasswordResponseSchema
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()

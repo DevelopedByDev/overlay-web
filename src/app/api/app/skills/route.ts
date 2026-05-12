@@ -3,6 +3,13 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const AppSkillsRequestSchema = z.object({ skillId: z.string().optional(), projectId: z.string().optional(), name: z.string().optional(), description: z.string().optional(), instructions: z.string().optional(), enabled: z.boolean().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).openapi('AppSkillsRequest')
+const AppSkillsResponseSchema = z.unknown().openapi('AppSkillsResponse')
+void AppSkillsRequestSchema
+void AppSkillsResponseSchema
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await resolveAuthenticatedAppUser(request, {})

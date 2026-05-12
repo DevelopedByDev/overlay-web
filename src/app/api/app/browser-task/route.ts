@@ -15,6 +15,13 @@ import {
 } from '@/lib/billing-runtime'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
+import { z } from '@/lib/api-schemas'
+
+const AppBrowserTaskRequestSchema = z.object({ task: z.string().optional(), sessionId: z.string().optional(), keepAlive: z.boolean().optional(), model: z.enum(['bu-mini', 'bu-max']).optional(), proxyCountryCode: z.string().optional(), accessToken: z.string().optional(), userId: z.string().optional() }).openapi('AppBrowserTaskRequest')
+const AppBrowserTaskResponseSchema = z.unknown().openapi('AppBrowserTaskResponse')
+void AppBrowserTaskRequestSchema
+void AppBrowserTaskResponseSchema
+
 export const maxDuration = 300
 
 function parseUsd(value: string | number | null | undefined): number {

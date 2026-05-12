@@ -8,6 +8,13 @@ import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
+import { z } from '@/lib/api-schemas'
+
+const AppChatSuggestionsRequestSchema = z.object({}).openapi('AppChatSuggestionsRequest')
+const AppChatSuggestionsResponseSchema = z.unknown().openapi('AppChatSuggestionsResponse')
+void AppChatSuggestionsRequestSchema
+void AppChatSuggestionsResponseSchema
+
 function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)
 }
