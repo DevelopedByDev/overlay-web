@@ -58,11 +58,10 @@ export interface VideoModel {
 }
 
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
-export const FREE_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2-thinking'
+export const FREE_TIER_DEFAULT_MODEL_ID = 'minimaxai/minimax-m2.7'
 
 export const NVIDIA_NIM_MODEL_IDS = [
-  'deepseek-ai/deepseek-v3.2',
-  'moonshotai/kimi-k2-thinking',
+  'minimaxai/minimax-m2.7',
 ] as const
 
 export function isNvidiaNimChatModelId(modelId: string): boolean {

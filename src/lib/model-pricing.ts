@@ -151,9 +151,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // NVIDIA NIM catalog rows. Free-tier requests are not charged to user budget;
   // paid requests bill against the selected catalog id.
-  'deepseek-ai/deepseek-v3.2': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'minimaxai/minimax-m2.7': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
-  'moonshotai/kimi-k2-thinking': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
 }
 
 /**

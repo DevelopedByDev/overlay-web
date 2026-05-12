@@ -42,8 +42,7 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 25.0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 100.0 },
 
   // NVIDIA NIM — explicit free catalog rows use NIM directly.
-  { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'Free model', intelligence: 27.1, cost: 0, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
-  { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Free model', intelligence: 40.9, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 117.231 },
+  { id: 'minimaxai/minimax-m2.7', name: 'Free: MiniMax M2.7', provider: 'nvidia', description: 'Free model', intelligence: 49.6, cost: 0, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 46.283 },
 ]
 
 /**
@@ -69,8 +68,7 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  'moonshotai/kimi-k2-thinking',
-  'deepseek-ai/deepseek-v3.2',
+  'minimaxai/minimax-m2.7',
   FREE_TIER_AUTO_MODEL_ID,
 ]
 
@@ -100,6 +98,8 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'gemini-2.5-flash-lite': 'google/gemma-4-26b-a4b-it',
   'zai/glm-5.1': 'z-ai/glm-5.1',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
+  'deepseek-ai/deepseek-v3.2': 'minimaxai/minimax-m2.7',
+  'moonshotai/kimi-k2-thinking': 'minimaxai/minimax-m2.7',
 }
 
 export function getModel(id: string): ChatModel | undefined {
