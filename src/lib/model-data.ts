@@ -48,7 +48,6 @@ export const AVAILABLE_MODELS: ChatModel[] = [
   { id: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', name: 'Free: Nemotron 3 Super 120B', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 34.5, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
 
   // NVIDIA NIM — explicit free catalog rows use NIM directly.
-  { id: 'minimaxai/minimax-m2.7', name: 'Free: MiniMax M2.7', provider: 'nvidia', description: 'Free model', intelligence: 49.6, cost: 0, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 46.283 },
   { id: 'stepfun-ai/step-3.5-flash', name: 'Free: Step 3.5 Flash', provider: 'nvidia', description: 'Free model', intelligence: 45.0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
 ]
 
@@ -75,7 +74,6 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  'minimaxai/minimax-m2.7',
   'stepfun-ai/step-3.5-flash',
   'openrouter/minimax/minimax-m2.5:free',
   'openrouter/z-ai/glm-4.5-air:free',
@@ -112,8 +110,9 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'gemini-2.5-flash-lite': 'google/gemma-4-26b-a4b-it',
   'zai/glm-5.1': 'z-ai/glm-5.1',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
-  'deepseek-ai/deepseek-v3.2': 'minimaxai/minimax-m2.7',
-  'moonshotai/kimi-k2-thinking': 'minimaxai/minimax-m2.7',
+  'deepseek-ai/deepseek-v3.2': 'stepfun-ai/step-3.5-flash',
+  'moonshotai/kimi-k2-thinking': 'stepfun-ai/step-3.5-flash',
+  'minimaxai/minimax-m2.7': 'stepfun-ai/step-3.5-flash',
 }
 
 export function getModel(id: string): ChatModel | undefined {

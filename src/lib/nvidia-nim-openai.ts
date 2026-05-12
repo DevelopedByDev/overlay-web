@@ -16,7 +16,6 @@ export const NVIDIA_NIM_BASE_URL = 'https://integrate.api.nvidia.com/v1' as cons
  * Align with NIM build names (see NVIDIA NIM / build docs).
  */
 export const FREE_TIER_NVIDIA_PREFERRED_MODEL_ORDER = [
-  'minimaxai/minimax-m2.7',
   'stepfun-ai/step-3.5-flash',
 ] as const satisfies readonly (typeof NVIDIA_NIM_MODEL_IDS)[number][]
 

@@ -58,10 +58,9 @@ export interface VideoModel {
 }
 
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
-export const FREE_TIER_DEFAULT_MODEL_ID = 'minimaxai/minimax-m2.7'
+export const FREE_TIER_DEFAULT_MODEL_ID = 'openrouter/minimax/minimax-m2.5:free'
 
 export const NVIDIA_NIM_MODEL_IDS = [
-  'minimaxai/minimax-m2.7',
   'stepfun-ai/step-3.5-flash',
 ] as const
 

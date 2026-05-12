@@ -157,7 +157,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // NVIDIA NIM catalog rows. Free-tier requests are not charged to user budget;
   // paid requests bill against the selected catalog id.
-  'minimaxai/minimax-m2.7': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
   'stepfun-ai/step-3.5-flash': { inputPer1M: 0, cachedInputPer1M: 0, outputPer1M: 0, isFree: true },
 }
 
