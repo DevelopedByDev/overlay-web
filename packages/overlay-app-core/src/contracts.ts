@@ -1,6 +1,7 @@
 export type ThemePreference = 'light' | 'dark'
 /** Token streaming is the only supported mode; the field remains for API/storage compatibility. */
 export type ChatStreamingMode = 'token'
+export type ChatModePreference = 'ask' | 'act'
 
 export type ThemePresetId =
   | 'default-light'
@@ -42,6 +43,15 @@ export interface AppSettings {
   useSecondarySidebar: boolean
   chatStreamingMode: ChatStreamingMode
   autoContinue: boolean
+  defaultChatMode: ChatModePreference
+  defaultAskModelIds: string[]
+  defaultActModelId?: string
+  defaultImageModelId?: string
+  defaultVideoModelId?: string
+  defaultImageAspectRatio?: string
+  defaultVideoAspectRatio?: string
+  sendWithEnter: boolean
+  attachFilesToKnowledgeByDefault: boolean
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -51,6 +61,15 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   useSecondarySidebar: false,
   chatStreamingMode: 'token',
   autoContinue: false,
+  defaultChatMode: 'act',
+  defaultAskModelIds: [],
+  defaultActModelId: undefined,
+  defaultImageModelId: undefined,
+  defaultVideoModelId: undefined,
+  defaultImageAspectRatio: undefined,
+  defaultVideoAspectRatio: undefined,
+  sendWithEnter: true,
+  attachFilesToKnowledgeByDefault: false,
 }
 
 export interface AuthUser {
@@ -80,6 +99,8 @@ export interface ChatModel {
   description?: string
   intelligence: number
   cost: 0 | 1 | 2 | 3
+  /** Relative latency: 1 = heavier/slower, 3 = faster/lighter. */
+  speedTier: 1 | 2 | 3
   supportsVision: boolean
   supportsReasoning: boolean
   supportsSearch: boolean
@@ -163,6 +184,7 @@ export interface AppFeatureFlags {
   canUseVoiceTranscription: boolean
   canUseKnowledge: boolean
   canUseProjects: boolean
+  canUseAutomations: boolean
   canUseExtensions: boolean
 }
 
@@ -213,6 +235,82 @@ export interface AppBootstrapResponse {
 }
 
 export type AppBootstrap = AppBootstrapResponse
+
+export type AutomationSchedule =
+  | { kind: 'interval'; intervalMinutes?: number }
+  | { kind: 'daily'; hourUTC?: number; minuteUTC?: number }
+  | { kind: 'weekly'; dayOfWeekUTC?: number; hourUTC?: number; minuteUTC?: number }
+  | { kind: 'monthly'; dayOfMonthUTC?: number; hourUTC?: number; minuteUTC?: number }
+
+export interface AutomationSummary {
+  _id: string
+  name?: string
+  title?: string
+  description?: string
+  instructions?: string
+  instructionsMarkdown?: string
+  enabled?: boolean
+  schedule?: AutomationSchedule
+  timezone?: string
+  nextRunAt?: number
+  lastRunAt?: number
+  lastRunStatus?: string
+  lastError?: string
+  projectId?: string
+  modelId?: string
+  graphSource?: string
+  sourceConversationId?: string
+  conversationId?: string
+  concurrencyPolicy?: 'skip' | 'queue'
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+}
+
+export type AutomationRunStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'succeeded'
+  | 'failed'
+  | 'skipped'
+
+export interface AutomationRunSummary {
+  _id: string
+  automationId: string
+  userId?: string
+  status: AutomationRunStatus
+  scheduledFor: number
+  startedAt?: number
+  completedAt?: number
+  finishedAt?: number
+  conversationId?: string
+  turnId?: string
+  error?: string
+  errorCode?: string
+  errorMessage?: string
+  resultSummary?: string
+  retryOfRunId?: string
+  triggerSource?: string
+  createdAt: number
+  updatedAt?: number
+}
+
+export interface AutomationRunDetail extends AutomationRunSummary {
+  attemptNumber?: number
+  assistantMessage?: string
+  assistantPersisted?: boolean
+  durationMs?: number
+  executor?: unknown
+  failureStage?: string
+  lastHeartbeatAt?: number
+  mode?: 'ask' | 'act'
+  modelId?: string
+  promptSnapshot?: string
+  readinessState?: string
+  requestId?: string
+  stage?: string
+}
 
 export interface ConversationSummary {
   _id: string
@@ -346,6 +444,22 @@ export interface ProjectSummary {
   name: string
   description?: string
   instructions?: string
+  parentId?: string | null
+  deletedAt?: number
   updatedAt: number
   createdAt: number
+}
+
+export interface McpServerSummary {
+  _id: string
+  name: string
+  description?: string
+  transport: 'sse' | 'streamable-http'
+  url: string
+  enabled: boolean
+  authType: 'none' | 'bearer' | 'header'
+  hasAuth?: boolean
+  timeoutMs?: number
+  createdAt: number
+  updatedAt: number
 }

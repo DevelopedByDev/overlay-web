@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { generatePresignedUploadUrl, keyForFile } from '@/lib/r2'
@@ -13,8 +13,8 @@ interface Entitlements {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { searchParams } = request.nextUrl
     const name = searchParams.get('name')
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
       return NextResponse.json({ error: 'sizeBytes must be greater than 0' }, { status: 400 })
     }
-    const userId = session.user.id
+    const userId = auth.userId
     const serverSecret = getInternalApiSecret()
 
     const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {

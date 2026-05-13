@@ -1,12 +1,14 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { ConvexHttpClient } from 'convex/browser'
 
 import { api } from '../../../../../convex/_generated/api'
 import { clearSession, getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { deleteObjects } from '@/lib/r2'
 import { stripe } from '@/lib/stripe'
 import { WorkOS } from '@workos-inc/node'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 /**
  * POST /api/account/delete
@@ -46,14 +48,21 @@ function resolveWorkOsApiKey(): string | null {
   )
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const session = await getSession()
-  if (!session) {
+  const body = await request.json().catch(() => ({}))
+  const auth = await resolveAuthenticatedAppUser(request, body)
+  if (!auth) {
     return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
   }
 
-  const userId = session.user.id
-  const userEmail = session.user.email
+  const userId = auth.userId
+  const userEmail = session?.user?.id === userId ? session.user.email : undefined
+  const rateLimitResponse = await enforceRateLimits(request, [
+    { bucket: 'account:delete:ip', key: getClientIp(request), limit: 5, windowMs: 60 * 60_000 },
+    { bucket: 'account:delete:user', key: userId, limit: 2, windowMs: 60 * 60_000 },
+  ])
+  if (rateLimitResponse) return rateLimitResponse
 
   let convexResult: {
     r2Keys: string[]
@@ -137,7 +146,9 @@ export async function POST() {
   }
 
   // Step 6: clear the session cookie so the next request is unauthenticated.
-  await clearSession()
+  if (session?.user?.id === userId) {
+    await clearSession()
+  }
 
   return NextResponse.json({
     success: true,

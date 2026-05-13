@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe, getBaseUrl } from '@/lib/stripe'
 import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 import { resolvePortalConfigurationId } from '@/lib/stripe-billing'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
@@ -80,19 +81,21 @@ async function resolveVerifiedCustomerIdFromCheckoutSession(
 
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json().catch(() => ({}))
     const authSession = await getSession()
-    if (!authSession || !authSession.user) {
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    const userId = auth?.userId
+    if (!userId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    const userId = authSession.user.id
+    const browserUser = authSession?.user?.id === userId ? authSession.user : null
     const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'billing:portal:ip', key: getClientIp(request), limit: 10, windowMs: 10 * 60_000 },
       { bucket: 'billing:portal:user', key: userId, limit: 5, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
 
-    const body = await request.json().catch(() => ({}))
     const { sessionId } = body
 
     let customerId: string | undefined
@@ -112,7 +115,7 @@ export async function POST(request: NextRequest) {
     // Otherwise, look up customer from our database
     if (!customerId) {
       const subscription = await convex.query<Subscription>('subscriptions:getByUserId', {
-        accessToken: authSession.accessToken,
+        accessToken: auth?.accessToken ?? authSession?.accessToken ?? '',
         userId,
       })
       customerId = await resolveExistingCustomerId(subscription?.stripeCustomerId || undefined)
@@ -128,14 +131,14 @@ export async function POST(request: NextRequest) {
       }
 
       if (!customerId) {
-        customerId = await findCustomerIdByEmail(authSession.user.email || subscription?.email)
+        customerId = await findCustomerIdByEmail(browserUser?.email || subscription?.email)
       }
 
       if (customerId && !subscription?.stripeCustomerId) {
         await convex.mutation('subscriptions:upsertSubscription', {
           serverSecret: getInternalApiSecret(),
           userId,
-          email: authSession.user.email,
+          email: browserUser?.email || subscription?.email,
           stripeCustomerId: customerId,
           stripeSubscriptionId: subscriptionId,
           tier: subscription?.tier,

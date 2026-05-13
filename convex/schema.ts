@@ -9,6 +9,16 @@ export default defineSchema({
     darkThemePreset: v.optional(v.string()),
     useSecondarySidebar: v.boolean(),
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
+    autoContinue: v.optional(v.boolean()),
+    defaultChatMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
+    defaultAskModelIds: v.optional(v.array(v.string())),
+    defaultActModelId: v.optional(v.string()),
+    defaultImageModelId: v.optional(v.string()),
+    defaultVideoModelId: v.optional(v.string()),
+    defaultImageAspectRatio: v.optional(v.string()),
+    defaultVideoAspectRatio: v.optional(v.string()),
+    sendWithEnter: v.optional(v.boolean()),
+    attachFilesToKnowledgeByDefault: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),
@@ -316,6 +326,7 @@ export default defineSchema({
   })
     .index('by_userId', ['userId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
+    .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
     .index('by_projectId', ['projectId']),
 

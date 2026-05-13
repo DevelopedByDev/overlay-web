@@ -83,6 +83,7 @@ export async function GET(request: NextRequest) {
         canUseKnowledge: true,
         canUseProjects: true,
         canUseExtensions: true,
+        canUseAutomations: true,
       },
       destinations: [...CANONICAL_APP_DESTINATIONS],
       defaults: {

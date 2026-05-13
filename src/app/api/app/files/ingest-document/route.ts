@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import mammoth from 'mammoth'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 import { hashTextContent, partedFileName, splitTextForConvexDocuments } from '@/lib/convex-file-content'
 import { keyForFile, uploadBuffer } from '@/lib/r2'
@@ -95,8 +95,8 @@ async function extractTextFromBuffer(buf: Buffer, file: File, ext: string): Prom
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await resolveAuthenticatedAppUser(request, {})
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     let form: FormData
     try {
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
     }
 
     const uploadKeyId = randomUUID()
-    const r2Key = keyForFile(session.user.id, uploadKeyId, safeName)
+    const r2Key = keyForFile(auth.userId, uploadKeyId, safeName)
     const mimeType = raw.type?.trim() || 'application/octet-stream'
     await uploadBuffer(r2Key, buf, mimeType)
 
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
         const created = await convex.mutation<Id<'files'>>(
           'files:create',
           {
-            userId: session.user.id,
+            userId: auth.userId,
             serverSecret,
             name: partName,
             type: 'file',

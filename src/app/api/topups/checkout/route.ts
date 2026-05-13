@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { stripe, getBaseUrl } from '@/lib/stripe'
 import { getTopUpPriceId, getTopUpQuantityForCheckout, isRecognizedTopUpAmount } from '@/lib/stripe-billing'
 import { clampTopUpAmountCents, formatDollarAmount } from '@/lib/billing-pricing'
@@ -23,26 +24,29 @@ function resolveReturnUrl(baseUrl: string, returnPath: unknown, state: 'success'
 
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json()
     const session = await getSession()
-    if (!session?.user) {
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    const userId = auth?.userId
+    if (!userId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
+    const userEmail = session?.user?.id === userId ? session.user.email : undefined
 
     const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'billing:topup:ip', key: getClientIp(request), limit: 10, windowMs: 10 * 60_000 },
-      { bucket: 'billing:topup:user', key: session.user.id, limit: 5, windowMs: 10 * 60_000 },
+      { bucket: 'billing:topup:user', key: userId, limit: 5, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
 
     const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('usage:getEntitlementsByServer', {
       serverSecret: getInternalApiSecret(),
-      userId: session.user.id,
+      userId,
     })
     if (entitlements?.planKind !== 'paid') {
       return NextResponse.json({ error: 'Top-ups require an active paid plan.' }, { status: 403 })
     }
 
-    const body = await request.json()
     const requestedAmountCents = Number(body.amountCents)
     const autoTopUpEnabled = Boolean(body.autoTopUpEnabled)
     if (!isRecognizedTopUpAmount(requestedAmountCents)) {
@@ -63,10 +67,10 @@ export async function POST(request: NextRequest) {
       line_items: [{ price: priceId, quantity }],
       success_url: resolveReturnUrl(baseUrl, body.returnPath, 'success'),
       cancel_url: resolveReturnUrl(baseUrl, body.returnPath, 'canceled'),
-      customer_email: session.user.email,
+      ...(userEmail ? { customer_email: userEmail } : {}),
       metadata: {
         kind: 'budget_topup',
-        userId: session.user.id,
+        userId,
         amountCents: String(amountCents),
         stripeQuantity: String(quantity),
         autoTopUpEnabled: String(autoTopUpEnabled),
@@ -74,7 +78,7 @@ export async function POST(request: NextRequest) {
       payment_intent_data: {
         metadata: {
           kind: 'budget_topup',
-          userId: session.user.id,
+          userId,
           amountCents: String(amountCents),
           stripeQuantity: String(quantity),
           autoTopUpEnabled: String(autoTopUpEnabled),
@@ -83,7 +87,7 @@ export async function POST(request: NextRequest) {
       allow_promotion_codes: false,
     })
 
-    console.log(`[TopUp Checkout] Created manual top-up checkout for ${session.user.id}: ${formatDollarAmount(amountCents)}`)
+    console.log(`[TopUp Checkout] Created manual top-up checkout for ${userId}: ${formatDollarAmount(amountCents)}`)
     return NextResponse.json({ url: checkoutSession.url })
   } catch (error) {
     console.error('[TopUp Checkout] Error:', error)

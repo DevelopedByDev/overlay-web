@@ -1,11 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 
-export async function GET() {
-  const session = await getSession()
-  if (!session?.user) {
+export async function GET(request: NextRequest) {
+  const auth = await resolveAuthenticatedAppUser(request, {})
+  if (!auth) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
 
@@ -23,7 +23,7 @@ export async function GET() {
     'subscriptions:listBudgetTopUpsByServer',
     {
       serverSecret: getInternalApiSecret(),
-      userId: session.user.id,
+      userId: auth.userId,
     },
     { throwOnError: true },
   )

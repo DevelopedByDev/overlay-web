@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { stripe } from '@/lib/stripe'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
@@ -46,18 +46,19 @@ async function resolveCheckoutSession(sessionId: string, userId: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session?.user) {
+    const body = await request.json()
+    const auth = await resolveAuthenticatedAppUser(request, body)
+    const userId = auth?.userId
+    if (!userId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
     const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'billing:topup-verify:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
-      { bucket: 'billing:topup-verify:user', key: session.user.id, limit: 10, windowMs: 10 * 60_000 },
+      { bucket: 'billing:topup-verify:user', key: userId, limit: 10, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
 
-    const body = await request.json()
     const sessionId = String(body.sessionId ?? '').trim()
     if (!sessionId) {
       return NextResponse.json({ error: 'Session ID required' }, { status: 400 })
@@ -70,8 +71,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid session ID' }, { status: 400 })
     }
 
-    const checkoutSession = await resolveCheckoutSession(sessionId, session.user.id)
-    if (checkoutSession.metadata?.userId !== session.user.id) {
+    const checkoutSession = await resolveCheckoutSession(sessionId, userId)
+    if (checkoutSession.metadata?.userId !== userId) {
       return NextResponse.json({ error: 'Session mismatch' }, { status: 403 })
     }
     if (checkoutSession.metadata?.kind !== 'budget_topup') {
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
     const autoTopUpEnabled = checkoutSession.metadata?.autoTopUpEnabled === 'true'
     await convex.mutation('subscriptions:recordBudgetTopUpByServer', {
       serverSecret: getInternalApiSecret(),
-      userId: session.user.id,
+      userId,
       amountCents,
       source: 'manual',
       stripeCustomerId: typeof checkoutSession.customer === 'string' ? checkoutSession.customer : undefined,
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
     })
     await convex.mutation('subscriptions:updateBillingPreferencesByServer', {
       serverSecret: getInternalApiSecret(),
-      userId: session.user.id,
+      userId,
       autoTopUpEnabled,
       topUpAmountCents: amountCents,
       grantOffSessionConsent: autoTopUpEnabled,

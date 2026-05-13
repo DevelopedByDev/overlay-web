@@ -1,7 +1,8 @@
 import { v } from 'convex/values'
-import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server'
+import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import type { Doc, Id } from './_generated/dataModel'
+import { derivePlanKind } from '../src/lib/billing-pricing'
 
 const automationSchedule = v.object({
   kind: v.union(
@@ -37,16 +38,24 @@ function clampInteger(value: number, min: number, max: number, fallback: number)
 }
 
 type AutomationSchedule = NonNullable<Doc<'automations'>['schedule']>
+type AutomationPolicyCtx = MutationCtx | QueryCtx
 
 const DEFAULT_SCHEDULE: AutomationSchedule = { kind: 'daily', hourUTC: 14, minuteUTC: 0 }
+const MIN_INTERVAL_MINUTES = 15
+const MAX_ENABLED_AUTOMATIONS = 25
 const STALE_AUTOMATION_RUN_MS = 15 * 60_000
+const AUTOMATION_POLICY_ERRORS = {
+  intervalTooFrequent: 'automation_interval_too_frequent',
+  paidPlanRequired: 'automation_paid_plan_required',
+  enabledLimitReached: 'automation_enabled_limit_reached',
+} as const
 
 function normalizeSchedule(schedule: AutomationSchedule): AutomationSchedule {
   switch (schedule.kind) {
     case 'interval':
       return {
         kind: 'interval',
-        intervalMinutes: clampInteger(schedule.intervalMinutes ?? 60, 1, 60 * 24 * 365, 60),
+        intervalMinutes: clampInteger(schedule.intervalMinutes ?? 60, MIN_INTERVAL_MINUTES, 60 * 24 * 365, 60),
       }
     case 'daily':
       return {
@@ -69,6 +78,74 @@ function normalizeSchedule(schedule: AutomationSchedule): AutomationSchedule {
         minuteUTC: clampInteger(schedule.minuteUTC ?? 0, 0, 59, 0),
       }
   }
+}
+
+function assertSchedulePolicy(schedule: AutomationSchedule): void {
+  if (schedule.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES) {
+    throw new Error(`${AUTOMATION_POLICY_ERRORS.intervalTooFrequent}:${MIN_INTERVAL_MINUTES}`)
+  }
+}
+
+async function getUserPlanKind(ctx: AutomationPolicyCtx, userId: string) {
+  const subscription = await ctx.db
+    .query('subscriptions')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .first()
+  return derivePlanKind(subscription ?? {})
+}
+
+async function countEnabledAutomations(
+  ctx: AutomationPolicyCtx,
+  userId: string,
+  excludeAutomationId?: Id<'automations'>,
+): Promise<number> {
+  const rows = await ctx.db
+    .query('automations')
+    .withIndex('by_userId_enabled', (q) => q.eq('userId', userId).eq('enabled', true))
+    .collect()
+  return rows.filter((row) => (
+    !row.deletedAt &&
+    row._id !== excludeAutomationId
+  )).length
+}
+
+async function enforceAutomationPolicy(
+  ctx: AutomationPolicyCtx,
+  params: {
+    userId: string
+    enabled: boolean
+    schedule: AutomationSchedule
+    automationId?: Id<'automations'>
+  },
+): Promise<void> {
+  assertSchedulePolicy(params.schedule)
+  if (!params.enabled) return
+
+  if (await getUserPlanKind(ctx, params.userId) !== 'paid') {
+    throw new Error(AUTOMATION_POLICY_ERRORS.paidPlanRequired)
+  }
+
+  const enabledCount = await countEnabledAutomations(ctx, params.userId, params.automationId)
+  if (enabledCount >= MAX_ENABLED_AUTOMATIONS) {
+    throw new Error(`${AUTOMATION_POLICY_ERRORS.enabledLimitReached}:${MAX_ENABLED_AUTOMATIONS}`)
+  }
+}
+
+async function getAutomationRunPolicyViolation(
+  ctx: MutationCtx,
+  automation: Doc<'automations'>,
+): Promise<string | null> {
+  const schedule = automation.schedule ?? DEFAULT_SCHEDULE
+  if (schedule.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES) {
+    return `Automation paused because interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.`
+  }
+  if (await getUserPlanKind(ctx, automation.userId) !== 'paid') {
+    return 'Automation paused because enabled automations require a paid plan.'
+  }
+  if (await countEnabledAutomations(ctx, automation.userId) > MAX_ENABLED_AUTOMATIONS) {
+    return `Automation paused because the account exceeds the ${MAX_ENABLED_AUTOMATIONS} enabled automation limit.`
+  }
+  return null
 }
 
 function daysInUtcMonth(year: number, month: number): number {
@@ -235,8 +312,13 @@ export const create = mutation({
       }
     }
     const now = Date.now()
-    const schedule = normalizeSchedule(args.schedule)
     const enabled = args.enabled ?? true
+    await enforceAutomationPolicy(ctx, {
+      userId: args.userId,
+      enabled,
+      schedule: args.schedule,
+    })
+    const schedule = normalizeSchedule(args.schedule)
     return await ctx.db.insert('automations', {
       userId: args.userId,
       name: args.name.trim() || 'Untitled automation',
@@ -285,6 +367,16 @@ export const update = mutation({
 
     const now = Date.now()
     const patch: Partial<Doc<'automations'>> = { updatedAt: now }
+    const nextEnabled = (updates.enabled ?? automation.enabled) !== false
+    const nextSchedule = updates.schedule ?? automation.schedule ?? DEFAULT_SCHEDULE
+    if (updates.schedule !== undefined || nextEnabled) {
+      await enforceAutomationPolicy(ctx, {
+        userId,
+        enabled: nextEnabled,
+        schedule: nextSchedule,
+        automationId,
+      })
+    }
     if (updates.name !== undefined) patch.name = updates.name.trim() || automation.name
     if (updates.description !== undefined) patch.description = updates.description.trim()
     if (updates.instructions !== undefined) patch.instructions = updates.instructions.trim()
@@ -296,7 +388,7 @@ export const update = mutation({
     if (updates.schedule !== undefined) {
       const schedule = normalizeSchedule(updates.schedule)
       patch.schedule = schedule
-      patch.nextRunAt = (updates.enabled ?? automation.enabled) ? computeNextRunAt(schedule, now) : undefined
+      patch.nextRunAt = nextEnabled ? computeNextRunAt(schedule, now) : undefined
     }
     if (updates.enabled !== undefined) {
       patch.enabled = updates.enabled
@@ -349,6 +441,12 @@ export const resume = mutation({
       throw new Error('Unauthorized')
     }
     const now = Date.now()
+    await enforceAutomationPolicy(ctx, {
+      userId: args.userId,
+      enabled: true,
+      schedule: automation.schedule ?? DEFAULT_SCHEDULE,
+      automationId: args.automationId,
+    })
     await ctx.db.patch(args.automationId, {
       enabled: true,
       nextRunAt: computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, now),
@@ -571,8 +669,18 @@ export const claimDueRuns = internalMutation({
     for (const automation of due) {
       if (automation.deletedAt || automation.nextRunAt === undefined) continue
       const scheduledFor = automation.nextRunAt
-      const nextRunAt = computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, Math.max(args.now, scheduledFor))
       const now = Date.now()
+      const policyViolation = await getAutomationRunPolicyViolation(ctx, automation)
+      if (policyViolation) {
+        await ctx.db.patch(automation._id, {
+          enabled: false,
+          nextRunAt: undefined,
+          lastError: policyViolation,
+          updatedAt: now,
+        })
+        continue
+      }
+      const nextRunAt = computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, Math.max(args.now, scheduledFor))
 
       if ((automation.concurrencyPolicy ?? 'skip') === 'skip' && await hasQueuedOrRunningRun(ctx, automation._id, now)) {
         await ctx.db.insert('automationRuns', {

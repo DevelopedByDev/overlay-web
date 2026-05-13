@@ -3,14 +3,29 @@ import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/s
 import { requireServerSecret } from './lib/auth'
 
 const themeValidator = v.union(v.literal('light'), v.literal('dark'))
+const chatModeValidator = v.union(v.literal('ask'), v.literal('act'))
 const chatStreamingModeValidator = v.literal('token')
 const themePresetValidator = v.optional(v.string())
+const MAX_MODEL_ID_LENGTH = 160
+const MAX_ASK_MODEL_IDS = 4
+const MODEL_ID_PATTERN = /^[A-Za-z0-9._~:/@+-]+$/
+const ASPECT_RATIO_PATTERN = /^\d{1,2}:\d{1,2}$/
 const uiSettingsValidator = v.object({
   theme: themeValidator,
   lightThemePreset: v.optional(v.string()),
   darkThemePreset: v.optional(v.string()),
   useSecondarySidebar: v.boolean(),
   chatStreamingMode: chatStreamingModeValidator,
+  autoContinue: v.boolean(),
+  defaultChatMode: chatModeValidator,
+  defaultAskModelIds: v.array(v.string()),
+  defaultActModelId: v.optional(v.string()),
+  defaultImageModelId: v.optional(v.string()),
+  defaultVideoModelId: v.optional(v.string()),
+  defaultImageAspectRatio: v.optional(v.string()),
+  defaultVideoAspectRatio: v.optional(v.string()),
+  sendWithEnter: v.boolean(),
+  attachFilesToKnowledgeByDefault: v.boolean(),
 })
 
 function defaultUiSettings() {
@@ -20,7 +35,36 @@ function defaultUiSettings() {
     darkThemePreset: 'default-dark' as const,
     useSecondarySidebar: false,
     chatStreamingMode: 'token' as const,
+    autoContinue: false,
+    defaultChatMode: 'act' as const,
+    defaultAskModelIds: [] as string[],
+    sendWithEnter: true,
+    attachFilesToKnowledgeByDefault: false,
   }
+}
+
+function safeModelId(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  if (!trimmed) return undefined
+  if (trimmed.length > MAX_MODEL_ID_LENGTH) return undefined
+  if (!MODEL_ID_PATTERN.test(trimmed)) return undefined
+  return trimmed
+}
+
+function safeModelIds(values: string[] | undefined): string[] | undefined {
+  if (!values) return undefined
+  const next = values
+    .map(safeModelId)
+    .filter((value): value is string => Boolean(value))
+    .slice(0, MAX_ASK_MODEL_IDS)
+  return Array.from(new Set(next))
+}
+
+function safeAspectRatio(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  if (!trimmed) return undefined
+  if (!ASPECT_RATIO_PATTERN.test(trimmed)) return undefined
+  return trimmed
 }
 
 async function getExistingSettings(
@@ -43,7 +87,7 @@ export const getByServer = query({
     requireServerSecret(args.serverSecret)
     const existing = await getExistingSettings(ctx, args.userId)
     if (!existing) return defaultUiSettings()
-    return {
+    const settings = {
       theme: existing.theme,
       lightThemePreset: existing.lightThemePreset ?? 'default-light',
       darkThemePreset: existing.darkThemePreset ?? 'default-dark',
@@ -51,6 +95,19 @@ export const getByServer = query({
       // Legacy rows may still store 'chunk'; always expose token-only to clients.
       chatStreamingMode:
         existing.chatStreamingMode === 'chunk' ? 'token' : (existing.chatStreamingMode ?? 'token'),
+      autoContinue: existing.autoContinue ?? false,
+      defaultChatMode: existing.defaultChatMode ?? 'act',
+      defaultAskModelIds: safeModelIds(existing.defaultAskModelIds) ?? [],
+      sendWithEnter: existing.sendWithEnter ?? true,
+      attachFilesToKnowledgeByDefault: existing.attachFilesToKnowledgeByDefault ?? false,
+    }
+    return {
+      ...settings,
+      ...(safeModelId(existing.defaultActModelId) ? { defaultActModelId: safeModelId(existing.defaultActModelId) } : {}),
+      ...(safeModelId(existing.defaultImageModelId) ? { defaultImageModelId: safeModelId(existing.defaultImageModelId) } : {}),
+      ...(safeModelId(existing.defaultVideoModelId) ? { defaultVideoModelId: safeModelId(existing.defaultVideoModelId) } : {}),
+      ...(safeAspectRatio(existing.defaultImageAspectRatio) ? { defaultImageAspectRatio: safeAspectRatio(existing.defaultImageAspectRatio) } : {}),
+      ...(safeAspectRatio(existing.defaultVideoAspectRatio) ? { defaultVideoAspectRatio: safeAspectRatio(existing.defaultVideoAspectRatio) } : {}),
     }
   },
 })
@@ -65,6 +122,16 @@ export const upsertByServer = mutation({
     useSecondarySidebar: v.optional(v.boolean()),
     /** Ignored if sent; persisted value is always `token`. */
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
+    autoContinue: v.optional(v.boolean()),
+    defaultChatMode: v.optional(chatModeValidator),
+    defaultAskModelIds: v.optional(v.array(v.string())),
+    defaultActModelId: v.optional(v.string()),
+    defaultImageModelId: v.optional(v.string()),
+    defaultVideoModelId: v.optional(v.string()),
+    defaultImageAspectRatio: v.optional(v.string()),
+    defaultVideoAspectRatio: v.optional(v.string()),
+    sendWithEnter: v.optional(v.boolean()),
+    attachFilesToKnowledgeByDefault: v.optional(v.boolean()),
   },
   returns: uiSettingsValidator,
   handler: async (ctx, args) => {
@@ -77,22 +144,48 @@ export const upsertByServer = mutation({
       darkThemePreset: args.darkThemePreset ?? existing?.darkThemePreset ?? 'default-dark' as const,
       useSecondarySidebar: args.useSecondarySidebar ?? existing?.useSecondarySidebar ?? false,
       chatStreamingMode: 'token' as const,
+      autoContinue: args.autoContinue ?? existing?.autoContinue ?? false,
+      defaultChatMode: args.defaultChatMode ?? existing?.defaultChatMode ?? 'act' as const,
+      defaultAskModelIds:
+        safeModelIds(args.defaultAskModelIds) ?? safeModelIds(existing?.defaultAskModelIds) ?? [],
+      sendWithEnter: args.sendWithEnter ?? existing?.sendWithEnter ?? true,
+      attachFilesToKnowledgeByDefault:
+        args.attachFilesToKnowledgeByDefault ?? existing?.attachFilesToKnowledgeByDefault ?? false,
+    }
+    const optionalNext = {
+      ...(safeModelId(args.defaultActModelId) ?? safeModelId(existing?.defaultActModelId)
+        ? { defaultActModelId: safeModelId(args.defaultActModelId) ?? safeModelId(existing?.defaultActModelId) }
+        : {}),
+      ...(safeModelId(args.defaultImageModelId) ?? safeModelId(existing?.defaultImageModelId)
+        ? { defaultImageModelId: safeModelId(args.defaultImageModelId) ?? safeModelId(existing?.defaultImageModelId) }
+        : {}),
+      ...(safeModelId(args.defaultVideoModelId) ?? safeModelId(existing?.defaultVideoModelId)
+        ? { defaultVideoModelId: safeModelId(args.defaultVideoModelId) ?? safeModelId(existing?.defaultVideoModelId) }
+        : {}),
+      ...(safeAspectRatio(args.defaultImageAspectRatio) ?? safeAspectRatio(existing?.defaultImageAspectRatio)
+        ? { defaultImageAspectRatio: safeAspectRatio(args.defaultImageAspectRatio) ?? safeAspectRatio(existing?.defaultImageAspectRatio) }
+        : {}),
+      ...(safeAspectRatio(args.defaultVideoAspectRatio) ?? safeAspectRatio(existing?.defaultVideoAspectRatio)
+        ? { defaultVideoAspectRatio: safeAspectRatio(args.defaultVideoAspectRatio) ?? safeAspectRatio(existing?.defaultVideoAspectRatio) }
+        : {}),
     }
 
     if (existing) {
       await ctx.db.patch(existing._id, {
         ...next,
+        ...optionalNext,
         updatedAt: now,
       })
     } else {
       await ctx.db.insert('userUiSettings', {
         userId: args.userId,
         ...next,
+        ...optionalNext,
         createdAt: now,
         updatedAt: now,
       })
     }
 
-    return next
+    return { ...next, ...optionalNext }
   },
 })

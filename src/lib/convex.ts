@@ -1,5 +1,5 @@
-// Simple Convex HTTP client for the landing page
-// Uses direct HTTP calls since this is a separate project from the Electron app
+// Simple server-side Convex HTTP client for the landing page.
+// Browser code must use ConvexReactClient or typed Next API routes.
 
 // Use dev Convex URL in development, production URL in production
 const IS_DEV = process.env.NODE_ENV === 'development'
@@ -82,9 +82,18 @@ async function callConvex<T>(
     return null
   }
 
-  const endpoint = IS_BROWSER
-    ? `/api/convex/${type}`
-    : `${CONVEX_URL}/api/${type}`
+  if (IS_BROWSER) {
+    const message = 'Browser Convex HTTP proxying is disabled; use ConvexReactClient or a typed API route.'
+    if (options.throwOnError) {
+      throw new Error(message)
+    }
+    if (!shouldSuppressConvexError(options, message)) {
+      console.error(message)
+    }
+    return null
+  }
+
+  const endpoint = `${CONVEX_URL}/api/${type}`
 
   try {
     const controller = new AbortController()

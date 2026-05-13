@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { FileText, Music, FileQuestion, Download, Loader2, Table, FileType } from 'lucide-react'
+import { FileText, Music, FileQuestion, Download, Loader2, FileType } from 'lucide-react'
 import { safeHttpUrl } from '@/lib/safe-url'
 
 // ─── Type detection ───────────────────────────────────────────────────────────
@@ -11,7 +11,7 @@ import { safeHttpUrl } from '@/lib/safe-url'
 export type FileViewerType =
   | 'text' | 'markdown' | 'csv'
   | 'image' | 'audio' | 'video' | 'pdf'
-  | 'spreadsheet' | 'document'
+  | 'document'
   | 'binary'
 
 export function getFileType(filename: string): FileViewerType {
@@ -23,7 +23,6 @@ export function getFileType(filename: string): FileViewerType {
   if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'].includes(ext)) return 'audio'
   if (['mp4', 'mov', 'mkv', 'webm', 'avi', 'ogv', 'm4v'].includes(ext)) return 'video'
   if (['pdf'].includes(ext)) return 'pdf'
-  if (['xlsx', 'xls'].includes(ext)) return 'spreadsheet'
   if (['docx', 'doc'].includes(ext)) return 'document'
   return 'binary'
 }
@@ -103,128 +102,6 @@ const proseMarkdown =
   'prose prose-sm max-w-2xl text-[var(--foreground)] prose-headings:font-semibold prose-headings:text-[var(--foreground)] prose-p:text-[var(--foreground)] prose-li:text-[var(--foreground)] prose-strong:text-[var(--foreground)] prose-a:text-blue-600 dark:prose-a:text-sky-400 prose-code:rounded prose-code:bg-[var(--surface-subtle)] prose-code:px-1 prose-code:text-[var(--foreground)] prose-pre:bg-[var(--surface-subtle)] prose-pre:text-[var(--foreground)] prose-blockquote:border-[var(--border)] prose-blockquote:text-[var(--muted)]'
 
 // ─── Async binary viewers ─────────────────────────────────────────────────────
-
-function SpreadsheetViewer({ url }: { url: string }) {
-  const [sheets, setSheets] = useState<{ name: string; rows: string[][] }[]>([])
-  const [active, setActive] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetch(url)
-      .then((r) => {
-        if (!r.ok) throw new Error(`Failed to load (${r.status})`)
-        return r.arrayBuffer()
-      })
-      .then(async (buf) => {
-        const XLSX = await import('xlsx')
-        const workbook = XLSX.read(buf, { type: 'array' })
-        const parsed = workbook.SheetNames.map((sheetName) => {
-          const sheet = workbook.Sheets[sheetName]
-          const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as string[][]
-          return { name: sheetName, rows: json }
-        })
-        if (!cancelled) {
-          setSheets(parsed)
-          setActive(0)
-          setLoading(false)
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e))
-          setLoading(false)
-        }
-      })
-    return () => { cancelled = true }
-  }, [url])
-
-  if (loading) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
-        <Loader2 size={24} className="animate-spin" />
-        <p className="text-xs">Loading spreadsheet…</p>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
-        <Table size={28} />
-        <p className="text-sm font-medium text-[var(--foreground)]">Could not load spreadsheet</p>
-        <p className="text-xs text-red-500">{error}</p>
-      </div>
-    )
-  }
-
-  const current = sheets[active]
-  if (!current || current.rows.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8 text-[var(--muted)]">
-        <p className="text-sm">Empty spreadsheet</p>
-      </div>
-    )
-  }
-
-  const headers = current.rows[0] ?? []
-  const body = current.rows.slice(1)
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {sheets.length > 1 && (
-        <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--border)] px-4 py-2">
-          {sheets.map((s, i) => (
-            <button
-              key={s.name}
-              onClick={() => setActive(i)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                i === active
-                  ? 'bg-[var(--foreground)] text-[var(--background)]'
-                  : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)]'
-              }`}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="flex-1 overflow-auto px-4 py-4">
-        <table className="border-collapse text-xs">
-          <thead>
-            <tr>
-              {headers.map((h, i) => (
-                <th
-                  key={i}
-                  className="whitespace-nowrap border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-left font-medium text-[var(--foreground)]"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {body.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? '' : 'bg-[var(--surface-subtle)]/50'}>
-                {row.map((cell, j) => (
-                  <td
-                    key={j}
-                    className="max-w-xs whitespace-pre-wrap break-words border border-[var(--border)] px-3 py-1.5 align-top text-[var(--muted)]"
-                  >
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
 
 function DocumentViewer({ url }: { url: string }) {
   const [html, setHtml] = useState<string | null>(null)
@@ -408,10 +285,6 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
         </pre>
       </div>
     )
-  }
-
-  if (type === 'spreadsheet' && url) {
-    return <SpreadsheetViewer url={url} />
   }
 
   if (type === 'document' && url) {

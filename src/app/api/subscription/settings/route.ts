@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getDynamicTopUpConfig, isRecognizedTopUpAmount } from '@/lib/stripe-billing'
@@ -16,9 +16,13 @@ type BillingSettingsResponse = {
   topUpStepAmountCents: number
 }
 
-export async function GET() {
-  const session = await getSession()
-  if (!session?.user) {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+export async function GET(request: NextRequest) {
+  const auth = await resolveAuthenticatedAppUser(request, {})
+  if (!auth) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
 
@@ -30,7 +34,7 @@ export async function GET() {
     offSessionConsentAt?: number
   } | null>('subscriptions:getByUserIdByServer', {
     serverSecret: getInternalApiSecret(),
-    userId: session.user.id,
+    userId: auth.userId,
   })
 
   const topUpConfig = getDynamicTopUpConfig()
@@ -48,32 +52,52 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session?.user) {
+  const body = await request.json().catch(() => null)
+  if (!isPlainObject(body)) {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+  const auth = await resolveAuthenticatedAppUser(request, body)
+  if (!auth) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
 
-  const body = await request.json()
-  const autoTopUpEnabled = Boolean(body.autoTopUpEnabled)
+  if (typeof body.autoTopUpEnabled !== 'boolean') {
+    return NextResponse.json({ error: 'Invalid autoTopUpEnabled' }, { status: 400 })
+  }
+  if (body.grantOffSessionConsent !== undefined && typeof body.grantOffSessionConsent !== 'boolean') {
+    return NextResponse.json({ error: 'Invalid grantOffSessionConsent' }, { status: 400 })
+  }
+
+  const autoTopUpEnabled = body.autoTopUpEnabled
   const providedTopUpAmountCents = body.topUpAmountCents ?? body.autoTopUpAmountCents
-  const grantOffSessionConsent = Boolean(body.grantOffSessionConsent)
+  if (providedTopUpAmountCents !== undefined && typeof providedTopUpAmountCents !== 'number') {
+    return NextResponse.json({ error: 'Invalid topUpAmountCents' }, { status: 400 })
+  }
+  const grantOffSessionConsent = body.grantOffSessionConsent === true
 
   const subscription = await convex.query<{
     tier?: 'free' | 'pro' | 'max'
     planKind?: 'free' | 'paid'
     autoTopUpAmountCents?: number
+    offSessionConsentAt?: number
   } | null>('subscriptions:getByUserIdByServer', {
     serverSecret: getInternalApiSecret(),
-    userId: session.user.id,
+    userId: auth.userId,
   })
 
   if (derivePlanKind(subscription ?? {}) !== 'paid') {
     return NextResponse.json({ error: 'Auto top-up is available only on paid plans' }, { status: 403 })
   }
+  if (autoTopUpEnabled && !grantOffSessionConsent && !subscription?.offSessionConsentAt) {
+    return NextResponse.json({ error: 'Off-session consent is required to enable auto top-up' }, { status: 400 })
+  }
 
   const topUpAmountCents = Math.round(
     Number(providedTopUpAmountCents ?? subscription?.autoTopUpAmountCents ?? TOP_UP_MIN_AMOUNT_CENTS),
   )
+  if (!Number.isFinite(topUpAmountCents)) {
+    return NextResponse.json({ error: 'Invalid top-up amount' }, { status: 400 })
+  }
 
   if (!isRecognizedTopUpAmount(topUpAmountCents)) {
     return NextResponse.json({ error: 'Unsupported top-up amount' }, { status: 400 })
@@ -83,7 +107,7 @@ export async function POST(request: NextRequest) {
     'subscriptions:updateBillingPreferencesByServer',
     {
       serverSecret: getInternalApiSecret(),
-      userId: session.user.id,
+      userId: auth.userId,
       autoTopUpEnabled,
       topUpAmountCents,
       grantOffSessionConsent,

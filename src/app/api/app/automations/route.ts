@@ -33,6 +33,20 @@ function scheduleTooFrequent(schedule: AutomationSchedule | undefined): boolean 
   return schedule?.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES
 }
 
+function automationPolicyErrorResponse(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  if (message.includes('automation_interval_too_frequent')) {
+    return NextResponse.json({ error: `Interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.` }, { status: 400 })
+  }
+  if (message.includes('automation_paid_plan_required')) {
+    return NextResponse.json({ error: 'Enabled automations require a paid plan.' }, { status: 403 })
+  }
+  if (message.includes('automation_enabled_limit_reached')) {
+    return NextResponse.json({ error: `You can enable up to ${MAX_ENABLED_AUTOMATIONS} automations.` }, { status: 403 })
+  }
+  return null
+}
+
 function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
   if (!schedule) return ''
   if (schedule.kind === 'interval') return `interval:${schedule.intervalMinutes ?? ''}`
@@ -273,6 +287,8 @@ export async function POST(request: NextRequest) {
     if (!id) throw new Error('Automation create returned no id')
     return NextResponse.json({ success: true, id })
   } catch (error) {
+    const policyResponse = automationPolicyErrorResponse(error)
+    if (policyResponse) return policyResponse
     console.error('[automations POST]', error)
     return NextResponse.json({ error: 'Failed to create automation' }, { status: 500 })
   }
@@ -369,6 +385,8 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    const policyResponse = automationPolicyErrorResponse(error)
+    if (policyResponse) return policyResponse
     console.error('[automations PATCH]', error)
     return NextResponse.json({ error: 'Failed to update automation' }, { status: 500 })
   }

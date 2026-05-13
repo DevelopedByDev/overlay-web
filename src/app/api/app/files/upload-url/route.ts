@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
 import { generatePresignedUploadUrl, keyForFile } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
@@ -14,14 +14,15 @@ interface Entitlements {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { sizeBytes, name, mimeType } = await request.json().catch(() => ({})) as {
+    const { sizeBytes, name, mimeType, accessToken, userId: requestUserId } = await request.json().catch(() => ({})) as {
       sizeBytes?: number
       name?: string
       mimeType?: string
+      accessToken?: string
+      userId?: string
     }
+    const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId: requestUserId })
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const normalizedSizeBytes =
       typeof sizeBytes === 'number' && Number.isFinite(sizeBytes) && sizeBytes > 0
         ? Math.round(sizeBytes)
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'sizeBytes is required' }, { status: 400 })
     }
 
-    const userId = session.user.id
+    const userId = auth.userId
     const serverSecret = getInternalApiSecret()
 
     const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {

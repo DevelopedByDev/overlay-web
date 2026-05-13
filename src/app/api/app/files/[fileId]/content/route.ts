@@ -1,18 +1,18 @@
 import { NextRequest } from 'next/server'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { generatePresignedDownloadUrl } from '@/lib/r2'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/lib/storage-keys'
 
 export const runtime = 'nodejs'
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ fileId: string }> },
 ) {
-  const session = await getSession()
-  if (!session) {
+  const auth = await resolveAuthenticatedAppUser(request, {})
+  if (!auth) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -21,7 +21,7 @@ export async function GET(
     'files:getStorageUrlForProxy',
     {
       fileId,
-      userId: session.user.id,
+      userId: auth.userId,
       serverSecret: getInternalApiSecret(),
     },
     { throwOnError: true },
@@ -33,8 +33,8 @@ export async function GET(
 
   if (proxyTarget.r2Key) {
     if (
-      !isOwnedFileR2Key(session.user.id, proxyTarget.r2Key) &&
-      !isOwnedOutputR2Key(session.user.id, proxyTarget.r2Key)
+      !isOwnedFileR2Key(auth.userId, proxyTarget.r2Key) &&
+      !isOwnedOutputR2Key(auth.userId, proxyTarget.r2Key)
     ) {
       return Response.json({ error: 'Not found' }, { status: 404 })
     }

@@ -26,8 +26,26 @@ type AppSettingsContextValue = {
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
 const APP_SETTINGS_STORAGE_KEY = 'overlay.app.settings'
+const MAX_MODEL_ID_LENGTH = 160
+const MAX_ASK_MODEL_IDS = 4
+const MODEL_ID_PATTERN = /^[A-Za-z0-9._~:/@+-]+$/
+const ASPECT_RATIO_PATTERN = /^\d{1,2}:\d{1,2}$/
+
 function isValidPresetId(value: unknown): value is ThemePresetId {
   return isThemePresetId(value)
+}
+
+function isSafeModelId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= MAX_MODEL_ID_LENGTH &&
+    MODEL_ID_PATTERN.test(value)
+  )
+}
+
+function isSafeAspectRatio(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 5 && ASPECT_RATIO_PATTERN.test(value)
 }
 
 function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
@@ -45,13 +63,54 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     return false
   }
   if (candidate.autoContinue !== undefined && typeof candidate.autoContinue !== 'boolean') return false
+  if (
+    candidate.defaultChatMode !== undefined &&
+    candidate.defaultChatMode !== 'ask' &&
+    candidate.defaultChatMode !== 'act'
+  ) {
+    return false
+  }
+  if (
+    candidate.defaultAskModelIds !== undefined &&
+    (!Array.isArray(candidate.defaultAskModelIds) ||
+      candidate.defaultAskModelIds.length > MAX_ASK_MODEL_IDS ||
+      !candidate.defaultAskModelIds.every(isSafeModelId))
+  ) {
+    return false
+  }
+  for (const key of [
+    'defaultActModelId',
+    'defaultImageModelId',
+    'defaultVideoModelId',
+  ] as const) {
+    if (candidate[key] !== undefined && !isSafeModelId(candidate[key])) return false
+  }
+  for (const key of ['defaultImageAspectRatio', 'defaultVideoAspectRatio'] as const) {
+    if (candidate[key] !== undefined && !isSafeAspectRatio(candidate[key])) return false
+  }
+  if (candidate.sendWithEnter !== undefined && typeof candidate.sendWithEnter !== 'boolean') return false
+  if (
+    candidate.attachFilesToKnowledgeByDefault !== undefined &&
+    typeof candidate.attachFilesToKnowledgeByDefault !== 'boolean'
+  ) {
+    return false
+  }
   return (
     typeof candidate.theme === 'string' ||
     typeof candidate.lightThemePreset === 'string' ||
     typeof candidate.darkThemePreset === 'string' ||
     typeof candidate.useSecondarySidebar === 'boolean' ||
     typeof candidate.chatStreamingMode === 'string' ||
-    typeof candidate.autoContinue === 'boolean'
+    typeof candidate.autoContinue === 'boolean' ||
+    typeof candidate.defaultChatMode === 'string' ||
+    Array.isArray(candidate.defaultAskModelIds) ||
+    typeof candidate.defaultActModelId === 'string' ||
+    typeof candidate.defaultImageModelId === 'string' ||
+    typeof candidate.defaultVideoModelId === 'string' ||
+    typeof candidate.defaultImageAspectRatio === 'string' ||
+    typeof candidate.defaultVideoAspectRatio === 'string' ||
+    typeof candidate.sendWithEnter === 'boolean' ||
+    typeof candidate.attachFilesToKnowledgeByDefault === 'boolean'
   )
 }
 
