@@ -196,12 +196,24 @@ export async function getGatewayVideoModel(modelId: string, accessToken?: string
 
 /**
  * Model for the inner `generateText` pass that must call Gateway provider tools (Perplexity / Parallel).
- * Use the selected chat model so provider-tool behavior matches the user's active model choice.
+ * Prefer the selected chat model when it is known to be Gateway-native, but provider tools must
+ * run through Vercel AI Gateway. OpenRouter / NIM catalog ids are not Gateway model ids.
  */
 const DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID = 'deepseek/deepseek-v4-flash'
 
 export function resolveGatewayProviderToolProxyModelId(chatModelId?: string): string {
-  return chatModelId ?? DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID
+  if (!chatModelId) return DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID
+  const model = getModel(chatModelId)
+  if (!model) return DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID
+  if (
+    model.provider === 'openrouter' ||
+    model.provider === 'alibaba' ||
+    model.provider === 'zai' ||
+    model.provider === 'nvidia'
+  ) {
+    return DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID
+  }
+  return getGatewayModelId(chatModelId)
 }
 
 const PERPLEXITY_DEFAULTS = {
@@ -319,34 +331,61 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
 }): Promise<ReturnType<typeof generateText>> {
   const { toolName, tool, prompt, gw, innerProxyModelId, maxAttempts } = params
   let last: Awaited<ReturnType<typeof generateText>> | undefined
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    console.log(`[AI Gateway] ${toolName} inner generateText start (attempt ${attempt}/${maxAttempts})`, {
-      innerProxyModelId,
-    })
-    const tools: ToolSet =
-      toolName === 'perplexity_search'
-        ? { perplexity_search: tool }
-        : { parallel_search: tool }
-    last = await generateText({
-      model: gw(innerProxyModelId),
-      tools,
-      toolChoice: { type: 'tool', toolName },
-      prompt,
-      stopWhen: stepCountIs(2),
-    })
-    const hasResult = last.steps?.some((step) =>
-      step.toolResults?.some(
-        (tr) => tr.toolName === toolName && tr.type === 'tool-result',
-      ),
-    )
-    if (hasResult) return last
-    console.warn(`[AI Gateway] ${toolName} missing tool result, retrying`, {
-      attempt,
-      finishReason: last.finishReason,
-      stepCount: last.steps?.length,
-    })
+  const modelIds = [
+    innerProxyModelId,
+    ...(innerProxyModelId === DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID
+      ? []
+      : [DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID]),
+  ]
+  let lastError: unknown
+
+  for (const modelId of modelIds) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`[AI Gateway] ${toolName} inner generateText start (attempt ${attempt}/${maxAttempts})`, {
+        innerProxyModelId: modelId,
+      })
+      const tools: ToolSet =
+        toolName === 'perplexity_search'
+          ? { perplexity_search: tool }
+          : { parallel_search: tool }
+      try {
+        last = await generateText({
+          model: gw(modelId),
+          tools,
+          toolChoice: { type: 'tool', toolName },
+          prompt,
+          stopWhen: stepCountIs(2),
+        })
+      } catch (error) {
+        lastError = error
+        console.warn(`[AI Gateway] ${toolName} inner generateText failed`, {
+          innerProxyModelId: modelId,
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        break
+      }
+      const hasResult = last.steps?.some((step) =>
+        step.toolResults?.some(
+          (tr) => tr.toolName === toolName && tr.type === 'tool-result',
+        ),
+      )
+      if (hasResult) return last
+      console.warn(`[AI Gateway] ${toolName} missing tool result, retrying`, {
+        attempt,
+        finishReason: last.finishReason,
+        stepCount: last.steps?.length,
+      })
+    }
+    if (modelId !== DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID) {
+      console.warn(`[AI Gateway] ${toolName} falling back to Gateway proxy model`, {
+        from: modelId,
+        to: DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID,
+      })
+    }
   }
-  return last!
+  if (last) return last
+  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'AI Gateway tool model failed'))
 }
 
 function extractPerplexityOutputFromResult(

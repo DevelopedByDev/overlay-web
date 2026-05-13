@@ -444,7 +444,12 @@ export default function KnowledgeView({
     const res = await fetch('/api/app/files', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '' }),
+      body: JSON.stringify({
+        kind: 'note',
+        name: 'Untitled',
+        textContent: '',
+        parentId: activeFolder?._id ?? null,
+      }),
     })
     if (!res.ok) return
     const data = await res.json() as { id?: string; file?: unknown }

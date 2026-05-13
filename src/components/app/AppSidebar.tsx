@@ -390,10 +390,11 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
 
   async function handleCreateNote() {
     if (!user) { requireAuth('nav'); return }
+    const parentId = pathname.startsWith('/app/files') ? currentSearchParams.get('folder') : null
     const res = await fetch('/api/app/files', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '' }),
+      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '', parentId }),
     })
     if (!res.ok) return
     const data = await res.json() as { id?: string; file?: { _id: string; name?: string; content?: string; textContent?: string; createdAt?: number; updatedAt?: number } }
@@ -845,9 +846,9 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                     title={`${label} · Coming soon`}
                     className="flex w-full cursor-not-allowed items-center justify-between gap-2 px-3 py-2 text-xs text-[var(--muted-light)]"
                   >
-                    <span className="flex items-center gap-2">
-                      <Icon size={13} />
-                      {label}
+                    <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                      <Icon size={13} className="shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
                     </span>
                     <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[var(--muted-light)]">Soon</span>
                   </button>
@@ -972,9 +973,9 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                       title={`${label} · Coming soon`}
                       className="flex w-full cursor-not-allowed items-center justify-between gap-2 px-3 py-2.5 text-xs text-[var(--muted-light)]"
                     >
-                      <span className="flex items-center gap-2">
-                        <Icon size={13} />
-                        {label}
+                      <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                        <Icon size={13} className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{label}</span>
                       </span>
                       <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[var(--muted-light)]">Soon</span>
                     </button>

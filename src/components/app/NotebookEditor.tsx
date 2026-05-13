@@ -880,6 +880,7 @@ export default function NotebookEditor({
   useEffect(() => {
     if (!idParam) return
     const noteId = idParam
+    if (activeNote?._id === noteId) return
 
     if (!hideSidebar && notes.length > 0) {
       const existing = notes.find((note) => note._id === noteId)
@@ -1213,24 +1214,44 @@ export default function NotebookEditor({
     const newTitle = event.target.value
     setTitle(newTitle)
     titleRef.current = newTitle
-    if (activeNote) {
-      const updatedAt = Date.now()
-      isDirtyRef.current = true
-      pendingNoteIdRef.current = activeNote._id
-      pendingTitleRef.current = newTitle
-      pendingContentRef.current = editor?.getHTML() || ''
-      setIsDirty(true)
-      const note = {
-        ...activeNote,
-        title: newTitle.trim() || 'Untitled',
-        content: pendingContentRef.current,
-        updatedAt,
-      }
-      setActiveNote(note)
-      activeNoteRef.current = note
-      setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
-      window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
+  }
+
+  async function commitTitleChange() {
+    const current = activeNoteRef.current
+    if (!current) return
+    const nextTitle = titleRef.current.trim() || 'Untitled'
+    if (nextTitle !== titleRef.current) {
+      setTitle(nextTitle)
+      titleRef.current = nextTitle
     }
+    if (nextTitle === current.title) return
+
+    const content = editor?.getHTML() || current.content || ''
+    const note = {
+      ...current,
+      title: nextTitle,
+      content,
+      updatedAt: Date.now(),
+    }
+    setActiveNote(note)
+    activeNoteRef.current = note
+    setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
+    window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
+
+    isDirtyRef.current = true
+    pendingNoteIdRef.current = note._id
+    pendingTitleRef.current = nextTitle
+    pendingContentRef.current = content
+    setIsDirty(true)
+    await flushSaveRef.current()
+  }
+
+  function handleTitleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter' && event.key !== 'Tab') return
+    event.preventDefault()
+    void commitTitleChange().finally(() => {
+      editor?.chain().focus('start').run()
+    })
   }
 
   const floatingToolbarButtonClass =
@@ -1260,6 +1281,8 @@ export default function NotebookEditor({
               type="text"
               value={title}
               onChange={handleTitleChange}
+              onBlur={() => void commitTitleChange()}
+              onKeyDown={handleTitleKeyDown}
               placeholder="Note title..."
               className="flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
               style={{ fontFamily: 'var(--font-serif)' }}
