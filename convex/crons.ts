@@ -38,4 +38,11 @@ crons.interval(
   internal.conversations.runEmptyConversationCleanup,
 )
 
+crons.interval(
+  'service auth replay nonce cleanup',
+  { hours: 1 },
+  internal.serviceAuth.cleanupExpiredReplayNoncesInternal,
+  {},
+)
+
 export default crons

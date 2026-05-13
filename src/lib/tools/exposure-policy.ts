@@ -11,7 +11,13 @@ const DEFAULT_BASE_TOOL_IDS = [
 const MEMORY_MUTATION_TOOL_IDS = ['update_memory', 'delete_memory'] as const
 const NOTE_MUTATION_TOOL_IDS = ['create_note', 'update_note', 'delete_note'] as const
 const IMAGE_TOOL_IDS = ['generate_image'] as const
-const VIDEO_TOOL_IDS = ['generate_video'] as const
+const VIDEO_TOOL_IDS = [
+  'generate_video',
+  'animate_image',
+  'generate_video_with_reference',
+  'apply_motion_control',
+  'edit_video',
+] as const
 const BROWSER_TOOL_IDS = ['interactive_browser_session'] as const
 const DAYTONA_TOOL_IDS = ['run_daytona_sandbox'] as const
 const SKILL_DRAFT_TOOL_IDS = ['draft_skill_from_chat'] as const
@@ -46,15 +52,15 @@ function isExplicitNoteMutationRequest(text: string): boolean {
 
 function isExplicitImageRequest(text: string): boolean {
   return matchesAny(text, [
-    /\b(generate|create|make|draw|design|illustrate|render)\b.{0,40}\b(image|picture|photo|illustration|poster|thumbnail|logo|icon|artwork)\b/i,
-    /\b(image|picture|photo|illustration|poster|thumbnail|logo|icon|artwork)\b.{0,40}\b(generate|create|make|draw|design|illustrate|render)\b/i,
+    /\b(generate|create|make|draw|design|illustrate|render|edit|modify|restyle)\b.{0,40}\b(image|picture|photo|illustration|poster|thumbnail|logo|icon|artwork)\b/i,
+    /\b(image|picture|photo|illustration|poster|thumbnail|logo|icon|artwork)\b.{0,40}\b(generate|create|make|draw|design|illustrate|render|edit|modify|restyle)\b/i,
   ])
 }
 
 function isExplicitVideoRequest(text: string): boolean {
   return matchesAny(text, [
-    /\b(generate|create|make|render|animate)\b.{0,40}\b(video|clip|animation|trailer|reel|gif)\b/i,
-    /\b(video|clip|animation|trailer|reel|gif)\b.{0,40}\b(generate|create|make|render|animate)\b/i,
+    /\b(generate|create|make|render|animate|edit|modify|restyle)\b.{0,40}\b(video|clip|animation|trailer|reel|gif)\b/i,
+    /\b(video|clip|animation|trailer|reel|gif)\b.{0,40}\b(generate|create|make|render|animate|edit|modify|restyle)\b/i,
   ])
 }
 

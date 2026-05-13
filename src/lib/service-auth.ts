@@ -2,12 +2,13 @@ const SERVICE_AUTH_HEADER = 'x-overlay-service-auth'
 const SERVICE_AUTH_AUDIENCE = 'overlay-internal-api'
 const SERVICE_AUTH_ISSUER = 'overlay-nextjs'
 const DEFAULT_SERVICE_AUTH_TTL_MS = 60_000
+const MAX_SERVICE_AUTH_TTL_MS = 60_000
 const MAX_SERVICE_AUTH_CLOCK_SKEW_MS = 60_000
 const MAX_SERVICE_AUTH_VERIFICATIONS_PER_TOKEN = 2
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
-type ServiceAuthPayload = {
+export type ServiceAuthPayload = {
   aud: string
   exp: number
   iat: number
@@ -17,6 +18,8 @@ type ServiceAuthPayload = {
   path: string
   sub: string
 }
+
+export type ServiceAuthReplayConsumer = (payload: ServiceAuthPayload) => boolean | Promise<boolean>
 
 function getServiceAuthSecret(): string {
   const dedicatedSecret = process.env.INTERNAL_SERVICE_AUTH_SECRET?.trim()
@@ -185,6 +188,12 @@ export async function verifyServiceAuthToken(
     method: string
     path: string
     userId?: string | null
+    /**
+     * Middleware may verify signature/scope only, then let the route consume the
+     * nonce after it has parsed the body. Route-level callers should consume.
+     */
+    consumeReplay?: boolean
+    replayConsumer?: ServiceAuthReplayConsumer
   },
 ): Promise<{ userId: string } | null> {
   const trimmed = token?.trim()
@@ -240,6 +249,10 @@ export async function verifyServiceAuthToken(
     console.error('[service-auth] verify failed: token issued in future (clock skew)', { iat: payload.iat, now, skewMs: payload.iat - now })
     return null
   }
+  if (payload.exp - payload.iat > MAX_SERVICE_AUTH_TTL_MS) {
+    console.error('[service-auth] verify failed: token ttl exceeds maximum', { iat: payload.iat, exp: payload.exp, maxTtlMs: MAX_SERVICE_AUTH_TTL_MS })
+    return null
+  }
   if (payload.method !== normalizeMethod(params.method)) {
     console.error('[service-auth] verify failed: method mismatch', { expected: normalizeMethod(params.method), actual: payload.method })
     return null
@@ -252,9 +265,20 @@ export async function verifyServiceAuthToken(
     console.error('[service-auth] verify failed: userId mismatch', { expected: params.userId.trim(), actual: payload.sub })
     return null
   }
-  if (!recordServiceAuthVerification(payload.jti, payload.exp)) {
-    console.error('[service-auth] verify failed: replay protection triggered for jti', payload.jti)
-    return null
+  if (params.consumeReplay !== false) {
+    let replayAccepted = false
+    try {
+      replayAccepted = params.replayConsumer
+        ? await params.replayConsumer(payload)
+        : recordServiceAuthVerification(payload.jti, payload.exp)
+    } catch (error) {
+      console.error('[service-auth] verify failed: replay store error', error)
+      return null
+    }
+    if (!replayAccepted) {
+      console.error('[service-auth] verify failed: replay protection triggered for jti', payload.jti)
+      return null
+    }
   }
 
   return { userId: payload.sub }

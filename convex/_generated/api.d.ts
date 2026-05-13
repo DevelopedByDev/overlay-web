@@ -32,6 +32,7 @@ import type * as outputs from "../outputs.js";
 import type * as projects from "../projects.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as seedDemoAccount from "../seedDemoAccount.js";
+import type * as serviceAuth from "../serviceAuth.js";
 import type * as sessionTransfer from "../sessionTransfer.js";
 import type * as skills from "../skills.js";
 import type * as storageAdmin from "../storageAdmin.js";
@@ -73,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   rateLimits: typeof rateLimits;
   seedDemoAccount: typeof seedDemoAccount;
+  serviceAuth: typeof serviceAuth;
   sessionTransfer: typeof sessionTransfer;
   skills: typeof skills;
   storageAdmin: typeof storageAdmin;

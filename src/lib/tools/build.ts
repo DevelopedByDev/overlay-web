@@ -38,6 +38,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
   const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
   const shouldExposeTool = (toolId: string): boolean => !allowedToolIds || allowedToolIds.has(toolId)
+  const assertToolAllowed = (toolId: string): void => assertOverlayToolAllowed(toolId, allowedToolIds)
   const includePaidOnlyOverlay = options.includePaidOnlyOverlayTools !== false
   const automationScheduleSchema = z.discriminatedUnion('kind', [
     z.object({
@@ -73,7 +74,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       query: z.string().optional().describe('Optional keyword to filter skills by name, description, or instructions'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowed('list_skills')
+      assertToolAllowed('list_skills')
       return executeListSkills(options, input)
     },
   })
@@ -87,7 +88,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         query: z.string().optional().describe('Optional keyword to filter automations by name, description, or instructions'),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('list_automations')
+        assertToolAllowed('list_automations')
         return executeListAutomations(options, input)
       },
     })
@@ -106,7 +107,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         timezone: z.string().optional().describe('The user timezone if known; default UTC'),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('draft_automation_from_chat')
+        assertToolAllowed('draft_automation_from_chat')
         return executeDraftAutomationFromChat(options, input)
       },
     })
@@ -129,7 +130,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         sourceConversationId: z.string().optional(),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('create_automation')
+        assertToolAllowed('create_automation')
         return executeCreateAutomation(options, input)
       },
     })
@@ -150,7 +151,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         modelId: z.string().optional(),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('update_automation')
+        assertToolAllowed('update_automation')
         return executeUpdateAutomation(options, input)
       },
     })
@@ -163,7 +164,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         automationId: z.string().min(1),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('pause_automation')
+        assertToolAllowed('pause_automation')
         return executePauseAutomation(options, input)
       },
     })
@@ -176,7 +177,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         automationId: z.string().min(1),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('delete_automation')
+        assertToolAllowed('delete_automation')
         return executeDeleteAutomation(options, input)
       },
     })
@@ -195,7 +196,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         .describe('Limit to files only or memories only (omit to search both)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowed('search_knowledge')
+      assertToolAllowed('search_knowledge')
       return executeSearchKnowledge(options, input)
     },
   })
@@ -218,7 +219,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           .describe('Phrase or keywords to find (case-insensitive substring; not regex).'),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('search_in_files')
+        assertToolAllowed('search_in_files')
         return executeSearchInFiles(options, input)
       },
     })
@@ -232,7 +233,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       projectId: z.string().optional().describe('Only notes in this project (omit for general notes tab)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowed('list_notes')
+      assertToolAllowed('list_notes')
       return executeListNotes(options, input)
     },
   })
@@ -245,7 +246,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       noteId: z.string().describe('Convex notes document id'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowed('get_note')
+      assertToolAllowed('get_note')
       return executeGetNote(options, input)
     },
   })
@@ -278,7 +279,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         .describe('1-3 lowercase keyword tags with no spaces, e.g. ["coding","style"].'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowed('save_memory')
+      assertToolAllowed('save_memory')
       return executeSaveMemory(options, input)
     },
   })
@@ -305,7 +306,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         .describe('How the memories were captured (default: chat)'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowed('save_memory_batch')
+      assertToolAllowed('save_memory_batch')
       return executeSaveMemoryBatch(options, input)
     },
   })
@@ -325,7 +326,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       tags: z.array(z.string()).optional().describe('Optionally replace tags.'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowed('update_memory')
+      assertToolAllowed('update_memory')
       return executeUpdateMemory(options, input)
     },
   })
@@ -338,7 +339,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       memoryId: z.string().describe('Convex document id of the memory to remove'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowed('delete_memory')
+      assertToolAllowed('delete_memory')
       return executeDeleteMemory(options, input)
     },
   })
@@ -360,7 +361,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       proxyCountryCode: z.string().optional().describe('2-letter country code for residential proxy'),
     }),
     execute: async (input) => {
-      assertOverlayToolAllowed('interactive_browser_session')
+      assertToolAllowed('interactive_browser_session')
       return executeBrowserRunTask(options, input)
     },
   })
@@ -378,7 +379,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         reason: z.string().optional().describe('Why this should become a saved skill'),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('draft_skill_from_chat')
+        assertToolAllowed('draft_skill_from_chat')
         return executeDraftSkillFromChat(options, input)
       },
     })
@@ -405,7 +406,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           .describe('File paths relative to the sandbox workspace that should be imported back into Outputs after execution'),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('run_daytona_sandbox')
+        assertToolAllowed('run_daytona_sandbox')
         return executeRunDaytonaSandbox(options, input)
       },
     })
@@ -421,7 +422,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         projectId: z.string().optional(),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('create_note')
+        assertToolAllowed('create_note')
         return executeCreateNote(options, input)
       },
     })
@@ -437,7 +438,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         tags: z.array(z.string()).optional(),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('update_note')
+        assertToolAllowed('update_note')
         return executeUpdateNote(options, input)
       },
     })
@@ -450,7 +451,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         noteId: z.string(),
       }),
       execute: async (input) => {
-        assertOverlayToolAllowed('delete_note')
+        assertToolAllowed('delete_note')
         return executeDeleteNote(options, input)
       },
     })
@@ -458,128 +459,140 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
   // ── Image & Video generation tools ─────────────────────────────────────────
 
-  tools.generate_image = tool({
-    description:
-      'Generate an image from a text prompt using AI image generation models. ' +
-      'Optionally accepts a reference image URL for editing or style transfer. ' +
-      'Saves the result to Outputs. ' +
-      'Use this whenever the user asks to create, draw, generate, or edit an image or picture.',
-    inputSchema: z.object({
-      prompt: z.string().describe('Detailed description of the image to generate or edit'),
-      modelId: z
-        .enum(IMAGE_MODELS.map((m) => m.id) as [string, ...string[]])
-        .optional()
-        .describe('Specific image model to use (optional — uses priority fallback by default)'),
-      aspectRatio: z
-        .enum(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'])
-        .optional()
-        .describe('Aspect ratio of the generated image (default: 1:1)'),
-      referenceImageUrl: z
-        .string()
-        .optional()
-        .describe('URL or data URL of a reference image to edit or use as style source'),
-    }),
-    execute: async (input) => {
-      assertOverlayToolAllowed('generate_image')
-      return executeGenerateImage(options, input)
-    },
-  })
+  if (shouldExposeTool('generate_image')) {
+    tools.generate_image = tool({
+      description:
+        'Generate an image from a text prompt using AI image generation models. ' +
+        'Optionally accepts a reference image URL for editing or style transfer. ' +
+        'Saves the result to Outputs. ' +
+        'Use this whenever the user asks to create, draw, generate, or edit an image or picture.',
+      inputSchema: z.object({
+        prompt: z.string().describe('Detailed description of the image to generate or edit'),
+        modelId: z
+          .enum(IMAGE_MODELS.map((m) => m.id) as [string, ...string[]])
+          .optional()
+          .describe('Specific image model to use (optional — uses priority fallback by default)'),
+        aspectRatio: z
+          .enum(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'])
+          .optional()
+          .describe('Aspect ratio of the generated image (default: 1:1)'),
+        referenceImageUrl: z
+          .string()
+          .optional()
+          .describe('URL or data URL of a reference image to edit or use as style source'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('generate_image')
+        return executeGenerateImage(options, input)
+      },
+    })
+  }
 
-  const t2vModelIds = getVideoModelsBySubMode('text-to-video').map((m) => m.id) as [string, ...string[]]
-  tools.generate_video = tool({
-    description:
-      'Generate a video from a text prompt (text-to-video). ' +
-      'Video generation takes 1–5 minutes; saves the result to Outputs. ' +
-      'Supported models: Veo 3.1, Veo 3.1 Fast, Seedance v1.5 Pro, Grok Video, Wan v2.6, Kling v2.6. ' +
-      'Use this when the user asks to create or generate a video clip from a description.',
-    inputSchema: z.object({
-      prompt: z.string().describe('Detailed description of the video to generate'),
-      modelId: z.enum(t2vModelIds).optional().describe('Specific model to use (optional)'),
-      aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: 16:9)'),
-      duration: z.number().min(3).max(12).optional().describe('Duration in seconds (default: 8, max 12)'),
-    }),
-    execute: async (input) => {
-      assertOverlayToolAllowed('generate_video')
-      return executeGenerateVideo(options, { ...input, videoSubMode: 'text-to-video' })
-    },
-  })
+  if (shouldExposeTool('generate_video')) {
+    const t2vModelIds = getVideoModelsBySubMode('text-to-video').map((m) => m.id) as [string, ...string[]]
+    tools.generate_video = tool({
+      description:
+        'Generate a video from a text prompt (text-to-video). ' +
+        'Video generation takes 1–5 minutes; saves the result to Outputs. ' +
+        'Supported models: Veo 3.1, Veo 3.1 Fast, Seedance v1.5 Pro, Grok Video, Wan v2.6, Kling v2.6. ' +
+        'Use this when the user asks to create or generate a video clip from a description.',
+      inputSchema: z.object({
+        prompt: z.string().describe('Detailed description of the video to generate'),
+        modelId: z.enum(t2vModelIds).optional().describe('Specific model to use (optional)'),
+        aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: 16:9)'),
+        duration: z.number().min(3).max(12).optional().describe('Duration in seconds (default: 8, max 12)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('generate_video')
+        return executeGenerateVideo(options, { ...input, videoSubMode: 'text-to-video' })
+      },
+    })
+  }
 
-  const i2vModelIds = getVideoModelsBySubMode('image-to-video').map((m) => m.id) as [string, ...string[]]
-  tools.animate_image = tool({
-    description:
-      'Animate a static image into a video (image-to-video). ' +
-      'The source image becomes the video — you are adding motion to that exact scene. ' +
-      'Supported models: Veo 3.1, Grok Video, Seedance v1.5 Pro, Kling v2.6 I2V, Wan v2.6 I2V. ' +
-      'Use this when the user wants to animate, bring to life, or add motion to an existing image.',
-    inputSchema: z.object({
-      prompt: z.string().describe('Description of the motion or animation to apply'),
-      imageUrl: z.string().describe('URL or data URL of the source image to animate'),
-      modelId: z.enum(i2vModelIds).optional().describe('Specific model to use (optional)'),
-      aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: matches input image)'),
-      duration: z.number().min(3).max(15).optional().describe('Duration in seconds (default: 5)'),
-    }),
-    execute: async (input) => {
-      assertOverlayToolAllowed('animate_image')
-      return executeGenerateVideo(options, { ...input, videoSubMode: 'image-to-video' })
-    },
-  })
+  if (shouldExposeTool('animate_image')) {
+    const i2vModelIds = getVideoModelsBySubMode('image-to-video').map((m) => m.id) as [string, ...string[]]
+    tools.animate_image = tool({
+      description:
+        'Animate a static image into a video (image-to-video). ' +
+        'The source image becomes the video — you are adding motion to that exact scene. ' +
+        'Supported models: Veo 3.1, Grok Video, Seedance v1.5 Pro, Kling v2.6 I2V, Wan v2.6 I2V. ' +
+        'Use this when the user wants to animate, bring to life, or add motion to an existing image.',
+      inputSchema: z.object({
+        prompt: z.string().describe('Description of the motion or animation to apply'),
+        imageUrl: z.string().describe('URL or data URL of the source image to animate'),
+        modelId: z.enum(i2vModelIds).optional().describe('Specific model to use (optional)'),
+        aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: matches input image)'),
+        duration: z.number().min(3).max(15).optional().describe('Duration in seconds (default: 5)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('animate_image')
+        return executeGenerateVideo(options, { ...input, videoSubMode: 'image-to-video' })
+      },
+    })
+  }
 
-  const r2vModelIds = getVideoModelsBySubMode('reference-to-video').map((m) => m.id) as [string, ...string[]]
-  tools.generate_video_with_reference = tool({
-    description:
-      'Generate a new video scene featuring characters from reference images (reference-to-video). ' +
-      'The reference images show what characters look like; your prompt describes a completely new scene. ' +
-      'Use character1, character2, etc. in the prompt to refer to each reference. ' +
-      'Supported model: Wan v2.6 R2V. ' +
-      'Use this when the user wants to place characters from photos into a new video scene.',
-    inputSchema: z.object({
-      prompt: z.string().describe('Scene description using character1, character2, etc. to reference each character'),
-      referenceUrl: z.string().describe('URL of a reference image or video showing the character'),
-      modelId: z.enum(r2vModelIds).optional().describe('Specific model to use (optional)'),
-      duration: z.number().min(2).max(10).optional().describe('Duration in seconds (default: 5)'),
-    }),
-    execute: async (input) => {
-      assertOverlayToolAllowed('generate_video_with_reference')
-      return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, duration: input.duration, videoSubMode: 'reference-to-video', imageUrl: input.referenceUrl })
-    },
-  })
+  if (shouldExposeTool('generate_video_with_reference')) {
+    const r2vModelIds = getVideoModelsBySubMode('reference-to-video').map((m) => m.id) as [string, ...string[]]
+    tools.generate_video_with_reference = tool({
+      description:
+        'Generate a new video scene featuring characters from reference images (reference-to-video). ' +
+        'The reference images show what characters look like; your prompt describes a completely new scene. ' +
+        'Use character1, character2, etc. in the prompt to refer to each reference. ' +
+        'Supported model: Wan v2.6 R2V. ' +
+        'Use this when the user wants to place characters from photos into a new video scene.',
+      inputSchema: z.object({
+        prompt: z.string().describe('Scene description using character1, character2, etc. to reference each character'),
+        referenceUrl: z.string().describe('URL of a reference image or video showing the character'),
+        modelId: z.enum(r2vModelIds).optional().describe('Specific model to use (optional)'),
+        duration: z.number().min(2).max(10).optional().describe('Duration in seconds (default: 5)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('generate_video_with_reference')
+        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, duration: input.duration, videoSubMode: 'reference-to-video', imageUrl: input.referenceUrl })
+      },
+    })
+  }
 
-  const motionModelIds = getVideoModelsBySubMode('motion-control').map((m) => m.id) as [string, ...string[]]
-  tools.apply_motion_control = tool({
-    description:
-      'Transfer motion from a reference video onto a character image (motion control). ' +
-      'The model analyzes movements in the reference video and applies them to the character. ' +
-      'Supported model: Kling v2.6 Motion Control. ' +
-      'Use this when the user wants to make a character perform the same actions as someone in a video.',
-    inputSchema: z.object({
-      prompt: z.string().describe('Optional description of scene elements or camera movement'),
-      characterImageUrl: z.string().describe('URL of the character image to apply motion to'),
-      referenceVideoUrl: z.string().describe('URL of the reference video whose motion to transfer'),
-      modelId: z.enum(motionModelIds).optional().describe('Specific model to use (optional)'),
-    }),
-    execute: async (input) => {
-      assertOverlayToolAllowed('apply_motion_control')
-      return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'motion-control', imageUrl: input.characterImageUrl, referenceVideoUrl: input.referenceVideoUrl })
-    },
-  })
+  if (shouldExposeTool('apply_motion_control')) {
+    const motionModelIds = getVideoModelsBySubMode('motion-control').map((m) => m.id) as [string, ...string[]]
+    tools.apply_motion_control = tool({
+      description:
+        'Transfer motion from a reference video onto a character image (motion control). ' +
+        'The model analyzes movements in the reference video and applies them to the character. ' +
+        'Supported model: Kling v2.6 Motion Control. ' +
+        'Use this when the user wants to make a character perform the same actions as someone in a video.',
+      inputSchema: z.object({
+        prompt: z.string().describe('Optional description of scene elements or camera movement'),
+        characterImageUrl: z.string().describe('URL of the character image to apply motion to'),
+        referenceVideoUrl: z.string().describe('URL of the reference video whose motion to transfer'),
+        modelId: z.enum(motionModelIds).optional().describe('Specific model to use (optional)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('apply_motion_control')
+        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'motion-control', imageUrl: input.characterImageUrl, referenceVideoUrl: input.referenceVideoUrl })
+      },
+    })
+  }
 
-  const editVideoModelIds = getVideoModelsBySubMode('video-editing').map((m) => m.id) as [string, ...string[]]
-  tools.edit_video = tool({
-    description:
-      'Edit an existing video using a text prompt (video editing). ' +
-      'Describe the changes and the model modifies the video accordingly. ' +
-      'Supported model: Grok Video (max 8.7s input, output up to 720p). ' +
-      'Use this when the user wants to modify, restyle, or transform an existing video.',
-    inputSchema: z.object({
-      prompt: z.string().describe('Description of the edits to apply to the video'),
-      videoUrl: z.string().describe('URL of the source video to edit'),
-      modelId: z.enum(editVideoModelIds).optional().describe('Specific model to use (optional)'),
-    }),
-    execute: async (input) => {
-      assertOverlayToolAllowed('edit_video')
-      return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl })
-    },
-  })
+  if (shouldExposeTool('edit_video')) {
+    const editVideoModelIds = getVideoModelsBySubMode('video-editing').map((m) => m.id) as [string, ...string[]]
+    tools.edit_video = tool({
+      description:
+        'Edit an existing video using a text prompt (video editing). ' +
+        'Describe the changes and the model modifies the video accordingly. ' +
+        'Supported model: Grok Video (max 8.7s input, output up to 720p). ' +
+        'Use this when the user wants to modify, restyle, or transform an existing video.',
+      inputSchema: z.object({
+        prompt: z.string().describe('Description of the edits to apply to the video'),
+        videoUrl: z.string().describe('URL of the source video to edit'),
+        modelId: z.enum(editVideoModelIds).optional().describe('Specific model to use (optional)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('edit_video')
+        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl })
+      },
+    })
+  }
 
   return tools
 }

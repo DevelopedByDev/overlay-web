@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 import { getVerifiedAccessTokenClaims } from '../../convex/lib/auth'
 import { getSession } from '@/lib/workos-auth'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
+import { consumeServiceAuthReplayNonce } from '@/lib/service-auth-replay'
 
 /**
  * Browser requests use the session cookie. Server-side tool calls (e.g. Agent)
@@ -26,6 +27,7 @@ export async function resolveAuthenticatedAppUser(
       method: request.method,
       path: request.nextUrl.pathname,
       userId: internalUserId || undefined,
+      replayConsumer: consumeServiceAuthReplayNonce,
     },
   )
   if (serviceAuth) {

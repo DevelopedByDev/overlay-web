@@ -3,6 +3,12 @@ import { internal } from './_generated/api'
 import { internalAction } from './_generated/server'
 import type { Id } from './_generated/dataModel'
 
+const SERVICE_AUTH_HEADER = 'x-overlay-service-auth'
+const SERVICE_AUTH_AUDIENCE = 'overlay-internal-api'
+const SERVICE_AUTH_ISSUER = 'overlay-nextjs'
+const DEFAULT_SERVICE_AUTH_TTL_MS = 60_000
+const textEncoder = new TextEncoder()
+
 function summarizeError(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
@@ -34,6 +40,74 @@ function getInternalApiSecret(): string {
     throw new Error('INTERNAL_API_SECRET is not configured')
   }
   return secret
+}
+
+function getServiceAuthSecret(): string {
+  const dedicatedSecret = process.env.INTERNAL_SERVICE_AUTH_SECRET?.trim()
+  const rootSecret = process.env.INTERNAL_API_SECRET?.trim()
+  const allowRootFallback = process.env.ALLOW_INTERNAL_SERVICE_AUTH_SECRET_FALLBACK === '1'
+
+  if (dedicatedSecret) {
+    if (!allowRootFallback && dedicatedSecret === rootSecret) {
+      throw new Error('INTERNAL_SERVICE_AUTH_SECRET must not equal INTERNAL_API_SECRET')
+    }
+    return dedicatedSecret
+  }
+
+  if (allowRootFallback) {
+    return getInternalApiSecret()
+  }
+  throw new Error('INTERNAL_SERVICE_AUTH_SECRET is required for automation runner service auth')
+}
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  const base64 =
+    typeof btoa === 'function'
+      ? btoa(binary)
+      : Buffer.from(binary, 'binary').toString('base64')
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+function toBase64Url(value: string): string {
+  return bytesToBase64Url(textEncoder.encode(value))
+}
+
+async function buildServiceAuthToken(params: {
+  userId: string
+  method: string
+  path: string
+  ttlMs?: number
+}): Promise<string> {
+  const now = Date.now()
+  const payload = {
+    aud: SERVICE_AUTH_AUDIENCE,
+    iss: SERVICE_AUTH_ISSUER,
+    jti: crypto.randomUUID(),
+    sub: params.userId.trim(),
+    method: params.method.trim().toUpperCase(),
+    path: params.path.trim() || '/',
+    iat: now,
+    exp: now + Math.max(1_000, params.ttlMs ?? DEFAULT_SERVICE_AUTH_TTL_MS),
+  }
+  const payloadSegment = toBase64Url(JSON.stringify(payload))
+  const signingKey = await crypto.subtle.importKey(
+    'raw',
+    textEncoder.encode(getServiceAuthSecret()),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    signingKey,
+    textEncoder.encode(payloadSegment),
+  )
+
+  return `${payloadSegment}.${bytesToBase64Url(new Uint8Array(signature))}`
 }
 
 export const runMinuteTick = internalAction({
@@ -83,26 +157,19 @@ export const runAutomation = internalAction({
 
     try {
       const runPath = '/api/app/automations/run'
+      const serviceAuthToken = await buildServiceAuthToken({
+        userId: automation.userId,
+        method: 'POST',
+        path: runPath,
+      })
       const response = await fetch(`${getAutomationRunnerBaseUrl()}${runPath}`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-overlay-internal-secret': getInternalApiSecret(),
+          [SERVICE_AUTH_HEADER]: serviceAuthToken,
         },
         body: JSON.stringify({
           runId: args.runId,
-          turnId,
-          scheduledFor: run.scheduledFor,
-          automation: {
-            id: automation._id,
-            userId: automation.userId,
-            name: automation.name || automation.title || 'Untitled automation',
-            description: automation.description || '',
-            instructions: automation.instructions || automation.instructionsMarkdown || '',
-            projectId: automation.projectId,
-            modelId: automation.modelId,
-            conversationId: existingConversationId,
-          },
         }),
       })
 

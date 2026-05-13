@@ -4,14 +4,9 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { convex } from '@/lib/convex'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
+import { consumeServiceAuthReplayNonce } from '@/lib/service-auth-replay'
 
 export const maxDuration = 300
-
-function verifyInternalSecret(request: NextRequest): boolean {
-  const expected = getInternalApiSecret()
-  const received = request.headers.get('x-overlay-internal-secret')?.trim()
-  return Boolean(received && received === expected)
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,10 +14,14 @@ export async function POST(request: NextRequest) {
     const serviceAuth = serviceAuthHeader
       ? await verifyServiceAuthToken(
           serviceAuthHeader,
-          { method: request.method, path: request.nextUrl.pathname },
+          {
+            method: request.method,
+            path: request.nextUrl.pathname,
+            replayConsumer: consumeServiceAuthReplayNonce,
+          },
         )
       : null
-    if (!serviceAuth && !verifyInternalSecret(request)) {
+    if (!serviceAuth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -53,6 +52,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Automation run is not executable' }, { status: 409 })
     }
     const { run, automation } = payload
+    if (automation.userId !== serviceAuth.userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     const turnId = run.turnId || `automation-${body.runId}-${Date.now()}`
     const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
 

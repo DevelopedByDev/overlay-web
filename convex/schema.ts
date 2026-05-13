@@ -123,6 +123,17 @@ export default defineSchema({
     .index('by_bucketKey', ['bucketKey'])
     .index('by_resetAt', ['resetAt']),
 
+  serviceAuthReplayNonces: defineTable({
+    jti: v.string(),
+    subject: v.string(),
+    method: v.string(),
+    path: v.string(),
+    expiresAt: v.number(),
+    consumedAt: v.number(),
+  })
+    .index('by_jti', ['jti'])
+    .index('by_expiresAt', ['expiresAt']),
+
   // Append-only audit log: one row per billing period per user.
   // Written to on every usage batch for raw token counts and a credit snapshot.
   // Never read for enforcement — use subscriptions.creditsUsed for that.

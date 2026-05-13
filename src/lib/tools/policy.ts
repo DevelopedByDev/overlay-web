@@ -14,6 +14,7 @@ const OVERLAY_TOOL_IDS = new Set<string>([
   'search_knowledge',
   'search_in_files',
   'save_memory',
+  'save_memory_batch',
   'update_memory',
   'delete_memory',
   'browser_run_task',
@@ -39,9 +40,20 @@ export function overlayToolIdSet(): ReadonlySet<string> {
   return OVERLAY_TOOL_IDS
 }
 
-/** Defense in depth: ensure a tool id is registered before execute. */
-export function assertOverlayToolAllowed(toolId: string): void {
+function containsToolId(toolIds: ReadonlySet<string> | readonly string[], toolId: string): boolean {
+  if (toolIds instanceof Set) return toolIds.has(toolId)
+  return (toolIds as readonly string[]).includes(toolId)
+}
+
+/** Defense in depth: ensure a tool id is globally registered and exposed for this turn. */
+export function assertOverlayToolAllowed(
+  toolId: string,
+  allowedToolIds?: ReadonlySet<string> | readonly string[] | null,
+): void {
   if (!OVERLAY_TOOL_IDS.has(toolId)) {
     throw new Error(`[tools] Tool "${toolId}" is not allowed`)
+  }
+  if (allowedToolIds && !containsToolId(allowedToolIds, toolId)) {
+    throw new Error(`[tools] Tool "${toolId}" is not exposed for this turn`)
   }
 }

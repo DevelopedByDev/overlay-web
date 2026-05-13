@@ -921,8 +921,17 @@ export async function POST(request: NextRequest) {
       !perplexityTool || !parallelTool ? ' — if missing, check AI_GATEWAY_API_KEY and Gateway logs' : '',
     )
 
-    const generationNote =
-      '\nYou also have generate_image and generate_video tools. Use them whenever the user asks to create visual content. For videos, inform the user that generation is async and may take a few minutes — results will appear in the Outputs tab.'
+    const exposedMediaTools = [
+      'generate_image',
+      'generate_video',
+      'animate_image',
+      'generate_video_with_reference',
+      'apply_motion_control',
+      'edit_video',
+    ].filter((toolId) => toolId in webToolSet)
+    const generationNote = exposedMediaTools.length
+      ? `\nYou have these media-generation tools for this turn: ${exposedMediaTools.join(', ')}. Use them only for the user's explicit visual-generation request in this chat. For videos, inform the user that generation is async and may take a few minutes — results will appear in the Outputs tab.`
+      : ''
     const automationDraftNote =
       automationExecution === true
         ? '\nYou are executing an existing saved automation. Follow the stored automation instructions now. Do not design, draft, create, update, pause, delete, or ask approval for any automation. Automation-management tools are intentionally unavailable during execution.'

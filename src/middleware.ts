@@ -191,6 +191,7 @@ export async function middleware(request: NextRequest) {
         {
           method: request.method,
           path: pathname,
+          consumeReplay: false,
         },
       )
       if (serviceAuth) {
