@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Groq from 'groq-sdk'
+import { generateObject } from 'ai'
+import { z } from 'zod'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { getServerProviderKey } from '@/lib/server-provider-keys'
+import { getGatewayLanguageModel } from '@/lib/ai-gateway'
+import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import type { Entitlements } from '@/lib/app-contracts'
+import { calculateTokenCostOrNull } from '@/lib/model-pricing'
+import {
+  billableBudgetCentsFromProviderUsd,
+  finalizeProviderBudgetReservation,
+  isPaidPlan,
+  markProviderBudgetReconcile,
+  releaseProviderBudgetReservation,
+  reserveProviderBudget,
+} from '@/lib/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
-async function resolveGroqApiKey(accessToken?: string): Promise<string | null> {
-  if (accessToken) {
-    const serverKey = await getServerProviderKey('groq')
-    if (serverKey) {
-      return serverKey
-    }
-  }
-  return process.env.GROQ_API_KEY ?? null
-}
+const TAB_GROUP_MODEL = 'openai/gpt-oss-20b'
+const tabGroupLabelSchema = z.object({
+  title: z.string().describe('Chrome tab group label, 1 to 3 words, no punctuation'),
+})
 
 function fallbackLabel(text: string): string {
   const words = text
@@ -22,21 +31,6 @@ function fallbackLabel(text: string): string {
     .filter(Boolean)
     .slice(0, 3)
   return words.map((w) => w.replace(/^./, (c) => c.toUpperCase())).join(' ') || 'Overlay chat'
-}
-
-function getCompletionContent(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-  return content
-    .map((part) => {
-      if (typeof part === 'string') return part
-      if (part && typeof part === 'object' && 'text' in part) {
-        const text = (part as { text?: string }).text
-        return typeof text === 'string' ? text : ''
-      }
-      return ''
-    })
-    .join('')
 }
 
 export async function POST(request: NextRequest) {
@@ -58,61 +52,90 @@ export async function POST(request: NextRequest) {
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const fallback = fallbackLabel(text)
-    const apiKey = await resolveGroqApiKey(auth.accessToken)
-    if (!apiKey) {
+
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'helper:tab-label:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
+      { bucket: 'helper:tab-label:user', key: auth.userId, limit: 60, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+
+    const serverSecret = getInternalApiSecret()
+    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+      serverSecret,
+      userId: auth.userId,
+    })
+    if (!entitlements || !isPaidPlan(entitlements)) {
       return NextResponse.json({ title: fallback })
     }
 
-    const groq = new Groq({ apiKey })
     const userPrompt = `Give a very short Chrome tab group name (at most 3 words, no punctuation) summarizing:\n\n${text.slice(0, 400)}`
-
-    let structuredContent = ''
-    try {
-      const structuredCompletion = await groq.chat.completions.create({
-        model: 'openai/gpt-oss-20b',
-        user: auth.userId,
-        temperature: 0,
-        max_completion_tokens: 32,
-        reasoning_effort: 'low',
-        reasoning_format: 'hidden',
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'tab_group_label',
-            description: 'At most 3 words.',
-            strict: true,
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                title: {
-                  type: 'string',
-                  description: '1 to 3 words, no punctuation.',
-                },
-              },
-              required: ['title'],
-            },
-          },
-        },
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You label Chrome tab groups. Return JSON with a single "title" field. The title must be 1 to 3 words only, no quotes or trailing punctuation.',
-          },
-          { role: 'user', content: userPrompt },
-        ],
-      })
-      structuredContent = getCompletionContent(structuredCompletion.choices[0]?.message?.content)
-    } catch {
+    const estimatedInputTokens = Math.ceil(userPrompt.length / 4) + 80
+    const estimatedOutputTokens = 32
+    const estimatedCostUsd = calculateTokenCostOrNull(TAB_GROUP_MODEL, estimatedInputTokens, 0, estimatedOutputTokens)
+    if (estimatedCostUsd === null) {
       return NextResponse.json({ title: fallback })
     }
+    const reservation = await reserveProviderBudget({
+      userId: auth.userId,
+      entitlements,
+      providerCostUsd: estimatedCostUsd,
+      kind: 'generation',
+      modelId: TAB_GROUP_MODEL,
+    })
+    if (!reservation.ok) return NextResponse.json({ title: fallback })
 
     let label = ''
     try {
-      const parsed = JSON.parse(structuredContent) as { title?: string }
-      if (typeof parsed.title === 'string') label = parsed.title
-    } catch {
+      const model = await getGatewayLanguageModel(TAB_GROUP_MODEL, auth.accessToken)
+      const result = await generateObject({
+        model,
+        schema: tabGroupLabelSchema,
+        system:
+          'You label Chrome tab groups. Return a title that is 1 to 3 words only, no quotes or trailing punctuation.',
+        prompt: userPrompt,
+        temperature: 0,
+        maxOutputTokens: 32,
+      })
+      label = result.object.title
+      const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
+      const inputTokens = usage?.inputTokens ?? estimatedInputTokens
+      const outputTokens = usage?.outputTokens ?? estimatedOutputTokens
+      const actualCostUsd = calculateTokenCostOrNull(TAB_GROUP_MODEL, inputTokens, 0, outputTokens)
+      if (actualCostUsd === null) {
+        await markProviderBudgetReconcile({
+          userId: auth.userId,
+          reservationId: reservation.reservationId,
+          errorMessage: `pricing_missing:${TAB_GROUP_MODEL}`,
+        }).catch(() => {})
+      } else {
+        const costCents = billableBudgetCentsFromProviderUsd(actualCostUsd)
+        await finalizeProviderBudgetReservation({
+          userId: auth.userId,
+          reservationId: reservation.reservationId,
+          actualProviderCostUsd: actualCostUsd,
+          events: [{
+            type: 'generation',
+            modelId: TAB_GROUP_MODEL,
+            inputTokens,
+            outputTokens,
+            cachedTokens: 0,
+            cost: costCents,
+            timestamp: Date.now(),
+          }],
+        }).catch(async (err) => {
+          await markProviderBudgetReconcile({
+            userId: auth.userId,
+            reservationId: reservation.reservationId,
+            errorMessage: err instanceof Error ? err.message : 'finalize_failed',
+          }).catch(() => {})
+        })
+      }
+    } catch (err) {
+      await releaseProviderBudgetReservation({
+        userId: auth.userId,
+        reservationId: reservation.reservationId,
+        reason: err instanceof Error ? err.message : 'tab_group_label_failed',
+      }).catch(() => {})
       return NextResponse.json({ title: fallback })
     }
 

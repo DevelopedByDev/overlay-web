@@ -137,6 +137,37 @@ export default defineSchema({
     outputTokens: v.number()
   }).index('by_userId_period', ['userId', 'billingPeriodStart']),
 
+  budgetReservations: defineTable({
+    userId: v.string(),
+    reservationId: v.string(),
+    status: v.union(
+      v.literal('reserved'),
+      v.literal('finalized'),
+      v.literal('released'),
+      v.literal('reconcile_required'),
+    ),
+    kind: v.union(
+      v.literal('ask'),
+      v.literal('write'),
+      v.literal('agent'),
+      v.literal('embedding'),
+      v.literal('transcription'),
+      v.literal('generation'),
+      v.literal('sandbox'),
+    ),
+    modelId: v.optional(v.string()),
+    reservedCents: v.number(),
+    finalizedCents: v.optional(v.number()),
+    providerWorkStarted: v.optional(v.boolean()),
+    providerWorkCompleted: v.optional(v.boolean()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_reservationId', ['reservationId'])
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_status_createdAt', ['status', 'createdAt']),
+
   daytonaWorkspaces: defineTable({
     userId: v.string(),
     sandboxId: v.string(),
@@ -230,6 +261,9 @@ export default defineSchema({
     voiceChatCount: v.optional(v.number()),
     noteBrowserCount: v.optional(v.number()),
     browserSearchCount: v.optional(v.number()),
+    memoryExtractionCount: v.optional(v.number()),
+    indexingChunks: v.optional(v.number()),
+    indexingBytes: v.optional(v.number()),
   }).index('by_userId_date', ['userId', 'date']),
 
   // Short-lived session transfer tokens for desktop app auth linking

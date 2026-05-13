@@ -10,15 +10,18 @@ import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
   ensureBudgetAvailable,
+  finalizeProviderBudgetReservation,
   getBudgetTotals,
   isPaidPlan,
+  markProviderBudgetReconcile,
+  releaseProviderBudgetReservation,
+  reserveProviderBudget,
 } from '@/lib/billing-runtime'
-import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
+import { calculateTokenCostOrNull, isPremiumModel } from '@/lib/model-pricing'
 import { createNotebookTextEmitter } from '@/lib/notebook-agent-stream'
 import {
   DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
-  isNvidiaNimChatModelId,
 } from '@/lib/model-types'
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { executeSearchKnowledge } from '@/lib/tools/overlay-executes'
@@ -277,6 +280,33 @@ export async function POST(request: NextRequest) {
       ? `${rawNoteContent.slice(0, MAX_NOTE_CHARS)}\n[Note truncated for agent context]`
       : rawNoteContent
 
+  let budgetReservationId: string | null = null
+  if (isPaidPlan(refreshedEntitlements) && isPremiumModel(effectiveModelId)) {
+    const estimatedInputTokens = Math.ceil((frozenNoteLines.length + message.length + NOTEBOOK_AGENT_PROMPT.length) / 4) + 2_000
+    const maxOutputTokens = 8_192
+    const estimatedProviderCostUsd = calculateTokenCostOrNull(effectiveModelId, estimatedInputTokens, 0, maxOutputTokens)
+    if (estimatedProviderCostUsd === null) {
+      return new Response(
+        JSON.stringify({ error: 'pricing_missing', message: `Model ${effectiveModelId} is not priced for production use.` }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    const reservation = await reserveProviderBudget({
+      userId,
+      entitlements: refreshedEntitlements,
+      providerCostUsd: estimatedProviderCostUsd,
+      kind: 'agent',
+      modelId: effectiveModelId,
+    })
+    if (!reservation.ok) {
+      return new Response(
+        JSON.stringify({ ...reservation.payload, error: reservation.code }),
+        { status: reservation.status, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    budgetReservationId = reservation.reservationId
+  }
+
   const forwardCookie = request.headers.get('cookie') ?? undefined
   const toolOptions: OverlayToolsOptions = {
     userId,
@@ -332,43 +362,78 @@ export async function POST(request: NextRequest) {
 
         emitText(result.text)
 
-        const totalUsage = result.totalUsage
-        const totalInputTokens = totalUsage?.inputTokens ?? 0
-        const totalOutputTokens = totalUsage?.outputTokens ?? 0
-        const providerCostUsd =
-          isNvidiaNimChatModelId(effectiveModelId)
-            ? 0
-            : calculateTokenCost(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
-        const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
-
-        if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
-          try {
-            await convex.mutation('usage:recordBatch', {
-              serverSecret,
-              userId,
-              events: [
-                {
-                  type: 'agent',
-                  modelId: effectiveModelId,
-                  inputTokens: totalInputTokens,
-                  outputTokens: totalOutputTokens,
-                  cachedTokens: totalUsage?.inputTokenDetails?.cacheReadTokens ?? 0,
-                  cost: costCents,
-                  timestamp: Date.now(),
-                },
-              ],
-            })
-          } catch (err) {
-            console.error('[notebook-agent] Failed to record usage:', summarizeErrorForLog(err))
-            throw err
-          }
-        }
+	        const totalUsage = result.totalUsage
+	        const totalInputTokens = totalUsage?.inputTokens ?? 0
+	        const totalOutputTokens = totalUsage?.outputTokens ?? 0
+	        const cachedTokens = totalUsage?.inputTokenDetails?.cacheReadTokens ?? 0
+	        const providerCostUsd = calculateTokenCostOrNull(effectiveModelId, totalInputTokens, cachedTokens, totalOutputTokens)
+	        if (providerCostUsd === null) {
+	          if (budgetReservationId) {
+	            await markProviderBudgetReconcile({
+	              userId,
+	              reservationId: budgetReservationId,
+	              errorMessage: `pricing_missing:${effectiveModelId}`,
+	            }).catch(() => {})
+	            budgetReservationId = null
+	          }
+	          throw new Error(`pricing_missing:${effectiveModelId}`)
+	        }
+	        const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
+	
+	        if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
+	          try {
+	            const events = [
+	              {
+	                type: 'agent' as const,
+	                modelId: effectiveModelId,
+	                inputTokens: totalInputTokens,
+	                outputTokens: totalOutputTokens,
+	                cachedTokens,
+	                cost: costCents,
+	                timestamp: Date.now(),
+	              },
+	            ]
+	            if (budgetReservationId) {
+	              await finalizeProviderBudgetReservation({
+	                userId,
+	                reservationId: budgetReservationId,
+	                actualProviderCostUsd: providerCostUsd,
+	                events,
+	              })
+	              budgetReservationId = null
+	            } else {
+	              await convex.mutation('usage:recordBatch', {
+	                serverSecret,
+	                userId,
+	                events,
+	              })
+	            }
+	          } catch (err) {
+	            console.error('[notebook-agent] Failed to record usage:', summarizeErrorForLog(err))
+	            if (budgetReservationId) {
+	              await markProviderBudgetReconcile({
+	                userId,
+	                reservationId: budgetReservationId,
+	                errorMessage: summarizeErrorForLog(err),
+	              }).catch(() => {})
+	              budgetReservationId = null
+	            }
+	          }
+	        }
 
         emit({ type: 'done' })
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        console.error('[notebook-agent]', summarizeErrorForLog(err))
-        emit({ type: 'error', error: msg })
+	      } catch (err) {
+	        const msg = err instanceof Error ? err.message : String(err)
+	        console.error('[notebook-agent]', summarizeErrorForLog(err))
+	        if (budgetReservationId) {
+	          await releaseProviderBudgetReservation({
+	            userId,
+	            reservationId: budgetReservationId,
+	            reason: summarizeErrorForLog(err),
+	          }).catch(() => {})
+	          budgetReservationId = null
+	        }
+	        emit({ type: 'error', error: msg })
         emit({ type: 'done' })
       } finally {
         controller.close()

@@ -4,6 +4,7 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { generatePresignedDownloadUrl } from '@/lib/r2'
 import { isOwnedOutputR2Key } from '@/lib/storage-keys'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
@@ -15,14 +16,20 @@ export async function GET(
   if (!auth) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  const rateLimitResponse = await enforceRateLimits(request, [
+    { bucket: 'r2-download:output:ip', key: getClientIp(request), limit: 600, windowMs: 10 * 60_000 },
+    { bucket: 'r2-download:output:user', key: auth.userId, limit: 300, windowMs: 10 * 60_000 },
+  ])
+  if (rateLimitResponse) return rateLimitResponse
 
   const { outputId } = await params
+  const serverSecret = getInternalApiSecret()
   const proxyTarget = await convex.query<{ r2Key?: string; url?: string; sizeBytes: number; type: string; fileName?: string; mimeType?: string } | null>(
     'outputs:getStorageUrlForProxy',
     {
       outputId,
       userId: auth.userId,
-      serverSecret: getInternalApiSecret(),
+      serverSecret,
     },
     { throwOnError: true },
   )
@@ -35,6 +42,11 @@ export async function GET(
     if (!isOwnedOutputR2Key(auth.userId, proxyTarget.r2Key)) {
       return Response.json({ error: 'Not found' }, { status: 404 })
     }
+    await convex.mutation('usage:recordFileBandwidthByServer', {
+      serverSecret,
+      userId: auth.userId,
+      bytes: proxyTarget.sizeBytes ?? 0,
+    }).catch((error) => console.warn('[outputs/content] bandwidth accounting failed', error))
     const presignedUrl = await generatePresignedDownloadUrl(proxyTarget.r2Key)
     return Response.redirect(presignedUrl, 302)
   }

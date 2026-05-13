@@ -126,6 +126,7 @@ export async function DELETE(request: NextRequest) {
       fileId: output._id,
       userId: auth.userId,
       serverSecret,
+      r2CleanupConfirmed: Boolean(output.r2Key),
     })
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -3,10 +3,11 @@
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { calculateTokenCostOrNull } from "../src/lib/model-pricing";
+import { applyMarkupToDollars } from "../src/lib/billing-pricing";
 
 const GATEWAY_CHAT_URL =
   process.env.AI_GATEWAY_URL?.trim() ||
@@ -82,9 +83,7 @@ function buildExtractionPrompt(
     .join("\n");
 }
 
-function getExtractorModel(isPaid: boolean) {
-  const modelId = isPaid ? "google/gemini-2.5-flash-lite" : "openrouter/free";
-
+function getExtractorModel(modelId: string) {
   const openai = createOpenAICompatible({
     name: "gateway",
     apiKey: API_KEY || "",
@@ -166,14 +165,76 @@ export const extractFromTurn = internalAction({
         };
       }
 
-      const model = getExtractorModel(isPaid ?? false);
+      const modelId = (isPaid ?? false) ? "google/gemini-2.5-flash-lite" : "openrouter/free";
+      const model = getExtractorModel(modelId);
+      const serverSecret = process.env.INTERNAL_API_SECRET;
+      const maxOutputTokens = 1200;
+      const estimatedInputTokens = Math.ceil((SYSTEM_PROMPT.length + prompt.length) / 4);
+      const estimatedCostUsd = calculateTokenCostOrNull(modelId, estimatedInputTokens, 0, maxOutputTokens);
+      if (estimatedCostUsd === null) {
+        return {
+          extracted: 0,
+          inserted: 0,
+          duplicates: 0,
+          reason: "pricing_missing",
+        };
+      }
+      if ((isPaid ?? false) && !serverSecret) {
+        return {
+          extracted: 0,
+          inserted: 0,
+          duplicates: 0,
+          reason: "background_budget_exhausted",
+        };
+      }
 
-      const { object } = await generateObject({
-        model,
-        schema: ExtractionSchema,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: prompt }],
-      });
+      const reservationId = estimatedCostUsd > 0 ? `memory_${crypto.randomUUID()}` : null;
+      if (reservationId && serverSecret) {
+        try {
+          await ctx.runMutation(api.usage.reserveBudgetByServer, {
+            serverSecret,
+            userId,
+            reservationId,
+            kind: "generation",
+            modelId,
+            reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+          });
+        } catch (err) {
+          console.warn("[memoryExtractorNode] budget reservation skipped extraction", err);
+          return {
+            extracted: 0,
+            inserted: 0,
+            duplicates: 0,
+            reason: "background_budget_exhausted",
+          };
+        }
+      }
+
+      let result: {
+        object: z.infer<typeof ExtractionSchema>;
+        usage?: { inputTokens?: number; outputTokens?: number };
+      };
+      try {
+        result = await generateObject({
+          model,
+          schema: ExtractionSchema,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: "user", content: prompt }],
+          maxOutputTokens,
+        });
+      } catch (err) {
+        if (reservationId && serverSecret) {
+          await ctx.runMutation(api.usage.releaseBudgetReservationByServer, {
+            serverSecret,
+            userId,
+            reservationId,
+            reason: err instanceof Error ? err.message : "memory_extraction_failed",
+          }).catch(() => {});
+        }
+        throw err;
+      }
+
+      const { object } = result;
 
       const candidates = (object.candidates ?? []).filter(
         (c: { content: string; confidence?: number }) =>
@@ -194,7 +255,6 @@ export const extractFromTurn = internalAction({
       // 4. Deduplicate and insert
       let inserted = 0;
       let duplicates = 0;
-      const serverSecret = process.env.INTERNAL_API_SECRET;
 
       for (const candidate of candidates.slice(
         0,
@@ -216,7 +276,7 @@ export const extractFromTurn = internalAction({
         }
 
         // Insert memory (no status field — all memories are treated equally now)
-        const memoryId = await ctx.runMutation(api.memories.add, {
+        await ctx.runMutation(api.memories.add, {
           userId,
           serverSecret: serverSecret || "",
           content: candidate.content.trim(),
@@ -231,11 +291,46 @@ export const extractFromTurn = internalAction({
           actor: "user",
         });
 
-        await ctx.scheduler.runAfter(0, internal.knowledge.reindexMemoryInternal, {
-          memoryId: memoryId as Id<"memories">,
-        });
-
         inserted++;
+      }
+
+      if (reservationId && serverSecret) {
+        const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage;
+        const inputTokens = usage?.inputTokens ?? estimatedInputTokens;
+        const outputTokens = usage?.outputTokens ?? maxOutputTokens;
+        const actualCostUsd = calculateTokenCostOrNull(modelId, inputTokens, 0, outputTokens);
+        if (actualCostUsd === null) {
+          await ctx.runMutation(api.usage.markBudgetReservationReconcileByServer, {
+            serverSecret,
+            userId,
+            reservationId,
+            errorMessage: `pricing_missing:${modelId}`,
+          }).catch(() => {});
+        } else {
+          const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd });
+          await ctx.runMutation(api.usage.finalizeBudgetReservationByServer, {
+            serverSecret,
+            userId,
+            reservationId,
+            actualCents: costCents,
+            events: [{
+              type: "generation",
+              modelId,
+              inputTokens,
+              outputTokens,
+              cachedTokens: 0,
+              cost: costCents,
+              timestamp: Date.now(),
+            }],
+          }).catch(async (err) => {
+            await ctx.runMutation(api.usage.markBudgetReservationReconcileByServer, {
+              serverSecret,
+              userId,
+              reservationId,
+              errorMessage: err instanceof Error ? err.message : "finalize_failed",
+            }).catch(() => {});
+          });
+        }
       }
 
       console.log("[memoryExtractorNode] result", {

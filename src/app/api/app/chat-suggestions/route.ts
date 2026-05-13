@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { generateText } from 'ai'
 import { convex } from '@/lib/convex'
@@ -7,6 +7,7 @@ import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/model-types'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)
@@ -150,7 +151,7 @@ function scheduleRefreshForNewDay(args: {
   })
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) {
@@ -158,6 +159,12 @@ export async function GET() {
     }
 
     const userId = session.user.id
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'helper:chat-suggestions:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
+      { bucket: 'helper:chat-suggestions:user', key: userId, limit: 30, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+
     const serverSecret = getInternalApiSecret()
     const today = utcDateKey()
     const firstName = session.user.firstName?.trim() ?? ''

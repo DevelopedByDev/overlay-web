@@ -4,18 +4,20 @@ import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { getGatewayImageModel } from '@/lib/ai-gateway'
 import { IMAGE_MODELS } from '@/lib/model-data'
-import { calculateImageCost } from '@/lib/model-pricing'
+import { calculateImageCostOrNull } from '@/lib/model-pricing'
 import { uploadBuffer, keyForOutput } from '@/lib/r2'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
 import { deleteObject } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import type { Entitlements } from '@/lib/app-contracts'
 import {
-  buildInsufficientCreditsPayload,
   billableBudgetCentsFromProviderUsd,
-  ensureBudgetAvailable,
+  finalizeProviderBudgetReservation,
   getBudgetTotals,
   isPaidPlan,
+  markProviderBudgetReconcile,
+  releaseProviderBudgetReservation,
+  reserveProviderBudget,
 } from '@/lib/billing-runtime'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
@@ -64,10 +66,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const providerCostUsd = calculateImageCost(modelId ?? IMAGE_MODELS[0]?.id ?? 'google/imagen-4')
-    const minimumRequiredCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
     let currentEntitlements = entitlements
-    let budget = getBudgetTotals(currentEntitlements)
+    const budget = getBudgetTotals(currentEntitlements)
     const usedPct = budget.totalCents > 0 ? ((budget.usedCents / budget.totalCents) * 100).toFixed(2) : '0.00'
     console.log(`[GenerateImage] 📊 Entitlements: tier=${currentEntitlements.tier} | used=${budget.usedCents}¢ / ${budget.totalCents}¢ (${usedPct}% used, $${(budget.remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
     if (!isPaidPlan(currentEntitlements)) {
@@ -75,21 +75,6 @@ export async function POST(request: NextRequest) {
         { error: 'generation_not_allowed', message: 'Image generation requires a paid plan.' },
         { status: 403 }
       )
-    }
-    if (budget.remainingCents < minimumRequiredCents) {
-      const autoTopUp = await ensureBudgetAvailable({
-        userId: auth.userId,
-        entitlements: currentEntitlements,
-        minimumRequiredCents,
-      })
-      currentEntitlements = autoTopUp.entitlements
-      budget = getBudgetTotals(currentEntitlements)
-      if (budget.remainingCents < minimumRequiredCents) {
-        return NextResponse.json(
-          buildInsufficientCreditsPayload(currentEntitlements, 'Not enough budget remaining to generate this image. Please top up your account.'),
-          { status: 402 }
-        )
-      }
     }
     if ((currentEntitlements.overlayStorageBytesUsed ?? 0) >= (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
       return NextResponse.json(
@@ -107,12 +92,38 @@ export async function POST(request: NextRequest) {
     const priorityList = modelId
       ? [modelId]
       : IMAGE_MODELS.map((m) => m.id)
+    const pricedPriorityList = priorityList.filter((candidateId) => calculateImageCostOrNull(candidateId) !== null)
+    if (pricedPriorityList.length === 0) {
+      return NextResponse.json(
+        { error: 'pricing_missing', message: 'Image generation is temporarily unavailable because model pricing is missing.' },
+        { status: 400 },
+      )
+    }
+    if (modelId && pricedPriorityList[0] !== modelId) {
+      return NextResponse.json(
+        { error: 'pricing_missing', message: `Image model ${modelId} is not priced for production use.` },
+        { status: 400 },
+      )
+    }
+
+    const maxProviderCostUsd = Math.max(...pricedPriorityList.map((candidateId) => calculateImageCostOrNull(candidateId) ?? 0))
+    const reservation = await reserveProviderBudget({
+      userId: auth.userId,
+      entitlements: currentEntitlements,
+      providerCostUsd: maxProviderCostUsd,
+      kind: 'generation',
+      modelId: modelId ?? 'image-fallback',
+    })
+    if (!reservation.ok) {
+      return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
+    }
+    currentEntitlements = reservation.entitlements
 
     let lastError: Error | null = null
     let usedModelId: string | null = null
     let imageBase64: string | null = null
 
-    for (const tryModelId of priorityList) {
+    for (const tryModelId of pricedPriorityList) {
       try {
         const imageModel = await getGatewayImageModel(tryModelId, auth.accessToken || undefined)
 
@@ -139,6 +150,11 @@ export async function POST(request: NextRequest) {
     if (!imageBase64 || !usedModelId) {
       const errMsg = lastError?.message ?? 'Unknown error'
       console.error('[GenerateImage] Generation failed. Last error:', errMsg)
+      await releaseProviderBudgetReservation({
+        userId: auth.userId,
+        reservationId: reservation.reservationId,
+        reason: errMsg,
+      }).catch((releaseError) => console.error('[GenerateImage] Failed to release budget reservation:', releaseError))
       return NextResponse.json(
         { error: 'generation_failed', message: `Image generation failed: ${errMsg}` },
         { status: 500 }
@@ -153,6 +169,11 @@ export async function POST(request: NextRequest) {
     try {
       const imageBuffer = Buffer.from(imageBase64!, 'base64')
       if ((currentEntitlements.overlayStorageBytesUsed ?? 0) + imageBuffer.length > (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
+        await markProviderBudgetReconcile({
+          userId: auth.userId,
+          reservationId: reservation.reservationId,
+          errorMessage: 'storage_limit_exceeded_after_generation',
+        }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
         return NextResponse.json(
           { error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this image.' },
           { status: 403 },
@@ -204,6 +225,11 @@ export async function POST(request: NextRequest) {
       )
     } catch (err) {
       console.error('[GenerateImage] Failed to save output:', err)
+      await markProviderBudgetReconcile({
+        userId: auth.userId,
+        reservationId: reservation.reservationId,
+        errorMessage: err instanceof Error ? err.message : 'Failed to save generated image',
+      }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
       if (uploadedR2Key) {
         await deleteObject(uploadedR2Key).catch(() => {})
       }
@@ -240,35 +266,56 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Usage tracking ────────────────────────────────────────────────────────
-    const costDollars = calculateImageCost(usedModelId)
+    const costDollars = calculateImageCostOrNull(usedModelId)
+    if (costDollars === null) {
+      await markProviderBudgetReconcile({
+        userId: auth.userId,
+        reservationId: reservation.reservationId,
+        errorMessage: `pricing_missing:${usedModelId}`,
+      }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
+      return NextResponse.json(
+        { error: 'pricing_missing', message: `Image model ${usedModelId} is not priced for production use.` },
+        { status: 500 },
+      )
+    }
     const costCents = billableBudgetCentsFromProviderUsd(costDollars)
     console.log(`[GenerateImage] 💰 Cost: model=${usedModelId} | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
-    if (costCents > 0) {
-      const recordResult = await convex.mutation('usage:recordBatch', {
-        serverSecret,
-        userId: auth.userId,
-        events: [{
-          type: 'generation',
-          modelId: usedModelId,
-          inputTokens: 0,
-          outputTokens: 0,
-          cachedTokens: 0,
-          cost: costCents,
-          timestamp: Date.now(),
-        }],
-      })
-      if (recordResult) {
-        const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
-          serverSecret,
+    if (costCents > 0 || reservation.reservationId) {
+      try {
+        const recordResult = await finalizeProviderBudgetReservation({
           userId: auth.userId,
+          reservationId: reservation.reservationId,
+          actualProviderCostUsd: costDollars,
+          events: [{
+            type: 'generation',
+            modelId: usedModelId,
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedTokens: 0,
+            cost: costCents,
+            timestamp: Date.now(),
+          }],
         })
-        if (updated) {
-          const totalCents = updated.creditsTotal * 100
-          const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'
-          console.log(`[GenerateImage] ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ (${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`)
+        if (recordResult) {
+          const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+            serverSecret,
+            userId: auth.userId,
+          })
+          if (updated) {
+            const totalCents = updated.creditsTotal * 100
+            const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'
+            console.log(`[GenerateImage] ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ (${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`)
+          }
+        } else {
+          console.error(`[GenerateImage] ❌ finalizeProviderBudgetReservation returned null — check server logs for Convex error`)
         }
-      } else {
-        console.error(`[GenerateImage] ❌ recordBatch returned null — check server logs for Convex error`)
+      } catch (recordError) {
+        console.error('[GenerateImage] Failed to finalize budget reservation:', recordError)
+        await markProviderBudgetReconcile({
+          userId: auth.userId,
+          reservationId: reservation.reservationId,
+          errorMessage: recordError instanceof Error ? recordError.message : 'finalize_failed',
+        }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
       }
     } else {
       console.log(`[GenerateImage] ⚠️  Cost is 0¢ for model=${usedModelId} — usage not recorded`)

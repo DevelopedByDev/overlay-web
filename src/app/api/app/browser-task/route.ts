@@ -10,8 +10,12 @@ import {
   buildInsufficientCreditsPayload,
   billableBudgetCentsFromProviderUsd,
   ensureBudgetAvailable,
+  finalizeProviderBudgetReservation,
   getBudgetTotals,
   isPaidPlan,
+  markProviderBudgetReconcile,
+  releaseProviderBudgetReservation,
+  reserveProviderBudget,
 } from '@/lib/billing-runtime'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
@@ -114,17 +118,38 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const reservation = await reserveProviderBudget({
+      userId: auth.userId,
+      entitlements: currentEntitlements,
+      providerCostUsd: BROWSER_USE_TASK_INIT_USD + remainingVariableBudgetUsd,
+      kind: 'generation',
+      modelId: `browser-use/${model ?? 'auto'}`,
+    })
+    if (!reservation.ok) {
+      return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
+    }
+
     const client = new BrowserUse({ apiKey })
     const normalizedProxyCountryCode =
       typeof proxyCountryCode === 'string' && /^[a-z]{2}$/i.test(proxyCountryCode)
         ? (proxyCountryCode.toLowerCase() as ProxyCountryCode)
         : undefined
-    const result = await client.run(sanitizedTask, {
-      ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
-      ...(model ? { model } : {}),
-      ...(normalizedProxyCountryCode ? { proxyCountryCode: normalizedProxyCountryCode } : {}),
-      maxCostUsd: remainingVariableBudgetUsd,
-    })
+    let result: Awaited<ReturnType<typeof client.run>>
+    try {
+      result = await client.run(sanitizedTask, {
+        ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
+        ...(model ? { model } : {}),
+        ...(normalizedProxyCountryCode ? { proxyCountryCode: normalizedProxyCountryCode } : {}),
+        maxCostUsd: remainingVariableBudgetUsd,
+      })
+    } catch (err) {
+      await releaseProviderBudgetReservation({
+        userId: auth.userId,
+        reservationId: reservation.reservationId,
+        reason: err instanceof Error ? err.message : 'browser_task_failed',
+      }).catch(() => {})
+      throw err
+    }
 
     const llmCostUsd = parseUsd(result.llmCostUsd)
     const proxyCostUsd = parseUsd(result.proxyCostUsd)
@@ -141,9 +166,10 @@ export async function POST(request: NextRequest) {
     const totalChargeUsd = BROWSER_USE_TASK_INIT_USD + estimatedVariableCostUsd
     const costCents = billableBudgetCentsFromProviderUsd(totalChargeUsd)
 
-    await convex.mutation('usage:recordBatch', {
-      serverSecret,
+    await finalizeProviderBudgetReservation({
       userId: auth.userId,
+      reservationId: reservation.reservationId,
+      actualProviderCostUsd: totalChargeUsd,
       events: [{
         type: 'generation',
         modelId: `browser-use/${result.model}`,
@@ -153,6 +179,12 @@ export async function POST(request: NextRequest) {
         cost: costCents,
         timestamp: Date.now(),
       }],
+    }).catch(async (err) => {
+      await markProviderBudgetReconcile({
+        userId: auth.userId,
+        reservationId: reservation.reservationId,
+        errorMessage: err instanceof Error ? err.message : 'finalize_failed',
+      }).catch(() => {})
     })
 
     const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', {

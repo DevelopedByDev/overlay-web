@@ -21,7 +21,7 @@ import {
   allowedOverlayToolIdsForTurn,
   HIGH_RISK_TOOL_AUTHORIZATION_NOTE,
 } from '@/lib/tools/exposure-policy'
-import { calculateTokenCost, isPremiumModel } from '@/lib/model-pricing'
+import { calculateTokenCostOrNull, isPremiumModel } from '@/lib/model-pricing'
 import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
 import { buildDocumentContextBundle } from '@/lib/document-context-builder'
 import { parseIndexedAttachmentsFromRequest } from '@/lib/knowledge-agent-types'
@@ -60,8 +60,12 @@ import {
   buildInsufficientCreditsPayload,
   billableBudgetCentsFromProviderUsd,
   ensureBudgetAvailable,
+  finalizeProviderBudgetReservation,
   getBudgetTotals,
   isPaidPlan,
+  markProviderBudgetReconcile,
+  releaseProviderBudgetReservation,
+  reserveProviderBudget,
 } from '@/lib/billing-runtime'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
@@ -411,6 +415,9 @@ async function drainReadableStream(stream: ReadableStream<Uint8Array<ArrayBuffer
 export async function POST(request: NextRequest) {
   let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
   let pendingServerSecret: string | undefined
+  let budgetReservationId: string | null = null
+  let budgetReservationFinalized = false
+  let currentUserId: string | undefined
   try {
     const {
       ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
@@ -471,10 +478,11 @@ export async function POST(request: NextRequest) {
       accessToken,
       userId: requestedUserId,
     })
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    const userId = auth.userId
+	    if (!auth) {
+	      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+	    }
+	    const userId = auth.userId
+	    currentUserId = userId
     const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'conversations:act:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
       { bucket: 'conversations:act:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
@@ -801,10 +809,32 @@ export async function POST(request: NextRequest) {
       ? `\n\nProject instructions:\n${projectInstructions}`
       : ''
 
-    const modelMessages = await convertToModelMessages(messagesForModel)
-    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
-    let streamedRoutedModelId: string | undefined
-    let generatingMessageId: Id<'conversationMessages'> | undefined
+	    const modelMessages = await convertToModelMessages(messagesForModel)
+	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
+	    let streamedRoutedModelId: string | undefined
+	    if (isPaidPlan(refreshedEntitlements) && isPremiumModel(effectiveModelId)) {
+	      const estimatedInputTokens = Math.ceil(JSON.stringify(modelMessages).length / 4) + 2_000
+	      const maxOutputTokens = 8_192
+	      const estimatedProviderCostUsd = calculateTokenCostOrNull(effectiveModelId, estimatedInputTokens, 0, maxOutputTokens)
+	      if (estimatedProviderCostUsd === null) {
+	        return NextResponse.json(
+	          { error: 'pricing_missing', message: `Model ${effectiveModelId} is not priced for production use.` },
+	          { status: 400 },
+	        )
+	      }
+	      const reservation = await reserveProviderBudget({
+	        userId,
+	        entitlements: refreshedEntitlements,
+	        providerCostUsd: estimatedProviderCostUsd,
+	        kind: 'agent',
+	        modelId: effectiveModelId,
+	      })
+	      if (!reservation.ok) {
+	        return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
+	      }
+	      budgetReservationId = reservation.reservationId
+	    }
+	    let generatingMessageId: Id<'conversationMessages'> | undefined
     if (cid) {
       try {
         generatingMessageId = await convex.mutation<Id<'conversationMessages'>>(
@@ -1055,29 +1085,58 @@ export async function POST(request: NextRequest) {
           const rid = event.steps.at(-1)?.response.modelId
           if (typeof rid === 'string' && rid) streamedRoutedModelId = rid
         }
-        const providerCostUsd =
-          isNvidiaNimChatModelId(effectiveModelId)
-            ? 0
-            : calculateTokenCost(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
-        const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
-
-        if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
-          try {
-            await convex.mutation('usage:recordBatch', {
-              serverSecret,
+        const providerCostUsd = calculateTokenCostOrNull(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
+        if (providerCostUsd === null) {
+          console.error('[conversations/act] Missing pricing for completed provider call', { modelId: effectiveModelId })
+          if (budgetReservationId) {
+            await markProviderBudgetReconcile({
               userId,
-              events: [{
-                type: 'agent',
+              reservationId: budgetReservationId,
+              errorMessage: `pricing_missing:${effectiveModelId}`,
+            }).catch((err) => console.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(err)))
+            budgetReservationId = null
+          }
+        } else {
+          const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
+
+          if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
+            try {
+              const events = [{
+                type: 'agent' as const,
                 modelId: effectiveModelId,
                 inputTokens: totalInputTokens,
                 outputTokens: totalOutputTokens,
                 cachedTokens: 0,
                 cost: costCents,
                 timestamp: Date.now(),
-              }],
-            })
-          } catch (err) {
-            console.error('[conversations/act] Failed to record usage:', summarizeErrorForLog(err))
+              }]
+              if (budgetReservationId) {
+                await finalizeProviderBudgetReservation({
+                  userId,
+                  reservationId: budgetReservationId,
+                  actualProviderCostUsd: providerCostUsd,
+                  events,
+                })
+                budgetReservationFinalized = true
+                budgetReservationId = null
+              } else {
+                await convex.mutation('usage:recordBatch', {
+                  serverSecret,
+                  userId,
+                  events,
+                })
+              }
+            } catch (err) {
+              console.error('[conversations/act] Failed to record usage:', summarizeErrorForLog(err))
+              if (budgetReservationId) {
+                await markProviderBudgetReconcile({
+                  userId,
+                  reservationId: budgetReservationId,
+                  errorMessage: summarizeErrorForLog(err),
+                }).catch((reconcileErr) => console.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(reconcileErr)))
+                budgetReservationId = null
+              }
+            }
           }
         }
 
@@ -1246,11 +1305,19 @@ export async function POST(request: NextRequest) {
       const [clientBody, backgroundBody] = responseBody.tee()
       responseBody = clientBody
       after(async () => {
-        try {
-          await drainReadableStream(backgroundBody)
-        } catch (err) {
-          console.error('[conversations/act] Background stream drain failed:', summarizeErrorForLog(err))
-          if (generatingMessageId) {
+	        try {
+	          await drainReadableStream(backgroundBody)
+	        } catch (err) {
+	          console.error('[conversations/act] Background stream drain failed:', summarizeErrorForLog(err))
+	          if (budgetReservationId && !budgetReservationFinalized) {
+	            await releaseProviderBudgetReservation({
+	              userId,
+	              reservationId: budgetReservationId,
+	              reason: summarizeErrorForLog(err),
+	            }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
+	            budgetReservationId = null
+	          }
+	          if (generatingMessageId) {
             try {
               await convex.mutation('conversations:failGeneratingMessage', {
                 messageId: generatingMessageId,
@@ -1338,9 +1405,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Internal error' }, { status: 500 })
     }
     return await runActStream(payTierLanguageModel)
-  } catch (error) {
-    console.error('[conversations/act] Error:', summarizeErrorForLog(error))
-    if (pendingGeneratingMessageId && pendingServerSecret) {
+	  } catch (error) {
+	    console.error('[conversations/act] Error:', summarizeErrorForLog(error))
+	    if (budgetReservationId && !budgetReservationFinalized) {
+	      await releaseProviderBudgetReservation({
+	        userId: currentUserId ?? 'unknown',
+	        reservationId: budgetReservationId,
+	        reason: summarizeErrorForLog(error),
+	      }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
+	      budgetReservationId = null
+	    }
+	    if (pendingGeneratingMessageId && pendingServerSecret) {
       try {
         await convex.mutation('conversations:failGeneratingMessage', {
           messageId: pendingGeneratingMessageId,

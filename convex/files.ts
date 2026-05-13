@@ -780,8 +780,9 @@ export const remove = mutation({
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
+    r2CleanupConfirmed: v.optional(v.boolean()),
   },
-  handler: async (ctx, { fileId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { fileId, userId, accessToken, serverSecret, r2CleanupConfirmed }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const root = await ctx.db.get(fileId)
     if (!root || root.userId !== userId || root.deletedAt) throw new Error('Unauthorized')
@@ -810,7 +811,8 @@ export const remove = mutation({
       }
       if (file.storageId) await ctx.storage.delete(file.storageId)
       const kind = inferKind(file)
-      if (shouldCountStorage(kind, file.type, file.sizeBytes ?? 0)) {
+      const storageCleanupConfirmed = !file.r2Key || r2CleanupConfirmed === true
+      if (storageCleanupConfirmed && shouldCountStorage(kind, file.type, file.sizeBytes ?? 0)) {
         await applyStorageUsageDelta(ctx as never, userId, -(file.sizeBytes ?? 0))
       }
       await ctx.db.patch(id, { deletedAt: now, updatedAt: now, indexStatus: 'skipped' })

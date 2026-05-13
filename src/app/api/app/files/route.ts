@@ -296,19 +296,19 @@ export async function DELETE(request: NextRequest) {
       }
       return [entry.r2Key]
     })
+    if (r2Keys.length > 0) {
+      await deleteObjects(r2Keys)
+      console.log(`[FilesDelete] Deleted ${r2Keys.length} R2 objects for fileId=${fileId}`)
+    }
     await convex.mutation('files:remove', {
       fileId,
       userId: auth.userId,
       serverSecret,
+      r2CleanupConfirmed: r2Keys.length > 0,
     })
-    if (r2Keys.length > 0) {
-      await deleteObjects(r2Keys).catch((error) => {
-        console.warn(`[FilesDelete] Metadata removed but R2 cleanup failed for fileId=${fileId}`, error)
-      })
-      console.log(`[FilesDelete] Deleted ${r2Keys.length} R2 objects for fileId=${fileId}`)
-    }
     return NextResponse.json({ success: true })
-  } catch {
+  } catch (error) {
+    console.error('[FilesDelete] failed', error)
     return NextResponse.json({ error: 'Failed to delete file' }, { status: 500 })
   }
 }

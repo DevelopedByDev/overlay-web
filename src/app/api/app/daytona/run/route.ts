@@ -14,13 +14,22 @@ import {
   uploadSandboxBuffer,
   type DaytonaRuntime,
 } from '@/lib/daytona'
+import { computeDaytonaRuntimeCost, getDaytonaResourceProfile } from '@/lib/daytona-pricing'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { classifyOutputType } from '@/lib/output-types'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 import { getSession } from '@/lib/workos-auth'
 import type { Entitlements } from '@/lib/app-contracts'
-import { buildInsufficientCreditsPayload, ensureBudgetAvailable, getBudgetTotals, isPaidPlan } from '@/lib/billing-runtime'
+import {
+  buildInsufficientCreditsPayload,
+  ensureBudgetAvailable,
+  getBudgetTotals,
+  isPaidPlan,
+  markProviderBudgetReconcile,
+  releaseProviderBudgetReservation,
+  reserveProviderBudget,
+} from '@/lib/billing-runtime'
 import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl, deleteObject } from '@/lib/r2'
 import { checkGlobalR2Budget } from '@/lib/r2-budget'
 
@@ -296,6 +305,26 @@ export async function POST(request: NextRequest) {
     | null = null
   let meteringStartedAt: number | null = null
   let meteringEndedAt: number | null = null
+  let sandboxBudgetReservationId: string | null = null
+
+  const profile = getDaytonaResourceProfile('pro')
+  const maxEstimatedRuntime = computeDaytonaRuntimeCost({
+    cpu: profile.cpu,
+    memoryGiB: profile.memoryGiB,
+    diskGiB: profile.diskGiB,
+    elapsedSeconds: maxDuration,
+  })
+  const sandboxReservation = await reserveProviderBudget({
+    userId,
+    entitlements: currentEntitlements,
+    providerCostUsd: maxEstimatedRuntime.costUsd,
+    kind: 'sandbox',
+    modelId: 'daytona/pro',
+  })
+  if (!sandboxReservation.ok) {
+    return NextResponse.json({ ...sandboxReservation.payload, error: sandboxReservation.code }, { status: sandboxReservation.status })
+  }
+  sandboxBudgetReservationId = sandboxReservation.reservationId
 
   try {
     workspaceRun = await ensureWorkspaceSandbox({
@@ -471,18 +500,41 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     )
   } finally {
-    if (workspaceRun && meteringStartedAt != null && meteringEndedAt != null && meteringEndedAt > meteringStartedAt) {
-      try {
-        await accrueWorkspaceSpend({
-          workspace: workspaceRun.workspace,
-          sandbox: workspaceRun.sandbox,
-          startedAt: meteringStartedAt,
-          endedAt: meteringEndedAt,
-          reason: 'task',
-        })
-      } catch (meteringError) {
-        console.error('[Daytona Sandbox] Metering failed:', meteringError)
-      }
-    }
-  }
-}
+	    if (workspaceRun && meteringStartedAt != null && meteringEndedAt != null && meteringEndedAt > meteringStartedAt) {
+	      try {
+	        const meteringResult = await accrueWorkspaceSpend({
+	          workspace: workspaceRun.workspace,
+	          sandbox: workspaceRun.sandbox,
+	          startedAt: meteringStartedAt,
+	          endedAt: meteringEndedAt,
+	          reason: 'task',
+	        })
+	        if (sandboxBudgetReservationId && meteringResult?.success) {
+	          await releaseProviderBudgetReservation({
+	            userId,
+	            reservationId: sandboxBudgetReservationId,
+	            reason: 'daytona_actual_usage_accrued',
+	          }).catch(() => {})
+	          sandboxBudgetReservationId = null
+	        }
+	      } catch (meteringError) {
+	        console.error('[Daytona Sandbox] Metering failed:', meteringError)
+	        if (sandboxBudgetReservationId) {
+	          await markProviderBudgetReconcile({
+	            userId,
+	            reservationId: sandboxBudgetReservationId,
+	            errorMessage: meteringError instanceof Error ? meteringError.message : 'daytona_metering_failed',
+	          }).catch(() => {})
+	          sandboxBudgetReservationId = null
+	        }
+	      }
+	    }
+	    if (sandboxBudgetReservationId) {
+	      await releaseProviderBudgetReservation({
+	        userId,
+	        reservationId: sandboxBudgetReservationId,
+	        reason: 'daytona_no_metered_runtime',
+	      }).catch(() => {})
+	    }
+	  }
+	}

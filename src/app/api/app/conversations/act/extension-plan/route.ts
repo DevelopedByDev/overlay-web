@@ -4,11 +4,22 @@ import { z } from 'zod'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
 import { isFreeTierChatModelId } from '@/lib/model-types'
-import { isPremiumModel } from '@/lib/model-pricing'
+import { calculateTokenCostOrNull, isPremiumModel } from '@/lib/model-pricing'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import type { Entitlements } from '@/lib/app-contracts'
-import { buildInsufficientCreditsPayload, ensureBudgetAvailable, getBudgetTotals, isPaidPlan } from '@/lib/billing-runtime'
+import {
+  billableBudgetCentsFromProviderUsd,
+  buildInsufficientCreditsPayload,
+  ensureBudgetAvailable,
+  finalizeProviderBudgetReservation,
+  getBudgetTotals,
+  isPaidPlan,
+  markProviderBudgetReconcile,
+  releaseProviderBudgetReservation,
+  reserveProviderBudget,
+} from '@/lib/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export const maxDuration = 120
 
@@ -301,6 +312,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'extension-plan:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
+      { bucket: 'extension-plan:user', key: auth.userId, limit: 60, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
+
     const effectiveModelId = modelId || 'claude-sonnet-4-6'
     const serverSecret = getInternalApiSecret()
     const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
@@ -384,12 +401,83 @@ export async function POST(request: NextRequest) {
       transcript || 'No prior transcript.',
     ].join('\n')
 
-    const result = await generateObject({
-      model,
-      schema: plannerSchema,
-      prompt,
-      temperature: 0.2,
-    })
+    const estimatedInputTokens = Math.ceil(prompt.length / 4) + 256
+    const maxOutputTokens = 1200
+    let reservationId: string | null = null
+    if (isPaidPlan(entitlements) && isPremiumModel(effectiveModelId)) {
+      const estimatedProviderCostUsd = calculateTokenCostOrNull(effectiveModelId, estimatedInputTokens, 0, maxOutputTokens)
+      if (estimatedProviderCostUsd === null) {
+        return NextResponse.json(
+          { error: 'pricing_missing', message: `Model ${effectiveModelId} is not priced for production use.` },
+          { status: 400 },
+        )
+      }
+      const reservation = await reserveProviderBudget({
+        userId: auth.userId,
+        entitlements,
+        providerCostUsd: estimatedProviderCostUsd,
+        kind: 'agent',
+        modelId: effectiveModelId,
+      })
+      if (!reservation.ok) {
+        return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
+      }
+      reservationId = reservation.reservationId
+    }
+
+    let result: { object: z.infer<typeof plannerSchema>; usage?: { inputTokens?: number; outputTokens?: number } }
+    try {
+      result = await generateObject({
+        model,
+        schema: plannerSchema,
+        prompt,
+        temperature: 0.2,
+        maxOutputTokens,
+      })
+    } catch (err) {
+      await releaseProviderBudgetReservation({
+        userId: auth.userId,
+        reservationId,
+        reason: err instanceof Error ? err.message : 'extension_planner_failed',
+      }).catch(() => {})
+      throw err
+    }
+
+    if (reservationId) {
+      const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
+      const inputTokens = usage?.inputTokens ?? estimatedInputTokens
+      const outputTokens = usage?.outputTokens ?? maxOutputTokens
+      const actualCostUsd = calculateTokenCostOrNull(effectiveModelId, inputTokens, 0, outputTokens)
+      if (actualCostUsd === null) {
+        await markProviderBudgetReconcile({
+          userId: auth.userId,
+          reservationId,
+          errorMessage: `pricing_missing:${effectiveModelId}`,
+        }).catch(() => {})
+      } else {
+        const costCents = billableBudgetCentsFromProviderUsd(actualCostUsd)
+        await finalizeProviderBudgetReservation({
+          userId: auth.userId,
+          reservationId,
+          actualProviderCostUsd: actualCostUsd,
+          events: [{
+            type: 'agent',
+            modelId: effectiveModelId,
+            inputTokens,
+            outputTokens,
+            cachedTokens: 0,
+            cost: costCents,
+            timestamp: Date.now(),
+          }],
+        }).catch(async (err) => {
+          await markProviderBudgetReconcile({
+            userId: auth.userId,
+            reservationId,
+            errorMessage: err instanceof Error ? err.message : 'finalize_failed',
+          }).catch(() => {})
+        })
+      }
+    }
 
     return NextResponse.json(result.object)
   } catch (error) {

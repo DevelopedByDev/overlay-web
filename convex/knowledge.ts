@@ -8,6 +8,8 @@ import {
 import { internal, api } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
+import { calculateEmbeddingCostOrNull } from '../src/lib/model-pricing'
+import { applyMarkupToDollars } from '../src/lib/billing-pricing'
 
 export type HybridSearchChunk = {
   text: string
@@ -26,6 +28,15 @@ const EMBEDDING_MODEL = 'openai/text-embedding-3-small'
 const EMBEDDING_DIM = 1536
 const GATEWAY_EMBED_URL =
   process.env.AI_GATEWAY_EMBED_URL?.trim() || 'https://ai-gateway.vercel.sh/v1/embeddings'
+
+function estimateEmbeddingTokens(texts: string[]): number {
+  return Math.max(1, Math.ceil(texts.reduce((sum, text) => sum + text.length, 0) / 4))
+}
+
+function getServerSecretForBackground(): string | null {
+  const secret = process.env.INTERNAL_API_SECRET?.trim()
+  return secret ? secret : null
+}
 
 export function chunkText(full: string): Array<{ text: string; chunkIndex: number; startOffset: number }> {
   const trimmed = full.trim()
@@ -272,29 +283,102 @@ export const reindexFileInternal = internalAction({
       })
       return
     }
+    const indexingReservation = await ctx.runMutation(internal.usage.tryReserveBackgroundWorkInternal, {
+      userId,
+      kind: 'indexing',
+      chunkCount: segments.length,
+      bytes: new TextEncoder().encode(content).byteLength,
+    })
+    if (!indexingReservation.allowed) return
+
+    const serverSecret = getServerSecretForBackground()
+    if (!serverSecret) return
+    const estimatedTokens = estimateEmbeddingTokens(segments.map((s) => s.text))
+    const estimatedCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, estimatedTokens)
+    if (estimatedCostUsd === null) return
+    const reservationId = `embedding_${crypto.randomUUID()}`
+    try {
+      await ctx.runMutation(api.usage.reserveBudgetByServer, {
+        serverSecret,
+        userId,
+        reservationId,
+        kind: 'embedding',
+        modelId: EMBEDDING_MODEL,
+        reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+      })
+    } catch {
+      return
+    }
+
     const BATCH = 32
     const allEmb: number[][] = []
     let totalTokens = 0
-    for (let i = 0; i < segments.length; i += BATCH) {
-      const batch = segments.slice(i, i + BATCH).map((s) => s.text)
-      const { vectors, promptTokens } = await embedViaGateway(batch)
-      allEmb.push(...vectors)
-      totalTokens += promptTokens
+    try {
+      for (let i = 0; i < segments.length; i += BATCH) {
+        const batch = segments.slice(i, i + BATCH).map((s) => s.text)
+        const { vectors, promptTokens } = await embedViaGateway(batch)
+        allEmb.push(...vectors)
+        totalTokens += promptTokens
+      }
+      await ctx.runMutation(internal.knowledge.replaceKnowledgeSource, {
+        userId,
+        projectId,
+        sourceKind: 'file',
+        sourceId: fileId,
+        title: name,
+        segments: segments.map((s, i) => ({
+          text: s.text,
+          chunkIndex: s.chunkIndex,
+          startOffset: s.startOffset,
+          embedding: allEmb[i]!,
+        })),
+      })
+      const actualCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, totalTokens || estimatedTokens)
+      if (actualCostUsd === null) {
+        await ctx.runMutation(api.usage.markBudgetReservationReconcileByServer, {
+          serverSecret,
+          userId,
+          reservationId,
+          errorMessage: `pricing_missing:${EMBEDDING_MODEL}`,
+        }).catch(() => {})
+        return
+      }
+      const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd })
+      await ctx.runMutation(api.usage.finalizeBudgetReservationByServer, {
+        serverSecret,
+        userId,
+        reservationId,
+        actualCents: costCents,
+        events: [{
+          type: 'embedding',
+          modelId: EMBEDDING_MODEL,
+          inputTokens: totalTokens || estimatedTokens,
+          outputTokens: 0,
+          cachedTokens: 0,
+          cost: costCents,
+          timestamp: Date.now(),
+        }],
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'file_indexing_failed'
+      const providerStarted = totalTokens > 0
+      if (providerStarted) {
+        await ctx.runMutation(api.usage.markBudgetReservationReconcileByServer, {
+          serverSecret,
+          userId,
+          reservationId,
+          errorMessage: message,
+        }).catch(() => {})
+      } else {
+        await ctx.runMutation(api.usage.releaseBudgetReservationByServer, {
+          serverSecret,
+          userId,
+          reservationId,
+          reason: message,
+        }).catch(() => {})
+      }
+      throw err
     }
-    void totalTokens
-    await ctx.runMutation(internal.knowledge.replaceKnowledgeSource, {
-      userId,
-      projectId,
-      sourceKind: 'file',
-      sourceId: fileId,
-      title: name,
-      segments: segments.map((s, i) => ({
-        text: s.text,
-        chunkIndex: s.chunkIndex,
-        startOffset: s.startOffset,
-        embedding: allEmb[i]!,
-      })),
-    })
   },
 })
 
@@ -317,20 +401,95 @@ export const reindexMemoryInternal = internalAction({
       })
       return
     }
-    const { vectors } = await embedViaGateway(segments.map((s) => s.text))
-    await ctx.runMutation(internal.knowledge.replaceKnowledgeSource, {
+    const indexingReservation = await ctx.runMutation(internal.usage.tryReserveBackgroundWorkInternal, {
       userId: meta.userId,
-      projectId: meta.projectId,
-      sourceKind: 'memory',
-      sourceId: memoryId,
-      title: 'Memory',
-      segments: segments.map((s, i) => ({
-        text: s.text,
-        chunkIndex: s.chunkIndex,
-        startOffset: s.startOffset,
-        embedding: vectors[i]!,
-      })),
+      kind: 'indexing',
+      chunkCount: segments.length,
+      bytes: new TextEncoder().encode(meta.content).byteLength,
     })
+    if (!indexingReservation.allowed) return
+
+    const serverSecret = getServerSecretForBackground()
+    if (!serverSecret) return
+    const estimatedTokens = estimateEmbeddingTokens(segments.map((s) => s.text))
+    const estimatedCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, estimatedTokens)
+    if (estimatedCostUsd === null) return
+    const reservationId = `embedding_${crypto.randomUUID()}`
+    try {
+      await ctx.runMutation(api.usage.reserveBudgetByServer, {
+        serverSecret,
+        userId: meta.userId,
+        reservationId,
+        kind: 'embedding',
+        modelId: EMBEDDING_MODEL,
+        reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+      })
+    } catch {
+      return
+    }
+
+    let promptTokens = 0
+    try {
+      const embedded = await embedViaGateway(segments.map((s) => s.text))
+      promptTokens = embedded.promptTokens
+      await ctx.runMutation(internal.knowledge.replaceKnowledgeSource, {
+        userId: meta.userId,
+        projectId: meta.projectId,
+        sourceKind: 'memory',
+        sourceId: memoryId,
+        title: 'Memory',
+        segments: segments.map((s, i) => ({
+          text: s.text,
+          chunkIndex: s.chunkIndex,
+          startOffset: s.startOffset,
+          embedding: embedded.vectors[i]!,
+        })),
+      })
+      const actualCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, promptTokens || estimatedTokens)
+      if (actualCostUsd === null) {
+        await ctx.runMutation(api.usage.markBudgetReservationReconcileByServer, {
+          serverSecret,
+          userId: meta.userId,
+          reservationId,
+          errorMessage: `pricing_missing:${EMBEDDING_MODEL}`,
+        }).catch(() => {})
+        return
+      }
+      const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd })
+      await ctx.runMutation(api.usage.finalizeBudgetReservationByServer, {
+        serverSecret,
+        userId: meta.userId,
+        reservationId,
+        actualCents: costCents,
+        events: [{
+          type: 'embedding',
+          modelId: EMBEDDING_MODEL,
+          inputTokens: promptTokens || estimatedTokens,
+          outputTokens: 0,
+          cachedTokens: 0,
+          cost: costCents,
+          timestamp: Date.now(),
+        }],
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'memory_indexing_failed'
+      if (promptTokens > 0) {
+        await ctx.runMutation(api.usage.markBudgetReservationReconcileByServer, {
+          serverSecret,
+          userId: meta.userId,
+          reservationId,
+          errorMessage: message,
+        }).catch(() => {})
+      } else {
+        await ctx.runMutation(api.usage.releaseBudgetReservationByServer, {
+          serverSecret,
+          userId: meta.userId,
+          reservationId,
+          reason: message,
+        }).catch(() => {})
+      }
+      throw err
+    }
   },
 })
 
@@ -403,27 +562,80 @@ export const hybridSearch = action({
       return { chunks: [] }
     }
 
-    const { vectors, promptTokens } = await embedViaGateway([q])
+    const estimatedTokens = estimateEmbeddingTokens([q])
+    const estimatedCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, estimatedTokens)
+    if (estimatedCostUsd === null) {
+      throw new Error('pricing_missing: embedding model')
+    }
+    const serverSecret = validateServerSecret(args.serverSecret) ? args.serverSecret! : getServerSecretForBackground()
+    if (!serverSecret) {
+      throw new Error('background_budget_exhausted: missing server secret')
+    }
+    const reservationId = `embedding_${crypto.randomUUID()}`
+    try {
+      await ctx.runMutation(api.usage.reserveBudgetByServer, {
+        serverSecret,
+        userId: args.userId,
+        reservationId,
+        kind: 'embedding',
+        modelId: EMBEDDING_MODEL,
+        reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+      })
+    } catch {
+      throw new Error('background_budget_exhausted')
+    }
+
+    let vectors: number[][] = []
+    let promptTokens = 0
+    try {
+      const embedded = await embedViaGateway([q])
+      vectors = embedded.vectors
+      promptTokens = embedded.promptTokens
+    } catch (err) {
+      await ctx.runMutation(api.usage.releaseBudgetReservationByServer, {
+        serverSecret,
+        userId: args.userId,
+        reservationId,
+        reason: err instanceof Error ? err.message : 'embedding_search_failed',
+      }).catch(() => {})
+      throw err
+    }
     const vector = vectors[0]!
 
-    if (args.accessToken && promptTokens > 0) {
-      try {
-        await ctx.runMutation(api.usage.recordBatch, {
-          accessToken: args.accessToken,
+    {
+      const actualTokens = promptTokens || estimatedTokens
+      const actualCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, actualTokens)
+      if (actualCostUsd === null) {
+        await ctx.runMutation(api.usage.markBudgetReservationReconcileByServer, {
+          serverSecret,
           userId: args.userId,
-          events: [
-            {
-              type: 'embedding' as const,
-              modelId: EMBEDDING_MODEL,
-              inputTokens: promptTokens,
-              outputTokens: 0,
-              cost: 0,
-              timestamp: Date.now(),
-            },
-          ],
+          reservationId,
+          errorMessage: `pricing_missing:${EMBEDDING_MODEL}`,
+        }).catch(() => {})
+      } else {
+        const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd })
+        await ctx.runMutation(api.usage.finalizeBudgetReservationByServer, {
+          serverSecret,
+          userId: args.userId,
+          reservationId,
+          actualCents: costCents,
+          events: [{
+            type: 'embedding',
+            modelId: EMBEDDING_MODEL,
+            inputTokens: actualTokens,
+            outputTokens: 0,
+            cachedTokens: 0,
+            cost: costCents,
+            timestamp: Date.now(),
+          }],
+        }).catch(async (err) => {
+          await ctx.runMutation(api.usage.markBudgetReservationReconcileByServer, {
+            serverSecret,
+            userId: args.userId,
+            reservationId,
+            errorMessage: err instanceof Error ? err.message : 'finalize_failed',
+          }).catch(() => {})
         })
-      } catch {
-        // usage recording is best-effort
       }
     }
 

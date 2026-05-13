@@ -7,6 +7,7 @@ import {
   sanitizeMessagePartsForPersistence,
 } from '@/lib/chat-message-persistence'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,6 +30,12 @@ export async function POST(request: NextRequest) {
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const rateLimitResponse = await enforceRateLimits(request, [
+      { bucket: 'conversation-message:ip', key: getClientIp(request), limit: 240, windowMs: 10 * 60_000 },
+      { bucket: 'conversation-message:user', key: auth.userId, limit: 120, windowMs: 10 * 60_000 },
+    ])
+    if (rateLimitResponse) return rateLimitResponse
 
     const normalizedParts = sanitizeMessagePartsForPersistence(body.parts, {
       attachmentNames: body.attachmentNames,

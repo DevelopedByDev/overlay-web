@@ -492,16 +492,41 @@ export const addMessage = mutation({
       : await ctx.db.insert('conversationMessages', payload)
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
 
-    if (args.role === 'user') {
-      try {
-        const subscription = await ctx.db
-          .query('subscriptions')
-          .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-          .first()
-        const isPaid = subscription ? subscription.tier !== 'free' : false
+	    if (args.role === 'user') {
+	      try {
+	        const subscription = await ctx.db
+	          .query('subscriptions')
+	          .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+	          .first()
+	        const isPaid = subscription ? subscription.tier !== 'free' : false
+	        const today = new Date().toISOString().split('T')[0]
+	        let dailyUsage = await ctx.db
+	          .query('dailyUsage')
+	          .withIndex('by_userId_date', (q) => q.eq('userId', args.userId).eq('date', today))
+	          .first()
+	        if (!dailyUsage) {
+	          const dailyUsageId = await ctx.db.insert('dailyUsage', {
+	            userId: args.userId,
+	            date: today,
+	            askCount: 0,
+	            agentCount: 0,
+	            writeCount: 0,
+	            transcriptionSeconds: 0,
+	            memoryExtractionCount: 0,
+	          })
+	          dailyUsage = await ctx.db.get(dailyUsageId)
+	        }
+	        if ((dailyUsage?.memoryExtractionCount ?? 0) >= 120) {
+	          return msgId
+	        }
+	        if (dailyUsage) {
+	          await ctx.db.patch(dailyUsage._id, {
+	            memoryExtractionCount: (dailyUsage.memoryExtractionCount ?? 0) + 1,
+	          })
+	        }
 
-        await ctx.scheduler.runAfter(0, internal.memoryExtractorNode.extractFromTurn, {
-          conversationId: args.conversationId,
+	        await ctx.scheduler.runAfter(0, internal.memoryExtractorNode.extractFromTurn, {
+	          conversationId: args.conversationId,
           turnId: args.turnId,
           userId: args.userId,
           isPaid,

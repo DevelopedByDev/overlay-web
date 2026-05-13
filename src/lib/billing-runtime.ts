@@ -45,6 +45,146 @@ export function billableBudgetCentsFromProviderCents(providerCostCents: number):
   return applyMarkupToCents({ providerCostCents })
 }
 
+export type ProviderSpendKind =
+  | 'ask'
+  | 'write'
+  | 'agent'
+  | 'embedding'
+  | 'transcription'
+  | 'generation'
+  | 'sandbox'
+
+export type ProviderUsageEvent = {
+  type: ProviderSpendKind
+  modelId?: string
+  inputTokens?: number
+  outputTokens?: number
+  cachedTokens?: number
+  cost: number
+  timestamp: number
+}
+
+export function createBudgetReservationId(prefix = 'provider'): string {
+  return `${prefix}_${globalThis.crypto.randomUUID()}`
+}
+
+export async function reserveProviderBudget(params: {
+  userId: string
+  entitlements: Entitlements
+  providerCostUsd: number
+  kind: ProviderSpendKind
+  modelId?: string
+  reservationId?: string
+}) {
+  const reservedCents = billableBudgetCentsFromProviderUsd(params.providerCostUsd)
+  if (reservedCents <= 0) {
+    return {
+      ok: true,
+      reservationId: null,
+      reservedCents: 0,
+      entitlements: params.entitlements,
+    } as const
+  }
+
+  const budget = await ensureBudgetAvailable({
+    userId: params.userId,
+    entitlements: params.entitlements,
+    minimumRequiredCents: Math.max(1, Math.ceil(reservedCents)),
+  })
+
+  if (!isPaidPlan(budget.entitlements) || budget.remainingCents + 0.000001 < reservedCents) {
+    return {
+      ok: false,
+      status: 402,
+      code: 'insufficient_budget',
+      payload: buildInsufficientCreditsPayload(
+        budget.entitlements,
+        'Your Overlay budget is exhausted. Add budget or enable auto top-up before running this request.',
+      ),
+    } as const
+  }
+
+  const reservationId = params.reservationId ?? createBudgetReservationId(params.kind)
+  await convex.mutation(
+    'usage:reserveBudgetByServer',
+    {
+      serverSecret: getInternalApiSecret(),
+      userId: params.userId,
+      reservationId,
+      kind: params.kind,
+      modelId: params.modelId,
+      reservedCents,
+    },
+    { throwOnError: true },
+  )
+
+  return {
+    ok: true,
+    reservationId,
+    reservedCents,
+    entitlements: budget.entitlements,
+  } as const
+}
+
+export async function finalizeProviderBudgetReservation(params: {
+  userId: string
+  reservationId: string | null | undefined
+  actualProviderCostUsd: number
+  events?: ProviderUsageEvent[]
+}) {
+  if (!params.reservationId) return { success: true, skipped: true } as const
+  const actualCents = billableBudgetCentsFromProviderUsd(params.actualProviderCostUsd)
+  return await convex.mutation(
+    'usage:finalizeBudgetReservationByServer',
+    {
+      serverSecret: getInternalApiSecret(),
+      userId: params.userId,
+      reservationId: params.reservationId,
+      actualCents,
+      events: params.events,
+    },
+    { throwOnError: true },
+  )
+}
+
+export async function releaseProviderBudgetReservation(params: {
+  userId: string
+  reservationId: string | null | undefined
+  providerWorkStarted?: boolean
+  reason?: string
+}) {
+  if (!params.reservationId) return { success: true, skipped: true } as const
+  return await convex.mutation(
+    'usage:releaseBudgetReservationByServer',
+    {
+      serverSecret: getInternalApiSecret(),
+      userId: params.userId,
+      reservationId: params.reservationId,
+      providerWorkStarted: params.providerWorkStarted,
+      reason: params.reason,
+    },
+    { throwOnError: true },
+  )
+}
+
+export async function markProviderBudgetReconcile(params: {
+  userId: string
+  reservationId: string | null | undefined
+  errorMessage?: string
+}) {
+  if (!params.reservationId) return { success: true, skipped: true } as const
+  return await convex.mutation(
+    'usage:markBudgetReservationReconcileByServer',
+    {
+      serverSecret: getInternalApiSecret(),
+      userId: params.userId,
+      reservationId: params.reservationId,
+      errorMessage: params.errorMessage,
+    },
+    { throwOnError: true },
+  )
+}
+
 export async function refreshEntitlementsForUser(userId: string): Promise<Entitlements | null> {
   return await convex.query<Entitlements | null>(
     'usage:getEntitlementsByServer',

@@ -51,6 +51,39 @@ function roundCreditAmount(value: number): number {
   return roundCurrencyAmount(value)
 }
 
+async function getSubscriptionBudgetState(ctx: MutationCtx, userId: string) {
+  const subscription = await getOrCreateSubscription(ctx, userId)
+  const planKind = derivePlanKind(subscription ?? {})
+  const planAmountCents = derivePlanAmountCents(subscription ?? {})
+  const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, userId, subscription.currentPeriodStart)
+  const budgetTotalCents = planKind === 'free' ? 0 : planAmountCents + topUpTotalCents
+  const budgetUsedCents = subscription.creditsUsed ?? 0
+  return {
+    subscription,
+    planKind,
+    budgetTotalCents,
+    budgetUsedCents,
+    budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
+  }
+}
+
+async function getDailyUsageForPatch(ctx: MutationCtx, userId: string, date: string) {
+  const existing = await ctx.db
+    .query('dailyUsage')
+    .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
+    .first()
+  if (existing) return existing
+  const id = await ctx.db.insert('dailyUsage', {
+    userId,
+    date,
+    askCount: 0,
+    agentCount: 0,
+    writeCount: 0,
+    transcriptionSeconds: 0,
+  })
+  return await ctx.db.get(id)
+}
+
 type EntitlementCtx = QueryCtx | MutationCtx
 
 async function getSucceededTopUpTotalCents(ctx: EntitlementCtx, userId: string, billingPeriodStart?: number): Promise<number> {
@@ -162,7 +195,9 @@ export async function applyUsageEvents(
   ctx: MutationCtx,
   userId: string,
   events: UsageEvent[],
+  options: { chargeCredits?: boolean } = {},
 ): Promise<{ success: true; eventsProcessed: number }> {
+  const chargeCredits = options.chargeCredits ?? true
   const today = new Date().toISOString().split('T')[0]
 
   let dailyUsage = await ctx.db
@@ -226,7 +261,7 @@ export async function applyUsageEvents(
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
 
-    if (subscription) {
+    if (subscription && chargeCredits) {
       await ctx.db.patch(subscription._id, {
         creditsUsed: roundCreditAmount((subscription.creditsUsed ?? 0) + totalCost),
       })
@@ -463,6 +498,279 @@ export const adjustBudgetByServer = mutation({
     const nextCreditsUsed = Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) + amountCents))
     await ctx.db.patch(subscription._id, { creditsUsed: nextCreditsUsed })
     return { success: true, creditsUsed: nextCreditsUsed }
+  },
+})
+
+export const recordFileBandwidthByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    bytes: v.number(),
+  },
+  handler: async (ctx, { serverSecret, userId, bytes }) => {
+    requireServerSecret(serverSecret)
+    const subscription = await getOrCreateSubscription(ctx, userId)
+    const now = new Date()
+    const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+    const currentPeriodStart = subscription.fileBandwidthPeriodStart ?? monthStart
+    const samePeriod = currentPeriodStart === monthStart
+    const currentBytes = samePeriod ? (subscription.fileBandwidthBytesUsed ?? 0) : 0
+    const nextBytes = currentBytes + Math.max(0, Math.ceil(bytes))
+    await ctx.db.patch(subscription._id, {
+      fileBandwidthPeriodStart: monthStart,
+      fileBandwidthBytesUsed: nextBytes,
+    })
+    return { success: true, fileBandwidthBytesUsed: nextBytes, fileBandwidthPeriodStart: monthStart }
+  },
+})
+
+export const reserveBudgetByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    reservationId: v.string(),
+    kind: v.union(
+      v.literal('ask'),
+      v.literal('write'),
+      v.literal('agent'),
+      v.literal('embedding'),
+      v.literal('transcription'),
+      v.literal('generation'),
+      v.literal('sandbox'),
+    ),
+    modelId: v.optional(v.string()),
+    reservedCents: v.number(),
+  },
+  handler: async (ctx, { serverSecret, userId, reservationId, kind, modelId, reservedCents }) => {
+    requireServerSecret(serverSecret)
+    const normalizedReservationId = reservationId.trim()
+    if (!normalizedReservationId) throw new Error('invalid_reservation_id')
+
+    const existing = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_reservationId', (q) => q.eq('reservationId', normalizedReservationId))
+      .first()
+    if (existing) {
+      if (existing.userId !== userId) throw new Error('reservation_user_mismatch')
+      return {
+        success: true,
+        reservationId: existing.reservationId,
+        reservedCents: existing.reservedCents,
+        status: existing.status,
+        idempotent: true,
+      }
+    }
+
+    const safeReservedCents = roundCreditAmount(Math.max(0, reservedCents))
+    const budget = await getSubscriptionBudgetState(ctx, userId)
+    if (safeReservedCents > 0) {
+      if (budget.planKind !== 'paid') throw new Error('insufficient_budget: paid plan required')
+      if (budget.budgetRemainingCents + 0.000001 < safeReservedCents) {
+        throw new Error('insufficient_budget')
+      }
+      await ctx.db.patch(budget.subscription._id, {
+        creditsUsed: roundCreditAmount(budget.budgetUsedCents + safeReservedCents),
+      })
+    }
+
+    const now = Date.now()
+    await ctx.db.insert('budgetReservations', {
+      userId,
+      reservationId: normalizedReservationId,
+      status: 'reserved',
+      kind,
+      modelId,
+      reservedCents: safeReservedCents,
+      providerWorkStarted: false,
+      providerWorkCompleted: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    return {
+      success: true,
+      reservationId: normalizedReservationId,
+      reservedCents: safeReservedCents,
+      status: 'reserved',
+      idempotent: false,
+    }
+  },
+})
+
+export const finalizeBudgetReservationByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    reservationId: v.string(),
+    actualCents: v.number(),
+    events: v.optional(v.array(
+      v.object({
+        type: v.union(
+          v.literal('ask'),
+          v.literal('write'),
+          v.literal('agent'),
+          v.literal('embedding'),
+          v.literal('transcription'),
+          v.literal('generation'),
+          v.literal('sandbox'),
+        ),
+        modelId: v.optional(v.string()),
+        inputTokens: v.optional(v.number()),
+        outputTokens: v.optional(v.number()),
+        cachedTokens: v.optional(v.number()),
+        cost: v.number(),
+        timestamp: v.number(),
+      }),
+    )),
+  },
+  handler: async (ctx, { serverSecret, userId, reservationId, actualCents, events }) => {
+    requireServerSecret(serverSecret)
+    const reservation = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
+      .first()
+    if (!reservation) throw new Error('reservation_not_found')
+    if (reservation.userId !== userId) throw new Error('reservation_user_mismatch')
+    if (reservation.status === 'finalized') {
+      return { success: true, status: reservation.status, finalizedCents: reservation.finalizedCents ?? reservation.reservedCents }
+    }
+    if (reservation.status !== 'reserved' && reservation.status !== 'reconcile_required') {
+      throw new Error(`reservation_not_finalizable:${reservation.status}`)
+    }
+
+    const safeActualCents = roundCreditAmount(Math.max(0, actualCents))
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    if (!subscription) throw new Error('subscription_not_found')
+
+    if (events?.length) {
+      await enforceFreeTierUsageLimits(ctx, userId, events)
+      await applyUsageEvents(ctx, userId, events, { chargeCredits: false })
+    }
+
+    const delta = roundCreditAmount(safeActualCents - reservation.reservedCents)
+    if (delta !== 0) {
+      await ctx.db.patch(subscription._id, {
+        creditsUsed: Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) + delta)),
+      })
+    }
+
+    await ctx.db.patch(reservation._id, {
+      status: 'finalized',
+      finalizedCents: safeActualCents,
+      providerWorkStarted: true,
+      providerWorkCompleted: true,
+      updatedAt: Date.now(),
+    })
+
+    return { success: true, status: 'finalized', finalizedCents: safeActualCents }
+  },
+})
+
+export const releaseBudgetReservationByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    reservationId: v.string(),
+    providerWorkStarted: v.optional(v.boolean()),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, { serverSecret, userId, reservationId, providerWorkStarted, reason }) => {
+    requireServerSecret(serverSecret)
+    const reservation = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
+      .first()
+    if (!reservation) return { success: true, status: 'missing' }
+    if (reservation.userId !== userId) throw new Error('reservation_user_mismatch')
+    if (reservation.status !== 'reserved') {
+      return { success: true, status: reservation.status }
+    }
+
+    if (providerWorkStarted || reservation.providerWorkStarted) {
+      await ctx.db.patch(reservation._id, {
+        status: 'reconcile_required',
+        providerWorkStarted: true,
+        errorMessage: reason?.slice(0, 2000),
+        updatedAt: Date.now(),
+      })
+      return { success: true, status: 'reconcile_required' }
+    }
+
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first()
+    if (subscription && reservation.reservedCents > 0) {
+      await ctx.db.patch(subscription._id, {
+        creditsUsed: Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) - reservation.reservedCents)),
+      })
+    }
+    await ctx.db.patch(reservation._id, {
+      status: 'released',
+      errorMessage: reason?.slice(0, 2000),
+      updatedAt: Date.now(),
+    })
+    return { success: true, status: 'released' }
+  },
+})
+
+export const markBudgetReservationReconcileByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    reservationId: v.string(),
+    errorMessage: v.optional(v.string()),
+  },
+  handler: async (ctx, { serverSecret, userId, reservationId, errorMessage }) => {
+    requireServerSecret(serverSecret)
+    const reservation = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
+      .first()
+    if (!reservation) return { success: true, status: 'missing' }
+    if (reservation.userId !== userId) throw new Error('reservation_user_mismatch')
+    if (reservation.status === 'finalized') return { success: true, status: 'finalized' }
+    await ctx.db.patch(reservation._id, {
+      status: 'reconcile_required',
+      providerWorkStarted: true,
+      errorMessage: errorMessage?.slice(0, 2000),
+      updatedAt: Date.now(),
+    })
+    return { success: true, status: 'reconcile_required' }
+  },
+})
+
+export const tryReserveBackgroundWorkInternal = internalMutation({
+  args: {
+    userId: v.string(),
+    kind: v.union(v.literal('memory_extraction'), v.literal('indexing')),
+    chunkCount: v.optional(v.number()),
+    bytes: v.optional(v.number()),
+  },
+  handler: async (ctx, { userId, kind, chunkCount, bytes }) => {
+    const today = new Date().toISOString().split('T')[0]
+    const dailyUsage = await getDailyUsageForPatch(ctx, userId, today)
+    if (!dailyUsage) return { allowed: false, reason: 'daily_usage_unavailable' }
+
+    if (kind === 'memory_extraction') {
+      const nextCount = (dailyUsage.memoryExtractionCount ?? 0) + 1
+      if (nextCount > 120) return { allowed: false, reason: 'memory_extraction_cap' }
+      await ctx.db.patch(dailyUsage._id, { memoryExtractionCount: nextCount })
+      return { allowed: true, reason: 'ok' }
+    }
+
+    const nextChunks = (dailyUsage.indexingChunks ?? 0) + Math.max(0, Math.ceil(chunkCount ?? 0))
+    const nextBytes = (dailyUsage.indexingBytes ?? 0) + Math.max(0, Math.ceil(bytes ?? 0))
+    if (nextChunks > 200) return { allowed: false, reason: 'indexing_chunk_cap' }
+    if (nextBytes > 5 * 1024 * 1024) return { allowed: false, reason: 'indexing_byte_cap' }
+    await ctx.db.patch(dailyUsage._id, {
+      indexingChunks: nextChunks,
+      indexingBytes: nextBytes,
+    })
+    return { allowed: true, reason: 'ok' }
   },
 })
 
