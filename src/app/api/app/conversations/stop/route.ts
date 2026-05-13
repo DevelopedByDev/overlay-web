@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
     const result = await convex.mutation('conversations:stopGeneratingMessage', {
       conversationId: conversationId as Id<'conversations'>,
       ...(body.messageId ? { messageId: body.messageId as Id<'conversationMessages'> } : {}),
+      userId: auth.userId,
       serverSecret,
     }) as { stoppedCount: number }
 
@@ -37,6 +38,9 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     console.error('[conversations/stop POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to stop generating message'
+    if (msg === 'Unauthorized') {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

@@ -1,14 +1,22 @@
 import { v } from 'convex/values'
 import { Doc, Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
-import { mutation, query } from './_generated/server'
+import { mutation, query, type MutationCtx } from './_generated/server'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
-import { applyStorageUsageDelta, ensureStorageAvailable } from './lib/storageQuota'
+import {
+  applyStorageUsageDelta,
+  ensureStorageAvailable,
+  getOrCreateSubscription,
+  getStorageBytesUsed,
+  getStorageLimitForSubscription,
+} from './lib/storageQuota'
 import { assertOwnedFileR2Key, isOwnedFileR2Key, isOwnedOutputR2Key } from '../src/lib/storage-keys'
 
 const utf8Encoder = new TextEncoder()
 
 type FileKind = 'folder' | 'note' | 'upload' | 'output'
+type MutationDb = MutationCtx['db']
+const UPLOAD_INTENT_FINALIZE_GRACE_MS = 15 * 60_000
 
 function utf8ByteLength(value: string): number {
   return utf8Encoder.encode(value).length
@@ -25,6 +33,10 @@ async function authorizeUserAccess(params: {
 }) {
   if (validateServerSecret(params.serverSecret)) return
   await requireAccessToken(params.accessToken ?? '', params.userId)
+}
+
+function requireServerAccess(serverSecret: string) {
+  if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
 }
 
 function extensionOf(name: string): string | undefined {
@@ -164,6 +176,176 @@ async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'> | Id<'p
     }
   }
 }
+
+async function getPendingUploadIntentBytes(ctx: { db: MutationDb }, userId: string): Promise<number> {
+  const pending = await ctx.db
+    .query('r2UploadIntents')
+    .withIndex('by_userId_status_expiresAt', (q) => q.eq('userId', userId).eq('status', 'pending'))
+    .collect()
+  return pending.reduce((sum, intent) => sum + Math.max(0, intent.declaredSizeBytes), 0)
+}
+
+// ─── R2 Upload Intents ───────────────────────────────────────────────────────
+
+export const createUploadIntentByServer = mutation({
+  args: {
+    userId: v.string(),
+    serverSecret: v.string(),
+    r2Key: v.string(),
+    declaredSizeBytes: v.number(),
+    mimeType: v.optional(v.string()),
+    expiresAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    requireServerAccess(args.serverSecret)
+    assertOwnedFileR2Key(args.userId, args.r2Key)
+    const declaredSizeBytes = Math.round(args.declaredSizeBytes)
+    if (!Number.isFinite(declaredSizeBytes) || declaredSizeBytes <= 0) {
+      throw new Error('invalid_upload_intent_size')
+    }
+
+    const existing = await ctx.db
+      .query('r2UploadIntents')
+      .withIndex('by_r2Key', (q) => q.eq('r2Key', args.r2Key))
+      .first()
+    if (existing) {
+      throw new Error('upload_intent_already_exists')
+    }
+
+    const subscription = await getOrCreateSubscription(ctx, args.userId)
+    const pendingBytes = await getPendingUploadIntentBytes(ctx, args.userId)
+    const nextReservedBytes = getStorageBytesUsed(subscription) + pendingBytes + declaredSizeBytes
+    const storageLimitBytes = getStorageLimitForSubscription(subscription)
+    if (nextReservedBytes > storageLimitBytes) {
+      throw new Error(`storage_limit_exceeded:${nextReservedBytes}:${storageLimitBytes}`)
+    }
+
+    return await ctx.db.insert('r2UploadIntents', {
+      userId: args.userId,
+      r2Key: args.r2Key,
+      declaredSizeBytes,
+      mimeType: args.mimeType,
+      status: 'pending',
+      createdAt: Date.now(),
+      expiresAt: args.expiresAt,
+    })
+  },
+})
+
+export const getUploadIntentByServer = query({
+  args: {
+    userId: v.string(),
+    serverSecret: v.string(),
+    r2Key: v.string(),
+    now: v.number(),
+  },
+  returns: v.union(
+    v.object({
+      _id: v.id('r2UploadIntents'),
+      declaredSizeBytes: v.number(),
+      mimeType: v.optional(v.string()),
+      expiresAt: v.number(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    requireServerAccess(args.serverSecret)
+    assertOwnedFileR2Key(args.userId, args.r2Key)
+    const intent = await ctx.db
+      .query('r2UploadIntents')
+      .withIndex('by_r2Key', (q) => q.eq('r2Key', args.r2Key))
+      .first()
+    if (!intent || intent.userId !== args.userId || intent.status !== 'pending') return null
+    if (args.now > intent.expiresAt + UPLOAD_INTENT_FINALIZE_GRACE_MS) return null
+    return {
+      _id: intent._id,
+      declaredSizeBytes: intent.declaredSizeBytes,
+      mimeType: intent.mimeType,
+      expiresAt: intent.expiresAt,
+    }
+  },
+})
+
+export const finalizeUploadIntentByServer = mutation({
+  args: {
+    userId: v.string(),
+    serverSecret: v.string(),
+    r2Key: v.string(),
+    actualSizeBytes: v.number(),
+    fileId: v.optional(v.id('files')),
+    now: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireServerAccess(args.serverSecret)
+    assertOwnedFileR2Key(args.userId, args.r2Key)
+    const intent = await ctx.db
+      .query('r2UploadIntents')
+      .withIndex('by_r2Key', (q) => q.eq('r2Key', args.r2Key))
+      .first()
+    if (!intent || intent.userId !== args.userId || intent.status !== 'pending') {
+      throw new Error('upload_intent_not_found')
+    }
+    const actualSizeBytes = Math.max(0, Math.round(args.actualSizeBytes))
+    if (actualSizeBytes > intent.declaredSizeBytes) {
+      throw new Error('upload_size_exceeds_intent')
+    }
+    const patch: Partial<Doc<'r2UploadIntents'>> = {
+      status: 'finalized',
+      actualSizeBytes,
+      finalizedAt: args.now,
+    }
+    if (args.fileId) patch.fileId = args.fileId
+    await ctx.db.patch(intent._id, patch)
+    return null
+  },
+})
+
+export const listExpiredUploadIntentsByServer = query({
+  args: {
+    userId: v.string(),
+    serverSecret: v.string(),
+    now: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(v.object({
+    _id: v.id('r2UploadIntents'),
+    r2Key: v.string(),
+  })),
+  handler: async (ctx, args) => {
+    requireServerAccess(args.serverSecret)
+    const limit = Math.max(1, Math.min(100, Math.round(args.limit ?? 25)))
+    const rows = await ctx.db
+      .query('r2UploadIntents')
+      .withIndex('by_userId_status_expiresAt', (q) =>
+        q.eq('userId', args.userId).eq('status', 'pending').lt('expiresAt', args.now - UPLOAD_INTENT_FINALIZE_GRACE_MS)
+      )
+      .take(limit)
+    return rows.map((row) => ({ _id: row._id, r2Key: row.r2Key }))
+  },
+})
+
+export const expireUploadIntentsByServer = mutation({
+  args: {
+    userId: v.string(),
+    serverSecret: v.string(),
+    intentIds: v.array(v.id('r2UploadIntents')),
+    now: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireServerAccess(args.serverSecret)
+    for (const intentId of args.intentIds) {
+      const intent = await ctx.db.get(intentId)
+      if (!intent || intent.userId !== args.userId || intent.status !== 'pending') continue
+      await ctx.db.patch(intentId, {
+        status: 'expired',
+        expiredAt: args.now,
+      })
+    }
+    return null
+  },
+})
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 

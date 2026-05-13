@@ -6,6 +6,8 @@ import { deleteObjects, headObject } from '@/lib/r2'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/lib/storage-keys'
 import { checkGlobalR2Budget } from '@/lib/r2-budget'
+import { expireR2UploadIntent, type R2UploadIntent } from '@/lib/r2-upload-intents'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 
 function storageErrorResponse(error: unknown, fallback = 'Failed to save file') {
   const message = error instanceof Error ? error.message : String(error)
@@ -125,10 +127,29 @@ export async function POST(request: NextRequest) {
       if (!objectHead) {
         return NextResponse.json({ error: 'Uploaded object not found' }, { status: 400 })
       }
-      const declaredSize = typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0
+      const uploadIntent = kind === 'output'
+        ? null
+        : await convex.query<R2UploadIntent | null>('files:getUploadIntentByServer', {
+          userId: auth.userId,
+          serverSecret,
+          r2Key,
+          now: Date.now(),
+        }, { throwOnError: true })
+      if (kind !== 'output' && !uploadIntent) {
+        await deleteObjects([r2Key]).catch(() => {})
+        return NextResponse.json({ error: 'Upload authorization expired or was not found' }, { status: 400 })
+      }
+      const declaredSize = uploadIntent?.declaredSizeBytes ?? (typeof sizeBytes === 'number' ? Math.max(0, Math.round(sizeBytes)) : 0)
       const actualSize = Math.max(0, Math.round(objectHead.sizeBytes))
       if (declaredSize > 0 && actualSize > declaredSize) {
         await deleteObjects([r2Key]).catch(() => {})
+        if (uploadIntent) {
+          await expireR2UploadIntent({
+            userId: auth.userId,
+            serverSecret,
+            intentId: uploadIntent._id,
+          }).catch(() => {})
+        }
         return NextResponse.json({ error: 'Uploaded object exceeds authorized size' }, { status: 413 })
       }
       await checkGlobalR2Budget(actualSize)
@@ -138,15 +159,45 @@ export async function POST(request: NextRequest) {
           type: 'file',
           r2Key,
           sizeBytes: actualSize,
-        })
+        }, { throwOnError: true })
       } else {
         const { type: _type, ...storageArgs } = args
         void _type
-        id = await convex.mutation('files:createWithStorage', {
-          ...storageArgs,
-          r2Key,
-          sizeBytes: actualSize,
-        })
+        try {
+          id = await convex.mutation('files:createWithStorage', {
+            ...storageArgs,
+            r2Key,
+            sizeBytes: actualSize,
+          }, { throwOnError: true })
+        } catch (error) {
+          await deleteObjects([r2Key]).catch(() => {})
+          if (uploadIntent) {
+            await expireR2UploadIntent({
+              userId: auth.userId,
+              serverSecret,
+              intentId: uploadIntent._id,
+            }).catch(() => {})
+          }
+          throw error
+        }
+        if (!id) throw new Error('File create returned no id')
+        if (uploadIntent) {
+          await convex.mutation('files:finalizeUploadIntentByServer', {
+            userId: auth.userId,
+            serverSecret,
+            r2Key,
+            actualSizeBytes: actualSize,
+            fileId: id as Id<'files'>,
+            now: Date.now(),
+          }, { throwOnError: true }).catch(async (error) => {
+            console.warn('[FilesCreate] Uploaded file saved but upload intent finalization failed', error)
+            await expireR2UploadIntent({
+              userId: auth.userId,
+              serverSecret,
+              intentId: uploadIntent._id,
+            }).catch(() => {})
+          })
+        }
       }
     } else if (kind !== 'note' && type === 'file' && typeof (textContent ?? content) === 'string' && String(textContent ?? content).length > 0) {
       const fullText = String(textContent ?? content)

@@ -698,10 +698,15 @@ export const stopGeneratingMessage = mutation({
   args: {
     conversationId: v.id('conversations'),
     messageId: v.optional(v.id('conversationMessages')),
+    userId: v.string(),
     serverSecret: v.string(),
   },
-  handler: async (ctx, { conversationId, messageId, serverSecret }) => {
+  handler: async (ctx, { conversationId, messageId, userId, serverSecret }) => {
     if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
 
     const messages = await ctx.db
       .query('conversationMessages')

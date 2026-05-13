@@ -623,6 +623,26 @@ export default defineSchema({
   // Knowledge base and project files. Text content is stored in `content`.
   // Binary originals (images, PDFs, etc.) use Cloudflare R2 via `r2Key`; served via /api/app/files/[id]/content.
   // `storageId` is legacy Convex File Storage only (no longer written by the app).
+  r2UploadIntents: defineTable({
+    userId: v.string(),
+    r2Key: v.string(),
+    declaredSizeBytes: v.number(),
+    actualSizeBytes: v.optional(v.number()),
+    mimeType: v.optional(v.string()),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('finalized'),
+      v.literal('expired'),
+    ),
+    fileId: v.optional(v.id('files')),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    finalizedAt: v.optional(v.number()),
+    expiredAt: v.optional(v.number()),
+  })
+    .index('by_r2Key', ['r2Key'])
+    .index('by_userId_status_expiresAt', ['userId', 'status', 'expiresAt']),
+
   files: defineTable({
     userId: v.string(),
     name: v.string(),

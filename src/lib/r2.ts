@@ -32,10 +32,23 @@ function getR2BucketName(): string {
 }
 
 const MAX_PRESIGN_TTL_SECONDS = 900 // hard cap: 15 minutes
+const DEFAULT_MAX_PRESIGNED_UPLOAD_BYTES = 100 * 1024 * 1024
 
 function getR2PresignTtl(): number {
   const configured = parseInt(process.env['R2_PRESIGN_TTL_SECONDS'] ?? String(MAX_PRESIGN_TTL_SECONDS), 10)
   return Math.min(Number.isFinite(configured) && configured > 0 ? configured : 300, MAX_PRESIGN_TTL_SECONDS)
+}
+
+export function getR2PresignTtlSeconds(): number {
+  return getR2PresignTtl()
+}
+
+export function getMaxPresignedUploadBytes(): number {
+  const configured = parseInt(process.env['R2_MAX_PRESIGNED_UPLOAD_BYTES'] ?? '', 10)
+  if (Number.isFinite(configured) && configured > 0) {
+    return configured
+  }
+  return DEFAULT_MAX_PRESIGNED_UPLOAD_BYTES
 }
 
 export function createR2Client(): S3Client {
@@ -60,11 +73,13 @@ function getR2Client(): S3Client {
 export async function generatePresignedUploadUrl(
   key: string,
   mimeType: string,
+  sizeBytes: number,
   ttlSeconds?: number,
 ): Promise<string> {
   const client = getR2Client()
   const bucket = getR2BucketName()
   const ttl = ttlSeconds ?? getR2PresignTtl()
+  const contentLength = Math.max(1, Math.round(sizeBytes))
   const t0 = Date.now()
 
   const url = await getSignedUrl(
@@ -73,11 +88,12 @@ export async function generatePresignedUploadUrl(
       Bucket: bucket,
       Key: key,
       ContentType: mimeType,
+      ContentLength: contentLength,
     }),
     { expiresIn: ttl },
   )
 
-  console.log(`[R2] generatePresignedUploadUrl key=${key} mimeType=${mimeType} ttl=${ttl}s duration=${Date.now() - t0}ms`)
+  console.log(`[R2] generatePresignedUploadUrl key=${key} mimeType=${mimeType} size=${contentLength}B ttl=${ttl}s duration=${Date.now() - t0}ms`)
   return url
 }
 
