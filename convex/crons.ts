@@ -22,12 +22,11 @@ crons.interval(
   internal.conversations.runStaleGeneratingCleanup,
 )
 
-// Defense-in-depth: catches legacy delta rows whose parent message is no longer
-// `generating`. The 5-minute cadence trails the stale-generating cleanup so any
-// deltas it forgot to drop are reaped on the next sweep.
+// Defense-in-depth: catches stream delta rows whose parent message is no longer
+// `generating`. Do not age-expire deltas here; some tasks can legitimately run long.
 crons.interval(
   'orphan message delta cleanup',
-  { minutes: 5 },
+  { hours: 6 },
   internal.conversations.runOrphanDeltaCleanup,
 )
 

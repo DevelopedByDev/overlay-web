@@ -487,7 +487,8 @@ export default defineSchema({
     ),
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
-    .index('by_messageId', ['messageId']),
+    .index('by_messageId', ['messageId'])
+    .index('by_createdAt', ['createdAt']),
 
   notes: defineTable({
     userId: v.string(),

@@ -3,6 +3,7 @@ import { DEFAULT_MODEL_ID } from '../src/lib/model-types'
 import { internalMutation, mutation, query } from './_generated/server'
 import { internal } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
+import type { MutationCtx, QueryCtx } from './_generated/server'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import { applyStorageUsageDelta } from './lib/storageQuota'
 
@@ -147,6 +148,84 @@ function applyStreamingDeltas(message: MessageDoc, deltas: MessageDeltaDoc[]): M
     }
   }
   return { ...message, content, parts }
+}
+
+async function getMessageDeltas(
+  ctx: Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>,
+  messageId: Id<'conversationMessages'>,
+) {
+  return await ctx.db
+    .query('conversationMessageDeltas')
+    .withIndex('by_messageId', (q) => q.eq('messageId', messageId))
+    .order('asc')
+    .collect()
+}
+
+async function deleteMessageDeltas(
+  ctx: Pick<MutationCtx, 'db'>,
+  messageId: Id<'conversationMessages'>,
+) {
+  const deltas = await getMessageDeltas(ctx, messageId)
+  await deleteDeltaDocs(ctx, deltas)
+  return deltas.length
+}
+
+async function deleteDeltaDocs(
+  ctx: Pick<MutationCtx, 'db'>,
+  deltas: MessageDeltaDoc[],
+) {
+  for (const delta of deltas) {
+    await ctx.db.delete(delta._id)
+  }
+  return deltas.length
+}
+
+async function cleanupMessageDeltas(
+  ctx: Pick<MutationCtx, 'db'>,
+  cutoffMinutes = 60,
+  limit = 1000,
+) {
+  const cutoff = Date.now() - cutoffMinutes * 60 * 1000
+  const staleByAge = await ctx.db
+    .query('conversationMessageDeltas')
+    .withIndex('by_createdAt', (q) => q.lt('createdAt', cutoff))
+    .take(limit)
+  const scan = staleByAge.length > 0
+    ? staleByAge
+    : await ctx.db.query('conversationMessageDeltas').take(limit)
+  let deleted = 0
+  for (const delta of scan) {
+    const message = await ctx.db.get(delta.messageId)
+    if (delta.createdAt < cutoff || !message || message.status !== 'generating') {
+      await ctx.db.delete(delta._id)
+      deleted++
+    }
+  }
+  return {
+    deleted,
+    scanned: scan.length,
+    mode: staleByAge.length > 0 ? 'age' as const : 'orphan' as const,
+  }
+}
+
+async function cleanupInactiveMessageDeltas(
+  ctx: Pick<MutationCtx, 'db'>,
+  limit = 1000,
+) {
+  const scan = await ctx.db.query('conversationMessageDeltas').take(limit)
+  let deleted = 0
+  for (const delta of scan) {
+    const message = await ctx.db.get(delta.messageId)
+    if (!message || message.status !== 'generating') {
+      await ctx.db.delete(delta._id)
+      deleted++
+    }
+  }
+  return {
+    deleted,
+    scanned: scan.length,
+    mode: 'inactive' as const,
+  }
 }
 
 export const list = query({
@@ -341,11 +420,7 @@ export const getMessages = query({
     if (generating.length === 0) return messages
 
     const hydrated = await Promise.all(generating.map(async (message) => {
-      const deltas = await ctx.db
-        .query('conversationMessageDeltas')
-        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
-        .order('asc')
-        .collect()
+      const deltas = await getMessageDeltas(ctx, message._id)
       return applyStreamingDeltas(message, deltas)
     }))
     const hydratedById = new Map(hydrated.map((message) => [message._id, message]))
@@ -542,13 +617,7 @@ export const finalizeGeneratingMessage = mutation({
       status: 'completed',
       updatedAt: now,
     })
-    const deltas = await ctx.db
-      .query('conversationMessageDeltas')
-      .withIndex('by_messageId', (q) => q.eq('messageId', args.messageId))
-      .take(500)
-    for (const delta of deltas) {
-      await ctx.db.delete(delta._id)
-    }
+    await deleteMessageDeltas(ctx, args.messageId)
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
   },
 })
@@ -571,13 +640,7 @@ export const failGeneratingMessage = mutation({
       status: 'error',
       updatedAt: now,
     })
-    const deltas = await ctx.db
-      .query('conversationMessageDeltas')
-      .withIndex('by_messageId', (q) => q.eq('messageId', messageId))
-      .take(500)
-    for (const delta of deltas) {
-      await ctx.db.delete(delta._id)
-    }
+    await deleteMessageDeltas(ctx, messageId)
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
   },
 })
@@ -601,15 +664,33 @@ export const finalizeStaleGeneratingMessages = mutation({
       .take(limit ?? 50)
 
     let finalizedCount = 0
+    let deletedDeltas = 0
     for (const message of stale) {
+      const deltas = await getMessageDeltas(ctx, message._id)
+      const hydrated = applyStreamingDeltas(message, deltas)
       await ctx.db.patch(message._id, {
+        content: hydrated.content,
+        parts: hydrated.parts,
         status: 'completed',
         updatedAt: Date.now(),
       })
+      deletedDeltas += await deleteDeltaDocs(ctx, deltas)
       finalizedCount++
     }
 
-    return { finalizedCount, remaining: stale.length - finalizedCount }
+    return { finalizedCount, deletedDeltas, remaining: stale.length - finalizedCount }
+  },
+})
+
+export const cleanupConversationMessageDeltas = mutation({
+  args: {
+    cutoffMinutes: v.optional(v.number()),
+    limit: v.optional(v.number()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, { cutoffMinutes, limit, serverSecret }) => {
+    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
+    return await cleanupMessageDeltas(ctx, cutoffMinutes ?? 60, limit ?? 1000)
   },
 })
 
@@ -634,10 +715,7 @@ export const stopGeneratingMessage = mutation({
       : messages
 
     for (const message of targets) {
-      const deltas = await ctx.db
-        .query('conversationMessageDeltas')
-        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
-        .collect()
+      const deltas = await getMessageDeltas(ctx, message._id)
 
       const hydrated = applyStreamingDeltas(message, deltas)
       const sentinel = '\n\n[Interrupted by user. Continue?]'
@@ -652,9 +730,7 @@ export const stopGeneratingMessage = mutation({
         updatedAt: Date.now(),
       })
 
-      for (const delta of deltas) {
-        await ctx.db.delete(delta._id)
-      }
+      await deleteDeltaDocs(ctx, deltas)
 
       await ctx.db.patch(conversationId, { lastModified: Date.now(), updatedAt: Date.now() })
     }
@@ -677,37 +753,33 @@ export const runStaleGeneratingCleanup = internalMutation({
       .take(50)
 
     let finalizedCount = 0
+    let deletedDeltas = 0
     for (const message of stale) {
+      const deltas = await getMessageDeltas(ctx, message._id)
+      const hydrated = applyStreamingDeltas(message, deltas)
       await ctx.db.patch(message._id, {
+        content: hydrated.content,
+        parts: hydrated.parts,
         status: 'completed',
         updatedAt: Date.now(),
       })
+      deletedDeltas += await deleteDeltaDocs(ctx, deltas)
       finalizedCount++
     }
 
-    return { finalizedCount, deletedDeltas: 0 }
+    return { finalizedCount, deletedDeltas }
   },
 })
 
 /**
- * Sweeps deltas whose parent message is no longer `generating` (or is missing). Deltas
- * are only useful while a stream is in flight — once the message is completed/errored
- * the client reads from `parts`. This catches legacy rows from earlier code paths that
- * didn't delete deltas (notably pre-fix `runStaleGeneratingCleanup` runs).
+ * Sweeps deltas that are no longer useful. Deltas are only needed while a stream is
+ * actively in flight — once the message is completed/errored the client reads from
+ * `parts`.
  */
 export const runOrphanDeltaCleanup = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const deltas = await ctx.db.query('conversationMessageDeltas').take(500)
-    let deleted = 0
-    for (const delta of deltas) {
-      const message = await ctx.db.get(delta.messageId)
-      if (!message || message.status !== 'generating') {
-        await ctx.db.delete(delta._id)
-        deleted++
-      }
-    }
-    return { deleted, scanned: deltas.length }
+    return await cleanupInactiveMessageDeltas(ctx, 1000)
   },
 })
 
@@ -740,7 +812,7 @@ export const runEmptyConversationCleanup = internalMutation({
         .query('conversationMessageDeltas')
         .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
         .collect()
-      for (const delta of deltas) await ctx.db.delete(delta._id)
+      await deleteDeltaDocs(ctx, deltas)
       await ctx.db.delete(conversation._id)
       deleted++
     }
@@ -770,11 +842,7 @@ export const watchGeneratingMessages = query({
       .order('desc')
       .collect()
     return await Promise.all(messages.map(async (message) => {
-      const deltas = await ctx.db
-        .query('conversationMessageDeltas')
-        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
-        .order('asc')
-        .collect()
+      const deltas = await getMessageDeltas(ctx, message._id)
       return applyStreamingDeltas(message, deltas)
     }))
   },
