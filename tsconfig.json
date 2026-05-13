@@ -42,6 +42,7 @@
     "overlay-chrome",
     "overlay-desktop",
     "overlay-mobile",
+    "workers",
     "scripts"
   ]
 }

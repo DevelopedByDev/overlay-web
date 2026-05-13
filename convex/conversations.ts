@@ -633,6 +633,9 @@ export const finalizeGeneratingMessage = mutation({
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
     const message = await ctx.db.get(args.messageId)
     if (!message) throw new Error('Message not found')
+    if (message.status !== 'generating') {
+      return
+    }
     const now = Date.now()
     await ctx.db.patch(args.messageId, {
       content: args.content,
@@ -657,6 +660,9 @@ export const failGeneratingMessage = mutation({
     if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
     const message = await ctx.db.get(messageId)
     if (!message) throw new Error('Message not found')
+    if (message.status !== 'generating') {
+      return
+    }
     const now = Date.now()
     const text = errorText?.trim() || 'Generation failed.'
     await ctx.db.patch(messageId, {
@@ -723,10 +729,12 @@ export const stopGeneratingMessage = mutation({
   args: {
     conversationId: v.id('conversations'),
     messageId: v.optional(v.id('conversationMessages')),
+    partialContent: v.optional(v.string()),
+    partialParts: messageParts,
     userId: v.string(),
     serverSecret: v.string(),
   },
-  handler: async (ctx, { conversationId, messageId, userId, serverSecret }) => {
+  handler: async (ctx, { conversationId, messageId, partialContent, partialParts, userId, serverSecret }) => {
     if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
     const conversation = await ctx.db.get(conversationId)
     if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
@@ -749,8 +757,14 @@ export const stopGeneratingMessage = mutation({
 
       const hydrated = applyStreamingDeltas(message, deltas)
       const sentinel = '\n\n[Interrupted by user. Continue?]'
-      const finalContent = hydrated.content.trimEnd() + sentinel
-      const baseParts = Array.isArray(hydrated.parts) ? hydrated.parts : [{ type: 'text' as const, text: hydrated.content }]
+      const baseContent = typeof partialContent === 'string' ? partialContent : hydrated.content
+      const finalContent = baseContent.trimEnd() + sentinel
+      const baseParts =
+        Array.isArray(partialParts) && partialParts.length > 0
+          ? partialParts
+          : Array.isArray(hydrated.parts)
+            ? hydrated.parts
+            : [{ type: 'text' as const, text: baseContent }]
       const finalParts = [...baseParts, { type: 'text' as const, text: sentinel }]
 
       await ctx.db.patch(message._id, {

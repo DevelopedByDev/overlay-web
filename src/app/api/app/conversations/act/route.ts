@@ -55,6 +55,7 @@ import {
   resolveNvidiaApiKey,
 } from '@/lib/nvidia-nim-openai'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { isVerifiedChatStreamRelayRequest } from '@/lib/chat-stream-relay-auth'
 import type { Entitlements } from '@/lib/app-contracts'
 import {
   buildInsufficientCreditsPayload,
@@ -455,6 +456,7 @@ export async function POST(request: NextRequest) {
       automationExecution,
       mediaToolIntent,
       actAbortTimeoutMs,
+      streamPersistenceMode,
       mentions: rawMentions,
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
@@ -476,6 +478,7 @@ export async function POST(request: NextRequest) {
       automationExecution?: boolean
       mediaToolIntent?: 'image' | 'video' | null
       actAbortTimeoutMs?: number
+      streamPersistenceMode?: 'convex-deltas' | 'cloudflare-relay'
       mentions?: Array<{ type: string; id: string; name: string; fileIds?: string[] }>
       multiModelSlotIndex?: number
       multiModelTotal?: number
@@ -489,6 +492,24 @@ export async function POST(request: NextRequest) {
 	    }
 	    const userId = auth.userId
 	    currentUserId = userId
+    const useCloudflareStreamRelay =
+      streamPersistenceMode === 'cloudflare-relay' &&
+      isVerifiedChatStreamRelayRequest(request)
+    const resolvedStreamPersistenceMode = useCloudflareStreamRelay
+      ? 'cloudflare-relay'
+      : 'convex-deltas'
+    if (streamPersistenceMode === 'cloudflare-relay' && !useCloudflareStreamRelay) {
+      console.warn('[conversations/act] Ignoring unverified cloudflare-relay persistence request', {
+        conversationId,
+        turnId,
+      })
+    }
+    console.info('[conversations/act] streamPersistence', {
+      mode: resolvedStreamPersistenceMode,
+      conversationId,
+      turnId,
+      variantIndex: rawMultiModelSlotIndex,
+    })
     const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'conversations:act:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
       { bucket: 'conversations:act:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
@@ -1325,41 +1346,49 @@ export async function POST(request: NextRequest) {
       },
     })
     let responseBody: ReadableStream<Uint8Array<ArrayBufferLike>> | null = _uiResp.body
+    const responseHeaders = new Headers(_uiResp.headers)
+    if (useCloudflareStreamRelay) {
+      responseHeaders.set('x-overlay-generating-message-id', generatingMessageId ?? '')
+      responseHeaders.set('x-overlay-auth-user-id', userId)
+      responseHeaders.set('x-overlay-stream-persistence-mode', resolvedStreamPersistenceMode)
+    }
     if (responseBody) {
-      responseBody = responseBody.pipeThrough(
-        createGeneratingPersistenceTransform({
-          messageId: generatingMessageId,
-          serverSecret,
-        }),
-      ) as ReadableStream<Uint8Array<ArrayBufferLike>>
-      const [clientBody, backgroundBody] = responseBody.tee()
-      responseBody = clientBody
-      after(async () => {
-	        try {
-	          await drainReadableStream(backgroundBody)
-	        } catch (err) {
-	          console.error('[conversations/act] Background stream drain failed:', summarizeErrorForLog(err))
-	          if (budgetReservationId && !budgetReservationFinalized) {
-	            await releaseProviderBudgetReservation({
-	              userId,
-	              reservationId: budgetReservationId,
-	              reason: summarizeErrorForLog(err),
-	            }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
-	            budgetReservationId = null
-	          }
-	          if (generatingMessageId) {
-            try {
-              await convex.mutation('conversations:failGeneratingMessage', {
-                messageId: generatingMessageId,
-                errorText: userFacingOpenRouterError(err),
-                serverSecret,
-              })
-            } catch (failErr) {
-              console.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(failErr))
+      if (resolvedStreamPersistenceMode === 'convex-deltas') {
+        responseBody = responseBody.pipeThrough(
+          createGeneratingPersistenceTransform({
+            messageId: generatingMessageId,
+            serverSecret,
+          }),
+        ) as ReadableStream<Uint8Array<ArrayBufferLike>>
+        const [clientBody, backgroundBody] = responseBody.tee()
+        responseBody = clientBody
+        after(async () => {
+          try {
+            await drainReadableStream(backgroundBody)
+          } catch (err) {
+            console.error('[conversations/act] Background stream drain failed:', summarizeErrorForLog(err))
+            if (budgetReservationId && !budgetReservationFinalized) {
+              await releaseProviderBudgetReservation({
+                userId,
+                reservationId: budgetReservationId,
+                reason: summarizeErrorForLog(err),
+              }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
+              budgetReservationId = null
+            }
+            if (generatingMessageId) {
+              try {
+                await convex.mutation('conversations:failGeneratingMessage', {
+                  messageId: generatingMessageId,
+                  errorText: userFacingOpenRouterError(err),
+                  serverSecret,
+                })
+              } catch (failErr) {
+                console.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(failErr))
+              }
             }
           }
-        }
-      })
+        })
+      }
     }
     if (_ttftDebug && responseBody) {
       const _decoder = new TextDecoder()
@@ -1405,12 +1434,12 @@ export async function POST(request: NextRequest) {
       })
       return new Response(responseBody.pipeThrough(_transform), {
         status: _uiResp.status,
-        headers: _uiResp.headers,
+        headers: responseHeaders,
       })
     }
     return new Response(responseBody, {
       status: _uiResp.status,
-      headers: _uiResp.headers,
+      headers: responseHeaders,
     })
     }
 

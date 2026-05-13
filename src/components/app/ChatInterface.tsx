@@ -34,7 +34,7 @@ import {
   AtSign,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
-import { DefaultChatTransport, getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
+import { getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
 import { useQuery } from 'convex/react'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
@@ -109,6 +109,10 @@ import { ExportMenu } from './ExportMenu'
 import { useGuestGate } from './GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/ConvexProviderWithWorkOS'
+import {
+  createPersistentChatTransport,
+  getCloudflareChatStreamRelayApi,
+} from '@/lib/cloudflare-chat-transport'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
@@ -1494,7 +1498,7 @@ function createConversationRuntime(
   uiOverrides: Partial<ConversationUiState> = {},
 ): ConversationRuntime {
   const actTransport = '/api/app/conversations/act'
-  const transport = () => new DefaultChatTransport({
+  const transport = () => createPersistentChatTransport({
     api: actTransport,
     prepareSendMessagesRequest: ({ api, id, messages, body, headers, credentials, trigger, messageId }) => ({
       api,
@@ -1765,6 +1769,7 @@ export default function ChatInterface({
   const loadChatRequestRef = useRef(0)
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const appliedLiveDeltaIdsRef = useRef(new Set<string>())
+  const resumedCloudflareStreamsRef = useRef(new Set<string>())
   const runtimesRef = useRef(new Map<string, ConversationRuntime>())
   const emptyRuntimeRef = useRef(createConversationRuntime('__empty__'))
 
@@ -2263,6 +2268,7 @@ export default function ChatInterface({
   }, [resetActiveChatAfterDelete, updateRuntimeUiState])
 
   const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : emptyRuntimeRef.current
+  const chatStreamRelayApi = getCloudflareChatStreamRelayApi()
   const chat0 = useChat({ chat: activeRuntime.askChats[0] })
   const chat1 = useChat({ chat: activeRuntime.askChats[1] })
   const chat2 = useChat({ chat: activeRuntime.askChats[2] })
@@ -2325,6 +2331,81 @@ export default function ChatInterface({
     activePersistedGenerating
 
   const supportsVision = getModel(selectedActModel)?.supportsVision ?? false
+
+  useEffect(() => {
+    if (!activeChatId || !chatStreamRelayApi) return
+    const hasLocalHttpStream =
+      actChat.status === 'streaming' ||
+      actChat.status === 'submitted' ||
+      chatInstances.some((chat) => chat.status === 'streaming' || chat.status === 'submitted')
+    if (hasLocalHttpStream) return
+
+    const targets = new Map<string, { turnId: string; variantIndex: number }>()
+    const collect = (messages: UIMessage[]) => {
+      for (const message of messages) {
+        const m = message as unknown as {
+          role?: string
+          status?: string
+          turnId?: string
+          id?: string
+          variantIndex?: number
+        }
+        if (m.role !== 'assistant' || m.status !== 'generating') continue
+        const turnId = m.turnId?.trim() || ''
+        if (!turnId) continue
+        const variantIndex = m.variantIndex ?? 0
+        targets.set(`${turnId}:${variantIndex}`, { turnId, variantIndex })
+      }
+    }
+
+    for (const message of liveMessages ?? []) {
+      if (message.role !== 'assistant' || message.status !== 'generating') continue
+      const turnId = message.turnId?.trim() || ''
+      if (!turnId) continue
+      const variantIndex = message.variantIndex ?? 0
+      targets.set(`${turnId}:${variantIndex}`, { turnId, variantIndex })
+    }
+    collect(activeRuntime.actChat.messages as UIMessage[])
+    for (const chat of activeRuntime.askChats) collect(chat.messages as UIMessage[])
+
+    for (const target of targets.values()) {
+      const key = `${activeChatId}:${target.turnId}:${target.variantIndex}`
+      if (resumedCloudflareStreamsRef.current.has(key)) continue
+      const slotChat = chatInstances[target.variantIndex]
+      const slotHasGenerating = slotChat?.messages.some((message) => {
+        const m = message as unknown as { role?: string; status?: string; turnId?: string; variantIndex?: number }
+        return (
+          m.role === 'assistant' &&
+          m.status === 'generating' &&
+          m.turnId === target.turnId &&
+          (m.variantIndex ?? 0) === target.variantIndex
+        )
+      })
+      const targetChat = slotHasGenerating && slotChat ? slotChat : actChat
+      resumedCloudflareStreamsRef.current.add(key)
+      console.info('[chat-stream] path=cloudflare resume-request', {
+        conversationId: activeChatId,
+        turnId: target.turnId,
+        variantIndex: target.variantIndex,
+      })
+      void targetChat.resumeStream({
+        body: {
+          conversationId: activeChatId,
+          turnId: target.turnId,
+          variantIndex: target.variantIndex,
+          multiModelSlotIndex: target.variantIndex,
+        },
+      }).catch((error) => {
+        resumedCloudflareStreamsRef.current.delete(key)
+        console.warn('[chat-stream] path=cloudflare resume-failed', {
+          conversationId: activeChatId,
+          turnId: target.turnId,
+          variantIndex: target.variantIndex,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      })
+    }
+  }, [activeChatId, activeRuntime, actChat, chatInstances, chatStreamRelayApi, liveMessages])
 
   const isFreeTier = (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'free'
   const premiumModelBlocked =
@@ -5053,6 +5134,39 @@ export default function ChatInterface({
     if (!isActiveLoading) return
     const userTurns = primaryMessages.filter((m) => m.role === 'user').length
     const idx = userTurns > 0 ? userTurns - 1 : -1
+    const chatId = activeChatIdRef.current ?? activeChatId
+    const cloudflareStopTargets = new Map<string, { turnId: string; variantIndex: number }>()
+    const collectCloudflareStopTargets = (messages: UIMessage[]) => {
+      for (const message of messages) {
+        const m = message as unknown as {
+          role?: string
+          status?: string
+          turnId?: string
+          id?: string
+          variantIndex?: number
+        }
+        if (m.role === 'assistant' && m.status === 'generating' && m.turnId?.trim()) {
+          const variantIndex = m.variantIndex ?? 0
+          cloudflareStopTargets.set(`${m.turnId}:${variantIndex}`, {
+            turnId: m.turnId,
+            variantIndex,
+          })
+        }
+      }
+    }
+    collectCloudflareStopTargets(activeRuntime.actChat.messages as UIMessage[])
+    for (const chat of activeRuntime.askChats) {
+      collectCloudflareStopTargets(chat.messages as UIMessage[])
+    }
+    if (cloudflareStopTargets.size === 0) {
+      const lastUser = [...primaryMessages].reverse().find((message) => message.role === 'user') as
+        | (UIMessage & { id?: string })
+        | undefined
+      const turnId = lastUser?.id?.trim()
+      if (turnId) {
+        cloudflareStopTargets.set(`${turnId}:0`, { turnId, variantIndex: 0 })
+      }
+    }
 
     // 1. Stop local streams immediately
     activeAskChats.forEach((chat) => chat.stop())
@@ -5060,8 +5174,22 @@ export default function ChatInterface({
 
     // 2. Tell the backend to finalize the generating message before we clear
     //    local state, so patchFromServer doesn't race and restore the spinner.
-    const chatId = activeChatIdRef.current ?? activeChatId
     if (chatId) {
+      if (chatStreamRelayApi && cloudflareStopTargets.size > 0) {
+        await Promise.allSettled([...cloudflareStopTargets.values()].map((target) =>
+          fetch(`${chatStreamRelayApi}/stop`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              conversationId: chatId,
+              turnId: target.turnId,
+              variantIndex: target.variantIndex,
+              multiModelSlotIndex: target.variantIndex,
+            }),
+          }),
+        ))
+      }
       try {
         await Promise.race([
           fetch('/api/app/conversations/stop', {
