@@ -145,7 +145,10 @@ function toCoreConfig(config: OverlayConfigType): CoreOverlayConfig {
       oidc: config.auth.oidc,
       saml: config.auth.saml,
       sessionTTLMinutes: config.auth.sessionTTLMinutes,
-      roleMapping: config.auth.roleMapping as Record<string, 'superadmin' | 'admin' | 'user' | 'guest'>,
+      roleMapping: {
+        ...config.enterprise.groupRoleMapping,
+        ...config.auth.roleMapping,
+      } as Record<string, 'superadmin' | 'admin' | 'user' | 'guest'>,
       defaultRole: config.auth.defaultRole,
     },
     storage: {

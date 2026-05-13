@@ -8,6 +8,7 @@ import {
   Shield,
   Settings,
   Activity,
+  Stethoscope,
   ArrowLeft,
 } from 'lucide-react'
 
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { href: '/admin/security', label: 'Security', icon: Shield },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
   { href: '/admin/health', label: 'Health', icon: Activity },
+  { href: '/admin/diagnostics', label: 'Diagnostics', icon: Stethoscope },
 ]
 
 export default function AdminSidebar() {

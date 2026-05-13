@@ -12,6 +12,7 @@ void HealthDependenciesResponseSchema
 import { NextResponse } from 'next/server'
 import { createHandler } from '@/app/api/lib/middleware'
 import { getOverlayProviders } from '@/lib/provider-runtime'
+import { recordProviderHealth } from '@/lib/enterprise/metrics'
 
 interface CheckResult {
   status: 'ok' | 'error'
@@ -27,6 +28,12 @@ export const GET = createHandler(
 
     const health = await getOverlayProviders().registry.health()
     for (const [domain, result] of Object.entries(health)) {
+      recordProviderHealth({
+        domain,
+        providerId: result.providerId,
+        status: result.status,
+        latencyMs: result.latencyMs,
+      })
       checks[domain] = {
         status: result.status === 'ok' ? 'ok' : 'error',
         latencyMs: result.latencyMs,

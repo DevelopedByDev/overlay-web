@@ -181,6 +181,26 @@ export const OverlayConfig = z.object({
       url: Url,
     })).default([]),
   }).default({}),
+  enterprise: z.object({
+    airGapped: z.boolean().default(false),
+    externalEgressAllowlist: z.array(Url).default([]),
+    license: z.object({
+      key: z.string().optional(),
+      file: z.string().optional(),
+      publicKey: z.string().optional(),
+      gracePeriodDays: z.number().int().min(0).default(14),
+    }).default({}),
+    smtp: z.object({
+      host: z.string().optional(),
+      port: z.number().int().min(1).max(65535).default(587),
+      secure: z.boolean().default(false),
+      username: z.string().optional(),
+      password: z.string().optional(),
+      from: z.string().optional(),
+      heloName: z.string().default('overlay.local'),
+    }).default({}),
+    groupRoleMapping: z.record(z.enum(['superadmin', 'admin', 'user', 'guest'])).default({}),
+  }).default({}),
 })
 
 export type OverlayConfigType = z.infer<typeof OverlayConfig>

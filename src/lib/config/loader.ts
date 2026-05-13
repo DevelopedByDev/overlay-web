@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { OverlayConfig, type OverlayConfigType } from './schema'
+import { assertAirGapConfig } from '@/lib/enterprise/airgap'
 
 type MutableRecord = Record<string, unknown>
 
@@ -126,6 +127,26 @@ function envOverrides(env: NodeJS.ProcessEnv): MutableRecord {
   setNested(overrides, ['whiteLabel', 'fontFamily'], env.OVERLAY_FONT_FAMILY)
   setNested(overrides, ['audit', 'retentionDays'], parseInteger(env.AUDIT_RETENTION_DAYS))
   setNested(overrides, ['audit', 'exportFormat'], env.AUDIT_EXPORT_FORMAT)
+  setNested(overrides, ['enterprise', 'airGapped'], parseBoolean(env.OVERLAY_AIR_GAPPED))
+  setNested(overrides, ['enterprise', 'externalEgressAllowlist'], parseCsv(env.OVERLAY_EXTERNAL_EGRESS_ALLOWLIST))
+  setNested(overrides, ['enterprise', 'license', 'key'], env.OVERLAY_LICENSE_KEY)
+  setNested(overrides, ['enterprise', 'license', 'file'], env.OVERLAY_LICENSE_FILE)
+  setNested(overrides, ['enterprise', 'license', 'publicKey'], env.OVERLAY_LICENSE_PUBLIC_KEY)
+  setNested(overrides, ['enterprise', 'license', 'gracePeriodDays'], parseInteger(env.OVERLAY_LICENSE_GRACE_PERIOD_DAYS))
+  setNested(overrides, ['enterprise', 'smtp', 'host'], env.SMTP_HOST)
+  setNested(overrides, ['enterprise', 'smtp', 'port'], parseInteger(env.SMTP_PORT))
+  setNested(overrides, ['enterprise', 'smtp', 'secure'], parseBoolean(env.SMTP_SECURE))
+  setNested(overrides, ['enterprise', 'smtp', 'username'], env.SMTP_USERNAME)
+  setNested(overrides, ['enterprise', 'smtp', 'password'], env.SMTP_PASSWORD)
+  setNested(overrides, ['enterprise', 'smtp', 'from'], env.SMTP_FROM)
+  setNested(overrides, ['enterprise', 'smtp', 'heloName'], env.SMTP_HELO_NAME)
+  if (env.OVERLAY_GROUP_ROLE_MAPPING?.trim()) {
+    try {
+      setNested(overrides, ['enterprise', 'groupRoleMapping'], JSON.parse(env.OVERLAY_GROUP_ROLE_MAPPING))
+    } catch {
+      // Let schema validation report malformed values if provided in config; env parse failures are ignored.
+    }
+  }
   return overrides
 }
 
@@ -212,4 +233,6 @@ export function validateRuntimeConfig(config: OverlayConfigType): void {
   ) {
     throw new Error('SAML auth requires SAML_METADATA_URL, SAML_METADATA_XML, or SAML_ENTRY_POINT.')
   }
+
+  assertAirGapConfig(config)
 }

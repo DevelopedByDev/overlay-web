@@ -10,6 +10,8 @@ import { logAuditEvent, type AuditEvent } from '@/lib/audit'
 import { createHash } from 'node:crypto'
 import type { z } from 'zod'
 import { getConfig } from '@/lib/config/singleton'
+import { createRequestId, logJson } from '@/lib/enterprise/logger'
+import { recordHttpRequest } from '@/lib/enterprise/metrics'
 
 type Middleware = (
   req: Request,
@@ -52,6 +54,8 @@ export function createHandler(
   const chain = options.middleware ?? []
 
   return async (req: Request) => {
+    const startedAt = Date.now()
+    const requestId = createRequestId()
     const ctx = createBaseContext()
     let response: Response | undefined
 
@@ -64,6 +68,13 @@ export function createHandler(
     }
 
     if (response) {
+      recordHttpRequest({
+        method: req.method,
+        pathname: new URL(req.url).pathname,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+      })
+      response.headers.set('x-request-id', requestId)
       return response
     }
 
@@ -76,17 +87,46 @@ export function createHandler(
         const payload = contentType.includes('application/json') ? await req.json() : {}
         ctx.body = options.body.parse(payload)
       }
-      return await handler(req, ctx)
+      const result = await handler(req, ctx)
+      recordHttpRequest({
+        method: req.method,
+        pathname: new URL(req.url).pathname,
+        status: result.status,
+        durationMs: Date.now() - startedAt,
+      })
+      result.headers.set('x-request-id', requestId)
+      return result
     } catch (error) {
       if (error && typeof error === 'object' && 'issues' in error) {
-        return NextResponse.json(
+        const invalidResponse = NextResponse.json(
           { error: 'Invalid request', details: (error as { issues: unknown }).issues },
           { status: 400 },
         )
+        invalidResponse.headers.set('x-request-id', requestId)
+        recordHttpRequest({
+          method: req.method,
+          pathname: new URL(req.url).pathname,
+          status: 400,
+          durationMs: Date.now() - startedAt,
+        })
+        return invalidResponse
       }
       const message = error instanceof Error ? error.message : String(error)
-      console.error(`[API] ${req.method} ${req.url} error:`, message)
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+      logJson('error', 'api_request_error', {
+        requestId,
+        method: req.method,
+        url: req.url,
+        message,
+      })
+      recordHttpRequest({
+        method: req.method,
+        pathname: new URL(req.url).pathname,
+        status: 500,
+        durationMs: Date.now() - startedAt,
+      })
+      const errorResponse = NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+      errorResponse.headers.set('x-request-id', requestId)
+      return errorResponse
     }
   }
 }
