@@ -2039,6 +2039,13 @@ export default function ChatInterface({
   useEffect(() => {
     setExitingTurnIds([])
     appliedLiveDeltaIdsRef.current.clear()
+    if (
+      !pendingScrollTurnIdRef.current ||
+      (pendingScrollChatIdRef.current && pendingScrollChatIdRef.current !== activeChatId)
+    ) {
+      pendingScrollTurnIdRef.current = null
+      pendingScrollChatIdRef.current = null
+    }
   }, [activeChatId])
 
   useEffect(() => {
@@ -2054,6 +2061,7 @@ export default function ChatInterface({
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const shouldScrollRef = useRef(false)
   const pendingScrollTurnIdRef = useRef<string | null>(null)
+  const pendingScrollChatIdRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<MentionInputHandle>(null)
@@ -3180,13 +3188,42 @@ export default function ChatInterface({
   useLayoutEffect(() => {
     const turnId = pendingScrollTurnIdRef.current
     if (!turnId || !messagesScrollRef.current) return
-    const target = messagesScrollRef.current.querySelector(
-      `[data-exchange-turn="${CSS.escape(turnId)}"]`,
-    )
-    if (!target) return
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    pendingScrollTurnIdRef.current = null
-  }, [activeChatId, chat0.messages.length, actChat.messages.length, generationResults.size, runtimeHydrationVersion])
+    const pendingChatId = pendingScrollChatIdRef.current
+    if (pendingChatId && activeChatId !== pendingChatId) return
+    const scrollFrame = window.requestAnimationFrame(() => {
+      const container = messagesScrollRef.current
+      if (!container || pendingScrollTurnIdRef.current !== turnId) return
+      const target = container.querySelector<HTMLElement>(
+        `[data-exchange-turn="${CSS.escape(turnId)}"]`,
+      )
+      if (!target) return
+
+      const containerRect = container.getBoundingClientRect()
+      const targetRect = target.getBoundingClientRect()
+      const targetTop = targetRect.top - containerRect.top + container.scrollTop
+      const desiredTop = Math.max(0, targetTop - 16)
+      const maxTop = Math.max(0, container.scrollHeight - container.clientHeight)
+      const nextTop = Math.min(desiredTop, maxTop)
+      container.scrollTo({
+        top: nextTop,
+        behavior: 'smooth',
+      })
+      if (desiredTop <= maxTop + 2 || (!isActiveLoading && !isOptimisticLoading)) {
+        pendingScrollTurnIdRef.current = null
+        pendingScrollChatIdRef.current = null
+      }
+    })
+    return () => window.cancelAnimationFrame(scrollFrame)
+  }, [
+    activeChatId,
+    chat0.messages,
+    actChat.messages,
+    exchangeModes.length,
+    generationResults.size,
+    isActiveLoading,
+    isOptimisticLoading,
+    runtimeHydrationVersion,
+  ])
 
   useEffect(() => {
     if (shouldScrollRef.current) {
@@ -3758,11 +3795,16 @@ export default function ChatInterface({
         askModelSelectionMode: initialAskModelSelectionMode,
       })
       runtime.hydrated = true
+      if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {
+        pendingScrollChatIdRef.current = data.id
+      }
       activeChatIdRef.current = data.id
       setActiveViewer(data.id)
       setActiveChatId(data.id)
       syncStandaloneChatUrl(data.id)
       applyUiStateToView(runtime.ui)
+      setRuntimeHydrationVersion((value) => value + 1)
+      resetRuntimeState(emptyRuntimeRef.current)
       clearTransientComposerState()
       return data.id
     }
@@ -4571,6 +4613,23 @@ export default function ChatInterface({
       }
 
       const existingChatId = activeChatIdRef.current ?? activeChatId
+      pendingScrollTurnIdRef.current = mediaTurnId
+      pendingScrollChatIdRef.current = existingChatId
+      if (!existingChatId) {
+        const previewRuntime = emptyRuntimeRef.current
+        resetRuntimeState(previewRuntime, {
+          selectedActModel,
+          selectedModels: activeModels,
+          askModelSelectionMode: activeModels.length > 1 ? 'multiple' : 'single',
+          activeChatTitle: activeChatTitleSnapshot ?? null,
+          isFirstMessage: false,
+        })
+        prepareMediaRuntime(previewRuntime)
+        previewRuntime.hydrated = true
+        applyUiStateToView(previewRuntime.ui)
+        setIsFirstMessage(false)
+        setRuntimeHydrationVersion((value) => value + 1)
+      }
       const chatId = existingChatId || await createNewChat({
         prepareRuntime: ({ runtime }) => {
           prepareMediaRuntime(runtime)
@@ -4608,7 +4667,6 @@ export default function ChatInterface({
         })
       }
 
-      pendingScrollTurnIdRef.current = mediaTurnId
       setInput('')
       setAttachedImages([])
       setGenerationChip(null)
@@ -4947,6 +5005,23 @@ export default function ChatInterface({
     }
 
     const existingChatId = activeChatIdRef.current ?? activeChatId
+    pendingScrollTurnIdRef.current = textTurnId
+    pendingScrollChatIdRef.current = existingChatId
+    if (!existingChatId) {
+      const previewRuntime = emptyRuntimeRef.current
+      resetRuntimeState(previewRuntime, {
+        selectedActModel: selectedActModelSnapshot,
+        selectedModels: textModelsForTurn,
+        askModelSelectionMode: textModelsForTurn.length > 1 ? 'multiple' : 'single',
+        activeChatTitle: activeChatTitleSnapshot ?? null,
+        isFirstMessage: false,
+      })
+      prepareTextRuntime(previewRuntime)
+      previewRuntime.hydrated = true
+      applyUiStateToView(previewRuntime.ui)
+      setIsFirstMessage(false)
+      setRuntimeHydrationVersion((value) => value + 1)
+    }
     const chatId = existingChatId || await createNewChat({
       prepareRuntime: ({ runtime }) => {
         prepareTextRuntime(runtime)
@@ -4988,7 +5063,6 @@ export default function ChatInterface({
       }
     }
 
-    pendingScrollTurnIdRef.current = textTurnId
     startSession(chatId, 'act', activeChatTitleSnapshot ?? '', msgCountBeforeSend)
 
     setInput('')
@@ -6510,7 +6584,6 @@ export default function ChatInterface({
 
               return blocks
             })()}
-
             <div ref={messagesEndRef} />
           </div>
         </div>
