@@ -155,10 +155,10 @@ An AI workspace that thinks, remembers, creates, and acts — all in one place. 
 ├── src/components/          # Marketing and app UI components
 ├── src/lib/                 # Shared auth, model, tools, Stripe, and helper code
 ├── scripts/                 # Sanity scripts and one-off checks
-├── docs/                    # Product and implementation docs
-├── ENV_SETUP.md             # Environment setup guide
-├── SECURITY.md              # Security policy and reporting guidance
-└── TESTING_CHECKLIST.md     # Manual Stripe/subscription test notes
+├── docs/                    # Product, setup, testing, marketing, and implementation docs
+├── AGENTS.md                # Local agent workspace notes
+├── LICENSE.md               # License terms
+└── SECURITY.md              # Security policy and reporting guidance
 ```
 
 ## Local Development
@@ -184,6 +184,8 @@ cp .env.example .env.local
 # Run development server
 npm run dev
 ```
+
+For complete environment setup, see [`docs/development.md`](docs/development.md).
 
 ### Convex Workflow
 
