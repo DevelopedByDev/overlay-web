@@ -47,6 +47,7 @@ function envOverrides(env: NodeJS.ProcessEnv): MutableRecord {
   setNested(overrides, ['providers', 'storage'], env.OVERLAY_STORAGE_PROVIDER)
   setNested(overrides, ['providers', 'aiGateway'], env.OVERLAY_AI_GATEWAY)
   setNested(overrides, ['providers', 'billing'], env.OVERLAY_BILLING_PROVIDER)
+  setNested(overrides, ['providers', 'cache'], env.OVERLAY_CACHE_PROVIDER)
   setNested(overrides, ['providers', 'queue'], env.OVERLAY_QUEUE_PROVIDER)
   setNested(overrides, ['providers', 'search'], env.OVERLAY_SEARCH_PROVIDER)
   setNested(overrides, ['database', 'convex', 'url'], env.DEV_NEXT_PUBLIC_CONVEX_URL || env.NEXT_PUBLIC_CONVEX_URL)
@@ -67,10 +68,19 @@ function envOverrides(env: NodeJS.ProcessEnv): MutableRecord {
   setNested(overrides, ['auth', 'saml', 'issuer'], env.SAML_ISSUER)
   setNested(overrides, ['ai', 'gateway'], env.OVERLAY_AI_GATEWAY)
   setNested(overrides, ['ai', 'fallbackProvider'], env.OVERLAY_AI_FALLBACK_PROVIDER)
+  setNested(overrides, ['ai', 'vercel', 'baseUrl'], env.AI_GATEWAY_URL)
+  setNested(overrides, ['ai', 'vercel', 'apiKey'], env.AI_GATEWAY_API_KEY)
+  setNested(overrides, ['ai', 'openrouter', 'baseUrl'], env.OPENROUTER_BASE_URL)
+  setNested(overrides, ['ai', 'openrouter', 'apiKey'], env.OPENROUTER_API_KEY)
   setNested(overrides, ['ai', 'ollama', 'baseUrl'], env.OLLAMA_BASE_URL)
   setNested(overrides, ['ai', 'ollama', 'defaultModel'], env.OLLAMA_DEFAULT_MODEL)
+  setNested(overrides, ['ai', 'ollama', 'imageEndpoint'], env.OLLAMA_IMAGE_ENDPOINT)
+  setNested(overrides, ['ai', 'ollama', 'videoEndpoint'], env.OLLAMA_VIDEO_ENDPOINT)
   setNested(overrides, ['ai', 'vllm', 'baseUrl'], env.VLLM_BASE_URL)
   setNested(overrides, ['ai', 'vllm', 'defaultModel'], env.VLLM_DEFAULT_MODEL)
+  setNested(overrides, ['ai', 'vllm', 'apiKey'], env.VLLM_API_KEY)
+  setNested(overrides, ['ai', 'vllm', 'imageEndpoint'], env.VLLM_IMAGE_ENDPOINT)
+  setNested(overrides, ['ai', 'vllm', 'videoEndpoint'], env.VLLM_VIDEO_ENDPOINT)
   setNested(overrides, ['ai', 'modelTiering', 'free'], parseCsv(env.OVERLAY_FREE_MODELS))
   setNested(overrides, ['ai', 'modelTiering', 'cheap'], parseCsv(env.OVERLAY_CHEAP_MODELS))
   setNested(overrides, ['ai', 'modelTiering', 'premium'], parseCsv(env.OVERLAY_PREMIUM_MODELS))
@@ -80,6 +90,24 @@ function envOverrides(env: NodeJS.ProcessEnv): MutableRecord {
   setNested(overrides, ['storage', 'provider'], env.OVERLAY_STORAGE_PROVIDER)
   setNested(overrides, ['storage', 'publicUrlTtlSeconds'], parseInteger(env.STORAGE_PUBLIC_URL_TTL_SECONDS))
   setNested(overrides, ['storage', 'maxUploadSizeBytes'], parseInteger(env.STORAGE_MAX_UPLOAD_SIZE_BYTES))
+  setNested(overrides, ['storage', 'r2', 'accountId'], env.R2_ACCOUNT_ID)
+  setNested(overrides, ['storage', 'r2', 'bucket'], env.R2_BUCKET_NAME)
+  setNested(overrides, ['storage', 'r2', 'endpoint'], env.S3_API || env.R2_ENDPOINT)
+  setNested(overrides, ['storage', 'r2', 'accessKeyId'], env.R2_ACCESS_KEY_ID)
+  setNested(overrides, ['storage', 'r2', 'secretAccessKey'], env.R2_SECRET_ACCESS_KEY)
+  setNested(overrides, ['storage', 's3', 'bucket'], env.S3_BUCKET_NAME)
+  setNested(overrides, ['storage', 's3', 'endpoint'], env.S3_ENDPOINT)
+  setNested(overrides, ['storage', 's3', 'region'], env.S3_REGION)
+  setNested(overrides, ['storage', 's3', 'accessKeyId'], env.S3_ACCESS_KEY_ID)
+  setNested(overrides, ['storage', 's3', 'secretAccessKey'], env.S3_SECRET_ACCESS_KEY)
+  setNested(overrides, ['storage', 's3', 'forcePathStyle'], parseBoolean(env.S3_FORCE_PATH_STYLE))
+  setNested(overrides, ['storage', 'minio', 'bucket'], env.MINIO_BUCKET_NAME)
+  setNested(overrides, ['storage', 'minio', 'endpoint'], env.MINIO_ENDPOINT)
+  setNested(overrides, ['storage', 'minio', 'accessKeyId'], env.MINIO_ACCESS_KEY_ID || env.MINIO_ROOT_USER)
+  setNested(overrides, ['storage', 'minio', 'secretAccessKey'], env.MINIO_SECRET_ACCESS_KEY || env.MINIO_ROOT_PASSWORD)
+  setNested(overrides, ['storage', 'local', 'rootDir'], env.OVERLAY_STORAGE_DIR)
+  setNested(overrides, ['cache', 'redis', 'url'], env.REDIS_URL)
+  setNested(overrides, ['cache', 'valkey', 'url'], env.VALKEY_URL || env.REDIS_URL)
   setNested(overrides, ['rateLimit', 'auth', 'windowMs'], parseInteger(env.RATE_LIMIT_AUTH_WINDOW_MS))
   setNested(overrides, ['rateLimit', 'auth', 'maxRequests'], parseInteger(env.RATE_LIMIT_AUTH_MAX_REQUESTS))
   setNested(overrides, ['rateLimit', 'ai', 'windowMs'], parseInteger(env.RATE_LIMIT_AI_WINDOW_MS))
@@ -116,13 +144,46 @@ function deepMerge<T>(base: T, override: unknown): T {
   return result as T
 }
 
+function normalizeProviderAliases(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
+  const config = { ...(raw as MutableRecord) }
+  const providers = {
+    ...((config.providers && typeof config.providers === 'object' && !Array.isArray(config.providers))
+      ? config.providers as MutableRecord
+      : {}),
+  }
+
+  const sections: Array<[string, string]> = [
+    ['auth', 'auth'],
+    ['storage', 'storage'],
+    ['billing', 'billing'],
+  ]
+  for (const [sectionName, providerName] of sections) {
+    const section = config[sectionName]
+    if (providers[providerName] === undefined && section && typeof section === 'object' && !Array.isArray(section)) {
+      const provider = (section as MutableRecord).provider
+      if (provider !== undefined) providers[providerName] = provider
+    }
+  }
+
+  const ai = config.ai
+  if (providers.aiGateway === undefined && ai && typeof ai === 'object' && !Array.isArray(ai)) {
+    const gateway = (ai as MutableRecord).gateway
+    if (gateway === 'vercel') providers.aiGateway = 'vercel-ai'
+    else if (gateway !== undefined) providers.aiGateway = gateway
+  }
+
+  if (Object.keys(providers).length > 0) config.providers = providers
+  return config
+}
+
 export function loadConfig(path = join(process.cwd(), 'overlay.config.json')): OverlayConfigType {
   const defaults = OverlayConfig.parse({})
   const fileConfig = existsSync(path)
-    ? JSON.parse(readFileSync(path, 'utf8')) as unknown
+    ? normalizeProviderAliases(JSON.parse(readFileSync(path, 'utf8')) as unknown)
     : {}
   const mergedFile = deepMerge(defaults, fileConfig)
-  const config = OverlayConfig.parse(deepMerge(mergedFile, envOverrides(process.env)))
+  const config = OverlayConfig.parse(normalizeProviderAliases(deepMerge(mergedFile, envOverrides(process.env))))
   validateRuntimeConfig(config)
   return config
 }

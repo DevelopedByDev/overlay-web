@@ -1,9 +1,13 @@
 import {
   createProviders,
   type IAuth,
+  type IAI,
+  type IBilling,
+  type ICache,
   type IDatabase,
   type OverlayConfig as CoreOverlayConfig,
   type ProviderInstances,
+  type IStorage,
 } from '@overlay/core'
 import { convex } from '@/lib/convex'
 import { getConfig } from '@/lib/config/singleton'
@@ -129,8 +133,9 @@ function toCoreConfig(config: OverlayConfigType): CoreOverlayConfig {
       database: config.providers.database,
       auth: normalizeAuthProvider(config.providers.auth),
       storage: config.providers.storage,
-      aiGateway: config.providers.aiGateway,
+      aiGateway: normalizeAiProvider(config.providers.aiGateway),
       billing: config.providers.billing,
+      cache: config.providers.cache,
       queue: config.providers.queue,
       search: config.providers.search,
     },
@@ -143,12 +148,61 @@ function toCoreConfig(config: OverlayConfigType): CoreOverlayConfig {
       roleMapping: config.auth.roleMapping as Record<string, 'superadmin' | 'admin' | 'user' | 'guest'>,
       defaultRole: config.auth.defaultRole,
     },
+    storage: {
+      publicUrlTtlSeconds: config.storage.publicUrlTtlSeconds,
+      r2: config.storage.r2,
+      s3: config.storage.s3,
+      minio: config.storage.minio,
+      local: config.storage.local,
+    },
+    ai: {
+      vercel: config.ai.vercel,
+      openrouter: config.ai.openrouter,
+      ollama: config.ai.ollama,
+      vllm: config.ai.vllm,
+    },
+    billing: {
+      disabled: {
+        tier: config.billing.provider === 'none' ? 'max' : 'max',
+        budgetTotalCents: 1_000_000_000,
+      },
+    },
+    cache: config.cache,
   }
 }
 
 function normalizeAuthProvider(provider: OverlayConfigType['providers']['auth']): CoreOverlayConfig['providers']['auth'] {
   if (provider === 'keycloak') return 'oidc'
   return provider as CoreOverlayConfig['providers']['auth']
+}
+
+function normalizeAiProvider(provider: OverlayConfigType['providers']['aiGateway']): CoreOverlayConfig['providers']['aiGateway'] {
+  if (provider === 'vercel-ai') return 'vercel-ai'
+  return provider as CoreOverlayConfig['providers']['aiGateway']
+}
+
+export function getStorageProvider(): IStorage {
+  const storage = getOverlayProviders().storage
+  if (!storage) throw new Error('Storage provider was not initialized.')
+  return storage
+}
+
+export function getAIProvider(): IAI {
+  const ai = getOverlayProviders().ai
+  if (!ai) throw new Error('AI provider was not initialized.')
+  return ai
+}
+
+export function getBillingProvider(): IBilling {
+  const billing = getOverlayProviders().billing
+  if (!billing) throw new Error('Billing provider was not initialized.')
+  return billing
+}
+
+export function getCacheProvider(): ICache {
+  const cache = getOverlayProviders().cache
+  if (!cache) throw new Error('Cache provider was not initialized.')
+  return cache
 }
 
 function toWorkOSProvider(provider?: string): 'GoogleOAuth' | 'AppleOAuth' | 'MicrosoftOAuth' {

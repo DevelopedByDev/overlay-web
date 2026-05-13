@@ -5,6 +5,7 @@ import { convex } from '@/lib/convex'
 import { quantityToPlanAmountCents } from '@/lib/billing-pricing'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolvePaidUnitPriceId } from '@/lib/stripe-billing'
+import { isBillingDisabled } from '@/lib/billing-runtime'
 
 import { z } from '@/lib/api-schemas'
 
@@ -39,6 +40,10 @@ export async function POST(request: NextRequest) {
         { error: 'Authentication required' },
         { status: 401 }
       )
+    }
+
+    if (isBillingDisabled()) {
+      return NextResponse.json({ error: 'Checkout verification is unavailable because billing is disabled for this deployment.' }, { status: 403 })
     }
 
     const { sessionId } = await request.json()

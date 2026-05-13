@@ -4,6 +4,11 @@
 // RISK LEVEL: Low (no production imports)
 
 export interface IBilling {
+  readonly providerId?: string
+  init?(): Promise<void>
+  health?(): Promise<{ ok: boolean; message?: string; latencyMs?: number }>
+  shutdown?(): Promise<void>
+
   getUserEntitlements(userId: string): Promise<UserEntitlements>
   recordUsage(userId: string, metric: UsageMetric, amount: number): Promise<void>
   createSubscription(userId: string, planId: string): Promise<SubscriptionResult>

@@ -13,6 +13,12 @@ import type {
 } from './types'
 
 export interface IAI {
+  readonly providerId?: string
+  init?(): Promise<void>
+  health?(): Promise<{ ok: boolean; message?: string; latencyMs?: number }>
+  shutdown?(): Promise<void>
+  capabilities?(): Promise<AICapabilities> | AICapabilities
+
   chat(request: ChatInferenceRequest): Promise<ChatInferenceResponse>
   chatStream(
     request: ChatInferenceRequest
@@ -22,6 +28,15 @@ export interface IAI {
   generateVideo(request: VideoInferenceRequest): Promise<VideoInferenceResponse>
 
   listModels(): Promise<AIModel[]>
+}
+
+export interface AICapabilities {
+  chat: boolean
+  streaming: boolean
+  vision: boolean
+  toolCalling: boolean
+  image: boolean
+  video: boolean
 }
 
 export interface AIModel {

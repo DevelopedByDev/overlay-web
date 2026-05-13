@@ -4,6 +4,7 @@ import { stripe } from '@/lib/stripe'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { isBillingDisabled } from '@/lib/billing-runtime'
 
 import { z } from '@/lib/api-schemas'
 
@@ -56,6 +57,10 @@ export async function POST(request: NextRequest) {
     const session = await getSession()
     if (!session?.user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
+    if (isBillingDisabled()) {
+      return NextResponse.json({ error: 'Top-ups are unavailable because billing is disabled for this deployment.' }, { status: 403 })
     }
 
     const rateLimitResponse = await enforceRateLimits(request, [

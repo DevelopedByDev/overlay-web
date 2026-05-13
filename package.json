@@ -55,9 +55,13 @@
     "docs:verify": "node --experimental-strip-types scripts/verify-phase6.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:seed": "tsx scripts/db-seed.ts",
+    "enterprise:compose:up": "docker compose --env-file ${OVERLAY_ENV_FILE:-.env.enterprise.example} -f docker/docker-compose.enterprise.yml up -d --build",
+    "enterprise:compose:down": "docker compose --env-file ${OVERLAY_ENV_FILE:-.env.enterprise.example} -f docker/docker-compose.enterprise.yml down",
+    "enterprise:smoke": "tsx scripts/enterprise-smoke.ts",
     "convex:export": "tsx scripts/convex-export.ts",
     "db:import": "tsx scripts/db-import.ts",
-    "verify:phase13-14": "tsx scripts/verify-phase13-14.ts"
+    "verify:phase13-14": "tsx scripts/verify-phase13-14.ts",
+    "verify:phase15-16": "tsx scripts/verify-phase15-16.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",

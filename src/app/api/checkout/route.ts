@@ -8,6 +8,7 @@ import {
   formatDollarAmount,
 } from '@/lib/billing-pricing'
 import { getPlanQuantityForCheckout, isRecognizedTopUpAmount, resolvePaidUnitPriceId } from '@/lib/stripe-billing'
+import { isBillingDisabled } from '@/lib/billing-runtime'
 
 import { z } from '@/lib/api-schemas'
 
@@ -24,6 +25,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Authentication required. Please sign in to subscribe.' },
         { status: 401 }
+      )
+    }
+
+    if (isBillingDisabled()) {
+      return NextResponse.json(
+        { error: 'Billing is disabled for this deployment.' },
+        { status: 403 },
       )
     }
 

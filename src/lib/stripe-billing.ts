@@ -10,6 +10,7 @@ import {
   planAmountCentsToQuantity,
   topUpAmountCentsToQuantity,
 } from './billing-pricing'
+import { getConfig } from './config/singleton'
 
 type SubscriptionBillingState = {
   userId: string
@@ -105,6 +106,10 @@ export async function maybeAutoTopUpBudget(params: {
   userId: string
   minimumRequiredCents?: number
 }) {
+  const config = getConfig()
+  if (config.providers.billing === 'disabled' || config.providers.billing === 'manual' || config.billing.provider === 'none') {
+    return { applied: false as const, reason: 'billing_disabled' }
+  }
   const state = await getBillingState(params.userId)
   if (!state) return { applied: false as const, reason: 'missing_subscription' }
   if (!state.autoTopUpEnabled) return { applied: false as const, reason: 'disabled' }

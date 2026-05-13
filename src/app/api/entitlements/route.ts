@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
 import { logAuthDebug, summarizeSessionForLog } from '@/lib/auth-debug'
-import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
+import { getSelfHostedEntitlements, getTopUpPreferenceSnapshot, isBillingDisabled } from '@/lib/billing-runtime'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
@@ -81,6 +81,41 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const userId = session.user.id
+
+    if (isBillingDisabled()) {
+      const selfHosted = getSelfHostedEntitlements()
+      return NextResponse.json({
+        ...selfHosted,
+        status: 'active',
+        limits: {
+          askPerDay: selfHosted.dailyLimits?.ask ?? 999999,
+          agentPerDay: selfHosted.dailyLimits?.agent ?? 999999,
+          writePerDay: selfHosted.dailyLimits?.write ?? 999999,
+          tokenBudget: selfHosted.budgetTotalCents ?? 1_000_000_000,
+          transcriptionSecondsPerWeek: selfHosted.transcriptionSecondsLimit ?? 999999,
+          overlayStorageBytes: selfHosted.overlayStorageBytesLimit ?? 0,
+        },
+        usage: {
+          ask: 0,
+          agent: 0,
+          write: 0,
+          tokenCostAccrued: 0,
+          transcriptionSeconds: 0,
+          overlayStorageBytes: 0,
+        },
+        remaining: {
+          ask: selfHosted.dailyLimits?.ask ?? 999999,
+          agent: selfHosted.dailyLimits?.agent ?? 999999,
+          write: selfHosted.dailyLimits?.write ?? 999999,
+          tokenBudget: selfHosted.budgetRemainingCents ?? 1_000_000_000,
+          transcriptionSeconds: selfHosted.transcriptionSecondsLimit ?? 999999,
+          overlayStorageBytes: selfHosted.overlayStorageBytesLimit ?? 0,
+        },
+        billingPeriodEnd: selfHosted.billingPeriodEnd
+          ? new Date(selfHosted.billingPeriodEnd).getTime() / 1000
+          : undefined,
+      })
+    }
 
     // Convex returns a different structure, so we need to transform it
     interface ConvexEntitlements {

@@ -11,6 +11,7 @@ export type ProviderDomain =
   | 'storage'
   | 'aiGateway'
   | 'billing'
+  | 'cache'
   | 'queue'
   | 'search'
 

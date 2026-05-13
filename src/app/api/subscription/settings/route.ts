@@ -4,6 +4,7 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getDynamicTopUpConfig, isRecognizedTopUpAmount } from '@/lib/stripe-billing'
 import { TOP_UP_MIN_AMOUNT_CENTS, derivePlanKind } from '@/lib/billing-pricing'
+import { isBillingDisabled } from '@/lib/billing-runtime'
 
 import { z } from '@/lib/api-schemas'
 
@@ -27,6 +28,19 @@ export async function GET() {
   const session = await getSession()
   if (!session?.user) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  }
+
+  if (isBillingDisabled()) {
+    const topUpConfig = getDynamicTopUpConfig()
+    return NextResponse.json({
+      planKind: 'free',
+      autoTopUpEnabled: false,
+      topUpAmountCents: 0,
+      autoTopUpAmountCents: 0,
+      topUpMinAmountCents: topUpConfig.minAmountCents,
+      topUpMaxAmountCents: topUpConfig.maxAmountCents,
+      topUpStepAmountCents: topUpConfig.stepAmountCents,
+    } satisfies BillingSettingsResponse)
   }
 
   const subscription = await convex.query<{
@@ -58,6 +72,10 @@ export async function POST(request: NextRequest) {
   const session = await getSession()
   if (!session?.user) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  }
+
+  if (isBillingDisabled()) {
+    return NextResponse.json({ error: 'Auto top-up is unavailable because billing is disabled for this deployment.' }, { status: 403 })
   }
 
   const body = await request.json()

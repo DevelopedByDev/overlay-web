@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/lib/convex'
-import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
+import { getSelfHostedEntitlements, getTopUpPreferenceSnapshot, isBillingDisabled } from '@/lib/billing-runtime'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { getSession } from '@/lib/workos-auth'
 
@@ -41,6 +41,25 @@ export async function GET(request: NextRequest) {
 
   if (userId !== session.user.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  if (isBillingDisabled()) {
+    const entitlements = getSelfHostedEntitlements()
+    return NextResponse.json({
+      tier: entitlements.tier,
+      planKind: entitlements.planKind,
+      planAmountCents: entitlements.planAmountCents,
+      status: 'active' as const,
+      ...getTopUpPreferenceSnapshot(entitlements),
+      creditsUsed: entitlements.budgetUsedCents ?? 0,
+      creditsTotal: entitlements.budgetTotalCents ?? 0,
+      budgetUsedCents: entitlements.budgetUsedCents ?? 0,
+      budgetTotalCents: entitlements.budgetTotalCents ?? 0,
+      budgetRemainingCents: entitlements.budgetRemainingCents ?? 0,
+      autoTopUpEnabled: false,
+      autoTopUpConsentGranted: false,
+      billingPeriodEnd: entitlements.billingPeriodEnd || null,
+    })
   }
 
   const fetchConvexEntitlements = async (nextUserId: string) =>

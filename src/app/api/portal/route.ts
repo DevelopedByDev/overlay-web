@@ -5,6 +5,7 @@ import { convex } from '@/lib/convex'
 import { resolvePortalConfigurationId } from '@/lib/stripe-billing'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { isBillingDisabled } from '@/lib/billing-runtime'
 
 import { z } from '@/lib/api-schemas'
 
@@ -90,6 +91,13 @@ export async function POST(request: NextRequest) {
     const authSession = await getSession()
     if (!authSession || !authSession.user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
+    if (isBillingDisabled()) {
+      return NextResponse.json(
+        { error: 'Billing portal is unavailable because billing is disabled for this deployment.' },
+        { status: 403 },
+      )
     }
 
     const userId = authSession.user.id

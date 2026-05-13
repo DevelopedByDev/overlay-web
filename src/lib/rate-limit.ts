@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { logSecurityEvent } from '@/lib/security-events'
 import { getConfig } from '@/lib/config/singleton'
+import { getCacheProvider } from '@/lib/provider-runtime'
 
 type RateLimitWindow = {
   count: number
@@ -25,13 +24,6 @@ type RateLimitTakeResult = {
   allowed: boolean
   remaining: number
   retryAfterSeconds: number
-}
-
-type NormalizedRateLimitRule = {
-  bucket: string
-  bucketKey: string
-  limit: number
-  windowMs: number
 }
 
 function cleanupExpired(now: number) {
@@ -104,54 +96,26 @@ function takeRateLimitLocal(rule: RateLimitRule): RateLimitTakeResult {
 }
 
 async function takeRateLimits(rules: RateLimitRule[]): Promise<RateLimitTakeResult[]> {
-  const results = rules.map<RateLimitTakeResult>((rule) => ({
-    bucket: rule.bucket,
-    allowed: true,
-    remaining: rule.limit,
-    retryAfterSeconds: 0,
-  }))
-
-  const normalizedRules: Array<{
-    originalIndex: number
-    rule: NormalizedRateLimitRule
-  }> = []
-
-  for (const [index, rule] of rules.entries()) {
-    const bucketKey = getBucketKey(rule)
-    if (!bucketKey) continue
-    normalizedRules.push({
-      originalIndex: index,
-      rule: {
-        bucket: rule.bucket,
-        bucketKey,
-        limit: rule.limit,
-        windowMs: rule.windowMs,
-      },
-    })
-  }
-
-  if (normalizedRules.length === 0) {
-    return results
-  }
-
   try {
-    const backendResults = await convex.mutation<RateLimitTakeResult[]>('rateLimits:takeManyByServer', {
-      serverSecret: getInternalApiSecret(),
-      rules: normalizedRules.map(({ rule }) => rule),
-    }, {
-      throwOnError: true,
-      timeoutMs: 10_000,
-      suppressNetworkConsoleError: true,
-    })
-
-    if (backendResults && backendResults.length === normalizedRules.length) {
-      for (const [index, result] of backendResults.entries()) {
-        const originalIndex = normalizedRules[index]?.originalIndex
-        if (originalIndex == null) continue
-        results[originalIndex] = result
+    const cache = getCacheProvider()
+    const out: RateLimitTakeResult[] = []
+    for (const rule of rules) {
+      const bucketKey = getBucketKey(rule)
+      if (!bucketKey) {
+        out.push({ bucket: rule.bucket, allowed: true, remaining: rule.limit, retryAfterSeconds: 0 })
+        continue
       }
-      return results
+      const ttlSeconds = Math.max(1, Math.ceil(rule.windowMs / 1000))
+      const count = await cache.incr(bucketKey, ttlSeconds)
+      const ttl = await cache.ttl(bucketKey)
+      out.push({
+        bucket: rule.bucket,
+        allowed: count <= rule.limit,
+        remaining: Math.max(0, rule.limit - count),
+        retryAfterSeconds: ttl > 0 ? ttl : ttlSeconds,
+      })
     }
+    return out
   } catch (error) {
     logSecurityEvent('rate_limit_backend_fallback', {
       reason: error instanceof Error ? error.message : String(error),

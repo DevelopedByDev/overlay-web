@@ -11,10 +11,54 @@ import {
   TOP_UP_STEP_AMOUNT_CENTS,
 } from '@/lib/billing-pricing'
 import { maybeAutoTopUpBudget } from '@/lib/stripe-billing'
+import { getConfig } from '@/lib/config/singleton'
 
 export function isPaidPlan(entitlements: Pick<Entitlements, 'tier' | 'planKind'>): boolean {
   if (entitlements.planKind) return entitlements.planKind === 'paid'
   return entitlements.tier !== 'free'
+}
+
+export function getBillingMode(): 'stripe' | 'disabled' | 'manual' {
+  const config = getConfig()
+  if (config.providers.billing === 'disabled' || config.billing.provider === 'none') return 'disabled'
+  if (config.providers.billing === 'manual') return 'manual'
+  return 'stripe'
+}
+
+export function isBillingDisabled(): boolean {
+  const mode = getBillingMode()
+  return mode === 'disabled' || mode === 'manual'
+}
+
+export function getSelfHostedEntitlements(): Entitlements {
+  const budgetTotalCents = 1_000_000_000
+  return {
+    tier: 'max',
+    planKind: 'free',
+    planAmountCents: 0,
+    creditsUsed: 0,
+    creditsTotal: budgetTotalCents / 100,
+    budgetUsedCents: 0,
+    budgetTotalCents,
+    budgetRemainingCents: budgetTotalCents,
+    autoTopUpEnabled: false,
+    autoTopUpAmountCents: 0,
+    autoTopUpConsentGranted: false,
+    topUpAmountCents: 0,
+    topUpMinAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
+    topUpMaxAmountCents: TOP_UP_MAX_AMOUNT_CENTS,
+    topUpStepAmountCents: TOP_UP_STEP_AMOUNT_CENTS,
+    dailyUsage: { ask: 0, write: 0, agent: 0 },
+    dailyLimits: { ask: 999999, write: 999999, agent: 999999 },
+    overlayStorageBytesUsed: 0,
+    overlayStorageBytesLimit: 10 * 1024 * 1024 * 1024 * 1024,
+    transcriptionSecondsUsed: 0,
+    transcriptionSecondsLimit: 999999,
+    localTranscriptionEnabled: true,
+    resetAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    billingPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    lastSyncedAt: Date.now(),
+  }
 }
 
 export function getBudgetTotals(entitlements: Pick<
@@ -46,6 +90,7 @@ export function billableBudgetCentsFromProviderCents(providerCostCents: number):
 }
 
 export async function refreshEntitlementsForUser(userId: string): Promise<Entitlements | null> {
+  if (isBillingDisabled()) return getSelfHostedEntitlements()
   return await convex.query<Entitlements | null>(
     'usage:getEntitlementsByServer',
     {
@@ -61,6 +106,16 @@ export async function ensureBudgetAvailable(params: {
   entitlements: Entitlements
   minimumRequiredCents?: number
 }) {
+  if (isBillingDisabled()) {
+    const entitlements = getSelfHostedEntitlements()
+    return {
+      entitlements,
+      remainingCents: entitlements.budgetRemainingCents ?? 0,
+      autoTopUpApplied: false,
+      autoTopUpReason: 'billing_disabled',
+    } as const
+  }
+
   const minimumRequiredCents = Math.max(1, Math.round(params.minimumRequiredCents ?? 1))
   const current = getBudgetTotals(params.entitlements)
 

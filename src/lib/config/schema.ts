@@ -20,6 +20,7 @@ export const OverlayConfig = z.object({
     storage: z.enum(['r2', 's3', 'minio', 'local', 'memory']).default('r2'),
     aiGateway: z.enum(['vercel-ai', 'openrouter', 'ollama', 'vllm', 'azure-openai']).default('vercel-ai'),
     billing: z.enum(['stripe', 'disabled', 'manual']).default('stripe'),
+    cache: z.enum(['memory', 'redis', 'valkey']).default('memory'),
     queue: z.enum(['convex', 'bullmq', 'redis', 'memory']).default('convex'),
     search: z.enum(['convex', 'meilisearch', 'elasticsearch', 'memory']).default('convex'),
   }).default({}),
@@ -63,15 +64,28 @@ export const OverlayConfig = z.object({
     defaultRole: z.enum(['superadmin', 'admin', 'user', 'guest']).default('user'),
   }).default({}),
   ai: z.object({
-    gateway: z.enum(['vercel', 'ollama', 'vllm']).default('vercel'),
-    fallbackProvider: z.enum(['vercel', 'ollama', 'vllm']).optional(),
+    gateway: z.enum(['vercel', 'vercel-ai', 'openrouter', 'ollama', 'vllm', 'azure-openai']).default('vercel'),
+    fallbackProvider: z.enum(['vercel', 'vercel-ai', 'openrouter', 'ollama', 'vllm', 'azure-openai']).optional(),
+    vercel: z.object({
+      baseUrl: Url.default('https://ai-gateway.vercel.sh/v1'),
+      apiKey: z.string().optional(),
+    }).default({}),
+    openrouter: z.object({
+      baseUrl: Url.default('https://openrouter.ai/api/v1'),
+      apiKey: z.string().optional(),
+    }).default({}),
     ollama: z.object({
-      baseUrl: Url.default('http://localhost:11434'),
+      baseUrl: Url.default('http://localhost:11434/v1'),
       defaultModel: z.string().default('llama3.1'),
+      imageEndpoint: Url.optional(),
+      videoEndpoint: Url.optional(),
     }).default({}),
     vllm: z.object({
-      baseUrl: Url.default('http://localhost:8000'),
+      baseUrl: Url.default('http://localhost:8000/v1'),
       defaultModel: z.string().default('meta-llama/Llama-3.1-8B-Instruct'),
+      apiKey: z.string().optional(),
+      imageEndpoint: Url.optional(),
+      videoEndpoint: Url.optional(),
     }).default({}),
     modelTiering: z.object({
       free: z.array(z.string()).default([]),
@@ -90,9 +104,42 @@ export const OverlayConfig = z.object({
     }).optional(),
   }).default({}),
   storage: z.object({
-    provider: z.enum(['r2', 'minio', 's3']).default('minio'),
+    provider: z.enum(['r2', 'minio', 's3', 'local', 'memory']).default('minio'),
     publicUrlTtlSeconds: z.number().int().min(1).default(3600),
     maxUploadSizeBytes: z.number().int().min(1).default(104_857_600),
+    r2: z.object({
+      accountId: z.string().optional(),
+      bucket: z.string().optional(),
+      endpoint: Url.optional(),
+      accessKeyId: z.string().optional(),
+      secretAccessKey: z.string().optional(),
+    }).default({}),
+    s3: z.object({
+      bucket: z.string().optional(),
+      endpoint: Url.optional(),
+      region: z.string().default('us-east-1'),
+      accessKeyId: z.string().optional(),
+      secretAccessKey: z.string().optional(),
+      forcePathStyle: z.boolean().default(false),
+    }).default({}),
+    minio: z.object({
+      bucket: z.string().default('overlay'),
+      endpoint: Url.default('http://localhost:9000'),
+      accessKeyId: z.string().optional(),
+      secretAccessKey: z.string().optional(),
+    }).default({}),
+    local: z.object({
+      rootDir: z.string().default('./data/storage'),
+      publicBasePath: z.string().default('/api/storage/local'),
+    }).default({}),
+  }).default({}),
+  cache: z.object({
+    redis: z.object({
+      url: z.string().default('redis://localhost:6379'),
+    }).default({}),
+    valkey: z.object({
+      url: z.string().default('redis://localhost:6379'),
+    }).default({}),
   }).default({}),
   rateLimit: z.object({
     auth: RateLimitWindow.default({ windowMs: 60_000, maxRequests: 10 }),

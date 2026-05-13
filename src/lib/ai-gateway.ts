@@ -1,13 +1,65 @@
 import { createGateway, generateText, type ToolSet, stepCountIs, tool } from 'ai'
+import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
 import { FREE_TIER_AUTO_MODEL_ID, isNvidiaNimChatModelId } from '@/lib/model-types'
 import { getModel, modelUsesOpenRouterTransport } from '@/lib/model-data'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/lib/openrouter-service'
 import { getServerProviderKey } from '@/lib/server-provider-keys'
+import { getConfig } from '@/lib/config/singleton'
 
 let cachedGateway: ReturnType<typeof createGateway> | null = null
 let cachedApiKey: string | null = null
+let cachedOpenAICompatible: { key: string; provider: ReturnType<typeof createOpenAI> } | null = null
+
+type LocalAiProvider = 'ollama' | 'vllm'
+
+function getConfiguredAiProvider(): 'vercel-ai' | 'openrouter' | LocalAiProvider | 'azure-openai' {
+  const provider = getConfig().providers.aiGateway
+  if (provider === 'vercel-ai') return 'vercel-ai'
+  return provider
+}
+
+function getLocalAiConfig(provider: LocalAiProvider) {
+  const config = getConfig()
+  if (provider === 'ollama') {
+    return {
+      baseURL: config.ai.ollama.baseUrl,
+      apiKey: process.env.OLLAMA_API_KEY || 'ollama',
+      defaultModel: config.ai.ollama.defaultModel,
+      imageEndpoint: config.ai.ollama.imageEndpoint,
+      videoEndpoint: config.ai.ollama.videoEndpoint,
+    }
+  }
+  return {
+    baseURL: config.ai.vllm.baseUrl,
+    apiKey: config.ai.vllm.apiKey || process.env.VLLM_API_KEY || 'vllm',
+    defaultModel: config.ai.vllm.defaultModel,
+    imageEndpoint: config.ai.vllm.imageEndpoint,
+    videoEndpoint: config.ai.vllm.videoEndpoint,
+  }
+}
+
+function normalizeLocalModelId(modelId: string, provider: LocalAiProvider): string {
+  const prefix = `${provider}/`
+  if (modelId.startsWith(prefix)) return modelId.slice(prefix.length)
+  const configured = getLocalAiConfig(provider)
+  return configured.defaultModel
+}
+
+function getOpenAICompatibleProvider(args: { baseURL: string; apiKey: string }) {
+  const key = `${args.baseURL}\n${args.apiKey}`
+  if (!cachedOpenAICompatible || cachedOpenAICompatible.key !== key) {
+    cachedOpenAICompatible = {
+      key,
+      provider: createOpenAI({
+        baseURL: args.baseURL,
+        apiKey: args.apiKey,
+      }),
+    }
+  }
+  return cachedOpenAICompatible.provider
+}
 
 async function resolveGatewayApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
@@ -139,6 +191,17 @@ export async function getOpenRouterLanguageModelCapturingRoutedModel(
 }
 
 export async function getGatewayLanguageModel(modelId: string, accessToken?: string) {
+  const configuredProvider = getConfiguredAiProvider()
+  if (configuredProvider === 'ollama' || configuredProvider === 'vllm') {
+    const local = getLocalAiConfig(configuredProvider)
+    const provider = getOpenAICompatibleProvider({ baseURL: local.baseURL, apiKey: local.apiKey })
+    return provider.chat(normalizeLocalModelId(modelId, configuredProvider))
+  }
+
+  if (configuredProvider === 'openrouter') {
+    return getOpenRouterLanguageModel(modelId, accessToken)
+  }
+
   const model = getModel(modelId)
 
   // Route OpenRouter models to OpenRouter API
@@ -186,11 +249,43 @@ async function getOrCreateGateway(accessToken?: string): Promise<ReturnType<type
 }
 
 export async function getGatewayImageModel(modelId: string, accessToken?: string) {
+  const configuredProvider = getConfiguredAiProvider()
+  if (configuredProvider === 'ollama' || configuredProvider === 'vllm') {
+    const local = getLocalAiConfig(configuredProvider)
+    if (!local.imageEndpoint) {
+      throw new Error(`${configuredProvider} image generation requires ${configuredProvider.toUpperCase()}_IMAGE_ENDPOINT to point at an OpenAI-compatible image endpoint.`)
+    }
+    const provider = getOpenAICompatibleProvider({ baseURL: local.imageEndpoint, apiKey: local.apiKey })
+    return provider.image(normalizeLocalModelId(modelId, configuredProvider))
+  }
+
+  if (configuredProvider === 'openrouter') {
+    throw new Error('OpenRouter image generation is not configured for Overlay. Use Vercel AI Gateway or configure a local image endpoint.')
+  }
+
   const gateway = await getOrCreateGateway(accessToken)
   return gateway.image(modelId)
 }
 
 export async function getGatewayVideoModel(modelId: string, accessToken?: string) {
+  const configuredProvider = getConfiguredAiProvider()
+  if (configuredProvider === 'ollama' || configuredProvider === 'vllm') {
+    const local = getLocalAiConfig(configuredProvider)
+    if (!local.videoEndpoint) {
+      throw new Error(`${configuredProvider} video generation requires ${configuredProvider.toUpperCase()}_VIDEO_ENDPOINT to point at an OpenAI-compatible video endpoint.`)
+    }
+    const provider = getOpenAICompatibleProvider({ baseURL: local.videoEndpoint, apiKey: local.apiKey })
+    const videoFactory = (provider as unknown as { video?: (id: string) => unknown }).video
+    if (!videoFactory) {
+      throw new Error(`${configuredProvider} video generation endpoint is configured, but the installed AI SDK provider does not expose a video model factory.`)
+    }
+    return videoFactory(normalizeLocalModelId(modelId, configuredProvider)) as ReturnType<ReturnType<typeof createGateway>['video']>
+  }
+
+  if (configuredProvider === 'openrouter') {
+    throw new Error('OpenRouter video generation is not configured for Overlay. Use Vercel AI Gateway or configure a local video endpoint.')
+  }
+
   const gateway = await getOrCreateGateway(accessToken)
   return gateway.video(modelId)
 }

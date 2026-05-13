@@ -22,6 +22,7 @@ export const OverlayConfigSchema = z.object({
       .enum(['vercel-ai', 'openrouter', 'ollama', 'vllm', 'azure-openai'])
       .default('vercel-ai'),
     billing: z.enum(['stripe', 'disabled', 'manual']).default('stripe'),
+    cache: z.enum(['memory', 'redis', 'valkey']).default('memory'),
     queue: z.enum(['convex', 'bullmq', 'redis', 'memory']).default('convex'),
     search: z.enum(['convex', 'meilisearch', 'elasticsearch', 'memory']).default('convex'),
   }),
@@ -79,6 +80,101 @@ export const OverlayConfigSchema = z.object({
       sessionTTLMinutes: z.number().int().min(1).default(43_200),
       roleMapping: z.record(z.string()).default({}),
       defaultRole: z.enum(['superadmin', 'admin', 'user', 'guest']).default('user'),
+    })
+    .default({}),
+  storage: z
+    .object({
+      publicUrlTtlSeconds: z.number().int().min(1).default(900),
+      r2: z
+        .object({
+          accountId: z.string().optional(),
+          bucket: z.string().optional(),
+          endpoint: z.string().url().optional(),
+          accessKeyId: z.string().optional(),
+          secretAccessKey: z.string().optional(),
+        })
+        .default({}),
+      s3: z
+        .object({
+          bucket: z.string().optional(),
+          endpoint: z.string().url().optional(),
+          region: z.string().default('us-east-1'),
+          accessKeyId: z.string().optional(),
+          secretAccessKey: z.string().optional(),
+          forcePathStyle: z.boolean().default(false),
+        })
+        .default({}),
+      minio: z
+        .object({
+          bucket: z.string().default('overlay'),
+          endpoint: z.string().url().default('http://localhost:9000'),
+          accessKeyId: z.string().optional(),
+          secretAccessKey: z.string().optional(),
+        })
+        .default({}),
+      local: z
+        .object({
+          rootDir: z.string().default('./data/storage'),
+          publicBasePath: z.string().default('/api/storage/local'),
+        })
+        .default({}),
+    })
+    .default({}),
+  ai: z
+    .object({
+      vercel: z
+        .object({
+          baseUrl: z.string().url().default('https://ai-gateway.vercel.sh/v1'),
+          apiKey: z.string().optional(),
+        })
+        .default({}),
+      openrouter: z
+        .object({
+          baseUrl: z.string().url().default('https://openrouter.ai/api/v1'),
+          apiKey: z.string().optional(),
+        })
+        .default({}),
+      ollama: z
+        .object({
+          baseUrl: z.string().url().default('http://localhost:11434/v1'),
+          defaultModel: z.string().default('llama3.1'),
+          imageEndpoint: z.string().url().optional(),
+          videoEndpoint: z.string().url().optional(),
+        })
+        .default({}),
+      vllm: z
+        .object({
+          baseUrl: z.string().url().default('http://localhost:8000/v1'),
+          defaultModel: z.string().default('meta-llama/Llama-3.1-8B-Instruct'),
+          apiKey: z.string().optional(),
+          imageEndpoint: z.string().url().optional(),
+          videoEndpoint: z.string().url().optional(),
+        })
+        .default({}),
+    })
+    .default({}),
+  billing: z
+    .object({
+      disabled: z
+        .object({
+          tier: z.enum(['free', 'pro', 'max']).default('max'),
+          budgetTotalCents: z.number().int().min(0).default(1_000_000_000),
+        })
+        .default({}),
+    })
+    .default({}),
+  cache: z
+    .object({
+      redis: z
+        .object({
+          url: z.string().default('redis://localhost:6379'),
+        })
+        .default({}),
+      valkey: z
+        .object({
+          url: z.string().default('redis://localhost:6379'),
+        })
+        .default({}),
     })
     .default({}),
   plugins: z
