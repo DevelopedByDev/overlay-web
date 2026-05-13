@@ -9,7 +9,8 @@ module.exports = {
       },
       fontFamily: {
         sans: ['var(--font-sans)'],
-        serif: ['var(--font-serif)', 'Georgia', 'Times New Roman', 'serif'],
+        mono: ['var(--font-mono)'],
+        serif: ['var(--font-serif)'],
       },
     },
   },

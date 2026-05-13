@@ -1,6 +1,6 @@
 'use client'
 
-import type { AppSettings, ChatStreamingMode, ThemePreference, ThemePresetId } from '@overlay/app-core'
+import type { AppSettings, ThemePresetId } from '@overlay/app-core'
 import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
 import {
   createContext,
@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { getPresetCssVars } from '@/lib/themes'
+import { getPresetCssVars, isThemePresetId } from '@/lib/themes'
 
 export type { AppSettings, ChatStreamingMode, ThemePreference, ThemePresetId } from '@overlay/app-core'
 
@@ -26,10 +26,8 @@ type AppSettingsContextValue = {
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
 const APP_SETTINGS_STORAGE_KEY = 'overlay.app.settings'
-const VALID_PRESET_IDS = new Set<string>(['default-light', 'default-dark', 'codex', 'catppuccin'])
-
 function isValidPresetId(value: unknown): value is ThemePresetId {
-  return typeof value === 'string' && VALID_PRESET_IDS.has(value)
+  return isThemePresetId(value)
 }
 
 function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {

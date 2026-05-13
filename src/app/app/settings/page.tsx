@@ -263,14 +263,6 @@ export default function SettingsPage() {
           {!isLoading && section === 'general' && (
             <>
               <SettingRow
-                icon={settings.theme === 'dark' ? <Moon size={18} strokeWidth={1.8} /> : <Sun size={18} strokeWidth={1.8} />}
-                title="Dark mode"
-                description="Toggle the app between light and dark appearance."
-                checked={settings.theme === 'dark'}
-                disabled={busy}
-                onChange={() => void updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
-              />
-              <SettingRow
                 icon={<PanelsLeftRight size={18} strokeWidth={1.8} />}
                 title="Secondary sidebar"
                 description="Keep route-specific secondary sidebars enabled. When off, the app will use the single-sidebar layout once that rollout is completed."
@@ -360,6 +352,14 @@ export default function SettingsPage() {
 
           {!isLoading && section === 'customization' && (
             <>
+              <SettingRow
+                icon={settings.theme === 'dark' ? <Moon size={18} strokeWidth={1.8} /> : <Sun size={18} strokeWidth={1.8} />}
+                title="Dark mode"
+                description="Toggle the app between light and dark appearance."
+                checked={settings.theme === 'dark'}
+                disabled={busy}
+                onChange={() => void updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
+              />
               <PresetRow
                 label="Light theme"
                 description="Choose the color preset used when the app is in light mode."

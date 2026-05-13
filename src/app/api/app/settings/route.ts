@@ -3,8 +3,7 @@ import type { AppSettings, ThemePresetId } from '@overlay/app-core'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-
-const VALID_PRESET_IDS = new Set<string>(['default-light', 'default-dark', 'codex', 'catppuccin'])
+import { isThemePresetId } from '@/lib/themes'
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,10 +41,10 @@ export async function PATCH(request: NextRequest) {
     if (body.theme !== undefined && body.theme !== 'light' && body.theme !== 'dark') {
       return NextResponse.json({ error: 'Invalid theme' }, { status: 400 })
     }
-    if (body.lightThemePreset !== undefined && !VALID_PRESET_IDS.has(body.lightThemePreset)) {
+    if (body.lightThemePreset !== undefined && !isThemePresetId(body.lightThemePreset)) {
       return NextResponse.json({ error: 'Invalid lightThemePreset' }, { status: 400 })
     }
-    if (body.darkThemePreset !== undefined && !VALID_PRESET_IDS.has(body.darkThemePreset)) {
+    if (body.darkThemePreset !== undefined && !isThemePresetId(body.darkThemePreset)) {
       return NextResponse.json({ error: 'Invalid darkThemePreset' }, { status: 400 })
     }
     if (
