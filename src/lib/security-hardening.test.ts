@@ -119,24 +119,26 @@ test('service auth can separate middleware verification from route replay consum
   )
 })
 
-test('media tools are exposed only for explicit media requests', async () => {
+test('media tools are exposed only for structured media intent', async () => {
   const exposure = await import(new URL('./tools/exposure-policy.ts', import.meta.url).href)
 
   const ordinaryTurn = exposure.allowedOverlayToolIdsForTurn({
-    latestUserText: 'Summarize my notes from yesterday.',
+    latestUserText: 'Generate a product thumbnail image from my notes.',
   })
   assert.equal(ordinaryTurn.includes('generate_image'), false)
   assert.equal(ordinaryTurn.includes('generate_video'), false)
   assert.equal(ordinaryTurn.includes('animate_image'), false)
 
   const imageTurn = exposure.allowedOverlayToolIdsForTurn({
-    latestUserText: 'Please create a product thumbnail image for this launch.',
+    latestUserText: 'Structured intent controls media authorization, not this text.',
+    mediaToolIntent: 'image',
   })
   assert.equal(imageTurn.includes('generate_image'), true)
   assert.equal(imageTurn.includes('generate_video'), false)
 
   const videoTurn = exposure.allowedOverlayToolIdsForTurn({
-    latestUserText: 'Animate this image into a short product video.',
+    latestUserText: 'Structured intent controls media authorization, not this text.',
+    mediaToolIntent: 'video',
   })
   for (const toolId of [
     'generate_video',

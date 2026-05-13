@@ -22,7 +22,7 @@ test('exposure policy keeps browser tool disabled on extension client unless the
   assert.equal(extensionSurface.includes('interactive_browser_session'), false)
 })
 
-test('exposure policy exposes high-risk tools only for explicit matching requests', async () => {
+test('exposure policy exposes high-risk non-media tools only for explicit matching requests', async () => {
   const { allowedOverlayToolIdsForTurn } = await import(
     new URL('./exposure-policy.ts', import.meta.url).href,
   )
@@ -43,10 +43,38 @@ test('exposure policy exposes high-risk tools only for explicit matching request
   })
   assert.equal(noteTools.includes('create_note'), true)
 
-  const imageTools = allowedOverlayToolIdsForTurn({
+  const imageWordsWithoutStructuredIntent = allowedOverlayToolIdsForTurn({
     latestUserText: 'Generate an image poster for the launch event',
   })
+  assert.equal(imageWordsWithoutStructuredIntent.includes('generate_image'), false)
+})
+
+test('media tools require structured media intent instead of keyword matching', async () => {
+  const { allowedOverlayToolIdsForTurn } = await import(
+    new URL('./exposure-policy.ts', import.meta.url).href,
+  )
+
+  const imageTools = allowedOverlayToolIdsForTurn({
+    latestUserText: 'Any text is allowed here because media authorization is structured.',
+    mediaToolIntent: 'image',
+  })
   assert.equal(imageTools.includes('generate_image'), true)
+  assert.equal(imageTools.includes('generate_video'), false)
+
+  const videoTools = allowedOverlayToolIdsForTurn({
+    latestUserText: 'Any text is allowed here because media authorization is structured.',
+    mediaToolIntent: 'video',
+  })
+  assert.equal(videoTools.includes('generate_image'), false)
+  for (const toolId of [
+    'generate_video',
+    'animate_image',
+    'generate_video_with_reference',
+    'apply_motion_control',
+    'edit_video',
+  ]) {
+    assert.equal(videoTools.includes(toolId), true)
+  }
 })
 
 test('automation execution hides automation management tools even for automation-shaped prompts', async () => {

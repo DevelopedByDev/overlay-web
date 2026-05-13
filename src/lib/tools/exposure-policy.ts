@@ -50,20 +50,6 @@ function isExplicitNoteMutationRequest(text: string): boolean {
   ])
 }
 
-function isExplicitImageRequest(text: string): boolean {
-  return matchesAny(text, [
-    /\b(generate|create|make|draw|design|illustrate|render|edit|modify|restyle)\b.{0,40}\b(image|picture|photo|illustration|poster|thumbnail|logo|icon|artwork)\b/i,
-    /\b(image|picture|photo|illustration|poster|thumbnail|logo|icon|artwork)\b.{0,40}\b(generate|create|make|draw|design|illustrate|render|edit|modify|restyle)\b/i,
-  ])
-}
-
-function isExplicitVideoRequest(text: string): boolean {
-  return matchesAny(text, [
-    /\b(generate|create|make|render|animate|edit|modify|restyle)\b.{0,40}\b(video|clip|animation|trailer|reel|gif)\b/i,
-    /\b(video|clip|animation|trailer|reel|gif)\b.{0,40}\b(generate|create|make|render|animate|edit|modify|restyle)\b/i,
-  ])
-}
-
 function isExplicitBrowserRequest(text: string): boolean {
   return matchesAny(text, [
     /\b(log ?in|sign ?in|fill out|fill in|submit|click|browser session|use the browser|open the website|navigate to|take a screenshot|screenshot|scrape the page|web app|website flow|form)\b/i,
@@ -102,6 +88,12 @@ export function allowedOverlayToolIdsForTurn(params: {
   automationMode?: boolean
   automationExecution?: boolean
   /**
+   * Structured user intent from UI/server workflow. Do not infer media tools
+   * from natural-language text; that makes authorization brittle and vulnerable
+   * to pasted or retrieved instruction text.
+   */
+  mediaToolIntent?: 'image' | 'video' | null
+  /**
    * When `chrome-extension`, never expose `interactive_browser_session` — the Chrome extension
    * drives the user’s real tab via Act/local tools; remote browser sessions are redundant and confusing.
    */
@@ -120,10 +112,10 @@ export function allowedOverlayToolIdsForTurn(params: {
   if (isExplicitBrowserRequest(text) && !isExtensionClient) {
     addAll(allowed, BROWSER_TOOL_IDS)
   }
-  if (isExplicitImageRequest(text)) {
+  if (params.mediaToolIntent === 'image') {
     addAll(allowed, IMAGE_TOOL_IDS)
   }
-  if (isExplicitVideoRequest(text)) {
+  if (params.mediaToolIntent === 'video') {
     addAll(allowed, VIDEO_TOOL_IDS)
   }
   if (isExplicitDaytonaRequest(text)) {

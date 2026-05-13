@@ -68,6 +68,10 @@ import {
   reserveProviderBudget,
 } from '@/lib/billing-runtime'
 import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import {
+  classifyMediaToolIntentForTurn,
+  normalizeStructuredMediaToolIntent,
+} from '@/lib/media-tool-intent'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 function summarizeToolOutputForLog(output: unknown): string {
@@ -449,6 +453,7 @@ export async function POST(request: NextRequest) {
       mode,
       automationMode,
       automationExecution,
+      mediaToolIntent,
       actAbortTimeoutMs,
       mentions: rawMentions,
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
@@ -469,6 +474,7 @@ export async function POST(request: NextRequest) {
       mode?: 'chat' | 'automate'
       automationMode?: boolean
       automationExecution?: boolean
+      mediaToolIntent?: 'image' | 'video' | null
       actAbortTimeoutMs?: number
       mentions?: Array<{ type: string; id: string; name: string; fileIds?: string[] }>
       multiModelSlotIndex?: number
@@ -783,10 +789,25 @@ export async function POST(request: NextRequest) {
         : { contextText: '', hasContent: false, totalChars: 0 }
     const hasPreloadedDocContext = docContextBundle.hasContent && docContextBundle.totalChars > 0
 
+    const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
+    const resolvedMediaToolIntent = isMultiModelFollowUpSlot
+      ? null
+      : structuredMediaToolIntent ?? (
+      paid
+        ? await classifyMediaToolIntentForTurn({
+            userText: latestUserText,
+            userId,
+            accessToken: auth.accessToken || undefined,
+            entitlements: refreshedEntitlements,
+          })
+        : null
+      )
+
     const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
       latestUserText,
       automationMode: automationMode === true || mode === 'automate',
       automationExecution: automationExecution === true,
+      mediaToolIntent: resolvedMediaToolIntent,
     })
 
     const indexedNote = hasPreloadedDocContext
