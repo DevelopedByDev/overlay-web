@@ -2048,6 +2048,7 @@ export default function ChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const shouldScrollRef = useRef(false)
+  const pendingScrollTurnIdRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<MentionInputHandle>(null)
@@ -3095,8 +3096,23 @@ export default function ChatInterface({
     console.log(`[TTFT][client] first-token | ${_ttft.toFixed(1)}ms | mode=act | model=${_model}`)
   }, [isActiveLoading, actChat.messages, selectedActModel])
 
+  useLayoutEffect(() => {
+    const turnId = pendingScrollTurnIdRef.current
+    if (!turnId || !messagesScrollRef.current) return
+    const target = messagesScrollRef.current.querySelector(
+      `[data-exchange-turn="${CSS.escape(turnId)}"]`,
+    )
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    pendingScrollTurnIdRef.current = null
+  }, [activeChatId, chat0.messages.length, actChat.messages.length, generationResults.size, runtimeHydrationVersion])
+
   useEffect(() => {
     if (shouldScrollRef.current) {
+      if (pendingScrollTurnIdRef.current) {
+        shouldScrollRef.current = false
+        return
+      }
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       shouldScrollRef.current = false
     }
@@ -3596,7 +3612,16 @@ export default function ChatInterface({
     replaceUrl(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
   }
 
-  async function createNewChat(options: { title?: string } = {}): Promise<string | null> {
+  async function createNewChat(options: {
+    title?: string
+    prepareRuntime?: (args: {
+      chatId: string
+      runtime: ConversationRuntime
+      selectedModels: string[]
+      selectedActModel: string
+      askModelSelectionMode: AskModelSelectionMode
+    }) => void
+  } = {}): Promise<string | null> {
     // Invalidate any in-flight loadChat request before this newly-created runtime
     // becomes active; otherwise an older load can repaint the view after send.
     ++loadChatRequestRef.current
@@ -3643,6 +3668,13 @@ export default function ChatInterface({
         askModelSelectionMode: initialAskModelSelectionMode,
         activeChatTitle: initialTitle,
         isFirstMessage: true,
+      })
+      options.prepareRuntime?.({
+        chatId: data.id,
+        runtime,
+        selectedModels: initialSelectedModels,
+        selectedActModel,
+        askModelSelectionMode: initialAskModelSelectionMode,
       })
       runtime.hydrated = true
       activeChatIdRef.current = data.id
@@ -4400,46 +4432,15 @@ export default function ChatInterface({
     if (effectiveGenType === 'image' || effectiveGenType === 'video') {
       if (!text && attachedImages.length === 0) return
       if (isSendBlocked) return
-      const chatId = (activeChatIdRef.current ?? activeChatId) || await createNewChat()
-      if (!chatId) return
-      markChatModified(chatId, activeChatTitleSnapshot)
-      const targetRuntime = ensureConversationRuntime(chatId)
 
-      setInput('')
-      setAttachedImages([])
-      setGenerationChip(null)
-      setReplyContext(null)
       const wasFirst = isFirstMessage
-      setIsFirstMessage(false)
-      shouldScrollRef.current = true
-
       const promptForModel =
         replyCtxSnapshot?.bodyForModel && text
           ? `${text}\n\n---\n[User is replying in thread to prior content]\n${replyCtxSnapshot.bodyForModel}`
           : text
       const mediaSessionMode = 'act'
-
-      // Inject a placeholder user message into the primary chat slot so the exchange renders
-      const exchIdx = targetRuntime.ui.exchangeModels.length
       const mediaTurnId = crypto.randomUUID()
       const activeModels = effectiveGenType === 'image' ? selectedImageModelsSnapshot : selectedVideoModelsSnapshot
-      updateRuntimeUiState(chatId, (prev) => {
-        const nextGenerationResults = cloneGenerationResultsMap(prev.generationResults)
-        nextGenerationResults.set(
-          exchIdx,
-          activeModels.map(() => ({ type: effectiveGenType as 'image' | 'video', status: 'generating' as const })),
-        )
-        return {
-          ...prev,
-          exchangeModes: [...prev.exchangeModes, 'act'],
-          exchangeModels: [...prev.exchangeModels, [...activeModels]],
-          selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
-          exchangeGenTypes: [...prev.exchangeGenTypes, effectiveGenType],
-          generationResults: nextGenerationResults,
-          isFirstMessage: false,
-        }
-      })
-
       const mediaUserMessageParts: { type: string; text?: string; url?: string; mediaType?: string }[] = []
       if (text) mediaUserMessageParts.push({ type: 'text', text })
       for (const img of attachedImagesSnapshot) {
@@ -4459,13 +4460,79 @@ export default function ChatInterface({
           : {}),
       }
       const mediaSlotCount = Math.max(1, activeModels.length)
-      targetRuntime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
-        chat.messages = [
-          ...chat.messages,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          mediaUserMessage as any,
-        ]
+      let exchIdx = 0
+      let preparedFirstSendRuntime = false
+
+      const prepareMediaRuntime = (runtime: ConversationRuntime) => {
+        const ui = runtime.ui
+        exchIdx = ui.exchangeModels.length
+        const nextGenerationResults = cloneGenerationResultsMap(ui.generationResults)
+        nextGenerationResults.set(
+          exchIdx,
+          activeModels.map(() => ({ type: effectiveGenType as 'image' | 'video', status: 'generating' as const })),
+        )
+        runtime.ui = createConversationUiState({
+          ...ui,
+          exchangeModes: [...ui.exchangeModes, 'act'],
+          exchangeModels: [...ui.exchangeModels, [...activeModels]],
+          selectedTabPerExchange: [...ui.selectedTabPerExchange, 0],
+          exchangeGenTypes: [...ui.exchangeGenTypes, effectiveGenType],
+          generationResults: nextGenerationResults,
+          isFirstMessage: false,
+        })
+        runtime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
+          chat.messages = [
+            ...chat.messages,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            mediaUserMessage as any,
+          ]
+        })
+      }
+
+      const existingChatId = activeChatIdRef.current ?? activeChatId
+      const chatId = existingChatId || await createNewChat({
+        prepareRuntime: ({ runtime }) => {
+          prepareMediaRuntime(runtime)
+          preparedFirstSendRuntime = true
+        },
       })
+      if (!chatId) return
+      markChatModified(chatId, activeChatTitleSnapshot)
+      const targetRuntime = ensureConversationRuntime(chatId)
+
+      if (!preparedFirstSendRuntime) {
+        updateRuntimeUiState(chatId, (prev) => {
+          exchIdx = prev.exchangeModels.length
+          const nextGenerationResults = cloneGenerationResultsMap(prev.generationResults)
+          nextGenerationResults.set(
+            exchIdx,
+            activeModels.map(() => ({ type: effectiveGenType as 'image' | 'video', status: 'generating' as const })),
+          )
+          return {
+            ...prev,
+            exchangeModes: [...prev.exchangeModes, 'act'],
+            exchangeModels: [...prev.exchangeModels, [...activeModels]],
+            selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
+            exchangeGenTypes: [...prev.exchangeGenTypes, effectiveGenType],
+            generationResults: nextGenerationResults,
+            isFirstMessage: false,
+          }
+        })
+        targetRuntime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
+          chat.messages = [
+            ...chat.messages,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            mediaUserMessage as any,
+          ]
+        })
+      }
+
+      pendingScrollTurnIdRef.current = mediaTurnId
+      setInput('')
+      setAttachedImages([])
+      setGenerationChip(null)
+      setReplyContext(null)
+      setIsFirstMessage(false)
       void fetch('/api/app/conversations/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4715,12 +4782,6 @@ export default function ChatInterface({
 
     // Capture before any await — isFirstMessage is true for the first message of a new/fresh chat
     const wasFirst = isFirstMessage
-    const chatId = (activeChatIdRef.current ?? activeChatId) || await createNewChat()
-    if (!chatId) return
-    markChatModified(chatId, activeChatTitleSnapshot)
-    const targetRuntime = ensureConversationRuntime(chatId)
-
-    shouldScrollRef.current = true
     const textTurnId = crypto.randomUUID()
 
     type UiPart = { type: string; text?: string; url?: string; mediaType?: string }
@@ -4774,39 +4835,80 @@ export default function ChatInterface({
       ...(userMetadata ? { metadata: userMetadata } : {}),
     }
 
+    const multiText = textModelsForTurn.length > 1
+    const textSlotCount = Math.min(4, textModelsForTurn.length)
+    let msgCountBeforeSend = 0
+    let preparedFirstSendRuntime = false
+
+    const prepareTextRuntime = (runtime: ConversationRuntime) => {
+      msgCountBeforeSend = runtime.askChats[0].messages.length
+      const ui = runtime.ui
+      runtime.ui = createConversationUiState({
+        ...ui,
+        exchangeModes: [...ui.exchangeModes, 'act'],
+        exchangeModels: [...ui.exchangeModels, [...textModelsForTurn]],
+        selectedTabPerExchange: [...ui.selectedTabPerExchange, 0],
+        exchangeGenTypes: [...ui.exchangeGenTypes, 'text'],
+        isFirstMessage: false,
+      })
+      for (let s = 0; s < textSlotCount; s++) {
+        runtime.askChats[s]!.messages = [
+          ...runtime.askChats[s]!.messages,
+          userUIMessage as UIMessage,
+        ]
+      }
+      if (!multiText) {
+        runtime.actChat.messages = [
+          ...runtime.actChat.messages,
+          userUIMessage as UIMessage,
+        ]
+      }
+    }
+
+    const existingChatId = activeChatIdRef.current ?? activeChatId
+    const chatId = existingChatId || await createNewChat({
+      prepareRuntime: ({ runtime }) => {
+        prepareTextRuntime(runtime)
+        preparedFirstSendRuntime = true
+      },
+    })
+    if (!chatId) return
+    markChatModified(chatId, activeChatTitleSnapshot)
+    const targetRuntime = ensureConversationRuntime(chatId)
+
     if (wasFirst && (text || indexedFileNames.length > 0)) {
       startFirstMessageRename(chatId, text || indexedFileNames[0] || 'Documents')
     }
 
-    const msgCountBeforeSend = targetRuntime.askChats[0].messages.length
     activeChatIdRef.current = chatId
 
-    const multiText = textModelsForTurn.length > 1
-    const textSlotCount = Math.min(4, textModelsForTurn.length)
+    if (!preparedFirstSendRuntime) {
+      msgCountBeforeSend = targetRuntime.askChats[0].messages.length
+      updateRuntimeUiState(chatId, (prev) => ({
+        ...prev,
+        exchangeModes: [...prev.exchangeModes, 'act'],
+        exchangeModels: [...prev.exchangeModels, [...textModelsForTurn]],
+        selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
+        exchangeGenTypes: [...prev.exchangeGenTypes, 'text'],
+        isFirstMessage: false,
+      }))
 
-    updateRuntimeUiState(chatId, (prev) => ({
-      ...prev,
-      exchangeModes: [...prev.exchangeModes, 'act'],
-      exchangeModels: [...prev.exchangeModels, [...textModelsForTurn]],
-      selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
-      exchangeGenTypes: [...prev.exchangeGenTypes, 'text'],
-      isFirstMessage: false,
-    }))
+      for (let s = 0; s < textSlotCount; s++) {
+        targetRuntime.askChats[s]!.messages = [
+          ...targetRuntime.askChats[s]!.messages,
+          userUIMessage as UIMessage,
+        ]
+      }
+      if (!multiText) {
+        targetRuntime.actChat.messages = [
+          ...targetRuntime.actChat.messages,
+          userUIMessage as UIMessage,
+        ]
+      }
+    }
 
+    pendingScrollTurnIdRef.current = textTurnId
     startSession(chatId, 'act', activeChatTitleSnapshot ?? '', msgCountBeforeSend)
-
-    for (let s = 0; s < textSlotCount; s++) {
-      targetRuntime.askChats[s].messages = [
-        ...targetRuntime.askChats[s].messages,
-        userUIMessage as UIMessage,
-      ]
-    }
-    if (!multiText) {
-      targetRuntime.actChat.messages = [
-        ...targetRuntime.actChat.messages,
-        userUIMessage as UIMessage,
-      ]
-    }
 
     setInput('')
     setMentions([])
