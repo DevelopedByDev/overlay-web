@@ -513,7 +513,8 @@ export const getRecentMessages = query({
       beforeCreatedAt !== undefined && Number.isFinite(beforeCreatedAt)
         ? beforeCreatedAt
         : undefined
-    const recent = await ctx.db
+    const scanLimit = Math.min(500, Math.max(safeLimit * 12, 100))
+    const recentScan = await ctx.db
       .query('conversationMessages')
       .withIndex('by_conversationId_createdAt', (q) => {
         const scoped = q.eq('conversationId', conversationId)
@@ -522,8 +523,19 @@ export const getRecentMessages = query({
           : scoped.lt('createdAt', boundedBeforeCreatedAt)
       })
       .order('desc')
-      .take(safeLimit)
-    const messages = recent.reverse()
+      .take(scanLimit)
+    const selectedTurnIds: string[] = []
+    for (const message of recentScan) {
+      if (message.role !== 'user') continue
+      const turnId = message.turnId?.trim() || message._id
+      if (selectedTurnIds.includes(turnId)) continue
+      selectedTurnIds.push(turnId)
+      if (selectedTurnIds.length >= safeLimit) break
+    }
+    const selectedTurnIdSet = new Set(selectedTurnIds)
+    const messages = recentScan
+      .filter((message) => selectedTurnIdSet.has(message.turnId?.trim() || message._id))
+      .sort((a, b) => a.createdAt - b.createdAt)
     const generating = messages.filter((message) => message.status === 'generating')
     if (generating.length === 0) {
       return messages.map((message) => compactMessageForHistory(message, compactToolPayloads))
@@ -537,6 +549,83 @@ export const getRecentMessages = query({
     return messages.map((message) =>
       compactMessageForHistory(hydratedById.get(message._id) ?? message, compactToolPayloads)
     )
+  },
+})
+
+export const getContextSummary = query({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    serverSecret: v.string(),
+    scope: v.string(),
+  },
+  handler: async (ctx, { conversationId, userId, serverSecret, scope }) => {
+    await authorizeUserAccess({ userId, serverSecret })
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
+      return null
+    }
+    return await ctx.db
+      .query('conversationContextSummaries')
+      .withIndex('by_conversationId_scope', (q) =>
+        q.eq('conversationId', conversationId).eq('scope', scope)
+      )
+      .first()
+  },
+})
+
+export const upsertContextSummary = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    serverSecret: v.string(),
+    scope: v.string(),
+    summary: v.string(),
+    summarizedThroughMessageId: v.optional(v.string()),
+    summarizedThroughCreatedAt: v.optional(v.number()),
+    sourceMessageCount: v.number(),
+    sourceEstimatedTokens: v.number(),
+    summaryEstimatedTokens: v.number(),
+    contextWindow: v.number(),
+    targetModelId: v.string(),
+    summarizerModelId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await authorizeUserAccess({ userId: args.userId, serverSecret: args.serverSecret })
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+    const now = Date.now()
+    const existing = await ctx.db
+      .query('conversationContextSummaries')
+      .withIndex('by_conversationId_scope', (q) =>
+        q.eq('conversationId', args.conversationId).eq('scope', args.scope)
+      )
+      .first()
+    const payload = {
+      conversationId: args.conversationId,
+      userId: args.userId,
+      scope: args.scope,
+      summary: args.summary,
+      summarizedThroughMessageId: args.summarizedThroughMessageId,
+      summarizedThroughCreatedAt: args.summarizedThroughCreatedAt,
+      sourceMessageCount: args.sourceMessageCount,
+      sourceEstimatedTokens: args.sourceEstimatedTokens,
+      summaryEstimatedTokens: args.summaryEstimatedTokens,
+      contextWindow: args.contextWindow,
+      targetModelId: args.targetModelId,
+      summarizerModelId: args.summarizerModelId,
+      updatedAt: now,
+    }
+    if (existing) {
+      await ctx.db.patch(existing._id, payload)
+      return existing._id
+    }
+    return await ctx.db.insert('conversationContextSummaries', {
+      ...payload,
+      createdAt: now,
+    })
   },
 })
 

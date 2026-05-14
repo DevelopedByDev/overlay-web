@@ -547,6 +547,24 @@ export default defineSchema({
     .index('by_messageId', ['messageId'])
     .index('by_createdAt', ['createdAt']),
 
+  conversationContextSummaries: defineTable({
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    scope: v.string(),
+    summary: v.string(),
+    summarizedThroughMessageId: v.optional(v.string()),
+    summarizedThroughCreatedAt: v.optional(v.number()),
+    sourceMessageCount: v.number(),
+    sourceEstimatedTokens: v.number(),
+    summaryEstimatedTokens: v.number(),
+    contextWindow: v.number(),
+    targetModelId: v.string(),
+    summarizerModelId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_conversationId_scope', ['conversationId', 'scope'])
+    .index('by_userId_updatedAt', ['userId', 'updatedAt']),
+
   notes: defineTable({
     userId: v.string(),
     clientId: v.optional(v.string()),

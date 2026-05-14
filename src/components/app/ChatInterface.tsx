@@ -2331,7 +2331,6 @@ export default function ChatInterface({
           conversationId: activeChatId as Id<'conversations'>,
           userId: authUser.id,
           accessToken: convexAccessToken,
-          ...(mode === 'automate' ? { compactToolPayloads: true } : {}),
         }
       : 'skip',
   ) as Array<LiveConversationMessage> | undefined
@@ -2342,7 +2341,6 @@ export default function ChatInterface({
           conversationId: activeChatId as Id<'conversations'>,
           userId: authUser.id,
           accessToken: convexAccessToken,
-          ...(mode === 'automate' ? { compactToolPayloads: true } : {}),
         }
       : 'skip',
   ) as Array<LiveMessageDelta> | undefined
@@ -2814,10 +2812,6 @@ export default function ChatInterface({
           conversationId: activeChatId,
           messages: 'true',
         })
-        if (mode === 'automate') {
-          messagesParams.set('limit', '10')
-          messagesParams.set('compactToolPayloads', 'true')
-        }
         const res = await fetch(`/api/app/conversations?${messagesParams.toString()}`, {
           credentials: 'same-origin',
           cache: 'no-store',
@@ -4037,10 +4031,6 @@ export default function ChatInterface({
         conversationId: chatId,
         messages: 'true',
       })
-      if (mode === 'automate') {
-        messagesParams.set('limit', '10')
-        messagesParams.set('compactToolPayloads', 'true')
-      }
       const [messagesRes, outputsRes, metaRes] = await Promise.all([
         fetch(`/api/app/conversations?${messagesParams.toString()}`),
         fetch(`/api/app/files?kind=output&conversationId=${chatId}`),
@@ -4234,6 +4224,22 @@ export default function ChatInterface({
             model: a.model || DEFAULT_MODEL_ID,
             msg: a,
           }))
+          if (hasAutomationContext && responses.length === 0) {
+            responses.push({
+              model: DEFAULT_MODEL_ID,
+              msg: {
+                id: `missing-automation-response-${tid}`,
+                turnId: tid,
+                role: 'assistant',
+                mode,
+                parts: [{
+                  type: 'text',
+                  text: 'No saved model response was found for this automation run. You can retry this turn to regenerate it.',
+                }],
+                status: 'error',
+              } as RawMsg,
+            })
+          }
           exchanges.push({ userMsg: g.user, responses, mode })
         }
       } else {

@@ -40,6 +40,11 @@ import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
+import {
+  compactMessagesForContext,
+  contextSummaryScope,
+  type ContextSummarySnapshot,
+} from '@/lib/context-compaction'
 import { buildSecondarySystemPromptExtension } from '@/lib/operator-system-prompt'
 import {
   buildPersistedMessageContent,
@@ -104,31 +109,6 @@ function resolveActAbortTimeoutMs(params: {
     MAX_ACT_ABORT_TIMEOUT_MS,
     Math.max(MIN_ACT_ABORT_TIMEOUT_MS, Math.floor(params.requestedTimeoutMs!)),
   )
-}
-
-function uiMessageTextLength(message: UIMessage): number {
-  return (message.parts ?? []).reduce((total, part) => {
-    if (part.type === 'text' && 'text' in part && typeof part.text === 'string') {
-      return total + part.text.length
-    }
-    if (part.type === 'file') return total + 1000
-    return total
-  }, 0)
-}
-
-function trimMessagesForModel(messages: UIMessage[], maxTextChars = 180_000): UIMessage[] {
-  let remaining = maxTextChars
-  const kept: UIMessage[] = []
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index]
-    if (!message) continue
-    const cost = Math.max(1, uiMessageTextLength(message))
-    const isLatest = index === messages.length - 1
-    if (!isLatest && kept.length > 0 && remaining - cost < 0) break
-    kept.push(message)
-    remaining -= cost
-  }
-  return kept.reverse()
 }
 
 function toUiMessageFromPersisted(message: {
@@ -860,7 +840,75 @@ export async function POST(request: NextRequest) {
     messagesForModel = cloneMessagesWithIndexedFileHint(messagesForModel, indexedAttachmentList, hasPreloadedDocContext)
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
     messagesForModel = sanitizeUiMessagesForModelApi(messagesForModel)
-    messagesForModel = trimMessagesForModel(messagesForModel)
+    const summaryScope = contextSummaryScope({
+      targetModelId: effectiveModelId,
+      historyBaseModelId,
+    })
+    const previousContextSummary = cid
+      ? await convex.query<ContextSummarySnapshot | null>('conversations:getContextSummary', {
+          conversationId: cid,
+          userId,
+          serverSecret,
+          scope: summaryScope,
+        }).catch((error) => {
+          console.warn('[conversations/act] Failed to load context summary', {
+            conversationId: cid,
+            scope: summaryScope,
+            error: summarizeErrorForLog(error),
+          })
+          return null
+        })
+      : null
+    const compaction = await compactMessagesForContext({
+      messages: messagesForModel,
+      targetModelId: effectiveModelId,
+      accessToken: auth.accessToken || undefined,
+      previousSummary: previousContextSummary,
+    })
+    messagesForModel = compaction.messages
+    if (compaction.didCompact || compaction.usedFallbackTrim) {
+      console.info('[conversations/act] context-compaction', {
+        targetModelId: effectiveModelId,
+        scope: summaryScope,
+        contextWindow: compaction.contextWindow,
+        originalEstimatedTokens: compaction.originalEstimatedTokens,
+        finalEstimatedTokens: compaction.finalEstimatedTokens,
+        triggerTokens: compaction.triggerTokens,
+        targetTokens: compaction.targetTokens,
+        ratioBefore: Number((compaction.originalEstimatedTokens / compaction.contextWindow).toFixed(4)),
+        ratioAfter: Number((compaction.finalEstimatedTokens / compaction.contextWindow).toFixed(4)),
+        didCompact: compaction.didCompact,
+        usedFallbackTrim: compaction.usedFallbackTrim,
+      })
+    }
+    if (cid && compaction.summaryToPersist) {
+      const summary = compaction.summaryToPersist
+      await convex.mutation('conversations:upsertContextSummary', {
+        conversationId: cid,
+        userId,
+        serverSecret,
+        scope: summaryScope,
+        summary: summary.summary,
+        ...(summary.summarizedThroughMessageId
+          ? { summarizedThroughMessageId: summary.summarizedThroughMessageId }
+          : {}),
+        ...(summary.summarizedThroughCreatedAt
+          ? { summarizedThroughCreatedAt: summary.summarizedThroughCreatedAt }
+          : {}),
+        sourceMessageCount: summary.sourceMessageCount,
+        sourceEstimatedTokens: summary.sourceEstimatedTokens,
+        summaryEstimatedTokens: summary.summaryEstimatedTokens,
+        contextWindow: summary.contextWindow,
+        targetModelId: summary.targetModelId,
+        summarizerModelId: summary.summarizerModelId,
+      }).catch((error) => {
+        console.warn('[conversations/act] Failed to persist context summary', {
+          conversationId: cid,
+          scope: summaryScope,
+          error: summarizeErrorForLog(error),
+        })
+      })
+    }
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
     const projectInstructionsExtension = projectInstructions
       ? `\n\nProject instructions:\n${projectInstructions}`
