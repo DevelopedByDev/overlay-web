@@ -23,6 +23,27 @@ export type ScheduledAutomationTurn = {
 
 const SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS = 240_000
 
+async function settleScheduledAutomationTurn(params: {
+  conversationId: Id<'conversations'>
+  userId: string
+  turnId: string
+  status: 'completed' | 'error'
+  fallbackText: string
+}) {
+  await convex.mutation(
+    'conversations:settleGeneratingMessagesForTurn',
+    {
+      conversationId: params.conversationId,
+      userId: params.userId,
+      turnId: params.turnId,
+      status: params.status,
+      fallbackText: params.fallbackText,
+      serverSecret: getInternalApiSecret(),
+    },
+    { throwOnError: true },
+  )
+}
+
 async function drainResponseBody(response: Response): Promise<void> {
   if (!response.body) return
   const reader = response.body.getReader()
@@ -96,34 +117,54 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
     method: 'POST',
     path,
   })
-  const response = await fetch(`${getBaseUrl()}${path}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      [getServiceAuthHeaderName()]: serviceToken,
-    },
-    body: JSON.stringify({
-      messages: [message],
-      systemPrompt: buildAutomationSystemPrompt(input),
+  try {
+    const response = await fetch(`${getBaseUrl()}${path}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        [getServiceAuthHeaderName()]: serviceToken,
+      },
+      body: JSON.stringify({
+        messages: [message],
+        systemPrompt: buildAutomationSystemPrompt(input),
+        conversationId,
+        turnId: input.turnId,
+        modelId: input.modelId || DEFAULT_MODEL_ID,
+        userId: input.userId,
+        automationExecution: true,
+        actAbortTimeoutMs: SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS,
+        // Forward any @mention tokens embedded in the saved instructions so the act
+        // route's mention-context resolver can inject the same lightweight metadata
+        // that interactive chats use.
+        mentions: parseMentionTokens(input.instructions)
+          .map((m) => ({ type: m.type, id: m.id, name: m.name || m.id })),
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '')
+      throw new Error(errorText || `Act route failed with ${response.status}`)
+    }
+
+    await drainResponseBody(response)
+    await settleScheduledAutomationTurn({
       conversationId,
-      turnId: input.turnId,
-      modelId: input.modelId || DEFAULT_MODEL_ID,
       userId: input.userId,
-      automationExecution: true,
-      actAbortTimeoutMs: SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS,
-      // Forward any @mention tokens embedded in the saved instructions so the act
-      // route's mention-context resolver can inject the same lightweight metadata
-      // that interactive chats use.
-      mentions: parseMentionTokens(input.instructions)
-        .map((m) => ({ type: m.type, id: m.id, name: m.name || m.id })),
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '')
-    throw new Error(errorText || `Act route failed with ${response.status}`)
+      turnId: input.turnId,
+      status: 'completed',
+      fallbackText: 'Automation run finished, but no final assistant response was saved.',
+    })
+  } catch (error) {
+    await settleScheduledAutomationTurn({
+      conversationId,
+      userId: input.userId,
+      turnId: input.turnId,
+      status: 'error',
+      fallbackText: error instanceof Error
+        ? `Automation run failed: ${error.message}`
+        : 'Automation run failed before a final response was saved.',
+    }).catch(() => null)
+    throw error
   }
-
-  await drainResponseBody(response)
   return { conversationId }
 }

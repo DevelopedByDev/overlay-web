@@ -696,6 +696,70 @@ export const failGeneratingMessage = mutation({
   },
 })
 
+export const settleGeneratingMessagesForTurn = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    turnId: v.string(),
+    status: v.union(v.literal('completed'), v.literal('error')),
+    fallbackText: v.optional(v.string()),
+    serverSecret: v.string(),
+  },
+  returns: v.object({
+    settledCount: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    await authorizeUserAccess({ userId: args.userId, serverSecret: args.serverSecret })
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+
+    const messages = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
+      .collect()
+    const targets = messages.filter((message) =>
+      message.role === 'assistant' &&
+      message.status === 'generating' &&
+      message.turnId === args.turnId
+    )
+
+    const now = Date.now()
+    let settledCount = 0
+    for (const message of targets) {
+      const deltas = await getMessageDeltas(ctx, message._id)
+      const hydrated = applyStreamingDeltas(message, deltas)
+      const fallbackText = args.fallbackText?.trim() ||
+        (args.status === 'error'
+          ? 'Automation run failed before a final response was saved.'
+          : 'Automation run finished before a final response was saved.')
+      const content = hydrated.content?.trim() ? hydrated.content : fallbackText
+      const hasVisiblePart = Array.isArray(hydrated.parts) && hydrated.parts.some((part) =>
+        'text' in part && typeof part.text === 'string'
+          ? part.text.trim().length > 0
+          : true
+      )
+      const parts = hasVisiblePart ? hydrated.parts : [{ type: 'text' as const, text: content }]
+
+      await ctx.db.patch(message._id, {
+        content,
+        parts,
+        status: args.status,
+        updatedAt: now,
+      })
+      await deleteDeltaDocs(ctx, deltas)
+      settledCount++
+    }
+
+    if (settledCount > 0) {
+      await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    }
+
+    return { settledCount }
+  },
+})
+
 export const finalizeStaleGeneratingMessages = mutation({
   args: {
     cutoffMinutes: v.optional(v.number()),
@@ -719,9 +783,14 @@ export const finalizeStaleGeneratingMessages = mutation({
     for (const message of stale) {
       const deltas = await getMessageDeltas(ctx, message._id)
       const hydrated = applyStreamingDeltas(message, deltas)
+      const fallbackText = 'Generation ended before a final response was saved.'
+      const content = hydrated.content?.trim() ? hydrated.content : fallbackText
+      const parts = Array.isArray(hydrated.parts) && hydrated.parts.length > 0
+        ? hydrated.parts
+        : [{ type: 'text' as const, text: content }]
       await ctx.db.patch(message._id, {
-        content: hydrated.content,
-        parts: hydrated.parts,
+        content,
+        parts,
         status: 'completed',
         updatedAt: Date.now(),
       })
