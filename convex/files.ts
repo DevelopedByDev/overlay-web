@@ -608,7 +608,6 @@ export const create = mutation({
       kind,
       parentId: args.parentId,
       content: textContent,
-      textContent,
       storageId: args.storageId,
       r2Key: args.r2Key,
       mimeType: args.mimeType,
@@ -749,7 +748,6 @@ export const update = mutation({
           ? await findCanonicalDuplicate(ctx as never, userId, updates.contentHash, fileId)
           : null
       patch.content = nextText
-      patch.textContent = nextText
       patch.sizeBytes = nextSizeBytes
       patch.contentHash = updates.contentHash
       patch.duplicateOfFileId = canonicalDuplicate?._id
@@ -865,7 +863,6 @@ export const backfillCanonicalFilesystem = mutation({
         const kind = file.type === 'folder' ? 'folder' : 'upload'
         await ctx.db.patch(file._id, {
           kind,
-          textContent: text,
           extension: file.extension ?? extensionOf(file.name),
           indexable: isTextIndexable(kind, text),
           indexStatus: isTextIndexable(kind, text) ? 'pending' : 'skipped',
@@ -889,7 +886,6 @@ export const backfillCanonicalFilesystem = mutation({
           type: 'file',
           kind: 'note',
           content: note.content,
-          textContent: note.content,
           sizeBytes: utf8ByteLength(note.content),
           contentHash: undefined,
           extension: 'md',
@@ -924,7 +920,6 @@ export const backfillCanonicalFilesystem = mutation({
           type: 'file',
           kind: 'output',
           content: textContent,
-          textContent,
           storageId: output.storageId,
           r2Key: output.r2Key,
           mimeType: output.mimeType,

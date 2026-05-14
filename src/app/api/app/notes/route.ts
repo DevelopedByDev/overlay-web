@@ -114,7 +114,6 @@ export async function POST(request: NextRequest) {
       kind: 'note',
       type: 'file',
       content,
-      textContent: content,
       contentHash: content ? hashTextContent(content) : undefined,
       projectId: body.projectId ?? undefined,
     })
@@ -155,7 +154,7 @@ export async function PATCH(request: NextRequest) {
       fileId: existing._id,
       name: body.title,
       ...(content !== undefined
-        ? { content, textContent: content, contentHash: hashTextContent(content) }
+        ? { content, contentHash: hashTextContent(content) }
         : {}),
       projectId: body.projectId,
     })

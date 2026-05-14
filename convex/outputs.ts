@@ -126,7 +126,6 @@ export const create = mutation({
       type: 'file',
       kind: 'output',
       content: textContent,
-      textContent,
       storageId: args.storageId,
       r2Key: args.r2Key,
       mimeType: args.mimeType,
@@ -229,7 +228,6 @@ export const update = mutation({
       await ctx.db.patch(fileId, {
         name,
         content: textContent,
-        textContent,
         storageId: storageId !== undefined ? storageId : nextOutput.storageId,
         r2Key: r2Key !== undefined ? r2Key : nextOutput.r2Key,
         mimeType: mimeType !== undefined ? mimeType : nextOutput.mimeType,

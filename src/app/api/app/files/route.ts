@@ -210,7 +210,6 @@ export async function POST(request: NextRequest) {
           ...args,
           name: partName,
           content: part,
-          textContent: part,
           contentHash: hashTextContent(part),
         })
         if (!partId) {
@@ -223,7 +222,6 @@ export async function POST(request: NextRequest) {
       if (typeof (textContent ?? content) === 'string' && String(textContent ?? content).length > 0) {
         const fullText = String(textContent ?? content)
         args.content = fullText
-        args.textContent = fullText
         args.contentHash = hashTextContent(fullText)
       }
       id = await convex.mutation('files:create', args)
@@ -254,7 +252,6 @@ export async function PATCH(request: NextRequest) {
     if (typeof (textContent ?? content) === 'string') {
       const fullText = String(textContent ?? content)
       args.content = fullText
-      args.textContent = fullText
       args.contentHash = hashTextContent(fullText)
     } else if ((textContent ?? content) !== undefined) {
       args.content = textContent ?? content

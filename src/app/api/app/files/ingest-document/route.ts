@@ -270,6 +270,12 @@ export async function POST(request: NextRequest) {
         if (/storage|quota|limit exceeded/i.test(msg)) {
           return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
         }
+        if (/Value is too large|maximum size/i.test(msg)) {
+          return NextResponse.json(
+            { error: 'Document section is too large to index. Try splitting it into smaller text files.' },
+            { status: 413 },
+          )
+        }
         return NextResponse.json({ error: 'Could not save indexed document. Try again.' }, { status: 500 })
       }
       ids.push(fid)
