@@ -27,6 +27,8 @@ function streamLogFields(body: ChatBody): Record<string, unknown> {
   return {
     conversationId: typeof record?.conversationId === 'string' ? record.conversationId : undefined,
     turnId: typeof record?.turnId === 'string' ? record.turnId : undefined,
+    mode: typeof record?.mode === 'string' ? record.mode : undefined,
+    automationMode: typeof record?.automationMode === 'boolean' ? record.automationMode : undefined,
     variantIndex: typeof record?.multiModelSlotIndex === 'number'
       ? record.multiModelSlotIndex
       : typeof record?.variantIndex === 'number'

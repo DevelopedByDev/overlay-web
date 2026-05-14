@@ -53,6 +53,9 @@ archives/*
 transcripts/
 plans/*
 
+# private security notes and launch-blocker findings
+/docs/security/
+
 src/remotion/*
 renders/*
 .env.local

@@ -516,6 +516,9 @@ export async function POST(request: NextRequest) {
     }
     console.info('[conversations/act] streamPersistence', {
       mode: resolvedStreamPersistenceMode,
+      conversationMode: mode,
+      automationMode: automationMode === true,
+      automationExecution: automationExecution === true,
       conversationId,
       turnId,
       variantIndex: rawMultiModelSlotIndex,

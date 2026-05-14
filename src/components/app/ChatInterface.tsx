@@ -2363,9 +2363,7 @@ export default function ChatInterface({
     )
 
   const isActiveLoading =
-    activeAskChats
-      .slice(0, selectedModels.length)
-      .some((c) => c.status === 'streaming' || c.status === 'submitted') ||
+    activeAskChats.some((c) => c.status === 'streaming' || c.status === 'submitted') ||
     actChat.status === 'streaming' ||
     actChat.status === 'submitted' ||
     activePersistedGenerating
@@ -3192,6 +3190,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     if (wasStreamingRef.current && !isActiveLoading && chat0.messages.length > 0) {
+      snapshotCurrentAskThreadsForModelPicker()
       loadSubscription()
     }
     wasStreamingRef.current = isActiveLoading
@@ -3381,7 +3380,10 @@ export default function ChatInterface({
   ): UIMessage | null {
     const order = slotOrder && slotOrder.length > 0 ? slotOrder : selectedModels
     const liveIdx = order.indexOf(modelId)
-    const canUseLiveSlot = liveIdx >= 0 && sameModelOrder(order, activeRuntime.ui.selectedModels)
+    const canUseLiveSlot =
+      liveIdx >= 0 &&
+      (sameModelOrder(order, activeRuntime.ui.selectedModels) ||
+        (isActiveLoading && !!slotOrder?.length))
     const msgs =
       canUseLiveSlot
         ? activeAskChats[liveIdx].messages
@@ -3666,12 +3668,38 @@ export default function ChatInterface({
     try { localStorage.setItem(ACT_MODEL_KEY, id) } catch { /* ignore */ }
   }, [isOnNewChatSurface])
 
+  const snapshotCurrentAskThreadsForModelPicker = useCallback(() => {
+    if (!activeChatIdRef.current) return
+    const latestTextIdx = (() => {
+      for (let i = exchangeModels.length - 1; i >= 0; i--) {
+        if ((exchangeGenTypes[i] ?? 'text') === 'text') return i
+      }
+      return -1
+    })()
+    const threadModelOrder =
+      latestTextIdx >= 0 && exchangeModels[latestTextIdx]?.length
+        ? exchangeModels[latestTextIdx]!
+        : selectedModels
+    const nextOrphans = cloneOrphanModelThreadsMap(activeRuntime.ui.orphanModelThreads)
+    threadModelOrder.slice(0, 4).forEach((modelId, slotIdx) => {
+      const messages = activeRuntime.askChats[slotIdx]?.messages as UIMessage[] | undefined
+      if (messages?.length) {
+        nextOrphans.set(modelId, cloneUiMessageThread(messages))
+      }
+    })
+    activeRuntime.ui = createConversationUiState({
+      ...activeRuntime.ui,
+      orphanModelThreads: nextOrphans,
+    })
+  }, [activeRuntime, exchangeGenTypes, exchangeModels, selectedModels])
+
   const handleTextModelSelectionModeChange = useCallback(
     (next: AskModelSelectionMode) => {
-      if (isActiveLoading || generationMode !== 'text') return
+      if (generationMode !== 'text') return
       if (next === askModelSelectionMode) return
       if (isFreeTier && next === 'multiple') return
       if (hasAutomationContext && next === 'multiple') return
+      snapshotCurrentAskThreadsForModelPicker()
       setAskModelSelectionMode(next)
       if (next === 'single' && selectedModels.length > 1) {
         const one = [selectedModels[0]!]
@@ -3687,17 +3715,17 @@ export default function ChatInterface({
     [
       generationMode,
       askModelSelectionMode,
-      isActiveLoading,
       isFreeTier,
       hasAutomationContext,
       selectedModels,
+      snapshotCurrentAskThreadsForModelPicker,
       persistNewChatAskModels,
       persistNewChatActModel,
     ],
   )
 
   function toggleTextModelInPicker(modelId: string) {
-    if (isActiveLoading) return
+    snapshotCurrentAskThreadsForModelPicker()
     if (askModelSelectionMode === 'single') {
       if (selectedActModel === modelId && selectedModels.length === 1) return
       const next = [modelId]
@@ -5263,7 +5291,6 @@ export default function ChatInterface({
       const meta = e.metaKey || e.ctrlKey
 
       if (meta && e.shiftKey && (e.key === '/' || e.key === '?')) {
-        if (isActiveLoadingRef.current) return
         e.preventDefault()
         setShowModelPicker((v) => !v)
         return
@@ -5886,11 +5913,8 @@ export default function ChatInterface({
                   <DelayedTooltip label="Choose automation model" side="bottom">
                     <button
                       type="button"
-                      onClick={() => !isActiveLoading && setShowModelPicker((value) => !value)}
-                      disabled={isActiveLoading}
-                      className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1 ${
-                        isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
-                      }`}
+                      onClick={() => setShowModelPicker((value) => !value)}
+                      className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1"
                       aria-label="Automation model"
                     >
                       <span className="min-w-0 truncate">{getChatModelDisplayName(selectedAutomation.modelId ?? DEFAULT_MODEL_ID) || 'Select model'}</span>
@@ -6043,11 +6067,8 @@ export default function ChatInterface({
                 <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
                   <button
                     type="button"
-                    onClick={() => !isActiveLoading && setShowModelPicker((v) => !v)}
-                    disabled={isActiveLoading}
-                    className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1 ${
-                      isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
-                    }`}
+                    onClick={() => setShowModelPicker((v) => !v)}
+                    className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1"
                   >
                     <span className="min-w-0 truncate">{modelPickerLabel}</span>
                     <ChevronDown size={11} className="shrink-0" />
@@ -6232,13 +6253,13 @@ export default function ChatInterface({
                               key={selMode}
                               type="button"
                               onClick={() => handleTextModelSelectionModeChange(selMode)}
-                              disabled={isActiveLoading || multipleDisabled}
+                              disabled={multipleDisabled}
                               className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
                                 isActive
                                   ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
                                   : 'text-[var(--muted)] hover:text-[var(--foreground)]'
                               } ${
-                                isActiveLoading || multipleDisabled ? 'cursor-not-allowed opacity-40' : ''
+                                multipleDisabled ? 'cursor-not-allowed opacity-40' : ''
                               }`}
                             >
                               {selMode}
@@ -6624,7 +6645,7 @@ export default function ChatInterface({
                     exchModelList={exchModelList}
                     selectedTab={selectedTab}
                     onTabSelect={(tabIdx) => handleTabSelect(curExchIdx, tabIdx)}
-                    isLoadingTabs={isActiveLoading}
+                    isLoadingTabs={false}
                     responseInProgress={instLoading}
                     sourceCitations={sourceCitations}
                     turnIdForActions={textTurnIdForActions}
