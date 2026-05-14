@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     url: "https://getoverlay.io",
     images: [
       {
-        url: "https://getoverlay.io/assets/overlay-logo.png",
+        url: "https://getoverlay.io/assets/overlay-share-thumb.png",
         width: 512,
         height: 512,
         alt: "overlay logo",
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     title: "overlay — the unified AI interaction layer",
     description:
       "Open-source AI workspace for chat, voice notes, browser tasks, agents, automations, context, and content generation.",
-    images: ["https://getoverlay.io/assets/overlay-logo.png"],
+    images: ["https://getoverlay.io/assets/overlay-share-thumb.png"],
   },
 };
 

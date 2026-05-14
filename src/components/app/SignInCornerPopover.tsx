@@ -31,7 +31,7 @@ export function SignInCornerPopover({ onDismiss, isClosing = false }: Props) {
     >
       <div className="flex items-start justify-between gap-2 px-5 pt-5 pb-3">
         <div className="flex items-center gap-2.5">
-          <Image src="/assets/overlay-logo.png" alt="" width={20} height={20} className="shrink-0" />
+          <Image src="/assets/overlay-logo.png" alt="" width={16} height={16} className="shrink-0" />
           <p className="text-sm font-medium text-[var(--foreground)]">Sign in or create an account</p>
         </div>
         <button
