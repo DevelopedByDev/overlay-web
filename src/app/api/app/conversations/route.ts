@@ -34,6 +34,15 @@ function readBooleanParam(value: string | null): boolean | undefined {
   return undefined
 }
 
+function readPositiveIntParam(value: string | null, max: number): number | undefined {
+  if (!value) return undefined
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return undefined
+  const int = Math.floor(parsed)
+  if (int <= 0) return undefined
+  return Math.min(max, int)
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await resolveAuthenticatedAppUser(request, {})
@@ -47,6 +56,10 @@ export async function GET(request: NextRequest) {
     const updatedSinceParam = searchParams.get('updatedSince')
     const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
     const includeDeleted = readBooleanParam(searchParams.get('includeDeleted'))
+    const messageLimit = readPositiveIntParam(searchParams.get('limit'), 100)
+    const beforeCreatedAtParam = searchParams.get('beforeCreatedAt')
+    const beforeCreatedAt = beforeCreatedAtParam ? Number(beforeCreatedAtParam) : undefined
+    const compactToolPayloads = readBooleanParam(searchParams.get('compactToolPayloads')) === true
 
     if (conversationId && !includeMessages) {
       const conv = await convex.query<ConversationDoc | null>('conversations:get', {
@@ -66,7 +79,58 @@ export async function GET(request: NextRequest) {
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-      const messages = await convex.query<
+      type ConversationMessageRow = {
+        _id: string
+        turnId: string
+        role: 'user' | 'assistant'
+        mode: 'ask' | 'act'
+        content: string
+        contentType: 'text' | 'image' | 'video'
+        parts?: Array<
+          | { type: string; text?: string; url?: string; mediaType?: string; fileName?: string; state?: string }
+          | {
+              type: 'tool-invocation'
+              toolInvocation: {
+                toolCallId?: string
+                toolName: string
+                state?: string
+                toolInput?: Record<string, unknown>
+                toolOutput?: unknown
+              }
+            }
+        >
+        modelId?: string
+        variantIndex?: number
+        createdAt: number
+        replyToTurnId?: string
+        replySnippet?: string
+        routedModelId?: string
+        status?: 'generating' | 'completed' | 'error'
+      }
+      let messages: ConversationMessageRow[]
+      if (messageLimit) {
+        try {
+          messages = await convex.query<ConversationMessageRow[]>('conversations:getRecentMessages', {
+            conversationId: conversationId as Id<'conversations'>,
+            userId: auth.userId,
+            serverSecret,
+            limit: messageLimit,
+            ...(Number.isFinite(beforeCreatedAt) ? { beforeCreatedAt } : {}),
+            compactToolPayloads,
+          }) ?? []
+        } catch (error) {
+          console.warn('[conversations GET] Falling back to full message load after recent load failed', {
+            conversationId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          messages = await convex.query<ConversationMessageRow[]>('conversations:getMessages', {
+            conversationId: conversationId as Id<'conversations'>,
+            userId: auth.userId,
+            serverSecret,
+          }) ?? []
+        }
+      } else {
+        messages = await convex.query<
         Array<{
           _id: string
           turnId: string
@@ -89,24 +153,36 @@ export async function GET(request: NextRequest) {
           >
           modelId?: string
           variantIndex?: number
+          createdAt: number
           replyToTurnId?: string
           replySnippet?: string
           routedModelId?: string
           status?: 'generating' | 'completed' | 'error'
         }>
-      >('conversations:getMessages', {
-        conversationId: conversationId as Id<'conversations'>,
-        userId: auth.userId,
-        serverSecret,
-      })
+        >('conversations:getMessages', {
+          conversationId: conversationId as Id<'conversations'>,
+          userId: auth.userId,
+          serverSecret,
+        }) ?? []
+      }
+
+      const earliestCreatedAt = messages?.length
+        ? Math.min(...messages.map((message) => message.createdAt))
+        : undefined
 
       return NextResponse.json({
+        ...(messageLimit ? {
+          limit: messageLimit,
+          hasMore: (messages?.length ?? 0) >= messageLimit,
+          earliestCreatedAt,
+        } : {}),
         messages: (messages || []).map((message) => ({
           id: message._id,
           turnId: message.turnId,
           mode: message.mode,
           contentType: message.contentType,
           variantIndex: message.variantIndex,
+          createdAt: message.createdAt,
           role: message.role,
           parts: message.parts?.length
             ? message.parts.map((part) => {

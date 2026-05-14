@@ -63,6 +63,7 @@ type MessageDoc = Doc<'conversationMessages'>
 type MessageDeltaDoc = Doc<'conversationMessageDeltas'>
 type MessagePart = NonNullable<MessageDoc['parts']>[number]
 type MessageParts = NonNullable<MessageDoc['parts']>
+const MAX_HISTORY_TOOL_VALUE_CHARS = 1000
 
 function sameMessageVariant(
   message: MessageDoc,
@@ -84,6 +85,48 @@ function isToolInvocationPart(
   candidate: MessagePart,
 ): candidate is Extract<MessagePart, { toolInvocation: unknown }> {
   return 'toolInvocation' in candidate
+}
+
+function stringifyForHistory(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function compactToolValueForHistory(value: unknown): unknown {
+  if (value == null) return value
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  const serialized = stringifyForHistory(value)
+  if (serialized.length <= MAX_HISTORY_TOOL_VALUE_CHARS) return value
+  return {
+    truncated: true,
+    summary: `${serialized.slice(0, MAX_HISTORY_TOOL_VALUE_CHARS).trimEnd()}\n\n[truncated ${serialized.length - MAX_HISTORY_TOOL_VALUE_CHARS} chars for history]`,
+  }
+}
+
+function compactPartsForHistory(parts: MessageParts): MessageParts {
+  return parts.map((part) => {
+    if (!isToolInvocationPart(part)) return part
+    return {
+      ...part,
+      toolInvocation: {
+        ...part.toolInvocation,
+        toolInput: compactToolValueForHistory(part.toolInvocation.toolInput),
+        toolOutput: compactToolValueForHistory(part.toolInvocation.toolOutput),
+      },
+    }
+  })
+}
+
+function compactMessageForHistory(message: MessageDoc, compactToolPayloads?: boolean): MessageDoc {
+  if (!compactToolPayloads || !Array.isArray(message.parts)) return message
+  return {
+    ...message,
+    parts: compactPartsForHistory(message.parts),
+  }
 }
 
 function mergeStreamingParts(existingParts: MessageParts, newParts: MessageParts) {
@@ -441,6 +484,59 @@ export const getMessages = query({
     }))
     const hydratedById = new Map(hydrated.map((message) => [message._id, message]))
     return messages.map((message) => hydratedById.get(message._id) ?? message)
+  },
+})
+
+export const getRecentMessages = query({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    limit: v.optional(v.number()),
+    beforeCreatedAt: v.optional(v.number()),
+    compactToolPayloads: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { conversationId, userId, accessToken, serverSecret, limit, beforeCreatedAt, compactToolPayloads }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return []
+    }
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
+      return []
+    }
+
+    const safeLimit = Math.min(100, Math.max(1, Math.floor(limit ?? 10)))
+    const boundedBeforeCreatedAt =
+      beforeCreatedAt !== undefined && Number.isFinite(beforeCreatedAt)
+        ? beforeCreatedAt
+        : undefined
+    const recent = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId_createdAt', (q) => {
+        const scoped = q.eq('conversationId', conversationId)
+        return boundedBeforeCreatedAt === undefined
+          ? scoped
+          : scoped.lt('createdAt', boundedBeforeCreatedAt)
+      })
+      .order('desc')
+      .take(safeLimit)
+    const messages = recent.reverse()
+    const generating = messages.filter((message) => message.status === 'generating')
+    if (generating.length === 0) {
+      return messages.map((message) => compactMessageForHistory(message, compactToolPayloads))
+    }
+
+    const hydrated = await Promise.all(generating.map(async (message) => {
+      const deltas = await getMessageDeltas(ctx, message._id)
+      return applyStreamingDeltas(message, deltas)
+    }))
+    const hydratedById = new Map(hydrated.map((message) => [message._id, message]))
+    return messages.map((message) =>
+      compactMessageForHistory(hydratedById.get(message._id) ?? message, compactToolPayloads)
+    )
   },
 })
 
@@ -958,8 +1054,9 @@ export const watchGeneratingMessages = query({
     conversationId: v.id('conversations'),
     userId: v.string(),
     accessToken: v.string(),
+    compactToolPayloads: v.optional(v.boolean()),
   },
-  handler: async (ctx, { conversationId, userId, accessToken }) => {
+  handler: async (ctx, { conversationId, userId, accessToken, compactToolPayloads }) => {
     try {
       await authorizeUserAccess({ userId, accessToken })
     } catch {
@@ -974,10 +1071,11 @@ export const watchGeneratingMessages = query({
       )
       .order('desc')
       .collect()
-    return await Promise.all(messages.map(async (message) => {
+    const hydrated = await Promise.all(messages.map(async (message) => {
       const deltas = await getMessageDeltas(ctx, message._id)
       return applyStreamingDeltas(message, deltas)
     }))
+    return hydrated.map((message) => compactMessageForHistory(message, compactToolPayloads))
   },
 })
 
@@ -986,8 +1084,9 @@ export const watchGeneratingMessageDeltas = query({
     conversationId: v.id('conversations'),
     userId: v.string(),
     accessToken: v.string(),
+    compactToolPayloads: v.optional(v.boolean()),
   },
-  handler: async (ctx, { conversationId, userId, accessToken }) => {
+  handler: async (ctx, { conversationId, userId, accessToken, compactToolPayloads }) => {
     try {
       await authorizeUserAccess({ userId, accessToken })
     } catch {
@@ -1008,7 +1107,12 @@ export const watchGeneratingMessageDeltas = query({
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('asc')
       .collect()
-    return deltas.filter((delta) => generatingIds.has(delta.messageId))
+    const filtered = deltas.filter((delta) => generatingIds.has(delta.messageId))
+    if (!compactToolPayloads) return filtered
+    return filtered.map((delta) => ({
+      ...delta,
+      newParts: Array.isArray(delta.newParts) ? compactPartsForHistory(delta.newParts) : delta.newParts,
+    }))
   },
 })
 

@@ -2331,6 +2331,7 @@ export default function ChatInterface({
           conversationId: activeChatId as Id<'conversations'>,
           userId: authUser.id,
           accessToken: convexAccessToken,
+          ...(mode === 'automate' ? { compactToolPayloads: true } : {}),
         }
       : 'skip',
   ) as Array<LiveConversationMessage> | undefined
@@ -2341,6 +2342,7 @@ export default function ChatInterface({
           conversationId: activeChatId as Id<'conversations'>,
           userId: authUser.id,
           accessToken: convexAccessToken,
+          ...(mode === 'automate' ? { compactToolPayloads: true } : {}),
         }
       : 'skip',
   ) as Array<LiveMessageDelta> | undefined
@@ -2808,7 +2810,15 @@ export default function ChatInterface({
     let cancelled = false
     const patchFromServer = async () => {
       try {
-        const res = await fetch(`/api/app/conversations?conversationId=${activeChatId}&messages=true`, {
+        const messagesParams = new URLSearchParams({
+          conversationId: activeChatId,
+          messages: 'true',
+        })
+        if (mode === 'automate') {
+          messagesParams.set('limit', '10')
+          messagesParams.set('compactToolPayloads', 'true')
+        }
+        const res = await fetch(`/api/app/conversations?${messagesParams.toString()}`, {
           credentials: 'same-origin',
           cache: 'no-store',
         })
@@ -2908,7 +2918,7 @@ export default function ChatInterface({
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [activeChatId, actChat, activePersistedGenerating, chat0, chat1, chat2, chat3, completeSession, loadChats, sessions])
+  }, [activeChatId, actChat, activePersistedGenerating, chat0, chat1, chat2, chat3, completeSession, loadChats, mode, sessions])
 
   // Update title in local state + pendingTitleRef immediately, then broadcast.
   const applyChatTitleUpdate = useCallback((chatId: string, title: string) => {
@@ -4023,8 +4033,16 @@ export default function ChatInterface({
     runtime.hydrated = false
     try {
       const shouldLoadMeta = !existingChat?.title || !existingChat?.askModelIds?.length || !existingChat?.actModelId
+      const messagesParams = new URLSearchParams({
+        conversationId: chatId,
+        messages: 'true',
+      })
+      if (mode === 'automate') {
+        messagesParams.set('limit', '10')
+        messagesParams.set('compactToolPayloads', 'true')
+      }
       const [messagesRes, outputsRes, metaRes] = await Promise.all([
-        fetch(`/api/app/conversations?conversationId=${chatId}&messages=true`),
+        fetch(`/api/app/conversations?${messagesParams.toString()}`),
         fetch(`/api/app/files?kind=output&conversationId=${chatId}`),
         shouldLoadMeta ? fetch(`/api/app/conversations?conversationId=${chatId}`) : Promise.resolve(null),
       ])
