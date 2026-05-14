@@ -193,6 +193,45 @@ import type {
 import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from './chat-interface/mention-types'
 
+const LARGE_PASTE_WORD_LIMIT = 1_000
+const LARGE_PASTE_CHAR_LIMIT = 30_000
+const LARGE_PASTE_MAX_BYTES = 12 * 1024 * 1024
+
+function exceedsWordLimit(value: string, limit: number): boolean {
+  let count = 0
+  let inWord = false
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i)
+    const isWhitespace = code <= 32 || code === 160
+    if (isWhitespace) {
+      inWord = false
+    } else if (!inWord) {
+      count += 1
+      if (count > limit) return true
+      inWord = true
+    }
+  }
+  return false
+}
+
+function pastedTextFileName(value: string): string {
+  const firstLine = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+  const base = (firstLine ?? 'pasted-text')
+    .replace(/[^a-zA-Z0-9 ._-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+    .toLowerCase()
+  return `${base || 'pasted-text'}.txt`
+}
+
+function shouldAttachPastedTextAsFile(value: string): boolean {
+  return value.length > LARGE_PASTE_CHAR_LIMIT || exceedsWordLimit(value, LARGE_PASTE_WORD_LIMIT)
+}
+
 function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
   const router = useRouter()
   const showUpgrade = isFreeTier && m.cost > 0
@@ -1958,19 +1997,21 @@ export default function ChatInterface({
   const lastStreamChunkAtRef = useRef<number>(Date.now())
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
   const [input, setInputState] = useState('')
-  const [, startInputTransition] = React.useTransition()
+  const [inputRevision, setInputRevision] = useState(0)
+  const [hasComposerText, setHasComposerText] = useState(false)
   const inputRef = useRef(input)
   const setInput = useCallback((next: string | ((previous: string) => string)) => {
     const resolved = typeof next === 'function' ? next(inputRef.current) : next
     inputRef.current = resolved
     setInputState(resolved)
+    setHasComposerText(resolved.trim().length > 0)
+    setInputRevision((value) => value + 1)
   }, [])
   const handleComposerInputChange = useCallback((text: string) => {
     inputRef.current = text
-    startInputTransition(() => {
-      setInputState(text)
-    })
-  }, [startInputTransition])
+    const hasText = text.trim().length > 0
+    setHasComposerText((previous) => (previous === hasText ? previous : hasText))
+  }, [])
 
   // Restore guest draft after hydration so server/client initial renders match
   useEffect(() => {
@@ -4638,6 +4679,22 @@ export default function ChatInterface({
   }
 
   function handlePaste(e: React.ClipboardEvent) {
+    const pastedText = e.clipboardData.getData('text/plain')
+    if (pastedText && shouldAttachPastedTextAsFile(pastedText)) {
+      e.preventDefault()
+      const blob = new Blob([pastedText], { type: 'text/plain;charset=utf-8' })
+      if (blob.size > LARGE_PASTE_MAX_BYTES) {
+        setAttachmentError('Pasted text is too large to attach here. Upload it as a smaller text file.')
+        return
+      }
+      const fileName = pastedTextFileName(pastedText)
+      const file = new File([blob], fileName, { type: 'text/plain' })
+      queueDocumentUpload(file)
+      setComposerNotice(`Large paste attached as ${fileName}.`)
+      window.setTimeout(() => setComposerNotice(null), 5000)
+      return
+    }
+
     const imageFiles = Array.from(e.clipboardData.items)
       .filter((item) => item.type.startsWith('image/'))
       .map((item) => item.getAsFile())
@@ -6922,6 +6979,7 @@ export default function ChatInterface({
                 <MentionInput
                   ref={textareaRef}
                   value={input}
+                  valueRevision={inputRevision}
                   onChange={handleComposerInputChange}
                   onMentionsChange={setMentions}
                   onPaste={handlePaste}
@@ -7080,7 +7138,7 @@ export default function ChatInterface({
                           type="button"
                           onClick={handleSend}
                           disabled={
-                            !input.trim() &&
+                            !hasComposerText &&
                             attachedImages.length === 0 &&
                             !pendingChatDocuments.some((d) => d.status === 'ready')
                           }

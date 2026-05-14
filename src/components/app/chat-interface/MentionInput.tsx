@@ -25,6 +25,7 @@ export interface MentionInputHandle {
 
 interface MentionInputProps {
   value: string
+  valueRevision?: number
   onChange: (text: string) => void
   onMentionsChange: (mentions: MentionItem[]) => void
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void
@@ -158,6 +159,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
   function MentionInput(
     {
       value,
+      valueRevision,
       onChange,
       onMentionsChange,
       onKeyDown,
@@ -185,18 +187,20 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
 
     const { search, loading } = useMentionData()
 
-    // Sync external value changes into the editor (clear on send, populate restored draft after hydration)
+    // Sync explicit external value commands into the editor (clear on send,
+    // populate restored draft after hydration). Normal typing stays local to
+    // the contenteditable so the chat surface does not re-render per key.
     useEffect(() => {
       const el = editorRef.current
       if (!el) return
-      if (value === '' && lastValueRef.current !== '') {
+      if (value === '') {
         el.innerHTML = ''
-      } else if (value && el.innerHTML === '' && lastValueRef.current === '') {
-        // Initial non-empty value from parent (e.g. restored guest draft after hydration)
+        onMentionsChange([])
+      } else if (value !== lastValueRef.current || el.innerHTML === '') {
         el.textContent = value
       }
       lastValueRef.current = value
-    }, [value])
+    }, [value, valueRevision, onMentionsChange])
 
     useImperativeHandle(ref, () => ({
       focus: () => editorRef.current?.focus(),
@@ -376,12 +380,8 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
 
     const handlePaste = useCallback(
       (e: React.ClipboardEvent<HTMLDivElement>) => {
-        // Check for images first — delegate to parent
-        const hasImages = Array.from(e.clipboardData.items).some((item) =>
-          item.type.startsWith('image/')
-        )
-        if (hasImages) {
-          onPaste?.(e)
+        onPaste?.(e)
+        if (e.defaultPrevented) {
           return
         }
 
