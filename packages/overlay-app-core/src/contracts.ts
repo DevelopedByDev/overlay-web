@@ -52,6 +52,9 @@ export interface AppSettings {
   defaultVideoAspectRatio?: string
   sendWithEnter: boolean
   attachFilesToKnowledgeByDefault: boolean
+  onlyAllowZdrModels: boolean
+  dismissedZdrWarningGlobally: boolean
+  dismissedZdrWarningModelIds: string[]
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -70,6 +73,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   defaultVideoAspectRatio: undefined,
   sendWithEnter: true,
   attachFilesToKnowledgeByDefault: false,
+  onlyAllowZdrModels: false,
+  dismissedZdrWarningGlobally: false,
+  dismissedZdrWarningModelIds: [],
 }
 
 export interface AuthUser {
@@ -104,6 +110,7 @@ export interface ChatModel {
   supportsVision: boolean
   supportsReasoning: boolean
   supportsSearch: boolean
+  supportsZeroDataRetention?: boolean
   /** Price per 1M blended tokens ($). */
   pricePer1mTokens?: number
   /** Median output tokens per second. */

@@ -26,6 +26,9 @@ const uiSettingsValidator = v.object({
   defaultVideoAspectRatio: v.optional(v.string()),
   sendWithEnter: v.boolean(),
   attachFilesToKnowledgeByDefault: v.boolean(),
+  onlyAllowZdrModels: v.boolean(),
+  dismissedZdrWarningGlobally: v.boolean(),
+  dismissedZdrWarningModelIds: v.array(v.string()),
 })
 
 function defaultUiSettings() {
@@ -40,6 +43,9 @@ function defaultUiSettings() {
     defaultAskModelIds: [] as string[],
     sendWithEnter: true,
     attachFilesToKnowledgeByDefault: false,
+    onlyAllowZdrModels: false,
+    dismissedZdrWarningGlobally: false,
+    dismissedZdrWarningModelIds: [] as string[],
   }
 }
 
@@ -51,12 +57,12 @@ function safeModelId(value: string | undefined): string | undefined {
   return trimmed
 }
 
-function safeModelIds(values: string[] | undefined): string[] | undefined {
+function safeModelIds(values: string[] | undefined, max = MAX_ASK_MODEL_IDS): string[] | undefined {
   if (!values) return undefined
   const next = values
     .map(safeModelId)
     .filter((value): value is string => Boolean(value))
-    .slice(0, MAX_ASK_MODEL_IDS)
+    .slice(0, max)
   return Array.from(new Set(next))
 }
 
@@ -100,6 +106,9 @@ export const getByServer = query({
       defaultAskModelIds: safeModelIds(existing.defaultAskModelIds) ?? [],
       sendWithEnter: existing.sendWithEnter ?? true,
       attachFilesToKnowledgeByDefault: existing.attachFilesToKnowledgeByDefault ?? false,
+      onlyAllowZdrModels: existing.onlyAllowZdrModels ?? false,
+      dismissedZdrWarningGlobally: existing.dismissedZdrWarningGlobally ?? false,
+      dismissedZdrWarningModelIds: safeModelIds(existing.dismissedZdrWarningModelIds, 100) ?? [],
     }
     return {
       ...settings,
@@ -132,6 +141,9 @@ export const upsertByServer = mutation({
     defaultVideoAspectRatio: v.optional(v.string()),
     sendWithEnter: v.optional(v.boolean()),
     attachFilesToKnowledgeByDefault: v.optional(v.boolean()),
+    onlyAllowZdrModels: v.optional(v.boolean()),
+    dismissedZdrWarningGlobally: v.optional(v.boolean()),
+    dismissedZdrWarningModelIds: v.optional(v.array(v.string())),
   },
   returns: uiSettingsValidator,
   handler: async (ctx, args) => {
@@ -151,6 +163,13 @@ export const upsertByServer = mutation({
       sendWithEnter: args.sendWithEnter ?? existing?.sendWithEnter ?? true,
       attachFilesToKnowledgeByDefault:
         args.attachFilesToKnowledgeByDefault ?? existing?.attachFilesToKnowledgeByDefault ?? false,
+      onlyAllowZdrModels: args.onlyAllowZdrModels ?? existing?.onlyAllowZdrModels ?? false,
+      dismissedZdrWarningGlobally:
+        args.dismissedZdrWarningGlobally ?? existing?.dismissedZdrWarningGlobally ?? false,
+      dismissedZdrWarningModelIds:
+        safeModelIds(args.dismissedZdrWarningModelIds, 100) ??
+        safeModelIds(existing?.dismissedZdrWarningModelIds, 100) ??
+        [],
     }
     const optionalNext = {
       ...(safeModelId(args.defaultActModelId) ?? safeModelId(existing?.defaultActModelId)

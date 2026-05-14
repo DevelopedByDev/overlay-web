@@ -95,6 +95,21 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   ) {
     return false
   }
+  if (candidate.onlyAllowZdrModels !== undefined && typeof candidate.onlyAllowZdrModels !== 'boolean') return false
+  if (
+    candidate.dismissedZdrWarningGlobally !== undefined &&
+    typeof candidate.dismissedZdrWarningGlobally !== 'boolean'
+  ) {
+    return false
+  }
+  if (
+    candidate.dismissedZdrWarningModelIds !== undefined &&
+    (!Array.isArray(candidate.dismissedZdrWarningModelIds) ||
+      candidate.dismissedZdrWarningModelIds.length > 100 ||
+      !candidate.dismissedZdrWarningModelIds.every(isSafeModelId))
+  ) {
+    return false
+  }
   return (
     typeof candidate.theme === 'string' ||
     typeof candidate.lightThemePreset === 'string' ||
@@ -110,7 +125,10 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     typeof candidate.defaultImageAspectRatio === 'string' ||
     typeof candidate.defaultVideoAspectRatio === 'string' ||
     typeof candidate.sendWithEnter === 'boolean' ||
-    typeof candidate.attachFilesToKnowledgeByDefault === 'boolean'
+    typeof candidate.attachFilesToKnowledgeByDefault === 'boolean' ||
+    typeof candidate.onlyAllowZdrModels === 'boolean' ||
+    typeof candidate.dismissedZdrWarningGlobally === 'boolean' ||
+    Array.isArray(candidate.dismissedZdrWarningModelIds)
   )
 }
 

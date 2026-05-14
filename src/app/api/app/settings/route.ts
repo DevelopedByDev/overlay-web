@@ -68,6 +68,9 @@ export async function PATCH(request: NextRequest) {
       defaultVideoAspectRatio?: string
       sendWithEnter?: boolean
       attachFilesToKnowledgeByDefault?: boolean
+      onlyAllowZdrModels?: boolean
+      dismissedZdrWarningGlobally?: boolean
+      dismissedZdrWarningModelIds?: string[]
       /** @deprecated Only `token` is supported; `chunk` is accepted for compatibility and normalized away. */
       chatStreamingMode?: 'token' | 'chunk'
       accessToken?: string
@@ -127,6 +130,23 @@ export async function PATCH(request: NextRequest) {
     ) {
       return NextResponse.json({ error: 'Invalid attachFilesToKnowledgeByDefault' }, { status: 400 })
     }
+    if (body.onlyAllowZdrModels !== undefined && typeof body.onlyAllowZdrModels !== 'boolean') {
+      return NextResponse.json({ error: 'Invalid onlyAllowZdrModels' }, { status: 400 })
+    }
+    if (
+      body.dismissedZdrWarningGlobally !== undefined &&
+      typeof body.dismissedZdrWarningGlobally !== 'boolean'
+    ) {
+      return NextResponse.json({ error: 'Invalid dismissedZdrWarningGlobally' }, { status: 400 })
+    }
+    if (
+      body.dismissedZdrWarningModelIds !== undefined &&
+      (!Array.isArray(body.dismissedZdrWarningModelIds) ||
+        body.dismissedZdrWarningModelIds.length > 100 ||
+        !body.dismissedZdrWarningModelIds.every(isSafeModelId))
+    ) {
+      return NextResponse.json({ error: 'Invalid dismissedZdrWarningModelIds' }, { status: 400 })
+    }
     if (
       body.chatStreamingMode !== undefined &&
       body.chatStreamingMode !== 'token' &&
@@ -155,6 +175,9 @@ export async function PATCH(request: NextRequest) {
       defaultVideoAspectRatio?: string
       sendWithEnter?: boolean
       attachFilesToKnowledgeByDefault?: boolean
+      onlyAllowZdrModels?: boolean
+      dismissedZdrWarningGlobally?: boolean
+      dismissedZdrWarningModelIds?: string[]
     } = {
       userId: auth.userId,
       serverSecret: getInternalApiSecret(),
@@ -201,6 +224,15 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.attachFilesToKnowledgeByDefault !== undefined) {
       mutationArgs.attachFilesToKnowledgeByDefault = body.attachFilesToKnowledgeByDefault
+    }
+    if (body.onlyAllowZdrModels !== undefined) {
+      mutationArgs.onlyAllowZdrModels = body.onlyAllowZdrModels
+    }
+    if (body.dismissedZdrWarningGlobally !== undefined) {
+      mutationArgs.dismissedZdrWarningGlobally = body.dismissedZdrWarningGlobally
+    }
+    if (body.dismissedZdrWarningModelIds !== undefined) {
+      mutationArgs.dismissedZdrWarningModelIds = Array.from(new Set(body.dismissedZdrWarningModelIds.map((id) => id.trim()))).slice(0, 100)
     }
 
     const settings = await convex.mutation<AppSettings>(

@@ -32,6 +32,7 @@ import {
   PanelRight,
   Zap,
   AtSign,
+  ShieldCheck,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
@@ -58,6 +59,7 @@ import {
   getModel,
   getModelsByIntelligence,
   getVideoModelsBySubMode,
+  modelSupportsZeroDataRetention,
 } from '@/lib/model-data'
 import {
   ACT_MODEL_KEY,
@@ -279,7 +281,7 @@ function MetricRow({
 }: {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
   label: string
-  value: string | number
+  value: React.ReactNode
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
@@ -311,6 +313,15 @@ function ModelQualitiesPanel({ modelId }: { modelId: string }) {
         icon={Zap}
         label="Speed"
         value={m.medianOutputTokensPerSecond ? `${Math.round(m.medianOutputTokensPerSecond)} t/s` : 'N/A'}
+      />
+      <MetricRow
+        icon={ShieldCheck}
+        label="ZDR"
+        value={
+          <span className="inline-flex items-center gap-1 text-[var(--foreground)]">
+            {m.supportsZeroDataRetention ? <Check size={11} strokeWidth={2} /> : <X size={11} strokeWidth={2} />}
+          </span>
+        }
       />
     </div>
   )
@@ -2487,6 +2498,14 @@ export default function ChatInterface({
   }, [activeChatId, activeRuntime, actChat, chatInstances, chatStreamRelayApi, liveMessages])
 
   const isFreeTier = (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'free'
+  const effectiveOnlyAllowZdrModels = !isFreeTier && settings.onlyAllowZdrModels
+  const selectableTextModels = useMemo(() => {
+    const models = getModelsByIntelligence(isFreeTier)
+      .filter((m) => m.id !== 'nvidia/nemotron-nano-9b-v2')
+    return effectiveOnlyAllowZdrModels
+      ? models.filter((m) => m.supportsZeroDataRetention)
+      : models
+  }, [effectiveOnlyAllowZdrModels, isFreeTier])
   const premiumModelBlocked =
     isFreeTier && !isFreeTierChatModelId(selectedActModel)
   const creditsExhausted =
@@ -2510,6 +2529,34 @@ export default function ChatInterface({
     localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_DEFAULT_MODEL_ID]))
     localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_DEFAULT_MODEL_ID)
   }, [chatPrefsHydrated, activeChatId, isFreeTier, selectedActModel])
+
+  useEffect(() => {
+    if (!chatPrefsHydrated || !effectiveOnlyAllowZdrModels) return
+    const fallback = selectableTextModels[0]?.id
+    if (!fallback) return
+    const nextSelected = selectedModels.filter((id) => modelSupportsZeroDataRetention(id)).slice(0, 4)
+    const resolvedSelected = nextSelected.length > 0 ? nextSelected : [fallback]
+    const nextActModel = modelSupportsZeroDataRetention(selectedActModel) ? selectedActModel : resolvedSelected[0]!
+    const changed =
+      resolvedSelected.length !== selectedModels.length ||
+      resolvedSelected.some((id, index) => id !== selectedModels[index]) ||
+      nextActModel !== selectedActModel
+    if (!changed) return
+    setSelectedModels(resolvedSelected)
+    setSelectedActModel(nextActModel)
+    if (resolvedSelected.length === 1) setAskModelSelectionMode('single')
+    if (!activeChatId) {
+      try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(resolvedSelected)) } catch { /* ignore */ }
+      try { localStorage.setItem(ACT_MODEL_KEY, nextActModel) } catch { /* ignore */ }
+    }
+  }, [
+    activeChatId,
+    chatPrefsHydrated,
+    effectiveOnlyAllowZdrModels,
+    selectableTextModels,
+    selectedActModel,
+    selectedModels,
+  ])
 
   // ── data loading ──────────────────────────────────────────────────────────
 
@@ -5651,7 +5698,7 @@ export default function ChatInterface({
     router.replace(`${pathname}${query ? `?${query}` : ''}`)
   }, [pathname, router, searchParams])
 
-  const automationHeaderModels = useMemo(() => getModelsByIntelligence(isFreeTier), [isFreeTier])
+  const automationHeaderModels = selectableTextModels
   const saveAutomationHeaderModel = useCallback(async (modelId: string) => {
     if (!selectedAutomation) return
     const previousAutomation = selectedAutomation
@@ -6027,7 +6074,6 @@ export default function ChatInterface({
                       >
                         <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
                           {automationHeaderModels
-                            .filter((m) => m.id !== 'nvidia/nemotron-nano-9b-v2')
                             .map((m, index, models) => {
                               const isSel = m.id === (selectedAutomation.modelId ?? DEFAULT_MODEL_ID)
                               const isFreeModelRow = isFreeTierChatModelId(m.id)
@@ -6218,8 +6264,7 @@ export default function ChatInterface({
                         )
                       })
                   ) : (
-                    getModelsByIntelligence(isFreeTier)
-                      .filter((m) => m.id !== 'nvidia/nemotron-nano-9b-v2')
+                    selectableTextModels
                       .map((m, index, models) => {
                         const isSel =
                         askModelSelectionMode === 'single'

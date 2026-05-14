@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Mail, Moon, PanelsLeftRight, Sun, Play, Palette } from 'lucide-react'
+import { Mail, Moon, PanelsLeftRight, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
@@ -202,7 +202,7 @@ export default function SettingsPage() {
   }, [rawSection, section, router])
 
   useEffect(() => {
-    if (section !== 'account') return
+    if (section !== 'account' && section !== 'general') return
     let active = true
     void fetch('/api/subscription/settings')
       .then(async (response) => {
@@ -277,6 +277,18 @@ export default function SettingsPage() {
                 checked={settings.autoContinue}
                 disabled={busy}
                 onChange={() => void updateSettings({ autoContinue: !settings.autoContinue })}
+              />
+              <SettingRow
+                icon={<ShieldCheck size={18} strokeWidth={1.8} />}
+                title="Only allow ZDR models"
+                description={
+                  billingSettings?.planKind === 'free'
+                    ? 'Free models do not support zero data retention, so this is available on paid plans only.'
+                    : 'Hide non-ZDR text models from the chat model picker and block stale requests that use them.'
+                }
+                checked={billingSettings?.planKind === 'free' ? false : settings.onlyAllowZdrModels}
+                disabled={busy || billingSettings?.planKind === 'free'}
+                onChange={() => void updateSettings({ onlyAllowZdrModels: !settings.onlyAllowZdrModels })}
               />
               <div className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
                 <div className="flex min-w-0 items-start gap-3">

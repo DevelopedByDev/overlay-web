@@ -11,6 +11,7 @@ import {
   getGatewayPerplexitySearchTool,
   getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/lib/ai-gateway'
+import { modelSupportsZeroDataRetention } from '@/lib/model-data'
 import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
@@ -61,7 +62,7 @@ import {
 } from '@/lib/nvidia-nim-openai'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { isVerifiedChatStreamRelayRequest } from '@/lib/chat-stream-relay-auth'
-import type { Entitlements } from '@/lib/app-contracts'
+import type { AppSettings, Entitlements } from '@/lib/app-contracts'
 import {
   buildInsufficientCreditsPayload,
   billableBudgetCentsFromProviderUsd,
@@ -512,10 +513,16 @@ export async function POST(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
     pendingServerSecret = serverSecret
 
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
-      serverSecret,
-      userId,
-    })
+    const [entitlements, appSettings] = await Promise.all([
+      convex.query<Entitlements>('usage:getEntitlementsByServer', {
+        serverSecret,
+        userId,
+      }),
+      convex.query<AppSettings>('uiSettings:getByServer', {
+        userId,
+        serverSecret,
+      }),
+    ])
 
     if (!entitlements) {
       return NextResponse.json(
@@ -525,6 +532,7 @@ export async function POST(request: NextRequest) {
     }
 
     const budget = getBudgetTotals(entitlements)
+    const effectiveModelSupportsZdr = modelSupportsZeroDataRetention(effectiveModelId)
 
     if (!isPaidPlan(entitlements)) {
       if (!isFreeTierChatModelId(effectiveModelId)) {
@@ -546,6 +554,12 @@ export async function POST(request: NextRequest) {
             { status: 402 },
           )
         }
+      }
+      if (appSettings?.onlyAllowZdrModels && !effectiveModelSupportsZdr) {
+        return NextResponse.json(
+          { error: 'zdr_model_required', message: 'Your settings only allow zero data retention models. Choose a ZDR-supported model to continue.' },
+          { status: 400 },
+        )
       }
     }
 
@@ -1093,6 +1107,9 @@ export async function POST(request: NextRequest) {
     const agent = new ToolLoopAgent({
       model: languageModel,
       tools,
+      ...(effectiveModelSupportsZdr
+        ? { providerOptions: { gateway: { zeroDataRetention: true } } }
+        : {}),
       stopWhen: stepCountIs(MAX_TOOL_STEPS_ACT),
       instructions:
         (actAgentIntro +
