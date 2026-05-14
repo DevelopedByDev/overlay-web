@@ -5407,7 +5407,7 @@ export default function ChatInterface({
       for (const msg of chat.messages) {
         const m = msg as unknown as { role?: string; status?: string }
         if (m.role === 'assistant' && m.status === 'generating') {
-          m.status = 'complete'
+          m.status = 'completed'
           changed = true
         }
       }
@@ -5417,7 +5417,7 @@ export default function ChatInterface({
     for (const msg of activeRuntime.actChat.messages) {
       const m = msg as unknown as { role?: string; status?: string }
       if (m.role === 'assistant' && m.status === 'generating') {
-        m.status = 'complete'
+        m.status = 'completed'
         actChanged = true
       }
     }
