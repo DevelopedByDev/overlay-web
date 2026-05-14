@@ -64,6 +64,22 @@ type MessageDeltaDoc = Doc<'conversationMessageDeltas'>
 type MessagePart = NonNullable<MessageDoc['parts']>[number]
 type MessageParts = NonNullable<MessageDoc['parts']>
 
+function sameMessageVariant(
+  message: MessageDoc,
+  args: {
+    turnId: string
+    role: 'user' | 'assistant'
+    variantIndex?: number
+    modelId?: string
+  },
+): boolean {
+  if (message.turnId !== args.turnId || message.role !== args.role) return false
+  if ((message.variantIndex ?? 0) !== (args.variantIndex ?? 0)) return false
+  if (args.role !== 'assistant') return true
+  if (!message.modelId || !args.modelId) return true
+  return message.modelId === args.modelId
+}
+
 function isToolInvocationPart(
   candidate: MessagePart,
 ): candidate is Extract<MessagePart, { toolInvocation: unknown }> {
@@ -462,10 +478,12 @@ export const addMessage = mutation({
       .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
       .collect()
     const match = existing.find(
-      (message) =>
-        message.turnId === args.turnId &&
-        message.role === args.role &&
-        (message.variantIndex ?? 0) === (args.variantIndex ?? 0),
+      (message) => sameMessageVariant(message, {
+        turnId: args.turnId,
+        role: args.role,
+        variantIndex: args.variantIndex,
+        modelId: args.modelId,
+      }),
     )
     const now = Date.now()
     const payload = {
@@ -563,10 +581,12 @@ export const startGeneratingMessage = mutation({
       .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
       .collect()
     const match = existing.find(
-      (message) =>
-        message.turnId === args.turnId &&
-        message.role === 'assistant' &&
-        (message.variantIndex ?? 0) === (args.variantIndex ?? 0),
+      (message) => sameMessageVariant(message, {
+        turnId: args.turnId,
+        role: 'assistant',
+        variantIndex: args.variantIndex,
+        modelId: args.modelId,
+      }),
     )
     const payload = {
       conversationId: args.conversationId,
@@ -1039,10 +1059,12 @@ export const addMessages = mutation({
         .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
         .collect()
       const match = existing.find(
-        (message) =>
-          message.turnId === row.turnId &&
-          message.role === row.role &&
-          (message.variantIndex ?? 0) === (row.variantIndex ?? 0),
+        (message) => sameMessageVariant(message, {
+          turnId: row.turnId,
+          role: row.role,
+          variantIndex: row.variantIndex,
+          modelId: row.modelId,
+        }),
       )
       const payload = {
         conversationId,

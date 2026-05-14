@@ -155,6 +155,8 @@ async function buildMessagesForModel(params: {
   conversationId?: Id<'conversations'>
   userId: string
   serverSecret: string
+  targetModelId?: string
+  historyBaseModelId?: string
 }): Promise<UIMessage[]> {
   if (!params.conversationId) return params.requestMessages
 
@@ -162,6 +164,7 @@ async function buildMessagesForModel(params: {
     _id: string
     turnId: string
     role: 'user' | 'assistant'
+    modelId?: string
     content: string
     parts?: UIMessage['parts']
     routedModelId?: string
@@ -174,7 +177,12 @@ async function buildMessagesForModel(params: {
   const historyRows = params.latestTurnId
     ? (persisted ?? []).filter((message) => message.turnId !== params.latestTurnId)
     : (persisted ?? [])
-  const history = historyRows.map(toUiMessageFromPersisted)
+  const threadModelId = params.historyBaseModelId?.trim() || params.targetModelId?.trim()
+  const history = threadModelId
+    ? historyRows
+        .filter((message) => message.role === 'user' || message.modelId === threadModelId)
+        .map(toUiMessageFromPersisted)
+    : historyRows.map(toUiMessageFromPersisted)
   const latest = params.latestUserMessage
   if (!latest) return history.length > 0 ? history : params.requestMessages
 
@@ -449,6 +457,7 @@ export async function POST(request: NextRequest) {
       indexedAttachments: rawIndexedAttachments,
       attachmentNames,
       replyContextForModel,
+      historyBaseModelId,
       accessToken,
       userId: requestedUserId,
       mode,
@@ -471,6 +480,7 @@ export async function POST(request: NextRequest) {
       indexedAttachments?: unknown
       attachmentNames?: string[]
       replyContextForModel?: string
+      historyBaseModelId?: string
       accessToken?: string
       userId?: string
       mode?: 'chat' | 'automate'
@@ -841,6 +851,8 @@ export async function POST(request: NextRequest) {
       conversationId: cid,
       userId,
       serverSecret,
+      targetModelId: effectiveModelId,
+      historyBaseModelId,
     })
     messagesForModel = cloneMessagesWithIndexedFileHint(messagesForModel, indexedAttachmentList, hasPreloadedDocContext)
     messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)

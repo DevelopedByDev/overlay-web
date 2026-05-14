@@ -1470,6 +1470,38 @@ function cloneConversationUiState(state: ConversationUiState): ConversationUiSta
   }
 }
 
+function sameModelSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const bSet = new Set(b)
+  return a.every((modelId) => bSet.has(modelId))
+}
+
+function sameModelOrder(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((modelId, index) => modelId === b[index])
+}
+
+function latestTextExchangeIndex(ui: ConversationUiState): number {
+  for (let i = ui.exchangeModels.length - 1; i >= 0; i--) {
+    if ((ui.exchangeGenTypes[i] ?? 'text') === 'text') return i
+  }
+  return -1
+}
+
+function selectedModelForExchange(ui: ConversationUiState, exchangeIndex: number): string | null {
+  if (exchangeIndex < 0) return null
+  const models = ui.exchangeModels[exchangeIndex] ?? []
+  if (models.length === 0) return null
+  const selectedTab = Math.min(
+    Math.max(ui.selectedTabPerExchange[exchangeIndex] ?? 0, 0),
+    models.length - 1,
+  )
+  return models[selectedTab] ?? models[0] ?? null
+}
+
+function cloneUiMessageThread(messages: UIMessage[]): UIMessage[] {
+  return messages.map((message) => cloneUiMessageForThread(message))
+}
+
 function createConversationUiState(
   overrides: Partial<ConversationUiState> = {},
 ): ConversationUiState {
@@ -3349,8 +3381,9 @@ export default function ChatInterface({
   ): UIMessage | null {
     const order = slotOrder && slotOrder.length > 0 ? slotOrder : selectedModels
     const liveIdx = order.indexOf(modelId)
+    const canUseLiveSlot = liveIdx >= 0 && sameModelOrder(order, activeRuntime.ui.selectedModels)
     const msgs =
-      liveIdx >= 0
+      canUseLiveSlot
         ? activeAskChats[liveIdx].messages
         : activeRuntime.ui.orphanModelThreads.get(modelId) ?? []
     let uCount = 0
@@ -3368,6 +3401,55 @@ export default function ChatInterface({
       }
     }
     return null
+  }
+
+  function prepareAskModelThreadsForTextTurn(
+    runtime: ConversationRuntime,
+    nextModelIds: string[],
+  ): { historyBaseModelId?: string } {
+    const ui = runtime.ui
+    const nextModels = nextModelIds.slice(0, 4)
+    if (nextModels.length === 0) return {}
+
+    const orphanThreads = cloneOrphanModelThreadsMap(ui.orphanModelThreads)
+    ui.selectedModels.slice(0, 4).forEach((modelId, slotIdx) => {
+      const slotMessages = runtime.askChats[slotIdx]?.messages
+      if (slotMessages?.length) {
+        orphanThreads.set(modelId, cloneUiMessageThread(slotMessages as UIMessage[]))
+      }
+    })
+
+    const latestTextIdx = latestTextExchangeIndex(ui)
+    const previousModels = latestTextIdx >= 0 ? (ui.exchangeModels[latestTextIdx] ?? []) : []
+    const modelSetUnchanged = previousModels.length > 0 && sameModelSet(previousModels, nextModels)
+    const selectedBaseModelId = selectedModelForExchange(ui, latestTextIdx)
+    const baseModelId = modelSetUnchanged ? undefined : selectedBaseModelId ?? previousModels[0] ?? ui.selectedModels[0]
+    const baseSlotIdx = baseModelId ? ui.selectedModels.indexOf(baseModelId) : -1
+    const activeBaseThread =
+      baseSlotIdx >= 0 ? (runtime.askChats[baseSlotIdx]?.messages as UIMessage[] | undefined) : undefined
+    const baseThread =
+      baseModelId
+        ? orphanThreads.get(baseModelId) ?? activeBaseThread
+        : undefined
+
+    nextModels.forEach((modelId, slotIdx) => {
+      const sourceThread =
+        modelSetUnchanged
+          ? orphanThreads.get(modelId) ?? []
+          : baseThread ?? orphanThreads.get(modelId) ?? []
+      runtime.askChats[slotIdx]!.messages = cloneUiMessageThread(sourceThread as UIMessage[])
+    })
+    for (let slotIdx = nextModels.length; slotIdx < runtime.askChats.length; slotIdx++) {
+      runtime.askChats[slotIdx]!.messages = []
+    }
+    runtime.ui = createConversationUiState({
+      ...ui,
+      selectedModels: nextModels,
+      selectedActModel: nextModels[0] ?? ui.selectedActModel,
+      askModelSelectionMode: nextModels.length > 1 ? 'multiple' : 'single',
+      orphanModelThreads: orphanThreads,
+    })
+    return baseModelId ? { historyBaseModelId: baseModelId } : {}
   }
 
   // ── stable callbacks ───────────────────────────────────────────────────────
@@ -4132,6 +4214,7 @@ export default function ChatInterface({
       if (requestId !== loadChatRequestRef.current) return
 
       clearRuntimeMessages(runtime)
+      const restoredModelThreads = new Map<string, UIMessage[]>()
 
       if (uniqueModels.length === 0) {
         const linear: RawMsg[] = []
@@ -4145,13 +4228,18 @@ export default function ChatInterface({
         const slotModels = uniqueModels.slice(0, 4)
         resolvedSelectedModels = slotModels
 
-        slotModels.forEach((modelId, slotIdx) => {
+        uniqueModels.forEach((modelId) => {
           const msgs: RawMsg[] = []
           for (const ex of exchanges) {
             msgs.push(ex.userMsg)
             const r = ex.responses.find((x) => x.model === modelId)
             if (r) msgs.push(r.msg)
           }
+          restoredModelThreads.set(modelId, cloneUiMessageThread(msgs as unknown as UIMessage[]))
+        })
+
+        slotModels.forEach((modelId, slotIdx) => {
+          const msgs = restoredModelThreads.get(modelId) ?? []
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           runtime.askChats[slotIdx].messages = msgs as any
         })
@@ -4205,6 +4293,7 @@ export default function ChatInterface({
         generationResults: restoredResults,
         exchangeGenTypes: restoredGenTypes,
         isFirstMessage: !hasUserMessages,
+        orphanModelThreads: restoredModelThreads,
       })
       if (requestId !== loadChatRequestRef.current) return
       runtime.hydrated = true
@@ -4978,8 +5067,10 @@ export default function ChatInterface({
     const textSlotCount = Math.min(4, textModelsForTurn.length)
     let msgCountBeforeSend = 0
     let preparedFirstSendRuntime = false
+    let textHistoryBaseModelId: string | undefined
 
     const prepareTextRuntime = (runtime: ConversationRuntime) => {
+      textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(runtime, textModelsForTurn).historyBaseModelId
       msgCountBeforeSend = runtime.askChats[0].messages.length
       const ui = runtime.ui
       runtime.ui = createConversationUiState({
@@ -5039,6 +5130,7 @@ export default function ChatInterface({
     activeChatIdRef.current = chatId
 
     if (!preparedFirstSendRuntime) {
+      textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(targetRuntime, textModelsForTurn).historyBaseModelId
       msgCountBeforeSend = targetRuntime.askChats[0].messages.length
       updateRuntimeUiState(chatId, (prev) => ({
         ...prev,
@@ -5083,6 +5175,7 @@ export default function ChatInterface({
         : {}),
       ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
       ...(userMeta.mentions && userMeta.mentions.length > 0 ? { mentions: userMeta.mentions } : {}),
+      ...(textHistoryBaseModelId ? { historyBaseModelId: textHistoryBaseModelId } : {}),
     }
 
     /* eslint-disable @typescript-eslint/no-explicit-any -- UIMessage / sendMessage payload */
