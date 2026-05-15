@@ -3,7 +3,11 @@ import { generateObject } from 'ai'
 import { z } from 'zod'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { convex } from '@/lib/convex'
-import { isFreeTierChatModelId } from '@/lib/model-types'
+import {
+  FREE_TIER_DEFAULT_MODEL_ID,
+  isFreeTierChatModelId,
+  isLegacyFreeTierDefaultModelId,
+} from '@/lib/model-types'
 import { calculateTokenCostOrNull, isPremiumModel } from '@/lib/model-pricing'
 import { getGatewayLanguageModel } from '@/lib/ai-gateway'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
@@ -318,7 +322,10 @@ export async function POST(request: NextRequest) {
     ])
     if (rateLimitResponse) return rateLimitResponse
 
-    const effectiveModelId = modelId || 'claude-sonnet-4-6'
+    const requestedModelId: string = modelId || 'claude-sonnet-4-6'
+    const effectiveModelId: string = isLegacyFreeTierDefaultModelId(requestedModelId)
+      ? FREE_TIER_DEFAULT_MODEL_ID
+      : requestedModelId
     const serverSecret = getInternalApiSecret()
     const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
       serverSecret,

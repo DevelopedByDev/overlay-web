@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { DEFAULT_MODEL_ID, FREE_TIER_DEFAULT_MODEL_ID, isFreeTierChatModelId } from '@/lib/model-types'
+import {
+  DEFAULT_MODEL_ID,
+  FREE_TIER_DEFAULT_MODEL_ID,
+  isFreeTierChatModelId,
+  isLegacyFreeTierDefaultModelId,
+} from '@/lib/model-types'
 import { isPaidPlan } from '@/lib/billing-runtime'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -22,7 +27,10 @@ type ConversationDoc = {
 }
 
 function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
-  const requested = modelIds?.filter(isFreeTierChatModelId) ?? []
+  const requested =
+    modelIds
+      ?.filter(isFreeTierChatModelId)
+      .map((id) => (isLegacyFreeTierDefaultModelId(id) ? FREE_TIER_DEFAULT_MODEL_ID : id)) ?? []
   const deduped = [...new Set(requested)].slice(0, 4)
   return deduped.length > 0 ? deduped : [FREE_TIER_DEFAULT_MODEL_ID]
 }
@@ -268,7 +276,9 @@ export async function POST(request: NextRequest) {
     )
     const isFreeTier = !entitlements || !isPaidPlan(entitlements)
     const freeAskModelIds = clampFreeTierAskModels(body.askModelIds)
-    const freeActModelId = isFreeTierChatModelId(body.actModelId)
+    const freeActModelId = isLegacyFreeTierDefaultModelId(body.actModelId)
+      ? FREE_TIER_DEFAULT_MODEL_ID
+      : isFreeTierChatModelId(body.actModelId)
       ? body.actModelId
       : freeAskModelIds[0] ?? FREE_TIER_DEFAULT_MODEL_ID
     const id = await convex.mutation<Id<'conversations'>>('conversations:create', {

@@ -48,6 +48,7 @@ import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
   isFreeTierChatModelId,
+  isLegacyFreeTierDefaultModelId,
   type ChatModel,
   type GenerationMode,
   type VideoSubMode,
@@ -2521,7 +2522,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
-    if (isFreeTierChatModelId(selectedActModel)) return
+    if (isFreeTierChatModelId(selectedActModel) && !isLegacyFreeTierDefaultModelId(selectedActModel)) return
 
     setSelectedModels([FREE_TIER_DEFAULT_MODEL_ID])
     setAskModelSelectionMode('single')

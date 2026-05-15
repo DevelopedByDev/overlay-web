@@ -59,7 +59,10 @@ export interface VideoModel {
 }
 
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
-export const FREE_TIER_DEFAULT_MODEL_ID = 'openrouter/inclusionai/ring-2.6-1t:free'
+export const FREE_TIER_DEFAULT_MODEL_ID = 'openrouter/openai/gpt-oss-120b:free'
+export const FREE_TIER_LEGACY_DEFAULT_MODEL_IDS = [
+  'openrouter/inclusionai/ring-2.6-1t:free',
+] as const
 
 export const NVIDIA_NIM_MODEL_IDS = [
   'stepfun-ai/step-3.5-flash',
@@ -80,6 +83,10 @@ export function isNvidiaNimChatModelId(modelId: string): boolean {
 
 export function isFreeTierOpenRouterChatModelId(modelId: string): boolean {
   return (FREE_TIER_OPENROUTER_MODEL_IDS as readonly string[]).includes(modelId)
+}
+
+export function isLegacyFreeTierDefaultModelId(modelId: string | undefined): modelId is string {
+  return Boolean(modelId && (FREE_TIER_LEGACY_DEFAULT_MODEL_IDS as readonly string[]).includes(modelId))
 }
 
 export function isFreeTierChatModelId(modelId: string | undefined): modelId is string {

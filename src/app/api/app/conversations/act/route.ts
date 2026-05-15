@@ -16,7 +16,13 @@ import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
 import { createMcpToolSet } from '@/lib/mcp-tools'
-import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId, isNvidiaNimChatModelId } from '@/lib/model-types'
+import {
+  FREE_TIER_AUTO_MODEL_ID,
+  FREE_TIER_DEFAULT_MODEL_ID,
+  isFreeTierChatModelId,
+  isLegacyFreeTierDefaultModelId,
+  isNvidiaNimChatModelId,
+} from '@/lib/model-types'
 import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
 import {
   allowedOverlayToolIdsForTurn,
@@ -509,7 +515,10 @@ export async function POST(request: NextRequest) {
       { bucket: 'conversations:act:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
-    const effectiveModelId = modelId || 'claude-sonnet-4-6'
+    const requestedModelId: string = modelId || 'claude-sonnet-4-6'
+    const effectiveModelId: string = isLegacyFreeTierDefaultModelId(requestedModelId)
+      ? FREE_TIER_DEFAULT_MODEL_ID
+      : requestedModelId
     const serverSecret = getInternalApiSecret()
     pendingServerSecret = serverSecret
 
