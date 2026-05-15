@@ -23,7 +23,6 @@ import { formatBytes } from '@/lib/storage-limits'
 import {
   FilesInlinePanel,
   InlineNavChildren,
-  NotesInlinePanel,
   ProjectsInlinePanel,
   toolsInlineItems,
 } from './AppSidebarInlinePanels'
@@ -804,13 +803,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
-              {notesOpen ? (
-                <NotesInlinePanel
-                  refreshKey={0}
-                  searchQuery=""
-                  onNavigate={() => setMobileMenuOpen(false)}
-                />
-              ) : filesOpen ? (
+              {notesOpen || filesOpen ? (
                 <FilesInlinePanel
                   searchQuery=""
                   onNavigate={() => setMobileMenuOpen(false)}

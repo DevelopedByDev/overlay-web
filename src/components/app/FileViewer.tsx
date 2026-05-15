@@ -172,6 +172,7 @@ function DocumentViewer({ url }: { url: string }) {
 
 export function FileViewer({ name, content, url }: { name: string; content: string; url?: string }) {
   const type = getFileType(name)
+  const source = content.trim() || url || ''
 
   if (type === 'markdown') {
     return (
@@ -235,7 +236,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
     return (
       <div className="flex flex-1 items-center justify-center overflow-auto bg-[var(--surface-subtle)] p-8">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={content} alt={name} className="max-h-full max-w-full rounded-lg object-contain shadow-sm" />
+        <img src={source} alt={name} className="max-h-full max-w-full rounded-lg object-contain shadow-sm" />
       </div>
     )
   }
@@ -247,7 +248,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
           <Music size={28} className="text-[var(--muted)]" />
         </div>
         <p className="text-sm font-medium text-[var(--foreground)]">{name}</p>
-        <audio controls src={content} className="w-full max-w-lg" />
+        <audio controls src={source} className="w-full max-w-lg" />
       </div>
     )
   }
@@ -255,13 +256,13 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
   if (type === 'video') {
     return (
       <div className="flex flex-1 items-center justify-center overflow-hidden bg-black p-4">
-        <video controls src={content} className="max-h-full max-w-full" />
+        <video controls src={source} className="max-h-full max-w-full" />
       </div>
     )
   }
 
   if (type === 'pdf') {
-    const c = (content.trim() || url || '').trim()
+    const c = source.trim()
     const isIframeSrc =
       c.startsWith('http://') ||
       c.startsWith('https://') ||
@@ -300,7 +301,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
     epub: 'EPUB Book',
     zip: 'ZIP Archive', gz: 'GZip Archive', tar: 'TAR Archive',
   }
-  const downloadUrl = safeHttpUrl(url) || (content.startsWith('/api/') ? content : undefined)
+  const downloadUrl = safeHttpUrl(url) || (url?.startsWith('/api/') ? url : undefined) || (content.startsWith('/api/') ? content : undefined)
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-[var(--muted)]">
