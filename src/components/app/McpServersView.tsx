@@ -1,24 +1,27 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Server, Trash2, Loader2, Check, ToggleLeft, ToggleRight, X, Pencil, Search, Link2, AlertCircle, Zap } from 'lucide-react'
+import { Plus, Server, Trash2, Loader2, Check, ToggleLeft, ToggleRight, X, Pencil, Search, Link2, AlertCircle, Zap, BookOpen } from 'lucide-react'
+import { MCP_CATALOG, type MCPCatalogEntry } from '@/lib/mcp-catalog'
 
 interface McpServer { _id: string; name: string; description?: string; transport: 'sse' | 'streamable-http'; url: string; enabled: boolean; authType: 'none' | 'bearer' | 'header'; hasAuth: boolean; timeoutMs?: number; createdAt: number; updatedAt: number }
-interface DialogState { mode: 'create' | 'edit'; server?: McpServer }
+type McpServerPrefill = Partial<Pick<McpServer, 'name' | 'description' | 'transport' | 'url' | 'authType'>> & { authPlaceholder?: string }
+interface DialogState { mode: 'create' | 'edit'; server?: McpServer; prefill?: McpServerPrefill }
 
-function McpServerDialog({ state, onClose, onSaved, onDeleted }: { state: DialogState; onClose: () => void; onSaved: (server: McpServer) => void; onDeleted: (id: string) => void }) {
+function McpServerDialog({ state, onClose, onSaved, onDeleted, onBrowseCatalog }: { state: DialogState; onClose: () => void; onSaved: (server: McpServer) => void; onDeleted: (id: string) => void; onBrowseCatalog: () => void }) {
   const isEdit = state.mode === 'edit'
-  const initial = state.server
+  const initialServer = state.server
+  const initial = initialServer ?? state.prefill
   const [name, setName] = useState(initial?.name ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [transport, setTransport] = useState<'sse' | 'streamable-http'>(initial?.transport ?? 'streamable-http')
   const [url, setUrl] = useState(initial?.url ?? '')
-  const [enabled, setEnabled] = useState(initial?.enabled ?? true)
+  const [enabled, setEnabled] = useState(initialServer?.enabled ?? true)
   const [authType, setAuthType] = useState<'none' | 'bearer' | 'header'>(initial?.authType ?? 'none')
   const [bearerToken, setBearerToken] = useState('')
   const [headerName, setHeaderName] = useState('')
   const [headerValue, setHeaderValue] = useState('')
-  const [timeoutMs, setTimeoutMs] = useState<number | ''>(initial?.timeoutMs ?? '')
+  const [timeoutMs, setTimeoutMs] = useState<number | ''>(initialServer?.timeoutMs ?? '')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -31,11 +34,11 @@ function McpServerDialog({ state, onClose, onSaved, onDeleted }: { state: Dialog
     setSaving(true)
     try {
       const authConfig = authType === 'bearer' && bearerToken ? { bearerToken } : authType === 'header' && headerName && headerValue ? { headerName, headerValue } : undefined
-      if (isEdit && initial) {
-        const body: Record<string, unknown> = { mcpServerId: initial._id, name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, ...(authConfig ? { authConfig } : { authConfig: null }), ...(timeoutMs !== '' ? { timeoutMs: Number(timeoutMs) } : {}) }
+      if (isEdit && initialServer) {
+        const body: Record<string, unknown> = { mcpServerId: initialServer._id, name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, ...(authConfig ? { authConfig } : { authConfig: null }), ...(timeoutMs !== '' ? { timeoutMs: Number(timeoutMs) } : {}) }
         const res = await fetch('/api/app/mcps', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         if (!res.ok) return
-        onSaved({ ...initial, name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, hasAuth: !!authConfig, timeoutMs: timeoutMs !== '' ? Number(timeoutMs) : undefined })
+        onSaved({ ...initialServer, name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, hasAuth: !!authConfig, timeoutMs: timeoutMs !== '' ? Number(timeoutMs) : undefined })
         setSaved(true); setTimeout(() => { setSaved(false); onClose() }, 800)
       } else {
         const res = await fetch('/api/app/mcps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, ...(authConfig ? { authConfig } : {}), ...(timeoutMs !== '' ? { timeoutMs: Number(timeoutMs) } : {}) }) })
@@ -49,11 +52,11 @@ function McpServerDialog({ state, onClose, onSaved, onDeleted }: { state: Dialog
   }
 
   async function handleDelete() {
-    if (!isEdit || !initial || deleting) return
+    if (!isEdit || !initialServer || deleting) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/app/mcps?mcpServerId=${initial._id}`, { method: 'DELETE' })
-      if (res.ok) { window.dispatchEvent(new CustomEvent('overlay:mcps-changed')); onDeleted(initial._id); onClose() }
+      const res = await fetch(`/api/app/mcps?mcpServerId=${initialServer._id}`, { method: 'DELETE' })
+      if (res.ok) { window.dispatchEvent(new CustomEvent('overlay:mcps-changed')); onDeleted(initialServer._id); onClose() }
     } finally { setDeleting(false) }
   }
 
@@ -76,6 +79,12 @@ function McpServerDialog({ state, onClose, onSaved, onDeleted }: { state: Dialog
           <button type="button" onClick={onClose} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"><X size={16} /></button>
         </div>
         <div className="flex-1 overflow-y-auto space-y-4 px-5 py-5">
+          {!isEdit && (
+            <button type="button" onClick={onBrowseCatalog} className="flex w-full items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
+              <span className="flex items-center gap-2"><BookOpen size={13} />Browse catalog</span>
+              <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--muted-light)]">Templates</span>
+            </button>
+          )}
           <div className="space-y-1.5"><label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Name</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. My API Server" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" /></div>
           <div className="space-y-1.5"><label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Description</label><input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" /></div>
           <div className="grid grid-cols-2 gap-3">
@@ -84,7 +93,7 @@ function McpServerDialog({ state, onClose, onSaved, onDeleted }: { state: Dialog
           </div>
           <div className="space-y-1.5"><label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">URL</label><input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/mcp or http://localhost:3000/mcp" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" /><p className="text-[10px] text-[var(--muted-light)]">HTTPS required in production. HTTP allowed for localhost only.</p></div>
           <div className="space-y-1.5"><label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Authentication</label><select value={authType} onChange={(e) => setAuthType(e.target.value as 'none' | 'bearer' | 'header')} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="none">None</option><option value="bearer">Bearer Token</option><option value="header">Custom Header</option></select></div>
-          {authType === 'bearer' && <div className="space-y-1.5"><label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Bearer Token</label><input type="password" value={bearerToken} onChange={(e) => setBearerToken(e.target.value)} placeholder="Bearer token" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" /></div>}
+          {authType === 'bearer' && <div className="space-y-1.5"><label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Bearer Token</label><input type="password" value={bearerToken} onChange={(e) => setBearerToken(e.target.value)} placeholder={state.prefill?.authPlaceholder ?? 'Bearer token'} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" /></div>}
           {authType === 'header' && <div className="grid grid-cols-2 gap-3"><div className="space-y-1.5"><label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Header Name</label><input value={headerName} onChange={(e) => setHeaderName(e.target.value)} placeholder="X-Api-Key" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" /></div><div className="space-y-1.5"><label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Header Value</label><input type="password" value={headerValue} onChange={(e) => setHeaderValue(e.target.value)} placeholder="Secret value" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" /></div></div>}
           {testResult && <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${testResult.ok ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400' : 'border border-red-500/20 bg-red-500/10 text-red-400'}`}>{testResult.ok ? <Check size={12} /> : <AlertCircle size={12} />}<span>{testResult.message}</span></div>}
         </div>
@@ -103,11 +112,54 @@ function McpServerDialog({ state, onClose, onSaved, onDeleted }: { state: Dialog
   )
 }
 
+function CatalogDialog({ onClose, onPick }: { onClose: () => void; onPick: (entry: MCPCatalogEntry) => void }) {
+  function authLabel(entry: MCPCatalogEntry) {
+    if (entry.defaultAuthType === 'none') return 'No auth'
+    if (entry.defaultAuthType === 'bearer') return 'Bearer'
+    return 'Header'
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--overlay-scrim)] p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="flex w-full max-w-2xl flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl" style={{ maxHeight: 'calc(100vh - 80px)' }}>
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-4">
+          <h3 className="text-sm font-medium text-[var(--foreground)]">Browse MCP catalog</h3>
+          <button type="button" onClick={onClose} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"><X size={16} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          <div className="space-y-2">
+            {MCP_CATALOG.map((entry) => (
+              <div key={entry.id} className="flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--surface-subtle)]">
+                  <Server size={14} className="text-[var(--muted)]" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium text-[var(--foreground)]">{entry.name}</p>
+                    <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--muted)]">{entry.category}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{entry.description}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--muted)]">{entry.transport}</span>
+                    <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">{authLabel(entry)}</span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => onPick(entry)} className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]">Add</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function McpServersView({ userId: _userId }: { userId: string }) {
   void _userId
   const [servers, setServers] = useState<McpServer[]>([])
   const [loading, setLoading] = useState(true)
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [catalogOpen, setCatalogOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -116,6 +168,21 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
 
   function handleSaved(server: McpServer) {
     setServers((prev) => { const idx = prev.findIndex((s) => s._id === server._id); if (idx >= 0) { const next = [...prev]; next[idx] = server; return next } return [server, ...prev] })
+  }
+
+  function handlePickCatalogEntry(entry: MCPCatalogEntry) {
+    setCatalogOpen(false)
+    setDialog({
+      mode: 'create',
+      prefill: {
+        name: entry.name,
+        description: entry.description,
+        transport: entry.transport,
+        url: entry.urlTemplate,
+        authType: entry.defaultAuthType,
+        authPlaceholder: entry.authPlaceholder,
+      },
+    })
   }
 
   async function handleQuickToggle(server: McpServer, e: React.MouseEvent) {
@@ -183,7 +250,8 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
         </div>
       )}
 
-      {dialog && <McpServerDialog state={dialog} onClose={() => setDialog(null)} onSaved={handleSaved} onDeleted={(id) => setServers((prev) => prev.filter((s) => s._id !== id))} />}
+      {dialog && <McpServerDialog key={dialog.mode === 'edit' ? dialog.server?._id : `create-${dialog.prefill?.name ?? dialog.prefill?.url ?? 'empty'}`} state={dialog} onClose={() => setDialog(null)} onSaved={handleSaved} onDeleted={(id) => setServers((prev) => prev.filter((s) => s._id !== id))} onBrowseCatalog={() => setCatalogOpen(true)} />}
+      {catalogOpen && <CatalogDialog onClose={() => setCatalogOpen(false)} onPick={handlePickCatalogEntry} />}
     </div>
   )
 }
