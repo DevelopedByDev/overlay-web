@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Sparkles, Trash2, Loader2, Check, ToggleLeft, ToggleRight, X, Pencil, Search } from 'lucide-react'
+import { Plus, Sparkles, Trash2, Loader2, Check, ToggleLeft, ToggleRight, X, Pencil, Search, Download, Upload } from 'lucide-react'
+import { skillFilenameFromName } from '@/lib/skill-markdown'
 
 interface Skill {
   _id: string
@@ -16,6 +17,11 @@ interface Skill {
 interface DialogState {
   mode: 'create' | 'edit'
   skill?: Skill
+}
+
+interface ImportResult {
+  created: { name: string; id: string }[]
+  skipped: { filename: string; reason: string }[]
 }
 
 function SkillDialog({
@@ -197,6 +203,10 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importStatus, setImportStatus] = useState<{ message: string; title?: string } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const importStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadSkills = useCallback(async () => {
     try {
@@ -206,6 +216,18 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
   }, [])
 
   useEffect(() => { void loadSkills() }, [loadSkills])
+
+  useEffect(() => {
+    return () => {
+      if (importStatusTimeoutRef.current) clearTimeout(importStatusTimeoutRef.current)
+    }
+  }, [])
+
+  function showImportStatus(message: string, title?: string) {
+    setImportStatus({ message, title })
+    if (importStatusTimeoutRef.current) clearTimeout(importStatusTimeoutRef.current)
+    importStatusTimeoutRef.current = setTimeout(() => setImportStatus(null), 5000)
+  }
 
   function handleSaved(skill: Skill) {
     setSkills((prev) => {
@@ -233,6 +255,73 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
     } catch { /* ignore */ }
   }
 
+  async function handleExport(skill: Skill, e: React.MouseEvent) {
+    e.stopPropagation()
+    try {
+      const res = await fetch(`/api/app/skills/export?skillId=${encodeURIComponent(skill._id)}`)
+      if (!res.ok) {
+        showImportStatus('Export failed')
+        return
+      }
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = skillFilenameFromName(skill.name)
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      showImportStatus('Export failed')
+    }
+  }
+
+  async function handleImport(files: FileList | null) {
+    if (!files || files.length === 0 || importing) return
+
+    setImporting(true)
+    try {
+      const payload = await Promise.all(Array.from(files).map(async (file) => ({
+        filename: file.name,
+        content: await file.text(),
+      })))
+      const res = await fetch('/api/app/skills/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: payload }),
+      })
+
+      if (!res.ok) {
+        showImportStatus('Import failed')
+        return
+      }
+
+      const result = await res.json() as ImportResult
+      if (result.created.length > 0) {
+        await loadSkills()
+        window.dispatchEvent(new CustomEvent('overlay:skills-changed'))
+      }
+
+      const skippedTitle = result.skipped
+        .map((item) => `${item.filename}: ${item.reason}`)
+        .join('\n')
+      if (result.skipped.length > 0) {
+        showImportStatus(
+          `Imported ${result.created.length} of ${payload.length}, ${result.skipped.length} skipped`,
+          skippedTitle,
+        )
+      } else {
+        showImportStatus(`Imported ${result.created.length} skill${result.created.length === 1 ? '' : 's'}`)
+      }
+    } catch {
+      showImportStatus('Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -252,6 +341,14 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
           <div className="flex-1" />
         )}
         <div className="flex shrink-0 items-center gap-2">
+          {importStatus && (
+            <span
+              className="hidden max-w-60 truncate text-xs text-[var(--muted)] sm:block"
+              title={importStatus.title}
+            >
+              {importStatus.message}
+            </span>
+          )}
           <button
             type="button"
             title="Search skills"
@@ -261,6 +358,23 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
             }`}
           >
             <Search size={14} strokeWidth={1.75} />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".md,.skill.md"
+            multiple
+            className="hidden"
+            onChange={(e) => { void handleImport(e.target.files); e.target.value = '' }}
+          />
+          <button
+            type="button"
+            title="Import skills"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-50"
+          >
+            {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} strokeWidth={1.75} />}
           </button>
           <button
             onClick={() => setDialog({ mode: 'create' })}
@@ -335,6 +449,14 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
                       {skill.enabled !== false
                         ? <ToggleRight size={14} />
                         : <ToggleLeft size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => void handleExport(skill, e)}
+                      className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                      title="Export"
+                    >
+                      <Download size={13} />
                     </button>
                     <button
                       type="button"
