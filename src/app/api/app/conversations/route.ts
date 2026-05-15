@@ -7,7 +7,7 @@ import {
   isFreeTierChatModelId,
   isLegacyFreeTierDefaultModelId,
 } from '@/lib/model-types'
-import { isPaidPlan } from '@/lib/billing-runtime'
+import { canUsePaidBudgetFeatures } from '@/lib/billing-runtime'
 import { convex } from '@/lib/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
@@ -266,7 +266,15 @@ export async function POST(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<{ tier: 'free' | 'pro' | 'max'; planKind?: 'free' | 'paid' } | null>(
+    const entitlements = await convex.query<{
+      tier: 'free' | 'pro' | 'max'
+      planKind?: 'free' | 'paid'
+      creditsUsed: number
+      creditsTotal: number
+      budgetUsedCents?: number
+      budgetTotalCents?: number
+      budgetRemainingCents?: number
+    } | null>(
       'usage:getEntitlementsByServer',
       {
         userId: auth.userId,
@@ -274,7 +282,7 @@ export async function POST(request: NextRequest) {
       },
       { throwOnError: true },
     )
-    const isFreeTier = !entitlements || !isPaidPlan(entitlements)
+    const isFreeTier = !entitlements || !canUsePaidBudgetFeatures(entitlements)
     const freeAskModelIds = clampFreeTierAskModels(body.askModelIds)
     const freeActModelId = isLegacyFreeTierDefaultModelId(body.actModelId)
       ? FREE_TIER_DEFAULT_MODEL_ID

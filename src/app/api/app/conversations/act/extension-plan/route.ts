@@ -15,6 +15,7 @@ import type { Entitlements } from '@/lib/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
+  canUsePaidBudgetFeatures,
   ensureBudgetAvailable,
   finalizeProviderBudgetReservation,
   getBudgetTotals,
@@ -339,27 +340,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const budget = getBudgetTotals(entitlements)
+    let runtimeEntitlements = entitlements
+    const budget = getBudgetTotals(runtimeEntitlements)
 
-    if (!isPaidPlan(entitlements) && !isFreeTierChatModelId(effectiveModelId)) {
+    if (isPaidPlan(runtimeEntitlements) && budget.remainingCents <= 0) {
+      const autoTopUp = await ensureBudgetAvailable({
+        userId: auth.userId,
+        entitlements: runtimeEntitlements,
+        minimumRequiredCents: 1,
+      })
+      runtimeEntitlements = autoTopUp.entitlements
+    }
+
+    const paid = canUsePaidBudgetFeatures(runtimeEntitlements)
+
+    if (!paid && !isFreeTierChatModelId(effectiveModelId)) {
+      if (isPaidPlan(runtimeEntitlements)) {
+        return NextResponse.json(
+          buildInsufficientCreditsPayload(runtimeEntitlements, 'No budget remaining. Switch to a free model or top up your account.'),
+          { status: 402 },
+        )
+      }
       return NextResponse.json(
         { error: 'premium_model_not_allowed', message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.' },
         { status: 403 },
       )
-    }
-
-    if (isPaidPlan(entitlements) && budget.remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
-      const autoTopUp = await ensureBudgetAvailable({
-        userId: auth.userId,
-        entitlements,
-        minimumRequiredCents: 1,
-      })
-      if (autoTopUp.remainingCents <= 0) {
-        return NextResponse.json(
-          buildInsufficientCreditsPayload(entitlements, 'No budget remaining. Please top up your account.'),
-          { status: 402 },
-        )
-      }
     }
 
     const model = await getGatewayLanguageModel(effectiveModelId, auth.accessToken)
@@ -411,7 +416,7 @@ export async function POST(request: NextRequest) {
     const estimatedInputTokens = Math.ceil(prompt.length / 4) + 256
     const maxOutputTokens = 1200
     let reservationId: string | null = null
-    if (isPaidPlan(entitlements) && isPremiumModel(effectiveModelId)) {
+    if (paid && isPremiumModel(effectiveModelId)) {
       const estimatedProviderCostUsd = calculateTokenCostOrNull(effectiveModelId, estimatedInputTokens, 0, maxOutputTokens)
       if (estimatedProviderCostUsd === null) {
         return NextResponse.json(
@@ -421,7 +426,7 @@ export async function POST(request: NextRequest) {
       }
       const reservation = await reserveProviderBudget({
         userId: auth.userId,
-        entitlements,
+        entitlements: runtimeEntitlements,
         providerCostUsd: estimatedProviderCostUsd,
         kind: 'agent',
         modelId: effectiveModelId,

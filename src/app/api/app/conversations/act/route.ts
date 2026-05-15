@@ -72,6 +72,7 @@ import type { AppSettings, Entitlements } from '@/lib/app-contracts'
 import {
   buildInsufficientCreditsPayload,
   billableBudgetCentsFromProviderUsd,
+  canUsePaidBudgetFeatures,
   ensureBudgetAvailable,
   finalizeProviderBudgetReservation,
   getBudgetTotals,
@@ -540,30 +541,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const budget = getBudgetTotals(entitlements)
+    let runtimeEntitlements = entitlements
+    const budget = getBudgetTotals(runtimeEntitlements)
     const effectiveModelSupportsZdr = modelSupportsZeroDataRetention(effectiveModelId)
 
-    if (!isPaidPlan(entitlements)) {
+    if (isPaidPlan(runtimeEntitlements) && budget.remainingCents <= 0) {
+      const autoTopUp = await ensureBudgetAvailable({
+        userId,
+        entitlements: runtimeEntitlements,
+        minimumRequiredCents: 1,
+      })
+      runtimeEntitlements = autoTopUp.entitlements
+    }
+
+    let paid = canUsePaidBudgetFeatures(runtimeEntitlements)
+    if (!paid) {
       if (!isFreeTierChatModelId(effectiveModelId)) {
+        if (isPaidPlan(runtimeEntitlements)) {
+          return NextResponse.json(
+            buildInsufficientCreditsPayload(runtimeEntitlements, 'No budget remaining. Switch to a free model or top up your account.'),
+            { status: 402 },
+          )
+        }
         return NextResponse.json(
           { error: 'premium_model_not_allowed', message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.' },
           { status: 403 },
         )
       }
     } else {
-      if (budget.remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
-        const autoTopUp = await ensureBudgetAvailable({
-          userId,
-          entitlements,
-          minimumRequiredCents: 1,
-        })
-        if (autoTopUp.remainingCents <= 0) {
-          return NextResponse.json(
-            buildInsufficientCreditsPayload(entitlements, 'No budget remaining. Please top up your account.'),
-            { status: 402 },
-          )
-        }
-      }
       if (appSettings?.onlyAllowZdrModels && !effectiveModelSupportsZdr) {
         return NextResponse.json(
           { error: 'zdr_model_required', message: 'Your settings only allow zero data retention models. Choose a ZDR-supported model to continue.' },
@@ -584,18 +589,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (isPaidPlan(refreshedEntitlements) && isPremiumModel(effectiveModelId)) {
-      const refreshedBudget = getBudgetTotals(refreshedEntitlements)
-      if (refreshedBudget.remainingCents <= 0) {
+    runtimeEntitlements = refreshedEntitlements
+    paid = canUsePaidBudgetFeatures(runtimeEntitlements)
+
+    if (!paid && !isFreeTierChatModelId(effectiveModelId)) {
+      if (isPaidPlan(runtimeEntitlements)) {
         return NextResponse.json(
-          buildInsufficientCreditsPayload(refreshedEntitlements, 'No budget remaining. Please top up your account.'),
+          buildInsufficientCreditsPayload(runtimeEntitlements, 'No budget remaining. Switch to a free model or top up your account.'),
           { status: 402 },
         )
       }
+      return NextResponse.json(
+        { error: 'premium_model_not_allowed', message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.' },
+        { status: 403 },
+      )
     }
     if (_ttftDebug) _tAuth = performance.now()
-
-    const paid = isPaidPlan(refreshedEntitlements)
 
     const latestUserMessage = [...messages].reverse().find((m) => m.role === 'user')
     const latestUserText = latestUserMessage?.parts
@@ -829,16 +838,17 @@ export async function POST(request: NextRequest) {
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
     const resolvedMediaToolIntent = isMultiModelFollowUpSlot
       ? null
-      : structuredMediaToolIntent ?? (
-      paid
-        ? await classifyMediaToolIntentForTurn({
+      : paid
+      ? (
+          structuredMediaToolIntent ??
+          await classifyMediaToolIntentForTurn({
             userText: latestUserText,
             userId,
             accessToken: auth.accessToken || undefined,
-            entitlements: refreshedEntitlements,
+            entitlements: runtimeEntitlements,
           })
-        : null
-      )
+        )
+      : null
 
     const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
       latestUserText,
@@ -940,7 +950,7 @@ export async function POST(request: NextRequest) {
 	    const modelMessages = await convertToModelMessages(messagesForModel)
 	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
 	    let streamedRoutedModelId: string | undefined
-	    if (isPaidPlan(refreshedEntitlements) && isPremiumModel(effectiveModelId)) {
+	    if (paid && isPremiumModel(effectiveModelId)) {
 	      const estimatedInputTokens = Math.ceil(JSON.stringify(modelMessages).length / 4) + 2_000
 	      const maxOutputTokens = 8_192
 	      const estimatedProviderCostUsd = calculateTokenCostOrNull(effectiveModelId, estimatedInputTokens, 0, maxOutputTokens)
@@ -952,7 +962,7 @@ export async function POST(request: NextRequest) {
 	      }
 	      const reservation = await reserveProviderBudget({
 	        userId,
-	        entitlements: refreshedEntitlements,
+	        entitlements: runtimeEntitlements,
 	        providerCostUsd: estimatedProviderCostUsd,
 	        kind: 'agent',
 	        modelId: effectiveModelId,
@@ -1083,7 +1093,7 @@ export async function POST(request: NextRequest) {
       MEMORY_SAVE_PROTOCOL
 
     const freeTierModelLeakNote =
-      '\n\n(Free tier — user-visible reply) THINKING / REASONING RULES (MANDATORY):\n' +
+      '\n\n(Free-runtime access — user-visible reply) THINKING / REASONING RULES (MANDATORY):\n' +
       '1. Put **every** chain-of-thought, plan, reflection, self-talk, and tool-narration step strictly inside `<think>...</think>` tags. Open with `<think>` BEFORE any reasoning and close with `</think>` BEFORE you start the final answer.\n' +
       '2. The body text that follows `</think>` must contain ONLY the final answer the user sees. No phrases like "Let me think", "The user is asking", "I should", "I need to", "My response should be", numbered plans, or checklists of intentions. If you catch yourself writing those, wrap them in `<think>...</think>` and rewrite the body.\n' +
       '3. Never print raw tool calls, tool names on their own lines, JSON payloads, or prefixes like TOOLCALL/OLCALL. Use the real tool-calling channel.\n' +
@@ -1093,7 +1103,7 @@ export async function POST(request: NextRequest) {
 
     const freeTierNote = !paid && isFreeTierChatModelId(effectiveModelId)
       ? hasPreloadedDocContext
-        ? '\n\n(Free tier — user-visible reply) THINKING / REASONING RULES (MANDATORY):\n' +
+        ? '\n\n(Free-runtime access — user-visible reply) THINKING / REASONING RULES (MANDATORY):\n' +
           '1. Put **every** chain-of-thought, plan, reflection, self-talk, and tool-narration step strictly inside ` thinking...\` tags. Open with ` thinking` BEFORE any reasoning and close with ` \` BEFORE you start the final answer.\n' +
           '2. The body text that follows ` \` must contain ONLY the final answer the user sees. No phrases like "Let me think", "The user is asking", "I should", "I need to", "My response should be", numbered plans, or checklists of intentions. If you catch yourself writing those, wrap them in ` thinking...\` and rewrite the body.\n' +
           '3. Never print raw tool calls, tool names on their own lines, JSON payloads, or prefixes like TOOLCALL/OLCALL. Use the real tool-calling channel.\n' +
@@ -1263,6 +1273,7 @@ export async function POST(request: NextRequest) {
                 await convex.mutation('usage:recordBatch', {
                   serverSecret,
                   userId,
+                  forceFreeTierLimits: !paid,
                   events,
                 })
               }

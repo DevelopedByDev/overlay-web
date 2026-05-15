@@ -17,6 +17,20 @@ export function isPaidPlan(entitlements: Pick<Entitlements, 'tier' | 'planKind'>
   return entitlements.tier !== 'free'
 }
 
+export function canUsePaidBudgetFeatures(entitlements: Pick<
+  Entitlements,
+  'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
+>): boolean {
+  return isPaidPlan(entitlements) && getBudgetTotals(entitlements).remainingCents > 0
+}
+
+export function usesFreeTierPrivileges(entitlements: Pick<
+  Entitlements,
+  'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
+>): boolean {
+  return !canUsePaidBudgetFeatures(entitlements)
+}
+
 export function getBudgetTotals(entitlements: Pick<
   Entitlements,
   'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'

@@ -393,6 +393,7 @@ async function enforceFreeTierUsageLimits(
   ctx: MutationCtx,
   userId: string,
   events: UsageEvent[],
+  forceFreeTierLimits = false,
 ): Promise<void> {
   const subscription = await ctx.db
     .query('subscriptions')
@@ -400,7 +401,7 @@ async function enforceFreeTierUsageLimits(
     .first()
 
   const planKind = derivePlanKind(subscription ?? {})
-  if (planKind !== 'free') return
+  if (planKind !== 'free' && !forceFreeTierLimits) return
 
   const pastWeekDates = getPastWeekDates()
   const weeklyUsageRecords = await Promise.all(
@@ -455,6 +456,7 @@ export const recordBatch = mutation({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     userId: v.string(),
+    forceFreeTierLimits: v.optional(v.boolean()),
     events: v.array(
       v.object({
         type: v.union(
@@ -475,9 +477,9 @@ export const recordBatch = mutation({
       })
     )
   },
-  handler: async (ctx, { accessToken, serverSecret, userId, events }) => {
+  handler: async (ctx, { accessToken, serverSecret, userId, forceFreeTierLimits, events }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
-    await enforceFreeTierUsageLimits(ctx, userId, events)
+    await enforceFreeTierUsageLimits(ctx, userId, events, forceFreeTierLimits === true)
     return await applyUsageEvents(ctx, userId, events)
   }
 })

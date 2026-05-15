@@ -2498,8 +2498,19 @@ export default function ChatInterface({
     }
   }, [activeChatId, activeRuntime, actChat, chatInstances, chatStreamRelayApi, liveMessages])
 
-  const isFreeTier = (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'free'
-  const effectiveOnlyAllowZdrModels = !isFreeTier && settings.onlyAllowZdrModels
+  const isPaidSubscription = (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'paid'
+  const budgetTotalCents = entitlements
+    ? (entitlements.budgetTotalCents ?? Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100)))
+    : 0
+  const budgetUsedCents = entitlements
+    ? (entitlements.budgetUsedCents ?? Math.max(0, Math.round(entitlements.creditsUsed ?? 0)))
+    : 0
+  const budgetRemainingCents = entitlements
+    ? (entitlements.budgetRemainingCents ?? Math.max(0, budgetTotalCents - budgetUsedCents))
+    : 0
+  const isBudgetExhaustedPaid = isPaidSubscription && budgetRemainingCents <= 0
+  const isFreeTier = !isPaidSubscription || isBudgetExhaustedPaid
+  const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && settings.onlyAllowZdrModels
   const selectableTextModels = useMemo(() => {
     const models = getModelsByIntelligence(isFreeTier)
       .filter((m) => m.id !== 'nvidia/nemotron-nano-9b-v2')
@@ -2509,12 +2520,7 @@ export default function ChatInterface({
   }, [effectiveOnlyAllowZdrModels, isFreeTier])
   const premiumModelBlocked =
     isFreeTier && !isFreeTierChatModelId(selectedActModel)
-  const creditsExhausted =
-    !isFreeTier &&
-    entitlements != null &&
-    (entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100) > 0 &&
-    (entitlements.budgetUsedCents ?? entitlements.creditsUsed) >= (entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100)
-  const isSendBlocked = premiumModelBlocked || creditsExhausted
+  const isSendBlocked = premiumModelBlocked
 
   useEffect(() => {
     persistActiveRuntimeUiState()
@@ -6183,11 +6189,11 @@ export default function ChatInterface({
               )}
               {isFreeTier && (
                 <Link
-                  href="/pricing"
+                  href={isBudgetExhaustedPaid ? '/account' : '/pricing'}
                   className="hidden shrink-0 items-center gap-1 rounded-md border border-[#fde68a] bg-[#fffbeb] px-2.5 py-1 text-[11px] font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] md:flex"
                 >
                   <ArrowUp size={10} />
-                  Upgrade
+                  {isBudgetExhaustedPaid ? 'Top up' : 'Upgrade'}
                 </Link>
               )}
               <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
@@ -6932,16 +6938,11 @@ export default function ChatInterface({
               </div>
             )}
             {isSendBlocked && !isActiveLoading ? (
-              premiumModelBlocked ? (
-                <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--muted)]">
-                  <AlertCircle size={13} className="text-amber-500 shrink-0" />
-                  This model requires a paid plan. Switch to Auto or upgrade.
-                </div>
-              ) : (
+              isBudgetExhaustedPaid ? (
                 <TopUpPreferenceControl
                   variant="app"
-                  title="No budget remaining"
-                  description="Choose one top-up amount for now and future recharges. Add it once, or save the same amount for automatic top-ups later."
+                  title="No budget for paid models"
+                  description="You can keep chatting with free models now. Add budget to use paid models and gated tools like web search, browser sessions, sandboxes, image generation, and video generation."
                   amountCents={topUpAmountDraftCents}
                   minAmountCents={entitlements?.topUpMinAmountCents ?? 800}
                   maxAmountCents={entitlements?.topUpMaxAmountCents ?? 20_000}
@@ -6952,7 +6953,7 @@ export default function ChatInterface({
                   checkboxDescription="If enabled, the same amount will recharge automatically whenever your cumulative budget reaches zero."
                   note={
                     <>
-                      You can also manage this from{' '}
+                      Your paid storage stays active. You can also manage budget from{' '}
                       <Link href="/account" className="font-medium underline underline-offset-4">
                         Account
                       </Link>
@@ -6961,6 +6962,19 @@ export default function ChatInterface({
                   }
                   footer={
                     <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedModels([FREE_TIER_DEFAULT_MODEL_ID])
+                          setAskModelSelectionMode('single')
+                          setSelectedActModel(FREE_TIER_DEFAULT_MODEL_ID)
+                          localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_DEFAULT_MODEL_ID]))
+                          localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_DEFAULT_MODEL_ID)
+                        }}
+                        className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-opacity hover:opacity-90"
+                      >
+                        Use free model
+                      </button>
                       <button
                         type="button"
                         onClick={() => void handleStartTopUp()}
@@ -6982,6 +6996,11 @@ export default function ChatInterface({
                     </>
                   }
                 />
+              ) : (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--muted)]">
+                  <AlertCircle size={13} className="text-amber-500 shrink-0" />
+                  This model requires a paid plan. Switch to Auto or upgrade.
+                </div>
               )
             ) : (
               <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
