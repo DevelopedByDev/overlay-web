@@ -70,6 +70,7 @@ export const NVIDIA_NIM_MODEL_IDS = [
 
 export const FREE_TIER_OPENROUTER_MODEL_IDS = [
   'openrouter/inclusionai/ring-2.6-1t:free',
+  'openrouter/deepseek/deepseek-v4-flash:free',
   'openrouter/minimax/minimax-m2.5:free',
   'openrouter/arcee-ai/trinity-large-thinking:free',
   'openrouter/openai/gpt-oss-120b:free',
