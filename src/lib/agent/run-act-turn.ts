@@ -21,7 +21,7 @@ export type ScheduledAutomationTurn = {
   scheduledFor: number
 }
 
-const SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS = 240_000
+const SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS = 720_000
 
 async function settleScheduledAutomationTurn(params: {
   conversationId: Id<'conversations'>

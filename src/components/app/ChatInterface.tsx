@@ -5676,7 +5676,7 @@ export default function ChatInterface({
         (latestAssistantMsg as unknown as { parts?: unknown[] }).parts,
       ),
     )
-    if (!text.includes('[Request timed out after 300s. Continue?]')) return
+    if (!/\[Request timed out after \d+s\. Continue\?\]/.test(text)) return
     if ((latestAssistantMsg as unknown as { status?: string }).status !== 'completed') return
 
     autoContinuedForMessageRef.current.add(msgId)

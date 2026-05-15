@@ -5,7 +5,7 @@ import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
-export const maxDuration = 300
+export const maxDuration = 800
 
 type AutomationRunTarget = {
   _id: Id<'automations'>

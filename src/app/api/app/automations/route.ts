@@ -411,8 +411,14 @@ export async function DELETE(request: NextRequest) {
       userId: auth.userId,
       serverSecret,
     }) as AutomationForUpdateNote | null
+    const isDraftPlaceholder =
+      automation?.enabled === false &&
+      automation?.name === 'New automation' &&
+      automation?.description === 'Draft automation. Add a description before enabling it.' &&
+      automation?.instructions === 'Describe what this automation should do.'
     const linkedConversationIds = [
       automation?.conversationId,
+      isDraftPlaceholder ? automation?.sourceConversationId : undefined,
     ].filter((id, index, ids): id is Id<'conversations'> => Boolean(id && ids.indexOf(id) === index))
 
     await convex.mutation('automations:remove', {

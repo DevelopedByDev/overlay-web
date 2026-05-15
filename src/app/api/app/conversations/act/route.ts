@@ -11,7 +11,8 @@ import {
   getGatewayPerplexitySearchTool,
   getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/lib/ai-gateway'
-import { modelSupportsZeroDataRetention } from '@/lib/model-data'
+import { getChatModelDisplayName, modelSupportsZeroDataRetention } from '@/lib/model-data'
+import { getChatModelFallbackCandidates } from '@/lib/model-fallbacks'
 import { userFacingOpenRouterError } from '@/lib/openrouter-service'
 import { createBrowserUnifiedTools } from '@/lib/composio-tools'
 import { createWebTools } from '@/lib/web-tools'
@@ -98,12 +99,13 @@ function summarizeToolOutputForLog(output: unknown): string {
   return typeof output
 }
 
-export const maxDuration = 300
+export const maxDuration = 800
 
 const DEFAULT_ACT_ABORT_TIMEOUT_MS = 290_000
-const AUTOMATION_ACT_ABORT_TIMEOUT_MS = 240_000
+const AUTOMATION_ACT_ABORT_TIMEOUT_MS = 720_000
 const MIN_ACT_ABORT_TIMEOUT_MS = 30_000
-const MAX_ACT_ABORT_TIMEOUT_MS = 290_000
+const MAX_ACT_ABORT_TIMEOUT_MS = 780_000
+const MAX_ACT_MODEL_ATTEMPTS = 5
 
 function resolveActAbortTimeoutMs(params: {
   requestedTimeoutMs?: number
@@ -134,6 +136,16 @@ function toUiMessageFromPersisted(message: {
       : [{ type: 'text' as const, text: message.content ?? '' }],
     ...(message.routedModelId ? { metadata: { routedModelId: message.routedModelId } } : {}),
   }
+}
+
+function messagesRequireVision(messages: UIMessage[]): boolean {
+  return messages.some((message) =>
+    (message.parts ?? []).some((part) => {
+      if (part.type !== 'file') return false
+      const mediaType = 'mediaType' in part ? part.mediaType : undefined
+      return typeof mediaType === 'string' && mediaType.startsWith('image/')
+    }),
+  )
 }
 
 async function buildMessagesForModel(params: {
@@ -411,6 +423,59 @@ async function drainReadableStream(stream: ReadableStream<Uint8Array<ArrayBuffer
   } finally {
     reader.releaseLock()
   }
+}
+
+function fallbackNoticeText(fromModelId: string, toModelId: string): string {
+  return `${getChatModelDisplayName(fromModelId)} unavailable, switching to ${getChatModelDisplayName(toModelId)}.`
+}
+
+function uiStreamEvent(data: Record<string, unknown>): string {
+  return `data: ${JSON.stringify(data)}\n\n`
+}
+
+function fallbackNoticeFrames(notice: string): string {
+  const id = `fallback-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`
+  return (
+    uiStreamEvent({ type: 'text-start', id }) +
+    uiStreamEvent({ type: 'text-delta', id, delta: `${notice}\n\n` }) +
+    uiStreamEvent({ type: 'text-end', id })
+  )
+}
+
+function prefixFallbackNoticeAfterStart(
+  body: ReadableStream<Uint8Array<ArrayBufferLike>> | null,
+  notice?: string,
+): ReadableStream<Uint8Array<ArrayBufferLike>> | null {
+  if (!body || !notice) return body
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
+  let buffer = ''
+  let inserted = false
+
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      if (inserted) {
+        controller.enqueue(chunk)
+        return
+      }
+      buffer += decoder.decode(chunk, { stream: true })
+      const firstFrameEnd = buffer.indexOf('\n\n')
+      if (firstFrameEnd === -1) return
+      const firstFrame = buffer.slice(0, firstFrameEnd + 2)
+      const rest = buffer.slice(firstFrameEnd + 2)
+      buffer = ''
+      inserted = true
+      controller.enqueue(encoder.encode(firstFrame))
+      controller.enqueue(encoder.encode(fallbackNoticeFrames(notice)))
+      if (rest) controller.enqueue(encoder.encode(rest))
+    },
+    flush(controller) {
+      if (!inserted && buffer) {
+        controller.enqueue(encoder.encode(fallbackNoticeFrames(notice)))
+        controller.enqueue(encoder.encode(buffer))
+      }
+    },
+  })) as ReadableStream<Uint8Array<ArrayBufferLike>>
 }
 
 export async function POST(request: NextRequest) {
@@ -950,28 +1015,6 @@ export async function POST(request: NextRequest) {
 	    const modelMessages = await convertToModelMessages(messagesForModel)
 	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
 	    let streamedRoutedModelId: string | undefined
-	    if (paid && isPremiumModel(effectiveModelId)) {
-	      const estimatedInputTokens = Math.ceil(JSON.stringify(modelMessages).length / 4) + 2_000
-	      const maxOutputTokens = 8_192
-	      const estimatedProviderCostUsd = calculateTokenCostOrNull(effectiveModelId, estimatedInputTokens, 0, maxOutputTokens)
-	      if (estimatedProviderCostUsd === null) {
-	        return NextResponse.json(
-	          { error: 'pricing_missing', message: `Model ${effectiveModelId} is not priced for production use.` },
-	          { status: 400 },
-	        )
-	      }
-	      const reservation = await reserveProviderBudget({
-	        userId,
-	        entitlements: runtimeEntitlements,
-	        providerCostUsd: estimatedProviderCostUsd,
-	        kind: 'agent',
-	        modelId: effectiveModelId,
-	      })
-	      if (!reservation.ok) {
-	        return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
-	      }
-	      budgetReservationId = reservation.reservationId
-	    }
 	    let generatingMessageId: Id<'conversationMessages'> | undefined
     if (cid) {
       try {
@@ -992,14 +1035,7 @@ export async function POST(request: NextRequest) {
         console.error('[conversations/act] Failed to start generating assistant message:', summarizeErrorForLog(err))
       }
     }
-    let payTierLanguageModel: Awaited<ReturnType<typeof getGatewayLanguageModel>> | null = null
-    if (effectiveModelId !== FREE_TIER_AUTO_MODEL_ID && !isNvidiaNimChatModelId(effectiveModelId)) {
-      payTierLanguageModel = await getGatewayLanguageModel(
-        effectiveModelId,
-        auth.accessToken || undefined,
-      )
-    }
-    if (_ttftDebug) _tPrep = performance.now()
+	    if (_ttftDebug) _tPrep = performance.now()
     const [composioRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
       composioToolsTask,
       mcpToolsTask,
@@ -1122,11 +1158,17 @@ export async function POST(request: NextRequest) {
       ? "You are Overlay’s assistant in a parallel model-comparison run. You do not have Composio or third-party account actions in this run; focus on a strong answer with the tools you have."
       : "You are Overlay’s browser agent. Use the available Composio tools to complete the user’s task."
 
-    const runActStream = async (languageModel: LanguageModelV3) => {
+    const runActStream = async (params: {
+      languageModel: LanguageModelV3
+      modelId: string
+      fallbackNotice?: string
+    }) => {
+    const attemptModelId = params.modelId
+    const attemptModelSupportsZdr = modelSupportsZeroDataRetention(attemptModelId)
     const agent = new ToolLoopAgent({
-      model: languageModel,
+      model: params.languageModel,
       tools,
-      ...(effectiveModelSupportsZdr
+      ...(attemptModelSupportsZdr
         ? { providerOptions: { gateway: { zeroDataRetention: true } } }
         : {}),
       stopWhen: stepCountIs(MAX_TOOL_STEPS_ACT),
@@ -1175,7 +1217,9 @@ export async function POST(request: NextRequest) {
     }, actAbortTimeoutMsResolved)
 
     if (_ttftDebug) _tStreamCall = performance.now()
-    const result = await agent.stream({
+    let result: Awaited<ReturnType<typeof agent.stream>>
+    try {
+      result = await agent.stream({
       messages: modelMessages,
       abortSignal: abortController.signal,
       experimental_onToolCallStart: ({ toolCall }) => {
@@ -1218,7 +1262,7 @@ export async function POST(request: NextRequest) {
           userId,
           toolName: toolCall.toolName,
           mode: 'act',
-          modelId: effectiveModelId,
+          modelId: attemptModelId,
           conversationId: conversationId ?? undefined,
           turnId: tid,
           success,
@@ -1231,18 +1275,18 @@ export async function POST(request: NextRequest) {
         const totalInputTokens = totalUsage?.inputTokens ?? 0
         const totalOutputTokens = totalUsage?.outputTokens ?? 0
         // Fallback: if the fetch-interceptor did not capture the model yet, try the step response.
-        if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID && !streamedRoutedModelId) {
+        if (attemptModelId === FREE_TIER_AUTO_MODEL_ID && !streamedRoutedModelId) {
           const rid = event.steps.at(-1)?.response.modelId
           if (typeof rid === 'string' && rid) streamedRoutedModelId = rid
         }
-        const providerCostUsd = calculateTokenCostOrNull(effectiveModelId, totalInputTokens, 0, totalOutputTokens)
+        const providerCostUsd = calculateTokenCostOrNull(attemptModelId, totalInputTokens, 0, totalOutputTokens)
         if (providerCostUsd === null) {
-          console.error('[conversations/act] Missing pricing for completed provider call', { modelId: effectiveModelId })
+          console.error('[conversations/act] Missing pricing for completed provider call', { modelId: attemptModelId })
           if (budgetReservationId) {
             await markProviderBudgetReconcile({
               userId,
               reservationId: budgetReservationId,
-              errorMessage: `pricing_missing:${effectiveModelId}`,
+              errorMessage: `pricing_missing:${attemptModelId}`,
             }).catch((err) => console.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(err)))
             budgetReservationId = null
           }
@@ -1253,7 +1297,7 @@ export async function POST(request: NextRequest) {
             try {
               const events = [{
                 type: 'agent' as const,
-                modelId: effectiveModelId,
+                modelId: attemptModelId,
                 inputTokens: totalInputTokens,
                 outputTokens: totalOutputTokens,
                 cachedTokens: 0,
@@ -1295,9 +1339,9 @@ export async function POST(request: NextRequest) {
           let persistOverride:
             | { content: string; parts: Array<Record<string, unknown>> }
             | undefined
-          if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
+          if (attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
             const repaired = await maybeRepairFreeTierLeakedPerplexityText({
-              modelId: effectiveModelId,
+              modelId: attemptModelId,
               steps: event.steps,
               text: event.text,
               accessToken: auth.accessToken,
@@ -1313,7 +1357,9 @@ export async function POST(request: NextRequest) {
           const { content: rawPersistContent, parts: persistParts } = persistOverride
             ? persistOverride
             : buildAssistantPersistenceFromSteps(event.steps, event.text)
-          let persistContent = rawPersistContent
+          let persistContent = params.fallbackNotice
+            ? `${params.fallbackNotice}\n\n${rawPersistContent}`
+            : rawPersistContent
           let normalizedPersistParts = persistParts.map((part) => {
             if (part.type !== 'tool-invocation') return part
             const invocation = part.toolInvocation as
@@ -1368,6 +1414,12 @@ export async function POST(request: NextRequest) {
             }
             return part
           })
+          if (params.fallbackNotice) {
+            normalizedPersistParts = [
+              { type: 'text', text: `${params.fallbackNotice}\n\n` },
+              ...normalizedPersistParts,
+            ]
+          }
 
           if (wasAbortedByTimeout) {
             const timedOutAfterSeconds = Math.round(actAbortTimeoutMsResolved / 1000)
@@ -1385,7 +1437,7 @@ export async function POST(request: NextRequest) {
 
           if (cid) {
             const routedModelId =
-              effectiveModelId === FREE_TIER_AUTO_MODEL_ID
+              attemptModelId === FREE_TIER_AUTO_MODEL_ID
                 ? (streamedRoutedModelId || event.steps.at(-1)?.response.modelId)
                 : undefined
             const finalParts = (normalizedPersistParts.length > 0 ? normalizedPersistParts : [{ type: 'text', text: persistContent }]) as never
@@ -1409,7 +1461,7 @@ export async function POST(request: NextRequest) {
                 content: persistContent,
                 contentType: 'text',
                 parts: finalParts,
-                modelId: effectiveModelId,
+                modelId: attemptModelId,
                 routedModelId,
                 tokens: { input: totalInputTokens, output: totalOutputTokens },
                 variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
@@ -1420,7 +1472,11 @@ export async function POST(request: NextRequest) {
           console.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
         }
       },
-    })
+      })
+    } catch (err) {
+      clearTimeout(hardTimeout)
+      throw err
+    }
 
     clearTimeout(hardTimeout)
 
@@ -1436,7 +1492,7 @@ export async function POST(request: NextRequest) {
           metadata.sourceCitations = sourceCitationMap
         }
         if (
-          effectiveModelId === FREE_TIER_AUTO_MODEL_ID &&
+          attemptModelId === FREE_TIER_AUTO_MODEL_ID &&
           part.type === 'finish' &&
           streamedRoutedModelId
         ) {
@@ -1445,7 +1501,8 @@ export async function POST(request: NextRequest) {
         return Object.keys(metadata).length > 0 ? metadata : undefined
       },
     })
-    let responseBody: ReadableStream<Uint8Array<ArrayBufferLike>> | null = _uiResp.body
+    let responseBody: ReadableStream<Uint8Array<ArrayBufferLike>> | null =
+      prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)
     const responseHeaders = new Headers(_uiResp.headers)
     if (useCloudflareStreamRelay) {
       responseHeaders.set('x-overlay-generating-message-id', generatingMessageId ?? '')
@@ -1512,7 +1569,7 @@ export async function POST(request: NextRequest) {
               _buf = '' // release
               const _tDelta = performance.now()
               console.log('[TTFT][act]', {
-                model: effectiveModelId,
+                model: attemptModelId,
                 total_ms: +(_tDelta - _t0).toFixed(1),
                 auth_ms: +(_tAuth - _t0).toFixed(1),
                 prep_ms: +(_tPrep - _tAuth).toFixed(1),
@@ -1543,27 +1600,107 @@ export async function POST(request: NextRequest) {
     })
     }
 
-    if (isNvidiaNimChatModelId(effectiveModelId)) {
-      const nvidiaKey = await resolveNvidiaApiKey(auth.accessToken)
-      if (!nvidiaKey) {
-        return NextResponse.json({ error: 'NVIDIA_API_KEY is not configured.' }, { status: 500 })
+    const estimatedInputTokens = Math.ceil(JSON.stringify(modelMessages).length / 4) + 2_000
+    const maxOutputTokens = 8_192
+    const reserveBudgetForAttempt = async (attemptModelId: string): Promise<NextResponse | null> => {
+      if (!paid || !isPremiumModel(attemptModelId)) return null
+      const estimatedProviderCostUsd = calculateTokenCostOrNull(attemptModelId, estimatedInputTokens, 0, maxOutputTokens)
+      if (estimatedProviderCostUsd === null) {
+        return NextResponse.json(
+          { error: 'pricing_missing', message: `Model ${attemptModelId} is not priced for production use.` },
+          { status: 400 },
+        )
       }
-      streamedRoutedModelId = effectiveModelId
-      return await runActStream(createNvidiaNimChatLanguageModel(effectiveModelId, nvidiaKey))
+      const reservation = await reserveProviderBudget({
+        userId,
+        entitlements: runtimeEntitlements,
+        providerCostUsd: estimatedProviderCostUsd,
+        kind: 'agent',
+        modelId: attemptModelId,
+      })
+      if (!reservation.ok) {
+        return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
+      }
+      budgetReservationId = reservation.reservationId
+      budgetReservationFinalized = false
+      return null
     }
 
-    if (effectiveModelId === FREE_TIER_AUTO_MODEL_ID) {
-      const openRouterModel = await getOpenRouterLanguageModelCapturingRoutedModel(
-        FREE_TIER_AUTO_MODEL_ID,
-        auth.accessToken || undefined,
-        (m) => { streamedRoutedModelId = m },
-      )
-      return await runActStream(openRouterModel)
+    const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModelV3> => {
+      if (isNvidiaNimChatModelId(attemptModelId)) {
+        const nvidiaKey = await resolveNvidiaApiKey(auth.accessToken)
+        if (!nvidiaKey) {
+          throw new Error('NVIDIA_API_KEY is not configured.')
+        }
+        streamedRoutedModelId = attemptModelId
+        return createNvidiaNimChatLanguageModel(attemptModelId, nvidiaKey)
+      }
+
+      if (attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
+        return getOpenRouterLanguageModelCapturingRoutedModel(
+          FREE_TIER_AUTO_MODEL_ID,
+          auth.accessToken || undefined,
+          (m) => { streamedRoutedModelId = m },
+        )
+      }
+
+      return getGatewayLanguageModel(attemptModelId, auth.accessToken || undefined)
     }
-    if (!payTierLanguageModel) {
-      return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+
+    const fallbackModelIds = getChatModelFallbackCandidates({
+      modelId: effectiveModelId,
+      paid,
+      onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
+      requiresVision: messagesRequireVision(messages),
+      maxCandidates: MAX_ACT_MODEL_ATTEMPTS - 1,
+    })
+    const attemptModelIds = [...new Set([effectiveModelId, ...fallbackModelIds])].slice(0, MAX_ACT_MODEL_ATTEMPTS)
+    let lastAttemptError: unknown
+    let lastAttemptResponse: NextResponse | null = null
+
+    for (let attemptIndex = 0; attemptIndex < attemptModelIds.length; attemptIndex++) {
+      const attemptModelId = attemptModelIds[attemptIndex]!
+      const previousModelId = attemptIndex > 0 ? attemptModelIds[attemptIndex - 1] : undefined
+      const fallbackNotice = previousModelId ? fallbackNoticeText(previousModelId, attemptModelId) : undefined
+      streamedRoutedModelId = undefined
+      try {
+        const reservationResponse = await reserveBudgetForAttempt(attemptModelId)
+        if (reservationResponse) {
+          lastAttemptResponse = reservationResponse
+          continue
+        }
+        if (fallbackNotice) {
+          console.warn('[conversations/act] model fallback', {
+            from: previousModelId,
+            to: attemptModelId,
+          })
+        }
+        const languageModel = await languageModelForAttempt(attemptModelId)
+        return await runActStream({
+          languageModel,
+          modelId: attemptModelId,
+          fallbackNotice,
+        })
+      } catch (error) {
+        lastAttemptError = error
+        console.warn('[conversations/act] model attempt failed', {
+          modelId: attemptModelId,
+          hasFallback: attemptIndex < attemptModelIds.length - 1,
+          error: summarizeErrorForLog(error),
+        })
+        if (budgetReservationId && !budgetReservationFinalized) {
+          await releaseProviderBudgetReservation({
+            userId,
+            reservationId: budgetReservationId,
+            reason: summarizeErrorForLog(error),
+          }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
+          budgetReservationId = null
+        }
+      }
     }
-    return await runActStream(payTierLanguageModel)
+
+    if (lastAttemptResponse) return lastAttemptResponse
+    throw lastAttemptError ?? new Error('All model attempts failed')
 	  } catch (error) {
 	    console.error('[conversations/act] Error:', summarizeErrorForLog(error))
 	    if (budgetReservationId && !budgetReservationFinalized) {

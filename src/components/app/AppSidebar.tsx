@@ -368,11 +368,12 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   async function handleCreateAutomationConversation() {
     if (!user) { requireAuth('send'); return }
     const models = readNewChatModelFieldsFromStorage()
+    const title = 'New automation'
     const res = await fetch('/api/app/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: 'New automation',
+        title,
         askModelIds: models.askModelIds,
         actModelId: models.actModelId,
         lastMode: 'act',
@@ -381,11 +382,33 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     if (!res.ok) return
     const data = await res.json() as { id?: string; conversation?: { _id: string; title: string; lastModified: number } }
     if (!data.id) return
-    const chat = data.conversation ?? { _id: data.id, title: 'New automation', lastModified: 0 }
+    const chat = data.conversation ?? { _id: data.id, title, lastModified: 0 }
     upsertCachedChat(chat)
     dispatchChatCreated({ chat })
+    let automationId: string | null = null
+    const automationRes = await fetch('/api/app/automations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: title,
+        description: 'Draft automation. Add a description before enabling it.',
+        instructions: 'Describe what this automation should do.',
+        enabled: false,
+        schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        modelId: models.actModelId,
+        sourceConversationId: data.id,
+      }),
+    })
+    if (automationRes.ok) {
+      const automationData = await automationRes.json() as { id?: string }
+      automationId = automationData.id ?? null
+      window.dispatchEvent(new Event('overlay:automations-updated'))
+    }
     setMobileMenuOpen(false)
-    router.push(`/app/automations?id=${encodeURIComponent(data.id)}`)
+    const query = new URLSearchParams({ id: data.id })
+    if (automationId) query.set('automationId', automationId)
+    router.push(`/app/automations?${query.toString()}`)
   }
 
   async function handleCreateNote() {

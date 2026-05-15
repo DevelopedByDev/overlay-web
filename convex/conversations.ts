@@ -812,14 +812,17 @@ export const appendToGeneratingMessage = mutation({
     }
 
     if (!textDelta && !newParts?.length) return
+    const now = Date.now()
     await ctx.db.insert('conversationMessageDeltas', {
       conversationId: message.conversationId,
       messageId,
       userId: message.userId,
       textDelta,
       newParts,
-      createdAt: Date.now(),
+      createdAt: now,
     })
+    await ctx.db.patch(messageId, { updatedAt: now })
+    await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
   },
 })
 
