@@ -31,6 +31,8 @@ type HubChat = { _id: string; title: string; updatedAt?: number }
 type ProjectFileRecord = {
   _id: string
   name: string
+  shareVisibility?: 'private' | 'public'
+  shareToken?: string | null
   content?: string
   textContent?: string
   mimeType?: string
@@ -49,6 +51,8 @@ function opensInDocumentEditor(file: ProjectFileRecord): boolean {
 import { FileViewerSkeleton } from '@/components/ui/Skeleton'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from './FileViewer'
+import { FileShareMenu } from './FileShareMenu'
+import { buildSharePageUrl } from '@/lib/share-url'
 
 const ChatInterface = dynamic(() => import('./ChatInterface'))
 const NotebookEditor = dynamic(() => import('./NotebookEditor'))
@@ -130,6 +134,18 @@ function ProjectFileView({ fileId }: { fileId: string }) {
         isSaving={isSaving}
         isEditable={isEditableType(file.name)}
         onContentChange={handleContentChange}
+        headerRight={
+          <FileShareMenu
+            fileId={file._id}
+            title={file.name}
+            initialShareVisibility={file.shareVisibility ?? 'private'}
+            initialShareUrl={
+              file.shareVisibility === 'public' && file.shareToken
+                ? buildSharePageUrl('file', file.shareToken)
+                : null
+            }
+          />
+        }
       />
     </div>
   )

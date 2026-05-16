@@ -957,3 +957,93 @@ export const backfillCanonicalFilesystem = mutation({
     }
   },
 })
+
+// ─── Sharing ──────────────────────────────────────────────────────────────────
+
+function generateShareToken(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  let str = ''
+  for (const b of bytes) str += String.fromCharCode(b)
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+export const setShare = mutation({
+  args: {
+    fileId: v.id('files'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    visibility: v.union(v.literal('private'), v.literal('public')),
+  },
+  handler: async (ctx, { fileId, userId, accessToken, serverSecret, visibility }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    const file = await ctx.db.get(fileId)
+    if (!file || file.userId !== userId || file.deletedAt) throw new Error('Unauthorized')
+    if (file.type === 'folder') throw new Error('Folders cannot be shared')
+    const now = Date.now()
+    if (visibility === 'public') {
+      const token = file.shareToken ?? generateShareToken()
+      await ctx.db.patch(fileId, {
+        shareToken: token,
+        shareVisibility: 'public',
+        sharedAt: now,
+        updatedAt: now,
+      })
+      return { token, visibility: 'public' as const }
+    }
+    await ctx.db.patch(fileId, {
+      shareToken: generateShareToken(),
+      shareVisibility: 'private',
+      updatedAt: now,
+    })
+    return { token: null, visibility: 'private' as const }
+  },
+})
+
+export const getPublicR2KeyByTokenByServer = query({
+  args: { token: v.string(), serverSecret: v.string() },
+  handler: async (ctx, { token, serverSecret }) => {
+    requireServerAccess(serverSecret)
+    const file = await ctx.db
+      .query('files')
+      .withIndex('by_shareToken', (q) => q.eq('shareToken', token))
+      .first()
+    if (!file || file.deletedAt || file.shareVisibility !== 'public' || file.type === 'folder') {
+      return null
+    }
+    return {
+      r2Key: file.r2Key ?? null,
+      mimeType: file.mimeType ?? null,
+      name: file.name,
+      sizeBytes: file.sizeBytes ?? 0,
+      userId: file.userId,
+    }
+  },
+})
+
+export const getPublicByToken = query({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const file = await ctx.db
+      .query('files')
+      .withIndex('by_shareToken', (q) => q.eq('shareToken', token))
+      .first()
+    if (!file || file.deletedAt || file.shareVisibility !== 'public' || file.type === 'folder') {
+      return null
+    }
+    return {
+      _id: file._id,
+      name: file.name,
+      kind: file.kind ?? 'upload',
+      mimeType: file.mimeType ?? null,
+      extension: file.extension ?? null,
+      sizeBytes: file.sizeBytes ?? null,
+      content: file.content ?? null,
+      textContent: file.textContent ?? null,
+      hasBinary: Boolean(file.r2Key),
+      createdAt: file.createdAt,
+      sharedAt: file.sharedAt ?? file.createdAt,
+    }
+  },
+})

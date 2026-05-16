@@ -69,6 +69,7 @@ import { common, createLowlight } from 'lowlight'
 import SlashMenu, { type SlashMenuItem } from './SlashMenu'
 import { useAppSettings } from './AppSettingsProvider'
 import { ExportMenu } from './ExportMenu'
+import { buildSharePageUrl } from '@/lib/share-url'
 import {
   InlineDiffExtension,
   INLINE_DIFF_CSS,
@@ -93,6 +94,8 @@ interface Note {
   projectId?: string
   createdAt: number
   updatedAt: number
+  shareVisibility?: 'private' | 'public'
+  shareToken?: string | null
 }
 
 interface CanonicalNoteFile {

@@ -457,11 +457,15 @@ export default defineSchema({
     askModelIds: v.array(v.string()),
     actModelId: v.string(),
     deletedAt: v.optional(v.number()),
+    shareToken: v.optional(v.string()),
+    shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
+    sharedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
-    .index('by_projectId', ['projectId']),
+    .index('by_projectId', ['projectId'])
+    .index('by_shareToken', ['shareToken']),
 
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
@@ -750,11 +754,15 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
+    shareToken: v.optional(v.string()),
+    shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
+    sharedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
     .index('by_projectId', ['projectId'])
     .index('by_parentId', ['parentId'])
     .index('by_legacyNoteId', ['legacyNoteId'])
-    .index('by_legacyOutputId', ['legacyOutputId']),
+    .index('by_legacyOutputId', ['legacyOutputId'])
+    .index('by_shareToken', ['shareToken']),
 })

@@ -1348,3 +1348,85 @@ export const addMessages = mutation({
     return ids
   },
 })
+
+function generateShareToken(): string {
+  // 22 chars of base64url ≈ 132 bits of entropy.
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  let str = ''
+  for (const b of bytes) str += String.fromCharCode(b)
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+export const setShare = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    visibility: v.union(v.literal('private'), v.literal('public')),
+  },
+  handler: async (ctx, { conversationId, userId, accessToken, serverSecret, visibility }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+    const now = Date.now()
+    if (visibility === 'public') {
+      const token = conversation.shareToken ?? generateShareToken()
+      await ctx.db.patch(conversationId, {
+        shareToken: token,
+        shareVisibility: 'public',
+        sharedAt: now,
+        updatedAt: now,
+      })
+      return { token, visibility: 'public' as const }
+    }
+    // private: rotate token to invalidate any link still in circulation
+    await ctx.db.patch(conversationId, {
+      shareToken: generateShareToken(),
+      shareVisibility: 'private',
+      updatedAt: now,
+    })
+    return { token: null, visibility: 'private' as const }
+  },
+})
+
+export const getPublicByToken = query({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const conversation = await ctx.db
+      .query('conversations')
+      .withIndex('by_shareToken', (q) => q.eq('shareToken', token))
+      .first()
+    if (!conversation || conversation.deletedAt || conversation.shareVisibility !== 'public') {
+      return null
+    }
+    const messages = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
+      .order('asc')
+      .collect()
+    return {
+      _id: conversation._id,
+      title: conversation.title,
+      createdAt: conversation.createdAt,
+      sharedAt: conversation.sharedAt ?? conversation.createdAt,
+      messages: messages
+        .filter((m) => m.status !== 'generating')
+        .map((m) => ({
+          _id: m._id,
+          role: m.role,
+          mode: m.mode,
+          content: m.content,
+          contentType: m.contentType,
+          parts: m.parts ?? null,
+          modelId: m.modelId ?? null,
+          variantIndex: m.variantIndex ?? 0,
+          turnId: m.turnId,
+          createdAt: m.createdAt,
+        })),
+    }
+  },
+})

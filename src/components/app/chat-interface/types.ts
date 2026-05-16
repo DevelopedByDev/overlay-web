@@ -16,6 +16,8 @@ export interface Conversation {
   askModelIds?: string[]
   modelIds?: string[]
   actModelId?: string
+  shareVisibility?: 'private' | 'public'
+  shareToken?: string | null
 }
 
 export interface AttachedImage {

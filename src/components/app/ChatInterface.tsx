@@ -109,6 +109,7 @@ import {
 import type { OutputType } from '@/lib/output-types'
 import { useAppSettings } from './AppSettingsProvider'
 import { ExportMenu } from './ExportMenu'
+import { buildSharePageUrl } from '@/lib/share-url'
 import { useGuestGate } from './GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/ConvexProviderWithWorkOS'
@@ -6431,6 +6432,13 @@ export default function ChatInterface({
                         updatedAt: activeChat?.updatedAt,
                         modelIds: activeChat?.modelIds,
                       }}
+                      resourceId={activeChatId}
+                      initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
+                      initialShareUrl={
+                        activeChat?.shareVisibility === 'public' && activeChat?.shareToken
+                          ? buildSharePageUrl('chat', activeChat.shareToken)
+                          : null
+                      }
                     />
                   )}
                 </div>
@@ -6457,6 +6465,13 @@ export default function ChatInterface({
                   updatedAt: activeChat?.updatedAt,
                   modelIds: activeChat?.modelIds,
                 }}
+                resourceId={activeChatId}
+                initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
+                initialShareUrl={
+                  activeChat?.shareVisibility === 'public' && activeChat?.shareToken
+                    ? buildSharePageUrl('chat', activeChat.shareToken)
+                    : null
+                }
               />
             )}
           </div>
