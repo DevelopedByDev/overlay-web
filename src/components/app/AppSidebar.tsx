@@ -201,6 +201,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  const [automationCreatePending, setAutomationCreatePending] = useState(false)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const sidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapsed,
@@ -366,48 +367,53 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
 
   async function handleCreateAutomationConversation() {
     if (!user) { requireAuth('send'); return }
+    if (automationCreatePending) return
+    setAutomationCreatePending(true)
     const models = readNewChatModelFieldsFromStorage()
     const title = 'New automation'
-    const res = await fetch('/api/app/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title,
-        askModelIds: models.askModelIds,
-        actModelId: models.actModelId,
-        lastMode: 'act',
-      }),
-    })
-    if (!res.ok) return
-    const data = await res.json() as { id?: string; conversation?: { _id: string; title: string; lastModified: number } }
-    if (!data.id) return
-    const chat = data.conversation ?? { _id: data.id, title, lastModified: 0 }
-    upsertCachedChat(chat)
-    dispatchChatCreated({ chat })
-    let automationId: string | null = null
-    const automationRes = await fetch('/api/app/automations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: title,
-        description: 'Draft automation. Add a description before enabling it.',
-        instructions: 'Describe what this automation should do.',
-        enabled: false,
-        schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        modelId: models.actModelId,
-        sourceConversationId: data.id,
-      }),
-    })
-    if (automationRes.ok) {
+    try {
+      const res = await fetch('/api/app/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          askModelIds: models.askModelIds,
+          actModelId: models.actModelId,
+          lastMode: 'act',
+        }),
+      })
+      if (!res.ok) return
+      const data = await res.json() as { id?: string; conversation?: { _id: string; title: string; lastModified: number } }
+      if (!data.id) return
+      const chat = data.conversation ?? { _id: data.id, title, lastModified: 0 }
+      upsertCachedChat(chat)
+      dispatchChatCreated({ chat })
+      let automationId: string | null = null
+      const automationRes = await fetch('/api/app/automations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: title,
+          description: 'Draft automation. Add a description before enabling it.',
+          instructions: 'Describe what this automation should do.',
+          enabled: false,
+          schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          modelId: models.actModelId,
+          sourceConversationId: data.id,
+        }),
+      })
+      if (!automationRes.ok) return
       const automationData = await automationRes.json() as { id?: string }
       automationId = automationData.id ?? null
+      if (!automationId) return
       window.dispatchEvent(new Event('overlay:automations-updated'))
+      setMobileMenuOpen(false)
+      const query = new URLSearchParams({ id: data.id, automationId })
+      router.push(`/app/automations?${query.toString()}`)
+    } finally {
+      setAutomationCreatePending(false)
     }
-    setMobileMenuOpen(false)
-    const query = new URLSearchParams({ id: data.id })
-    if (automationId) query.set('automationId', automationId)
-    router.push(`/app/automations?${query.toString()}`)
   }
 
   async function handleCreateNote() {
@@ -609,11 +615,16 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                 <button
                   type="button"
                   onClick={() => {
-                    if (!href || pathname.startsWith(href)) return
+                    if (!href) return
                     if (isGuestConfirmed && href !== '/app/chat') {
                       requireAuth('nav')
                       return
                     }
+                    if (href === '/app/automations') {
+                      void handleCreateAutomationConversation()
+                      return
+                    }
+                    if (pathname.startsWith(href)) return
                     setMobileMenuOpen(false)
                     setPendingNav({ href, fromPath: pathname })
                     router.push(href)

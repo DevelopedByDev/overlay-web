@@ -3159,6 +3159,9 @@ export default function ChatInterface({
     selectedAutomation?.sourceConversationId || selectedAutomation?.conversationId || null
   const hasAutomationContext = mode === 'automate' && Boolean(automationIdParam)
   const showAutomationChatTab = !hasAutomationContext || automationDetailTab === 'chat'
+  const showAutomationHeaderControls =
+    mode === 'automate' && (hasAutomationContext || Boolean(selectedAutomation))
+  const automationHeaderModelId = selectedAutomation?.modelId ?? selectedActModel ?? DEFAULT_MODEL_ID
 
   // Automations must always run with exactly one model. Collapse multi-model selection
   // whenever the user is working inside an automation surface so saved automations and
@@ -5992,7 +5995,7 @@ export default function ChatInterface({
               className={`group/header-title min-w-0 items-center gap-2 ${
                 activeChatId && editingChatId === activeChatId
                   ? 'flex w-full'
-                  : selectedAutomation
+                  : showAutomationHeaderControls
                     ? 'flex w-full flex-wrap md:w-auto md:flex-nowrap'
                   : 'hidden min-[768px]:flex'
               }`}
@@ -6042,21 +6045,22 @@ export default function ChatInterface({
               )}
             </div>
 
-            {selectedAutomation && (
+            {showAutomationHeaderControls && (
               <div className="flex w-full shrink-0 items-center justify-end gap-2 md:w-auto">
                 <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
                   <DelayedTooltip label="Choose automation model" side="bottom">
                     <button
                       type="button"
                       onClick={() => setShowModelPicker((value) => !value)}
-                      className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1"
+                      disabled={!selectedAutomation}
+                      className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] disabled:cursor-default disabled:opacity-70 md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1"
                       aria-label="Automation model"
                     >
-                      <span className="min-w-0 truncate">{getChatModelDisplayName(selectedAutomation.modelId ?? DEFAULT_MODEL_ID) || 'Select model'}</span>
+                      <span className="min-w-0 truncate">{getChatModelDisplayName(automationHeaderModelId) || 'Select model'}</span>
                       <ChevronDown size={11} className="shrink-0" />
                     </button>
                   </DelayedTooltip>
-                  {showModelPicker && (
+                  {showModelPicker && selectedAutomation && (
                     <>
                       {hoveredModelId && modelQualitiesPos ? (
                         <div
@@ -6082,7 +6086,7 @@ export default function ChatInterface({
                         <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
                           {automationHeaderModels
                             .map((m, index, models) => {
-                              const isSel = m.id === (selectedAutomation.modelId ?? DEFAULT_MODEL_ID)
+                              const isSel = m.id === automationHeaderModelId
                               const isFreeModelRow = isFreeTierChatModelId(m.id)
                               const previous = models[index - 1]
                               const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
