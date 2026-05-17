@@ -1,5 +1,7 @@
 'use client'
 
+// Compatibility wrapper: extension registry metadata is canonical in @overlay/app-core,
+// with transport in @overlay/api-client and reusable presentation in @overlay/modules-react.
 import { useSearchParams } from 'next/navigation'
 import { Lock, LayoutGrid } from 'lucide-react'
 import dynamic from 'next/dynamic'

@@ -56,6 +56,12 @@
       "@overlay/chat-react/*": [
         "./packages/overlay-chat-react/src/*"
       ],
+      "@overlay/modules-react": [
+        "./packages/overlay-modules-react/src/index.ts"
+      ],
+      "@overlay/modules-react/*": [
+        "./packages/overlay-modules-react/src/*"
+      ],
       "@overlay/ui": [
         "./packages/overlay-ui/src/index.ts"
       ],

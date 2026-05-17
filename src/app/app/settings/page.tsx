@@ -1,5 +1,7 @@
 'use client'
 
+// Compatibility wrapper: canonical settings registry metadata lives in @overlay/app-core,
+// with reusable panel rendering primitives in @overlay/modules-react.
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -300,7 +302,7 @@ export default function SettingsPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { void fetch('/api/app/onboarding/reset', { method: 'POST' }).then(() => router.push('/app/chat?tour=replay')) }}
+                  onClick={() => { void overlayAppClient.onboarding.resetResponse().then(() => router.push('/app/chat?tour=replay')) }}
                   className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)]"
                 >
                   Replay tour

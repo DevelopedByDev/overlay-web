@@ -257,6 +257,7 @@ export interface OverlayNavigationItem {
   label: string
   href: string
   icon: OverlayIconName
+  componentKey?: string
   disabled?: boolean
   featureFlagId?: OverlayFeatureFlagId
   subviews?: readonly string[]
@@ -267,8 +268,79 @@ export interface OverlaySettingsSection {
   label: string
   href?: string
   icon?: OverlayIconName
+  componentKey?: string
   disabled?: boolean
   featureFlagId?: OverlayFeatureFlagId
+}
+
+export type OverlayFeatureModuleId =
+  | 'files-knowledge'
+  | 'notes'
+  | 'projects'
+  | 'tools-extensions'
+  | 'settings-account'
+  | (string & {})
+
+export interface OverlayFeatureModule {
+  id: OverlayFeatureModuleId
+  label: string
+  description?: string
+  navigationItemId?: OverlayNavigationItem['id']
+  routePatterns: readonly string[]
+  componentKey: string
+  packageName?: string
+  featureFlagId?: OverlayFeatureFlagId
+  order?: number
+}
+
+export interface OverlaySettingsPanel {
+  id: SettingsSubview | (string & {})
+  label: string
+  sectionId: OverlaySettingsSection['id']
+  componentKey: string
+  description?: string
+  featureFlagId?: OverlayFeatureFlagId
+  order?: number
+}
+
+export interface OverlayToolRegistration {
+  id: string
+  label: string
+  description?: string
+  category?: 'browser' | 'knowledge' | 'integration' | 'automation' | 'developer' | (string & {})
+  componentKey?: string
+  featureFlagId?: OverlayFeatureFlagId
+  policyGateId?: string
+}
+
+export interface OverlayIntegrationRegistration {
+  id: string
+  label: string
+  providerKey: string
+  description?: string
+  logoSrc?: string
+  componentKey?: string
+  featureFlagId?: OverlayFeatureFlagId
+  policyGateId?: string
+}
+
+export interface OverlayModelProviderRegistration {
+  id: string
+  label: string
+  providerKey: string
+  description?: string
+  logoSrc?: string
+  componentKey?: string
+  policyGateId?: string
+}
+
+export interface OverlayPolicyGate {
+  id: string
+  label: string
+  description?: string
+  defaultEnabled: boolean
+  enforcement: 'hide' | 'disable' | 'warn'
+  reason?: string
 }
 
 export interface OverlayThemePresetSummary {
@@ -325,6 +397,12 @@ export interface OverlayAppConfig {
   navigation?: readonly OverlayNavigationItem[]
   settingsSections?: readonly OverlaySettingsSection[]
   featureFlags?: readonly OverlayFeatureFlag[]
+  featureModules?: readonly OverlayFeatureModule[]
+  settingsPanels?: readonly OverlaySettingsPanel[]
+  tools?: readonly OverlayToolRegistration[]
+  integrations?: readonly OverlayIntegrationRegistration[]
+  modelProviders?: readonly OverlayModelProviderRegistration[]
+  policyGates?: readonly OverlayPolicyGate[]
   theme?: Partial<OverlayThemeMetadata>
   modelPolicy?: OverlayModelPolicyHooks
 }
@@ -334,6 +412,12 @@ export interface OverlayAppShellRegistry {
   navigation: readonly OverlayNavigationItem[]
   settingsSections: readonly OverlaySettingsSection[]
   featureFlags: readonly OverlayFeatureFlag[]
+  featureModules: readonly OverlayFeatureModule[]
+  settingsPanels: readonly OverlaySettingsPanel[]
+  tools: readonly OverlayToolRegistration[]
+  integrations: readonly OverlayIntegrationRegistration[]
+  modelProviders: readonly OverlayModelProviderRegistration[]
+  policyGates: readonly OverlayPolicyGate[]
   appFeatureFlags: AppFeatureFlags
   theme: OverlayThemeMetadata
 }
@@ -383,6 +467,12 @@ export interface AppBootstrapResponse {
   navigation?: OverlayNavigationItem[]
   settingsSections?: OverlaySettingsSection[]
   featureFlagRegistry?: OverlayFeatureFlag[]
+  featureModules?: OverlayFeatureModule[]
+  settingsPanels?: OverlaySettingsPanel[]
+  toolRegistry?: OverlayToolRegistration[]
+  integrationRegistry?: OverlayIntegrationRegistration[]
+  modelProviderRegistry?: OverlayModelProviderRegistration[]
+  policyGates?: OverlayPolicyGate[]
   theme?: OverlayThemeMetadata
   featureFlags: AppFeatureFlags
   destinations: AppDestinationConfig[]
@@ -524,15 +614,162 @@ export interface NoteDoc {
 export interface KnowledgeFile {
   _id: string
   name: string
-  type: 'file' | 'folder'
+  type: 'file' | 'folder' | 'note' | 'output' | string
+  kind?: 'folder' | 'note' | 'upload' | 'output' | string
   parentId: string | null
   content?: string
+  textContent?: string
+  mimeType?: string
   sizeBytes?: number
   isStorageBacked?: boolean
   downloadUrl?: string
   createdAt: number
   updatedAt: number
   projectId?: string
+}
+
+export type KnowledgeFileKind = 'folder' | 'note' | 'upload' | 'output' | string
+
+export interface KnowledgeFileTreeNode extends KnowledgeFile {
+  depth: number
+  path: readonly string[]
+  children: KnowledgeFileTreeNode[]
+}
+
+export interface FileQueryContract {
+  fileId?: string
+  projectId?: string | null
+  kind?: KnowledgeFileKind
+  parentId?: string | null
+  conversationId?: string
+  outputType?: string
+  type?: string
+}
+
+export interface CreateFileRequest {
+  name: string
+  type?: 'file' | 'folder' | string
+  kind?: KnowledgeFileKind
+  parentId?: string | null
+  content?: string
+  textContent?: string
+  r2Key?: string
+  sizeBytes?: number
+  projectId?: string | null
+  mimeType?: string
+  extension?: string
+  conversationId?: string
+  turnId?: string
+  modelId?: string
+  prompt?: string
+  outputType?: string
+  legacyOutputId?: string
+  accessToken?: string
+  userId?: string
+}
+
+export interface CreateFileResponse {
+  id?: string
+  ids?: string[]
+  parts?: number
+  error?: string
+}
+
+export interface UpdateFileRequest {
+  fileId: string
+  name?: string
+  content?: string
+  textContent?: string
+  parentId?: string | null
+  projectId?: string | null
+  accessToken?: string
+  userId?: string
+}
+
+export interface MutationSuccessResponse {
+  success: boolean
+  error?: string
+}
+
+export interface FileUploadUrlRequest {
+  name?: string
+  mimeType?: string
+  sizeBytes: number
+  accessToken?: string
+  userId?: string
+}
+
+export interface FileUploadUrlResponse {
+  uploadUrl: string
+  r2Key: string
+  expiresIn: number
+  maxSizeBytes: number
+  error?: string
+  message?: string
+}
+
+export interface FilePresignQuery {
+  name: string
+  mimeType?: string
+  sizeBytes: number
+}
+
+export interface FilePresignResponse {
+  r2Key: string
+  presignedUrl: string
+  expiresIn: number
+  maxSizeBytes: number
+  error?: string
+  message?: string
+}
+
+export interface FileShareRequest {
+  fileId: string
+  visibility: 'private' | 'public'
+  accessToken?: string
+  userId?: string
+}
+
+export interface FileShareResponse {
+  visibility: 'private' | 'public'
+  token: string | null
+  url: string | null
+  error?: string
+}
+
+export type FileBulkAction = 'delete' | 'move' | 'share' | 'download'
+
+export interface FileBulkActionRequest {
+  action: FileBulkAction
+  fileIds: readonly string[]
+  targetParentId?: string | null
+  targetProjectId?: string | null
+  visibility?: 'private' | 'public'
+}
+
+export interface FileTextSearchRequest {
+  fileIds: string[]
+  query: string
+  contextChars?: number
+  maxMatchesPerFile?: number
+  maxTotalSnippetChars?: number
+  accessToken?: string
+  userId?: string
+}
+
+export interface FileTextSearchMatch {
+  fileId: string
+  fileName: string
+  matchIndexInFile: number
+  charStart: number
+  charEnd: number
+  snippet: string
+}
+
+export interface FileTextSearchResponse {
+  success: true
+  matches: FileTextSearchMatch[]
+  truncated: boolean
 }
 
 export interface MemoryRow {
@@ -556,6 +793,45 @@ export interface MemoryRow {
   updatedAt?: number
 }
 
+export interface MemoryQueryContract {
+  memoryId?: string
+  raw?: boolean
+  updatedSince?: number
+  includeDeleted?: boolean
+  projectId?: string
+  conversationId?: string
+  noteId?: string
+}
+
+export interface CreateMemoryRequest {
+  content: string
+  source?: 'chat' | 'note' | 'manual'
+  clientId?: string
+  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
+  importance?: number
+  projectId?: string
+  conversationId?: string
+  noteId?: string
+  messageId?: string
+  turnId?: string
+  tags?: string[]
+  actor?: 'user' | 'agent'
+  accessToken?: string
+  userId?: string
+}
+
+export interface CreateMemoryResponse {
+  id: string
+  ids: string[]
+  count: number
+  memory?: MemoryRow | null
+  error?: string
+}
+
+export interface UpdateMemoryRequest extends Partial<Omit<CreateMemoryRequest, 'clientId'>> {
+  memoryId: string
+}
+
 export type OutputType = string
 export type OutputSource = string
 
@@ -576,6 +852,77 @@ export interface OutputSummary {
   completedAt?: number
 }
 
+export interface OutputQueryContract {
+  outputId?: string
+  type?: string
+  limit?: number
+  conversationId?: string
+}
+
+export interface DeleteOutputResponse extends MutationSuccessResponse {}
+
+export interface NoteQueryContract {
+  noteId?: string
+  projectId?: string | null
+  includeDeleted?: boolean
+}
+
+export interface CreateNoteRequest {
+  title?: string
+  content?: string
+  tags?: string[]
+  projectId?: string
+  clientId?: string
+  accessToken?: string
+  userId?: string
+}
+
+export interface CreateNoteResponse {
+  id: string
+  note: NoteDoc | null
+  error?: string
+}
+
+export interface UpdateNoteRequest {
+  noteId: string
+  title?: string
+  content?: string
+  tags?: string[]
+  projectId?: string
+  accessToken?: string
+  userId?: string
+}
+
+export interface UpdateNoteResponse {
+  success: boolean
+  note: NoteDoc | null
+  error?: string
+}
+
+export interface DeleteNoteResponse extends MutationSuccessResponse {
+  noteId?: string
+  deletedAt?: number
+}
+
+export interface NotebookAgentMention {
+  type: string
+  id: string
+  name: string
+  fileIds?: string[]
+}
+
+export interface NotebookAgentRequest {
+  noteContent: string
+  noteTitle: string
+  message: string
+  modelId?: string
+  mode?: 'ask' | 'write'
+  projectId?: string
+  mentions?: NotebookAgentMention[]
+  accessToken?: string
+  userId?: string
+}
+
 export interface IntegrationSummary {
   slug: string
   name: string
@@ -583,6 +930,31 @@ export interface IntegrationSummary {
   logoUrl: string | null
   isConnected: boolean
   connectedAccountId?: string | null
+}
+
+export interface IntegrationSearchResponse {
+  items: IntegrationSummary[]
+  nextCursor?: string | null
+}
+
+export interface ConnectedIntegrationsResponse {
+  connected: string[]
+  items?: IntegrationSummary[]
+}
+
+export interface IntegrationConnectionRequest {
+  action?: 'connect' | 'disconnect'
+  toolkit: string
+  accessToken?: string
+  userId?: string
+}
+
+export interface IntegrationConnectionResponse {
+  success?: boolean
+  redirectUrl?: string | null
+  connectionId?: string | null
+  status?: string | null
+  error?: string
 }
 
 export interface SkillSummary {
@@ -594,6 +966,31 @@ export interface SkillSummary {
   projectId?: string
 }
 
+export interface CreateSkillRequest {
+  name: string
+  description: string
+  instructions: string
+  enabled?: boolean
+  projectId?: string
+  accessToken?: string
+  userId?: string
+}
+
+export interface UpdateSkillRequest {
+  skillId: string
+  name?: string
+  description?: string
+  instructions?: string
+  enabled?: boolean
+  accessToken?: string
+  userId?: string
+}
+
+export interface CreateEntityResponse {
+  id: string
+  error?: string
+}
+
 export interface ProjectSummary {
   _id: string
   name: string
@@ -603,6 +1000,59 @@ export interface ProjectSummary {
   deletedAt?: number
   updatedAt: number
   createdAt: number
+}
+
+export interface ProjectQueryContract {
+  projectId?: string
+  updatedSince?: number
+  includeDeleted?: boolean
+}
+
+export interface ProjectTreeNode extends ProjectSummary {
+  depth: number
+  path: readonly string[]
+  children: ProjectTreeNode[]
+}
+
+export interface ProjectResourceSummary {
+  conversations: ConversationSummary[]
+  notes: NoteDoc[]
+  files: KnowledgeFile[]
+}
+
+export interface CreateProjectRequest {
+  name: string
+  parentId?: string | null
+  instructions?: string
+  clientId?: string
+  accessToken?: string
+  userId?: string
+}
+
+export interface CreateProjectResponse {
+  id: string
+  project?: ProjectSummary | null
+  error?: string
+}
+
+export interface UpdateProjectRequest {
+  projectId: string
+  name?: string
+  instructions?: string
+  parentId?: string | null
+  accessToken?: string
+  userId?: string
+}
+
+export interface UpdateProjectResponse {
+  success: boolean
+  project?: ProjectSummary | null
+  error?: string
+}
+
+export interface DeleteProjectResponse extends MutationSuccessResponse {
+  deletedIds?: string[]
+  deletedAt?: number
 }
 
 export interface McpServerSummary {
@@ -617,4 +1067,53 @@ export interface McpServerSummary {
   timeoutMs?: number
   createdAt: number
   updatedAt: number
+}
+
+export type McpAuthType = 'none' | 'bearer' | 'header'
+export type McpTransport = 'sse' | 'streamable-http'
+
+export type McpAuthConfig =
+  | { bearerToken: string }
+  | { headerName: string; headerValue: string }
+  | Record<string, never>
+
+export interface CreateMcpServerRequest {
+  name: string
+  description?: string
+  transport: McpTransport
+  url: string
+  enabled?: boolean
+  authType?: McpAuthType
+  authConfig?: McpAuthConfig | null
+  timeoutMs?: number
+  accessToken?: string
+  userId?: string
+}
+
+export interface UpdateMcpServerRequest extends Partial<CreateMcpServerRequest> {
+  mcpServerId: string
+}
+
+export interface TestMcpServerRequest {
+  url: string
+  transport?: McpTransport
+  authType?: McpAuthType
+  authConfig?: McpAuthConfig
+  accessToken?: string
+  userId?: string
+}
+
+export interface TestMcpServerResponse {
+  ok: boolean
+  toolCount?: number
+  error?: string
+}
+
+export interface OnboardingStatusResponse {
+  hasSeenOnboarding: boolean
+}
+
+export interface OnboardingCompleteResponse {
+  ok: boolean
+  persistedToConvex?: boolean
 }

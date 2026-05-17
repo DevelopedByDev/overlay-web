@@ -5,12 +5,60 @@ import type {
   AutomationSummary,
   ConversationMessage,
   ConversationSummary,
+  ConnectedIntegrationsResponse,
+  CreateEntityResponse,
+  CreateFileRequest,
+  CreateFileResponse,
+  CreateMcpServerRequest,
+  CreateMemoryRequest,
+  CreateMemoryResponse,
+  CreateNoteRequest,
+  CreateNoteResponse,
   Entitlements,
+  FilePresignQuery,
+  FilePresignResponse,
   IntegrationSummary,
+  IntegrationConnectionRequest,
+  IntegrationConnectionResponse,
+  IntegrationSearchResponse,
+  FileQueryContract,
+  FileShareRequest,
+  FileShareResponse,
+  FileTextSearchRequest,
+  FileTextSearchResponse,
+  FileUploadUrlRequest,
+  FileUploadUrlResponse,
   KnowledgeFile,
   McpServerSummary,
+  MemoryQueryContract,
+  MemoryRow,
+  MutationSuccessResponse,
+  NoteDoc,
+  NoteQueryContract,
+  NotebookAgentRequest,
+  OutputQueryContract,
+  OutputSummary,
+  ProjectQueryContract,
+  CreateProjectRequest,
+  CreateProjectResponse,
   ProjectSummary,
+  TestMcpServerRequest,
+  TestMcpServerResponse,
   SkillSummary,
+  UpdateFileRequest,
+  UpdateMcpServerRequest,
+  UpdateMemoryRequest,
+  UpdateNoteRequest,
+  UpdateNoteResponse,
+  UpdateProjectRequest,
+  UpdateProjectResponse,
+  DeleteProjectResponse,
+  DeleteNoteResponse,
+  DeleteOutputResponse,
+  CreateSkillRequest,
+  UpdateSkillRequest,
+  OnboardingCompleteResponse,
+  OnboardingStatusResponse,
 } from '@overlay/app-core'
 
 type QueryValue = string | number | boolean | null | undefined
@@ -99,16 +147,21 @@ export interface FileQuery {
 
 export interface ProjectQuery {
   projectId?: string
+  updatedSince?: number
+  includeDeleted?: boolean
 }
 
 export interface IntegrationQuery {
   action?: 'search' | string
   limit?: number
   slug?: string
+  q?: string
+  cursor?: string
 }
 
 export interface SkillQuery {
   skillId?: string
+  projectId?: string
 }
 
 export interface McpServerQuery {
@@ -119,6 +172,12 @@ export interface AutomationQuery {
   automationId?: string
   includeRuns?: boolean
 }
+
+export interface MemoryQuery extends MemoryQueryContract {}
+
+export interface OutputQuery extends OutputQueryContract {}
+
+export interface NoteQuery extends NoteQueryContract {}
 
 export interface AppSubscriptionSettings {
   planKind: 'free' | 'paid'
@@ -207,6 +266,9 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
   const mcpsPath = (query?: McpServerQuery) => appendQuery('/api/app/mcps', query as QueryParams | undefined)
   const automationsPath = (query?: AutomationQuery) =>
     appendQuery('/api/app/automations', query as QueryParams | undefined)
+  const memoryPath = (query?: MemoryQuery) => appendQuery('/api/app/memory', query as QueryParams | undefined)
+  const outputsPath = (query?: OutputQuery) => appendQuery('/api/app/outputs', query as QueryParams | undefined)
+  const notesPath = (query?: NoteQuery) => appendQuery('/api/app/notes', query as QueryParams | undefined)
 
   return {
     request,
@@ -265,44 +327,144 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
       getResponse: (query?: FileQuery, init?: RequestInit) => request(filesPath(query), init),
       contentResponse: (fileId: string, init?: RequestInit) =>
         request(`/api/app/files/${encodeURIComponent(fileId)}/content`, init),
-      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      create: (body: CreateFileRequest, init?: RequestInit) =>
+        json<CreateFileResponse>('/api/app/files', jsonRequest(body, { ...init, method: 'POST' })),
+      createResponse: (body: CreateFileRequest, init?: RequestInit) =>
         request('/api/app/files', jsonRequest(body, { ...init, method: 'POST' })),
-      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      update: (body: UpdateFileRequest, init?: RequestInit) =>
+        json<MutationSuccessResponse>(
+          '/api/app/files',
+          jsonRequest(body, { ...init, method: 'PATCH' }),
+        ),
+      updateResponse: (body: UpdateFileRequest, init?: RequestInit) =>
         request('/api/app/files', jsonRequest(body, { ...init, method: 'PATCH' })),
       deleteResponse: (query: { fileId: string }, init?: RequestInit) =>
         request(filesPath(query), { ...init, method: 'DELETE' }),
       ingestDocumentResponse: (body: BodyInit, init?: RequestInit) =>
         request('/api/app/files/ingest-document', { ...init, method: 'POST', body }),
-      shareResponse: (body: Record<string, unknown>, init?: RequestInit) =>
-        request('/api/app/files/share', jsonRequest(body, { ...init, method: 'POST' })),
-      uploadUrlResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      share: (body: FileShareRequest, init?: RequestInit) =>
+        json<FileShareResponse>('/api/app/files/share', jsonRequest(body, { ...init, method: 'PATCH' })),
+      shareResponse: (body: FileShareRequest, init?: RequestInit) =>
+        request('/api/app/files/share', jsonRequest(body, { ...init, method: 'PATCH' })),
+      uploadUrl: (body: FileUploadUrlRequest, init?: RequestInit) =>
+        json<FileUploadUrlResponse>(
+          '/api/app/files/upload-url',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      uploadUrlResponse: (body: FileUploadUrlRequest, init?: RequestInit) =>
         request('/api/app/files/upload-url', jsonRequest(body, { ...init, method: 'POST' })),
-      presignResponse: (body: Record<string, unknown>, init?: RequestInit) =>
-        request('/api/app/files/presign', jsonRequest(body, { ...init, method: 'POST' })),
-      searchTextResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      presign: (query: FilePresignQuery, init?: RequestInit) =>
+        json<FilePresignResponse>(
+          appendQuery('/api/app/files/presign', query as unknown as QueryParams),
+          init,
+        ),
+      presignResponse: (query: FilePresignQuery, init?: RequestInit) =>
+        request(appendQuery('/api/app/files/presign', query as unknown as QueryParams), init),
+      searchText: (body: FileTextSearchRequest, init?: RequestInit) =>
+        json<FileTextSearchResponse>(
+          '/api/app/files/search-text',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      searchTextResponse: (body: FileTextSearchRequest, init?: RequestInit) =>
         request('/api/app/files/search-text', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    memory: {
+      get: <T = MemoryRow[] | MemoryRow>(query?: MemoryQuery, init?: RequestInit) =>
+        json<T>(memoryPath(query), init),
+      getResponse: (query?: MemoryQuery, init?: RequestInit) => request(memoryPath(query), init),
+      create: (body: CreateMemoryRequest, init?: RequestInit) =>
+        json<CreateMemoryResponse>('/api/app/memory', jsonRequest(body, { ...init, method: 'POST' })),
+      createResponse: (body: CreateMemoryRequest, init?: RequestInit) =>
+        request('/api/app/memory', jsonRequest(body, { ...init, method: 'POST' })),
+      update: (body: UpdateMemoryRequest, init?: RequestInit) =>
+        json<{ success: boolean; memory?: MemoryRow | null; error?: string }>(
+          '/api/app/memory',
+          jsonRequest(body, { ...init, method: 'PATCH' }),
+        ),
+      updateResponse: (body: UpdateMemoryRequest, init?: RequestInit) =>
+        request('/api/app/memory', jsonRequest(body, { ...init, method: 'PATCH' })),
+      deleteResponse: (query: { memoryId: string }, init?: RequestInit) =>
+        request(memoryPath(query), { ...init, method: 'DELETE' }),
+    },
+    outputs: {
+      get: <T = OutputSummary[]>(query?: OutputQuery, init?: RequestInit) =>
+        json<T>(outputsPath(query), init),
+      getResponse: (query?: OutputQuery, init?: RequestInit) => request(outputsPath(query), init),
+      contentResponse: (outputId: string, init?: RequestInit) =>
+        request(`/api/app/outputs/${encodeURIComponent(outputId)}/content`, init),
+      deleteResponse: (query: { outputId: string }, init?: RequestInit) =>
+        request(outputsPath(query), { ...init, method: 'DELETE' }),
+      parseDeleteResponse: parseJson<DeleteOutputResponse>,
+    },
+    notes: {
+      get: <T = NoteDoc[] | NoteDoc>(query?: NoteQuery, init?: RequestInit) =>
+        json<T>(notesPath(query), init),
+      getResponse: (query?: NoteQuery, init?: RequestInit) => request(notesPath(query), init),
+      getCanonicalFiles: <T = KnowledgeFile[] | KnowledgeFile>(
+        query?: Omit<FileQuery, 'kind'>,
+        init?: RequestInit,
+      ) => json<T>(filesPath({ ...query, kind: 'note' }), init),
+      create: (body: CreateNoteRequest, init?: RequestInit) =>
+        json<CreateNoteResponse>('/api/app/notes', jsonRequest(body, { ...init, method: 'POST' })),
+      createResponse: (body: CreateNoteRequest, init?: RequestInit) =>
+        request('/api/app/notes', jsonRequest(body, { ...init, method: 'POST' })),
+      update: (body: UpdateNoteRequest, init?: RequestInit) =>
+        json<UpdateNoteResponse>('/api/app/notes', jsonRequest(body, { ...init, method: 'PATCH' })),
+      updateResponse: (body: UpdateNoteRequest, init?: RequestInit) =>
+        request('/api/app/notes', jsonRequest(body, { ...init, method: 'PATCH' })),
+      deleteResponse: (query: { noteId: string }, init?: RequestInit) =>
+        request(notesPath(query), { ...init, method: 'DELETE' }),
+      notebookAgentResponse: (body: NotebookAgentRequest, init?: RequestInit) =>
+        request('/api/app/notebook-agent', jsonRequest(body, { ...init, method: 'POST' })),
+      parseDeleteResponse: parseJson<DeleteNoteResponse>,
     },
     projects: {
       get: <T = ProjectSummary[] | ProjectSummary>(query?: ProjectQuery, init?: RequestInit) =>
         json<T>(projectsPath(query), init),
       getResponse: (query?: ProjectQuery, init?: RequestInit) => request(projectsPath(query), init),
-      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      create: (body: CreateProjectRequest, init?: RequestInit) =>
+        json<CreateProjectResponse>(
+          '/api/app/projects',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      createResponse: (body: CreateProjectRequest, init?: RequestInit) =>
         request('/api/app/projects', jsonRequest(body, { ...init, method: 'POST' })),
-      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      update: (body: UpdateProjectRequest, init?: RequestInit) =>
+        json<UpdateProjectResponse>(
+          '/api/app/projects',
+          jsonRequest(body, { ...init, method: 'PATCH' }),
+        ),
+      updateResponse: (body: UpdateProjectRequest, init?: RequestInit) =>
         request('/api/app/projects', jsonRequest(body, { ...init, method: 'PATCH' })),
       deleteResponse: (query: { projectId: string }, init?: RequestInit) =>
         request(projectsPath(query), { ...init, method: 'DELETE' }),
+      parseDeleteResponse: parseJson<DeleteProjectResponse>,
     },
     integrations: {
-      get: <T = { items?: IntegrationSummary[] } | IntegrationSummary[]>(
+      get: <T = ConnectedIntegrationsResponse | IntegrationSearchResponse | IntegrationSummary[]>(
         query?: IntegrationQuery,
         init?: RequestInit,
       ) => json<T>(integrationsPath(query), init),
       getResponse: (query?: IntegrationQuery, init?: RequestInit) =>
         request(integrationsPath(query), init),
-      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      connect: (body: IntegrationConnectionRequest, init?: RequestInit) =>
+        json<IntegrationConnectionResponse>(
+          '/api/app/integrations',
+          jsonRequest({ ...body, action: body.action ?? 'connect' }, { ...init, method: 'POST' }),
+        ),
+      connectResponse: (body: IntegrationConnectionRequest, init?: RequestInit) =>
+        request(
+          '/api/app/integrations',
+          jsonRequest({ ...body, action: body.action ?? 'connect' }, { ...init, method: 'POST' }),
+        ),
+      disconnectResponse: (toolkit: string, init?: RequestInit) =>
+        request(
+          '/api/app/integrations',
+          jsonRequest({ action: 'disconnect', toolkit }, { ...init, method: 'POST' }),
+        ),
+      createResponse: (body: IntegrationConnectionRequest, init?: RequestInit) =>
         request('/api/app/integrations', jsonRequest(body, { ...init, method: 'POST' })),
-      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      updateResponse: (body: IntegrationConnectionRequest, init?: RequestInit) =>
         request('/api/app/integrations', jsonRequest(body, { ...init, method: 'PATCH' })),
       deleteResponse: (query?: IntegrationQuery, init?: RequestInit) =>
         request(integrationsPath(query), { ...init, method: 'DELETE' }),
@@ -311,9 +473,19 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
       get: <T = SkillSummary[]>(query?: SkillQuery, init?: RequestInit) =>
         json<T>(skillsPath(query), init),
       getResponse: (query?: SkillQuery, init?: RequestInit) => request(skillsPath(query), init),
-      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      create: (body: CreateSkillRequest, init?: RequestInit) =>
+        json<CreateEntityResponse>(
+          '/api/app/skills',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      createResponse: (body: CreateSkillRequest, init?: RequestInit) =>
         request('/api/app/skills', jsonRequest(body, { ...init, method: 'POST' })),
-      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      update: (body: UpdateSkillRequest, init?: RequestInit) =>
+        json<MutationSuccessResponse>(
+          '/api/app/skills',
+          jsonRequest(body, { ...init, method: 'PATCH' }),
+        ),
+      updateResponse: (body: UpdateSkillRequest, init?: RequestInit) =>
         request('/api/app/skills', jsonRequest(body, { ...init, method: 'PATCH' })),
       deleteResponse: (query: { skillId: string }, init?: RequestInit) =>
         request(skillsPath(query), { ...init, method: 'DELETE' }),
@@ -322,13 +494,25 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
       get: <T = McpServerSummary[]>(query?: McpServerQuery, init?: RequestInit) =>
         json<T>(mcpsPath(query), init),
       getResponse: (query?: McpServerQuery, init?: RequestInit) => request(mcpsPath(query), init),
-      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      create: (body: CreateMcpServerRequest, init?: RequestInit) =>
+        json<CreateEntityResponse>('/api/app/mcps', jsonRequest(body, { ...init, method: 'POST' })),
+      createResponse: (body: CreateMcpServerRequest, init?: RequestInit) =>
         request('/api/app/mcps', jsonRequest(body, { ...init, method: 'POST' })),
-      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      update: (body: UpdateMcpServerRequest, init?: RequestInit) =>
+        json<MutationSuccessResponse>(
+          '/api/app/mcps',
+          jsonRequest(body, { ...init, method: 'PATCH' }),
+        ),
+      updateResponse: (body: UpdateMcpServerRequest, init?: RequestInit) =>
         request('/api/app/mcps', jsonRequest(body, { ...init, method: 'PATCH' })),
       deleteResponse: (query: { mcpServerId: string }, init?: RequestInit) =>
         request(mcpsPath(query), { ...init, method: 'DELETE' }),
-      testResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      test: (body: TestMcpServerRequest, init?: RequestInit) =>
+        json<TestMcpServerResponse>(
+          '/api/app/mcps/test',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      testResponse: (body: TestMcpServerRequest, init?: RequestInit) =>
         request('/api/app/mcps/test', jsonRequest(body, { ...init, method: 'POST' })),
     },
     automations: {
@@ -372,6 +556,20 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
         init?: RequestInit,
       ) =>
         request('/api/subscription/settings', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    onboarding: {
+      status: (init?: RequestInit) =>
+        json<OnboardingStatusResponse>('/api/app/onboarding/status', init),
+      statusResponse: (init?: RequestInit) => request('/api/app/onboarding/status', init),
+      complete: (body: { accessToken?: string; userId?: string } = {}, init?: RequestInit) =>
+        json<OnboardingCompleteResponse>(
+          '/api/app/onboarding/complete',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      completeResponse: (body: { accessToken?: string; userId?: string } = {}, init?: RequestInit) =>
+        request('/api/app/onboarding/complete', jsonRequest(body, { ...init, method: 'POST' })),
+      resetResponse: (body: { accessToken?: string; userId?: string } = {}, init?: RequestInit) =>
+        request('/api/app/onboarding/reset', jsonRequest(body, { ...init, method: 'POST' })),
     },
     chat: {
       suggestionsResponse: (init?: RequestInit) => request('/api/app/chat-suggestions', init),

@@ -1,7 +1,10 @@
 'use client'
 
+// Compatibility wrapper: skill contracts and extension controllers live in shared packages;
+// this web container preserves the current screen behavior.
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Sparkles, Trash2, Loader2, Check, ToggleLeft, ToggleRight, X, Pencil, Search } from 'lucide-react'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 interface Skill {
   _id: string
@@ -51,21 +54,13 @@ function SkillDialog({
     setSaving(true)
     try {
       if (isEdit && initial) {
-        const res = await fetch('/api/app/skills', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ skillId: initial._id, name, description, instructions, enabled }),
-        })
+        const res = await overlayAppClient.skills.updateResponse({ skillId: initial._id, name, description, instructions, enabled })
         if (!res.ok) return
         onSaved({ ...initial, name, description, instructions, enabled })
         setSaved(true)
         setTimeout(() => { setSaved(false); onClose() }, 800)
       } else {
-        const res = await fetch('/api/app/skills', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name || 'New Skill', description, instructions }),
-        })
+        const res = await overlayAppClient.skills.createResponse({ name: name || 'New Skill', description, instructions })
         if (!res.ok) return
         const { id } = await res.json() as { id: string }
         const newSkill: Skill = {
@@ -89,7 +84,7 @@ function SkillDialog({
     if (!isEdit || !initial || deleting) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/app/skills?skillId=${initial._id}`, { method: 'DELETE' })
+      const res = await overlayAppClient.skills.deleteResponse({ skillId: initial._id })
       if (res.ok) {
         window.dispatchEvent(new CustomEvent('overlay:skills-changed'))
         onDeleted(initial._id)
@@ -200,7 +195,7 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
 
   const loadSkills = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/skills')
+      const res = await overlayAppClient.skills.getResponse()
       if (res.ok) setSkills(await res.json())
     } catch { /* ignore */ } finally { setLoading(false) }
   }, [])
@@ -224,11 +219,7 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
     const newEnabled = skill.enabled === false
     setSkills((prev) => prev.map((s) => s._id === skill._id ? { ...s, enabled: newEnabled } : s))
     try {
-      await fetch('/api/app/skills', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skillId: skill._id, enabled: newEnabled }),
-      })
+      await overlayAppClient.skills.updateResponse({ skillId: skill._id, enabled: newEnabled })
       window.dispatchEvent(new CustomEvent('overlay:skills-changed'))
     } catch { /* ignore */ }
   }

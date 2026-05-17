@@ -1,7 +1,10 @@
 'use client'
 
+// Compatibility wrapper: MCP server contracts and reusable extension presentation live in
+// @overlay/app-core, @overlay/api-client, and @overlay/modules-react.
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Server, Trash2, Loader2, Check, ToggleLeft, ToggleRight, X, Pencil, Search, Link2, AlertCircle, Zap } from 'lucide-react'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 interface McpServer { _id: string; name: string; description?: string; transport: 'sse' | 'streamable-http'; url: string; enabled: boolean; authType: 'none' | 'bearer' | 'header'; hasAuth: boolean; timeoutMs?: number; createdAt: number; updatedAt: number }
 interface DialogState { mode: 'create' | 'edit'; server?: McpServer }
@@ -32,13 +35,13 @@ function McpServerDialog({ state, onClose, onSaved, onDeleted }: { state: Dialog
     try {
       const authConfig = authType === 'bearer' && bearerToken ? { bearerToken } : authType === 'header' && headerName && headerValue ? { headerName, headerValue } : undefined
       if (isEdit && initial) {
-        const body: Record<string, unknown> = { mcpServerId: initial._id, name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, ...(authConfig ? { authConfig } : { authConfig: null }), ...(timeoutMs !== '' ? { timeoutMs: Number(timeoutMs) } : {}) }
-        const res = await fetch('/api/app/mcps', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        const body = { mcpServerId: initial._id, name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, ...(authConfig ? { authConfig } : { authConfig: null }), ...(timeoutMs !== '' ? { timeoutMs: Number(timeoutMs) } : {}) }
+        const res = await overlayAppClient.mcpServers.updateResponse(body)
         if (!res.ok) return
         onSaved({ ...initial, name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, hasAuth: !!authConfig, timeoutMs: timeoutMs !== '' ? Number(timeoutMs) : undefined })
         setSaved(true); setTimeout(() => { setSaved(false); onClose() }, 800)
       } else {
-        const res = await fetch('/api/app/mcps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, ...(authConfig ? { authConfig } : {}), ...(timeoutMs !== '' ? { timeoutMs: Number(timeoutMs) } : {}) }) })
+        const res = await overlayAppClient.mcpServers.createResponse({ name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, ...(authConfig ? { authConfig } : {}), ...(timeoutMs !== '' ? { timeoutMs: Number(timeoutMs) } : {}) })
         if (!res.ok) return
         const { id } = await res.json() as { id: string }
         onSaved({ _id: id, name: name.trim(), description: description.trim(), transport, url: url.trim(), enabled, authType, hasAuth: !!authConfig, timeoutMs: timeoutMs !== '' ? Number(timeoutMs) : undefined, createdAt: Date.now(), updatedAt: Date.now() })
@@ -52,7 +55,7 @@ function McpServerDialog({ state, onClose, onSaved, onDeleted }: { state: Dialog
     if (!isEdit || !initial || deleting) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/app/mcps?mcpServerId=${initial._id}`, { method: 'DELETE' })
+      const res = await overlayAppClient.mcpServers.deleteResponse({ mcpServerId: initial._id })
       if (res.ok) { window.dispatchEvent(new CustomEvent('overlay:mcps-changed')); onDeleted(initial._id); onClose() }
     } finally { setDeleting(false) }
   }
@@ -61,7 +64,7 @@ function McpServerDialog({ state, onClose, onSaved, onDeleted }: { state: Dialog
     if (testing || !url.trim()) return
     setTesting(true); setTestResult(null)
     try {
-      const res = await fetch('/api/app/mcps/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url.trim(), transport, authType, authConfig: authType === 'bearer' && bearerToken ? { bearerToken } : authType === 'header' && headerName && headerValue ? { headerName, headerValue } : undefined }) })
+      const res = await overlayAppClient.mcpServers.testResponse({ url: url.trim(), transport, authType, authConfig: authType === 'bearer' && bearerToken ? { bearerToken } : authType === 'header' && headerName && headerValue ? { headerName, headerValue } : undefined })
       const data = await res.json().catch(() => ({ error: 'Invalid response' }))
       setTestResult({ ok: res.ok && data.ok, message: res.ok && data.ok ? `Connected — ${data.toolCount ?? 0} tools available` : (data.error || 'Connection failed') })
     } catch { setTestResult({ ok: false, message: 'Connection failed' }) }
@@ -111,7 +114,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  const loadServers = useCallback(async () => { try { const res = await fetch('/api/app/mcps'); if (res.ok) setServers(await res.json()) } catch { /* ignore */ } finally { setLoading(false) } }, [])
+  const loadServers = useCallback(async () => { try { const res = await overlayAppClient.mcpServers.getResponse(); if (res.ok) setServers(await res.json()) } catch { /* ignore */ } finally { setLoading(false) } }, [])
   useEffect(() => { void loadServers() }, [loadServers])
 
   function handleSaved(server: McpServer) {
@@ -122,7 +125,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
     e.stopPropagation()
     const newEnabled = !server.enabled
     setServers((prev) => prev.map((s) => s._id === server._id ? { ...s, enabled: newEnabled } : s))
-    try { await fetch('/api/app/mcps', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mcpServerId: server._id, enabled: newEnabled }) }); window.dispatchEvent(new CustomEvent('overlay:mcps-changed')) } catch { /* ignore */ }
+    try { await overlayAppClient.mcpServers.updateResponse({ mcpServerId: server._id, enabled: newEnabled }); window.dispatchEvent(new CustomEvent('overlay:mcps-changed')) } catch { /* ignore */ }
   }
 
   const filtered = servers.filter((s) => { if (!searchQuery.trim()) return true; const q = searchQuery.toLowerCase(); return s.name.toLowerCase().includes(q) || (s.description?.toLowerCase().includes(q) ?? false) || s.url.toLowerCase().includes(q) })

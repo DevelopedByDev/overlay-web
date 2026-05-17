@@ -12,6 +12,7 @@ import { X, ArrowRight, Copy, Check, Plus, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { IntegrationsDialog } from '@/components/app/IntegrationsDialog'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/lib/integrations-events'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 /** Paste in ChatGPT, Claude, etc., then paste the reply into Overlay to save as memories. */
 export const ONBOARDING_IMPORT_MEMORY_PROMPT =
@@ -350,7 +351,7 @@ export function OnboardingTour({
     let cancelled = false
     void (async () => {
       try {
-        const res = await fetch('/api/app/integrations?action=search&limit=100')
+        const res = await overlayAppClient.integrations.getResponse({ action: 'search', limit: 100 })
         if (!res.ok || cancelled) return
         const data = (await res.json()) as { items?: Array<{ slug: string; logoUrl?: string | null }> }
         const items = Array.isArray(data.items) ? data.items : []
@@ -376,7 +377,7 @@ export function OnboardingTour({
     let cancelled = false
     async function loadConnected() {
       try {
-        const res = await fetch('/api/app/integrations')
+        const res = await overlayAppClient.integrations.getResponse()
         if (!res.ok || cancelled) return
         const data = (await res.json()) as { connected?: string[] }
         if (cancelled) return
@@ -419,11 +420,7 @@ export function OnboardingTour({
   const dialogConnect = useCallback(async (slug: string) => {
     const oauthTab = window.open('about:blank', '_blank')
     try {
-      const res = await fetch('/api/app/integrations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'connect', toolkit: slug }),
-      })
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: slug })
       const data = (await res.json().catch(() => ({}))) as { redirectUrl?: string; connectionId?: string; error?: string }
       if (!res.ok) {
         oauthTab?.close()
@@ -447,11 +444,7 @@ export function OnboardingTour({
   }, [])
 
   const dialogDisconnect = useCallback(async (slug: string) => {
-    const res = await fetch('/api/app/integrations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'disconnect', toolkit: slug }),
-    })
+    const res = await overlayAppClient.integrations.disconnectResponse(slug)
     if (!res.ok) throw new Error('Failed to disconnect')
     notifyIntegrationsChanged()
   }, [])
@@ -483,14 +476,10 @@ export function OnboardingTour({
     setIsImportSaving(true)
     setImportError(null)
     try {
-      const res = await fetch('/api/app/memory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: text,
-          source: 'manual',
-          actor: 'user',
-        }),
+      const res = await overlayAppClient.memory.createResponse({
+        content: text,
+        source: 'manual',
+        actor: 'user',
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Failed to save' }))

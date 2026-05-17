@@ -1,7 +1,10 @@
 'use client'
 
+// Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
+// with typed transport in @overlay/api-client.
 import { useState, useEffect, useCallback } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'lucide-react'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 interface MemoryListItem {
   key: string
@@ -104,7 +107,7 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
 
   const loadMemories = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/memory')
+      const res = await overlayAppClient.memory.getResponse()
       if (res.ok) {
         const rows = (await res.json()) as MemoryListItem[]
         setMemories(uniqueMemoriesFromRows(rows))
@@ -128,16 +131,12 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
     const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text
     setPendingSavePreview(preview)
     try {
-      const res = await fetch('/api/app/memory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: text,
-          source: 'manual',
-          type: addType,
-          importance: Number(addImportance) || 3,
-          actor: 'user',
-        }),
+      const res = await overlayAppClient.memory.createResponse({
+        content: text,
+        source: 'manual',
+        type: addType,
+        importance: Number(addImportance) || 3,
+        actor: 'user',
       })
       const data = (await res.json().catch(() => null)) as { error?: string } | null
       if (!res.ok) {
@@ -156,7 +155,7 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
   }
 
   async function handleDelete(memoryId: string) {
-    await fetch(`/api/app/memory?memoryId=${memoryId}`, { method: 'DELETE' })
+    await overlayAppClient.memory.deleteResponse({ memoryId })
     setMemories((prev) => prev.filter((memory) => memory.memoryId !== memoryId))
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -168,7 +167,7 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
   async function handleBulkDelete() {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    await Promise.all(ids.map((id) => fetch(`/api/app/memory?memoryId=${id}`, { method: 'DELETE' })))
+    await Promise.all(ids.map((id) => overlayAppClient.memory.deleteResponse({ memoryId: id })))
     setMemories((prev) => prev.filter((memory) => !selectedIds.has(memory.memoryId)))
     setSelectedIds(new Set())
     setSelectionMode(false)

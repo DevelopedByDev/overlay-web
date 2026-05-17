@@ -1,5 +1,7 @@
 'use client'
 
+// Compatibility wrapper: canonical project contracts/controllers live in @overlay/app-core,
+// typed transport lives in @overlay/api-client, and reusable presentation lives in @overlay/modules-react.
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import {

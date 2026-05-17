@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Workflow, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 import { dispatchChatDeleted } from '@/lib/chat-title'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
 const inlineConfirmDeleteButtonClass =
@@ -37,7 +38,7 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
 
   const loadAutomations = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/automations')
+      const res = await overlayAppClient.automations.getResponse()
       if (res.ok) setAutomations(await res.json())
     } catch {
       // ignore
@@ -92,11 +93,7 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
     )))
     cancelAutomationRename()
     try {
-      const res = await fetch('/api/app/automations', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ automationId: automation._id, name: nextName }),
-      })
+      const res = await overlayAppClient.automations.updateResponse({ automationId: automation._id, name: nextName })
       if (!res.ok) throw new Error('Failed to rename automation')
       window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
     } catch {
@@ -111,9 +108,7 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
     setPendingDeleteAutomationId(null)
     setDeletingAutomationIds((prev) => prev.includes(automation._id) ? prev : [...prev, automation._id])
     try {
-      const res = await fetch(`/api/app/automations?automationId=${encodeURIComponent(automation._id)}`, {
-        method: 'DELETE',
-      })
+      const res = await overlayAppClient.automations.deleteResponse({ automationId: automation._id })
       if (!res.ok) throw new Error('Failed to delete automation')
       const payload = (await res.json().catch(() => ({}))) as { linkedConversationIds?: string[] }
       setAutomations((prev) => prev.filter((item) => item._id !== automation._id))
@@ -174,8 +169,8 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
                 if (isEditing) return
                 setPendingNavId(automation._id)
                 try {
-                  await fetch(
-                    `/api/app/automations?automationId=${encodeURIComponent(automation._id)}`,
+                  await overlayAppClient.automations.getResponse(
+                    { automationId: automation._id },
                     { credentials: 'same-origin', cache: 'no-store' },
                   ).catch(() => null)
                 } finally {

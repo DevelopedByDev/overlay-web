@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type UIEvent } from 'react'
 import { Loader2, X, Search } from 'lucide-react'
 import { IntegrationDialogRowSkeleton } from '@/components/ui/Skeleton'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 interface PickerItem {
   slug: string
@@ -97,11 +98,12 @@ export function IntegrationsDialog({
     }
 
     try {
-      const params = new URLSearchParams({ action: 'search', limit: '12' })
-      if (fetchQuery) params.set('q', fetchQuery)
-      if (cursor) params.set('cursor', cursor)
-
-      const res = await fetch(`/api/app/integrations?${params}`)
+      const res = await overlayAppClient.integrations.getResponse({
+        action: 'search',
+        limit: 12,
+        q: fetchQuery || undefined,
+        cursor: cursor || undefined,
+      })
       if (reqId !== requestSeqRef.current) return
       if (!res.ok) throw new Error('Failed to load integrations')
       const data = await res.json()

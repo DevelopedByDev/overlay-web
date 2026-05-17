@@ -12,10 +12,12 @@
     "@overlay/app-core": "0.0.1"
   },
   "scripts": {
+    "test": "tsx --test src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@overlay/app-core": "file:../overlay-app-core",
+    "tsx": "^4.8.1",
     "typescript": "^5"
   }
 }

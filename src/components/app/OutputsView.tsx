@@ -1,5 +1,7 @@
 'use client'
 
+// Compatibility wrapper: output contracts and reusable galleries live in shared packages while
+// this web container preserves the current route behavior.
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
@@ -25,6 +27,7 @@ import {
   type OutputType,
 } from '@/lib/output-types'
 import { OutputCardSkeleton, OutputListRowSkeleton } from '@/components/ui/Skeleton'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 interface Output {
   _id: string
@@ -286,7 +289,7 @@ export default function OutputsView({
   async function handleDelete(outputId: string) {
     setDeletingId(outputId)
     try {
-      await fetch(`/api/app/files?fileId=${encodeURIComponent(outputId)}`, { method: 'DELETE' })
+      await overlayAppClient.files.deleteResponse({ fileId: outputId })
       setOutputs((prev) => prev.filter((o) => o._id !== outputId))
       if (lightbox?._id === outputId) setLightbox(null)
       if (detailsOutput?._id === outputId) setDetailsOutput(null)
@@ -299,13 +302,7 @@ export default function OutputsView({
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams({ limit: '100' })
-      if (filter === 'image' || filter === 'video') {
-        params.set('kind', 'output')
-      } else {
-        params.set('kind', 'output')
-      }
-      const res = await fetch(`/api/app/files?${params}`)
+      const res = await overlayAppClient.files.getResponse({ kind: 'output' })
       if (!res.ok) throw new Error('Failed to load')
       const rows = (await res.json()) as CanonicalOutputFile[]
       setOutputs(rows.map(canonicalFileToOutput))
@@ -314,7 +311,7 @@ export default function OutputsView({
     } finally {
       setLoading(false)
     }
-  }, [filter])
+  }, [])
 
   useEffect(() => {
     void load()

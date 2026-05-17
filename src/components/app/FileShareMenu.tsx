@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Globe, Loader2, Lock, MoreVertical, Share2 } from 'lucide-react'
 import { ShareDialog } from './ShareDialog'
 import { buildSharePageUrl } from '@/lib/share-url'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 interface FileShareMenuProps {
   fileId: string
@@ -46,11 +47,7 @@ export function FileShareMenu({
     if (shareBusy) return
     setShareBusy(true)
     try {
-      const res = await fetch('/api/app/files/share', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId, visibility: next }),
-      })
+      const res = await overlayAppClient.files.shareResponse({ fileId, visibility: next })
       if (!res.ok) throw new Error('Failed to update sharing')
       const data = (await res.json()) as {
         visibility: 'private' | 'public'

@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 import dynamic from 'next/dynamic'
 import type { TourStep } from './OnboardingTour'
 
@@ -61,10 +62,7 @@ export function useOnboarding(): OnboardingContextType {
 
 async function markComplete(userId: string | undefined) {
   try {
-    const res = await fetch('/api/app/onboarding/complete', {
-      method: 'POST',
-      credentials: 'include',
-    })
+    const res = await overlayAppClient.onboarding.completeResponse({}, { credentials: 'include' })
     if (!res.ok) return
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean }
     if (data.ok === false) return
@@ -165,7 +163,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     // Check server flag for returning users on fresh page loads
     void (async () => {
       try {
-        const res = await fetch('/api/app/onboarding/status', { credentials: 'include' })
+        const res = await overlayAppClient.onboarding.statusResponse({ credentials: 'include' })
         if (!res.ok) return
         const data = await res.json() as { hasSeenOnboarding: boolean }
         if (data.hasSeenOnboarding) {

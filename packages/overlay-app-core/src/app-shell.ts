@@ -6,9 +6,15 @@ import type {
   OverlayBrandConfig,
   OverlayFeatureFlag,
   OverlayFeatureFlagId,
+  OverlayFeatureModule,
+  OverlayIntegrationRegistration,
   OverlayNavigationItem,
+  OverlayModelProviderRegistration,
+  OverlayPolicyGate,
   OverlaySettingsSection,
+  OverlaySettingsPanel,
   OverlayThemeMetadata,
+  OverlayToolRegistration,
   ThemePresetId,
 } from './contracts'
 import { LIGHT_PRESETS, DARK_PRESETS, PRESET_CSS_VAR_KEYS, PRESETS } from './theme'
@@ -87,6 +93,129 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'contact', label: 'Contact' },
 ] as const
 
+export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = [
+  {
+    id: 'files-knowledge',
+    label: 'Files and knowledge',
+    description: 'Files, memories, generated outputs, and knowledge search surfaces.',
+    navigationItemId: 'files',
+    routePatterns: ['/app/files', '/app/knowledge', '/app/memories', '/app/outputs'],
+    componentKey: 'overlay.modules.filesKnowledge',
+    packageName: '@overlay/modules-react',
+    featureFlagId: 'knowledge',
+    order: 10,
+  },
+  {
+    id: 'notes',
+    label: 'Notes',
+    description: 'Notebook editor and note-backed file workflows.',
+    navigationItemId: 'notes',
+    routePatterns: ['/app/notes'],
+    componentKey: 'overlay.modules.notes',
+    packageName: '@overlay/modules-react',
+    order: 20,
+  },
+  {
+    id: 'projects',
+    label: 'Projects',
+    description: 'Project hierarchy and scoped workspace resources.',
+    navigationItemId: 'projects',
+    routePatterns: ['/app/projects'],
+    componentKey: 'overlay.modules.projects',
+    packageName: '@overlay/modules-react',
+    featureFlagId: 'projects',
+    order: 30,
+  },
+  {
+    id: 'tools-extensions',
+    label: 'Tools and extensions',
+    description: 'Integrations, skills, MCP servers, and tool catalog surfaces.',
+    navigationItemId: 'extensions',
+    routePatterns: ['/app/tools', '/app/integrations'],
+    componentKey: 'overlay.modules.toolsExtensions',
+    packageName: '@overlay/modules-react',
+    featureFlagId: 'extensions',
+    order: 40,
+  },
+  {
+    id: 'settings-account',
+    label: 'Settings and account',
+    description: 'Settings, account, billing, customization, and policy panels.',
+    navigationItemId: 'settings',
+    routePatterns: ['/app/settings', '/account'],
+    componentKey: 'overlay.modules.settingsAccount',
+    packageName: '@overlay/modules-react',
+    order: 50,
+  },
+] as const
+
+export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = [
+  { id: 'general', sectionId: 'general', label: 'General', componentKey: 'overlay.settings.general', order: 10 },
+  { id: 'account', sectionId: 'account', label: 'Account', componentKey: 'overlay.settings.account', order: 20 },
+  { id: 'customization', sectionId: 'customization', label: 'Customization', componentKey: 'overlay.settings.customization', order: 30 },
+  { id: 'memories', sectionId: 'memories', label: 'Memories', componentKey: 'overlay.settings.memories', featureFlagId: 'knowledge', order: 40 },
+  { id: 'models', sectionId: 'models', label: 'Models', componentKey: 'overlay.settings.models', order: 50 },
+  { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 60 },
+] as const
+
+export const DEFAULT_OVERLAY_TOOL_REGISTRY: readonly OverlayToolRegistration[] = [
+  {
+    id: 'browser-control',
+    label: 'Browser control',
+    description: 'Run browser tasks and interactive browser sessions.',
+    category: 'browser',
+    componentKey: 'overlay.tools.browserControl',
+    policyGateId: 'browser-tools',
+  },
+  {
+    id: 'knowledge-search',
+    label: 'Knowledge search',
+    description: 'Search files, memories, notes, and generated outputs.',
+    category: 'knowledge',
+    componentKey: 'overlay.tools.knowledgeSearch',
+    featureFlagId: 'knowledge',
+  },
+  {
+    id: 'automation-runner',
+    label: 'Automation runner',
+    description: 'Run, test, and monitor scheduled automations.',
+    category: 'automation',
+    componentKey: 'overlay.tools.automationRunner',
+    featureFlagId: 'automations',
+  },
+] as const
+
+export const DEFAULT_OVERLAY_INTEGRATION_REGISTRY: readonly OverlayIntegrationRegistration[] = [
+  { id: 'gmail', label: 'Gmail', providerKey: 'gmail', componentKey: 'overlay.integrations.gmail', featureFlagId: 'extensions' },
+  { id: 'google-drive', label: 'Google Drive', providerKey: 'google_drive', componentKey: 'overlay.integrations.googleDrive', featureFlagId: 'extensions' },
+  { id: 'slack', label: 'Slack', providerKey: 'slack', componentKey: 'overlay.integrations.slack', featureFlagId: 'extensions' },
+  { id: 'github', label: 'GitHub', providerKey: 'github', componentKey: 'overlay.integrations.github', featureFlagId: 'extensions' },
+] as const
+
+export const DEFAULT_OVERLAY_MODEL_PROVIDER_REGISTRY: readonly OverlayModelProviderRegistration[] = [
+  { id: 'openai', label: 'OpenAI', providerKey: 'openai', componentKey: 'overlay.modelProviders.openai' },
+  { id: 'anthropic', label: 'Anthropic', providerKey: 'anthropic', componentKey: 'overlay.modelProviders.anthropic' },
+  { id: 'google', label: 'Google', providerKey: 'google', componentKey: 'overlay.modelProviders.google' },
+  { id: 'openrouter', label: 'OpenRouter', providerKey: 'openrouter', componentKey: 'overlay.modelProviders.openrouter' },
+] as const
+
+export const DEFAULT_OVERLAY_POLICY_GATES: readonly OverlayPolicyGate[] = [
+  {
+    id: 'browser-tools',
+    label: 'Browser tools',
+    description: 'Controls whether browser automation tools are visible or disabled.',
+    defaultEnabled: true,
+    enforcement: 'warn',
+  },
+  {
+    id: 'external-integrations',
+    label: 'External integrations',
+    description: 'Controls connector-backed tools and account linking surfaces.',
+    defaultEnabled: true,
+    enforcement: 'disable',
+  },
+] as const
+
 export const DEFAULT_OVERLAY_THEME_METADATA: OverlayThemeMetadata = {
   defaultLightPreset: 'default-light',
   defaultDarkPreset: 'default-dark',
@@ -104,6 +233,12 @@ export const DEFAULT_OVERLAY_APP_CONFIG: OverlayAppConfig = {
   navigation: DEFAULT_OVERLAY_NAVIGATION,
   settingsSections: DEFAULT_OVERLAY_SETTINGS_SECTIONS,
   featureFlags: DEFAULT_OVERLAY_FEATURE_FLAGS,
+  featureModules: DEFAULT_OVERLAY_FEATURE_MODULES,
+  settingsPanels: DEFAULT_OVERLAY_SETTINGS_PANELS,
+  tools: DEFAULT_OVERLAY_TOOL_REGISTRY,
+  integrations: DEFAULT_OVERLAY_INTEGRATION_REGISTRY,
+  modelProviders: DEFAULT_OVERLAY_MODEL_PROVIDER_REGISTRY,
+  policyGates: DEFAULT_OVERLAY_POLICY_GATES,
   theme: DEFAULT_OVERLAY_THEME_METADATA,
 }
 
@@ -146,10 +281,35 @@ export function isOverlayFeatureEnabled(
   return flags.find((flag) => flag.id === featureFlagId)?.enabled ?? true
 }
 
+function mergeRegistryById<T extends { id: string }>(
+  defaults: readonly T[],
+  overrides: readonly T[] | undefined,
+): readonly T[] {
+  if (!overrides) return defaults
+  const byId = new Map<string, T>()
+  const order: string[] = []
+  for (const item of defaults) {
+    byId.set(item.id, item)
+    order.push(item.id)
+  }
+  for (const item of overrides) {
+    if (!byId.has(item.id)) order.push(item.id)
+    byId.set(item.id, { ...(byId.get(item.id) ?? {}), ...item })
+  }
+  return order.map((id) => byId.get(id)!).filter(Boolean)
+}
+
+function filterFeatureRegistry<T extends { featureFlagId?: OverlayFeatureFlagId }>(
+  registry: readonly T[],
+  featureFlags: readonly OverlayFeatureFlag[],
+): readonly T[] {
+  return registry.filter((item) => isOverlayFeatureEnabled(item.featureFlagId, featureFlags))
+}
+
 export function resolveOverlayAppShellConfig(
   config: OverlayAppConfig = DEFAULT_OVERLAY_APP_CONFIG,
 ): OverlayAppShellRegistry {
-  const featureFlags = config.featureFlags ?? DEFAULT_OVERLAY_FEATURE_FLAGS
+  const featureFlags = mergeRegistryById(DEFAULT_OVERLAY_FEATURE_FLAGS, config.featureFlags)
   const brand = {
     ...DEFAULT_OVERLAY_BRAND_CONFIG,
     ...config.brand,
@@ -160,18 +320,47 @@ export function resolveOverlayAppShellConfig(
     presets: config.theme?.presets ?? DEFAULT_OVERLAY_THEME_METADATA.presets,
     cssVarKeys: config.theme?.cssVarKeys ?? DEFAULT_OVERLAY_THEME_METADATA.cssVarKeys,
   }
-  const navigation = (config.navigation ?? DEFAULT_OVERLAY_NAVIGATION).filter((item) =>
-    isOverlayFeatureEnabled(item.featureFlagId, featureFlags),
+  const navigation = filterFeatureRegistry(
+    mergeRegistryById(DEFAULT_OVERLAY_NAVIGATION, config.navigation),
+    featureFlags,
   )
-  const settingsSections = (config.settingsSections ?? DEFAULT_OVERLAY_SETTINGS_SECTIONS).filter(
-    (section) => isOverlayFeatureEnabled(section.featureFlagId, featureFlags),
+  const settingsSections = filterFeatureRegistry(
+    mergeRegistryById(DEFAULT_OVERLAY_SETTINGS_SECTIONS, config.settingsSections),
+    featureFlags,
   )
+  const featureModules = filterFeatureRegistry(
+    mergeRegistryById(DEFAULT_OVERLAY_FEATURE_MODULES, config.featureModules),
+    featureFlags,
+  )
+  const settingsPanels = filterFeatureRegistry(
+    mergeRegistryById(DEFAULT_OVERLAY_SETTINGS_PANELS, config.settingsPanels),
+    featureFlags,
+  )
+  const tools = filterFeatureRegistry(
+    mergeRegistryById(DEFAULT_OVERLAY_TOOL_REGISTRY, config.tools),
+    featureFlags,
+  )
+  const integrations = filterFeatureRegistry(
+    mergeRegistryById(DEFAULT_OVERLAY_INTEGRATION_REGISTRY, config.integrations),
+    featureFlags,
+  )
+  const modelProviders = mergeRegistryById(
+    DEFAULT_OVERLAY_MODEL_PROVIDER_REGISTRY,
+    config.modelProviders,
+  )
+  const policyGates = mergeRegistryById(DEFAULT_OVERLAY_POLICY_GATES, config.policyGates)
 
   return {
     brand,
     navigation,
     settingsSections,
     featureFlags,
+    featureModules,
+    settingsPanels,
+    tools,
+    integrations,
+    modelProviders,
+    policyGates,
     appFeatureFlags: overlayFeatureFlagsToAppFeatureFlags(featureFlags),
     theme,
   }

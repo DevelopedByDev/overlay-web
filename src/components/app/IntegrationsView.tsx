@@ -1,5 +1,7 @@
 'use client'
 
+// Compatibility wrapper: canonical integration contracts and registry metadata live in
+// @overlay/app-core, with typed transport in @overlay/api-client.
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Loader2, Plus, Search } from 'lucide-react'
 import { IntegrationListSkeleton } from '@/components/ui/Skeleton'
@@ -7,6 +9,7 @@ import posthog from 'posthog-js'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/lib/integrations-events'
 import { setIntegrationLogoUrl } from '@/lib/integration-logo-cache'
 import { IntegrationsDialog } from './IntegrationsDialog'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 interface Integration {
   id: string
@@ -126,7 +129,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
 
   const loadConnected = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/integrations')
+      const res = await overlayAppClient.integrations.getResponse()
       if (res.ok) {
         const data = await res.json() as { connected?: string[]; items?: CatalogItem[] }
         setConnected(new Set(data.connected || []))
@@ -153,7 +156,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
   /** Toolkit catalog for logos, descriptions, and rows not in INTEGRATIONS (e.g. connected only from chat). */
   const loadCatalog = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/integrations?action=search&limit=100')
+      const res = await overlayAppClient.integrations.getResponse({ action: 'search', limit: 100 })
       if (!res.ok) return
       const data = await res.json()
       const items = (Array.isArray(data?.items) ? data.items : []) as CatalogItem[]
@@ -218,11 +221,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
 
     try {
       if (connected.has(integration.composioId)) {
-        const res = await fetch('/api/app/integrations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'disconnect', toolkit: integration.composioId }),
-        })
+        const res = await overlayAppClient.integrations.disconnectResponse(integration.composioId)
         if (res.ok) {
           setConnected((prev) => { const next = new Set(prev); next.delete(integration.composioId); return next })
           notifyIntegrationsChanged()
@@ -232,11 +231,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
           setConnectError(data.error || 'Failed to disconnect')
         }
       } else {
-        const res = await fetch('/api/app/integrations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'connect', toolkit: integration.composioId }),
-        })
+        const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: integration.composioId })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
           oauthTab?.close()
@@ -263,11 +258,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
     // Pre-open blank tab synchronously before async fetch (avoids popup blocker)
     const oauthTab = window.open('about:blank', '_blank')
     try {
-      const res = await fetch('/api/app/integrations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'connect', toolkit: slug }),
-      })
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: slug })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         oauthTab?.close()
@@ -295,11 +286,7 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
   }, [])
 
   const dialogDisconnect = useCallback(async (slug: string) => {
-    const res = await fetch('/api/app/integrations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'disconnect', toolkit: slug }),
-    })
+    const res = await overlayAppClient.integrations.disconnectResponse(slug)
     if (!res.ok) throw new Error('Failed to disconnect')
     setConnected((prev) => { const next = new Set(prev); next.delete(slug); return next })
     notifyIntegrationsChanged()

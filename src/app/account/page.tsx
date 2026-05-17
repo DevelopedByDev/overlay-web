@@ -1,5 +1,7 @@
 'use client'
 
+// Compatibility wrapper: account and billing transport should move behind @overlay/api-client
+// while this web container keeps current billing flows and redirects unchanged.
 import { useState, useEffect, Suspense, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'

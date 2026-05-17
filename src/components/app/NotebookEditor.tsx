@@ -1,5 +1,7 @@
 'use client'
 
+// Compatibility wrapper: notes are canonical kind=note files, with shared contracts/controllers
+// in @overlay/app-core and reusable React presentation in @overlay/modules-react.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -69,7 +71,7 @@ import { common, createLowlight } from 'lowlight'
 import SlashMenu, { type SlashMenuItem } from './SlashMenu'
 import { useAppSettings } from './AppSettingsProvider'
 import { ExportMenu } from './ExportMenu'
-import { buildSharePageUrl } from '@/lib/share-url'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 import {
   InlineDiffExtension,
   INLINE_DIFF_CSS,
@@ -814,7 +816,7 @@ export default function NotebookEditor({
   const loadNotes = useCallback(async () => {
     if (hideSidebar) return
     try {
-      const res = await fetch('/api/app/files?kind=note')
+      const res = await overlayAppClient.files.getResponse({ kind: 'note' })
       if (res.ok) {
         const data = (await res.json()) as CanonicalNoteFile[]
         setNotes(data.map(canonicalFileToNote))
@@ -896,7 +898,7 @@ export default function NotebookEditor({
     let cancelled = false
     async function loadNoteById() {
       try {
-        const res = await fetch(`/api/app/files?fileId=${encodeURIComponent(noteId)}`)
+        const res = await overlayAppClient.files.getResponse({ fileId: noteId })
         if (!res.ok) return
         const note = canonicalFileToNote((await res.json()) as CanonicalNoteFile)
         if (!cancelled) {
@@ -993,11 +995,7 @@ export default function NotebookEditor({
     const noteTitle = pendingTitleRef.current
     const content = pendingContentRef.current
     try {
-      const res = await fetch('/api/app/files', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId: noteId, name: noteTitle, textContent: content }),
-      })
+      const res = await overlayAppClient.files.updateResponse({ fileId: noteId, name: noteTitle, textContent: content })
       if (!res.ok) {
         isDirtyRef.current = true
         setIsDirty(true)
@@ -1064,19 +1062,16 @@ export default function NotebookEditor({
     setAgentRunning(true)
 
     try {
-      const res = await fetch('/api/app/notebook-agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await overlayAppClient.notes.notebookAgentResponse({
+        noteContent,
+        noteTitle: title.trim() || 'Untitled',
+        message,
+        modelId,
+        projectId: activeNote.projectId,
+        mentions: mentionsForRequest.length > 0 ? mentionsForRequest : undefined,
+      }, {
         credentials: 'same-origin',
         signal: ac.signal,
-        body: JSON.stringify({
-          noteContent,
-          noteTitle: title.trim() || 'Untitled',
-          message,
-          modelId,
-          projectId: activeNote.projectId,
-          mentions: mentionsForRequest.length > 0 ? mentionsForRequest : undefined,
-        }),
       })
 
       if (!res.ok) {
@@ -1165,11 +1160,7 @@ export default function NotebookEditor({
   }, [activeNote, agentInput, agentMentions, agentRunning, editor, selectedModelId, title])
 
   async function createNote() {
-    const res = await fetch('/api/app/files', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '' }),
-    })
+    const res = await overlayAppClient.files.createResponse({ kind: 'note', name: 'Untitled', textContent: '' })
     if (res.ok) {
       const data = (await res.json()) as { id: string; file?: CanonicalNoteFile }
       if (data.file) {
@@ -1197,7 +1188,7 @@ export default function NotebookEditor({
 
   async function deleteNote(noteId: string, event: React.MouseEvent) {
     event.stopPropagation()
-    await fetch(`/api/app/files?fileId=${noteId}`, { method: 'DELETE' })
+    await overlayAppClient.files.deleteResponse({ fileId: noteId })
     if (activeNote?._id === noteId) {
       setActiveNote(null)
       setTitle('')
