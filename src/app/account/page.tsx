@@ -10,7 +10,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { PageNavbar } from '@/components/PageNavbar'
 import { formatBytes } from '@/lib/storage-limits'
-import { getStoredDesktopPkceChallenge } from '@/lib/mobile-auth-client'
+import {
+  getStoredDesktopPkceChallenge,
+  persistMobilePkceChallengeFromUrl,
+} from '@/lib/mobile-auth-client'
 import {
   marketingBody,
   marketingHeading,
@@ -22,6 +25,7 @@ import {
 
 // Always use overlay:// for deep links (registered in WorkOS for both environments)
 const APP_PROTOCOL = 'overlay'
+const PKCE_CHALLENGE_RE = /^[A-Za-z0-9._~-]{43,128}$/
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
@@ -193,6 +197,10 @@ function AccountPageContent() {
   const currentUserId = user?.id || null
   const [signingOut, setSigningOut] = useState(false)
   const [sessionCheckComplete, setSessionCheckComplete] = useState(false)
+
+  useEffect(() => {
+    persistMobilePkceChallengeFromUrl(searchParams)
+  }, [searchParams])
 
   // Refresh session on mount to ensure we have the latest session state
   // This fixes the race condition when redirecting from auth callback
@@ -415,15 +423,24 @@ function AccountPageContent() {
   const handleOpenInApp = async () => {
     setActionLoading('openApp')
     try {
+      const codeChallenge = desktopCodeChallenge.trim()
+      if (!PKCE_CHALLENGE_RE.test(codeChallenge)) {
+        console.warn('[Account] Missing desktop auth handshake; opening desktop app without session transfer')
+        triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
+        return
+      }
+
       const response = await fetch('/api/auth/desktop-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          desktopCodeChallenge ? { codeChallenge: desktopCodeChallenge } : {}
-        )
+        body: JSON.stringify({ codeChallenge })
       })
       if (!response.ok) {
-        console.error('[Account] Failed to generate desktop link')
+        const errorBody = await response.json().catch(() => null)
+        console.error('[Account] Failed to generate desktop link', {
+          status: response.status,
+          error: errorBody,
+        })
         triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
         return
       }
