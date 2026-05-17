@@ -13,6 +13,7 @@ import {
   useState,
 } from 'react'
 import { getPresetCssVars, isThemePresetId } from '@/lib/themes'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 export type { AppSettings, ChatStreamingMode, ThemePreference, ThemePresetId } from '@overlay/app-core'
 
@@ -175,7 +176,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     }
 
     try {
-      const res = await fetch('/api/app/settings', { cache: 'no-store' })
+      const res = await overlayAppClient.settings.getResponse({ cache: 'no-store' })
       if (res.ok) {
         const next = coerceChatStreamingMode(await res.json() as AppSettings)
         setSettings(next)
@@ -231,11 +232,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     persistSettings(optimistic)
     setIsSaving(true)
     try {
-      const res = await fetch('/api/app/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      })
+      const res = await overlayAppClient.settings.updateResponse(patch)
       if (!res.ok) {
         console.warn('Failed to save settings to server; using local state')
         return optimistic

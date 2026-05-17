@@ -1,3 +1,5 @@
+import { overlayAppClient } from '@/lib/overlay-app-client'
+
 export type CachedConversation = {
   _id: string
   title: string
@@ -54,7 +56,7 @@ export async function fetchChatList(options: { force?: boolean } = {}): Promise<
   }
   if (!options.force && inFlight) return inFlight
 
-  inFlight = fetch('/api/app/conversations')
+  inFlight = overlayAppClient.conversations.getResponse()
     .then(async (res) => {
       if (!res.ok) return cachedChats ?? []
       const chats = await res.json() as CachedConversation[]

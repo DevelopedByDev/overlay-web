@@ -18,6 +18,7 @@ import {
   type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
 import { fetchChatList, getCachedChatList, removeCachedChat, upsertCachedChat } from '@/lib/chat-list-cache'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -148,11 +149,7 @@ export function ChatInlinePanel({
     dispatchChatTitleUpdated({ chatId, title: nextTitle })
 
     try {
-      const response = await fetch('/api/app/conversations', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId: chatId, title: nextTitle }),
-      })
+      const response = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: nextTitle })
       if (!response.ok) throw new Error('Failed to rename chat')
     } catch {
       setChats((prev) => prev.map((chat) => (
@@ -172,7 +169,7 @@ export function ChatInlinePanel({
     event.stopPropagation()
     setPendingDeleteChatId(null)
     dispatchChatDeleted({ chatId })
-    await fetch(`/api/app/conversations?conversationId=${chatId}`, { method: 'DELETE' })
+    await overlayAppClient.conversations.deleteResponse({ conversationId: chatId })
     if (activeId === chatId) {
       router.push('/app/chat')
     }

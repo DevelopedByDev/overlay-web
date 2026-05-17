@@ -5,6 +5,7 @@ import { Play, MessageSquare, SlidersHorizontal } from 'lucide-react'
 import { AutomationInstructionsEditor } from './AutomationInstructionsEditor'
 import { DEFAULT_MODEL_ID } from '@/lib/model-types'
 import { getModelsByIntelligence } from '@/lib/model-data'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 export type AutomationDetailTab = 'chat' | 'edit'
 
@@ -375,20 +376,16 @@ export function AutomationEditorPanel({
       const nextGraphSource = instructionsChanged
         ? graphSourceFromAutomationInstructions({ ...automation, instructions }) || defaultAutomationGraphSource({ ...automation, instructions })
         : graphSource
-      const res = await fetch('/api/app/automations', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          automationId: automation._id,
-          name,
-          description,
-          instructions,
-          enabled,
-          schedule,
-          timezone,
-          graphSource: nextGraphSource,
-          modelId,
-        }),
+      const res = await overlayAppClient.automations.updateResponse({
+        automationId: automation._id,
+        name,
+        description,
+        instructions,
+        enabled,
+        schedule,
+        timezone,
+        graphSource: nextGraphSource,
+        modelId,
       })
       if (!res.ok) throw new Error('Failed to save automation')
       setGraphSource(nextGraphSource)
@@ -416,11 +413,7 @@ export function AutomationEditorPanel({
     setTestState('running')
     setTestMessage(null)
     try {
-      const res = await fetch('/api/app/automations/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ automationId: automation._id }),
-      })
+      const res = await overlayAppClient.automations.testResponse({ automationId: automation._id })
       const data = await res.json().catch(() => ({})) as {
         conversationId?: string
         message?: string

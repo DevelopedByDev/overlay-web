@@ -7,6 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./app-shell": "./src/app-shell.ts",
     "./contracts": "./src/contracts.ts",
     "./theme": "./src/theme.ts"
   }

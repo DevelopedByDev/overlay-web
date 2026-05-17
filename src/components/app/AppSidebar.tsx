@@ -9,8 +9,9 @@ import {
   MessageSquare, FileText, LogOut, User,
   Puzzle, Monitor, Smartphone, Chrome, ChevronUp, AlertCircle, Plug, Sparkles, Server, Package,
   FolderOpen, Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
-  Workflow,
+  Workflow, Palette, ShieldCheck, Play, PanelsLeftRight, Mail,
 } from 'lucide-react'
+import type { OverlayIconName } from '@overlay/app-core'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from './GuestGateProvider'
@@ -30,22 +31,39 @@ import { ChatInlinePanel } from './ChatInlinePanel'
 import { AutomationsInlinePanel } from './AutomationsInlinePanel'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
+import { overlayAppShell } from '@/overlay.config'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from './chat-interface/mention-types'
 
-const NAV_ITEMS: Array<{
-  href?: string
-  label: string
-  icon: LucideIcon
-  disabled?: boolean
-}> = [
-  { href: '/app/chat', label: 'Chat', icon: MessageSquare },
-  { href: '/app/files', label: 'Files', icon: FileText },
-  { href: '/app/tools', label: 'Extensions', icon: Puzzle },
-  { href: '/app/projects', label: 'Projects', icon: FolderOpen },
-  { href: '/app/automations', label: 'Automations', icon: Workflow },
-]
+const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
+  'arrow-up': ArrowUp,
+  chrome: Chrome,
+  'file-text': FileText,
+  'folder-open': FolderOpen,
+  mail: Mail,
+  'message-square': MessageSquare,
+  monitor: Monitor,
+  package: Package,
+  palette: Palette,
+  'panels-left-right': PanelsLeftRight,
+  play: Play,
+  plug: Plug,
+  puzzle: Puzzle,
+  server: Server,
+  settings: Settings,
+  'shield-check': ShieldCheck,
+  smartphone: Smartphone,
+  sparkles: Sparkles,
+  user: User,
+  workflow: Workflow,
+}
+
+const NAV_ITEMS = overlayAppShell.navigation.map((item) => ({
+  ...item,
+  icon: ICON_COMPONENTS[item.icon] ?? MessageSquare,
+}))
 
 const PROFILE_APP_LINKS = [
   { label: 'Desktop App', icon: Monitor },
@@ -53,14 +71,8 @@ const PROFILE_APP_LINKS = [
   { label: 'Chrome Extension', icon: Chrome },
 ] as const
 
-const SETTINGS_SECTIONS = [
-  { id: 'general', label: 'General' },
-  { id: 'account', label: 'Account' },
-  { id: 'customization', label: 'Customization' },
-  { id: 'memories', label: 'Memories' },
-  { id: 'models', label: 'Models' },
-  { id: 'contact', label: 'Contact' },
-] as const
+const SETTINGS_SECTIONS = overlayAppShell.settingsSections
+const BRAND_CONFIG = overlayAppShell.brand
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'overlay:app-sidebar-collapsed'
 const SIDEBAR_COLLAPSED_EVENT = 'overlay:sidebar-collapsed-change'
@@ -243,7 +255,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   })()
   const loadEntitlements = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/subscription')
+      const res = await overlayAppClient.subscription.getResponse()
       if (res.ok) setEntitlements(await res.json())
     } catch {
       // ignore
@@ -251,7 +263,6 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   }, [setEntitlements])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadEntitlements()
   }, [loadEntitlements])
 
@@ -344,15 +355,11 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   async function handleCreateChat() {
     if (!user) { requireAuth('send'); return }
     const models = readNewChatModelFieldsFromStorage()
-    const res = await fetch('/api/app/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: 'New Chat',
-        askModelIds: models.askModelIds,
-        actModelId: models.actModelId,
-        lastMode: models.lastMode,
-      }),
+    const res = await overlayAppClient.conversations.createResponse({
+      title: 'New Chat',
+      askModelIds: models.askModelIds,
+      actModelId: models.actModelId,
+      lastMode: models.lastMode,
     })
     if (!res.ok) return
     const data = await res.json() as { id?: string; conversation?: { _id: string; title: string; lastModified: number } }
@@ -372,15 +379,11 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     const models = readNewChatModelFieldsFromStorage()
     const title = 'New automation'
     try {
-      const res = await fetch('/api/app/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          askModelIds: models.askModelIds,
-          actModelId: models.actModelId,
-          lastMode: 'act',
-        }),
+      const res = await overlayAppClient.conversations.createResponse({
+        title,
+        askModelIds: models.askModelIds,
+        actModelId: models.actModelId,
+        lastMode: 'act',
       })
       if (!res.ok) return
       const data = await res.json() as { id?: string; conversation?: { _id: string; title: string; lastModified: number } }
@@ -389,19 +392,15 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       upsertCachedChat(chat)
       dispatchChatCreated({ chat })
       let automationId: string | null = null
-      const automationRes = await fetch('/api/app/automations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: title,
-          description: 'Draft automation. Add a description before enabling it.',
-          instructions: 'Describe what this automation should do.',
-          enabled: false,
-          schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-          modelId: models.actModelId,
-          sourceConversationId: data.id,
-        }),
+      const automationRes = await overlayAppClient.automations.createResponse({
+        name: title,
+        description: 'Draft automation. Add a description before enabling it.',
+        instructions: 'Describe what this automation should do.',
+        enabled: false,
+        schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        modelId: models.actModelId,
+        sourceConversationId: data.id,
       })
       if (!automationRes.ok) return
       const automationData = await automationRes.json() as { id?: string }
@@ -419,11 +418,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   async function handleCreateNote() {
     if (!user) { requireAuth('nav'); return }
     const parentId = pathname.startsWith('/app/files') ? currentSearchParams.get('folder') : null
-    const res = await fetch('/api/app/files', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '', parentId }),
-    })
+    const res = await overlayAppClient.files.createResponse({ kind: 'note', name: 'Untitled', textContent: '', parentId })
     if (!res.ok) return
     const data = await res.json() as { id?: string; file?: { _id: string; name?: string; content?: string; textContent?: string; createdAt?: number; updatedAt?: number } }
     if (!data.id) return
@@ -448,11 +443,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
 
   async function handleCreateProject() {
     if (!user) { requireAuth('nav'); return }
-    const res = await fetch('/api/app/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Untitled Project' }),
-    })
+    const res = await overlayAppClient.projects.createResponse({ name: 'Untitled Project' })
     if (!res.ok) return
     setProjectsPanelRefreshKey((value) => value + 1)
     setMobileMenuOpen(false)
@@ -461,16 +452,16 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
 
   const brandLink = (
     <Link
-      href="/app/chat"
+      href={BRAND_CONFIG.homeHref}
       className="flex min-w-0 items-center gap-2"
       onClick={() => setMobileMenuOpen(false)}
     >
-      <Image src="/assets/overlay-logo.png" alt="" width={10} height={10} className="shrink-0" />
+      <Image src={BRAND_CONFIG.logoSrc} alt={BRAND_CONFIG.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
       <span
         className="truncate text-xl font-medium tracking-tight"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
-        overlay
+        {BRAND_CONFIG.shortName ?? BRAND_CONFIG.name}
       </span>
     </Link>
   )
@@ -483,7 +474,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       aria-label="Expand sidebar"
       title="Expand sidebar"
     >
-      <Image src="/assets/overlay-logo.png" alt="" width={10} height={10} className="shrink-0 group-hover:hidden" />
+      <Image src={BRAND_CONFIG.logoSrc} alt={BRAND_CONFIG.logoAlt ?? ''} width={10} height={10} className="shrink-0 group-hover:hidden" />
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
   ) : (
@@ -493,16 +484,16 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
   const mobileBrandLink = (
     <Link
-      href="/app/chat"
+      href={BRAND_CONFIG.homeHref}
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
       onClick={() => setMobileMenuOpen(false)}
     >
-      <Image src="/assets/overlay-logo.png" alt="" width={10} height={10} className="shrink-0" />
+      <Image src={BRAND_CONFIG.logoSrc} alt={BRAND_CONFIG.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
       <span
         className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
-        overlay
+        {BRAND_CONFIG.shortName ?? BRAND_CONFIG.name}
       </span>
     </Link>
   )
@@ -755,12 +746,12 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
             </button>
             {!sidebarCollapsed && settingsNavExpanded ? (
               <div className="mt-1 space-y-0.5 pl-7">
-                {SETTINGS_SECTIONS.map(({ id, label }) => {
+                {SETTINGS_SECTIONS.map(({ id, label, href: sectionHref }) => {
                   const active = settingsPathActive && settingsSection === id
                   return (
                     <Link
                       key={id}
-                      href={`/app/settings?section=${id}`}
+                      href={sectionHref ?? `/app/settings?section=${id}`}
                       onClick={() => setMobileMenuOpen(false)}
                       className={`flex w-full items-center rounded-md px-3 py-1.5 text-xs transition-colors ${
                         active

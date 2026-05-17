@@ -26,6 +26,18 @@
       "@/*": [
         "./src/*"
       ],
+      "@overlay/api-client": [
+        "./packages/overlay-api-client/src/index.ts"
+      ],
+      "@overlay/api-client/*": [
+        "./packages/overlay-api-client/src/*"
+      ],
+      "@overlay/app-core": [
+        "./packages/overlay-app-core/src/index.ts"
+      ],
+      "@overlay/app-core/*": [
+        "./packages/overlay-app-core/src/*"
+      ],
       "@overlay/ui": [
         "./packages/overlay-ui/src/index.ts"
       ],

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  CANONICAL_APP_DESTINATIONS,
   DEFAULT_APP_SETTINGS,
+  overlayNavigationToDestinations,
+  resolveOverlayAppShellConfig,
   type AppBootstrapResponse,
   type AppSettings,
   type Entitlements,
 } from '@overlay/app-core'
+import overlayAppConfig from '@/overlay.config'
 import { getSession } from '@/lib/workos-auth'
 import { convex } from '@/lib/convex'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
@@ -60,36 +62,57 @@ export async function GET(request: NextRequest) {
       ).catch(() => DEFAULT_APP_SETTINGS),
     ])
 
+    const user =
+      browserSession?.user ??
+      (profile?.profile
+        ? {
+            id: profile.profile.userId,
+            email: profile.profile.email,
+            firstName: profile.profile.firstName,
+            lastName: profile.profile.lastName,
+            profilePictureUrl: profile.profile.profilePictureUrl,
+            emailVerified: false,
+          }
+        : null)
+    const modelPolicyContext = { user, entitlements }
+    const chatModels = [
+      ...(overlayAppConfig.modelPolicy?.filterChatModels?.(AVAILABLE_MODELS, modelPolicyContext) ??
+        AVAILABLE_MODELS),
+    ]
+    const imageModels = [
+      ...(overlayAppConfig.modelPolicy?.filterImageModels?.(IMAGE_MODELS, modelPolicyContext) ??
+        IMAGE_MODELS),
+    ]
+    const videoModels = [
+      ...(overlayAppConfig.modelPolicy?.filterVideoModels?.(VIDEO_MODELS, modelPolicyContext) ??
+        VIDEO_MODELS),
+    ]
+    const appShell = resolveOverlayAppShellConfig(overlayAppConfig)
+
     const response: AppBootstrapResponse = {
-      user:
-        browserSession?.user ??
-        (profile?.profile
-          ? {
-              id: profile.profile.userId,
-              email: profile.profile.email,
-              firstName: profile.profile.firstName,
-              lastName: profile.profile.lastName,
-              profilePictureUrl: profile.profile.profilePictureUrl,
-              emailVerified: false,
-            }
-          : null),
+      user,
       entitlements,
       uiSettings: uiSettings ?? DEFAULT_APP_SETTINGS,
-      chatModels: AVAILABLE_MODELS,
-      imageModels: IMAGE_MODELS,
-      videoModels: VIDEO_MODELS,
-      featureFlags: {
-        canUseVoiceTranscription: true,
-        canUseKnowledge: true,
-        canUseProjects: true,
-        canUseExtensions: true,
-        canUseAutomations: true,
-      },
-      destinations: [...CANONICAL_APP_DESTINATIONS],
+      chatModels,
+      imageModels,
+      videoModels,
+      brand: appShell.brand,
+      navigation: [...appShell.navigation],
+      settingsSections: [...appShell.settingsSections],
+      featureFlagRegistry: [...appShell.featureFlags],
+      theme: appShell.theme,
+      featureFlags: appShell.appFeatureFlags,
+      destinations: overlayNavigationToDestinations(appShell.navigation, appShell.settingsSections),
       defaults: {
-        chatModelId: DEFAULT_MODEL_ID,
-        imageModelId: DEFAULT_IMAGE_MODEL_ID,
-        videoModelId: DEFAULT_VIDEO_MODEL_ID,
+        chatModelId:
+          overlayAppConfig.modelPolicy?.getDefaultChatModelId?.(chatModels, modelPolicyContext) ??
+          DEFAULT_MODEL_ID,
+        imageModelId:
+          overlayAppConfig.modelPolicy?.getDefaultImageModelId?.(imageModels, modelPolicyContext) ??
+          DEFAULT_IMAGE_MODEL_ID,
+        videoModelId:
+          overlayAppConfig.modelPolicy?.getDefaultVideoModelId?.(videoModels, modelPolicyContext) ??
+          DEFAULT_VIDEO_MODEL_ID,
       },
     }
 

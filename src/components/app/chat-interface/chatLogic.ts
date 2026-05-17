@@ -3,6 +3,7 @@ import { getToolName, isReasoningUIPart, isToolUIPart } from 'ai'
 import type { AutomationDraftSummary } from '@/lib/automation-drafts'
 import type { SkillDraftSummary } from '@/lib/skill-drafts'
 import type { WebSourceItem } from '@/lib/web-sources'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 import { safeHttpUrl } from '@/lib/safe-url'
 import {
   normalizeAgentAssistantText,
@@ -821,11 +822,7 @@ export function resolveActAssistant(
 
 export async function generateTitle(text: string): Promise<string | null> {
   try {
-    const res = await fetch('/api/app/generate-title', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    })
+    const res = await overlayAppClient.chat.generateTitleResponse({ text })
     if (res.ok) {
       const data = await res.json()
       return (data.title as string)?.trim() || null

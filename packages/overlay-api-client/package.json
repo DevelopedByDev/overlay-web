@@ -1,0 +1,21 @@
+{
+  "name": "@overlay/api-client",
+  "version": "0.0.1",
+  "private": true,
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "@overlay/app-core": "0.0.1"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@overlay/app-core": "file:../overlay-app-core",
+    "typescript": "^5"
+  }
+}

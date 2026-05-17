@@ -5,6 +5,7 @@
  * TipTap suggestion plugin). Same fetch + cache + scoring policy as `useMentionData`.
  */
 
+import { overlayAppClient } from '@/lib/overlay-app-client'
 import type { MentionCategory, MentionItem, MentionType } from './mention-types'
 
 interface CachedData {
@@ -38,12 +39,12 @@ async function fetchAll(): Promise<CachedData> {
   inFlight = (async () => {
     const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
       await Promise.allSettled([
-        fetch('/api/app/files').then((r) => (r.ok ? r.json() : [])),
-        fetch('/api/app/integrations').then((r) => (r.ok ? r.json() : { items: [] })),
-        fetch('/api/app/automations').then((r) => (r.ok ? r.json() : [])),
-        fetch('/api/app/skills').then((r) => (r.ok ? r.json() : [])),
-        fetch('/api/app/mcps').then((r) => (r.ok ? r.json() : [])),
-        fetch('/api/app/conversations').then((r) => (r.ok ? r.json() : [])),
+        overlayAppClient.files.getResponse().then((r) => (r.ok ? r.json() : [])),
+        overlayAppClient.integrations.getResponse().then((r) => (r.ok ? r.json() : { items: [] })),
+        overlayAppClient.automations.getResponse().then((r) => (r.ok ? r.json() : [])),
+        overlayAppClient.skills.getResponse().then((r) => (r.ok ? r.json() : [])),
+        overlayAppClient.mcpServers.getResponse().then((r) => (r.ok ? r.json() : [])),
+        overlayAppClient.conversations.getResponse().then((r) => (r.ok ? r.json() : [])),
       ])
 
     const files: MentionItem[] = (

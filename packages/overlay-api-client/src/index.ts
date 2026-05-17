@@ -1,0 +1,395 @@
+import type {
+  AppBootstrapResponse,
+  AppSettings,
+  AutomationRunDetail,
+  AutomationSummary,
+  ConversationMessage,
+  ConversationSummary,
+  Entitlements,
+  IntegrationSummary,
+  KnowledgeFile,
+  McpServerSummary,
+  ProjectSummary,
+  SkillSummary,
+} from '@overlay/app-core'
+
+type QueryValue = string | number | boolean | null | undefined
+type QueryParams = Record<string, QueryValue>
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+export interface CreateOverlayAppClientOptions {
+  baseUrl?: string
+  fetch?: FetchLike
+  getAuthHeaders?: () => HeadersInit | Promise<HeadersInit>
+}
+
+export interface ConversationQuery {
+  conversationId?: string
+  messages?: boolean
+  projectId?: string
+  updatedSince?: number
+  includeDeleted?: boolean
+  limit?: number
+  beforeCreatedAt?: number
+  compactToolPayloads?: boolean
+}
+
+export type ConversationGetResponse =
+  | ConversationSummary[]
+  | ConversationSummary
+  | {
+      messages: ConversationMessage[]
+      limit?: number
+      hasMore?: boolean
+      earliestCreatedAt?: number
+    }
+
+export interface CreateConversationRequest {
+  title?: string
+  projectId?: string
+  askModelIds?: string[]
+  actModelId?: string
+  lastMode?: 'ask' | 'act'
+  clientId?: string
+}
+
+export interface CreateConversationResponse {
+  id?: string
+  conversation?: ConversationSummary
+  error?: string
+}
+
+export interface UpdateConversationRequest {
+  conversationId?: string
+  title?: string
+  projectId?: string | null
+  lastMode?: 'ask' | 'act'
+  askModelIds?: string[]
+  actModelId?: string
+  lastModified?: number
+}
+
+export interface ConversationMessageRequest {
+  conversationId?: string
+  turnId?: string
+  mode?: 'ask' | 'act'
+  role?: 'user' | 'assistant'
+  content?: string
+  parts?: Array<Record<string, unknown>>
+  attachmentNames?: string[]
+  model?: string
+  modelId?: string
+  contentType?: 'text' | 'image' | 'video'
+  variantIndex?: number
+  replyToTurnId?: string
+  replySnippet?: string
+  accessToken?: string
+  userId?: string
+}
+
+export interface FileQuery {
+  fileId?: string
+  projectId?: string | null
+  kind?: 'folder' | 'note' | 'upload' | 'output' | string
+  parentId?: string | null
+  conversationId?: string
+  outputType?: string
+  type?: string
+}
+
+export interface ProjectQuery {
+  projectId?: string
+}
+
+export interface IntegrationQuery {
+  action?: 'search' | string
+  limit?: number
+  slug?: string
+}
+
+export interface SkillQuery {
+  skillId?: string
+}
+
+export interface McpServerQuery {
+  mcpServerId?: string
+}
+
+export interface AutomationQuery {
+  automationId?: string
+  includeRuns?: boolean
+}
+
+export interface AppSubscriptionSettings {
+  planKind: 'free' | 'paid'
+  autoTopUpEnabled: boolean
+  topUpAmountCents: number
+  autoTopUpAmountCents: number
+  offSessionConsentAt?: number
+  topUpMinAmountCents: number
+  topUpMaxAmountCents: number
+  topUpStepAmountCents: number
+}
+
+function appendQuery(path: string, query?: QueryParams): string {
+  if (!query) return path
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null) continue
+    params.set(key, String(value))
+  }
+  const search = params.toString()
+  return search ? `${path}?${search}` : path
+}
+
+function toUrl(baseUrl: string | undefined, path: string): string {
+  if (!baseUrl) return path
+  return new URL(path, baseUrl).toString()
+}
+
+function jsonRequest(body: unknown, init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers)
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  return {
+    ...init,
+    headers,
+    body: JSON.stringify(body),
+  }
+}
+
+async function mergeHeaders(
+  getAuthHeaders: CreateOverlayAppClientOptions['getAuthHeaders'],
+  initHeaders: HeadersInit | undefined,
+): Promise<Headers> {
+  const headers = new Headers()
+  const authHeaders = await getAuthHeaders?.()
+  new Headers(authHeaders).forEach((value, key) => headers.set(key, value))
+  new Headers(initHeaders).forEach((value, key) => headers.set(key, value))
+  return headers
+}
+
+async function parseJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T
+}
+
+export function createOverlayAppClient(options: CreateOverlayAppClientOptions = {}) {
+  const fetchImpl = options.fetch ?? globalThis.fetch?.bind(globalThis)
+  if (!fetchImpl) {
+    throw new Error('createOverlayAppClient requires a fetch implementation')
+  }
+
+  async function request(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = await mergeHeaders(options.getAuthHeaders, init.headers)
+    const requestInit: RequestInit = {
+      ...init,
+      headers,
+    }
+    if (requestInit.credentials === undefined) {
+      requestInit.credentials = 'same-origin'
+    }
+    return fetchImpl(toUrl(options.baseUrl, path), requestInit)
+  }
+
+  async function json<T>(path: string, init?: RequestInit): Promise<T> {
+    return parseJson<T>(await request(path, init))
+  }
+
+  const conversationsPath = (query?: ConversationQuery) =>
+    appendQuery('/api/app/conversations', query as QueryParams | undefined)
+  const filesPath = (query?: FileQuery) => appendQuery('/api/app/files', query as QueryParams | undefined)
+  const projectsPath = (query?: ProjectQuery) =>
+    appendQuery('/api/app/projects', query as QueryParams | undefined)
+  const integrationsPath = (query?: IntegrationQuery) =>
+    appendQuery('/api/app/integrations', query as QueryParams | undefined)
+  const skillsPath = (query?: SkillQuery) => appendQuery('/api/app/skills', query as QueryParams | undefined)
+  const mcpsPath = (query?: McpServerQuery) => appendQuery('/api/app/mcps', query as QueryParams | undefined)
+  const automationsPath = (query?: AutomationQuery) =>
+    appendQuery('/api/app/automations', query as QueryParams | undefined)
+
+  return {
+    request,
+    json,
+    bootstrap: {
+      get: (init?: RequestInit) => json<AppBootstrapResponse>('/api/app/bootstrap', init),
+      getResponse: (init?: RequestInit) => request('/api/app/bootstrap', init),
+    },
+    conversations: {
+      get: <T = ConversationGetResponse>(query?: ConversationQuery, init?: RequestInit) =>
+        json<T>(conversationsPath(query), init),
+      getResponse: (query?: ConversationQuery, init?: RequestInit) =>
+        request(conversationsPath(query), init),
+      create: (body: CreateConversationRequest, init?: RequestInit) =>
+        json<CreateConversationResponse>(
+          '/api/app/conversations',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      createResponse: (body: CreateConversationRequest, init?: RequestInit) =>
+        request('/api/app/conversations', jsonRequest(body, { ...init, method: 'POST' })),
+      update: (body: UpdateConversationRequest, init?: RequestInit) =>
+        json<ConversationSummary>(
+          '/api/app/conversations',
+          jsonRequest(body, { ...init, method: 'PATCH' }),
+        ),
+      updateResponse: (body: UpdateConversationRequest, init?: RequestInit) =>
+        request('/api/app/conversations', jsonRequest(body, { ...init, method: 'PATCH' })),
+      deleteResponse: (query: { conversationId: string }, init?: RequestInit) =>
+        request(conversationsPath(query), { ...init, method: 'DELETE' }),
+      addMessage: (body: ConversationMessageRequest, init?: RequestInit) =>
+        json<{ success: boolean; conversationId: string; turnId: string }>(
+          '/api/app/conversations/message',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      addMessageResponse: (body: ConversationMessageRequest, init?: RequestInit) =>
+        request('/api/app/conversations/message', jsonRequest(body, { ...init, method: 'POST' })),
+      deleteMessageResponse: (
+        body: { conversationId?: string; turnId?: string; accessToken?: string; userId?: string },
+        init?: RequestInit,
+      ) =>
+        request('/api/app/conversations/message', jsonRequest(body, { ...init, method: 'DELETE' })),
+      stopResponse: (
+        body: {
+          conversationId?: string
+          messageId?: string
+          partialContent?: string
+          partialParts?: Array<Record<string, unknown>>
+        },
+        init?: RequestInit,
+      ) =>
+        request('/api/app/conversations/stop', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    files: {
+      get: <T = KnowledgeFile[] | KnowledgeFile>(query?: FileQuery, init?: RequestInit) =>
+        json<T>(filesPath(query), init),
+      getResponse: (query?: FileQuery, init?: RequestInit) => request(filesPath(query), init),
+      contentResponse: (fileId: string, init?: RequestInit) =>
+        request(`/api/app/files/${encodeURIComponent(fileId)}/content`, init),
+      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/files', jsonRequest(body, { ...init, method: 'POST' })),
+      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/files', jsonRequest(body, { ...init, method: 'PATCH' })),
+      deleteResponse: (query: { fileId: string }, init?: RequestInit) =>
+        request(filesPath(query), { ...init, method: 'DELETE' }),
+      ingestDocumentResponse: (body: BodyInit, init?: RequestInit) =>
+        request('/api/app/files/ingest-document', { ...init, method: 'POST', body }),
+      shareResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/files/share', jsonRequest(body, { ...init, method: 'POST' })),
+      uploadUrlResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/files/upload-url', jsonRequest(body, { ...init, method: 'POST' })),
+      presignResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/files/presign', jsonRequest(body, { ...init, method: 'POST' })),
+      searchTextResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/files/search-text', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    projects: {
+      get: <T = ProjectSummary[] | ProjectSummary>(query?: ProjectQuery, init?: RequestInit) =>
+        json<T>(projectsPath(query), init),
+      getResponse: (query?: ProjectQuery, init?: RequestInit) => request(projectsPath(query), init),
+      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/projects', jsonRequest(body, { ...init, method: 'POST' })),
+      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/projects', jsonRequest(body, { ...init, method: 'PATCH' })),
+      deleteResponse: (query: { projectId: string }, init?: RequestInit) =>
+        request(projectsPath(query), { ...init, method: 'DELETE' }),
+    },
+    integrations: {
+      get: <T = { items?: IntegrationSummary[] } | IntegrationSummary[]>(
+        query?: IntegrationQuery,
+        init?: RequestInit,
+      ) => json<T>(integrationsPath(query), init),
+      getResponse: (query?: IntegrationQuery, init?: RequestInit) =>
+        request(integrationsPath(query), init),
+      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/integrations', jsonRequest(body, { ...init, method: 'POST' })),
+      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/integrations', jsonRequest(body, { ...init, method: 'PATCH' })),
+      deleteResponse: (query?: IntegrationQuery, init?: RequestInit) =>
+        request(integrationsPath(query), { ...init, method: 'DELETE' }),
+    },
+    skills: {
+      get: <T = SkillSummary[]>(query?: SkillQuery, init?: RequestInit) =>
+        json<T>(skillsPath(query), init),
+      getResponse: (query?: SkillQuery, init?: RequestInit) => request(skillsPath(query), init),
+      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/skills', jsonRequest(body, { ...init, method: 'POST' })),
+      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/skills', jsonRequest(body, { ...init, method: 'PATCH' })),
+      deleteResponse: (query: { skillId: string }, init?: RequestInit) =>
+        request(skillsPath(query), { ...init, method: 'DELETE' }),
+    },
+    mcpServers: {
+      get: <T = McpServerSummary[]>(query?: McpServerQuery, init?: RequestInit) =>
+        json<T>(mcpsPath(query), init),
+      getResponse: (query?: McpServerQuery, init?: RequestInit) => request(mcpsPath(query), init),
+      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/mcps', jsonRequest(body, { ...init, method: 'POST' })),
+      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/mcps', jsonRequest(body, { ...init, method: 'PATCH' })),
+      deleteResponse: (query: { mcpServerId: string }, init?: RequestInit) =>
+        request(mcpsPath(query), { ...init, method: 'DELETE' }),
+      testResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/mcps/test', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    automations: {
+      get: <T = AutomationSummary[] | AutomationSummary>(
+        query?: AutomationQuery,
+        init?: RequestInit,
+      ) => json<T>(automationsPath(query), init),
+      getResponse: (query?: AutomationQuery, init?: RequestInit) =>
+        request(automationsPath(query), init),
+      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/automations', jsonRequest(body, { ...init, method: 'POST' })),
+      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/automations', jsonRequest(body, { ...init, method: 'PATCH' })),
+      deleteResponse: (query: { automationId: string }, init?: RequestInit) =>
+        request(automationsPath(query), { ...init, method: 'DELETE' }),
+      runResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/automations/run', jsonRequest(body, { ...init, method: 'POST' })),
+      testResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/automations/test', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    settings: {
+      get: (init?: RequestInit) => json<AppSettings>('/api/app/settings', init),
+      getResponse: (init?: RequestInit) => request('/api/app/settings', init),
+      update: (body: Partial<AppSettings>, init?: RequestInit) =>
+        json<AppSettings>('/api/app/settings', jsonRequest(body, { ...init, method: 'PATCH' })),
+      updateResponse: (body: Partial<AppSettings>, init?: RequestInit) =>
+        request('/api/app/settings', jsonRequest(body, { ...init, method: 'PATCH' })),
+    },
+    subscription: {
+      get: (init?: RequestInit) => json<Entitlements>('/api/app/subscription', init),
+      getResponse: (init?: RequestInit) => request('/api/app/subscription', init),
+      getSettings: (init?: RequestInit) =>
+        json<AppSubscriptionSettings>('/api/subscription/settings', init),
+      getSettingsResponse: (init?: RequestInit) => request('/api/subscription/settings', init),
+      updateSettingsResponse: (
+        body: {
+          autoTopUpEnabled: boolean
+          topUpAmountCents: number
+          grantOffSessionConsent?: boolean
+        },
+        init?: RequestInit,
+      ) =>
+        request('/api/subscription/settings', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    chat: {
+      suggestionsResponse: (init?: RequestInit) => request('/api/app/chat-suggestions', init),
+      generateTitleResponse: (body: { text?: string; message?: string }, init?: RequestInit) =>
+        request('/api/app/generate-title', jsonRequest(body, { ...init, method: 'POST' })),
+      generateImageResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/generate-image', jsonRequest(body, { ...init, method: 'POST' })),
+      generateVideoResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/generate-video', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    automationRuns: {
+      runResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/automations/run', jsonRequest(body, { ...init, method: 'POST' })),
+      testResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+        request('/api/app/automations/test', jsonRequest(body, { ...init, method: 'POST' })),
+      parseRunDetail: parseJson<AutomationRunDetail>,
+    },
+  }
+}
+
+export type OverlayAppClient = ReturnType<typeof createOverlayAppClient>

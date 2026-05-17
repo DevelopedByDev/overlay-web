@@ -9,23 +9,25 @@ import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceCont
 import { useAppSettings } from '@/components/app/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
 import { LIGHT_PRESETS, DARK_PRESETS } from '@/lib/themes'
+import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppShell } from '@/overlay.config'
 import type { ThemePresetId } from '@overlay/app-core'
 import dynamic from 'next/dynamic'
 
 const MemoriesView = dynamic(() => import('@/components/app/MemoriesView'))
 
-const SECTIONS = [
-  { id: 'general', label: 'General' },
-  { id: 'account', label: 'Account' },
-  { id: 'customization', label: 'Customization' },
-  { id: 'memories', label: 'Memories' },
-  { id: 'models', label: 'Models' },
-  { id: 'contact', label: 'Contact' },
-] as const
+const SECTIONS = overlayAppShell.settingsSections
 
-type SectionId = (typeof SECTIONS)[number]['id']
-
+const DEFAULT_SECTION_ID = SECTIONS[0]?.id ?? 'general'
 const SECTION_IDS = new Set<string>(SECTIONS.map((s) => s.id))
+const IMPLEMENTED_SECTION_IDS = new Set<string>([
+  'general',
+  'account',
+  'customization',
+  'memories',
+  'models',
+  'contact',
+])
 
 function SettingsToggle({
   checked,
@@ -169,8 +171,8 @@ interface BillingSettings {
 export default function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const rawSection = searchParams?.get('section') ?? 'general'
-  const section: SectionId = SECTION_IDS.has(rawSection) ? (rawSection as SectionId) : 'general'
+  const rawSection = searchParams?.get('section') ?? DEFAULT_SECTION_ID
+  const section = SECTION_IDS.has(rawSection) ? rawSection : DEFAULT_SECTION_ID
 
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   useEffect(() => {
@@ -204,7 +206,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (section !== 'account' && section !== 'general') return
     let active = true
-    void fetch('/api/subscription/settings')
+    void overlayAppClient.subscription.getSettingsResponse()
       .then(async (response) => {
         if (!response.ok) return null
         return await response.json()
@@ -230,13 +232,9 @@ export default function SettingsPage() {
   }) {
     setBillingBusy(true)
     try {
-      const response = await fetch('/api/subscription/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(next),
-      })
+      const response = await overlayAppClient.subscription.updateSettingsResponse(next)
       if (!response.ok) return
-      const refreshed = await fetch('/api/subscription/settings')
+      const refreshed = await overlayAppClient.subscription.getSettingsResponse()
       if (refreshed.ok) {
         const data = await refreshed.json()
         setBillingSettings(data)
@@ -419,14 +417,20 @@ export default function SettingsPage() {
                 <span>
                   Questions or feedback? Email the founder:{' '}
                   <a
-                    href="mailto:divyansh@layernorm.co"
+                    href={`mailto:${overlayAppShell.brand.supportEmail ?? 'divyansh@layernorm.co'}`}
                     className="font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
                   >
-                    divyansh@layernorm.co
+                    {overlayAppShell.brand.supportEmail ?? 'divyansh@layernorm.co'}
                   </a>
                   .
                 </span>
               </p>
+            </SectionPlaceholder>
+          )}
+
+          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && (
+            <SectionPlaceholder title={sectionLabel}>
+              <p>This settings section is registered in the app shell but does not have a web implementation yet.</p>
             </SectionPlaceholder>
           )}
         </div>

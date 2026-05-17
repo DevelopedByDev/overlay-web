@@ -110,6 +110,7 @@ import type { OutputType } from '@/lib/output-types'
 import { useAppSettings } from './AppSettingsProvider'
 import { ExportMenu } from './ExportMenu'
 import { buildSharePageUrl } from '@/lib/share-url'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 import { useGuestGate } from './GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/ConvexProviderWithWorkOS'
@@ -1884,7 +1885,7 @@ export default function ChatInterface({
     if (!fileId) return
     setFilePreview({ name, fileId })
     try {
-      const res = await fetch(`/api/app/files/${fileId}/content`)
+      const res = await overlayAppClient.files.contentResponse(fileId)
       if (res.ok) {
         const text = await res.text()
         setFilePreviewContent(text)
@@ -2074,7 +2075,7 @@ export default function ChatInterface({
       if (data.stale) {
         refetchTimer = window.setTimeout(() => {
           if (cancelled) return
-          void fetch('/api/app/chat-suggestions', { credentials: 'same-origin' })
+          void overlayAppClient.chat.suggestionsResponse({ credentials: 'same-origin' })
             .then((r) => r.json())
             .then((d: { prompts?: string[] }) => {
               if (cancelled) return
@@ -2089,7 +2090,7 @@ export default function ChatInterface({
       }
     }
 
-    fetch('/api/app/chat-suggestions', { credentials: 'same-origin' })
+    overlayAppClient.chat.suggestionsResponse({ credentials: 'same-origin' })
       .then((r) => r.json())
       .then(apply)
       .catch(() => {
@@ -2570,7 +2571,7 @@ export default function ChatInterface({
 
   const loadSubscription = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/subscription')
+      const res = await overlayAppClient.subscription.getResponse()
       if (res.ok) {
         const data = await res.json()
         setEntitlements(data)
@@ -2617,14 +2618,10 @@ export default function ChatInterface({
   const handleSaveTopUpPreference = useCallback(async () => {
     setBillingActionLoading('save')
     try {
-      const response = await fetch('/api/subscription/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          autoTopUpEnabled: autoTopUpEnabledDraft,
-          topUpAmountCents: topUpAmountDraftCents,
-          grantOffSessionConsent: autoTopUpEnabledDraft,
-        }),
+      const response = await overlayAppClient.subscription.updateSettingsResponse({
+        autoTopUpEnabled: autoTopUpEnabledDraft,
+        topUpAmountCents: topUpAmountDraftCents,
+        grantOffSessionConsent: autoTopUpEnabledDraft,
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -2904,11 +2901,10 @@ export default function ChatInterface({
     let cancelled = false
     const patchFromServer = async () => {
       try {
-        const messagesParams = new URLSearchParams({
+        const res = await overlayAppClient.conversations.getResponse({
           conversationId: activeChatId,
-          messages: 'true',
-        })
-        const res = await fetch(`/api/app/conversations?${messagesParams.toString()}`, {
+          messages: true,
+        }, {
           credentials: 'same-origin',
           cache: 'no-store',
         })
@@ -3097,11 +3093,7 @@ export default function ChatInterface({
     applyChatTitleUpdate(chatId, nextTitle)
 
     try {
-      const res = await fetch('/api/app/conversations', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId: chatId, title: nextTitle }),
-      })
+      const res = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: nextTitle })
       if (!res.ok) throw new Error('Failed to rename chat')
     } catch {
       applyChatTitleUpdate(chatId, previousTitle)
@@ -3122,11 +3114,7 @@ export default function ChatInterface({
       if (!aiTitle) return
       const finalTitle = applyChatTitleUpdate(chatId, aiTitle)
       try {
-        const res = await fetch('/api/app/conversations', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId: chatId, title: finalTitle }),
-        })
+        const res = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: finalTitle })
         if (res.ok) void loadChats()
       } catch { /* keep local title */ }
     })
@@ -3137,15 +3125,11 @@ export default function ChatInterface({
   useEffect(() => {
     if (!activeChatId) return
     const t = window.setTimeout(() => {
-      void fetch('/api/app/conversations', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: activeChatId,
-          lastMode: 'act',
-          askModelIds: selectedModels,
-          actModelId: selectedActModel,
-        }),
+      void overlayAppClient.conversations.updateResponse({
+        conversationId: activeChatId,
+        lastMode: 'act',
+        askModelIds: selectedModels,
+        actModelId: selectedActModel,
       })
     }, 600)
     return () => clearTimeout(t)
@@ -3260,7 +3244,7 @@ export default function ChatInterface({
 
     let cancelled = false
     setSelectedAutomationLoading(true)
-    void fetch(`/api/app/automations?automationId=${encodeURIComponent(automationIdParam)}`, {
+    void overlayAppClient.automations.getResponse({ automationId: automationIdParam }, {
       credentials: 'same-origin',
       cache: 'no-store',
     })
@@ -3602,16 +3586,12 @@ export default function ChatInterface({
   const saveSkillDraft = useCallback(async (draft: SkillDraftSummary) => {
     setIsDraftSaving(true)
     try {
-      const res = await fetch('/api/app/skills', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: draft.name,
-          description: draft.description,
-          instructions: draft.instructions,
-          enabled: true,
-          ...(embedProjectId ? { projectId: embedProjectId } : {}),
-        }),
+      const res = await overlayAppClient.skills.createResponse({
+        name: draft.name,
+        description: draft.description,
+        instructions: draft.instructions,
+        enabled: true,
+        ...(embedProjectId ? { projectId: embedProjectId } : {}),
       })
       const payload = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
@@ -3631,20 +3611,16 @@ export default function ChatInterface({
   const saveAutomationDraft = useCallback(async (draft: AutomationDraftSummary) => {
     setIsDraftSaving(true)
     try {
-      const res = await fetch('/api/app/automations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: draft.name,
-          description: draft.description,
-          instructions: draft.instructions,
-          schedule: draft.schedule,
-          timezone: draft.timezone,
-          graphSource: draft.graphSource,
-          enabled: true,
-          ...(activeChatId ? { sourceConversationId: activeChatId } : {}),
-          ...(embedProjectId ? { projectId: embedProjectId } : {}),
-        }),
+      const res = await overlayAppClient.automations.createResponse({
+        name: draft.name,
+        description: draft.description,
+        instructions: draft.instructions,
+        schedule: draft.schedule,
+        timezone: draft.timezone,
+        graphSource: draft.graphSource,
+        enabled: true,
+        ...(activeChatId ? { sourceConversationId: activeChatId } : {}),
+        ...(embedProjectId ? { projectId: embedProjectId } : {}),
       })
       const payload = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
@@ -3960,16 +3936,12 @@ export default function ChatInterface({
     const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
     const initialSelectedModels = askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4)
     const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
-    const res = await fetch('/api/app/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: initialTitle,
-        askModelIds: initialSelectedModels,
-        actModelId: selectedActModel,
-        lastMode: 'act',
-        ...(embedProjectId ? { projectId: embedProjectId } : {}),
-      }),
+    const res = await overlayAppClient.conversations.createResponse({
+      title: initialTitle,
+      askModelIds: initialSelectedModels,
+      actModelId: selectedActModel,
+      lastMode: 'act',
+      ...(embedProjectId ? { projectId: embedProjectId } : {}),
     })
     if (res.ok) {
       const data = await res.json()
@@ -4031,7 +4003,10 @@ export default function ChatInterface({
     try {
       setComposerNotice('Creating branch…')
       setIsSwitchingChat(true)
-      const sourceRes = await fetch(`/api/app/conversations?conversationId=${sourceChatId}&messages=true`)
+      const sourceRes = await overlayAppClient.conversations.getResponse({
+        conversationId: sourceChatId,
+        messages: true,
+      })
       if (!sourceRes.ok) throw new Error('Could not load source chat')
       const sourceData = await sourceRes.json() as {
         messages?: Array<{
@@ -4064,21 +4039,17 @@ export default function ChatInterface({
           .map((part) => part.text!.trim())
           .join('\n\n') || (message.role === 'assistant' ? '[Response]' : '[Message]')
         const parts = (message.parts ?? []).filter((part) => part.type === 'text' || part.type === 'file')
-        const res = await fetch('/api/app/conversations/message', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversationId: branchChatId,
-            turnId: message.turnId,
-            mode: message.mode ?? 'act',
-            role: message.role,
-            content,
-            parts,
-            modelId: message.model,
-            contentType: message.contentType ?? 'text',
-            variantIndex: message.variantIndex,
-            ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId, replySnippet: message.replySnippet } : {}),
-          }),
+        const res = await overlayAppClient.conversations.addMessageResponse({
+          conversationId: branchChatId,
+          turnId: message.turnId,
+          mode: message.mode ?? 'act',
+          role: message.role,
+          content,
+          parts,
+          modelId: message.model,
+          contentType: message.contentType ?? 'text',
+          variantIndex: message.variantIndex,
+          ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId, replySnippet: message.replySnippet } : {}),
         })
         if (!res.ok) throw new Error('Could not copy branch messages')
       }
@@ -4126,14 +4097,16 @@ export default function ChatInterface({
     runtime.hydrated = false
     try {
       const shouldLoadMeta = !existingChat?.title || !existingChat?.askModelIds?.length || !existingChat?.actModelId
-      const messagesParams = new URLSearchParams({
+      const messagesQuery = {
         conversationId: chatId,
-        messages: 'true',
-      })
+        messages: true,
+      }
       const [messagesRes, outputsRes, metaRes] = await Promise.all([
-        fetch(`/api/app/conversations?${messagesParams.toString()}`),
-        fetch(`/api/app/files?kind=output&conversationId=${chatId}`),
-        shouldLoadMeta ? fetch(`/api/app/conversations?conversationId=${chatId}`) : Promise.resolve(null),
+        overlayAppClient.conversations.getResponse(messagesQuery),
+        overlayAppClient.files.getResponse({ kind: 'output', conversationId: chatId }),
+        shouldLoadMeta
+          ? overlayAppClient.conversations.getResponse({ conversationId: chatId })
+          : Promise.resolve(null),
       ])
       if (requestId !== loadChatRequestRef.current) return
       if (metaRes?.status === 404) {
@@ -4477,11 +4450,7 @@ export default function ChatInterface({
     setExitingTurnIds((prev) => (prev.includes(turnId) ? prev : [...prev, turnId]))
     await new Promise((r) => window.setTimeout(r, EXIT_MS))
     try {
-      const res = await fetch('/api/app/conversations/message', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId: cid, turnId }),
-      })
+      const res = await overlayAppClient.conversations.deleteMessageResponse({ conversationId: cid, turnId })
       const payload = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
         setComposerNotice(payload.error || 'Could not delete this turn.')
@@ -4653,7 +4622,7 @@ export default function ChatInterface({
     if (!target) return
     setConfirmDeleteChat(null)
     dispatchChatDeleted({ chatId: target.id })
-    await fetch(`/api/app/conversations?conversationId=${target.id}`, { method: 'DELETE' })
+    await overlayAppClient.conversations.deleteResponse({ conversationId: target.id })
     await loadChats()
   }
 
@@ -4671,9 +4640,7 @@ export default function ChatInterface({
     const form = new FormData()
     form.append('file', file)
     if (embedProjectId) form.append('projectId', embedProjectId)
-    void fetch('/api/app/files/ingest-document', {
-      method: 'POST',
-      body: form,
+    void overlayAppClient.files.ingestDocumentResponse(form, {
       credentials: 'same-origin',
     })
       .then(async (res) => {
@@ -4928,21 +4895,17 @@ export default function ChatInterface({
       setGenerationChip(null)
       setReplyContext(null)
       setIsFirstMessage(false)
-      void fetch('/api/app/conversations/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: chatId,
-          turnId: mediaTurnId,
-          mode: 'act',
-          role: 'user',
-          content: text,
-          parts: [{ type: 'text', text }],
-          modelId: activeModels[0],
-          ...(replyCtxSnapshot?.replyToTurnId
-            ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
-            : {}),
-        }),
+      void overlayAppClient.conversations.addMessageResponse({
+        conversationId: chatId,
+        turnId: mediaTurnId,
+        mode: 'act',
+        role: 'user',
+        content: text,
+        parts: [{ type: 'text', text }],
+        modelId: activeModels[0],
+        ...(replyCtxSnapshot?.replyToTurnId
+          ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
+          : {}),
       })
 
       if (wasFirst && text) startFirstMessageRename(chatId, text)
@@ -4970,11 +4933,7 @@ export default function ChatInterface({
         // Prefer an explicitly attached reference image; fall back to the last generated image
         const imageUrl = attachedImagesSnapshot[0]?.dataUrl ?? targetRuntime.ui.lastGeneratedImageUrl
         const generationTasks = activeModels.map((modelId, mIdx) =>
-          fetch('/api/app/generate-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId, imageUrl }),
-          })
+          overlayAppClient.chat.generateImageResponse({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId, imageUrl })
             .then(async (res) => {
               if (!res.ok) {
                 const err = await res.json().catch(() => ({ message: 'Generation failed' }))
@@ -5034,18 +4993,14 @@ export default function ChatInterface({
               assistantMessage as any,
             ]
           })
-          void fetch('/api/app/conversations/message', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              conversationId: chatId,
-              turnId: mediaTurnId,
-              mode: 'act',
-              role: 'assistant',
-              content: summary,
-              contentType: 'text',
-              parts: [{ type: 'text', text: summary }],
-            }),
+          void overlayAppClient.conversations.addMessageResponse({
+            conversationId: chatId,
+            turnId: mediaTurnId,
+            mode: 'act',
+            role: 'assistant',
+            content: summary,
+            contentType: 'text',
+            parts: [{ type: 'text', text: summary }],
           })
           completeSession(chatId, activeChatIdRef.current === chatId)
           loadChats()
@@ -5056,11 +5011,7 @@ export default function ChatInterface({
         })
       } else {
         const generationTasks = activeModels.map((modelId, mIdx) =>
-          fetch('/api/app/generate-video', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId, videoSubMode, imageUrl: attachedImagesSnapshot[0]?.dataUrl ?? null }),
-          })
+          overlayAppClient.chat.generateVideoResponse({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId, videoSubMode, imageUrl: attachedImagesSnapshot[0]?.dataUrl ?? null })
             .then(async (res) => {
               if (!res.ok) {
                 updateRuntimeUiState(chatId, (prev) => {
@@ -5143,18 +5094,14 @@ export default function ChatInterface({
               assistantMessage as any,
             ]
           })
-          void fetch('/api/app/conversations/message', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              conversationId: chatId,
-              turnId: mediaTurnId,
-              mode: 'act',
-              role: 'assistant',
-              content: summary,
-              contentType: 'text',
-              parts: [{ type: 'text', text: summary }],
-            }),
+          void overlayAppClient.conversations.addMessageResponse({
+            conversationId: chatId,
+            turnId: mediaTurnId,
+            mode: 'act',
+            role: 'assistant',
+            content: summary,
+            contentType: 'text',
+            parts: [{ type: 'text', text: summary }],
           })
           completeSession(chatId, activeChatIdRef.current === chatId)
           loadChats()
@@ -5525,11 +5472,7 @@ export default function ChatInterface({
       }
       try {
         await Promise.race([
-          fetch('/api/app/conversations/stop', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conversationId: chatId }),
-          }),
+          overlayAppClient.conversations.stopResponse({ conversationId: chatId }),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('timeout')), 5000),
           ),
@@ -5716,13 +5659,9 @@ export default function ChatInterface({
     const nextAutomation = { ...selectedAutomation, modelId }
     setSelectedAutomation(nextAutomation)
     try {
-      const res = await fetch('/api/app/automations', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          automationId: selectedAutomation._id,
-          modelId,
-        }),
+      const res = await overlayAppClient.automations.updateResponse({
+        automationId: selectedAutomation._id,
+        modelId,
       })
       if (!res.ok) throw new Error('Failed to save automation model')
       window.dispatchEvent(new Event('overlay:automations-updated'))

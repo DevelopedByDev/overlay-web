@@ -150,6 +150,7 @@ export type AppDestinationId =
   | 'knowledge'
   | 'extensions'
   | 'projects'
+  | 'automations'
   | 'settings'
   | 'account'
 
@@ -186,6 +187,7 @@ export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
     subviews: ['connectors', 'skills', 'mcps', 'apps', 'all'],
   },
   { id: 'projects', label: 'Projects', href: '/app/projects' },
+  { id: 'automations', label: 'Automations', href: '/app/automations' },
   {
     id: 'settings',
     label: 'Settings',
@@ -201,6 +203,139 @@ export interface AppFeatureFlags {
   canUseProjects: boolean
   canUseAutomations: boolean
   canUseExtensions: boolean
+}
+
+export type OverlayIconName =
+  | 'arrow-up'
+  | 'chrome'
+  | 'file-text'
+  | 'folder-open'
+  | 'mail'
+  | 'message-square'
+  | 'monitor'
+  | 'palette'
+  | 'package'
+  | 'panels-left-right'
+  | 'play'
+  | 'plug'
+  | 'puzzle'
+  | 'server'
+  | 'settings'
+  | 'shield-check'
+  | 'smartphone'
+  | 'sparkles'
+  | 'user'
+  | 'workflow'
+
+export type OverlayFeatureFlagId =
+  | 'voiceTranscription'
+  | 'knowledge'
+  | 'projects'
+  | 'automations'
+  | 'extensions'
+  | (string & {})
+
+export interface OverlayFeatureFlag {
+  id: OverlayFeatureFlagId
+  label: string
+  enabled: boolean
+  description?: string
+}
+
+export interface OverlayBrandConfig {
+  name: string
+  shortName?: string
+  logoSrc: string
+  logoAlt?: string
+  homeHref: string
+  supportEmail?: string
+  organizationName?: string
+}
+
+export interface OverlayNavigationItem {
+  id: AppDestinationId | (string & {})
+  label: string
+  href: string
+  icon: OverlayIconName
+  disabled?: boolean
+  featureFlagId?: OverlayFeatureFlagId
+  subviews?: readonly string[]
+}
+
+export interface OverlaySettingsSection {
+  id: SettingsSubview | (string & {})
+  label: string
+  href?: string
+  icon?: OverlayIconName
+  disabled?: boolean
+  featureFlagId?: OverlayFeatureFlagId
+}
+
+export interface OverlayThemePresetSummary {
+  id: ThemePresetId
+  name: string
+  variant: ThemePreference
+  previewColors: {
+    background: string
+    accent: string
+  }
+}
+
+export interface OverlayThemeMetadata {
+  defaultLightPreset: ThemePresetId
+  defaultDarkPreset: ThemePresetId
+  presets: readonly OverlayThemePresetSummary[]
+  cssVarKeys: readonly string[]
+}
+
+export interface OverlayModelPolicyContext {
+  user: AuthUser | null
+  entitlements: Entitlements | null
+}
+
+export interface OverlayModelPolicyHooks {
+  filterChatModels?: (
+    models: readonly ChatModel[],
+    context: OverlayModelPolicyContext,
+  ) => readonly ChatModel[]
+  filterImageModels?: (
+    models: readonly ImageModel[],
+    context: OverlayModelPolicyContext,
+  ) => readonly ImageModel[]
+  filterVideoModels?: (
+    models: readonly VideoModel[],
+    context: OverlayModelPolicyContext,
+  ) => readonly VideoModel[]
+  getDefaultChatModelId?: (
+    models: readonly ChatModel[],
+    context: OverlayModelPolicyContext,
+  ) => string | undefined
+  getDefaultImageModelId?: (
+    models: readonly ImageModel[],
+    context: OverlayModelPolicyContext,
+  ) => string | undefined
+  getDefaultVideoModelId?: (
+    models: readonly VideoModel[],
+    context: OverlayModelPolicyContext,
+  ) => string | undefined
+}
+
+export interface OverlayAppConfig {
+  brand?: Partial<OverlayBrandConfig>
+  navigation?: readonly OverlayNavigationItem[]
+  settingsSections?: readonly OverlaySettingsSection[]
+  featureFlags?: readonly OverlayFeatureFlag[]
+  theme?: Partial<OverlayThemeMetadata>
+  modelPolicy?: OverlayModelPolicyHooks
+}
+
+export interface OverlayAppShellRegistry {
+  brand: OverlayBrandConfig
+  navigation: readonly OverlayNavigationItem[]
+  settingsSections: readonly OverlaySettingsSection[]
+  featureFlags: readonly OverlayFeatureFlag[]
+  appFeatureFlags: AppFeatureFlags
+  theme: OverlayThemeMetadata
 }
 
 export interface AppBootstrapDefaults {
@@ -244,6 +379,11 @@ export interface AppBootstrapResponse {
   chatModels: ChatModel[]
   imageModels: ImageModel[]
   videoModels: VideoModel[]
+  brand?: OverlayBrandConfig
+  navigation?: OverlayNavigationItem[]
+  settingsSections?: OverlaySettingsSection[]
+  featureFlagRegistry?: OverlayFeatureFlag[]
+  theme?: OverlayThemeMetadata
   featureFlags: AppFeatureFlags
   destinations: AppDestinationConfig[]
   defaults?: AppBootstrapDefaults
