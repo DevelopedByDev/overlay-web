@@ -11,16 +11,13 @@ import {
   X,
   AlertCircle,
   Check,
-  FolderOpen,
   Reply,
   Pencil,
   ArrowUp,
   MessageSquare,
 } from 'lucide-react'
-import { useChat } from '@ai-sdk/react'
 import type { UIMessage } from 'ai'
 import {
-  cloneConversationUiState,
   cloneGenerationResultsMap,
   cloneOrphanModelThreadsMap,
   cloneUiMessageThread,
@@ -32,13 +29,15 @@ import {
   sameModelSet,
   selectedModelForExchange,
   shouldAttachPastedTextAsFile,
+  shouldAutoContinueAssistantResponse,
+  toggleModelSelection,
 } from '@overlay/chat-core'
-import { useQuery } from 'convex/react'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import {
   ExchangeBlock,
   LiveAttachmentTray,
+  LiveChatHeader,
   LiveComposerToolbar,
   LiveModelPicker,
   MediaSlotOutput,
@@ -109,8 +108,6 @@ import { useGuestGate } from '../GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/ConvexProviderWithWorkOS'
 import { getCloudflareChatStreamRelayApi } from '@/lib/cloudflare-chat-transport'
-import { api } from '../../../../convex/_generated/api'
-import type { Id } from '../../../../convex/_generated/dataModel'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
 import type { SkillDraftSummary } from '@/lib/skill-drafts'
 import type { AutomationDraftSummary } from '@/lib/automation-drafts'
@@ -163,13 +160,17 @@ import type {
   DraftModalState,
   Entitlements,
   GenerationResult,
-  LiveConversationMessage,
-  LiveMessageDelta,
   PendingChatDocument,
+  LiveMessageDelta,
 } from './types'
 import { MentionInput, type MentionInputHandle } from './MentionInput'
 import type { MentionItem } from './mention-types'
 import { createConversationRuntime } from './chatRuntime'
+import { useChatRuntimes } from './useChatRuntimes'
+import { useChatHydration } from './useChatHydration'
+import { useChatPersistence } from './useChatPersistence'
+import { useChatSending } from './useChatSending'
+import { useChatGenerationMode } from './useChatGenerationMode'
 
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -211,8 +212,6 @@ export default function ChatInterface({
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const appliedLiveDeltaIdsRef = useRef(new Set<string>())
   const resumedCloudflareStreamsRef = useRef(new Set<string>())
-  const runtimesRef = useRef(new Map<string, ConversationRuntime>())
-  const emptyRuntimeRef = useRef(createConversationRuntime('__empty__'))
 
   // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
   useEffect(() => {
@@ -258,74 +257,36 @@ export default function ChatInterface({
   }, [])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
-  const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
-  const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
-  const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
-  /** After first paint — avoids free-tier Auto reset racing ahead of localStorage restore. */
-  const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
   const [, setIsSwitchingChat] = useState(false)
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
-
-  useEffect(() => {
-    const saved = localStorage.getItem(CHAT_MODEL_KEY)
-    let restoredSelectedModels: string[] | null = null
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          restoredSelectedModels = parsed.slice(0, 4)
-          setSelectedModels(restoredSelectedModels)
-        }
-      } catch {
-        restoredSelectedModels = [saved]
-        setSelectedModels(restoredSelectedModels)
-      }
-    }
-    if ((restoredSelectedModels?.length ?? 1) > 1) {
-      setAskModelSelectionMode('multiple')
-    }
-    const savedAct = localStorage.getItem(ACT_MODEL_KEY)
-    if (savedAct) setSelectedActModel(savedAct)
-    const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
-    if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
-
-    const imgMode = localStorage.getItem(IMAGE_MODEL_SELECTION_MODE_KEY)
-    if (imgMode === 'single' || imgMode === 'multiple') {
-      setImageModelSelectionMode(imgMode)
-    }
-    const vidMode = localStorage.getItem(VIDEO_MODEL_SELECTION_MODE_KEY)
-    if (vidMode === 'single' || vidMode === 'multiple') {
-      setVideoModelSelectionMode(vidMode)
-    }
-    try {
-      const rawImg = localStorage.getItem(SELECTED_IMAGE_MODELS_KEY)
-      if (rawImg) {
-        const parsed = JSON.parse(rawImg) as unknown
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const allowed = new Set(IMAGE_MODELS.map((m) => m.id))
-          const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
-          if (next.length > 0) setSelectedImageModels(next)
-        }
-      }
-    } catch {
-      /* keep default */
-    }
-    try {
-      const rawVid = localStorage.getItem(SELECTED_VIDEO_MODELS_KEY)
-      if (rawVid) {
-        const parsed = JSON.parse(rawVid) as unknown
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const allowed = new Set(VIDEO_MODELS.map((m) => m.id))
-          const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
-          if (next.length > 0) setSelectedVideoModels(next)
-        }
-      }
-    } catch {
-      /* keep default */
-    }
-
-    setChatPrefsHydrated(true)
-  }, [])
+  const {
+    selectedActModel,
+    setSelectedActModel,
+    selectedModels,
+    setSelectedModels,
+    askModelSelectionMode,
+    setAskModelSelectionMode,
+    chatPrefsHydrated,
+    generationMode,
+    setGenerationMode,
+    generationChip,
+    setGenerationChip,
+    generationResults,
+    setGenerationResults,
+    exchangeGenTypes,
+    setExchangeGenTypes,
+    selectedImageModels,
+    setSelectedImageModels,
+    selectedVideoModels,
+    setSelectedVideoModels,
+    imageModelSelectionMode,
+    setImageModelSelectionMode,
+    videoModelSelectionMode,
+    setVideoModelSelectionMode,
+    videoSubMode,
+    setVideoSubMode,
+    lastGeneratedImageUrlRef,
+  } = useChatGenerationMode()
 
   // Warm integration logo cache so Composio logos render in chat connect cards.
   useEffect(() => {
@@ -339,22 +300,6 @@ export default function ChatInterface({
   // Needed for project chats which are excluded from the global chats:list query.
   const [activeChatTitle, setActiveChatTitle] = useState<string | null>(null)
 
-  const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
-  const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
-  const [generationResults, setGenerationResults] = useState<Map<number, GenerationResult[]>>(new Map())
-  const [exchangeGenTypes, setExchangeGenTypes] = useState<('text' | 'image' | 'video')[]>([])
-  const [selectedImageModels, setSelectedImageModels] = useState<string[]>([DEFAULT_IMAGE_MODEL_ID])
-  const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
-  const [imageModelSelectionMode, setImageModelSelectionMode] = useState<AskModelSelectionMode>('single')
-  const [videoModelSelectionMode, setVideoModelSelectionMode] = useState<AskModelSelectionMode>('single')
-  const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>(() => {
-    try {
-      const saved = localStorage.getItem(VIDEO_SUB_MODE_KEY)
-      return (saved as VideoSubMode | null) ?? 'text-to-video'
-    } catch { return 'text-to-video' }
-  })
-  const lastGeneratedImageUrlRef = useRef<string | null>(null)
-
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showVideoSubModePicker, setShowVideoSubModePicker] = useState(false)
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
@@ -366,34 +311,14 @@ export default function ChatInterface({
   const dragCounterRef = useRef(0)
   const lastStreamChunkAtRef = useRef<number>(Date.now())
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
-  const [input, setInputState] = useState('')
-  const [inputRevision, setInputRevision] = useState(0)
-  const [hasComposerText, setHasComposerText] = useState(false)
-  const inputRef = useRef(input)
-  const setInput = useCallback((next: string | ((previous: string) => string)) => {
-    const resolved = typeof next === 'function' ? next(inputRef.current) : next
-    inputRef.current = resolved
-    setInputState(resolved)
-    setHasComposerText(resolved.trim().length > 0)
-    setInputRevision((value) => value + 1)
-  }, [])
-  const handleComposerInputChange = useCallback((text: string) => {
-    inputRef.current = text
-    const hasText = text.trim().length > 0
-    setHasComposerText((previous) => (previous === hasText ? previous : hasText))
-  }, [])
-
-  // Restore guest draft after hydration so server/client initial renders match
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const draft = sessionStorage.getItem('overlay:guest-draft')
-      if (draft) {
-        sessionStorage.removeItem('overlay:guest-draft')
-        setInput(draft)
-      }
-    } catch { /* ignore */ }
-  }, [setInput])
+  const {
+    input,
+    inputRef,
+    inputRevision,
+    hasComposerText,
+    setInput,
+    handleComposerInputChange,
+  } = useChatSending()
 
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
@@ -538,87 +463,47 @@ export default function ChatInterface({
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
-  const ensureConversationRuntime = useCallback((chatId: string, uiOverrides?: Partial<ConversationUiState>) => {
-    const existing = runtimesRef.current.get(chatId)
-    if (existing) {
-      if (uiOverrides) {
-        existing.ui = createConversationUiState({
-          ...existing.ui,
-          ...uiOverrides,
-          generationResults: uiOverrides.generationResults ?? existing.ui.generationResults,
-          orphanModelThreads: uiOverrides.orphanModelThreads ?? existing.ui.orphanModelThreads,
-        })
-      }
-      return existing
-    }
-
-    const runtime = createConversationRuntime(chatId, uiOverrides)
-    runtimesRef.current.set(chatId, runtime)
-    return runtime
-  }, [])
-
-  const applyUiStateToView = useCallback((ui: ConversationUiState) => {
-    setSelectedActModel(ui.selectedActModel)
-    setSelectedModels([...ui.selectedModels])
-    setAskModelSelectionMode(ui.askModelSelectionMode)
-    setExchangeModes([...ui.exchangeModes])
-    setExchangeModels(ui.exchangeModels.map((models) => [...models]))
-    setSelectedTabPerExchange([...ui.selectedTabPerExchange])
-    setActiveChatTitle(ui.activeChatTitle)
-    setGenerationResults(cloneGenerationResultsMap(ui.generationResults))
-    setExchangeGenTypes([...ui.exchangeGenTypes])
-    setIsFirstMessage(ui.isFirstMessage)
-    lastGeneratedImageUrlRef.current = ui.lastGeneratedImageUrl
-  }, [])
-
-  const buildActiveUiStateSnapshot = useCallback((): ConversationUiState => {
-    const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : null
-    return createConversationUiState({
-      selectedActModel,
-      selectedModels,
-      askModelSelectionMode,
-      exchangeModes,
-      exchangeModels,
-      selectedTabPerExchange,
-      activeChatTitle,
-      generationResults,
-      exchangeGenTypes,
-      isFirstMessage,
-      orphanModelThreads: activeRuntime?.ui.orphanModelThreads,
-      lastGeneratedImageUrl: lastGeneratedImageUrlRef.current,
-    })
-  }, [
-    activeChatId,
-    activeChatTitle,
+  const {
+    runtimesRef,
+    emptyRuntimeRef,
     ensureConversationRuntime,
-    exchangeGenTypes,
-    exchangeModels,
-    exchangeModes,
-    generationResults,
-    isFirstMessage,
-    askModelSelectionMode,
+    applyUiStateToView,
+    persistActiveRuntimeUiState,
+    updateRuntimeUiState,
+    activeRuntime,
+    activeAskChats,
+    activeChatHydrated,
+    chat0,
+    chat1,
+    chat2,
+    chat3,
+    actChat,
+    chatInstances,
+  } = useChatRuntimes({
+    activeChatId,
+    activeChatIdRef,
     selectedActModel,
     selectedModels,
+    askModelSelectionMode,
+    exchangeModes,
+    exchangeModels,
     selectedTabPerExchange,
-  ])
-
-  const persistActiveRuntimeUiState = useCallback(() => {
-    if (!activeChatId) return
-    const runtime = ensureConversationRuntime(activeChatId)
-    if (!runtime.hydrated) return
-    runtime.ui = buildActiveUiStateSnapshot()
-  }, [activeChatId, buildActiveUiStateSnapshot, ensureConversationRuntime])
-
-  const updateRuntimeUiState = useCallback((
-    chatId: string,
-    updater: (prev: ConversationUiState) => ConversationUiState,
-  ) => {
-    const runtime = ensureConversationRuntime(chatId)
-    runtime.ui = updater(cloneConversationUiState(runtime.ui))
-    if (activeChatIdRef.current === chatId) {
-      applyUiStateToView(runtime.ui)
-    }
-  }, [applyUiStateToView, ensureConversationRuntime])
+    activeChatTitle,
+    generationResults,
+    exchangeGenTypes,
+    isFirstMessage,
+    lastGeneratedImageUrlRef,
+    setSelectedActModel,
+    setSelectedModels,
+    setAskModelSelectionMode,
+    setExchangeModes,
+    setExchangeModels,
+    setSelectedTabPerExchange,
+    setActiveChatTitle,
+    setGenerationResults,
+    setExchangeGenTypes,
+    setIsFirstMessage,
+  })
 
   const resetActiveChatAfterDelete = useCallback((chatId: string) => {
     runtimesRef.current.delete(chatId)
@@ -722,13 +607,7 @@ export default function ChatInterface({
     }
   }, [resetActiveChatAfterDelete, updateRuntimeUiState])
 
-  const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : emptyRuntimeRef.current
   const chatStreamRelayApi = getCloudflareChatStreamRelayApi()
-  const chat0 = useChat({ chat: activeRuntime.askChats[0] })
-  const chat1 = useChat({ chat: activeRuntime.askChats[1] })
-  const chat2 = useChat({ chat: activeRuntime.askChats[2] })
-  const chat3 = useChat({ chat: activeRuntime.askChats[3] })
-  const actChat = useChat({ chat: activeRuntime.actChat })
   const chat0Ref = useRef(chat0)
   const chat1Ref = useRef(chat1)
   const chat2Ref = useRef(chat2)
@@ -739,43 +618,12 @@ export default function ChatInterface({
   chat2Ref.current = chat2
   chat3Ref.current = chat3
   actChatRef.current = actChat
-  const liveMessages = useQuery(
-    api.conversations.watchGeneratingMessages,
-    activeChatId && authUser?.id && convexAccessToken
-      ? {
-          conversationId: activeChatId as Id<'conversations'>,
-          userId: authUser.id,
-          accessToken: convexAccessToken,
-        }
-      : 'skip',
-  ) as Array<LiveConversationMessage> | undefined
-  const liveMessageDeltas = useQuery(
-    api.conversations.watchGeneratingMessageDeltas,
-    activeChatId && authUser?.id && convexAccessToken
-      ? {
-          conversationId: activeChatId as Id<'conversations'>,
-          userId: authUser.id,
-          accessToken: convexAccessToken,
-        }
-      : 'skip',
-  ) as Array<LiveMessageDelta> | undefined
-
-  const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
-  const activeAskChats = activeRuntime.askChats
-  const activePersistedGenerating =
-    (liveMessages ?? []).some(
-      (message) => message.role === 'assistant' && message.status === 'generating',
-    ) ||
-    activeRuntime.actChat.messages.some((message) => {
-      const m = message as unknown as { role?: string; status?: string }
-      return m.role === 'assistant' && m.status === 'generating'
-    }) ||
-    activeRuntime.askChats.some((chat) =>
-      chat.messages.some((message) => {
-        const m = message as unknown as { role?: string; status?: string }
-        return m.role === 'assistant' && m.status === 'generating'
-      }),
-    )
+  const { liveMessages, liveMessageDeltas, activePersistedGenerating } = useChatHydration({
+    activeChatId,
+    userId: authUser?.id,
+    convexAccessToken,
+    activeRuntime,
+  })
 
   const isActiveLoading =
     activeAskChats.some((c) => c.status === 'streaming' || c.status === 'submitted') ||
@@ -884,9 +732,12 @@ export default function ChatInterface({
     isFreeTier && !isFreeTierChatModelId(selectedActModel)
   const isSendBlocked = premiumModelBlocked
 
-  useEffect(() => {
-    persistActiveRuntimeUiState()
-  }, [persistActiveRuntimeUiState])
+  useChatPersistence({
+    activeChatId,
+    selectedModels,
+    selectedActModel,
+    persistActiveRuntimeUiState,
+  })
 
   useEffect(() => {
     if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
@@ -1454,11 +1305,6 @@ export default function ChatInterface({
     }
   }, [activeChatTitle, applyChatTitleUpdate, cancelChatRename, chats, editingChatTitle, loadChats])
 
-  /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
-  const activeChatHydrated = Boolean(
-    activeChatId && runtimesRef.current.get(activeChatId)?.hydrated,
-  )
-
   // Called on the first message of a new chat. Titles come from the free title model;
   // avoid persisting first-word excerpts, which read as incomplete titles.
   const startFirstMessageRename = useCallback((chatId: string, text: string) => {
@@ -1473,19 +1319,6 @@ export default function ChatInterface({
   }, [applyChatTitleUpdate, loadChats])
 
   useEffect(() => { loadChats(); loadSubscription() }, [loadChats, loadSubscription])
-
-  useEffect(() => {
-    if (!activeChatId) return
-    const t = window.setTimeout(() => {
-      void overlayAppClient.conversations.updateResponse({
-        conversationId: activeChatId,
-        lastMode: 'act',
-        askModelIds: selectedModels,
-        actModelId: selectedActModel,
-      })
-    }, 600)
-    return () => clearTimeout(t)
-  }, [selectedModels, selectedActModel, activeChatId])
 
   // Auto-load a specific chat when embedded in project view (`id` = conversation)
   const showOwnSidebar = !hideSidebar && settings.useSecondarySidebar
@@ -2036,49 +1869,31 @@ export default function ChatInterface({
 
   function toggleImageModelInPicker(modelId: string) {
     if (isActiveLoading) return
+    const next = toggleModelSelection({
+      current: selectedImageModels,
+      modelId,
+      mode: imageModelSelectionMode,
+    })
+    if (next === selectedImageModels) return
+    setSelectedImageModels(next)
+    localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
     if (imageModelSelectionMode === 'single') {
-      if (selectedImageModels.length === 1 && selectedImageModels[0] === modelId) return
-      const next = [modelId]
-      setSelectedImageModels(next)
-      localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
       setShowModelPicker(false)
-      return
-    }
-    const isSel = selectedImageModels.includes(modelId)
-    if (isSel) {
-      if (selectedImageModels.length === 1) return
-      const next = selectedImageModels.filter((x) => x !== modelId)
-      setSelectedImageModels(next)
-      localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
-    } else {
-      if (selectedImageModels.length >= 4) return
-      const next = [...selectedImageModels, modelId]
-      setSelectedImageModels(next)
-      localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
     }
   }
 
   function toggleVideoModelInPicker(modelId: string) {
     if (isActiveLoading) return
+    const next = toggleModelSelection({
+      current: selectedVideoModels,
+      modelId,
+      mode: videoModelSelectionMode,
+    })
+    if (next === selectedVideoModels) return
+    setSelectedVideoModels(next)
+    localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
     if (videoModelSelectionMode === 'single') {
-      if (selectedVideoModels.length === 1 && selectedVideoModels[0] === modelId) return
-      const next = [modelId]
-      setSelectedVideoModels(next)
-      localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
       setShowModelPicker(false)
-      return
-    }
-    const isSel = selectedVideoModels.includes(modelId)
-    if (isSel) {
-      if (selectedVideoModels.length === 1) return
-      const next = selectedVideoModels.filter((x) => x !== modelId)
-      setSelectedVideoModels(next)
-      localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
-    } else {
-      if (selectedVideoModels.length >= 4) return
-      const next = [...selectedVideoModels, modelId]
-      setSelectedVideoModels(next)
-      localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
     }
   }
 
@@ -2157,9 +1972,13 @@ export default function ChatInterface({
 
   function toggleTextModelInPicker(modelId: string) {
     snapshotCurrentAskThreadsForModelPicker()
+    const next = toggleModelSelection({
+      current: selectedModels,
+      modelId,
+      mode: askModelSelectionMode,
+    })
+    if (next === selectedModels) return
     if (askModelSelectionMode === 'single') {
-      if (selectedActModel === modelId && selectedModels.length === 1) return
-      const next = [modelId]
       setSelectedActModel(modelId)
       setSelectedModels(next)
       persistNewChatActModel(modelId)
@@ -2167,26 +1986,16 @@ export default function ChatInterface({
       setShowModelPicker(false)
       return
     }
-    const isSel = selectedModels.includes(modelId)
-    if (isSel) {
-      if (selectedModels.length === 1) return
-      const next = selectedModels.filter((x) => x !== modelId)
-      setSelectedModels(next)
-      if (!next.includes(selectedActModel)) {
-        setSelectedActModel(next[0]!)
-        persistNewChatActModel(next[0]!)
-      }
-      persistNewChatAskModels(next)
-    } else {
-      if (selectedModels.length >= 4) return
-      const next = [...selectedModels, modelId]
-      setSelectedModels(next)
-      if (next.length === 1) {
-        setSelectedActModel(modelId)
-        persistNewChatActModel(modelId)
-      }
-      persistNewChatAskModels(next)
+    setSelectedModels(next)
+    if (!next.includes(selectedActModel)) {
+      setSelectedActModel(next[0]!)
+      persistNewChatActModel(next[0]!)
     }
+    if (next.length === 1 && !selectedModels.includes(modelId)) {
+      setSelectedActModel(modelId)
+      persistNewChatActModel(modelId)
+    }
+    persistNewChatAskModels(next)
   }
 
   // ── chat management ────────────────────────────────────────────────────────
@@ -3957,15 +3766,19 @@ export default function ChatInterface({
     })
     if (!latestAssistantMsg) return
     const msgId = (latestAssistantMsg as unknown as { id?: string }).id
-    if (!msgId || autoContinuedForMessageRef.current.has(msgId)) return
+    if (!msgId) return
 
     const text = assistantBlocksToPlainText(
       buildAssistantVisualSequence(
         (latestAssistantMsg as unknown as { parts?: unknown[] }).parts,
       ),
     )
-    if (!/\[Request timed out after \d+s\. Continue\?\]/.test(text)) return
-    if ((latestAssistantMsg as unknown as { status?: string }).status !== 'completed') return
+    if (!shouldAutoContinueAssistantResponse({
+      messageId: msgId,
+      status: (latestAssistantMsg as unknown as { status?: string }).status,
+      text,
+      seenMessageIds: autoContinuedForMessageRef.current,
+    })) return
 
     autoContinuedForMessageRef.current.add(msgId)
     const timer = setTimeout(() => {
@@ -4270,242 +4083,195 @@ export default function ChatInterface({
             </div>
           </div>
         )}
-        {/* Sticky header — md: h-16 aligns with AppSidebar brand row border; mobile: no title; model left + mode menu right */}
-        <div className={`flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:py-0 md:px-4 ${hideHeader ? 'hidden' : ''}`}>
-            <div
-              className={`group/header-title min-w-0 items-center gap-2 ${
-                activeChatId && editingChatId === activeChatId
-                  ? 'flex w-full'
-                  : showAutomationHeaderControls
-                    ? 'flex w-full flex-wrap md:w-auto md:flex-nowrap'
-                  : 'hidden min-[768px]:flex'
-              }`}
-            >
-              {activeChatId && editingChatId === activeChatId ? (
-                <input
-                  ref={headerTitleInputRef}
-                  className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
-                  value={editingChatTitle}
-                  onChange={(e) => setEditingChatTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      void commitChatRename(activeChatId)
-                    }
-                    if (e.key === 'Escape') {
-                      e.preventDefault()
-                      cancelChatRename()
-                    }
-                  }}
-                  onBlur={() => void commitChatRename(activeChatId)}
-                />
-              ) : (
-                <div className="flex min-w-0 items-center gap-1">
-                  <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] md:truncate lg:max-w-[24rem]">
-                    <span className="line-clamp-2 md:line-clamp-1 md:truncate">
-                      {selectedAutomation?.name || activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation')}
-                    </span>
-                  </h2>
-                  {activeChatId && !selectedAutomation ? (
-                    <button
-                      type="button"
-                      onClick={beginHeaderChatRename}
-                      className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-[var(--foreground)] group-hover/header-title:opacity-100 focus-visible:opacity-100"
-                      aria-label="Rename chat"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                  ) : null}
-                </div>
-              )}
-              {projectName && (
-                <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
-                  <FolderOpen size={9} />
-                  <span className="max-w-[6rem] truncate sm:max-w-none">{projectName}</span>
-                </span>
-              )}
-            </div>
-
-            {showAutomationHeaderControls && (
-              <div className="flex w-full shrink-0 items-center justify-end gap-2 md:w-auto">
-                <LiveModelPicker
-                  rootRef={modelPickerRef}
-                  listRef={modelPickerListScrollRef}
-                  label={getChatModelDisplayName(automationHeaderModelId) || 'Select model'}
-                  tooltipLabel="Choose automation model"
-                  renderTooltip={renderDelayedTooltip}
-                  open={showModelPicker && !!selectedAutomation}
-                  disabled={!selectedAutomation}
-                  generationMode="text"
-                  textModels={automationHeaderModels}
-                  selectedTextModelIds={[automationHeaderModelId]}
-                  isFreeTier={isFreeTier}
-                  isFreeTextModelId={isFreeTierChatModelId}
-                  hoveredModelId={hoveredModelId}
-                  hoverPosition={modelQualitiesPos}
-                  qualityModel={hoveredModelId ? getModel(hoveredModelId) : null}
-                  onToggleOpen={() => setShowModelPicker((value) => !value)}
-                  onTextModelSelect={(modelId) => {
-                    void saveAutomationHeaderModel(modelId)
-                    setShowModelPicker(false)
-                  }}
-                  onHoverTextModel={handleModelPickerHover}
-                  onUpgradeClick={openAccountPage}
-                />
-                <div className="flex shrink-0 items-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-0.5">
-                  {AUTOMATION_DETAIL_TABS.map((tab) => {
-                    const active = automationDetailTab === tab.id
-                    const TabIcon = tab.icon
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => selectAutomationDetailTab(tab.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                          active
-                            ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-                            : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        <TabIcon size={12} strokeWidth={1.75} />
-                        {tab.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Model picker + Generation mode (mobile: one row, model left / mode select right) */}
-            <div className={`flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2 ${
-              mode === 'automate' || !showAutomationChatTab ? 'hidden' : ''
-            }`}>
-              {generationMode === 'video' && (
-                <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => !isActiveLoading && setShowVideoSubModePicker((v) => !v)}
-                    disabled={isActiveLoading}
-                    className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1 ${
-                      isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
-                    }`}
-                  >
-                    <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
-                    <ChevronDown size={11} className="shrink-0" />
-                  </button>
-                  {showVideoSubModePicker && (
-                    <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
-                      {VIDEO_SUB_MODES.map(({ value, label }) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => { handleVideoSubModeChange(value); setShowVideoSubModePicker(false) }}
-                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${videoSubMode === value ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
-                        >
-                          {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {isFreeTier && (
-                <Link
-                  href={isBudgetExhaustedPaid ? '/account' : '/pricing'}
-                  className="hidden shrink-0 items-center gap-1 rounded-md border border-[#fde68a] bg-[#fffbeb] px-2.5 py-1 text-[11px] font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] md:flex"
+        <LiveChatHeader
+          hidden={hideHeader}
+          title={selectedAutomation?.name || activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation')}
+          projectName={projectName}
+          editing={Boolean(activeChatId && editingChatId === activeChatId)}
+          editingTitle={editingChatTitle}
+          titleInputRef={headerTitleInputRef}
+          onEditingTitleChange={setEditingChatTitle}
+          onTitleKeyDown={(event) => {
+            if (!activeChatId) return
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              void commitChatRename(activeChatId)
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              cancelChatRename()
+            }
+          }}
+          onTitleBlur={() => {
+            if (activeChatId) void commitChatRename(activeChatId)
+          }}
+          canRename={Boolean(activeChatId && !selectedAutomation)}
+          onBeginRename={beginHeaderChatRename}
+          showAutomationControls={showAutomationHeaderControls}
+          automationModelPicker={
+            <LiveModelPicker
+              rootRef={modelPickerRef}
+              listRef={modelPickerListScrollRef}
+              label={getChatModelDisplayName(automationHeaderModelId) || 'Select model'}
+              tooltipLabel="Choose automation model"
+              renderTooltip={renderDelayedTooltip}
+              open={showModelPicker && !!selectedAutomation}
+              disabled={!selectedAutomation}
+              generationMode="text"
+              textModels={automationHeaderModels}
+              selectedTextModelIds={[automationHeaderModelId]}
+              isFreeTier={isFreeTier}
+              isFreeTextModelId={isFreeTierChatModelId}
+              hoveredModelId={hoveredModelId}
+              hoverPosition={modelQualitiesPos}
+              qualityModel={hoveredModelId ? getModel(hoveredModelId) : null}
+              onToggleOpen={() => setShowModelPicker((value) => !value)}
+              onTextModelSelect={(modelId) => {
+                void saveAutomationHeaderModel(modelId)
+                setShowModelPicker(false)
+              }}
+              onHoverTextModel={handleModelPickerHover}
+              onUpgradeClick={openAccountPage}
+            />
+          }
+          automationTabs={AUTOMATION_DETAIL_TABS}
+          activeAutomationTabId={automationDetailTab}
+          onAutomationTabSelect={(tab) => selectAutomationDetailTab(tab as AutomationDetailTab)}
+          showChatControls={mode !== 'automate' && showAutomationChatTab}
+          videoSubModePicker={
+            generationMode === 'video' ? (
+              <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
+                <button
+                  type="button"
+                  onClick={() => !isActiveLoading && setShowVideoSubModePicker((value) => !value)}
+                  disabled={isActiveLoading}
+                  className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1 ${
+                    isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+                  }`}
                 >
-                  <ArrowUp size={10} />
-                  {isBudgetExhaustedPaid ? 'Top up' : 'Upgrade'}
-                </Link>
-              )}
-              <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
-                <LiveModelPicker
-                  rootRef={modelPickerRef}
-                  listRef={modelPickerListScrollRef}
-                  label={modelPickerLabel}
-                  tooltipLabel="Choose model (⇧⌘/)"
-                  renderTooltip={renderDelayedTooltip}
-                  open={showModelPicker}
-                  generationMode={generationMode}
-                  textModels={selectableTextModels}
-                  imageModels={IMAGE_MODELS}
-                  videoModels={getVideoModelsBySubMode(videoSubMode)}
-                  selectedTextModelIds={
-                    askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels
-                  }
-                  selectedImageModelIds={selectedImageModels}
-                  selectedVideoModelIds={selectedVideoModels}
-                  textSelectionMode={askModelSelectionMode}
-                  imageSelectionMode={imageModelSelectionMode}
-                  videoSelectionMode={videoModelSelectionMode}
-                  showTextSelectionControls={!hasAutomationContext}
-                  showImageSelectionControls
-                  showVideoSelectionControls
-                  isFreeTier={isFreeTier}
-                  isActiveLoading={isActiveLoading}
-                  isFreeTextModelId={isFreeTierChatModelId}
-                  hoveredModelId={hoveredModelId}
-                  hoverPosition={modelQualitiesPos}
-                  qualityModel={hoveredModelId ? getModel(hoveredModelId) : null}
-                  onToggleOpen={() => setShowModelPicker((value) => !value)}
-                  onTextModelSelect={toggleTextModelInPicker}
-                  onImageModelSelect={toggleImageModelInPicker}
-                  onVideoModelSelect={toggleVideoModelInPicker}
-                  onTextSelectionModeChange={handleTextModelSelectionModeChange}
-                  onImageSelectionModeChange={handleImageModelSelectionModeChange}
-                  onVideoSelectionModeChange={handleVideoModelSelectionModeChange}
-                  onHoverTextModel={handleModelPickerHover}
-                  onUpgradeClick={openAccountPage}
-                />
-                <div className="flex shrink-0 items-center gap-1.5 md:hidden">
-                  <GenerationModeSelect
-                    mode={generationMode}
-                    onChange={handleModeChange}
-                    disabled={isActiveLoading}
-                  />
-                  {activeChatId && !selectedAutomation && primaryMessages.length > 0 && (
-                    <ExportMenu
-                      className="shrink-0"
-                      type="chat"
-                      title={activeChatTitle || activeChat?.title || 'New conversation'}
-                      content={primaryMessages.map((m) => ({
-                        role: m.role,
-                        content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
-                        parts: m.parts as Array<{ type: string; text?: string }>,
-                      }))}
-                      metadata={{
-                        createdAt: activeChat?.createdAt,
-                        updatedAt: activeChat?.updatedAt,
-                        modelIds: activeChat?.modelIds,
-                      }}
-                      resourceId={activeChatId}
-                      initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
-                      initialShareUrl={
-                        activeChat?.shareVisibility === 'public' && activeChat?.shareToken
-                          ? buildSharePageUrl('chat', activeChat.shareToken)
-                          : null
-                      }
-                    />
-                  )}
-                </div>
+                  <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
+                  <ChevronDown size={11} className="shrink-0" />
+                </button>
+                {showVideoSubModePicker ? (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
+                    {VIDEO_SUB_MODES.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => {
+                          handleVideoSubModeChange(value)
+                          setShowVideoSubModePicker(false)
+                        }}
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${videoSubMode === value ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
+                      >
+                        {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
+            ) : null
+          }
+          upgradeControl={
+            isFreeTier ? (
+              <Link
+                href={isBudgetExhaustedPaid ? '/account' : '/pricing'}
+                className="hidden shrink-0 items-center gap-1 rounded-md border border-[#fde68a] bg-[#fffbeb] px-2.5 py-1 text-[11px] font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] md:flex"
+              >
+                <ArrowUp size={10} />
+                {isBudgetExhaustedPaid ? 'Top up' : 'Upgrade'}
+              </Link>
+            ) : null
+          }
+          modelPicker={
+            <LiveModelPicker
+              rootRef={modelPickerRef}
+              listRef={modelPickerListScrollRef}
+              label={modelPickerLabel}
+              tooltipLabel="Choose model (⇧⌘/)"
+              renderTooltip={renderDelayedTooltip}
+              open={showModelPicker}
+              generationMode={generationMode}
+              textModels={selectableTextModels}
+              imageModels={IMAGE_MODELS}
+              videoModels={getVideoModelsBySubMode(videoSubMode)}
+              selectedTextModelIds={askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels}
+              selectedImageModelIds={selectedImageModels}
+              selectedVideoModelIds={selectedVideoModels}
+              textSelectionMode={askModelSelectionMode}
+              imageSelectionMode={imageModelSelectionMode}
+              videoSelectionMode={videoModelSelectionMode}
+              showTextSelectionControls={!hasAutomationContext}
+              showImageSelectionControls
+              showVideoSelectionControls
+              isFreeTier={isFreeTier}
+              isActiveLoading={isActiveLoading}
+              isFreeTextModelId={isFreeTierChatModelId}
+              hoveredModelId={hoveredModelId}
+              hoverPosition={modelQualitiesPos}
+              qualityModel={hoveredModelId ? getModel(hoveredModelId) : null}
+              onToggleOpen={() => setShowModelPicker((value) => !value)}
+              onTextModelSelect={toggleTextModelInPicker}
+              onImageModelSelect={toggleImageModelInPicker}
+              onVideoModelSelect={toggleVideoModelInPicker}
+              onTextSelectionModeChange={handleTextModelSelectionModeChange}
+              onImageSelectionModeChange={handleImageModelSelectionModeChange}
+              onVideoSelectionModeChange={handleVideoModelSelectionModeChange}
+              onHoverTextModel={handleModelPickerHover}
+              onUpgradeClick={openAccountPage}
+            />
+          }
+          mobileControls={
+            <>
+              <GenerationModeSelect
+                mode={generationMode}
+                onChange={handleModeChange}
+                disabled={isActiveLoading}
+              />
+              {activeChatId && !selectedAutomation && primaryMessages.length > 0 ? (
+                <ExportMenu
+                  className="shrink-0"
+                  type="chat"
+                  title={activeChatTitle || activeChat?.title || 'New conversation'}
+                  content={primaryMessages.map((message) => ({
+                    role: message.role,
+                    content: (message.parts as Array<{ type: string; text?: string }>)?.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n') ?? '',
+                    parts: message.parts as Array<{ type: string; text?: string }>,
+                  }))}
+                  metadata={{
+                    createdAt: activeChat?.createdAt,
+                    updatedAt: activeChat?.updatedAt,
+                    modelIds: activeChat?.modelIds,
+                  }}
+                  resourceId={activeChatId}
+                  initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
+                  initialShareUrl={
+                    activeChat?.shareVisibility === 'public' && activeChat?.shareToken
+                      ? buildSharePageUrl('chat', activeChat.shareToken)
+                      : null
+                  }
+                />
+              ) : null}
+            </>
+          }
+          generationModeToggle={
             <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
               <span data-tour="generation-mode-toggle" className="hidden md:inline-flex">
                 <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
               </span>
             </DelayedTooltip>
-
-            {/* Export Menu */}
-            {activeChatId && !selectedAutomation && primaryMessages.length > 0 && (
+          }
+          exportControl={
+            activeChatId && !selectedAutomation && primaryMessages.length > 0 ? (
               <ExportMenu
                 className="hidden md:block"
                 type="chat"
                 title={activeChatTitle || activeChat?.title || 'New conversation'}
-                content={primaryMessages.map((m) => ({
-                  role: m.role,
-                  content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
-                  parts: m.parts as Array<{ type: string; text?: string }>,
+                content={primaryMessages.map((message) => ({
+                  role: message.role,
+                  content: (message.parts as Array<{ type: string; text?: string }>)?.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n') ?? '',
+                  parts: message.parts as Array<{ type: string; text?: string }>,
                 }))}
                 metadata={{
                   createdAt: activeChat?.createdAt,
@@ -4520,9 +4286,9 @@ export default function ChatInterface({
                     : null
                 }
               />
-            )}
-          </div>
-        </div>
+            ) : null
+          }
+        />
 
         {hasAutomationContext && !selectedAutomationLoading && !selectedAutomation && !showAutomationChatTab && (
           <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">

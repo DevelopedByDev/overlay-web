@@ -8,8 +8,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./attachments": "./src/attachments.ts",
+    "./continuation": "./src/continuation.ts",
     "./constants": "./src/constants.ts",
     "./messages": "./src/messages.ts",
+    "./model-selection": "./src/model-selection.ts",
     "./sources": "./src/sources.ts",
     "./state": "./src/state.ts",
     "./turns": "./src/turns.ts",
