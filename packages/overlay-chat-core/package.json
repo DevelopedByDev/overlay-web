@@ -8,9 +8,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./constants": "./src/constants.ts",
+    "./gating": "./src/gating.ts",
     "./messages": "./src/messages.ts",
+    "./paste": "./src/paste.ts",
     "./sources": "./src/sources.ts",
     "./state": "./src/state.ts",
+    "./tool-labels": "./src/tool-labels.ts",
     "./turns": "./src/turns.ts",
     "./types": "./src/types.ts"
   },

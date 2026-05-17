@@ -1,13 +1,16 @@
 import type {
   AssistantVisualBlock,
   AssistantVisualSegment,
+  AutomationDraftSummary,
   ChatMessageMetadata,
   ChatOutput,
   GenerationResult,
   LiveMessageDelta,
   RestoredOutputGroup,
   ServerConversationMessage,
+  SkillDraftSummary,
   ToolGroupItem,
+  ToolVisualBlock,
 } from './types'
 
 export function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> }): string {
@@ -32,6 +35,31 @@ export function chooseAssistantCandidate<T extends {
 }>(candidates: T[]): T | null {
   if (candidates.length === 0) return null
   return candidates.find(messageHasVisibleAssistantActivity) ?? candidates[candidates.length - 1]!
+}
+
+export function assistantBlocksToPlainText(blocks: AssistantVisualBlock[]): string {
+  return blocks
+    .filter((block): block is { kind: 'text'; text: string } => block.kind === 'text')
+    .map((block) => block.text)
+    .join('\n\n')
+}
+
+export function getDraftFromToolBlock(
+  block: ToolVisualBlock,
+): { kind: 'skill'; draft: SkillDraftSummary } | { kind: 'automation'; draft: AutomationDraftSummary } | null {
+  const output =
+    block.toolOutput && typeof block.toolOutput === 'object'
+      ? (block.toolOutput as Record<string, unknown>)
+      : null
+  if (!output || output.success !== true) return null
+
+  if (block.name === 'draft_skill_from_chat' && output.draft && typeof output.draft === 'object') {
+    return { kind: 'skill', draft: output.draft as SkillDraftSummary }
+  }
+  if (block.name === 'draft_automation_from_chat' && output.draft && typeof output.draft === 'object') {
+    return { kind: 'automation', draft: output.draft as AutomationDraftSummary }
+  }
+  return null
 }
 
 function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
