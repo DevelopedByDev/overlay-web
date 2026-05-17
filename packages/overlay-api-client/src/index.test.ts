@@ -99,3 +99,26 @@ test('module feature methods use canonical app endpoints', async () => {
   assert.equal(String(calls[6]!.input), 'https://example.test/api/app/mcps/test')
   assert.equal(calls[6]!.init?.method, 'POST')
 })
+
+test('top-up methods preserve account billing endpoints and JSON bodies', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.topUps.checkoutResponse({
+    amountCents: 800,
+    autoTopUpEnabled: true,
+    returnPath: '/app/chat',
+  })
+  await client.topUps.verifyResponse({ sessionId: 'cs_test_123' })
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/topups/checkout')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    amountCents: 800,
+    autoTopUpEnabled: true,
+    returnPath: '/app/chat',
+  })
+
+  assert.equal(String(calls[1]!.input), 'https://example.test/api/topups/verify')
+  assert.equal(calls[1]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[1]!), { sessionId: 'cs_test_123' })
+})

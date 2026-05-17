@@ -1,4 +1,5 @@
 export * from './constants'
+export * from './attachments'
 export * from './messages'
 export * from './sources'
 export * from './state'

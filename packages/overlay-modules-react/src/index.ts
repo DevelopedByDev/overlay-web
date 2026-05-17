@@ -1,3 +1,4 @@
+export * from './shared'
 export * from './knowledge'
 export * from './notes'
 export * from './projects'

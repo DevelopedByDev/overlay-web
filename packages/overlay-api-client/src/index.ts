@@ -190,6 +190,27 @@ export interface AppSubscriptionSettings {
   topUpStepAmountCents: number
 }
 
+export interface TopUpCheckoutRequest {
+  amountCents: number
+  autoTopUpEnabled?: boolean
+  returnPath?: string
+}
+
+export interface TopUpCheckoutResponse {
+  url?: string
+  error?: string
+}
+
+export interface TopUpVerifyRequest {
+  sessionId: string
+}
+
+export interface TopUpVerifyResponse {
+  ok?: boolean
+  amountCents?: number
+  error?: string
+}
+
 function appendQuery(path: string, query?: QueryParams): string {
   if (!query) return path
   const params = new URLSearchParams()
@@ -556,6 +577,17 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
         init?: RequestInit,
       ) =>
         request('/api/subscription/settings', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    topUps: {
+      checkout: (body: TopUpCheckoutRequest, init?: RequestInit) =>
+        json<TopUpCheckoutResponse>('/api/topups/checkout', jsonRequest(body, { ...init, method: 'POST' })),
+      checkoutResponse: (body: TopUpCheckoutRequest, init?: RequestInit) =>
+        request('/api/topups/checkout', jsonRequest(body, { ...init, method: 'POST' })),
+      verify: (body: TopUpVerifyRequest, init?: RequestInit) =>
+        json<TopUpVerifyResponse>('/api/topups/verify', jsonRequest(body, { ...init, method: 'POST' })),
+      verifyResponse: (body: TopUpVerifyRequest, init?: RequestInit) =>
+        request('/api/topups/verify', jsonRequest(body, { ...init, method: 'POST' })),
+      historyResponse: (init?: RequestInit) => request('/api/topups/history', init),
     },
     onboarding: {
       status: (init?: RequestInit) =>

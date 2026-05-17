@@ -1,4 +1,6 @@
 export * from './contracts'
 export * from './app-shell'
+export * from './chat'
 export * from './modules'
+export * from './account'
 export * from './theme'

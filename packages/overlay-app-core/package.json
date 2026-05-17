@@ -8,8 +8,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./app-shell": "./src/app-shell.ts",
+    "./account": "./src/account.ts",
+    "./chat": "./src/chat.ts",
     "./contracts": "./src/contracts.ts",
+    "./knowledge": "./src/knowledge.ts",
     "./modules": "./src/modules.ts",
+    "./notes": "./src/notes.ts",
+    "./projects": "./src/projects.ts",
     "./theme": "./src/theme.ts"
   },
   "scripts": {
