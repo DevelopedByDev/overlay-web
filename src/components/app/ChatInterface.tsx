@@ -17,15 +17,11 @@ import {
   Video,
   Reply,
   Pencil,
-  BrainCircuit,
-  DollarSign,
   ArrowUp,
   MessageSquare,
   Zap,
   AtSign,
-  ShieldCheck,
 } from 'lucide-react'
-import { Chat, useChat } from '@ai-sdk/react'
 import type { UIMessage } from 'ai'
 import {
   cloneConversationUiState,
@@ -33,15 +29,12 @@ import {
   cloneOrphanModelThreadsMap,
   cloneUiMessageThread,
   createConversationUiState,
-  LARGE_PASTE_MAX_BYTES,
   latestTextExchangeIndex,
-  pastedTextFileName,
   sameModelOrder,
   sameModelSet,
   selectedModelForExchange,
-  shouldAttachPastedTextAsFile,
 } from '@overlay/chat-core'
-import { ExchangeBlock, MediaSlotOutput } from '@overlay/chat-react'
+import { ExchangeBlock, MediaSlotOutput, ModelBadges, ModelQualitiesPanel } from '@overlay/chat-react'
 import { useQuery } from 'convex/react'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
@@ -54,7 +47,6 @@ import {
   DEFAULT_VIDEO_MODEL_ID,
   isFreeTierChatModelId,
   isLegacyFreeTierDefaultModelId,
-  type ChatModel,
   type GenerationMode,
   type VideoSubMode,
 } from '@/lib/model-types'
@@ -76,6 +68,10 @@ import {
 import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
+import { ChatHistoryMobileBar, ChatHistorySidebar } from './chat/ChatHistorySidebar'
+import { useChatAttachments } from './chat/useChatAttachments'
+import { useChatPreferences } from './chat/useChatPreferences'
+import { useChatRuntimes } from './chat/useChatRuntimes'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
@@ -110,10 +106,6 @@ import { overlayAppClient } from '@/lib/overlay-app-client'
 import { useGuestGate } from './GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/ConvexProviderWithWorkOS'
-import {
-  createPersistentChatTransport,
-  getCloudflareChatStreamRelayApi,
-} from '@/lib/cloudflare-chat-transport'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
@@ -127,7 +119,6 @@ import {
   IMAGE_MODEL_SELECTION_MODE_KEY,
   SELECTED_IMAGE_MODELS_KEY,
   SELECTED_VIDEO_MODELS_KEY,
-  SUPPORTED_INPUT_IMAGE_TYPES,
   VIDEO_MODEL_SELECTION_MODE_KEY,
   VIDEO_SUB_MODE_KEY,
   VIDEO_SUB_MODE_LABELS,
@@ -159,7 +150,6 @@ import {
 } from './chat-interface/chatLogic'
 import type {
   AskModelSelectionMode,
-  AttachedImage,
   ChatMessageMetadata,
   ChatOutput,
   Conversation,
@@ -170,156 +160,9 @@ import type {
   GenerationResult,
   LiveConversationMessage,
   LiveMessageDelta,
-  PendingChatDocument,
 } from './chat-interface/types'
 import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from './chat-interface/mention-types'
-
-function ModelBadges({ m, isFreeTier }: { m: ChatModel; isFreeTier: boolean }) {
-  const router = useRouter()
-  const showUpgrade = isFreeTier && m.cost > 0
-
-  return (
-    <span className="flex h-5 shrink-0 items-center gap-1">
-      {showUpgrade && (
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={(e) => {
-            e.stopPropagation()
-            router.push('/account')
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.stopPropagation()
-              router.push('/account')
-            }
-          }}
-          className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded"
-          style={{ background: 'var(--chat-badge-upgrade-bg)', color: 'var(--chat-badge-upgrade-fg)' }}
-        >
-          <ArrowUp size={10} strokeWidth={2} />
-        </span>
-      )}
-      {m.supportsVision && (
-        <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
-          <ImageIcon size={10} strokeWidth={1.75} />
-        </span>
-      )}
-      {m.supportsReasoning && (
-        <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
-          <BrainCircuit size={10} strokeWidth={1.75} />
-        </span>
-      )}
-    </span>
-  )
-}
-
-function MetricRow({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
-  label: string
-  value: React.ReactNode
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
-        <Icon size={11} strokeWidth={1.75} className="shrink-0 text-[var(--muted-light)]" />
-        <span>{label}</span>
-      </div>
-      <span className="whitespace-nowrap text-[11px] font-medium tabular-nums text-[var(--foreground)]">{value}</span>
-    </div>
-  )
-}
-
-function ModelQualitiesPanel({ modelId }: { modelId: string }) {
-  const m = getModel(modelId)
-  if (!m) return null
-  return (
-    <div className="pointer-events-none flex flex-col gap-1">
-      <MetricRow
-        icon={BrainCircuit}
-        label="Intelligence"
-        value={Math.round(m.intelligence)}
-      />
-      <MetricRow
-        icon={DollarSign}
-        label="Cost"
-        value={m.cost === 0 ? 'Free' : `$${(m.pricePer1mTokens ?? m.cost).toFixed(2)}/M`}
-      />
-      <MetricRow
-        icon={Zap}
-        label="Speed"
-        value={m.medianOutputTokensPerSecond ? `${Math.round(m.medianOutputTokensPerSecond)} t/s` : 'N/A'}
-      />
-      <MetricRow
-        icon={ShieldCheck}
-        label="ZDR"
-        value={
-          <span className="inline-flex items-center gap-1 text-[var(--foreground)]">
-            {m.supportsZeroDataRetention ? <Check size={11} strokeWidth={2} /> : <X size={11} strokeWidth={2} />}
-          </span>
-        }
-      />
-    </div>
-  )
-}
-
-function createConversationRuntime(
-  chatId: string,
-  uiOverrides: Partial<ConversationUiState> = {},
-): ConversationRuntime {
-  const actTransport = '/api/app/conversations/act'
-  const transport = () => createPersistentChatTransport({
-    api: actTransport,
-    prepareSendMessagesRequest: ({ api, id, messages, body, headers, credentials, trigger, messageId }) => ({
-      api,
-      headers,
-      credentials,
-      body: {
-        ...body,
-        id,
-        messages: messages.at(-1) ? [messages.at(-1)] : [],
-        trigger,
-        messageId,
-      },
-    }),
-  })
-  const askChats: ConversationRuntime['askChats'] = [
-    new Chat({
-      id: `${chatId}:ask:0`,
-      transport: transport(),
-    }),
-    new Chat({
-      id: `${chatId}:ask:1`,
-      transport: transport(),
-    }),
-    new Chat({
-      id: `${chatId}:ask:2`,
-      transport: transport(),
-    }),
-    new Chat({
-      id: `${chatId}:ask:3`,
-      transport: transport(),
-    }),
-  ]
-
-  return {
-    askChats,
-    actChat: new Chat({
-      id: `${chatId}:act`,
-      transport: transport(),
-      onFinish: ({ messages }) => {
-        askChats[0].messages = [...messages]
-      },
-    }),
-    hydrated: false,
-    ui: createConversationUiState(uiOverrides),
-  }
-}
 
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -343,6 +186,15 @@ export default function ChatInterface({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  /** When chat is opened inside a project, files/docs attach to this project for search scoping. */
+  const rawEmbedProjectId = hideSidebar ? searchParams?.get('projectId')?.trim() ?? null : null
+  const embedProjectId =
+    rawEmbedProjectId &&
+    /^[a-z0-9]+$/i.test(rawEmbedProjectId) &&
+    rawEmbedProjectId.length >= 16 &&
+    rawEmbedProjectId.length <= 64
+      ? rawEmbedProjectId
+      : null
   const { settings } = useAppSettings()
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexWorkOSToken()
@@ -352,8 +204,6 @@ export default function ChatInterface({
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const appliedLiveDeltaIdsRef = useRef(new Set<string>())
   const resumedCloudflareStreamsRef = useRef(new Set<string>())
-  const runtimesRef = useRef(new Map<string, ConversationRuntime>())
-  const emptyRuntimeRef = useRef(createConversationRuntime('__empty__'))
 
   // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
   useEffect(() => {
@@ -365,6 +215,25 @@ export default function ChatInterface({
 
   const [chats, setChats] = useState<Conversation[]>(() => getCachedChatList() ?? [])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const {
+    runtimesRef,
+    emptyRuntimeRef,
+    ensureConversationRuntime,
+    replaceConversationRuntime,
+    activeRuntime,
+    chatStreamRelayApi,
+    chat0,
+    chat1,
+    chat2,
+    chat3,
+    actChat,
+    chat0Ref,
+    chat1Ref,
+    chat2Ref,
+    chat3Ref,
+    actChatRef,
+    chatInstances,
+  } = useChatRuntimes(activeChatId)
   const [, forceLiveSyncRender] = useState(0)
   const [runtimeHydrationVersion, setRuntimeHydrationVersion] = useState(0)
   /** Lifted sources-panel state so the sidebar sits beside the chat area and shrinks it,
@@ -399,74 +268,32 @@ export default function ChatInterface({
   }, [])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
-  const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
-  const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
-  const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
-  /** After first paint — avoids free-tier Auto reset racing ahead of localStorage restore. */
-  const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
+  const {
+    selectedActModel,
+    setSelectedActModel,
+    selectedModels,
+    setSelectedModels,
+    askModelSelectionMode,
+    setAskModelSelectionMode,
+    chatPrefsHydrated,
+    generationMode,
+    setGenerationMode,
+    generationChip,
+    setGenerationChip,
+    selectedImageModels,
+    setSelectedImageModels,
+    selectedVideoModels,
+    setSelectedVideoModels,
+    imageModelSelectionMode,
+    setImageModelSelectionMode,
+    videoModelSelectionMode,
+    setVideoModelSelectionMode,
+    videoSubMode,
+    setVideoSubMode,
+    lastGeneratedImageUrlRef,
+  } = useChatPreferences()
   const [, setIsSwitchingChat] = useState(false)
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
-
-  useEffect(() => {
-    const saved = localStorage.getItem(CHAT_MODEL_KEY)
-    let restoredSelectedModels: string[] | null = null
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          restoredSelectedModels = parsed.slice(0, 4)
-          setSelectedModels(restoredSelectedModels)
-        }
-      } catch {
-        restoredSelectedModels = [saved]
-        setSelectedModels(restoredSelectedModels)
-      }
-    }
-    if ((restoredSelectedModels?.length ?? 1) > 1) {
-      setAskModelSelectionMode('multiple')
-    }
-    const savedAct = localStorage.getItem(ACT_MODEL_KEY)
-    if (savedAct) setSelectedActModel(savedAct)
-    const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
-    if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
-
-    const imgMode = localStorage.getItem(IMAGE_MODEL_SELECTION_MODE_KEY)
-    if (imgMode === 'single' || imgMode === 'multiple') {
-      setImageModelSelectionMode(imgMode)
-    }
-    const vidMode = localStorage.getItem(VIDEO_MODEL_SELECTION_MODE_KEY)
-    if (vidMode === 'single' || vidMode === 'multiple') {
-      setVideoModelSelectionMode(vidMode)
-    }
-    try {
-      const rawImg = localStorage.getItem(SELECTED_IMAGE_MODELS_KEY)
-      if (rawImg) {
-        const parsed = JSON.parse(rawImg) as unknown
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const allowed = new Set(IMAGE_MODELS.map((m) => m.id))
-          const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
-          if (next.length > 0) setSelectedImageModels(next)
-        }
-      }
-    } catch {
-      /* keep default */
-    }
-    try {
-      const rawVid = localStorage.getItem(SELECTED_VIDEO_MODELS_KEY)
-      if (rawVid) {
-        const parsed = JSON.parse(rawVid) as unknown
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const allowed = new Set(VIDEO_MODELS.map((m) => m.id))
-          const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
-          if (next.length > 0) setSelectedVideoModels(next)
-        }
-      }
-    } catch {
-      /* keep default */
-    }
-
-    setChatPrefsHydrated(true)
-  }, [])
 
   // Warm integration logo cache so Composio logos render in chat connect cards.
   useEffect(() => {
@@ -480,21 +307,8 @@ export default function ChatInterface({
   // Needed for project chats which are excluded from the global chats:list query.
   const [activeChatTitle, setActiveChatTitle] = useState<string | null>(null)
 
-  const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
-  const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
   const [generationResults, setGenerationResults] = useState<Map<number, GenerationResult[]>>(new Map())
   const [exchangeGenTypes, setExchangeGenTypes] = useState<('text' | 'image' | 'video')[]>([])
-  const [selectedImageModels, setSelectedImageModels] = useState<string[]>([DEFAULT_IMAGE_MODEL_ID])
-  const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
-  const [imageModelSelectionMode, setImageModelSelectionMode] = useState<AskModelSelectionMode>('single')
-  const [videoModelSelectionMode, setVideoModelSelectionMode] = useState<AskModelSelectionMode>('single')
-  const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>(() => {
-    try {
-      const saved = localStorage.getItem(VIDEO_SUB_MODE_KEY)
-      return (saved as VideoSubMode | null) ?? 'text-to-video'
-    } catch { return 'text-to-video' }
-  })
-  const lastGeneratedImageUrlRef = useRef<string | null>(null)
 
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showVideoSubModePicker, setShowVideoSubModePicker] = useState(false)
@@ -504,7 +318,6 @@ export default function ChatInterface({
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const dragCounterRef = useRef(0)
   const lastStreamChunkAtRef = useRef<number>(Date.now())
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
   const [input, setInputState] = useState('')
@@ -538,10 +351,23 @@ export default function ChatInterface({
 
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
-  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
-  const [pendingChatDocuments, setPendingChatDocuments] = useState<PendingChatDocument[]>([])
-  const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
+  const {
+    attachedImages,
+    setAttachedImages,
+    pendingChatDocuments,
+    setPendingChatDocuments,
+    attachmentError,
+    setAttachmentError,
+    fileInputRef,
+    docInputRef,
+    dragCounterRef,
+    removePendingDocument,
+    queueDocumentUpload,
+    addDocumentsFromPicker,
+    addImages,
+    handlePaste,
+  } = useChatAttachments({ embedProjectId, setComposerNotice })
   const [topUpAmountDraftCents, setTopUpAmountDraftCents] = useState(800)
   const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
   const [billingActionLoading, setBillingActionLoading] = useState<'checkout' | 'save' | null>(null)
@@ -646,8 +472,6 @@ export default function ChatInterface({
   const shouldScrollRef = useRef(false)
   const pendingScrollTurnIdRef = useRef<string | null>(null)
   const pendingScrollChatIdRef = useRef<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const docInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<MentionInputHandle>(null)
   const [mentions, setMentions] = useState<MentionItem[]>([])
   const modelPickerRef = useRef<HTMLDivElement>(null)
@@ -674,25 +498,6 @@ export default function ChatInterface({
   const ttftLoggedRef = useRef(false)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
-
-  const ensureConversationRuntime = useCallback((chatId: string, uiOverrides?: Partial<ConversationUiState>) => {
-    const existing = runtimesRef.current.get(chatId)
-    if (existing) {
-      if (uiOverrides) {
-        existing.ui = createConversationUiState({
-          ...existing.ui,
-          ...uiOverrides,
-          generationResults: uiOverrides.generationResults ?? existing.ui.generationResults,
-          orphanModelThreads: uiOverrides.orphanModelThreads ?? existing.ui.orphanModelThreads,
-        })
-      }
-      return existing
-    }
-
-    const runtime = createConversationRuntime(chatId, uiOverrides)
-    runtimesRef.current.set(chatId, runtime)
-    return runtime
-  }, [])
 
   const applyUiStateToView = useCallback((ui: ConversationUiState) => {
     setSelectedActModel(ui.selectedActModel)
@@ -859,23 +664,6 @@ export default function ChatInterface({
     }
   }, [resetActiveChatAfterDelete, updateRuntimeUiState])
 
-  const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : emptyRuntimeRef.current
-  const chatStreamRelayApi = getCloudflareChatStreamRelayApi()
-  const chat0 = useChat({ chat: activeRuntime.askChats[0] })
-  const chat1 = useChat({ chat: activeRuntime.askChats[1] })
-  const chat2 = useChat({ chat: activeRuntime.askChats[2] })
-  const chat3 = useChat({ chat: activeRuntime.askChats[3] })
-  const actChat = useChat({ chat: activeRuntime.actChat })
-  const chat0Ref = useRef(chat0)
-  const chat1Ref = useRef(chat1)
-  const chat2Ref = useRef(chat2)
-  const chat3Ref = useRef(chat3)
-  const actChatRef = useRef(actChat)
-  chat0Ref.current = chat0
-  chat1Ref.current = chat1
-  chat2Ref.current = chat2
-  chat3Ref.current = chat3
-  actChatRef.current = actChat
   const liveMessages = useQuery(
     api.conversations.watchGeneratingMessages,
     activeChatId && authUser?.id && convexAccessToken
@@ -897,7 +685,6 @@ export default function ChatInterface({
       : 'skip',
   ) as Array<LiveMessageDelta> | undefined
 
-  const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
   const activeAskChats = activeRuntime.askChats
   const activePersistedGenerating =
     (liveMessages ?? []).some(
@@ -1656,16 +1443,6 @@ export default function ChatInterface({
     setSelectedModels([primary])
     setSelectedActModel(primary)
   }, [hasAutomationContext, askModelSelectionMode, selectedModels, selectedActModel])
-  /** When chat is opened inside a project, files/docs attach to this project for search scoping. */
-  const rawEmbedProjectId = hideSidebar ? searchParams?.get('projectId')?.trim() ?? null : null
-  const embedProjectId =
-    rawEmbedProjectId &&
-    /^[a-z0-9]+$/i.test(rawEmbedProjectId) &&
-    rawEmbedProjectId.length >= 16 &&
-    rawEmbedProjectId.length <= 64
-      ? rawEmbedProjectId
-      : null
-
   useEffect(() => {
     if (hideSidebar) return
     const browserIdParam =
@@ -3123,110 +2900,6 @@ export default function ChatInterface({
     await loadChats()
   }
 
-  function removePendingDocument(clientId: string) {
-    setPendingChatDocuments((prev) => prev.filter((d) => d.clientId !== clientId))
-  }
-
-  function queueDocumentUpload(file: File) {
-    const clientId = crypto.randomUUID()
-    setAttachmentError(null)
-    setPendingChatDocuments((prev) => [
-      ...prev,
-      { clientId, name: file.name, fileIds: [], status: 'uploading' },
-    ])
-    const form = new FormData()
-    form.append('file', file)
-    if (embedProjectId) form.append('projectId', embedProjectId)
-    void overlayAppClient.files.ingestDocumentResponse(form, {
-      credentials: 'same-origin',
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const err = (await res.json().catch(() => ({}))) as { error?: string }
-          setPendingChatDocuments((prev) =>
-            prev.map((d) =>
-              d.clientId === clientId
-                ? { ...d, status: 'error' as const, error: err.error ?? 'Could not index file' }
-                : d,
-            ),
-          )
-          return
-        }
-        const data = (await res.json().catch(() => ({}))) as {
-          ids?: string[]
-          name?: string
-        }
-        const fileIds = Array.isArray(data.ids) ? data.ids.map((id) => String(id)) : []
-        const resolvedName =
-          typeof data.name === 'string' && data.name.trim().length > 0 ? data.name.trim() : file.name
-        setPendingChatDocuments((prev) =>
-          prev.map((d) =>
-            d.clientId === clientId
-              ? { ...d, status: 'ready' as const, fileIds, name: resolvedName }
-              : d,
-          ),
-        )
-      })
-      .catch(() => {
-        setPendingChatDocuments((prev) =>
-          prev.map((d) =>
-            d.clientId === clientId
-              ? { ...d, status: 'error' as const, error: 'Network error' }
-              : d,
-          ),
-        )
-      })
-  }
-
-  function addDocumentsFromPicker(files: FileList | File[] | null) {
-    if (!files?.length) return
-    Array.from(files).forEach((file) => queueDocumentUpload(file))
-  }
-
-  function addImages(files: FileList | File[]) {
-    Array.from(files).forEach((file) => {
-      if (!file.type.startsWith('image/')) return
-      if (!SUPPORTED_INPUT_IMAGE_TYPES.has(file.type)) {
-        setAttachmentError(`Unsupported image format: ${file.name}. Use JPEG, PNG, GIF, or WebP.`)
-        return
-      }
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string
-        setAttachmentError(null)
-        setAttachedImages((prev) => [...prev, { dataUrl, mimeType: file.type, name: file.name }])
-      }
-      reader.readAsDataURL(file)
-    })
-  }
-
-  function handlePaste(e: React.ClipboardEvent) {
-    const pastedText = e.clipboardData.getData('text/plain')
-    if (pastedText && shouldAttachPastedTextAsFile(pastedText)) {
-      e.preventDefault()
-      const blob = new Blob([pastedText], { type: 'text/plain;charset=utf-8' })
-      if (blob.size > LARGE_PASTE_MAX_BYTES) {
-        setAttachmentError('Pasted text is too large to attach here. Upload it as a smaller text file.')
-        return
-      }
-      const fileName = pastedTextFileName(pastedText)
-      const file = new File([blob], fileName, { type: 'text/plain' })
-      queueDocumentUpload(file)
-      setComposerNotice(`Large paste attached as ${fileName}.`)
-      window.setTimeout(() => setComposerNotice(null), 5000)
-      return
-    }
-
-    const imageFiles = Array.from(e.clipboardData.items)
-      .filter((item) => item.type.startsWith('image/'))
-      .map((item) => item.getAsFile())
-      .filter((f): f is File => f != null)
-    if (imageFiles.length > 0) {
-      e.preventDefault()
-      addImages(imageFiles)
-    }
-  }
-
   const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
 
   const { requireAuth } = useGuestGate()
@@ -4015,13 +3688,7 @@ export default function ChatInterface({
         const uiSnapshot = { ...runtime.ui }
         const oldAskMessages = runtime.askChats.map((c) => [...c.messages])
         const oldActMessages = [...runtime.actChat.messages]
-        runtimesRef.current.delete(chatId)
-        const newRuntime = createConversationRuntime(chatId, uiSnapshot)
-        newRuntime.askChats.forEach((chat, i) => {
-          if (oldAskMessages[i]) chat.messages = oldAskMessages[i] as never
-        })
-        newRuntime.actChat.messages = oldActMessages as never
-        runtimesRef.current.set(chatId, newRuntime)
+        replaceConversationRuntime(chatId, uiSnapshot, oldAskMessages as UIMessage[][], oldActMessages as UIMessage[])
         forceLiveSyncRender((v) => v + 1)
       }
     }, 400)
@@ -4161,214 +3828,24 @@ export default function ChatInterface({
     <div className="flex h-full min-w-0 overflow-x-hidden">
       {/* Sidebar — hidden when embedded in a project */}
       {showOwnSidebar && (
-        <>
-          <div className="hidden h-full w-52 flex-col border-r border-[var(--border)] bg-[var(--surface-muted)] md:flex">
-            <div className="flex h-16 items-center border-b border-[var(--border)] px-3">
-              <button
-                onClick={() => void createNewChat()}
-                className="flex w-full items-center gap-1.5 rounded-md bg-[var(--foreground)] px-3 py-1.5 text-sm text-[var(--background)] transition-colors hover:opacity-80"
-              >
-                <Plus size={13} />
-                New chat
-              </button>
-            </div>
-            <div className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
-              {chats.map((chat) => {
-                const isStreaming = sessions[chat._id]?.status === 'streaming'
-                const unread = getUnread(chat._id)
-                const isEditing = editingChatId === chat._id
-                const isDeleting = deletingChatIds.includes(chat._id)
-                return (
-                  <div
-                    key={chat._id}
-                    onClick={() => {
-                      if (isDeleting) return
-                      if (isEditing) return
-                      void loadChat(chat._id, { replaceUrl: false })
-                    }}
-                    className={`group flex cursor-pointer items-center justify-between overflow-hidden rounded-md px-2.5 text-xs transition-all duration-200 ${
-                      isDeleting ? 'max-h-0 -translate-y-1 py-0 opacity-0' : 'max-h-10 py-1.5 opacity-100'
-                    } ${
-                      activeChatId === chat._id
-                        ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                        : 'text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
-                    }`}
-                  >
-                    {isEditing ? (
-                      <input
-                        autoFocus
-                        value={editingChatTitle}
-                        onChange={(event) => setEditingChatTitle(event.target.value)}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault()
-                            void commitChatRename(chat._id)
-                          } else if (event.key === 'Escape') {
-                            event.preventDefault()
-                            cancelChatRename()
-                          }
-                        }}
-                        onBlur={() => void commitChatRename(chat._id)}
-                        className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
-                      />
-                    ) : (
-                      <span className="flex-1 truncate">{chat.title}</span>
-                    )}
-                    {isStreaming && !unread && (
-                      <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
-                    )}
-                    {unread > 0 && (
-                      <span className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[9px] font-medium text-[var(--background)]">
-                        {unread}
-                      </span>
-                    )}
-                    {!isEditing ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={(event) => beginChatRename(chat._id, chat.title, event)}
-                          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                          aria-label="Rename chat"
-                        >
-                          <Pencil size={11} />
-                        </button>
-                        <button
-                          onClick={(e) => requestDeleteChat(chat, e)}
-                          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                          aria-label="Delete chat"
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {mobileChatListOpen && (
-            <div className="fixed inset-0 z-50 md:hidden">
-              <button
-                type="button"
-                aria-label="Close chat list"
-                className="absolute inset-0 bg-black/40"
-                onClick={() => setMobileChatListOpen(false)}
-              />
-              <div
-                className="absolute bottom-0 left-0 right-0 flex max-h-[min(78vh,560px)] flex-col rounded-t-2xl border border-[var(--border)] border-b-0 bg-[var(--surface-muted)] shadow-[0_-8px_40px_rgba(0,0,0,0.12)]"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Chat history"
-              >
-                <div className="flex shrink-0 items-center justify-center pb-1 pt-2">
-                  <span className="h-1 w-12 rounded-full bg-[var(--border)]" aria-hidden />
-                </div>
-                <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-2.5">
-                  <span className="text-sm font-medium text-[var(--foreground)]">Chats</span>
-                  <button
-                    type="button"
-                    onClick={() => setMobileChatListOpen(false)}
-                    aria-label="Close"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-                <div className="border-b border-[var(--border)] px-3 py-2">
-                  <button
-                    onClick={() => {
-                      void createNewChat().then(() => setMobileChatListOpen(false))
-                    }}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--foreground)] px-3 py-2 text-sm text-[var(--background)] transition-colors hover:opacity-80"
-                  >
-                    <Plus size={13} />
-                    New chat
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-                  <div className="space-y-0.5">
-                    {chats.map((chat) => {
-                      const isStreaming = sessions[chat._id]?.status === 'streaming'
-                      const unread = getUnread(chat._id)
-                      const isEditing = editingChatId === chat._id
-                      const isDeleting = deletingChatIds.includes(chat._id)
-                      return (
-                        <div
-                          key={chat._id}
-                          onClick={() => {
-                            if (isDeleting) return
-                            if (isEditing) return
-                            void loadChat(chat._id, { replaceUrl: false })
-                            setMobileChatListOpen(false)
-                          }}
-                          className={`group flex items-center justify-between overflow-hidden rounded-md px-2.5 text-xs transition-all duration-200 ${
-                            isDeleting ? 'max-h-0 -translate-y-1 py-0 opacity-0' : 'max-h-11 py-2 opacity-100'
-                          } ${
-                              activeChatId === chat._id
-                                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                                : 'text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
-                          }`}
-                        >
-                          {isEditing ? (
-                            <input
-                              autoFocus
-                              value={editingChatTitle}
-                              onChange={(event) => setEditingChatTitle(event.target.value)}
-                              onClick={(event) => event.stopPropagation()}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter') {
-                                  event.preventDefault()
-                                  void commitChatRename(chat._id)
-                                } else if (event.key === 'Escape') {
-                                  event.preventDefault()
-                                  cancelChatRename()
-                                }
-                              }}
-                              onBlur={() => void commitChatRename(chat._id)}
-                              className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
-                            />
-                          ) : (
-                            <span className="flex-1 truncate">{chat.title}</span>
-                          )}
-                          {isStreaming && !unread && (
-                            <span className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
-                          )}
-                          {unread > 0 && (
-                            <span className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[9px] font-medium text-[var(--background)]">
-                              {unread}
-                            </span>
-                          )}
-                          {!isEditing ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(event) => beginChatRename(chat._id, chat.title, event)}
-                                className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                                aria-label="Rename chat"
-                              >
-                                <Pencil size={11} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => requestDeleteChat(chat, e)}
-                                className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                                aria-label="Delete chat"
-                              >
-                                <Trash2 size={11} />
-                              </button>
-                            </>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
+        <ChatHistorySidebar
+          chats={chats}
+          activeChatId={activeChatId}
+          sessions={sessions}
+          getUnread={getUnread}
+          editingChatId={editingChatId}
+          editingChatTitle={editingChatTitle}
+          deletingChatIds={deletingChatIds}
+          mobileOpen={mobileChatListOpen}
+          onMobileOpenChange={setMobileChatListOpen}
+          onCreateChat={createNewChat}
+          onSelectChat={(chatId) => loadChat(chatId, { replaceUrl: false })}
+          onBeginRename={beginChatRename}
+          onEditingTitleChange={setEditingChatTitle}
+          onCommitRename={commitChatRename}
+          onCancelRename={cancelChatRename}
+          onRequestDelete={requestDeleteChat}
+        />
       )}
 
       {/* Main area */}
@@ -4498,7 +3975,7 @@ export default function ChatInterface({
                             transform: 'translate(calc(-100% - 8px), -50%)',
                           }}
                         >
-                          <ModelQualitiesPanel modelId={hoveredModelId} />
+                          <ModelQualitiesPanel model={getModel(hoveredModelId)} />
                         </div>
                       ) : null}
                       <div
@@ -4549,7 +4026,7 @@ export default function ChatInterface({
                                       {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
                                       {m.name}
                                     </span>
-                                    <ModelBadges m={m} isFreeTier={isFreeTier} />
+                                    <ModelBadges model={m} isFreeTier={isFreeTier} onUpgradeClick={() => router.push('/account')} />
                                   </button>
                                 </div>
                               )
@@ -4650,7 +4127,7 @@ export default function ChatInterface({
                         transform: 'translate(calc(-100% - 8px), -50%)',
                       }}
                     >
-                      <ModelQualitiesPanel modelId={hoveredModelId} />
+                      <ModelQualitiesPanel model={getModel(hoveredModelId)} />
                     </div>
                   ) : null}
                   <div
@@ -4746,7 +4223,7 @@ export default function ChatInterface({
                               {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
                               {m.name}
                             </span>
-                            <ModelBadges m={m} isFreeTier={isFreeTier} />
+                            <ModelBadges model={m} isFreeTier={isFreeTier} onUpgradeClick={() => router.push('/account')} />
                           </button>
                         </div>
                       )
@@ -5708,17 +5185,7 @@ export default function ChatInterface({
         />
 
         {showOwnSidebar && (
-          <div className="shrink-0 border-t border-[var(--border)] bg-[var(--background)]/95 backdrop-blur md:hidden">
-            <button
-              type="button"
-              onClick={() => setMobileChatListOpen(true)}
-              className="flex w-full items-center justify-center gap-2 py-2.5 text-xs font-medium text-[var(--muted)] active:bg-[var(--surface-subtle)]"
-              style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
-            >
-              <MessageSquare size={15} strokeWidth={1.75} />
-              Chats
-            </button>
-          </div>
+          <ChatHistoryMobileBar onOpen={() => setMobileChatListOpen(true)} />
         )}
       </div>
       <WebSourcesSidebar

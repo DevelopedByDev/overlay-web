@@ -1,0 +1,145 @@
+'use client'
+
+/* eslint-disable react-hooks/refs */
+
+import { useCallback, useMemo, useRef } from 'react'
+import { Chat, useChat } from '@ai-sdk/react'
+import type { UIMessage } from 'ai'
+import { createConversationUiState } from '@overlay/chat-core'
+import {
+  createPersistentChatTransport,
+  getCloudflareChatStreamRelayApi,
+} from '@/lib/cloudflare-chat-transport'
+import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
+
+function createConversationRuntime(
+  chatId: string,
+  uiOverrides: Partial<ConversationUiState> = {},
+): ConversationRuntime {
+  const actTransport = '/api/app/conversations/act'
+  const transport = () => createPersistentChatTransport({
+    api: actTransport,
+    prepareSendMessagesRequest: ({ api, id, messages, body, headers, credentials, trigger, messageId }) => ({
+      api,
+      headers,
+      credentials,
+      body: {
+        ...body,
+        id,
+        messages: messages.at(-1) ? [messages.at(-1)] : [],
+        trigger,
+        messageId,
+      },
+    }),
+  })
+  const askChats: ConversationRuntime['askChats'] = [
+    new Chat({
+      id: `${chatId}:ask:0`,
+      transport: transport(),
+    }),
+    new Chat({
+      id: `${chatId}:ask:1`,
+      transport: transport(),
+    }),
+    new Chat({
+      id: `${chatId}:ask:2`,
+      transport: transport(),
+    }),
+    new Chat({
+      id: `${chatId}:ask:3`,
+      transport: transport(),
+    }),
+  ]
+
+  return {
+    askChats,
+    actChat: new Chat({
+      id: `${chatId}:act`,
+      transport: transport(),
+      onFinish: ({ messages }) => {
+        askChats[0].messages = [...messages] as UIMessage[]
+      },
+    }),
+    hydrated: false,
+    ui: createConversationUiState(uiOverrides),
+  }
+}
+
+export function useChatRuntimes(activeChatId: string | null) {
+  const runtimesRef = useRef(new Map<string, ConversationRuntime>())
+  const emptyRuntimeRef = useRef(createConversationRuntime('__empty__'))
+
+  const ensureConversationRuntime = useCallback((chatId: string, uiOverrides?: Partial<ConversationUiState>) => {
+    const existing = runtimesRef.current.get(chatId)
+    if (existing) {
+      if (uiOverrides) {
+        existing.ui = createConversationUiState({
+          ...existing.ui,
+          ...uiOverrides,
+          generationResults: uiOverrides.generationResults ?? existing.ui.generationResults,
+          orphanModelThreads: uiOverrides.orphanModelThreads ?? existing.ui.orphanModelThreads,
+        })
+      }
+      return existing
+    }
+
+    const runtime = createConversationRuntime(chatId, uiOverrides)
+    runtimesRef.current.set(chatId, runtime)
+    return runtime
+  }, [])
+
+  const replaceConversationRuntime = useCallback((
+    chatId: string,
+    uiSnapshot: ConversationUiState,
+    askMessages: UIMessage[][],
+    actMessages: UIMessage[],
+  ) => {
+    const runtime = createConversationRuntime(chatId, uiSnapshot)
+    runtime.askChats.forEach((chat, index) => {
+      if (askMessages[index]) chat.messages = askMessages[index] as never
+    })
+    runtime.actChat.messages = actMessages as never
+    runtimesRef.current.delete(chatId)
+    runtimesRef.current.set(chatId, runtime)
+    return runtime
+  }, [])
+
+  const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : emptyRuntimeRef.current
+  const chatStreamRelayApi = getCloudflareChatStreamRelayApi()
+  const chat0 = useChat({ chat: activeRuntime.askChats[0] })
+  const chat1 = useChat({ chat: activeRuntime.askChats[1] })
+  const chat2 = useChat({ chat: activeRuntime.askChats[2] })
+  const chat3 = useChat({ chat: activeRuntime.askChats[3] })
+  const actChat = useChat({ chat: activeRuntime.actChat })
+  const chat0Ref = useRef(chat0)
+  const chat1Ref = useRef(chat1)
+  const chat2Ref = useRef(chat2)
+  const chat3Ref = useRef(chat3)
+  const actChatRef = useRef(actChat)
+  chat0Ref.current = chat0
+  chat1Ref.current = chat1
+  chat2Ref.current = chat2
+  chat3Ref.current = chat3
+  actChatRef.current = actChat
+  const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
+
+  return {
+    runtimesRef,
+    emptyRuntimeRef,
+    ensureConversationRuntime,
+    replaceConversationRuntime,
+    activeRuntime,
+    chatStreamRelayApi,
+    chat0,
+    chat1,
+    chat2,
+    chat3,
+    actChat,
+    chat0Ref,
+    chat1Ref,
+    chat2Ref,
+    chat3Ref,
+    actChatRef,
+    chatInstances,
+  }
+}

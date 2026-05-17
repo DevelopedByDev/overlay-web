@@ -12,6 +12,7 @@
     "./draft-review-modal": "./src/components/DraftReviewModal.tsx",
     "./exchange-block": "./src/components/ExchangeBlock.tsx",
     "./media-slot-output": "./src/components/MediaSlotOutput.tsx",
+    "./model-indicators": "./src/components/ModelIndicators.tsx",
     "./sources-panel": "./src/components/SourcesPanel.tsx",
     "./styles.css": "./src/styles/overlay-theme.css"
   },
