@@ -7,12 +7,22 @@ import type {
   LiveMessageDelta,
   RestoredOutputGroup,
   ServerConversationMessage,
+  SkillDraftSummary,
+  AutomationDraftSummary,
   ToolGroupItem,
+  ToolVisualBlock,
 } from './types'
 
 export function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> }): string {
   if (!msg.parts) return ''
   return msg.parts.filter((part) => part.type === 'text').map((part) => part.text || '').join('')
+}
+
+export function assistantBlocksToPlainText(blocks: AssistantVisualBlock[]): string {
+  return blocks
+    .filter((block): block is { kind: 'text'; text: string } => block.kind === 'text')
+    .map((block) => block.text)
+    .join('\n\n')
 }
 
 export function messageHasVisibleAssistantActivity(msg: {
@@ -300,6 +310,24 @@ export function applyLiveMessageDeltaParts(
     nextParts = mergeLiveStreamingParts(nextParts, delta.newParts)
   }
   return nextParts
+}
+
+export function getDraftFromToolBlock(
+  block: ToolVisualBlock,
+): { kind: 'skill'; draft: SkillDraftSummary } | { kind: 'automation'; draft: AutomationDraftSummary } | null {
+  const output =
+    block.toolOutput && typeof block.toolOutput === 'object'
+      ? (block.toolOutput as Record<string, unknown>)
+      : null
+  if (!output || output.success !== true) return null
+
+  if (block.name === 'draft_skill_from_chat' && output.draft && typeof output.draft === 'object') {
+    return { kind: 'skill', draft: output.draft as SkillDraftSummary }
+  }
+  if (block.name === 'draft_automation_from_chat' && output.draft && typeof output.draft === 'object') {
+    return { kind: 'automation', draft: output.draft as AutomationDraftSummary }
+  }
+  return null
 }
 
 export function errorLabel(err: Error | null | undefined): string | null {
