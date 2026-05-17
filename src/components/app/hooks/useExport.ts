@@ -48,7 +48,7 @@ export function useExport({ type, title, content, metadata }: UseExportOptions) 
   }, [])
 
   const copyToClipboard = useCallback(
-    async (format: 'markdown' = 'markdown'): Promise<void> => {
+    async (): Promise<void> => {
       const text = getMarkdownContent()
       await navigator.clipboard.writeText(text)
     },

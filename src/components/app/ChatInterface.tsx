@@ -16,7 +16,6 @@ import {
   FolderOpen,
   Video,
   Download,
-  Copy,
   RotateCw,
   Reply,
   GitBranch,
@@ -28,14 +27,12 @@ import {
   MessageSquare,
   BookOpen,
   Search,
-  Maximize2,
-  PanelRight,
   Zap,
   AtSign,
   ShieldCheck,
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
-import { getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
+import type { UIMessage } from 'ai'
 import {
   cloneConversationUiState,
   cloneGenerationResultsMap,
@@ -112,12 +109,7 @@ const MarkdownMessage = dynamic(() => import('./MarkdownMessage').then((mod) => 
 import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { FileViewerPanel } from './FileViewer'
 import { DelayedTooltip } from './DelayedTooltip'
-import {
-  normalizeAgentAssistantText,
-  redactOpaqueNotebookFileIdsInVisibleText,
-  splitRedactedThinkingSegments,
-} from '@/lib/agent-assistant-text'
-import type { OutputType } from '@/lib/output-types'
+import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
 import { useAppSettings } from './AppSettingsProvider'
 import { ExportMenu } from './ExportMenu'
 import { buildSharePageUrl } from '@/lib/share-url'
@@ -132,10 +124,7 @@ import {
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
-import {
-  buildSkillDraftFromTurn,
-  type SkillDraftSummary,
-} from '@/lib/skill-drafts'
+import type { SkillDraftSummary } from '@/lib/skill-drafts'
 import type { AutomationDraftSummary } from '@/lib/automation-drafts'
 import { isOverlayGatedToolOutput } from '@/lib/overlay-gated-feature'
 import { warmIntegrationLogoCache } from '@/lib/integration-logo-cache'
@@ -1111,9 +1100,6 @@ function ExchangeBlock({
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
-    const hasDraftToolCard = assistantVisualBlocks.some(
-      (block) => block.kind === 'tool' && !!getDraftFromToolBlock(block),
-    )
     const lastTextBlockIndex = (() => {
       let idx = -1
       for (let i = 0; i < assistantVisualBlocks.length; i++) {
@@ -1818,7 +1804,7 @@ export default function ChatInterface({
   const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
   /** After first paint — avoids free-tier Auto reset racing ahead of localStorage restore. */
   const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
-  const [isSwitchingChat, setIsSwitchingChat] = useState(false)
+  const [, setIsSwitchingChat] = useState(false)
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
 
   useEffect(() => {
@@ -5049,17 +5035,6 @@ export default function ChatInterface({
         type: 'text',
         text: `[Indexed documents: ${indexedFileNames.join(', ')}]`,
       })
-    }
-
-    let persistedContent = ''
-    if (text.trim() && indexedFileNames.length > 0) {
-      persistedContent = `${text.trim()}\n\n[Indexed documents: ${indexedFileNames.join(', ')}]`
-    } else if (text.trim()) {
-      persistedContent = text.trim()
-    } else if (partsForModel.some((p) => p.type === 'file')) {
-      persistedContent = '[Image attachment]'
-    } else if (indexedFileNames.length > 0) {
-      persistedContent = `[Indexed documents: ${indexedFileNames.join(', ')}]`
     }
 
     const userMeta: ChatMessageMetadata = {}

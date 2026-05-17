@@ -17,12 +17,6 @@ import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 const FILES_CHANGED_EVENT = 'overlay:files-changed'
 
-function sortNotes(notes: Note[]) {
-  return [...notes].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-}
-
-type Note = { _id: string; title: string; updatedAt: number }
-type CanonicalNoteFile = { _id: string; name?: string; updatedAt?: number }
 type Project = { _id: string; name: string; parentId: string | null }
 type ProjectChat = { _id: string; title: string; lastModified: number }
 type ProjectNote = { _id: string; title: string; updatedAt: number }
@@ -48,126 +42,6 @@ const panelItemClass =
 
 const inlineConfirmDeleteButtonClass =
   'ml-1 inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25'
-
-export function NotesInlinePanel({
-  refreshKey,
-  searchQuery = '',
-  onNavigate,
-}: {
-  refreshKey: number
-  searchQuery?: string
-  onNavigate?: () => void
-}) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [notes, setNotes] = useState<Note[]>([])
-  const [loading, setLoading] = useState(true)
-  const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null)
-  const activeId = searchParams?.get('id') ?? null
-
-  const loadNotes = useCallback(async () => {
-    try {
-      const res = await fetch('/api/app/files?kind=note')
-      if (res.ok) {
-        const rows = (await res.json()) as CanonicalNoteFile[]
-        setNotes(sortNotes(rows.map((file) => ({
-          _id: file._id,
-          title: file.name || 'Untitled',
-          updatedAt: file.updatedAt ?? 0,
-        }))))
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    setLoading(true)
-    void loadNotes()
-  }, [loadNotes, refreshKey])
-
-  useEffect(() => {
-    function handleNotesChanged(event: Event) {
-      const note = (event as CustomEvent<{ note?: Note }>).detail?.note
-      if (note?._id) {
-        setNotes((prev) => sortNotes([note, ...prev.filter((item) => item._id !== note._id)]))
-        setLoading(false)
-        return
-      }
-      void loadNotes()
-    }
-
-    window.addEventListener('overlay:notes-changed', handleNotesChanged)
-    return () => window.removeEventListener('overlay:notes-changed', handleNotesChanged)
-  }, [loadNotes])
-
-  async function deleteNote(noteId: string, event: MouseEvent) {
-    event.stopPropagation()
-    setPendingDeleteNoteId(null)
-    await fetch(`/api/app/files?fileId=${noteId}`, { method: 'DELETE' })
-    setNotes((prev) => prev.filter((note) => note._id !== noteId))
-    if (activeId === noteId) {
-      router.push('/app/notes')
-    }
-  }
-
-  const filteredNotes = searchQuery.trim()
-    ? notes.filter((n) => n.title.toLowerCase().includes(searchQuery.toLowerCase()))
-    : notes
-
-  return (
-    <div className="space-y-0.5">
-      {loading ? (
-        <SidebarListSkeleton rows={6} />
-      ) : filteredNotes.length === 0 ? (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{notes.length === 0 ? 'No notes yet' : 'No results'}</p>
-      ) : filteredNotes.map((note) => {
-        const active = activeId === note._id
-        const isConfirmingDelete = pendingDeleteNoteId === note._id
-        return (
-          <div
-            key={note._id}
-            onMouseLeave={() => {
-              if (isConfirmingDelete) setPendingDeleteNoteId(null)
-            }}
-            onClick={() => {
-              router.push(`/app/notes?id=${encodeURIComponent(note._id)}`)
-              onNavigate?.()
-            }}
-            className={`${panelItemClass} cursor-pointer ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-          >
-            <BookOpen size={12} className="shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
-            {isConfirmingDelete ? (
-              <button
-                type="button"
-                onClick={(event) => void deleteNote(note._id, event)}
-                className={inlineConfirmDeleteButtonClass}
-                aria-label="Confirm delete note"
-              >
-                Confirm
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setPendingDeleteNoteId(note._id)
-                }}
-                className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                aria-label="Delete note"
-              >
-                <Trash2 size={11} />
-              </button>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
 
 function FilesBranch({
   file,
@@ -862,12 +736,6 @@ export function ProjectsInlinePanel({
     </div>
   )
 }
-
-export const knowledgeInlineItems = [
-  { id: 'memories', label: 'Memories' },
-  { id: 'files', label: 'Files' },
-  { id: 'outputs', label: 'Outputs' },
-] as const
 
 export const toolsInlineItems = [
   { id: 'connectors', label: 'Connectors' },

@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { McpAuthType, McpServerSummary, McpTransport } from '@overlay/app-core'
+import type { McpAuthType, McpTransport } from '@overlay/app-core'
 import type { ExtensionCatalogItem } from '@overlay/app-core/modules'
 import { Badge, Button, EmptyState, Input, Select, Textarea, Toggle, cn } from '@overlay/ui'
 
@@ -182,16 +182,4 @@ export function McpServerForm({
       </div>
     </form>
   )
-}
-
-export function mcpServerToFormValues(server: McpServerSummary): McpServerFormValues {
-  return {
-    name: server.name,
-    description: server.description ?? '',
-    transport: server.transport,
-    url: server.url,
-    enabled: server.enabled,
-    authType: server.authType,
-    timeoutMs: server.timeoutMs ?? '',
-  }
 }

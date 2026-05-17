@@ -115,7 +115,7 @@ export function ExportMenu({
   }
 
   const handleCopy = async () => {
-    await copyToClipboard('markdown')
+    await copyToClipboard()
     setCopied(true)
     setTimeout(() => {
       setCopied(false)

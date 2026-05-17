@@ -1,8 +1,8 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { OverlayPolicyGate, OverlaySettingsPanel, OverlaySettingsSection } from '@overlay/app-core'
-import { Badge, EmptyState, cn } from '@overlay/ui'
+import type { OverlaySettingsPanel, OverlaySettingsSection } from '@overlay/app-core'
+import { EmptyState, cn } from '@overlay/ui'
 
 export type SettingsPanelRenderer = (panel: OverlaySettingsPanel) => ReactNode
 
@@ -70,24 +70,5 @@ export function SettingsSectionRenderer({
         )}
       </main>
     </section>
-  )
-}
-
-export interface PolicyGateNoticeProps {
-  gate: OverlayPolicyGate
-  enabled?: boolean
-  children?: ReactNode
-}
-
-export function PolicyGateNotice({ gate, enabled = gate.defaultEnabled, children }: PolicyGateNoticeProps) {
-  if (enabled) return <>{children}</>
-  return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
-      <div className="flex items-center gap-2">
-        <p className="text-sm font-medium">{gate.label}</p>
-        <Badge variant="warning">{gate.enforcement}</Badge>
-      </div>
-      <p className="mt-1 text-xs leading-5">{gate.reason ?? gate.description ?? 'This capability is disabled by policy.'}</p>
-    </div>
   )
 }
