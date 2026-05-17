@@ -4,23 +4,18 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMe
 import { motion, AnimatePresence } from 'framer-motion'
 import posthog from 'posthog-js'
 import {
-  Send,
   Plus,
   Trash2,
   ChevronDown,
   ImageIcon,
-  FileText,
   X,
   AlertCircle,
   Check,
   FolderOpen,
-  Video,
   Reply,
   Pencil,
   ArrowUp,
   MessageSquare,
-  Zap,
-  AtSign,
 } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
 import type { UIMessage } from 'ai'
@@ -41,7 +36,14 @@ import {
 import { useQuery } from 'convex/react'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { ExchangeBlock, MediaSlotOutput, ModelBadges, ModelQualitiesPanel } from '@overlay/chat-react'
+import {
+  ExchangeBlock,
+  LiveAttachmentTray,
+  LiveComposerToolbar,
+  LiveModelPicker,
+  MediaSlotOutput,
+  type LiveTooltipRenderer,
+} from '@overlay/chat-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import {
   DEFAULT_MODEL_ID,
@@ -192,6 +194,14 @@ export default function ChatInterface({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const openAccountPage = useCallback(() => router.push('/account'), [router])
+  const renderDelayedTooltip = useCallback<LiveTooltipRenderer>(
+    ({ label, side, children }) => (
+      <DelayedTooltip label={label} side={side}>
+        {children}
+      </DelayedTooltip>
+    ),
+    [],
+  )
   const { settings } = useAppSettings()
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexWorkOSToken()
@@ -518,6 +528,10 @@ export default function ChatInterface({
     const r = row.getBoundingClientRect()
     setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
   }, [])
+  const handleModelPickerHover = useCallback((modelId: string | null) => {
+    setHoveredModelId(modelId)
+    syncModelQualitiesPosition(modelId)
+  }, [syncModelQualitiesPosition])
   const wasStreamingRef = useRef(false)
   const ttftSendTimeRef = useRef<number | null>(null)
   const ttftLoggedRef = useRef(false)
@@ -4314,92 +4328,30 @@ export default function ChatInterface({
 
             {showAutomationHeaderControls && (
               <div className="flex w-full shrink-0 items-center justify-end gap-2 md:w-auto">
-                <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-                  <DelayedTooltip label="Choose automation model" side="bottom">
-                    <button
-                      type="button"
-                      onClick={() => setShowModelPicker((value) => !value)}
-                      disabled={!selectedAutomation}
-                      className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] disabled:cursor-default disabled:opacity-70 md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1"
-                      aria-label="Automation model"
-                    >
-                      <span className="min-w-0 truncate">{getChatModelDisplayName(automationHeaderModelId) || 'Select model'}</span>
-                      <ChevronDown size={11} className="shrink-0" />
-                    </button>
-                  </DelayedTooltip>
-                  {showModelPicker && selectedAutomation && (
-                    <>
-                      {hoveredModelId && modelQualitiesPos ? (
-                        <div
-                          aria-hidden
-                          className="pointer-events-none fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
-                          style={{
-                            left: modelQualitiesPos.x,
-                            top: modelQualitiesPos.y,
-                            transform: 'translate(calc(-100% - 8px), -50%)',
-                          }}
-                        >
-                          <ModelQualitiesPanel model={getModel(hoveredModelId)} />
-                        </div>
-                      ) : null}
-                      <div
-                        data-tour="model-picker"
-                        className="absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-                        onMouseLeave={() => {
-                          setHoveredModelId(null)
-                          setModelQualitiesPos(null)
-                        }}
-                      >
-                        <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
-                          {automationHeaderModels
-                            .map((m, index, models) => {
-                              const isSel = m.id === automationHeaderModelId
-                              const isFreeModelRow = isFreeTierChatModelId(m.id)
-                              const previous = models[index - 1]
-                              const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
-                              const showFreeTierGroupDivider =
-                                isFreeTier && !isFreeModelRow && previousIsFreeModelRow
-                              const showFreeGroupDivider =
-                                !isFreeTier && isFreeModelRow && !previousIsFreeModelRow
-                              const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
-                              const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
-                              return (
-                                <div key={m.id}>
-                                  {showDivider && (
-                                    <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
-                                      {dividerLabel}
-                                    </div>
-                                  )}
-                                  <button
-                                    type="button"
-                                    data-model-row={m.id}
-                                    onClick={() => {
-                                      void saveAutomationHeaderModel(m.id)
-                                      setShowModelPicker(false)
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      setHoveredModelId(m.id)
-                                      const r = e.currentTarget.getBoundingClientRect()
-                                      setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
-                                    }}
-                                    className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${
-                                      isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
-                                    }`}
-                                  >
-                                    <span className="flex items-center gap-2">
-                                      {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                                      {m.name}
-                                    </span>
-                                    <ModelBadges model={m} isFreeTier={isFreeTier} onUpgradeClick={openAccountPage} />
-                                  </button>
-                                </div>
-                              )
-                            })}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
+                <LiveModelPicker
+                  rootRef={modelPickerRef}
+                  listRef={modelPickerListScrollRef}
+                  label={getChatModelDisplayName(automationHeaderModelId) || 'Select model'}
+                  tooltipLabel="Choose automation model"
+                  renderTooltip={renderDelayedTooltip}
+                  open={showModelPicker && !!selectedAutomation}
+                  disabled={!selectedAutomation}
+                  generationMode="text"
+                  textModels={automationHeaderModels}
+                  selectedTextModelIds={[automationHeaderModelId]}
+                  isFreeTier={isFreeTier}
+                  isFreeTextModelId={isFreeTierChatModelId}
+                  hoveredModelId={hoveredModelId}
+                  hoverPosition={modelQualitiesPos}
+                  qualityModel={hoveredModelId ? getModel(hoveredModelId) : null}
+                  onToggleOpen={() => setShowModelPicker((value) => !value)}
+                  onTextModelSelect={(modelId) => {
+                    void saveAutomationHeaderModel(modelId)
+                    setShowModelPicker(false)
+                  }}
+                  onHoverTextModel={handleModelPickerHover}
+                  onUpgradeClick={openAccountPage}
+                />
                 <div className="flex shrink-0 items-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-0.5">
                   {AUTOMATION_DETAIL_TABS.map((tab) => {
                     const active = automationDetailTab === tab.id
@@ -4468,215 +4420,44 @@ export default function ChatInterface({
                 </Link>
               )}
               <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
-                <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-                <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
-                  <button
-                    type="button"
-                    onClick={() => setShowModelPicker((v) => !v)}
-                    className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1"
-                  >
-                    <span className="min-w-0 truncate">{modelPickerLabel}</span>
-                    <ChevronDown size={11} className="shrink-0" />
-                  </button>
-                </DelayedTooltip>
-                {showModelPicker && (
-                  <>
-                  {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
-                      style={{
-                        left: modelQualitiesPos.x,
-                        top: modelQualitiesPos.y,
-                        transform: 'translate(calc(-100% - 8px), -50%)',
-                      }}
-                    >
-                      <ModelQualitiesPanel model={getModel(hoveredModelId)} />
-                    </div>
-                  ) : null}
-                  <div
-                    data-tour="model-picker"
-                    className="absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-                    onMouseLeave={() => {
-                      setHoveredModelId(null)
-                      setModelQualitiesPos(null)
-                    }}
-                  >
-                  <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
-                  {generationMode === 'image' ? (
-                    IMAGE_MODELS.map((m) => {
-                        const isSel = selectedImageModels.includes(m.id)
-                        const isDisabled =
-                          imageModelSelectionMode === 'multiple' && !isSel && selectedImageModels.length >= 4
-                        return (
-                          <button key={m.id}
-                            disabled={isDisabled}
-                            onClick={() => toggleImageModelInPicker(m.id)}
-                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                              isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
-                            } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}>
-                            <span className="flex items-center gap-2">
-                              {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                              {m.name}
-                            </span>
-                          </button>
-                        )
-                      })
-                  ) : generationMode === 'video' ? (
-                    getVideoModelsBySubMode(videoSubMode).map((m) => {
-                        const isSel = selectedVideoModels.includes(m.id)
-                        const isDisabled =
-                          videoModelSelectionMode === 'multiple' && !isSel && selectedVideoModels.length >= 4
-                        return (
-                          <button key={m.id}
-                            disabled={isDisabled}
-                            onClick={() => toggleVideoModelInPicker(m.id)}
-                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                              isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
-                            } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}>
-                            <span className="flex items-center gap-2">
-                              {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                              {m.name}
-                            </span>
-                          </button>
-                        )
-                      })
-                  ) : (
-                    selectableTextModels
-                      .map((m, index, models) => {
-                        const isSel =
-                        askModelSelectionMode === 'single'
-                          ? m.id === selectedActModel
-                          : selectedModels.includes(m.id)
-                      const isDisabled =
-                        askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
-                      const isFreeModelRow = isFreeTierChatModelId(m.id)
-                      const previous = models[index - 1]
-                      const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
-                      // Free-tier users see free models first; the divider then
-                      // marks the start of the (locked) premium section. Otherwise
-                      // it marks the start of the free section appended at the end.
-                      const showFreeTierGroupDivider =
-                        isFreeTier && !isFreeModelRow && previousIsFreeModelRow
-                      const showFreeGroupDivider =
-                        !isFreeTier && isFreeModelRow && !previousIsFreeModelRow
-                      const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
-                      const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
-                      return (
-                        <div key={m.id}>
-                          {showDivider && (
-                            <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
-                              {dividerLabel}
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            data-model-row={m.id}
-                            disabled={isDisabled}
-                            onClick={() => toggleTextModelInPicker(m.id)}
-                            onMouseEnter={(e) => {
-                              setHoveredModelId(m.id)
-                              const r = e.currentTarget.getBoundingClientRect()
-                              setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
-                            }}
-                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                              isDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
-                            } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}
-                          >
-                            <span className="flex items-center gap-2">
-                              {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                              {m.name}
-                            </span>
-                            <ModelBadges model={m} isFreeTier={isFreeTier} onUpgradeClick={openAccountPage} />
-                          </button>
-                        </div>
-                      )
-                    })
-                  )}
-                  </div>
-                  {generationMode === 'image' && (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((mode) => {
-                          const isActive = imageModelSelectionMode === mode
-                          return (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => handleImageModelSelectionModeChange(mode)}
-                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${
-                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
-                              }`}
-                            >
-                              {mode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {generationMode === 'video' && (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((mode) => {
-                          const isActive = videoModelSelectionMode === mode
-                          return (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => handleVideoModelSelectionModeChange(mode)}
-                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${
-                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
-                              }`}
-                            >
-                              {mode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {generationMode === 'text' && !hasAutomationContext && (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((selMode) => {
-                          const isActive = askModelSelectionMode === selMode
-                          const multipleDisabled = isFreeTier && selMode === 'multiple'
-                          return (
-                            <button
-                              key={selMode}
-                              type="button"
-                              onClick={() => handleTextModelSelectionModeChange(selMode)}
-                              disabled={multipleDisabled}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${
-                                multipleDisabled ? 'cursor-not-allowed opacity-40' : ''
-                              }`}
-                            >
-                              {selMode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  </div>
-                  </>
-              )}
-            </div>
+                <LiveModelPicker
+                  rootRef={modelPickerRef}
+                  listRef={modelPickerListScrollRef}
+                  label={modelPickerLabel}
+                  tooltipLabel="Choose model (⇧⌘/)"
+                  renderTooltip={renderDelayedTooltip}
+                  open={showModelPicker}
+                  generationMode={generationMode}
+                  textModels={selectableTextModels}
+                  imageModels={IMAGE_MODELS}
+                  videoModels={getVideoModelsBySubMode(videoSubMode)}
+                  selectedTextModelIds={
+                    askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels
+                  }
+                  selectedImageModelIds={selectedImageModels}
+                  selectedVideoModelIds={selectedVideoModels}
+                  textSelectionMode={askModelSelectionMode}
+                  imageSelectionMode={imageModelSelectionMode}
+                  videoSelectionMode={videoModelSelectionMode}
+                  showTextSelectionControls={!hasAutomationContext}
+                  showImageSelectionControls
+                  showVideoSelectionControls
+                  isFreeTier={isFreeTier}
+                  isActiveLoading={isActiveLoading}
+                  isFreeTextModelId={isFreeTierChatModelId}
+                  hoveredModelId={hoveredModelId}
+                  hoverPosition={modelQualitiesPos}
+                  qualityModel={hoveredModelId ? getModel(hoveredModelId) : null}
+                  onToggleOpen={() => setShowModelPicker((value) => !value)}
+                  onTextModelSelect={toggleTextModelInPicker}
+                  onImageModelSelect={toggleImageModelInPicker}
+                  onVideoModelSelect={toggleVideoModelInPicker}
+                  onTextSelectionModeChange={handleTextModelSelectionModeChange}
+                  onImageSelectionModeChange={handleImageModelSelectionModeChange}
+                  onVideoSelectionModeChange={handleVideoModelSelectionModeChange}
+                  onHoverTextModel={handleModelPickerHover}
+                  onUpgradeClick={openAccountPage}
+                />
                 <div className="flex shrink-0 items-center gap-1.5 md:hidden">
                   <GenerationModeSelect
                     mode={generationMode}
@@ -5151,52 +4932,12 @@ export default function ChatInterface({
               showCenteredEmptyChat ? 'max-w-[36rem]' : 'max-w-[56rem]'
             }`}
           >
-            {(attachedImages.length > 0 || pendingChatDocuments.length > 0) && (
-              <div className="mb-2 flex min-w-0 flex-wrap gap-2">
-                {attachedImages.map((img, i) => (
-                  <div key={`img-${i}`} className="relative group">
-                    <img src={img.dataUrl} alt={img.name}
-                      className="w-16 h-16 object-cover rounded-lg border border-[var(--border)]" />
-                    <button
-                      onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
-                      className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[var(--foreground)] text-[var(--background)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X size={9} />
-                    </button>
-                  </div>
-                ))}
-                {pendingChatDocuments.map((doc) => (
-                  <div
-                    key={doc.clientId}
-                    className="relative group flex min-w-0 max-w-full items-center gap-2 px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-xs text-[var(--muted)] sm:max-w-[min(100%,220px)]"
-                  >
-                    <FileText size={14} className="shrink-0 text-[var(--muted)]" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-[var(--foreground)]">{doc.name}</p>
-                      {doc.status === 'uploading' && (
-                        <p className="text-[10px] text-[var(--muted-light)] mt-0.5 animate-pulse">Indexing…</p>
-                      )}
-                      {doc.status === 'ready' && (
-                        <p className="text-[10px] text-emerald-600 mt-0.5">Indexed</p>
-                      )}
-                      {doc.status === 'error' && (
-                        <p className="text-[10px] text-red-500 mt-0.5 truncate" title={doc.error}>
-                          {doc.error ?? 'Failed'}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removePendingDocument(doc.clientId)}
-                      className="shrink-0 p-0.5 rounded hover:bg-[var(--surface-subtle)] text-[var(--muted-light)]"
-                      aria-label="Remove"
-                    >
-                      <X size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <LiveAttachmentTray
+              attachedImages={attachedImages}
+              pendingDocuments={pendingChatDocuments}
+              onRemoveImage={(index) => setAttachedImages((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+              onRemoveDocument={removePendingDocument}
+            />
             {attachmentError && (
               <div
                 className="mb-2 flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs"
@@ -5347,160 +5088,52 @@ export default function ChatInterface({
                     }
                   }}
                 />
-                <div className="mt-2 flex min-h-9 items-center gap-2">
-                  <div ref={attachMenuRef} className="relative shrink-0">
-                    <DelayedTooltip label="Attach files or switch to image/video" side="top">
-                      <button
-                        type="button"
-                        onClick={() => setShowAttachMenu((v) => !v)}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-                      >
-                        <Plus size={18} strokeWidth={1.75} />
-                      </button>
-                    </DelayedTooltip>
-                  {showAttachMenu && (
-                    <div className="absolute bottom-full left-0 mb-2 bg-[var(--surface-elevated)] border border-[var(--border)] rounded-xl shadow-lg py-1 w-52 z-20">
-                      <button
-                        type="button"
-                        onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false) }}
-                        disabled={!supportsVision}
-                        title={!supportsVision ? 'You need a vision model to attach images.' : undefined}
-                        className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs transition-colors ${
-                          supportsVision
-                            ? 'text-[var(--muted)] hover:bg-[var(--surface-muted)]'
-                            : 'text-[#bbb] cursor-not-allowed'
-                        }`}
-                      >
-                        <ImageIcon size={13} className="text-[var(--foreground)]" />
-                        <span>Attach Images</span>
-                      </button>
-                      <div className="border-t border-[var(--border)] my-1" />
-                      <button
-                        type="button"
-                        onClick={() => { handleModeChange('image'); setShowAttachMenu(false) }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-muted)] transition-colors"
-                      >
-                        <ImageIcon size={13} className="text-[var(--foreground)]" />
-                        <span>Generate Image</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { handleModeChange('video'); setShowAttachMenu(false) }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-muted)] transition-colors"
-                      >
-                        <Video size={13} className="text-[var(--foreground)]" />
-                        <span>Generate Video</span>
-                      </button>
-                      <div className="border-t border-[var(--border)] my-1" />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          docInputRef.current?.click()
-                          setShowAttachMenu(false)
-                        }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-muted)] transition-colors"
-                      >
-                        <FileText size={13} />
-                        <span>Documents</span>
-                        <span className="ml-auto text-[10px] text-[var(--muted-light)]">PDF, Word, text</span>
-                      </button>
-                    </div>
-                  )}
-                  </div>
-                  <DelayedTooltip label="Reference files, skills, automations…" side="top">
-                    <button
-                      type="button"
-                      onClick={() => textareaRef.current?.openMentionPopup()}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-                      aria-label="Insert mention"
-                    >
-                      <AtSign size={16} strokeWidth={1.75} />
-                    </button>
-                  </DelayedTooltip>
-                  {generationChip && (
-                    <div className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--foreground)] px-2 py-1 text-xs font-medium text-[var(--background)]">
-                      {generationChip === 'image' ? <ImageIcon size={10} /> : <Video size={10} />}
-                      {generationChip === 'image' ? 'Image' : 'Video'}
-                      <button type="button" onClick={() => setGenerationChip(null)} className="ml-0.5 hover:opacity-70">
-                        <X size={9} />
-                      </button>
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1" />
-                  <div className="flex shrink-0 items-center gap-2">
-                    <div ref={modeMenuRef} className="relative shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setShowModeMenu((v) => !v)}
-                        className={`flex h-9 items-center gap-1 rounded-lg px-2.5 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
-                          mode === 'automate'
-                            ? 'text-[var(--foreground)]'
-                            : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        {mode === 'automate' ? (
-                          <Zap size={12} strokeWidth={1.75} />
-                        ) : (
-                          <MessageSquare size={12} strokeWidth={1.75} />
-                        )}
-                        <span>{mode === 'automate' ? 'Automate' : 'Chat'}</span>
-                        <ChevronDown size={10} className="opacity-60" />
-                      </button>
-                      {showModeMenu && (
-                        <div className="absolute bottom-full right-0 mb-2 z-20 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
-                          <button
-                            type="button"
-                            onClick={() => { router.push('/app/chat'); setShowModeMenu(false) }}
-                            className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
-                              mode === 'chat' ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
-                            }`}
-                          >
-                            <MessageSquare size={13} />
-                            <span>Chat</span>
-                            {mode === 'chat' && <Check size={11} className="ml-auto" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { router.push('/app/automations'); setShowModeMenu(false) }}
-                            className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${
-                              mode === 'automate' ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
-                            }`}
-                          >
-                            <Zap size={13} strokeWidth={1.75} />
-                            <span>Automate</span>
-                            {mode === 'automate' && <Check size={11} className="ml-auto" />}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    {isActiveLoading ? (
-                      <DelayedTooltip label="Stop generating" side="top">
-                        <button
-                          type="button"
-                          onClick={stopActiveChat}
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80"
-                        >
-                          <div className="h-3.5 w-3.5 rounded-sm bg-[var(--background)]" />
-                        </button>
-                      </DelayedTooltip>
-                    ) : (
-                      <DelayedTooltip label="Send (↵) · new line (⇧↵)" side="top">
-                        <button
-                          type="button"
-                          onClick={handleSend}
-                          disabled={
-                            !hasComposerText &&
-                            attachedImages.length === 0 &&
-                            !pendingChatDocuments.some((d) => d.status === 'ready')
-                          }
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"
-                        >
-                          <Send size={17} strokeWidth={1.75} />
-                        </button>
-                      </DelayedTooltip>
-                    )}
-                  </div>
-                </div>
+                <LiveComposerToolbar
+                  attachMenuRef={attachMenuRef}
+                  modeMenuRef={modeMenuRef}
+                  renderTooltip={renderDelayedTooltip}
+                  attachMenuOpen={showAttachMenu}
+                  onToggleAttachMenu={() => setShowAttachMenu((value) => !value)}
+                  supportsVision={supportsVision}
+                  onAttachImages={() => {
+                    fileInputRef.current?.click()
+                    setShowAttachMenu(false)
+                  }}
+                  onGenerateImage={() => {
+                    handleModeChange('image')
+                    setShowAttachMenu(false)
+                  }}
+                  onGenerateVideo={() => {
+                    handleModeChange('video')
+                    setShowAttachMenu(false)
+                  }}
+                  onAttachDocuments={() => {
+                    docInputRef.current?.click()
+                    setShowAttachMenu(false)
+                  }}
+                  onOpenMentions={() => textareaRef.current?.openMentionPopup()}
+                  generationChip={generationChip}
+                  onClearGenerationChip={() => setGenerationChip(null)}
+                  mode={mode}
+                  modeMenuOpen={showModeMenu}
+                  onToggleModeMenu={() => setShowModeMenu((value) => !value)}
+                  onSelectChatMode={() => {
+                    router.push('/app/chat')
+                    setShowModeMenu(false)
+                  }}
+                  onSelectAutomateMode={() => {
+                    router.push('/app/automations')
+                    setShowModeMenu(false)
+                  }}
+                  isActiveLoading={isActiveLoading}
+                  onStop={stopActiveChat}
+                  onSend={handleSend}
+                  sendDisabled={
+                    !hasComposerText &&
+                    attachedImages.length === 0 &&
+                    !pendingChatDocuments.some((document) => document.status === 'ready')
+                  }
+                />
                 </div>
               </div>
             )}
