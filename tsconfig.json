@@ -38,6 +38,24 @@
       "@overlay/app-core/*": [
         "./packages/overlay-app-core/src/*"
       ],
+      "@overlay/chat-core": [
+        "./packages/overlay-chat-core/src/index.ts"
+      ],
+      "@overlay/chat-core/*": [
+        "./packages/overlay-chat-core/src/*"
+      ],
+      "@overlay/chat-react": [
+        "./packages/overlay-chat-react/src/index.ts"
+      ],
+      "@overlay/chat-react/draft-review-modal": [
+        "./packages/overlay-chat-react/src/components/DraftReviewModal.tsx"
+      ],
+      "@overlay/chat-react/sources-panel": [
+        "./packages/overlay-chat-react/src/components/SourcesPanel.tsx"
+      ],
+      "@overlay/chat-react/*": [
+        "./packages/overlay-chat-react/src/*"
+      ],
       "@overlay/ui": [
         "./packages/overlay-ui/src/index.ts"
       ],

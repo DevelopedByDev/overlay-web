@@ -36,6 +36,17 @@ import {
 } from 'lucide-react'
 import { Chat, useChat } from '@ai-sdk/react'
 import { getToolName, isReasoningUIPart, isToolUIPart, type UIMessage } from 'ai'
+import {
+  cloneConversationUiState,
+  cloneGenerationResultsMap,
+  cloneOrphanModelThreadsMap,
+  cloneUiMessageThread,
+  createConversationUiState,
+  latestTextExchangeIndex,
+  sameModelOrder,
+  sameModelSet,
+  selectedModelForExchange,
+} from '@overlay/chat-core'
 import { useQuery } from 'convex/react'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
@@ -329,16 +340,6 @@ function ModelQualitiesPanel({ modelId }: { modelId: string }) {
     </div>
   )
 }
-
-function cloneUiMessageForThread(msg: UIMessage): UIMessage {
-  try {
-    return structuredClone(msg) as UIMessage
-  } catch {
-    return JSON.parse(JSON.stringify(msg)) as UIMessage
-  }
-}
-
-
 
 function ToolLineLogo() {
   return (
@@ -1486,96 +1487,6 @@ function ExchangeBlock({
 
       </div>
     )
-}
-
-function cloneGenerationResultsMap(source: Map<number, GenerationResult[]>): Map<number, GenerationResult[]> {
-  return new Map(
-    Array.from(source.entries()).map(([idx, results]) => [
-      idx,
-      results.map((result) => ({ ...result })),
-    ]),
-  )
-}
-
-function cloneOrphanModelThreadsMap(source: Map<string, UIMessage[]>): Map<string, UIMessage[]> {
-  return new Map(
-    Array.from(source.entries()).map(([modelId, thread]) => [
-      modelId,
-      thread.map((msg) => cloneUiMessageForThread(msg)),
-    ]),
-  )
-}
-
-function cloneConversationUiState(state: ConversationUiState): ConversationUiState {
-  return {
-    selectedActModel: state.selectedActModel,
-    selectedModels: [...state.selectedModels],
-    askModelSelectionMode: state.askModelSelectionMode,
-    exchangeModes: [...state.exchangeModes],
-    exchangeModels: state.exchangeModels.map((models) => [...models]),
-    selectedTabPerExchange: [...state.selectedTabPerExchange],
-    activeChatTitle: state.activeChatTitle,
-    generationResults: cloneGenerationResultsMap(state.generationResults),
-    exchangeGenTypes: [...state.exchangeGenTypes],
-    isFirstMessage: state.isFirstMessage,
-    orphanModelThreads: cloneOrphanModelThreadsMap(state.orphanModelThreads),
-    lastGeneratedImageUrl: state.lastGeneratedImageUrl,
-  }
-}
-
-function sameModelSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false
-  const bSet = new Set(b)
-  return a.every((modelId) => bSet.has(modelId))
-}
-
-function sameModelOrder(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((modelId, index) => modelId === b[index])
-}
-
-function latestTextExchangeIndex(ui: ConversationUiState): number {
-  for (let i = ui.exchangeModels.length - 1; i >= 0; i--) {
-    if ((ui.exchangeGenTypes[i] ?? 'text') === 'text') return i
-  }
-  return -1
-}
-
-function selectedModelForExchange(ui: ConversationUiState, exchangeIndex: number): string | null {
-  if (exchangeIndex < 0) return null
-  const models = ui.exchangeModels[exchangeIndex] ?? []
-  if (models.length === 0) return null
-  const selectedTab = Math.min(
-    Math.max(ui.selectedTabPerExchange[exchangeIndex] ?? 0, 0),
-    models.length - 1,
-  )
-  return models[selectedTab] ?? models[0] ?? null
-}
-
-function cloneUiMessageThread(messages: UIMessage[]): UIMessage[] {
-  return messages.map((message) => cloneUiMessageForThread(message))
-}
-
-function createConversationUiState(
-  overrides: Partial<ConversationUiState> = {},
-): ConversationUiState {
-  return {
-    selectedActModel: overrides.selectedActModel ?? DEFAULT_MODEL_ID,
-    selectedModels: [...(overrides.selectedModels ?? [DEFAULT_MODEL_ID])],
-    askModelSelectionMode: overrides.askModelSelectionMode ?? 'single',
-    exchangeModes: [...(overrides.exchangeModes ?? [])],
-    exchangeModels: (overrides.exchangeModels ?? []).map((models) => [...models]),
-    selectedTabPerExchange: [...(overrides.selectedTabPerExchange ?? [])],
-    activeChatTitle: overrides.activeChatTitle ?? null,
-    generationResults: overrides.generationResults
-      ? cloneGenerationResultsMap(overrides.generationResults)
-      : new Map(),
-    exchangeGenTypes: [...(overrides.exchangeGenTypes ?? [])],
-    isFirstMessage: overrides.isFirstMessage ?? true,
-    orphanModelThreads: overrides.orphanModelThreads
-      ? cloneOrphanModelThreadsMap(overrides.orphanModelThreads)
-      : new Map(),
-    lastGeneratedImageUrl: overrides.lastGeneratedImageUrl ?? null,
-  }
 }
 
 function createConversationRuntime(

@@ -1,0 +1,42 @@
+{
+  "name": "@overlay/chat-react",
+  "version": "0.0.1",
+  "private": true,
+  "sideEffects": [
+    "./src/styles/overlay-theme.css"
+  ],
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./draft-review-modal": "./src/components/DraftReviewModal.tsx",
+    "./sources-panel": "./src/components/SourcesPanel.tsx",
+    "./styles.css": "./src/styles/overlay-theme.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overlay/chat-core": "file:../overlay-chat-core",
+    "katex": "^0.16.11",
+    "lucide-react": "^0.575.0",
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "rehype-katex": "^7.0.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "unified": "^11.0.5"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "typescript": "^5"
+  }
+}
