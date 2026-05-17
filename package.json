@@ -2,6 +2,9 @@
   "name": "getoverlay-landing",
   "version": "0.1.1",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "convex:push:prod": "CONVEX_DEPLOYMENT=prod:colorful-chickadee-419 convex deploy -y",
     "convex:push:dev": "convex deploy --env-file .env.development.local -y",
@@ -15,6 +18,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "ui:typecheck": "npm --prefix packages/overlay-ui run typecheck",
+    "ui:test": "npm --prefix packages/overlay-ui run test",
+    "ui:storybook": "npm --prefix packages/overlay-ui run storybook",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "video:studio": "npx remotion studio src/remotion/index.ts",
     "video:render:launch": "mkdir -p renders && npx remotion render src/remotion/index.ts overlay-launch-video renders/overlay-launch-video.mp4",
@@ -65,6 +71,7 @@
     "@openrouter/ai-sdk-provider": "^2.3.3",
     "@opentelemetry/context-async-hooks": "^2.2.0",
     "@overlay/app-core": "file:./packages/overlay-app-core",
+    "@overlay/ui": "file:./packages/overlay-ui",
     "@sentry/nextjs": "^10.46.0",
     "@tiptap/extension-code-block-lowlight": "^3.20.1",
     "@tiptap/extension-emoji": "^3.20.1",
@@ -140,14 +147,14 @@
     "autoprefixer": "^10.5.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
-    "postcss": "^8.5.12",
+    "postcss": "8.5.12",
     "remotion": "^4.0.441",
     "tailwindcss": "^3.4.19",
     "typescript": "^5"
   },
   "overrides": {
     "follow-redirects": "1.16.0",
-    "postcss": "$postcss",
+    "postcss": "8.5.12",
     "protobufjs": "8.2.0"
   }
 }

@@ -25,6 +25,12 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@overlay/ui": [
+        "./packages/overlay-ui/src/index.ts"
+      ],
+      "@overlay/ui/*": [
+        "./packages/overlay-ui/src/*"
       ]
     }
   },
