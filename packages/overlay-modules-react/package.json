@@ -21,6 +21,7 @@
     "@overlay/ui": "file:../overlay-ui"
   },
   "peerDependencies": {
+    "lucide-react": "^0.575.0",
     "react": ">=18",
     "react-dom": ">=18"
   },

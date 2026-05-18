@@ -620,9 +620,11 @@ export interface KnowledgeFile {
   content?: string
   textContent?: string
   mimeType?: string
+  extension?: string
   sizeBytes?: number
   isStorageBacked?: boolean
   downloadUrl?: string
+  outputType?: string
   createdAt: number
   updatedAt: number
   projectId?: string
@@ -672,6 +674,7 @@ export interface CreateFileResponse {
   id?: string
   ids?: string[]
   parts?: number
+  file?: KnowledgeFile | null
   error?: string
 }
 

@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./app-shell": "./src/app-shell.ts",
     "./contracts": "./src/contracts.ts",
+    "./knowledge": "./src/knowledge.ts",
     "./modules": "./src/modules.ts",
     "./theme": "./src/theme.ts"
   },

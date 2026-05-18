@@ -5,50 +5,54 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  BookOpen, Brain, Trash2, Plus, X, FilePlus, FolderPlus, FolderInput, Copy, Check,
-  ChevronRight, ChevronDown, FileText, FolderOpen, Search,
-  LayoutList, LayoutGrid, RefreshCw, SquareMousePointer, Loader2,
+  BookOpen, Trash2, Plus, FilePlus, FolderPlus, FolderInput,
+  ChevronRight, ChevronDown, FolderOpen, Search,
+  LayoutList, LayoutGrid, RefreshCw, SquareMousePointer,
   ArrowLeft, Upload,
 } from 'lucide-react'
-import { FileTreeSkeleton, KnowledgeListSkeleton } from '@/components/ui/Skeleton'
 import posthog from 'posthog-js'
 import { FileViewer, getFileType, isEditableType } from './FileViewer'
-import { FileTreeRow, FolderCard, type FileNode, opensInDocumentEditor, filePathLabel } from './KnowledgeFileTree'
+import { overlayAppClient } from '@/lib/overlay-app-client'
+import {
+  FILES_CHANGED_EVENT,
+  IMPORT_MEMORY_PROMPT,
+  OUTPUT_FILTER_LABELS,
+  canMoveKnowledgeFile,
+  createManualMemoryRequest,
+  filterKnowledgeFileNodes,
+  filterMemoryRows,
+  folderBreadcrumb as buildFolderBreadcrumb,
+  knowledgePendingPreview,
+  opensInDocumentEditor,
+  resolveKnowledgeLayout,
+  resolveKnowledgeOutputFilter,
+  resolveKnowledgeTab,
+  sortedCurrentFolderFiles,
+  sortedCurrentFolderFolders,
+  sortedCurrentFolderNodes,
+  type KnowledgeFileNode as FileNode,
+  type KnowledgeOutputFilter as OutputFilter,
+  type KnowledgeTab as Tab,
+  type MemoryRow as MemoryListItem,
+} from '@overlay/app-core'
+import {
+  AddMemoryDialog,
+  CreateKnowledgeItemDialog,
+  HiddenKnowledgeFileInputs,
+  ImportMemoryDialog,
+  KnowledgeFilesPanel,
+  KnowledgeMemoriesPanel,
+  KnowledgePendingNotice,
+  MemoryDetailDialog,
+} from '@overlay/modules-react/knowledge'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface MemoryListItem {
-  key: string
-  memoryId: string
-  segmentIndex: number
-  content: string
-  fullContent: string
-  source: string
-  createdAt: number
-}
-
-type Tab = 'memories' | 'files' | 'outputs'
-
-type OutputFilter = 'all' | 'image' | 'video' | 'files'
-
-const OUTPUT_FILTER_LABELS: Record<OutputFilter, string> = {
-  all: 'All',
-  image: 'Image',
-  video: 'Video',
-  files: 'Files',
-}
 
 const TOOLBAR_ICON_BUTTON_CLASS =
   'flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
 
 const TOOLBAR_FILLED_BUTTON_CLASS =
   'flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
-
-const DIALOG_ACTION_BUTTON_CLASS =
-  'px-3 py-1.5 rounded-md text-xs border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
-
-const IMPORT_MEMORY_PROMPT = 'Export all of my stored memories and any context you\'ve learned about me from past conversations. Preserve my words verbatim where possible, especially for instructions and preferences.'
-const FILES_CHANGED_EVENT = 'overlay:files-changed'
 
 // ─── Main KnowledgeView ───────────────────────────────────────────────────────
 
@@ -67,17 +71,9 @@ export default function KnowledgeView({
   const memoryOpenParam = searchParams?.get('memory') ?? null
   const folderParam = searchParams?.get('folder') ?? null
   const viewParam = searchParams?.get('view') ?? (mode === 'files' ? 'files' : 'memories')
-  const activeTab: Tab =
-    mode === 'files'
-      ? 'files'
-      : viewParam === 'files' ? 'files' : viewParam === 'outputs' ? 'outputs' : 'memories'
+  const activeTab: Tab = resolveKnowledgeTab({ mode, view: viewParam })
 
-  function getLayout(): 'list' | 'cards' {
-    const L = searchParams?.get('layout')
-    if (L === 'cards' || L === 'list') return L
-    return activeTab === 'outputs' ? 'cards' : 'list'
-  }
-  const layout = getLayout()
+  const layout = resolveKnowledgeLayout({ layout: searchParams?.get('layout'), activeTab })
 
   function updateQuery(updates: Record<string, string | null | undefined>) {
     const p = new URLSearchParams(searchParams?.toString() ?? '')
@@ -92,12 +88,7 @@ export default function KnowledgeView({
   const [outputFilterOpen, setOutputFilterOpen] = useState(false)
   const outputFilterRef = useRef<HTMLDivElement>(null)
 
-  function getOutputFilter(): OutputFilter {
-    const o = searchParams?.get('out')
-    if (o === 'image' || o === 'video' || o === 'files') return o
-    return 'all'
-  }
-  const outputFilter = getOutputFilter()
+  const outputFilter = resolveKnowledgeOutputFilter(searchParams?.get('out'))
 
   function commitOutputFilter(next: OutputFilter) {
     if (next === 'all') updateQuery({ out: null })
@@ -216,7 +207,7 @@ export default function KnowledgeView({
     try {
       await Promise.all(
         [...selectedMemoryIds].map((id) =>
-          fetch(`/api/app/memory?memoryId=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+          overlayAppClient.memory.deleteResponse({ memoryId: id }),
         ),
       )
       if (selectedMemory && selectedMemoryIds.has(selectedMemory.memoryId)) {
@@ -236,7 +227,7 @@ export default function KnowledgeView({
     try {
       await Promise.all(
         [...selectedFileIds].map((id) =>
-          fetch(`/api/app/files?fileId=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+          overlayAppClient.files.deleteResponse({ fileId: id }),
         ),
       )
       if (selectedFile && selectedFileIds.has(selectedFile._id)) {
@@ -259,7 +250,7 @@ export default function KnowledgeView({
     try {
       await Promise.all(
         [...selectedOutputIds].map((id) =>
-          fetch(`/api/app/files?fileId=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+          overlayAppClient.files.deleteResponse({ fileId: id }),
         ),
       )
       setOutputsRefreshKey((k) => k + 1)
@@ -270,7 +261,7 @@ export default function KnowledgeView({
   }
 
   const loadFile = useCallback(async (fileId: string) => {
-    const res = await fetch(`/api/app/files?fileId=${fileId}`)
+    const res = await overlayAppClient.files.getResponse({ fileId })
     if (!res.ok) return
     const file = (await res.json()) as FileNode
     if (opensInDocumentEditor(file)) {
@@ -284,15 +275,13 @@ export default function KnowledgeView({
 
   const loadMemories = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/memory')
-      if (res.ok) setMemories((await res.json()) as MemoryListItem[])
+      setMemories(await overlayAppClient.memory.get<MemoryListItem[]>())
     } catch { /* ignore */ } finally { setMemoriesLoading(false) }
   }, [])
 
   const loadFiles = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/files')
-      if (res.ok) setFiles(await res.json())
+      setFiles(await overlayAppClient.files.get<FileNode[]>())
     } catch { /* ignore */ } finally { setFilesLoading(false) }
   }, [])
 
@@ -327,20 +316,10 @@ export default function KnowledgeView({
     if (!text || isSavingMemory) return
     setIsSavingMemory(true)
     setMemorySaveError(null)
-    const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text
+    const preview = knowledgePendingPreview(text)
     setMemorySavePendingPreview(preview)
     try {
-      const res = await fetch('/api/app/memory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: text,
-          source: 'manual',
-          type: 'fact',
-          importance: 3,
-          actor: 'user',
-        }),
-      })
+      const res = await overlayAppClient.memory.createResponse(createManualMemoryRequest(text))
       const data = (await res.json().catch(() => null)) as { error?: string } | null
       if (!res.ok) {
         setMemorySaveError(typeof data?.error === 'string' ? data.error : 'Could not save memory')
@@ -360,20 +339,10 @@ export default function KnowledgeView({
     if (!text || isImporting) return
     setIsImporting(true)
     setImportMemoryError(null)
-    const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text
+    const preview = knowledgePendingPreview(text)
     setImportPendingPreview(preview)
     try {
-      const res = await fetch('/api/app/memory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: text,
-          source: 'manual',
-          type: 'fact',
-          importance: 3,
-          actor: 'user',
-        }),
-      })
+      const res = await overlayAppClient.memory.createResponse(createManualMemoryRequest(text))
       const data = (await res.json().catch(() => null)) as { error?: string } | null
       if (!res.ok) {
         setImportMemoryError(typeof data?.error === 'string' ? data.error : 'Could not import memory')
@@ -389,7 +358,7 @@ export default function KnowledgeView({
   }
 
   async function handleDeleteMemory(memoryId: string) {
-    const res = await fetch(`/api/app/memory?memoryId=${memoryId}`, { method: 'DELETE' })
+    const res = await overlayAppClient.memory.deleteResponse({ memoryId })
     if (!res.ok) return
     if (selectedMemory?.memoryId === memoryId) {
       setSelectedMemory(null)
@@ -421,15 +390,11 @@ export default function KnowledgeView({
     if (!name || isCreating || !dialog) return
     setIsCreating(true)
     try {
-      const res = await fetch('/api/app/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          type: dialog.type,
-          kind: dialog.type === 'folder' ? 'folder' : 'upload',
-          parentId: dialog.parentId,
-        }),
+      const res = await overlayAppClient.files.createResponse({
+        name,
+        type: dialog.type,
+        kind: dialog.type === 'folder' ? 'folder' : 'upload',
+        parentId: dialog.parentId,
       })
       if (res.ok) {
         posthog.capture('knowledge_file_created', { file_name: name, type: dialog.type })
@@ -443,15 +408,11 @@ export default function KnowledgeView({
   }
 
   async function handleCreateNoteFile() {
-    const res = await fetch('/api/app/files', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        kind: 'note',
-        name: 'Untitled',
-        textContent: '',
-        parentId: activeFolder?._id ?? null,
-      }),
+    const res = await overlayAppClient.files.createResponse({
+      kind: 'note',
+      name: 'Untitled',
+      textContent: '',
+      parentId: activeFolder?._id ?? null,
     })
     if (!res.ok) return
     const data = await res.json() as { id?: string; file?: unknown }
@@ -473,7 +434,7 @@ export default function KnowledgeView({
   async function handleDeleteNode(id: string, e: React.MouseEvent) {
     e.stopPropagation()
     const node = files.find((f) => f._id === id)
-    const res = await fetch(`/api/app/files?fileId=${id}`, { method: 'DELETE' })
+    const res = await overlayAppClient.files.deleteResponse({ fileId: id })
     if (res.ok && node) {
       posthog.capture('knowledge_file_deleted', { file_name: node.name, type: node.type })
     }
@@ -493,11 +454,7 @@ export default function KnowledgeView({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
       setIsSavingFile(true)
-      await fetch('/api/app/files', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId: selectedFile._id, textContent: val }),
-      })
+      await overlayAppClient.files.updateResponse({ fileId: selectedFile._id, textContent: val })
       setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f } : f))
       setIsSavingFile(false)
     }, 800)
@@ -510,11 +467,7 @@ export default function KnowledgeView({
     if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
     titleSaveTimerRef.current = setTimeout(async () => {
       setIsSavingFile(true)
-      const res = await fetch('/api/app/files', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId: selectedFile._id, name: nextName }),
-      })
+      const res = await overlayAppClient.files.updateResponse({ fileId: selectedFile._id, name: nextName })
       if (res.ok) {
         setSelectedFile((prev) => prev ? { ...prev, name: nextName } : prev)
         setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f, name: nextName } : f))
@@ -535,18 +488,14 @@ export default function KnowledgeView({
       const isText = fileType === 'text' || fileType === 'markdown' || fileType === 'csv'
       if (isText) {
         const content = await file.text()
-        const res = await fetch('/api/app/files', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: file.name, type: 'file', parentId, content }),
-        })
+        const res = await overlayAppClient.files.createResponse({ name: file.name, type: 'file', parentId, content })
         if (!res.ok) return { ok: false, error: await readUploadError(res, 'Failed to save file') }
         return { ok: true }
       }
-      const urlRes = await fetch('/api/app/files/upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sizeBytes: file.size, name: file.name, mimeType: file.type || undefined }),
+      const urlRes = await overlayAppClient.files.uploadUrlResponse({
+        sizeBytes: file.size,
+        name: file.name,
+        mimeType: file.type || undefined,
       })
       if (!urlRes.ok) return { ok: false, error: await readUploadError(urlRes, 'Could not prepare upload') }
       const { uploadUrl, r2Key } = await urlRes.json() as { uploadUrl: string; r2Key: string }
@@ -556,11 +505,7 @@ export default function KnowledgeView({
         body: file,
       })
       if (!uploadRes.ok) return { ok: false, error: 'Storage upload failed. Check your connection and try again.' }
-      const createRes = await fetch('/api/app/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, type: 'file', parentId, r2Key, sizeBytes: file.size }),
-      })
+      const createRes = await overlayAppClient.files.createResponse({ name: file.name, type: 'file', parentId, r2Key, sizeBytes: file.size })
       if (!createRes.ok) return { ok: false, error: await readUploadError(createRes, 'Failed to save file') }
       return { ok: true }
     } catch (err) {
@@ -602,11 +547,7 @@ export default function KnowledgeView({
           if (!folders.has(folderPath)) {
             const parentPath = i === 0 ? null : parts.slice(0, i).join('/')
             const parentId = parentPath ? (folders.get(parentPath) ?? null) : null
-            const res = await fetch('/api/app/files', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: parts[i], type: 'folder', parentId }),
-            })
+            const res = await overlayAppClient.files.createResponse({ name: parts[i] ?? 'Folder', type: 'folder', parentId })
             if (res.ok) {
               const { id } = await res.json() as { id: string }
               folders.set(folderPath, id)
@@ -633,32 +574,11 @@ export default function KnowledgeView({
     () => folderParam ? (files.find((f) => f._id === folderParam && f.type === 'folder') ?? null) : null,
     [files, folderParam],
   )
-  const folderBreadcrumb = useMemo(() => {
-    const path: FileNode[] = []
-    let current: FileNode | null = activeFolder
-    while (current) {
-      path.unshift(current)
-      current = current.parentId ? (files.find((f) => f._id === current!.parentId) ?? null) : null
-    }
-    return path
-  }, [activeFolder, files])
+  const folderBreadcrumb = useMemo(() => buildFolderBreadcrumb(files, activeFolder), [activeFolder, files])
 
   async function moveFileToParent(fileId: string, parentId: string | null) {
-    if (fileId === parentId) return
-    // prevent cycles: don't allow moving a folder into its own descendant
-    if (parentId) {
-      let cur: string | null = parentId
-      while (cur) {
-        if (cur === fileId) return
-        const next: FileNode | undefined = files.find((f) => f._id === cur)
-        cur = next?.parentId ?? null
-      }
-    }
-    const res = await fetch('/api/app/files', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileId, parentId }),
-    })
+    if (!canMoveKnowledgeFile(files, fileId, parentId)) return
+    const res = await overlayAppClient.files.updateResponse({ fileId, parentId })
     if (res.ok) {
       await loadFiles()
       window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
@@ -670,268 +590,83 @@ export default function KnowledgeView({
   }
 
   const filesFiltered = useMemo(() => {
-    const q = fileSearchQuery.trim().toLowerCase()
-    if (!q) return files
-    const keep = new Set<string>()
-    for (const n of files) {
-      if (n.name.toLowerCase().includes(q)) {
-        keep.add(n._id)
-        let p = n.parentId
-        while (p) {
-          keep.add(p)
-          p = files.find((x) => x._id === p)?.parentId ?? null
-        }
-      }
-    }
-    return files.filter((f) => keep.has(f._id))
+    return filterKnowledgeFileNodes(files, fileSearchQuery)
   }, [files, fileSearchQuery])
 
   const memoriesFiltered = useMemo(() => {
-    const q = memorySearchQuery.trim().toLowerCase()
-    if (!q) return memories
-    return memories.filter(
-      (m) => m.fullContent.toLowerCase().includes(q) || m.content.toLowerCase().includes(q),
-    )
+    return filterMemoryRows(memories, memorySearchQuery)
   }, [memories, memorySearchQuery])
 
   const currentParentId = activeFolder?._id ?? null
-  const rootNodes =
-    filesFiltered
-      .filter((f) => f.parentId === currentParentId)
-      .sort((a, b) => {
-        if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
-        return a.name.localeCompare(b.name)
-      })
-
-  const flatFilesSorted =
-    filesFiltered
-      .filter((f) => f.parentId === currentParentId && f.type === 'file')
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-
-  const folderCardsSorted =
-    filesFiltered
-      .filter((f) => f.parentId === currentParentId && f.type === 'folder')
-      .sort((a, b) => a.name.localeCompare(b.name))
+  const rootNodes = sortedCurrentFolderNodes(filesFiltered, currentParentId)
+  const flatFilesSorted = sortedCurrentFolderFiles(filesFiltered, currentParentId)
+  const folderCardsSorted = sortedCurrentFolderFolders(filesFiltered, currentParentId)
 
   return (
     <div className="flex flex-col h-full">
-      {/* ── Add memory modal ── */}
       {showAddMemory && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowAddMemory(false)
-              setAddText('')
-              setMemorySaveError(null)
-            }
+        <AddMemoryDialog
+          value={addText}
+          saving={isSavingMemory}
+          error={memorySaveError}
+          onChange={setAddText}
+          onSave={handleAddMemory}
+          onClose={() => {
+            setShowAddMemory(false)
+            setAddText('')
+            setMemorySaveError(null)
           }}
-        >
-          <div className="w-[480px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
-              <button
-                onClick={() => { setShowAddMemory(false); setAddText(''); setMemorySaveError(null) }}
-                className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] transition-colors"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <textarea
-              value={addText}
-              onChange={(e) => setAddText(e.target.value)}
-              placeholder="Type or paste memory content..."
-              autoFocus
-              rows={5}
-              onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) handleAddMemory() }}
-              className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-            />
-            <p className="mt-2 text-[11px] leading-snug text-[var(--muted)]">
-              Long memories stay as one saved item; the list shows short previews so you can scan them quickly.
-            </p>
-            {memorySaveError ? (
-              <p className="mt-3 text-xs text-red-400" role="alert">{memorySaveError}</p>
-            ) : null}
-            <div className="flex gap-2 mt-3 justify-end">
-              <button
-                onClick={() => { setShowAddMemory(false); setAddText(''); setMemorySaveError(null) }}
-                className={DIALOG_ACTION_BUTTON_CLASS}
-              >Cancel</button>
-              <button
-                onClick={handleAddMemory}
-                disabled={!addText.trim() || isSavingMemory}
-                className={`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`}
-              >{isSavingMemory ? 'Saving...' : 'Save'}</button>
-            </div>
-          </div>
-        </div>
+        />
       )}
 
-      {/* ── Import memory modal ── */}
       {showImportMemory && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowImportMemory(false)
-              setImportText('')
-              setImportMemoryError(null)
-            }
+        <ImportMemoryDialog
+          value={importText}
+          saving={isImporting}
+          error={importMemoryError}
+          promptCopied={importPromptCopied}
+          onChange={setImportText}
+          onSave={handleImportMemory}
+          onCopyPrompt={async () => {
+            await navigator.clipboard.writeText(IMPORT_MEMORY_PROMPT)
+            setImportPromptCopied(true)
+            setTimeout(() => setImportPromptCopied(false), 2000)
           }}
-        >
-          <div className="w-[540px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-medium text-[var(--foreground)]">Import memory</h3>
-              <button
-                onClick={() => { setShowImportMemory(false); setImportText(''); setImportMemoryError(null) }}
-                className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] transition-colors"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div className="flex gap-3 mb-5">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">1</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-[var(--foreground)] mb-2">Copy this prompt into a chat with your other AI provider</p>
-                <div className="relative rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 pt-3 pb-10">
-                  <p className="text-xs leading-relaxed text-[var(--foreground)]">{IMPORT_MEMORY_PROMPT}</p>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(IMPORT_MEMORY_PROMPT)
-                      setImportPromptCopied(true)
-                      setTimeout(() => setImportPromptCopied(false), 2000)
-                    }}
-                    className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
-                  >
-                    {importPromptCopied ? <Check size={11} /> : <Copy size={11} />}
-                    {importPromptCopied ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 mb-5">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">2</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-[var(--foreground)] mb-2">Paste results below to add to your memory</p>
-                <textarea
-                  value={importText}
-                  onChange={(e) => setImportText(e.target.value)}
-                  placeholder="Paste your memory details here"
-                  rows={6}
-                  className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-xs text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-                />
-              </div>
-            </div>
-            {importMemoryError ? (
-              <p className="mb-3 text-xs text-red-400" role="alert">{importMemoryError}</p>
-            ) : null}
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => { setShowImportMemory(false); setImportText(''); setImportMemoryError(null) }}
-                className={DIALOG_ACTION_BUTTON_CLASS}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleImportMemory}
-                disabled={!importText.trim() || isImporting}
-                className={`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`}
-              >{isImporting ? 'Saving…' : 'Add to memory'}</button>
-            </div>
-          </div>
-        </div>
+          onClose={() => {
+            setShowImportMemory(false)
+            setImportText('')
+            setImportMemoryError(null)
+          }}
+        />
       )}
 
-      {/* ── New file/folder modal ── */}
       {dialog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
-          onClick={(e) => { if (e.target === e.currentTarget) { setDialog(null); setDialogName('') } }}
-        >
-          <div className="w-[400px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-[var(--foreground)]">
-                New {dialog.type === 'folder' ? 'folder' : 'file'}
-              </h3>
-              <button onClick={() => { setDialog(null); setDialogName('') }} className="p-1 rounded text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
-                <X size={14} />
-              </button>
-            </div>
-            <input
-              value={dialogName}
-              onChange={(e) => setDialogName(e.target.value)}
-              placeholder={dialog.type === 'folder' ? 'Folder name' : 'filename.txt'}
-              autoFocus
-              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFile() }}
-              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-            />
-            <div className="flex gap-2 mt-3 justify-end">
-              <button
-                onClick={() => { setDialog(null); setDialogName('') }}
-                className={DIALOG_ACTION_BUTTON_CLASS}
-              >Cancel</button>
-              <button
-                onClick={handleCreateFile}
-                disabled={!dialogName.trim() || isCreating}
-                className={`${DIALOG_ACTION_BUTTON_CLASS} disabled:opacity-40`}
-              >{isCreating ? 'Creating...' : 'Create'}</button>
-            </div>
-          </div>
-        </div>
+        <CreateKnowledgeItemDialog
+          type={dialog.type}
+          value={dialogName}
+          creating={isCreating}
+          onChange={setDialogName}
+          onCreate={handleCreateFile}
+          onClose={() => {
+            setDialog(null)
+            setDialogName('')
+          }}
+        />
       )}
 
-      {/* Hidden file inputs */}
-      <input ref={fileUploadRef} type="file" className="hidden" onChange={handleUploadFile} />
-      <input
-        ref={folderUploadRef}
-        type="file"
-        className="hidden"
-        onChange={handleUploadFolder}
-        // @ts-expect-error webkitdirectory is non-standard
-        webkitdirectory=""
+      <HiddenKnowledgeFileInputs
+        fileUploadRef={fileUploadRef}
+        folderUploadRef={folderUploadRef}
+        onFileChange={handleUploadFile}
+        onFolderChange={handleUploadFolder}
       />
 
-      {/* ── View memory dialog ── */}
       {selectedMemory && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) closeMemoryDialog() }}
-        >
-          <div
-            className="flex max-h-[min(90vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-              <span className="text-sm font-medium text-[var(--foreground)]">Memory</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--muted-light)]">
-                  {new Date(selectedMemory.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteMemory(selectedMemory.memoryId)}
-                  className="rounded-md p-1.5 text-[var(--muted-light)] transition-colors hover:bg-red-500/10 hover:text-red-400"
-                >
-                  <Trash2 size={13} />
-                </button>
-                <button
-                  type="button"
-                  onClick={closeMemoryDialog}
-                  className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">{selectedMemory.fullContent}</p>
-              {selectedMemory.source ? (
-                <p className="mt-4 text-xs text-[var(--muted-light)]">Source: {selectedMemory.source}</p>
-              ) : null}
-            </div>
-          </div>
-        </div>
+        <MemoryDetailDialog
+          memory={selectedMemory}
+          onClose={closeMemoryDialog}
+          onDelete={handleDeleteMemory}
+        />
       )}
 
       {/* ── Header ── */}
@@ -1314,137 +1049,33 @@ export default function KnowledgeView({
         )}
 
         {activeTab === 'memories' && (memorySavePendingPreview || importPendingPreview) && (
-          <div
-            className="mx-auto mb-4 flex max-w-3xl items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3"
-            aria-busy
-            aria-live="polite"
-          >
-            <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-[var(--foreground)]">
-                {memorySavePendingPreview ? 'Saving memory…' : 'Importing memory…'}
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">
-                {memorySavePendingPreview ?? importPendingPreview}
-              </p>
-            </div>
-          </div>
+          <KnowledgePendingNotice
+            title={memorySavePendingPreview ? 'Saving memory…' : 'Importing memory…'}
+            preview={memorySavePendingPreview ?? importPendingPreview}
+          />
         )}
 
-        {activeTab === 'memories' && memoriesLoading && <KnowledgeListSkeleton rows={10} />}
-        {activeTab === 'memories' && !memoriesLoading && memories.length === 0 && !memorySavePendingPreview && !importPendingPreview && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
-            <Brain size={32} strokeWidth={1} className="opacity-40" />
-            <p className="text-sm">No memories yet</p>
-            <button
-              type="button"
-              onClick={() => { setShowAddMemory(true); setMemorySaveError(null) }}
-              className="text-xs text-[var(--foreground)] underline underline-offset-2"
-            >
-              Add your first memory
-            </button>
-          </div>
-        )}
-        {activeTab === 'memories' && !memoriesLoading && memories.length > 0 && memoriesFiltered.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
-            <Search size={32} strokeWidth={1} className="opacity-40" />
-            <p className="text-sm">No memories match your search</p>
-          </div>
-        )}
-        {activeTab === 'memories' && !memoriesLoading && memoriesFiltered.length > 0 && layout === 'list' && (
-          <div className="mx-auto max-w-3xl space-y-0.5">
-            {memoriesFiltered.map((memory) => {
-              const bulkSel = selectedMemoryIds.has(memory.memoryId)
-              return (
-                <div
-                  key={memory.key}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => (selectMode ? toggleMemorySelect(memory.memoryId) : openMemory(memory))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      if (selectMode) toggleMemorySelect(memory.memoryId)
-                      else openMemory(memory)
-                    }
-                  }}
-                  className={`group flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
-                    bulkSel ? 'border-[var(--border)] bg-[var(--surface-muted)]' : ''
-                  }`}
-                >
-                  {selectMode ? (
-                    <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--border)] ${
-                        bulkSel ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]'
-                      }`}
-                      aria-hidden
-                    >
-                      {bulkSel ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
-                    </span>
-                  ) : null}
-                  <p className="min-w-0 flex-1 text-sm leading-relaxed text-[var(--foreground)]">{memory.content}</p>
-                  {!selectMode ? (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteMemory(memory.memoryId) }}
-                      className="shrink-0 rounded p-1 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-red-500 group-hover:opacity-100"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
-        )}
-        {activeTab === 'memories' && !memoriesLoading && memoriesFiltered.length > 0 && layout === 'cards' && (
-          <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3">
-            {memoriesFiltered.map((memory) => {
-              const bulkSel = selectedMemoryIds.has(memory.memoryId)
-              return (
-                <button
-                  key={memory.key}
-                  type="button"
-                  onClick={() => (selectMode ? toggleMemorySelect(memory.memoryId) : openMemory(memory))}
-                  className={`group relative mb-4 block w-full break-inside-avoid rounded-xl border bg-[var(--surface-elevated)] p-4 text-left transition-shadow hover:shadow-md ${
-                    bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
-                  }`}
-                  style={{ breakInside: 'avoid' }}
-                >
-                  {selectMode ? (
-                    <span
-                      className={`absolute left-3 top-3 z-10 flex h-4 w-4 items-center justify-center rounded border border-[var(--border)] ${
-                        bulkSel ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]'
-                      }`}
-                      aria-hidden
-                    >
-                      {bulkSel ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
-                    </span>
-                  ) : null}
-                  <p className={`line-clamp-6 text-xs leading-relaxed text-[var(--foreground)] ${selectMode ? 'pl-7' : ''}`}>
-                    {memory.content}
-                  </p>
-                  <p className="mt-3 text-[10px] text-[var(--muted-light)]">
-                    {new Date(memory.createdAt).toLocaleDateString()}
-                  </p>
-                </button>
-              )
-            })}
-          </div>
+        {activeTab === 'memories' && (
+          <KnowledgeMemoriesPanel
+            loading={memoriesLoading}
+            memoriesCount={memories.length}
+            memories={memoriesFiltered}
+            layout={layout}
+            selectedIds={selectedMemoryIds}
+            selectMode={selectMode}
+            hasPending={Boolean(memorySavePendingPreview || importPendingPreview)}
+            onOpen={openMemory}
+            onToggleSelect={toggleMemorySelect}
+            onAddFirst={() => { setShowAddMemory(true); setMemorySaveError(null) }}
+            onDelete={(memoryId, event) => {
+              event.stopPropagation()
+              void handleDeleteMemory(memoryId)
+            }}
+          />
         )}
 
         {activeTab === 'files' && !selectedFile && fileUploadPending && (
-          <div
-            className="mx-auto mb-4 flex max-w-3xl items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3"
-            aria-busy
-            aria-live="polite"
-          >
-            <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-[var(--foreground)]">Uploading…</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">{fileUploadPending.label}</p>
-            </div>
-          </div>
+          <KnowledgePendingNotice title="Uploading…" preview={fileUploadPending.label} />
         )}
         {activeTab === 'files' && !selectedFile && fileUploadError && (
           <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
@@ -1452,93 +1083,24 @@ export default function KnowledgeView({
           </p>
         )}
 
-        {activeTab === 'files' && !selectedFile && filesLoading && <FileTreeSkeleton rows={10} />}
-        {activeTab === 'files' && !selectedFile && !filesLoading && files.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
-            <FileText size={32} strokeWidth={1} className="opacity-40" />
-            <p className="text-sm">No files yet</p>
-          </div>
-        )}
-        {activeTab === 'files' && !selectedFile && !filesLoading && files.length > 0 && rootNodes.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-[var(--muted-light)]">
-            <Search size={32} strokeWidth={1} className="opacity-40" />
-            <p className="text-sm">No files match your search</p>
-          </div>
-        )}
-        {activeTab === 'files' && !selectedFile && !filesLoading && rootNodes.length > 0 && layout === 'list' && (
-          <div className="mx-auto max-w-3xl space-y-0.5">
-            {rootNodes.map((node) => (
-              <FileTreeRow
-                key={node._id}
-                node={node}
-                selectedId={null}
-                onSelect={handleSelectFile}
-                onFolderOpen={navigateToFolder}
-                onDelete={handleDeleteNode}
-                bulkSelectMode={selectMode}
-                bulkSelectedIds={selectedFileIds}
-                onToggleBulk={toggleFileBulkSelect}
-                onMove={moveFileToParent}
-              />
-            ))}
-          </div>
-        )}
-        {activeTab === 'files' && !selectedFile && !filesLoading && (folderCardsSorted.length > 0 || flatFilesSorted.length > 0) && layout === 'cards' && (
-          <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
-            {folderCardsSorted.map((folder) => {
-              const bulkSel = selectedFileIds.has(folder._id)
-              return (
-                <FolderCard
-                  key={folder._id}
-                  folder={folder}
-                  bulkSel={bulkSel}
-                  selectMode={selectMode}
-                  onOpen={() => (selectMode ? toggleFileBulkSelect(folder._id) : navigateToFolder(folder._id))}
-                  onMove={moveFileToParent}
-                />
-              )
-            })}
-            {flatFilesSorted.map((file) => {
-              const bulkSel = selectedFileIds.has(file._id)
-              return (
-                <button
-                  key={file._id}
-                  type="button"
-                  draggable={!selectMode}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('application/x-overlay-file-id', file._id)
-                    e.dataTransfer.effectAllowed = 'move'
-                  }}
-                  onClick={() => (selectMode ? toggleFileBulkSelect(file._id) : handleSelectFile(file))}
-                  className={`group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
-                    bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
-                  }`}
-                  style={{ breakInside: 'avoid' }}
-                >
-                  {selectMode ? (
-                    <span
-                      className={`absolute left-3 top-3 z-10 flex h-4 w-4 items-center justify-center rounded border border-[var(--border)] ${
-                        bulkSel ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]'
-                      }`}
-                      aria-hidden
-                    >
-                      {bulkSel ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
-                    </span>
-                  ) : null}
-                  <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
-                    <FileText size={36} className="text-[var(--muted-light)]" />
-                  </div>
-                  <div className="px-3 py-2">
-                    <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{file.name}</p>
-                    <p className="mt-1 line-clamp-2 text-[10px] text-[var(--muted)]">{filePathLabel(filesFiltered, file)}</p>
-                    <p className="mt-1 text-[10px] text-[var(--muted-light)]">
-                      {new Date(file.updatedAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+        {activeTab === 'files' && !selectedFile && (
+          <KnowledgeFilesPanel
+            loading={filesLoading}
+            filesCount={files.length}
+            nodes={rootNodes}
+            folders={folderCardsSorted}
+            flatFiles={flatFilesSorted}
+            allFiles={filesFiltered}
+            layout={layout}
+            selectedFileId={null}
+            selectedIds={selectedFileIds}
+            selectMode={selectMode}
+            onSelect={handleSelectFile}
+            onFolderOpen={navigateToFolder}
+            onDelete={handleDeleteNode}
+            onToggleBulk={toggleFileBulkSelect}
+            onMove={moveFileToParent}
+          />
         )}
       </div>
     </div>
