@@ -11,6 +11,7 @@
     "./contracts": "./src/contracts.ts",
     "./knowledge": "./src/knowledge.ts",
     "./modules": "./src/modules.ts",
+    "./projects": "./src/projects.ts",
     "./theme": "./src/theme.ts"
   },
   "scripts": {

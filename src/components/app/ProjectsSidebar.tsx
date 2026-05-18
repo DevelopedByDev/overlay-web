@@ -3,8 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Plus, FolderOpen, Folder, ChevronRight, MessageSquare,
-  BookOpen, Upload, FolderPlus, Loader2, Trash2, ArrowLeft, Pencil,
+  FolderOpen, Folder, ChevronRight, MessageSquare,
+  BookOpen, Loader2, Trash2, Pencil,
 } from 'lucide-react'
 import { CHAT_TITLE_UPDATED_EVENT, dispatchChatDeleted, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
 import { ConfirmDialog } from '@/components/app/ConfirmDialog'
@@ -14,15 +14,30 @@ import {
   type ProjectChat,
   type ProjectNote,
   type ProjectFile,
-  opensInDocumentEditor,
-  TREE_GUTTER_PX,
-  TREE_CHEVRON_COL,
-  TREE_ICON_COL,
 } from './ProjectFileTree'
 import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
-import { getFileType } from './FileViewer'
-
-const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
+import {
+  PROJECT_META_UPDATED_EVENT,
+  createProjectFolderRequest,
+  createProjectNoteRequest,
+  createProjectStoredFileRequest,
+  createProjectTextFileRequest,
+  projectFilesExcludingNotes,
+  projectHubHref,
+  projectItemHref,
+  projectNotesFromFiles,
+  projectRouteViewForFile,
+  removeProjectFromList,
+  renameProjectInList,
+  rootProjectFiles,
+  rootProjects as getRootProjects,
+  shouldIngestProjectDocument,
+  shouldUseProjectStorageUpload,
+  updateProjectInList,
+  childProjects,
+} from '@overlay/app-core'
+import { ProjectsSidebarFrame } from '@overlay/modules-react/projects'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 
 // ─── Project tree node ────────────────────────────────────────────────────────
 
@@ -47,7 +62,7 @@ function ProjectNode({
   onNavigate: (project: Project) => void
   onToggle: (id: string, e: React.MouseEvent) => void
   onDelete: (id: string, e: React.MouseEvent) => void
-  onNavigateItem: (project: Project, view: string, id: string) => void
+  onNavigateItem: (project: Project, view: 'chat' | 'note' | 'file', id: string) => void
   onDeleteItem: (type: 'chat' | 'note', id: string, e: React.MouseEvent) => void
   onProjectRenamed: (projectId: string, name: string) => void
 }) {
@@ -71,23 +86,14 @@ function ProjectNode({
     async function load() {
       setItemsLoading(true)
       try {
-        const [cr, nr, fr] = await Promise.all([
-          fetch(`/api/app/conversations?projectId=${project._id}`),
-          fetch(`/api/app/files?kind=note&projectId=${project._id}`),
-          fetch(`/api/app/files?projectId=${project._id}`),
+        const [chats, notes, files] = await Promise.all([
+          overlayAppClient.conversations.get<ProjectChat[]>({ projectId: project._id }),
+          overlayAppClient.files.get<ProjectFile[]>({ kind: 'note', projectId: project._id }),
+          overlayAppClient.files.get<ProjectFile[]>({ projectId: project._id }),
         ])
         if (cancelled) return
-        const [chats, notes, files] = await Promise.all([
-          cr.ok ? cr.json() : [],
-          nr.ok ? nr.json() : [],
-          fr.ok ? fr.json() : [],
-        ])
-        const noteRows = Array.isArray(notes)
-          ? notes.map((note: ProjectFile) => ({ _id: note._id, title: note.name || 'Untitled', updatedAt: 0 }))
-          : []
-        const fileRows = Array.isArray(files)
-          ? files.filter((file: ProjectFile) => file.kind !== 'note')
-          : []
+        const noteRows = Array.isArray(notes) ? projectNotesFromFiles(notes) : []
+        const fileRows = Array.isArray(files) ? projectFilesExcludingNotes(files) : []
         if (!cancelled) setItems({ chats, notes: noteRows, files: fileRows })
       } finally {
         if (!cancelled) setItemsLoading(false)
@@ -109,16 +115,11 @@ function ProjectNode({
 
   async function handleDeleteInlineFile(fileId: string, e: React.MouseEvent) {
     e.stopPropagation()
-    await fetch(`/api/app/files?fileId=${fileId}`, { method: 'DELETE' })
+    await overlayAppClient.files.deleteResponse({ fileId })
     setItems((prev) => (prev ? { ...prev, files: prev.files.filter((f) => f._id !== fileId) } : null))
   }
 
-  const rootInlineFiles = items?.files
-    .filter((f) => f.parentId == null)
-    .sort((a, b) => {
-      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
-      return a.name.localeCompare(b.name)
-    }) ?? []
+  const rootInlineFiles = items ? rootProjectFiles(items.files) : []
 
   async function commitProjectRowRename() {
     if (renamingProjectId !== project._id) return
@@ -126,11 +127,7 @@ function ProjectNode({
     setRenamingProjectId(null)
     if (!name || name === project.name) return
     try {
-      const res = await fetch('/api/app/projects', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: project._id, name }),
-      })
+      const res = await overlayAppClient.projects.updateResponse({ projectId: project._id, name })
       if (!res.ok) return
       const data = (await res.json().catch(() => ({}))) as { project?: Project }
       const finalName = data.project?.name?.trim() || name
@@ -281,7 +278,7 @@ function ProjectNode({
                   onToggleFolder={toggleInlineFileFolder}
                   onOpenFile={(id) => {
                     const target = items.files.find((candidate) => candidate._id === id)
-                    onNavigateItem(project, target && opensInDocumentEditor(target) ? 'note' : 'file', id)
+                    onNavigateItem(project, target ? projectRouteViewForFile(target) : 'file', id)
                   }}
                   onDeleteFile={handleDeleteInlineFile}
                 />
@@ -334,8 +331,7 @@ export default function ProjectsSidebar() {
 
   const loadProjects = useCallback(async () => {
     try {
-      const res = await fetch('/api/app/projects')
-      if (res.ok) setProjects(await res.json())
+      setProjects(await overlayAppClient.projects.get<Project[]>())
     } catch { /* ignore */ } finally { setLoading(false) }
   }, [])
 
@@ -356,22 +352,14 @@ export default function ProjectsSidebar() {
   const loadProjectItems = useCallback(async (projectId: string) => {
     setItemsLoading(true)
     try {
-      const [chatsRes, notesRes, filesRes] = await Promise.all([
-        fetch(`/api/app/conversations?projectId=${projectId}`),
-        fetch(`/api/app/files?kind=note&projectId=${projectId}`),
-        fetch(`/api/app/files?projectId=${projectId}`),
+      const [chats, notes, files] = await Promise.all([
+        overlayAppClient.conversations.get<ProjectChat[]>({ projectId }),
+        overlayAppClient.files.get<ProjectFile[]>({ kind: 'note', projectId }),
+        overlayAppClient.files.get<ProjectFile[]>({ projectId }),
       ])
-      if (chatsRes.ok) setProjectChats(await chatsRes.json())
-      if (notesRes.ok) {
-        const notes = await notesRes.json()
-        setProjectNotes(Array.isArray(notes)
-          ? notes.map((note: ProjectFile) => ({ _id: note._id, title: note.name || 'Untitled', updatedAt: 0 }))
-          : [])
-      }
-      if (filesRes.ok) {
-        const files = await filesRes.json()
-        setProjectFiles(Array.isArray(files) ? files.filter((file: ProjectFile) => file.kind !== 'note') : [])
-      }
+      setProjectChats(Array.isArray(chats) ? chats : [])
+      setProjectNotes(Array.isArray(notes) ? projectNotesFromFiles(notes) : [])
+      setProjectFiles(Array.isArray(files) ? projectFilesExcludingNotes(files) : [])
     } catch { /* ignore */ } finally { setItemsLoading(false) }
   }, [])
 
@@ -432,11 +420,7 @@ export default function ProjectsSidebar() {
     if (!name || isCreating) return
     setIsCreating(true)
     try {
-      const res = await fetch('/api/app/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, parentId: newProjectParentId }),
-      })
+      const res = await overlayAppClient.projects.createResponse({ name, parentId: newProjectParentId })
       if (res.ok) {
         setNewProjectName('')
         setShowNewProject(false)
@@ -447,13 +431,13 @@ export default function ProjectsSidebar() {
 
   async function handleDeleteProject(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    await fetch(`/api/app/projects?projectId=${id}`, { method: 'DELETE' })
+    await overlayAppClient.projects.deleteResponse({ projectId: id })
     if (selectedProject?._id === id) setSelectedProject(null)
-    setProjects((prev) => prev.filter((p) => p._id !== id))
+    setProjects((prev) => removeProjectFromList(prev, id))
   }
 
   function handleProjectRenamed(projectId: string, name: string) {
-    setProjects((prev) => prev.map((p) => (p._id === projectId ? { ...p, name } : p)))
+    setProjects((prev) => renameProjectInList(prev, projectId, name))
     setSelectedProject((prev) => (prev && prev._id === projectId ? { ...prev, name } : prev))
   }
 
@@ -463,19 +447,15 @@ export default function ProjectsSidebar() {
     if (!name) return
     setIsSavingProjectMeta(true)
     try {
-      const res = await fetch('/api/app/projects', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: selectedProject._id,
-          name,
-          instructions: projectDraftInstructions.trim() || undefined,
-        }),
+      const res = await overlayAppClient.projects.updateResponse({
+        projectId: selectedProject._id,
+        name,
+        instructions: projectDraftInstructions.trim() || undefined,
       })
       if (!res.ok) return
       const data = (await res.json()) as { project?: Project }
       if (data.project) {
-        setProjects((prev) => prev.map((project) => (project._id === data.project!._id ? data.project! : project)))
+        setProjects((prev) => updateProjectInList(prev, data.project!))
         setSelectedProject(data.project)
       } else {
         await loadProjects()
@@ -495,20 +475,18 @@ export default function ProjectsSidebar() {
   }
 
   function handleNavigate(project: Project) {
-    const pn = encodeURIComponent(project.name)
-    router.push(`/app/projects?projectId=${encodeURIComponent(project._id)}&projectName=${pn}`)
+    router.push(projectHubHref(project))
     setSelectedProject(null)
     setExpandedIds((prev) => new Set([...prev, project._id]))
   }
 
-  function projectNav(view: string, id: string, project?: Project) {
+  function projectNav(view: 'chat' | 'note' | 'file', id: string, project?: Project) {
     const p = project ?? selectedProject
     if (!p) return
-    const pn = encodeURIComponent(p.name)
-    router.push(`/app/projects?view=${view}&id=${id}&projectId=${p._id}&projectName=${pn}`)
+    router.push(projectItemHref({ project: p, view, id }))
   }
 
-  function handleNavigateItem(project: Project, view: string, id: string) {
+  function handleNavigateItem(project: Project, view: 'chat' | 'note' | 'file', id: string) {
     projectNav(view, id, project)
   }
 
@@ -519,14 +497,14 @@ export default function ProjectsSidebar() {
       setConfirmDeleteChat({ id, title: chat?.title ?? '' })
       return
     } else if (type === 'note') {
-      await fetch(`/api/app/files?fileId=${id}`, { method: 'DELETE' })
+      await overlayAppClient.files.deleteResponse({ fileId: id })
       setProjectNotes((prev) => prev.filter((n) => n._id !== id))
     }
   }
 
   async function handleDeleteFile(fileId: string, e: React.MouseEvent) {
     e.stopPropagation()
-    await fetch(`/api/app/files?fileId=${fileId}`, { method: 'DELETE' })
+    await overlayAppClient.files.deleteResponse({ fileId })
     setProjectFiles((prev) => prev.filter((f) => f._id !== fileId))
   }
 
@@ -534,16 +512,12 @@ export default function ProjectsSidebar() {
     if (!selectedProject) return
     setAddMenuOpen(false)
     const models = readNewChatModelFieldsFromStorage()
-    const res = await fetch('/api/app/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: 'New Chat',
-        projectId: selectedProject._id,
-        askModelIds: models.askModelIds,
-        actModelId: models.actModelId,
-        lastMode: models.lastMode,
-      }),
+    const res = await overlayAppClient.conversations.createResponse({
+      title: 'New Chat',
+      projectId: selectedProject._id,
+      askModelIds: models.askModelIds,
+      actModelId: models.actModelId,
+      lastMode: models.lastMode,
     })
     if (res.ok) {
       const { id } = await res.json()
@@ -555,11 +529,7 @@ export default function ProjectsSidebar() {
   async function handleNewNote() {
     if (!selectedProject) return
     setAddMenuOpen(false)
-    const res = await fetch('/api/app/files', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'note', name: 'Untitled', textContent: '', projectId: selectedProject._id }),
-    })
+    const res = await overlayAppClient.files.createResponse(createProjectNoteRequest(selectedProject._id))
     if (res.ok) {
       const { id } = await res.json()
       projectNav('note', id)
@@ -583,21 +553,14 @@ export default function ProjectsSidebar() {
   ): Promise<{ ok: boolean; error?: string }> {
     if (!selectedProject) return { ok: false, error: 'No project' }
     const pid = selectedProject._id
-    const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-    const kind = getFileType(file.name)
 
     try {
-      if (
-        ext === 'pdf' ||
-        ext === 'docx' ||
-        file.type === 'application/pdf' ||
-        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      ) {
+      if (shouldIngestProjectDocument(file)) {
         const form = new FormData()
         form.append('file', file)
         form.append('projectId', pid)
         if (parentId) form.append('parentId', parentId)
-        const res = await fetch('/api/app/files/ingest-document', { method: 'POST', body: form })
+        const res = await overlayAppClient.files.ingestDocumentResponse(form)
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as { error?: string }
           return { ok: false, error: err.error ?? 'Could not index document' }
@@ -605,12 +568,8 @@ export default function ProjectsSidebar() {
         return { ok: true }
       }
 
-      if (kind === 'image' || kind === 'video' || kind === 'audio') {
-        const urlRes = await fetch('/api/app/files/upload-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sizeBytes: file.size, mimeType: file.type || undefined }),
-        })
+      if (shouldUseProjectStorageUpload(file)) {
+        const urlRes = await overlayAppClient.files.uploadUrlResponse({ sizeBytes: file.size, mimeType: file.type || undefined })
         if (!urlRes.ok) {
           const err = (await urlRes.json().catch(() => ({}))) as { error?: string }
           return { ok: false, error: err.error ?? 'Could not get upload URL' }
@@ -622,18 +581,12 @@ export default function ProjectsSidebar() {
           body: file,
         })
         if (!uploadRes.ok) return { ok: false, error: 'Storage upload failed' }
-        const res = await fetch('/api/app/files', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: file.name,
-            type: 'file',
-            parentId,
-            r2Key,
-            sizeBytes: file.size,
-            projectId: pid,
-          }),
-        })
+        const res = await overlayAppClient.files.createResponse(createProjectStoredFileRequest({
+          file,
+          parentId,
+          projectId: pid,
+          r2Key,
+        }))
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as { error?: string }
           return { ok: false, error: err.error ?? 'Failed to save file' }
@@ -642,17 +595,12 @@ export default function ProjectsSidebar() {
       }
 
       const content = await file.text()
-      const res = await fetch('/api/app/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: file.name,
-          type: 'file',
-          parentId,
-          content,
-          projectId: pid,
-        }),
-      })
+      const res = await overlayAppClient.files.createResponse(createProjectTextFileRequest({
+        file,
+        parentId,
+        projectId: pid,
+        content,
+      }))
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string }
         return { ok: false, error: err.error ?? 'Failed to save file' }
@@ -689,16 +637,11 @@ export default function ProjectsSidebar() {
         if (!folders.has(folderPath)) {
           const parentPath = i === 0 ? null : parts.slice(0, i).join('/')
           const parentId = parentPath ? (folders.get(parentPath) ?? null) : null
-          const res = await fetch('/api/app/files', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: parts[i],
-              type: 'folder',
-              parentId,
-              projectId: selectedProject._id,
-            }),
-          })
+          const res = await overlayAppClient.files.createResponse(createProjectFolderRequest({
+            name: parts[i] ?? 'Folder',
+            parentId,
+            projectId: selectedProject._id,
+          }))
           if (res.ok) {
             const { id } = await res.json()
             folders.set(folderPath, id)
@@ -719,281 +662,77 @@ export default function ProjectsSidebar() {
     e.target.value = ''
   }
 
-  const rootProjects = projects.filter((p) => p.parentId == null)
-  const subprojects = selectedProject ? projects.filter((p) => p.parentId === selectedProject._id) : []
-  const rootProjectFiles = projectFiles
-    .filter((f) => f.parentId == null)
-    .sort((a, b) => {
-      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
-      return a.name.localeCompare(b.name)
-    })
+  const rootProjectRows = getRootProjects(projects)
+  const subprojects = selectedProject ? childProjects(projects, selectedProject._id) : []
+  const rootProjectFileRows = rootProjectFiles(projectFiles)
 
   return (
-    <div className="w-52 h-full flex flex-col border-r border-[#e5e5e5] bg-[#f5f5f5] shrink-0">
-      {/* Hidden file inputs */}
-      <input ref={fileInputRef} type="file" className="hidden" onChange={handleUploadFile} />
-      <input
-        ref={folderInputRef}
-        type="file"
-        className="hidden"
-        onChange={handleUploadFolder}
-        // @ts-expect-error webkitdirectory is non-standard
-        webkitdirectory=""
-      />
-
-      {/* Header */}
-      <div className="flex h-16 items-center border-b border-[#e5e5e5] px-3 gap-2 shrink-0">
-        {selectedProject ? (
-          <>
-            <button
-              onClick={() => setSelectedProject(null)}
-              className="p-1 rounded hover:bg-[#e8e8e8] transition-colors shrink-0"
-            >
-              <ArrowLeft size={13} className="text-[#525252]" />
-            </button>
-            <span className="flex-1 text-sm font-medium text-[#0a0a0a] truncate">{selectedProject.name}</span>
-            <div ref={addMenuRef} className="relative shrink-0">
-              <button
-                onClick={() => setAddMenuOpen((v) => !v)}
-                className="flex items-center justify-center w-6 h-6 rounded-md text-xs bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
-              >
-                <Plus size={13} />
-              </button>
-              {addMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#e5e5e5] rounded-lg shadow-lg py-1 z-50">
-                  <button onClick={handleNewChat} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors">
-                    <MessageSquare size={12} />New Chat
-                  </button>
-                  <button onClick={handleNewNote} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors">
-                    <BookOpen size={12} />New Note
-                  </button>
-                  <button onClick={() => { setAddMenuOpen(false); fileInputRef.current?.click() }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors">
-                    <Upload size={12} />Upload File
-                  </button>
-                  <button onClick={() => { setAddMenuOpen(false); folderInputRef.current?.click() }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors">
-                    <FolderPlus size={12} />Upload Folder
-                  </button>
-                  <div className="border-t border-[#f0f0f0] mt-1 pt-1">
-                    <button onClick={() => openNewProjectForm(selectedProject._id)} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors">
-                      <Folder size={12} />New Subproject
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <button
-            onClick={() => openNewProjectForm(null)}
-            className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm bg-[#0a0a0a] text-[#fafafa] hover:bg-[#222] transition-colors"
-          >
-            <Plus size={13} />
-            New Project
-          </button>
-        )}
-      </div>
-
-      {/* Inline new project form */}
-      {showNewProject && (
-        <div className="px-3 py-2 border-b border-[#e5e5e5] bg-[#fafafa]">
-          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#aaa] mb-1.5">
-            {newProjectParentId ? 'New Subproject' : 'New Project'}
-          </p>
-          <input
-            value={newProjectName}
-            onChange={(e) => setNewProjectName(e.target.value)}
-            placeholder="Project name"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCreateProject()
-              if (e.key === 'Escape') { setShowNewProject(false); setNewProjectName('') }
-            }}
-            className="w-full text-xs border border-[#e5e5e5] rounded-md px-2 py-1.5 outline-none placeholder-[#aaa] focus:border-[#0a0a0a] transition-colors bg-white"
+    <>
+      <ProjectsSidebarFrame
+        selectedProject={selectedProject}
+        loading={loading}
+        itemsLoading={itemsLoading}
+        rootProjects={rootProjectRows}
+        subprojects={subprojects}
+        projectChats={projectChats}
+        projectNotes={projectNotes}
+        rootProjectFiles={rootProjectFileRows}
+        allProjectFiles={projectFiles}
+        expandedProjectIds={expandedIds}
+        expandedFileIds={expandedProjFolderIds}
+        showNewProject={showNewProject}
+        newProjectParentId={newProjectParentId}
+        newProjectName={newProjectName}
+        creatingProject={isCreating}
+        addMenuOpen={addMenuOpen}
+        addMenuRef={addMenuRef}
+        fileInputRef={fileInputRef}
+        folderInputRef={folderInputRef}
+        projectUploadError={projectUploadError}
+        projectDraftName={projectDraftName}
+        projectDraftInstructions={projectDraftInstructions}
+        savingProjectMeta={isSavingProjectMeta}
+        renderRootProject={(project) => (
+          <ProjectNode
+            key={project._id}
+            project={project}
+            allProjects={projects}
+            depth={0}
+            selectedId={null}
+            expandedIds={expandedIds}
+            onNavigate={handleNavigate}
+            onToggle={toggleExpanded}
+            onDelete={handleDeleteProject}
+            onNavigateItem={handleNavigateItem}
+            onDeleteItem={handleDeleteItem}
+            onProjectRenamed={handleProjectRenamed}
           />
-          <div className="flex gap-1.5 mt-1.5">
-            <button
-              onClick={() => { setShowNewProject(false); setNewProjectName('') }}
-              className="flex-1 py-1 rounded text-xs text-[#525252] hover:bg-[#e8e8e8] transition-colors"
-            >Cancel</button>
-            <button
-              onClick={handleCreateProject}
-              disabled={!newProjectName.trim() || isCreating}
-              className="flex-1 py-1 rounded text-xs bg-[#0a0a0a] text-[#fafafa] disabled:opacity-40 hover:bg-[#222] transition-colors"
-            >{isCreating ? 'Creating...' : 'Create'}</button>
-          </div>
-        </div>
-      )}
-
-      {selectedProject && projectUploadError && (
-        <div className="shrink-0 px-2 py-2 text-[10px] text-red-600 bg-red-50 border-b border-red-100 leading-snug">
-          {projectUploadError}
-        </div>
-      )}
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto py-1.5 px-1.5">
-        {loading ? (
-          <div className="flex justify-center pt-8 text-[#888]"><Loader2 size={14} className="animate-spin" /></div>
-        ) : selectedProject ? (
-          itemsLoading ? (
-            <div className="flex justify-center pt-8 text-[#888]"><Loader2 size={14} className="animate-spin" /></div>
-          ) : (
-            <div className="space-y-0.5">
-              <div className="mx-1 mb-3 rounded-xl border border-[#e8e8e8] bg-white px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#a1a1aa]">
-                      Project
-                    </p>
-                    <input
-                      value={projectDraftName}
-                      onChange={(e) => setProjectDraftName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
-                          void handleSaveProjectMeta()
-                        }
-                      }}
-                      className="mt-1 w-full bg-transparent text-sm font-medium text-[#0a0a0a] outline-none placeholder-[#bbb]"
-                      placeholder="Project name"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleSaveProjectMeta()}
-                    disabled={isSavingProjectMeta || !projectDraftName.trim()}
-                    className="shrink-0 rounded-md bg-[#0a0a0a] px-2.5 py-1 text-[11px] text-white transition-colors hover:bg-[#222] disabled:opacity-40"
-                  >
-                    {isSavingProjectMeta ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-                <div className="mt-3">
-                  <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[#a1a1aa]">
-                    Instructions
-                  </p>
-                  <textarea
-                    value={projectDraftInstructions}
-                    onChange={(e) => setProjectDraftInstructions(e.target.value)}
-                    className="min-h-[92px] w-full resize-y rounded-lg border border-[#ececec] bg-[#fafafa] px-2.5 py-2 text-xs text-[#303030] outline-none transition-colors placeholder-[#b2b2b2] focus:border-[#0a0a0a]"
-                    placeholder="Guidance that should apply to chats and notes in this project."
-                  />
-                </div>
-              </div>
-
-              {/* Subprojects */}
-              {subprojects.map((sub) => (
-                <div
-                  key={sub._id}
-                  onClick={() => handleNavigate(sub)}
-                  className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer text-xs text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a] transition-colors"
-                >
-                  <div className={TREE_CHEVRON_COL} aria-hidden />
-                  <div className={TREE_ICON_COL}>
-                    <Folder size={12} />
-                  </div>
-                  <span className="flex-1 truncate">{sub.name}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteProject(sub._id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
-                  >
-                    <Trash2 size={10} />
-                  </button>
-                </div>
-              ))}
-              {projectChats.map((chat) => (
-                <div
-                  key={chat._id}
-                  onClick={() => projectNav('chat', chat._id)}
-                  className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a] transition-colors cursor-pointer"
-                >
-                  <div className={TREE_CHEVRON_COL} aria-hidden />
-                  <div className={TREE_ICON_COL}>
-                    <MessageSquare size={12} />
-                  </div>
-                  <span className="flex-1 truncate">{chat.title}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteItem('chat', chat._id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
-                  >
-                    <Trash2 size={10} />
-                  </button>
-                </div>
-              ))}
-              {projectNotes.map((note) => (
-                <div
-                  key={note._id}
-                  onClick={() => projectNav('note', note._id)}
-                  className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-[#525252] hover:bg-[#ebebeb] hover:text-[#0a0a0a] transition-colors cursor-pointer"
-                >
-                  <div className={TREE_CHEVRON_COL} aria-hidden />
-                  <div className={TREE_ICON_COL}>
-                    <BookOpen size={12} />
-                  </div>
-                  <span className="flex-1 truncate">{note.title || 'Untitled'}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteItem('note', note._id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[#d8d8d8] transition-opacity shrink-0"
-                  >
-                    <Trash2 size={10} />
-                  </button>
-                </div>
-              ))}
-              {rootProjectFiles.map((file) => (
-                <ProjectFileTreeNode
-                  key={file._id}
-                  file={file}
-                  allFiles={projectFiles}
-                  depth={0}
-                  baseIndentPx={TREE_GUTTER_PX}
-                  expandedIds={expandedProjFolderIds}
-                  onToggleFolder={toggleProjFolder}
-                  onOpenFile={(id) => {
-                    const target = projectFiles.find((candidate) => candidate._id === id)
-                    projectNav(target && opensInDocumentEditor(target) ? 'note' : 'file', id)
-                  }}
-                  onDeleteFile={handleDeleteFile}
-                />
-              ))}
-              {subprojects.length === 0 && projectChats.length === 0 && projectNotes.length === 0 && projectFiles.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-10 gap-2 text-[#aaa] text-center">
-                  <FolderOpen size={28} strokeWidth={1} className="opacity-40" />
-                  <p className="text-xs">Empty project</p>
-                  <p className="text-[10px]">Use + to add items</p>
-                </div>
-              )}
-            </div>
-          )
-        ) : (
-          rootProjects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 gap-2 text-[#aaa] text-center">
-              <FolderOpen size={28} strokeWidth={1} className="opacity-40" />
-              <p className="text-xs">No projects yet</p>
-            </div>
-          ) : (
-            <div className="space-y-0.5">
-              {rootProjects.map((project) => (
-                <ProjectNode
-                  key={project._id}
-                  project={project}
-                  allProjects={projects}
-                  depth={0}
-                  selectedId={null}
-                  expandedIds={expandedIds}
-                  onNavigate={handleNavigate}
-                  onToggle={toggleExpanded}
-                  onDelete={handleDeleteProject}
-                  onNavigateItem={handleNavigateItem}
-                  onDeleteItem={handleDeleteItem}
-                  onProjectRenamed={handleProjectRenamed}
-                />
-              ))}
-            </div>
-          )
         )}
-      </div>
+        onBack={() => setSelectedProject(null)}
+        onToggleAddMenu={() => setAddMenuOpen((value) => !value)}
+        onOpenNewProjectForm={openNewProjectForm}
+        onCancelNewProject={() => { setShowNewProject(false); setNewProjectName('') }}
+        onNewProjectNameChange={setNewProjectName}
+        onCreateProject={() => void handleCreateProject()}
+        onCreateChat={() => void handleNewChat()}
+        onCreateNote={() => void handleNewNote()}
+        onUploadFile={handleUploadFile}
+        onUploadFolder={handleUploadFolder}
+        onProjectDraftNameChange={setProjectDraftName}
+        onProjectDraftInstructionsChange={setProjectDraftInstructions}
+        onSaveProjectMeta={() => void handleSaveProjectMeta()}
+        onOpenSubproject={handleNavigate}
+        onDeleteProject={handleDeleteProject}
+        onOpenProjectChat={(id) => projectNav('chat', id)}
+        onOpenProjectNote={(id) => projectNav('note', id)}
+        onDeleteItem={handleDeleteItem}
+        onToggleFileFolder={toggleProjFolder}
+        onOpenProjectFile={(id) => {
+          const target = projectFiles.find((candidate) => candidate._id === id)
+          projectNav(target ? projectRouteViewForFile(target) : 'file', id)
+        }}
+        onDeleteProjectFile={handleDeleteFile}
+      />
       <ConfirmDialog
         isOpen={confirmDeleteChat !== null}
         title="Delete chat?"
@@ -1004,11 +743,11 @@ export default function ProjectsSidebar() {
           if (!target) return
           setConfirmDeleteChat(null)
           dispatchChatDeleted({ chatId: target.id })
-          await fetch(`/api/app/conversations?conversationId=${target.id}`, { method: 'DELETE' })
+          await overlayAppClient.conversations.deleteResponse({ conversationId: target.id })
           setProjectChats((prev) => prev.filter((c) => c._id !== target.id))
         }}
         onCancel={() => setConfirmDeleteChat(null)}
       />
-    </div>
+    </>
   )
 }
