@@ -69,23 +69,31 @@ import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
 import type { WebSourceItem } from '@/lib/web-sources'
 import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
 import { ChatHistoryMobileBar, ChatHistorySidebar } from './chat/ChatHistorySidebar'
+import {
+  loadConversationSnapshot,
+  normalizeReplyMetadata,
+  type RawConversationMessage,
+} from './chat/chatConversationTransport'
+import {
+  runImageGenerationBatch,
+  runVideoGenerationBatch,
+  scheduleMediaGenerationUpgradeFailure,
+} from './chat/chatMediaGeneration'
+import {
+  reportTextStreamError,
+  startActRetryStream,
+  startActTextStream,
+} from './chat/chatTextTransport'
+import { useChatListEventSync } from './chat/useChatListEventSync'
 import { useChatAttachments } from './chat/useChatAttachments'
 import { useChatPreferences } from './chat/useChatPreferences'
 import { useChatRuntimes } from './chat/useChatRuntimes'
 import {
-  CHAT_CREATED_EVENT,
-  CHAT_DELETED_EVENT,
-  CHAT_MODIFIED_EVENT,
-  CHAT_TITLE_UPDATED_EVENT,
   dispatchChatCreated,
   dispatchChatDeleted,
   dispatchChatModified,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
-  type ChatCreatedDetail,
-  type ChatModifiedDetail,
-  type ChatDeletedDetail,
-  type ChatTitleUpdatedDetail,
 } from '@/lib/chat-title'
 import {
   fetchChatList,
@@ -130,7 +138,6 @@ import {
   applyLiveMessageDeltaParts,
   assistantBlocksToPlainText,
   buildAssistantVisualSequence,
-  buildMediaSummary,
   chatGreetingLine,
   chooseAssistantCandidate,
   errorLabel,
@@ -151,7 +158,6 @@ import {
 import type {
   AskModelSelectionMode,
   ChatMessageMetadata,
-  ChatOutput,
   Conversation,
   ConversationRuntime,
   ConversationUiState,
@@ -592,77 +598,15 @@ export default function ChatInterface({
     setActiveViewer,
   ])
 
-  useEffect(() => {
-    function handleChatUpserted(event: Event) {
-      const { detail } = event as CustomEvent<ChatCreatedDetail | ChatModifiedDetail>
-      const nextChat = detail?.chat
-      if (!nextChat?._id) return
-      upsertCachedChat(nextChat)
-      setChats((prev) => {
-        const existingIndex = prev.findIndex((chat) => chat._id === nextChat._id)
-        if (existingIndex === -1) return [nextChat, ...prev]
-        const existing = prev[existingIndex]
-        const merged = {
-          ...existing,
-          ...nextChat,
-          title: nextChat.title || existing.title,
-        }
-        const withoutExisting = prev.filter((chat) => chat._id !== nextChat._id)
-        return [merged, ...withoutExisting]
-      })
-    }
-
-    function handleChatTitleUpdated(event: Event) {
-      const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
-      if (!detail?.chatId || !detail.title) return
-      upsertCachedChat({
-        _id: detail.chatId,
-        title: detail.title,
-        lastModified: Date.now(),
-      })
-      setChats((prev) => {
-        const existing = prev.find((chat) => chat._id === detail.chatId)
-        if (!existing) return prev
-        const updated = { ...existing, title: detail.title, lastModified: Date.now() }
-        return [updated, ...prev.filter((chat) => chat._id !== detail.chatId)]
-      })
-      updateRuntimeUiState(detail.chatId, (prev) => ({ ...prev, activeChatTitle: detail.title }))
-      if (activeChatIdRef.current === detail.chatId) {
-        setActiveChatTitle(detail.title)
-      }
-    }
-
-    function handleChatDeleted(event: Event) {
-      const { detail } = event as CustomEvent<ChatDeletedDetail>
-      if (!detail?.chatId) return
-      const deletedChatId = detail.chatId
-      removeCachedChat(deletedChatId)
-      setDeletingChatIds((prev) => (
-        prev.includes(deletedChatId) ? prev : [...prev, deletedChatId]
-      ))
-      if (activeChatIdRef.current === deletedChatId) {
-        setActiveChatDeleting(true)
-      }
-      window.setTimeout(() => {
-        setChats((prev) => prev.filter((chat) => chat._id !== deletedChatId))
-        setDeletingChatIds((prev) => prev.filter((id) => id !== deletedChatId))
-        if (activeChatIdRef.current === deletedChatId) {
-          resetActiveChatAfterDelete(deletedChatId)
-        }
-        setActiveChatDeleting(false)
-      }, 180)
-    }
-    window.addEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
-    window.addEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
-    window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
-    window.addEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
-    return () => {
-      window.removeEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
-      window.removeEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
-      window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
-      window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
-    }
-  }, [resetActiveChatAfterDelete, updateRuntimeUiState])
+  useChatListEventSync({
+    activeChatIdRef,
+    resetActiveChatAfterDelete,
+    setActiveChatDeleting,
+    setActiveChatTitle,
+    setChats,
+    setDeletingChatIds,
+    updateRuntimeUiState,
+  })
 
   const liveMessages = useQuery(
     api.conversations.watchGeneratingMessages,
@@ -2371,19 +2315,9 @@ export default function ChatInterface({
     runtime.hydrated = false
     try {
       const shouldLoadMeta = !existingChat?.title || !existingChat?.askModelIds?.length || !existingChat?.actModelId
-      const messagesQuery = {
-        conversationId: chatId,
-        messages: true,
-      }
-      const [messagesRes, outputsRes, metaRes] = await Promise.all([
-        overlayAppClient.conversations.getResponse(messagesQuery),
-        overlayAppClient.files.getResponse({ kind: 'output', conversationId: chatId }),
-        shouldLoadMeta
-          ? overlayAppClient.conversations.getResponse({ conversationId: chatId })
-          : Promise.resolve(null),
-      ])
+      const snapshot = await loadConversationSnapshot({ chatId, shouldLoadMeta })
       if (requestId !== loadChatRequestRef.current) return
-      if (metaRes?.status === 404) {
+      if (snapshot.status === 'missing') {
         removeCachedChat(chatId)
         setChats((prev) => prev.filter((chat) => chat._id !== chatId))
         runtimesRef.current.delete(chatId)
@@ -2398,85 +2332,16 @@ export default function ChatInterface({
         window.setTimeout(() => setComposerNotice(null), 4000)
         return
       }
-      if (!messagesRes.ok) {
-        if (messagesRes.status === 404) {
-          removeCachedChat(chatId)
-          setChats((prev) => prev.filter((chat) => chat._id !== chatId))
-          runtimesRef.current.delete(chatId)
-          if (activeChatIdRef.current === chatId) {
-            activeChatIdRef.current = null
-            setActiveChatId(null)
-            setActiveChatTitle(null)
-            setActiveViewer(null)
-            syncStandaloneChatUrl(null, options)
-          }
-          setComposerNotice('That chat no longer exists.')
-          window.setTimeout(() => setComposerNotice(null), 4000)
-          return
-        }
+      if (snapshot.status === 'error') {
         clearRuntimeMessages(runtime)
         runtime.hydrated = false
         setComposerNotice('Could not load chat messages. Try again.')
         window.setTimeout(() => setComposerNotice(null), 5000)
         return
       }
-      const data = await messagesRes.json()
-      if (requestId !== loadChatRequestRef.current) return
-      type RawMsg = {
-        id: string
-        turnId?: string
-        mode?: 'ask' | 'act'
-        role: 'user' | 'assistant'
-        parts: Array<{
-          type: string
-          text?: string
-          url?: string
-          mediaType?: string
-          fileName?: string
-        }>
-        model?: string
-        metadata?: ChatMessageMetadata
-        replyToTurnId?: string
-        replySnippet?: string
-        routedModelId?: string
-        status?: 'generating' | 'completed' | 'error'
-        variantIndex?: number
-      }
-      let rawMessages: RawMsg[] = data.messages || []
-      rawMessages = rawMessages.map((msg) => {
-        if (msg.role !== 'user' || !msg.replyToTurnId?.trim()) return msg
-        return {
-          ...msg,
-          metadata: {
-            ...(msg.metadata ?? {}),
-            replyToTurnId: msg.replyToTurnId.trim(),
-            ...(msg.replySnippet ? { replySnippet: msg.replySnippet } : {}),
-          },
-        }
-      })
-
-      const outputRows = outputsRes.ok ? await outputsRes.json() : []
-      const outputs: ChatOutput[] = Array.isArray(outputRows)
-        ? outputRows.map((file: {
-            _id: string
-            outputType?: string
-            prompt?: string
-            modelId?: string
-            downloadUrl?: string
-            createdAt?: number
-            updatedAt?: number
-            turnId?: string
-          }) => ({
-            _id: file._id,
-            type: (file.outputType || 'document') as ChatOutput['type'],
-            status: 'completed',
-            prompt: file.prompt || 'Generated output',
-            modelId: file.modelId || '',
-            url: file.downloadUrl,
-            createdAt: file.createdAt ?? file.updatedAt ?? 0,
-            turnId: file.turnId,
-          }))
-        : []
+      type RawMsg = RawConversationMessage
+      let rawMessages: RawMsg[] = normalizeReplyMetadata(snapshot.messages)
+      const outputs = snapshot.outputs
       if (requestId !== loadChatRequestRef.current) return
       const outputGroups = groupOutputsIntoExchanges(outputs)
 
@@ -2494,13 +2359,8 @@ export default function ChatInterface({
       let resolvedTitle = existingChat?.title ?? null
       let resolvedSelectedModels = existingChat?.askModelIds?.slice(0, 4) ?? selectedModels
       let resolvedActModel = existingChat?.actModelId ?? selectedActModel
-      if (metaRes?.ok) {
-        const meta = await metaRes.json() as {
-          title?: string
-          lastMode?: 'ask' | 'act'
-          askModelIds?: string[]
-          actModelId?: string
-        }
+      if (snapshot.meta) {
+        const meta = snapshot.meta
         if (requestId !== loadChatRequestRef.current) return
         if (meta.title) resolvedTitle = meta.title
         if (meta.askModelIds?.length) {
@@ -2801,76 +2661,23 @@ export default function ChatInterface({
         ...(replyExtra ? { replyContextForModel: replyExtra } : {}),
       }
 
-      /* eslint-disable @typescript-eslint/no-explicit-any */
-      if (multiRetry) {
-        const sends = exchModelList.slice(0, retrySlots).map((mid, slotIdx) =>
-          runtime.askChats[slotIdx]!.sendMessage(
-            {
-              role: 'user',
-              parts: partsForModel as any,
-              messageId: turnId,
-              ...(meta && Object.keys(meta).length > 0 ? { metadata: meta } : {}),
-            } as any,
-            {
-              body: {
-                ...baseBody,
-                modelId: mid,
-                multiModelSlotIndex: slotIdx,
-                multiModelTotal: retrySlots,
-              },
-            },
-          ),
-        )
-        void Promise.all(sends)
-          .then(() => {
-            runtime.actChat.messages = [...runtime.askChats[0]!.messages]
-            completeSession(chatId, activeChatIdRef.current === chatId)
-            loadChats()
-            loadSubscription()
-          })
-          .catch((err) => {
-            console.error('[ChatInterface] Act multi retry sendMessage failed', err)
-            completeSession(chatId, activeChatIdRef.current === chatId)
-            if (activeChatIdRef.current === chatId) {
-              setComposerNotice(
-                err instanceof Error ? err.message : 'Could not retry. Try again.',
-              )
-              window.setTimeout(() => setComposerNotice(null), 8000)
-            }
-          })
-      } else {
-        void runtime.actChat
-          .sendMessage(
-            {
-              role: 'user',
-              parts: partsForModel as any,
-              messageId: turnId,
-              ...(meta && Object.keys(meta).length > 0 ? { metadata: meta } : {}),
-            } as any,
-            {
-              body: {
-                ...baseBody,
-                modelId,
-              },
-            },
-          )
-          .then(() => {
-            completeSession(chatId, activeChatIdRef.current === chatId)
-            loadChats()
-            loadSubscription()
-          })
-          .catch((err) => {
-            console.error('[ChatInterface] Act retry sendMessage failed', err)
-            completeSession(chatId, activeChatIdRef.current === chatId)
-            if (activeChatIdRef.current === chatId) {
-              setComposerNotice(
-                err instanceof Error ? err.message : 'Could not retry. Try again.',
-              )
-              window.setTimeout(() => setComposerNotice(null), 8000)
-            }
-          })
-      }
-      /* eslint-enable @typescript-eslint/no-explicit-any */
+      startActRetryStream({
+        chatId,
+        targetRuntime: runtime,
+        textModelsForTurn: multiRetry ? exchModelList.slice(0, retrySlots) : [modelId],
+        textSlotCount: retrySlots,
+        selectedActModel: modelId,
+        turnId,
+        partsForModel: partsForModel as Array<{ type: string; text?: string; url?: string; mediaType?: string }>,
+        userMetadata: meta,
+        commonBody: baseBody,
+        isChatActive: (id) => activeChatIdRef.current === id,
+        completeSession,
+        loadChats,
+        loadSubscription,
+        onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
+        logPrefix: multiRetry ? 'Act multi retry' : 'Act retry',
+      })
     },
     [
       activeChatId,
@@ -3083,202 +2890,54 @@ export default function ChatInterface({
 
       // ── Block generation for free-tier users ───────────────────────────────
       if (isFreeTier) {
-        setTimeout(() => {
-          updateRuntimeUiState(chatId, (prev) => {
-            const next = cloneGenerationResultsMap(prev.generationResults)
-            const arr = activeModels.map(() => ({
-              type: effectiveGenType as 'image' | 'video',
-              status: 'failed' as const,
-              upgradeRequired: true,
-            }))
-            next.set(exchIdx, arr)
-            return { ...prev, generationResults: next }
-          })
-          completeSession(chatId, activeChatIdRef.current === chatId)
-        }, 5000)
+        scheduleMediaGenerationUpgradeFailure({
+          chatId,
+          exchIdx,
+          kind: effectiveGenType,
+          activeModels,
+          isChatActive: (id) => activeChatIdRef.current === id,
+          updateRuntimeUiState,
+          completeSession,
+        })
         return
       }
 
       if (effectiveGenType === 'image') {
         // Prefer an explicitly attached reference image; fall back to the last generated image
         const imageUrl = attachedImagesSnapshot[0]?.dataUrl ?? targetRuntime.ui.lastGeneratedImageUrl
-        const generationTasks = activeModels.map((modelId, mIdx) =>
-          overlayAppClient.chat.generateImageResponse({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId, imageUrl })
-            .then(async (res) => {
-              if (!res.ok) {
-                const err = await res.json().catch(() => ({ message: 'Generation failed' }))
-                updateRuntimeUiState(chatId, (prev) => {
-                  const next = cloneGenerationResultsMap(prev.generationResults)
-                  const arr = [...(next.get(exchIdx) ?? activeModels.map(() => ({ type: 'image' as const, status: 'generating' as const })))]
-                  arr[mIdx] = { type: 'image', status: 'failed', error: (err as { message?: string }).message }
-                  next.set(exchIdx, arr)
-                  return { ...prev, generationResults: next }
-                })
-                return { ok: false as const, modelId }
-              }
-              const data = await res.json() as { url?: string; modelUsed?: string; outputId?: string }
-              updateRuntimeUiState(chatId, (prev) => {
-                const next = cloneGenerationResultsMap(prev.generationResults)
-                const arr = [...(next.get(exchIdx) ?? activeModels.map(() => ({ type: 'image' as const, status: 'generating' as const })))]
-                arr[mIdx] = {
-                  type: 'image',
-                  status: 'completed',
-                  url: data.url,
-                  modelUsed: data.modelUsed,
-                  outputId: data.outputId,
-                }
-                next.set(exchIdx, arr)
-                return {
-                  ...prev,
-                  generationResults: next,
-                  lastGeneratedImageUrl: data.url && mIdx === 0 ? data.url : prev.lastGeneratedImageUrl,
-                }
-              })
-              return { ok: true as const, modelId: data.modelUsed ?? modelId }
-            })
-            .catch((err) => {
-              updateRuntimeUiState(chatId, (prev) => {
-                const next = cloneGenerationResultsMap(prev.generationResults)
-                const arr = [...(next.get(exchIdx) ?? activeModels.map(() => ({ type: 'image' as const, status: 'generating' as const })))]
-                arr[mIdx] = { type: 'image', status: 'failed', error: String(err) }
-                next.set(exchIdx, arr)
-                return { ...prev, generationResults: next }
-              })
-              return { ok: false as const, modelId }
-            })
-        )
-
-        void Promise.all(generationTasks).then((results) => {
-          const completed = results.filter((r) => r.ok)
-          const summary = buildMediaSummary('image', text, activeModels, completed.length, results.length - completed.length)
-          const assistantMessage = {
-            id: `gen-summary-${Date.now()}`,
-            role: 'assistant',
-            parts: [{ type: 'text', text: summary }],
-          }
-          targetRuntime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
-            chat.messages = [
-              ...chat.messages,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              assistantMessage as any,
-            ]
-          })
-          void overlayAppClient.conversations.addMessageResponse({
-            conversationId: chatId,
-            turnId: mediaTurnId,
-            mode: 'act',
-            role: 'assistant',
-            content: summary,
-            contentType: 'text',
-            parts: [{ type: 'text', text: summary }],
-          })
-          completeSession(chatId, activeChatIdRef.current === chatId)
-          loadChats()
-          loadSubscription()
-        }).catch((err) => {
-          console.error('[ChatInterface] Image generation batch failed', err)
-          completeSession(chatId, activeChatIdRef.current === chatId)
+        runImageGenerationBatch({
+          chatId,
+          turnId: mediaTurnId,
+          exchIdx,
+          promptForModel,
+          userPromptText: text,
+          activeModels,
+          targetRuntime,
+          mediaSlotCount,
+          imageUrl,
+          isChatActive: (id) => activeChatIdRef.current === id,
+          updateRuntimeUiState,
+          completeSession,
+          loadChats,
+          loadSubscription,
         })
       } else {
-        const generationTasks = activeModels.map((modelId, mIdx) =>
-          overlayAppClient.chat.generateVideoResponse({ prompt: promptForModel, modelId, conversationId: chatId, turnId: mediaTurnId, videoSubMode, imageUrl: attachedImagesSnapshot[0]?.dataUrl ?? null })
-            .then(async (res) => {
-              if (!res.ok) {
-                updateRuntimeUiState(chatId, (prev) => {
-                  const next = cloneGenerationResultsMap(prev.generationResults)
-                  const arr = [...(next.get(exchIdx) ?? activeModels.map(() => ({ type: 'video' as const, status: 'generating' as const })))]
-                  arr[mIdx] = { type: 'video', status: 'failed', error: 'Request failed' }
-                  next.set(exchIdx, arr)
-                  return { ...prev, generationResults: next }
-                })
-                return { ok: false as const, modelId }
-              }
-              const reader = res.body?.getReader()
-              if (!reader) return { ok: false as const, modelId }
-              const decoder = new TextDecoder()
-              let buf = ''
-              while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-                buf += decoder.decode(value, { stream: true })
-                const lines = buf.split('\n\n')
-                buf = lines.pop() ?? ''
-                for (const line of lines) {
-                  if (!line.startsWith('data: ')) continue
-                  try {
-                    const evt = JSON.parse(line.slice(6)) as { type: string; url?: string; modelUsed?: string; outputId?: string; error?: string }
-                    if (evt.type === 'completed') {
-                      updateRuntimeUiState(chatId, (prev) => {
-                        const next = cloneGenerationResultsMap(prev.generationResults)
-                        const arr = [...(next.get(exchIdx) ?? activeModels.map(() => ({ type: 'video' as const, status: 'generating' as const })))]
-                        arr[mIdx] = {
-                          type: 'video',
-                          status: 'completed',
-                          url: evt.url,
-                          modelUsed: evt.modelUsed,
-                          outputId: evt.outputId,
-                        }
-                        next.set(exchIdx, arr)
-                        return { ...prev, generationResults: next }
-                      })
-                      return { ok: true as const, modelId: evt.modelUsed ?? modelId }
-                    } else if (evt.type === 'failed') {
-                      updateRuntimeUiState(chatId, (prev) => {
-                        const next = cloneGenerationResultsMap(prev.generationResults)
-                        const arr = [...(next.get(exchIdx) ?? activeModels.map(() => ({ type: 'video' as const, status: 'generating' as const })))]
-                        arr[mIdx] = { type: 'video', status: 'failed', error: evt.error }
-                        next.set(exchIdx, arr)
-                        return { ...prev, generationResults: next }
-                      })
-                      return { ok: false as const, modelId }
-                    }
-                  } catch { /* ignore */ }
-                }
-              }
-              return { ok: false as const, modelId }
-            })
-            .catch((err) => {
-              updateRuntimeUiState(chatId, (prev) => {
-                const next = cloneGenerationResultsMap(prev.generationResults)
-                const arr = [...(next.get(exchIdx) ?? activeModels.map(() => ({ type: 'video' as const, status: 'generating' as const })))]
-                arr[mIdx] = { type: 'video', status: 'failed', error: String(err) }
-                next.set(exchIdx, arr)
-                return { ...prev, generationResults: next }
-              })
-              return { ok: false as const, modelId }
-            })
-        )
-
-        void Promise.all(generationTasks).then((results) => {
-          const completed = results.filter((r) => r.ok)
-          const summary = buildMediaSummary('video', text, activeModels, completed.length, results.length - completed.length)
-          const assistantMessage = {
-            id: `gen-summary-${Date.now()}`,
-            role: 'assistant',
-            parts: [{ type: 'text', text: summary }],
-          }
-          targetRuntime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
-            chat.messages = [
-              ...chat.messages,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              assistantMessage as any,
-            ]
-          })
-          void overlayAppClient.conversations.addMessageResponse({
-            conversationId: chatId,
-            turnId: mediaTurnId,
-            mode: 'act',
-            role: 'assistant',
-            content: summary,
-            contentType: 'text',
-            parts: [{ type: 'text', text: summary }],
-          })
-          completeSession(chatId, activeChatIdRef.current === chatId)
-          loadChats()
-          loadSubscription()
-        }).catch((err) => {
-          console.error('[ChatInterface] Video generation batch failed', err)
-          completeSession(chatId, activeChatIdRef.current === chatId)
+        runVideoGenerationBatch({
+          chatId,
+          turnId: mediaTurnId,
+          exchIdx,
+          promptForModel,
+          userPromptText: text,
+          activeModels,
+          targetRuntime,
+          mediaSlotCount,
+          videoSubMode,
+          imageUrl: attachedImagesSnapshot[0]?.dataUrl ?? null,
+          isChatActive: (id) => activeChatIdRef.current === id,
+          updateRuntimeUiState,
+          completeSession,
+          loadChats,
+          loadSubscription,
         })
       }
       return
@@ -3451,75 +3110,23 @@ export default function ChatInterface({
       ...(textHistoryBaseModelId ? { historyBaseModelId: textHistoryBaseModelId } : {}),
     }
 
-    /* eslint-disable @typescript-eslint/no-explicit-any -- UIMessage / sendMessage payload */
-    if (multiText) {
-      const sends = textModelsForTurn.map((modelId, slotIdx) =>
-        targetRuntime.askChats[slotIdx]!.sendMessage(
-          {
-            role: 'user',
-            parts: partsForModel as any,
-            messageId: textTurnId,
-            ...(userMetadata ? { metadata: userMetadata } : {}),
-          } as any,
-          {
-            body: {
-              ...commonActBody,
-              modelId,
-              multiModelSlotIndex: slotIdx,
-              multiModelTotal: textSlotCount,
-            },
-          },
-        ),
-      )
-      void Promise.all(sends)
-        .then(() => {
-          targetRuntime.actChat.messages = [...targetRuntime.askChats[0]!.messages]
-          completeSession(chatId, activeChatIdRef.current === chatId)
-          loadChats()
-          loadSubscription()
-        })
-        .catch((err) => {
-          console.error('[ChatInterface] Act multi sendMessage failed', err)
-          completeSession(chatId, activeChatIdRef.current === chatId)
-          if (activeChatIdRef.current === chatId) {
-            setComposerNotice(
-              err instanceof Error ? err.message : 'Could not complete Act request. Try again.',
-            )
-            window.setTimeout(() => setComposerNotice(null), 8000)
-          }
-        })
-    } else {
-      void targetRuntime.actChat.sendMessage(
-        {
-          role: 'user',
-          parts: partsForModel as any,
-          messageId: textTurnId,
-          ...(userMetadata ? { metadata: userMetadata } : {}),
-        } as any,
-        {
-          body: {
-            ...commonActBody,
-            modelId: selectedActModelSnapshot,
-          },
-        },
-      )
-        .then(() => {
-          completeSession(chatId, activeChatIdRef.current === chatId)
-          loadChats()
-          loadSubscription()
-        })
-        .catch((err) => {
-          console.error('[ChatInterface] Act sendMessage failed', err)
-          completeSession(chatId, activeChatIdRef.current === chatId)
-          if (activeChatIdRef.current === chatId) {
-            setComposerNotice(
-              err instanceof Error ? err.message : 'Could not complete Act request. Try again.',
-            )
-            window.setTimeout(() => setComposerNotice(null), 8000)
-          }
-        })
-    }
-    /* eslint-enable @typescript-eslint/no-explicit-any */
+    startActTextStream({
+      chatId,
+      targetRuntime,
+      textModelsForTurn,
+      textSlotCount,
+      selectedActModel: selectedActModelSnapshot,
+      turnId: textTurnId,
+      partsForModel,
+      userMetadata,
+      commonBody: commonActBody,
+      isChatActive: (id) => activeChatIdRef.current === id,
+      completeSession,
+      loadChats,
+      loadSubscription,
+      onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
+      logPrefix: multiText ? 'Act multi' : 'Act',
+    })
   }
 
   const handleModeChange = useCallback((mode: GenerationMode) => {
