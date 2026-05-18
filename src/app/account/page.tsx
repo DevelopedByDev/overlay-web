@@ -1,17 +1,18 @@
 'use client'
 
-// Compatibility wrapper: account and billing transport should move behind @overlay/api-client
+// Compatibility wrapper: account and billing transport lives behind @overlay/api-client
 // while this web container keeps current billing flows and redirects unchanged.
 import { useState, useEffect, Suspense, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { RefreshCw, ArrowRight, Check, AlertCircle } from 'lucide-react'
+import { RefreshCw, ArrowRight } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
 import { DeleteAccountSection } from '@/components/account/DeleteAccountSection'
 import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { PageNavbar } from '@/components/PageNavbar'
 import { formatBytes } from '@/lib/storage-limits'
+import { overlayAppClient } from '@/lib/overlay-app-client'
 import {
   getStoredDesktopPkceChallenge,
   persistMobilePkceChallengeFromUrl,
@@ -24,141 +25,26 @@ import {
   marketingPanel,
   marketingPanelLg,
 } from '@/lib/landingPageStyles'
+import type { AccountEntitlements, BillingSettings, TopUpHistoryItem } from '@overlay/app-core'
+import { normalizeTopUpDraft } from '@overlay/app-core/settings-account'
+import {
+  AccountContinueCard,
+  AccountFreeUsageCard,
+  AccountLoadingState,
+  AccountMessageBanner,
+  AccountPageFrame,
+  AccountPaidUsageCard,
+  AccountProfileCard,
+  AccountSignInPrompt,
+  AccountSubscriptionCard,
+  BillingControlsPanel,
+  EntitlementsErrorPanel,
+  TopUpHistoryList,
+} from '@overlay/modules-react/settings'
 
 // Always use overlay:// for deep links (registered in WorkOS for both environments)
 const APP_PROTOCOL = 'overlay'
 const PKCE_CHALLENGE_RE = /^[A-Za-z0-9._~-]{43,128}$/
-
-interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  planKind: 'free' | 'paid'
-  planAmountCents: number
-  status: 'active' | 'canceled' | 'past_due' | 'trialing'
-  autoTopUpEnabled: boolean
-  autoTopUpAmountCents: number
-  autoTopUpConsentGranted: boolean
-  budgetUsedCents: number
-  budgetTotalCents: number
-  budgetRemainingCents: number
-  creditsUsed: number
-  creditsTotal: number
-  overlayStorageBytesUsed: number
-  overlayStorageBytesLimit: number
-  limits: {
-    askPerDay: number
-    agentPerDay: number
-    writePerDay: number
-    tokenBudget: number
-    transcriptionSecondsPerWeek: number
-    overlayStorageBytes: number
-  }
-  usage: {
-    ask: number
-    agent: number
-    write: number
-    tokenCostAccrued: number
-    transcriptionSeconds: number
-    overlayStorageBytes: number
-  }
-  remaining: {
-    ask: number
-    agent: number
-    write: number
-    tokenBudget: number
-    transcriptionSeconds: number
-    overlayStorageBytes: number
-  }
-  billingPeriodEnd?: number
-}
-
-interface BillingSettings {
-  planKind: 'free' | 'paid'
-  autoTopUpEnabled: boolean
-  topUpAmountCents: number
-  autoTopUpAmountCents: number
-  offSessionConsentAt?: number
-  topUpMinAmountCents: number
-  topUpMaxAmountCents: number
-  topUpStepAmountCents: number
-}
-
-interface TopUpHistoryItem {
-  _id: string
-  amountCents: number
-  source: 'manual' | 'auto'
-  status: 'pending' | 'succeeded' | 'failed' | 'canceled'
-  createdAt: number
-  updatedAt: number
-  errorMessage?: string
-}
-
-function formatDate(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    timeZone: 'UTC',
-  })
-}
-
-function formatDateTime(timestampMs: number): string {
-  return new Date(timestampMs).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: 'UTC',
-  })
-}
-
-function ProgressBar({
-  used,
-  total,
-  label,
-  showAsPercentage = false,
-  isLandingDark = false,
-}: {
-  used: number
-  total: number
-  label: string
-  showAsPercentage?: boolean
-  isLandingDark?: boolean
-}) {
-  const remaining = Math.max(0, total - used)
-  const percentage = total > 0 ? (remaining / total) * 100 : 0
-  const isLow = percentage <= 20
-  const isEmpty = percentage <= 0
-  const labelCls = isLandingDark ? 'text-zinc-400' : 'text-zinc-500'
-  const valueCls = isEmpty
-    ? 'text-red-400'
-    : isLow
-      ? 'text-amber-400'
-      : isLandingDark
-        ? 'text-zinc-100'
-        : 'text-zinc-900'
-  const track = isLandingDark ? 'bg-zinc-700' : 'bg-zinc-200'
-  const fill = isEmpty ? 'bg-red-500' : isLow ? 'bg-amber-500' : isLandingDark ? 'bg-zinc-100' : 'bg-zinc-900'
-
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between text-sm">
-        <span className={labelCls}>{label}</span>
-        <span className={valueCls}>
-          {showAsPercentage
-            ? `${Math.round(percentage)}% remaining`
-            : `$${remaining.toFixed(2)} / $${total}`}
-        </span>
-      </div>
-      <div className={`h-1.5 overflow-hidden rounded-full ${track}`}>
-        <div
-          className={`h-full rounded-full transition-all duration-300 ${fill}`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-    </div>
-  )
-}
 
 function AccountPageContent() {
   const { isLandingDark } = useLandingTheme()
@@ -184,7 +70,7 @@ function AccountPageContent() {
   const chromeExtensionIdRaw = searchParams?.get('chrome_extension_id')?.trim() || ''
   const extensionHandoffSentRef = useRef(false)
   const [loading, setLoading] = useState(true)
-  const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  const [entitlements, setEntitlements] = useState<AccountEntitlements | null>(null)
   /** Set when /api/entitlements fails (e.g. Convex cannot verify WorkOS JWT) — avoids showing fake "free" defaults. */
   const [entitlementsError, setEntitlementsError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -238,13 +124,9 @@ function AccountPageContent() {
 
     void (async () => {
       try {
-        const response = await fetch('/api/auth/desktop-link', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            codeChallenge: desktopCodeChallenge,
-            chromeExtensionId: chromeExtensionIdRaw,
-          }),
+        const response = await overlayAppClient.account.desktopLinkResponse({
+          codeChallenge: desktopCodeChallenge,
+          chromeExtensionId: chromeExtensionIdRaw,
         })
         if (cancelled || !response.ok) {
           extensionHandoffSentRef.current = false
@@ -329,9 +211,9 @@ function AccountPageContent() {
 
   const refreshBillingState = useCallback(async () => {
     const [entitlementsResponse, settingsResponse, topUpHistoryResponse] = await Promise.all([
-      fetch('/api/entitlements'),
-      fetch('/api/subscription/settings'),
-      fetch('/api/topups/history'),
+      overlayAppClient.account.entitlementsResponse(),
+      overlayAppClient.subscription.getSettingsResponse(),
+      overlayAppClient.topUps.historyResponse(),
     ])
 
     if (entitlementsResponse.ok) {
@@ -340,10 +222,11 @@ function AccountPageContent() {
     }
 
     if (settingsResponse.ok) {
-      const settingsData = await settingsResponse.json()
+      const settingsData = await settingsResponse.json() as BillingSettings
+      const draft = normalizeTopUpDraft(settingsData)
       setBillingSettings(settingsData)
-      setTopUpAmountDraftCents(settingsData.topUpAmountCents ?? settingsData.autoTopUpAmountCents ?? settingsData.topUpMinAmountCents ?? 800)
-      setAutoTopUpEnabledDraft(Boolean(settingsData.autoTopUpEnabled))
+      setTopUpAmountDraftCents(draft.topUpAmountCents)
+      setAutoTopUpEnabledDraft(draft.autoTopUpEnabled)
     }
 
     if (topUpHistoryResponse.ok) {
@@ -364,14 +247,11 @@ function AccountPageContent() {
     const nextUrl = `/account${nextParams.toString() ? `?${nextParams.toString()}` : ''}`
 
     if (successParam && sessionId) {
+      const checkoutSessionId = sessionId
       // Verify the checkout session and update subscription in Convex
       async function verifyCheckout() {
         try {
-          const response = await fetch('/api/checkout/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId })
-          })
+          const response = await overlayAppClient.billing.verifyCheckoutResponse({ sessionId: checkoutSessionId })
           
           if (response.ok) {
             const data = await response.json()
@@ -391,13 +271,10 @@ function AccountPageContent() {
       
       verifyCheckout()
     } else if (topUpSuccessParam && topUpSessionId) {
+      const checkoutSessionId = topUpSessionId
       async function verifyTopUp() {
         try {
-          const response = await fetch('/api/topups/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId: topUpSessionId }),
-          })
+          const response = await overlayAppClient.topUps.verifyResponse({ sessionId: checkoutSessionId })
           if (response.ok) {
             const data = await response.json()
             setMessage({ type: 'success', text: `Top-up applied: $${(Number(data.amountCents ?? 0) / 100).toFixed(2)}.` })
@@ -432,11 +309,7 @@ function AccountPageContent() {
         return
       }
 
-      const response = await fetch('/api/auth/desktop-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ codeChallenge })
-      })
+      const response = await overlayAppClient.account.desktopLinkResponse({ codeChallenge })
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null)
         console.error('[Account] Failed to generate desktop link', {
@@ -503,9 +376,9 @@ function AccountPageContent() {
       try {
         setEntitlementsError(null)
         const [entitlementsResponse, settingsResponse, topUpHistoryResponse] = await Promise.all([
-          fetch('/api/entitlements'),
-          fetch('/api/subscription/settings'),
-          fetch('/api/topups/history'),
+          overlayAppClient.account.entitlementsResponse(),
+          overlayAppClient.subscription.getSettingsResponse(),
+          overlayAppClient.topUps.historyResponse(),
         ])
 
         if (entitlementsResponse.ok) {
@@ -524,10 +397,11 @@ function AccountPageContent() {
         }
 
         if (settingsResponse.ok) {
-          const settingsData = await settingsResponse.json()
+          const settingsData = await settingsResponse.json() as BillingSettings
+          const draft = normalizeTopUpDraft(settingsData)
           setBillingSettings(settingsData)
-          setTopUpAmountDraftCents(settingsData.topUpAmountCents ?? settingsData.autoTopUpAmountCents ?? settingsData.topUpMinAmountCents ?? 800)
-          setAutoTopUpEnabledDraft(Boolean(settingsData.autoTopUpEnabled))
+          setTopUpAmountDraftCents(draft.topUpAmountCents)
+          setAutoTopUpEnabledDraft(draft.autoTopUpEnabled)
         }
 
         if (topUpHistoryResponse.ok) {
@@ -549,13 +423,7 @@ function AccountPageContent() {
   const handleManageBilling = async () => {
     setActionLoading('billing')
     try {
-      const response = await fetch('/api/portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId })
-      })
-
-      const data = await response.json()
+      const data = await overlayAppClient.billing.portal({ sessionId })
       if (data.url) {
         window.location.href = data.url
       } else {
@@ -572,17 +440,12 @@ function AccountPageContent() {
   const handleStartTopUp = async (amountCents: number, autoTopUpEnabled: boolean) => {
     setActionLoading(`topup-${amountCents}`)
     try {
-      const response = await fetch('/api/topups/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amountCents,
-          autoTopUpEnabled,
-          returnPath: '/account',
-        }),
+      const data = await overlayAppClient.topUps.checkout({
+        amountCents,
+        autoTopUpEnabled,
+        returnPath: '/account',
       })
-      const data = await response.json()
-      if (!response.ok || !data.url) {
+      if (!data.url) {
         setMessage({ type: 'error', text: data.error || 'Failed to start top-up checkout.' })
         return
       }
@@ -598,14 +461,10 @@ function AccountPageContent() {
   const handleTopUpPreferenceSave = async () => {
     setActionLoading('topup-settings')
     try {
-      const response = await fetch('/api/subscription/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          autoTopUpEnabled: autoTopUpEnabledDraft,
-          topUpAmountCents: topUpAmountDraftCents,
-          grantOffSessionConsent: autoTopUpEnabledDraft,
-        }),
+      const response = await overlayAppClient.subscription.updateSettingsResponse({
+        autoTopUpEnabled: autoTopUpEnabledDraft,
+        topUpAmountCents: topUpAmountDraftCents,
+        grantOffSessionConsent: autoTopUpEnabledDraft,
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -622,474 +481,287 @@ function AccountPageContent() {
     }
   }
 
+  const retryEntitlements = () => {
+    setLoading(true)
+    void overlayAppClient.account.entitlementsResponse()
+      .then(async (res) => {
+        if (res.ok) {
+          setEntitlements(await res.json())
+          setEntitlementsError(null)
+        } else {
+          const body = await res.json().catch(() => ({})) as { error?: string }
+          setEntitlements(null)
+          setEntitlementsError(body.error || 'Still could not load your plan.')
+        }
+      })
+      .catch(() => {
+        setEntitlementsError('Could not load your plan.')
+      })
+      .finally(() => setLoading(false))
+  }
+
   return (
-    <div className="flex min-h-screen w-full flex-col gradient-bg">
-      <div className="liquid-glass" />
+    <AccountPageFrame
+      header={<PageNavbar />}
+      footerBorderClass={footBorder}
+      footerMutedClass={footMuted}
+      dark={isLandingDark}
+      footer={
+        <footer className={`relative z-10 mt-auto border-t py-8 px-8 ${footBorder}`}>
+          <div className={`mx-auto flex max-w-4xl items-center justify-between text-sm ${footMuted}`}>
+            <p>© 2026 overlay</p>
+            <div className="flex gap-6">
+              <Link
+                href="/terms"
+                className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
+              >
+                terms
+              </Link>
+              <Link
+                href="/privacy"
+                className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
+              >
+                privacy
+              </Link>
+            </div>
+          </div>
+        </footer>
+      }
+    >
+      {message ? (
+        <AccountMessageBanner
+          message={message}
+          onOpenDesktop={handleOpenInApp}
+          onOpenWeb={() => router.push('/app/chat')}
+          onDismiss={() => setMessage(null)}
+        />
+      ) : null}
 
-      {/* Header */}
-      <PageNavbar />
+      <h1 className={`text-3xl font-serif md:text-4xl mb-8 ${t.title}`}>Account</h1>
 
-      {/* Main Content */}
-      <main className="relative z-10 flex-1 px-4 pb-10 pt-28 md:px-8 md:pb-14 md:pt-32">
-        <div className="max-w-4xl mx-auto">
-          {/* Message Banner */}
-          {message && (
-            <div
-              className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
-                message.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-red-50 text-red-800 border border-red-200'
+      {loading || authLoading || !sessionCheckComplete ? (
+        <AccountLoadingState mutedClass={t.muted} dark={isLandingDark} />
+      ) : !isAuthenticated ? (
+        <AccountSignInPrompt
+          panelClass={panelLg}
+          headingClass={t.h}
+          mutedClass={t.muted}
+          action={
+            <Link
+              href="/auth/sign-in"
+              className={`inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-colors ${
+                isLandingDark
+                  ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                  : 'bg-zinc-900 text-white hover:bg-zinc-800'
               }`}
             >
-              {message.type === 'success' ? (
-                <Check className="w-5 h-5" />
-              ) : (
-                <AlertCircle className="w-5 h-5" />
-              )}
-              <p className="text-sm">{message.text}</p>
-              <div className="ml-auto flex flex-wrap items-center gap-3">
-                {message.type === 'success' && (
-                  <>
-                    <button
-                      onClick={handleOpenInApp}
-                      className="rounded-lg bg-emerald-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
-                    >
-                      Open in desktop app
-                    </button>
-                    <button
-                      onClick={() => router.push('/app/chat')}
-                      className="rounded-lg border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100/70"
-                    >
-                      Open web app
-                    </button>
-                  </>
-                )}
+              Sign in
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          }
+        />
+      ) : (
+        <div className="space-y-6">
+          {entitlementsError ? (
+            <EntitlementsErrorPanel message={entitlementsError} onRetry={retryEntitlements} />
+          ) : null}
+
+          <AccountProfileCard
+            panelClass={panel}
+            headingClass={t.h}
+            mutedClass={t.muted}
+            dark={isLandingDark}
+            name={user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
+            email={user?.email}
+            actions={
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <button
-                  onClick={() => setMessage(null)}
-                  className="text-sm opacity-60 hover:opacity-100"
+                  onClick={handleSignOut}
+                  disabled={signingOut}
+                  className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
+                    isLandingDark
+                      ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
+                      : 'text-red-600 hover:bg-red-50 hover:text-red-700'
+                  }`}
                 >
-                  Dismiss
+                  {signingOut ? 'Signing out...' : 'Sign out'}
                 </button>
+                <DeleteAccountSection isLandingDark={isLandingDark} />
               </div>
-            </div>
-          )}
+            }
+          />
 
-          <h1 className={`text-3xl font-serif md:text-4xl mb-8 ${t.title}`}>Account</h1>
-
-          {loading || authLoading || !sessionCheckComplete ? (
-            <div className="text-center py-16">
-              <RefreshCw className={`mx-auto h-8 w-8 animate-spin ${isLandingDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
-              <p className={`mt-4 ${t.muted}`}>Loading your account...</p>
-            </div>
-          ) : !isAuthenticated ? (
-            <div className="text-center py-16">
-              <div className={panelLg}>
-                <h2 className={`text-xl font-serif mb-2 ${t.h}`}>Sign in to view your account</h2>
-                <p className={`mb-6 ${t.muted}`}>
-                  Access your subscription details, usage statistics, and billing information.
-                </p>
+          <AccountContinueCard
+            panelClass={panel}
+            mutedClass={t.muted}
+            bodyClass={t.body}
+            actions={
+              <>
+                <button
+                  onClick={handleOpenInApp}
+                  disabled={actionLoading === 'openApp'}
+                  className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                    isLandingDark
+                      ? 'border-zinc-600 text-zinc-200 hover:bg-zinc-800'
+                      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+                  }`}
+                >
+                  {actionLoading === 'openApp' ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Opening...
+                    </>
+                  ) : (
+                    <>
+                      Open in desktop app
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </button>
                 <Link
-                  href="/auth/sign-in"
-                  className={`inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-colors ${
+                  href="/app/chat"
+                  className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                     isLandingDark
                       ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
                       : 'bg-zinc-900 text-white hover:bg-zinc-800'
                   }`}
                 >
-                  Sign in
-                  <ArrowRight className="w-4 h-4" />
+                  Open web app
+                  <ArrowRight className="h-4 w-4" />
                 </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {entitlementsError && (
-                <div className="p-4 rounded-xl flex items-start gap-3 bg-amber-50 text-amber-900 border border-amber-200">
-                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                  <div className="text-sm space-y-2">
-                    <p className="font-medium">Plan information unavailable</p>
-                    <p className="text-amber-800/90">{entitlementsError}</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoading(true)
-                        void fetch('/api/entitlements')
-                          .then(async (res) => {
-                            if (res.ok) {
-                              setEntitlements(await res.json())
-                              setEntitlementsError(null)
-                            } else {
-                              const body = await res.json().catch(() => ({})) as { error?: string }
-                              setEntitlements(null)
-                              setEntitlementsError(body.error || 'Still could not load your plan.')
-                            }
-                          })
-                          .catch(() => {
-                            setEntitlementsError('Could not load your plan.')
-                          })
-                          .finally(() => setLoading(false))
-                      }}
-                      className="text-sm font-medium text-amber-950 underline hover:no-underline"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                </div>
-              )}
+              </>
+            }
+          />
 
-              {/* User Profile Card */}
-              <div className={panel}>
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={`flex h-12 w-12 items-center justify-center rounded-full text-lg font-medium ${
-                        isLandingDark ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-200 text-zinc-900'
-                      }`}
-                    >
-                      {user?.firstName?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
-                    </div>
-                    <div>
-                      <h2 className={`text-lg font-medium ${t.h}`}>
-                        {user?.firstName && user?.lastName 
-                          ? `${user.firstName} ${user.lastName}`
-                          : user?.email}
-                      </h2>
-                      <p className={`text-sm ${t.muted}`}>{user?.email}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <button
-                      onClick={handleSignOut}
-                      disabled={signingOut}
-                      className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
-                        isLandingDark
-                          ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
-                          : 'text-red-600 hover:bg-red-50 hover:text-red-700'
-                      }`}
-                    >
-                      {signingOut ? 'Signing out...' : 'Sign out'}
-                    </button>
-                    <DeleteAccountSection isLandingDark={isLandingDark} />
-                  </div>
-                </div>
-              </div>
-
-              <div className={panel}>
-                <p className={`mb-1 text-sm ${t.muted}`}>Continue with Overlay</p>
-                <p className={`mb-4 text-sm ${t.body}`}>
-                  Open the desktop app for the native overlay workflow, or continue in the web app from here.
-                </p>
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <button
-                    onClick={handleOpenInApp}
-                    disabled={actionLoading === 'openApp'}
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                      isLandingDark
-                        ? 'border-zinc-600 text-zinc-200 hover:bg-zinc-800'
-                        : 'border-zinc-300 text-zinc-700 hover:bg-zinc-50'
-                    }`}
-                  >
-                    {actionLoading === 'openApp' ? (
+          {entitlements ? (
+            <>
+              <AccountSubscriptionCard
+                panelClass={panel}
+                headingClass={t.h}
+                mutedClass={t.muted}
+                dark={isLandingDark}
+                entitlements={entitlements}
+                actions={
+                  <>
+                    {entitlements.planKind === 'free' ? (
+                      <Link
+                        href="/pricing"
+                        className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 ${
+                          isLandingDark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white'
+                        }`}
+                      >
+                        Upgrade to paid
+                        <ArrowRight className="w-4 h-4" />
+                      </Link>
+                    ) : null}
+                    {entitlements.planKind === 'paid' ? (
                       <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        Opening...
-                      </>
-                    ) : (
-                      <>
-                        Open in desktop app
-                        <ArrowRight className="h-4 w-4" />
-                      </>
-                    )}
-                  </button>
-                  <Link
-                    href="/app/chat"
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                      isLandingDark
-                        ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-                        : 'bg-zinc-900 text-white hover:bg-zinc-800'
-                    }`}
-                  >
-                    Open web app
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              </div>
-
-              {entitlements && (
-                <>
-                  {/* Subscription Card */}
-                  <div className={panel}>
-                    <div className="flex items-start justify-between mb-6">
-                      <div>
-                        <h2 className={`text-lg font-medium mb-1 ${t.h}`}>
-                          {entitlements.planKind === 'paid'
-                            ? `${(entitlements.planAmountCents / 100).toFixed(0)} dollar plan`
-                            : 'Free plan'}
-                        </h2>
-                        <p className={`text-sm ${t.muted}`}>
-                          {entitlements.status === 'active' && entitlements.billingPeriodEnd
-                            ? `Renews ${formatDate(entitlements.billingPeriodEnd)}`
-                            : entitlements.status === 'canceled'
-                              ? 'Subscription canceled'
-                              : entitlements.status === 'past_due'
-                                ? 'Payment past due'
-                                : 'Active'}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-medium ${
-                            entitlements.status === 'active'
-                              ? isLandingDark
-                                ? 'bg-emerald-900/50 text-emerald-200 ring-1 ring-emerald-700/60'
-                                : 'bg-emerald-100 text-emerald-800'
-                              : entitlements.status === 'past_due'
-                                ? isLandingDark
-                                  ? 'bg-amber-900/40 text-amber-200 ring-1 ring-amber-700/50'
-                                  : 'bg-amber-100 text-amber-800'
-                                : isLandingDark
-                                  ? 'bg-zinc-800 text-zinc-200'
-                                  : 'bg-zinc-100 text-zinc-800'
-                          }`}
-                        >
-                          {entitlements.status}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {entitlements.planKind === 'free' && (
                         <Link
-                          href="/pricing"
-                          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 ${
-                            isLandingDark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white'
-                          }`}
-                        >
-                          Upgrade to paid
-                          <ArrowRight className="w-4 h-4" />
-                        </Link>
-                      )}
-                      {entitlements.planKind === 'paid' && (
-                        <>
-                          <Link
-                            href="/pricing?intent=change-plan"
-                            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
-                              isLandingDark
-                                ? 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
-                                : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
-                            }`}
-                          >
-                            Change plan
-                          </Link>
-                          <button
-                            onClick={handleManageBilling}
-                            disabled={actionLoading === 'billing'}
-                            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
-                              isLandingDark
-                                ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
-                                : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
-                            }`}
-                          >
-                            {actionLoading === 'billing' ? 'Opening...' : 'Manage billing'}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {entitlements.planKind === 'paid' && (
-                    <div className={panel}>
-                      <h2 className={`text-lg font-medium mb-4 ${t.h}`}>Usage This Period</h2>
-
-                      <ProgressBar
-                        used={entitlements.budgetUsedCents / 100}
-                        total={entitlements.budgetTotalCents / 100}
-                        label="Monthly budget"
-                        showAsPercentage={true}
-                        isLandingDark={isLandingDark}
-                      />
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                        <div
-                          className={`rounded-xl border px-4 py-3 ${
-                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
-                          }`}
-                        >
-                          <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Used</p>
-                          <p className={`mt-2 text-lg font-medium ${t.h}`}>${(entitlements.budgetUsedCents / 100).toFixed(2)}</p>
-                        </div>
-                        <div
-                          className={`rounded-xl border px-4 py-3 ${
-                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
-                          }`}
-                        >
-                          <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Remaining</p>
-                          <p className={`mt-2 text-lg font-medium ${t.h}`}>${(entitlements.budgetRemainingCents / 100).toFixed(2)}</p>
-                        </div>
-                        <div
-                          className={`rounded-xl border px-4 py-3 ${
-                            isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
-                          }`}
-                        >
-                          <p className={`text-xs uppercase tracking-[0.18em] ${t.muted}`}>Storage</p>
-                          <p className={`mt-2 text-lg font-medium ${t.h}`}>
-                            {formatBytes(entitlements.overlayStorageBytesUsed)} / {formatBytes(entitlements.overlayStorageBytesLimit)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {entitlements.planKind === 'paid' && (
-                    <div className={panel}>
-                      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div>
-                          <h2 className={`text-lg font-medium ${t.h}`}>Top-ups and billing controls</h2>
-                          <p className={`mt-1 text-sm ${t.muted}`}>
-                            Use one top-up amount everywhere. Add it once now, or save it for future automatic recharges.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-5">
-                        <TopUpPreferenceControl
-                          variant="marketing"
-                          isDark={isLandingDark}
-                          title="Top-up amount"
-                          description="The same amount is used for manual top-ups and, if enabled, future automatic recharges."
-                          amountCents={topUpAmountDraftCents}
-                          minAmountCents={billingSettings?.topUpMinAmountCents ?? 800}
-                          maxAmountCents={billingSettings?.topUpMaxAmountCents ?? 20_000}
-                          stepAmountCents={billingSettings?.topUpStepAmountCents ?? 100}
-                          onAmountChange={setTopUpAmountDraftCents}
-                          autoTopUpEnabled={autoTopUpEnabledDraft}
-                          onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
-                          checkboxDescription="If enabled, this same amount will recharge automatically whenever your cumulative budget reaches zero."
-                          note="Saving or checking the box authorizes off-session recharges for the selected amount."
-                          footer={
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => void handleStartTopUp(topUpAmountDraftCents, autoTopUpEnabledDraft)}
-                                disabled={actionLoading === `topup-${topUpAmountDraftCents}`}
-                                className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
-                                  isLandingDark
-                                    ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
-                                    : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
-                                }`}
-                              >
-                                {actionLoading === `topup-${topUpAmountDraftCents}` ? 'Opening…' : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleTopUpPreferenceSave()}
-                                disabled={actionLoading === 'topup-settings'}
-                                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
-                                  isLandingDark
-                                    ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-                                    : 'bg-zinc-900 text-white hover:bg-zinc-800'
-                                }`}
-                              >
-                                {actionLoading === 'topup-settings' ? 'Saving...' : 'Save top-up preference'}
-                              </button>
-                            </>
-                          }
-                        />
-                      </div>
-
-                      <div className="mt-6">
-                        <h3 className={`text-sm font-medium ${t.h}`}>Recent top-ups</h3>
-                        <div className="mt-3 space-y-3">
-                          {topUpHistory.length === 0 ? (
-                            <p className={`text-sm ${t.muted}`}>No top-ups yet.</p>
-                          ) : (
-                            topUpHistory.slice(0, 6).map((item) => (
-                              <div
-                                key={item._id}
-                                className={`flex flex-col gap-2 rounded-xl border px-4 py-3 text-sm md:flex-row md:items-center md:justify-between ${
-                                  isLandingDark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'
-                                }`}
-                              >
-                                <div>
-                                  <p className={t.h}>
-                                    ${ (item.amountCents / 100).toFixed(2)} · {item.source === 'auto' ? 'Auto top-up' : 'Manual top-up'}
-                                  </p>
-                                  <p className={t.muted}>{formatDateTime(item.createdAt)}</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className={`${item.status === 'succeeded' ? 'text-emerald-600' : item.status === 'failed' ? 'text-red-500' : t.muted}`}>
-                                    {item.status}
-                                  </p>
-                                  {item.errorMessage ? <p className={`max-w-xs text-xs ${t.muted}`}>{item.errorMessage}</p> : null}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {entitlements.planKind === 'free' && (
-                    <div className={panel}>
-                      <h2 className={`text-lg font-medium mb-4 ${t.h}`}>Weekly Usage</h2>
-
-                      <div className="space-y-4">
-                        <div
-                          className={`rounded-xl border px-4 py-3 ${
+                          href="/pricing?intent=change-plan"
+                          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
                             isLandingDark
-                              ? 'border-zinc-700 bg-zinc-950/60'
-                              : 'border-zinc-200 bg-zinc-50'
+                              ? 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
+                              : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
                           }`}
                         >
-                          <p className={`text-sm font-medium ${t.h}`}>Auto model requests</p>
-                          <p className={`mt-1 text-sm ${t.muted}`}>
-                            Unlimited on the free tier when you use Auto.
-                          </p>
-                        </div>
+                          Change plan
+                        </Link>
+                        <button
+                          onClick={handleManageBilling}
+                          disabled={actionLoading === 'billing'}
+                          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                            isLandingDark
+                              ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                              : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                          }`}
+                        >
+                          {actionLoading === 'billing' ? 'Opening...' : 'Manage billing'}
+                        </button>
+                      </>
+                    ) : null}
+                  </>
+                }
+              />
 
-                        <ProgressBar
-                          used={entitlements.usage.transcriptionSeconds}
-                          total={entitlements.limits.transcriptionSecondsPerWeek}
-                          label="Transcription"
-                          showAsPercentage={true}
-                          isLandingDark={isLandingDark}
-                        />
-                      </div>
+              {entitlements.planKind === 'paid' ? (
+                <>
+                  <AccountPaidUsageCard
+                    panelClass={panel}
+                    headingClass={t.h}
+                    mutedClass={t.muted}
+                    dark={isLandingDark}
+                    entitlements={entitlements}
+                    storageUsageLabel={`${formatBytes(entitlements.overlayStorageBytesUsed)} / ${formatBytes(entitlements.overlayStorageBytesLimit)}`}
+                  />
 
-                      <p className={`mt-4 text-xs ${t.muted}`}>
-                        Auto is unlimited on free. Upgrade to a paid plan to use premium models, Daytona, browser tasks, and generation tools.
-                      </p>
+                  <BillingControlsPanel panelClass={panel} headingClass={t.h} mutedClass={t.muted}>
+                    <div className="mt-5">
+                      <TopUpPreferenceControl
+                        variant="marketing"
+                        isDark={isLandingDark}
+                        title="Top-up amount"
+                        description="The same amount is used for manual top-ups and, if enabled, future automatic recharges."
+                        amountCents={topUpAmountDraftCents}
+                        minAmountCents={billingSettings?.topUpMinAmountCents ?? 800}
+                        maxAmountCents={billingSettings?.topUpMaxAmountCents ?? 20_000}
+                        stepAmountCents={billingSettings?.topUpStepAmountCents ?? 100}
+                        onAmountChange={setTopUpAmountDraftCents}
+                        autoTopUpEnabled={autoTopUpEnabledDraft}
+                        onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
+                        checkboxDescription="If enabled, this same amount will recharge automatically whenever your cumulative budget reaches zero."
+                        note="Saving or checking the box authorizes off-session recharges for the selected amount."
+                        footer={
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleStartTopUp(topUpAmountDraftCents, autoTopUpEnabledDraft)}
+                              disabled={actionLoading === `topup-${topUpAmountDraftCents}`}
+                              className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                                isLandingDark
+                                  ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                                  : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                              }`}
+                            >
+                              {actionLoading === `topup-${topUpAmountDraftCents}` ? 'Opening…' : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleTopUpPreferenceSave()}
+                              disabled={actionLoading === 'topup-settings'}
+                              className={`rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                                isLandingDark
+                                  ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                                  : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                              }`}
+                            >
+                              {actionLoading === 'topup-settings' ? 'Saving...' : 'Save top-up preference'}
+                            </button>
+                          </>
+                        }
+                      />
                     </div>
-                  )}
+                    <TopUpHistoryList
+                      items={topUpHistory}
+                      headingClass={t.h}
+                      mutedClass={t.muted}
+                      dark={isLandingDark}
+                    />
+                  </BillingControlsPanel>
                 </>
+              ) : (
+                <AccountFreeUsageCard
+                  panelClass={panel}
+                  headingClass={t.h}
+                  mutedClass={t.muted}
+                  dark={isLandingDark}
+                  entitlements={entitlements}
+                />
               )}
-            </div>
-          )}
+            </>
+          ) : null}
         </div>
-      </main>
-
-      <footer className={`relative z-10 mt-auto border-t py-8 px-8 ${footBorder}`}>
-        <div className={`mx-auto flex max-w-4xl items-center justify-between text-sm ${footMuted}`}>
-          <p>© 2026 overlay</p>
-          <div className="flex gap-6">
-            <Link
-              href="/terms"
-              className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
-            >
-              terms
-            </Link>
-            <Link
-              href="/privacy"
-              className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
-            >
-              privacy
-            </Link>
-          </div>
-        </div>
-      </footer>
-    </div>
+      )}
+    </AccountPageFrame>
   )
 }
 

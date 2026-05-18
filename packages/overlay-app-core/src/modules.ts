@@ -16,6 +16,20 @@ export type FeatureModuleId =
   | 'tools-extensions'
   | 'settings-account'
 
+export {
+  accountPlanLabel,
+  accountStatusDescription,
+  buildSettingsRegistrySummary,
+  formatAccountDate,
+  formatAccountDateTime,
+  formatCents,
+  normalizeTopUpDraft,
+  remainingUsagePercentage,
+  resolveSettingsPanel,
+  settingsPanelsForSection,
+  usageProgressTone,
+} from './settings-account'
+
 export interface TreeNode<T extends { _id: string; parentId?: string | null }> {
   item: T
   children: TreeNode<T>[]

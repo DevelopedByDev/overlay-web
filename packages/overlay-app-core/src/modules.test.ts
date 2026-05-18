@@ -3,10 +3,14 @@ import test from 'node:test'
 import {
   buildProjectTree,
   buildTree,
+  buildSettingsRegistrySummary,
   collectProjectDescendantIds,
   filterExtensionCatalog,
+  normalizeTopUpDraft,
   noteEditorState,
+  resolveSettingsPanel,
   resolveSettingsSection,
+  settingsPanelsForSection,
 } from './modules'
 
 test('buildTree creates sorted nested nodes', () => {
@@ -57,4 +61,51 @@ test('extension catalog filter handles kind and query', () => {
 test('resolveSettingsSection falls back to first registered section', () => {
   assert.equal(resolveSettingsSection('missing', [{ id: 'general' }, { id: 'models' }]), 'general')
   assert.equal(resolveSettingsSection('models', [{ id: 'general' }, { id: 'models' }]), 'models')
+})
+
+test('settings panel helpers resolve section-scoped panels by order', () => {
+  const panels = [
+    { id: 'security', sectionId: 'account', label: 'Security', componentKey: 'security', order: 20 },
+    { id: 'billing', sectionId: 'account', label: 'Billing', componentKey: 'billing', order: 10 },
+    { id: 'general', sectionId: 'general', label: 'General', componentKey: 'general' },
+  ]
+
+  assert.deepEqual(settingsPanelsForSection(panels, 'account').map((panel) => panel.id), ['billing', 'security'])
+  assert.equal(resolveSettingsPanel(panels, 'account', 'security')?.id, 'security')
+  assert.equal(resolveSettingsPanel(panels, 'account', 'missing')?.id, 'billing')
+  assert.equal(resolveSettingsPanel(panels, 'missing'), null)
+})
+
+test('normalizeTopUpDraft keeps billing controls stable across response variants', () => {
+  assert.deepEqual(normalizeTopUpDraft(null), { topUpAmountCents: 800, autoTopUpEnabled: false })
+  assert.deepEqual(
+    normalizeTopUpDraft({
+      topUpAmountCents: 1200,
+      autoTopUpAmountCents: 900,
+      topUpMinAmountCents: 800,
+      autoTopUpEnabled: true,
+    }),
+    { topUpAmountCents: 1200, autoTopUpEnabled: true },
+  )
+})
+
+test('settings registry summary sorts extension metadata predictably', () => {
+  const summary = buildSettingsRegistrySummary({
+    featureModules: [
+      { id: 'b', label: 'B', routePatterns: ['/b'], componentKey: 'b', order: 20 },
+      { id: 'a', label: 'A', routePatterns: ['/a'], componentKey: 'a', order: 10 },
+    ],
+    settingsPanels: [
+      { id: 'models', sectionId: 'models', label: 'Models', componentKey: 'models', order: 30 },
+      { id: 'general', sectionId: 'general', label: 'General', componentKey: 'general', order: 10 },
+    ],
+    tools: [{ id: 'z', label: 'Zed' }, { id: 'alpha', label: 'Alpha' }],
+    integrations: [{ id: 'slack', label: 'Slack', providerKey: 'slack' }],
+    modelProviders: [{ id: 'openai', label: 'OpenAI', providerKey: 'openai' }],
+    policyGates: [{ id: 'browser', label: 'Browser', defaultEnabled: true, enforcement: 'disable' }],
+  })
+
+  assert.deepEqual(summary.featureModules.map((item) => item.id), ['a', 'b'])
+  assert.deepEqual(summary.settingsPanels.map((item) => item.id), ['general', 'models'])
+  assert.deepEqual(summary.tools.map((item) => item.id), ['alpha', 'z'])
 })

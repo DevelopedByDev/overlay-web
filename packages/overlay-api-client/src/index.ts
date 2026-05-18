@@ -1,11 +1,23 @@
 import type {
   AppBootstrapResponse,
   AppSettings,
+  AccountEntitlements,
   AutomationRunDetail,
+  AutomationRunRequest,
+  AutomationRunResponse,
   AutomationSummary,
+  AutomationTestRequest,
+  AutomationTestResponse,
+  BillingPortalRequest,
+  BillingPortalResponse,
+  BillingSettings,
+  CheckoutVerifyRequest,
+  CheckoutVerifyResponse,
   ConversationMessage,
   ConversationSummary,
   ConnectedIntegrationsResponse,
+  CreateAutomationRequest,
+  CreateAutomationResponse,
   CreateEntityResponse,
   CreateFileRequest,
   CreateFileResponse,
@@ -54,11 +66,21 @@ import type {
   UpdateProjectResponse,
   DeleteProjectResponse,
   DeleteNoteResponse,
+  DeleteAutomationResponse,
   DeleteOutputResponse,
   CreateSkillRequest,
   UpdateSkillRequest,
   OnboardingCompleteResponse,
   OnboardingStatusResponse,
+  DesktopLinkRequest,
+  DesktopLinkResponse,
+  TopUpCheckoutRequest,
+  TopUpCheckoutResponse,
+  TopUpHistoryResponse,
+  TopUpVerifyRequest,
+  TopUpVerifyResponse,
+  UpdateBillingSettingsRequest,
+  UpdateAutomationRequest,
 } from '@overlay/app-core'
 
 type QueryValue = string | number | boolean | null | undefined
@@ -178,17 +200,6 @@ export interface MemoryQuery extends MemoryQueryContract {}
 export interface OutputQuery extends OutputQueryContract {}
 
 export interface NoteQuery extends NoteQueryContract {}
-
-export interface AppSubscriptionSettings {
-  planKind: 'free' | 'paid'
-  autoTopUpEnabled: boolean
-  topUpAmountCents: number
-  autoTopUpAmountCents: number
-  offSessionConsentAt?: number
-  topUpMinAmountCents: number
-  topUpMaxAmountCents: number
-  topUpStepAmountCents: number
-}
 
 function appendQuery(path: string, query?: QueryParams): string {
   if (!query) return path
@@ -522,15 +533,36 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
       ) => json<T>(automationsPath(query), init),
       getResponse: (query?: AutomationQuery, init?: RequestInit) =>
         request(automationsPath(query), init),
-      createResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      create: (body: CreateAutomationRequest, init?: RequestInit) =>
+        json<CreateAutomationResponse>(
+          '/api/app/automations',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      createResponse: (body: CreateAutomationRequest, init?: RequestInit) =>
         request('/api/app/automations', jsonRequest(body, { ...init, method: 'POST' })),
-      updateResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      update: (body: UpdateAutomationRequest, init?: RequestInit) =>
+        json<{ success?: boolean; error?: string }>(
+          '/api/app/automations',
+          jsonRequest(body, { ...init, method: 'PATCH' }),
+        ),
+      updateResponse: (body: UpdateAutomationRequest, init?: RequestInit) =>
         request('/api/app/automations', jsonRequest(body, { ...init, method: 'PATCH' })),
       deleteResponse: (query: { automationId: string }, init?: RequestInit) =>
         request(automationsPath(query), { ...init, method: 'DELETE' }),
-      runResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      parseDeleteResponse: parseJson<DeleteAutomationResponse>,
+      run: (body: AutomationRunRequest, init?: RequestInit) =>
+        json<AutomationRunResponse>(
+          '/api/app/automations/run',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      runResponse: (body: AutomationRunRequest, init?: RequestInit) =>
         request('/api/app/automations/run', jsonRequest(body, { ...init, method: 'POST' })),
-      testResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      test: (body: AutomationTestRequest, init?: RequestInit) =>
+        json<AutomationTestResponse>(
+          '/api/app/automations/test',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      testResponse: (body: AutomationTestRequest, init?: RequestInit) =>
         request('/api/app/automations/test', jsonRequest(body, { ...init, method: 'POST' })),
     },
     settings: {
@@ -545,17 +577,62 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
       get: (init?: RequestInit) => json<Entitlements>('/api/app/subscription', init),
       getResponse: (init?: RequestInit) => request('/api/app/subscription', init),
       getSettings: (init?: RequestInit) =>
-        json<AppSubscriptionSettings>('/api/subscription/settings', init),
+        json<BillingSettings>('/api/subscription/settings', init),
       getSettingsResponse: (init?: RequestInit) => request('/api/subscription/settings', init),
+      updateSettings: (body: UpdateBillingSettingsRequest, init?: RequestInit) =>
+        json<BillingSettings>(
+          '/api/subscription/settings',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
       updateSettingsResponse: (
-        body: {
-          autoTopUpEnabled: boolean
-          topUpAmountCents: number
-          grantOffSessionConsent?: boolean
-        },
+        body: UpdateBillingSettingsRequest,
         init?: RequestInit,
       ) =>
         request('/api/subscription/settings', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    account: {
+      entitlements: (init?: RequestInit) => json<AccountEntitlements>('/api/entitlements', init),
+      entitlementsResponse: (init?: RequestInit) => request('/api/entitlements', init),
+      desktopLink: (body: DesktopLinkRequest, init?: RequestInit) =>
+        json<DesktopLinkResponse>(
+          '/api/auth/desktop-link',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      desktopLinkResponse: (body: DesktopLinkRequest, init?: RequestInit) =>
+        request('/api/auth/desktop-link', jsonRequest(body, { ...init, method: 'POST' })),
+      deleteResponse: (body: Record<string, unknown> = {}, init?: RequestInit) =>
+        request('/api/account/delete', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    billing: {
+      portal: (body: BillingPortalRequest = {}, init?: RequestInit) =>
+        json<BillingPortalResponse>('/api/portal', jsonRequest(body, { ...init, method: 'POST' })),
+      portalResponse: (body: BillingPortalRequest = {}, init?: RequestInit) =>
+        request('/api/portal', jsonRequest(body, { ...init, method: 'POST' })),
+      verifyCheckout: (body: CheckoutVerifyRequest, init?: RequestInit) =>
+        json<CheckoutVerifyResponse>(
+          '/api/checkout/verify',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      verifyCheckoutResponse: (body: CheckoutVerifyRequest, init?: RequestInit) =>
+        request('/api/checkout/verify', jsonRequest(body, { ...init, method: 'POST' })),
+    },
+    topUps: {
+      history: (init?: RequestInit) => json<TopUpHistoryResponse>('/api/topups/history', init),
+      historyResponse: (init?: RequestInit) => request('/api/topups/history', init),
+      checkout: (body: TopUpCheckoutRequest, init?: RequestInit) =>
+        json<TopUpCheckoutResponse>(
+          '/api/topups/checkout',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      checkoutResponse: (body: TopUpCheckoutRequest, init?: RequestInit) =>
+        request('/api/topups/checkout', jsonRequest(body, { ...init, method: 'POST' })),
+      verify: (body: TopUpVerifyRequest, init?: RequestInit) =>
+        json<TopUpVerifyResponse>(
+          '/api/topups/verify',
+          jsonRequest(body, { ...init, method: 'POST' }),
+        ),
+      verifyResponse: (body: TopUpVerifyRequest, init?: RequestInit) =>
+        request('/api/topups/verify', jsonRequest(body, { ...init, method: 'POST' })),
     },
     onboarding: {
       status: (init?: RequestInit) =>
@@ -581,9 +658,9 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
         request('/api/app/generate-video', jsonRequest(body, { ...init, method: 'POST' })),
     },
     automationRuns: {
-      runResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      runResponse: (body: AutomationRunRequest, init?: RequestInit) =>
         request('/api/app/automations/run', jsonRequest(body, { ...init, method: 'POST' })),
-      testResponse: (body: Record<string, unknown>, init?: RequestInit) =>
+      testResponse: (body: AutomationTestRequest, init?: RequestInit) =>
         request('/api/app/automations/test', jsonRequest(body, { ...init, method: 'POST' })),
       parseRunDetail: parseJson<AutomationRunDetail>,
     },

@@ -8,12 +8,14 @@
   "exports": {
     ".": "./src/index.ts",
     "./app-shell": "./src/app-shell.ts",
+    "./automations": "./src/automations.ts",
     "./contracts": "./src/contracts.ts",
     "./knowledge": "./src/knowledge.ts",
     "./extensions": "./src/extensions.ts",
     "./modules": "./src/modules.ts",
     "./notes": "./src/notes.ts",
     "./projects": "./src/projects.ts",
+    "./settings-account": "./src/settings-account.ts",
     "./theme": "./src/theme.ts"
   },
   "scripts": {

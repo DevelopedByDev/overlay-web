@@ -2,31 +2,23 @@
 
 import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Workflow, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 import { dispatchChatDeleted } from '@/lib/chat-title'
 import { overlayAppClient } from '@/lib/overlay-app-client'
-
-const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
-const inlineConfirmDeleteButtonClass =
-  'inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25'
-
-type Automation = {
-  _id: string
-  name?: string
-  title?: string
-  enabled: boolean
-  createdAt: number
-  sourceConversationId?: string
-  conversationId?: string
-  nextRunAt?: number
-  lastError?: string
-}
+import type { AutomationSummary } from '@overlay/app-core'
+import type { DeleteAutomationResponse } from '@overlay/app-core/automations'
+import {
+  applyAutomationRename,
+  AUTOMATIONS_UPDATED_EVENT,
+  getAutomationDisplayName,
+  removeAutomationById,
+} from '@overlay/app-core/automations'
+import { AutomationsInlineList } from '@overlay/modules-react/automations'
 
 export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [automations, setAutomations] = useState<Automation[]>([])
+  const [automations, setAutomations] = useState<AutomationSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [editingAutomationId, setEditingAutomationId] = useState<string | null>(null)
   const [editingAutomationName, setEditingAutomationName] = useState('')
@@ -60,19 +52,11 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
     return () => window.removeEventListener(AUTOMATIONS_UPDATED_EVENT, handleAutomationsUpdated)
   }, [loadAutomations])
 
-  function automationHref(automation: Automation): string {
-    const conversationId = automation.sourceConversationId || automation.conversationId
-    return conversationId
-      ? `/app/automations?id=${encodeURIComponent(conversationId)}&automationId=${encodeURIComponent(automation._id)}`
-      : `/app/automations?automationId=${encodeURIComponent(automation._id)}`
-  }
-
-  function beginAutomationRename(automation: Automation, event: MouseEvent) {
+  function beginAutomationRename(automation: AutomationSummary, event: MouseEvent) {
     event.stopPropagation()
-    const label = automation.name || automation.title || 'Untitled automation'
     setPendingDeleteAutomationId(null)
     setEditingAutomationId(automation._id)
-    setEditingAutomationName(label)
+    setEditingAutomationName(getAutomationDisplayName(automation))
   }
 
   function cancelAutomationRename() {
@@ -80,38 +64,34 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
     setEditingAutomationName('')
   }
 
-  async function commitAutomationRename(automation: Automation) {
+  async function commitAutomationRename(automation: AutomationSummary) {
     const nextName = editingAutomationName.trim()
-    const previousName = automation.name || automation.title || 'Untitled automation'
+    const previousName = getAutomationDisplayName(automation)
     if (!nextName || nextName === previousName) {
       cancelAutomationRename()
       return
     }
 
-    setAutomations((prev) => prev.map((item) => (
-      item._id === automation._id ? { ...item, name: nextName } : item
-    )))
+    setAutomations((prev) => applyAutomationRename(prev, automation._id, nextName))
     cancelAutomationRename()
     try {
       const res = await overlayAppClient.automations.updateResponse({ automationId: automation._id, name: nextName })
       if (!res.ok) throw new Error('Failed to rename automation')
       window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
     } catch {
-      setAutomations((prev) => prev.map((item) => (
-        item._id === automation._id ? { ...item, name: previousName } : item
-      )))
+      setAutomations((prev) => applyAutomationRename(prev, automation._id, previousName))
     }
   }
 
-  async function performDeleteAutomation(automation: Automation, event: MouseEvent) {
+  async function performDeleteAutomation(automation: AutomationSummary, event: MouseEvent) {
     event.stopPropagation()
     setPendingDeleteAutomationId(null)
     setDeletingAutomationIds((prev) => prev.includes(automation._id) ? prev : [...prev, automation._id])
     try {
       const res = await overlayAppClient.automations.deleteResponse({ automationId: automation._id })
       if (!res.ok) throw new Error('Failed to delete automation')
-      const payload = (await res.json().catch(() => ({}))) as { linkedConversationIds?: string[] }
-      setAutomations((prev) => prev.filter((item) => item._id !== automation._id))
+      const payload: DeleteAutomationResponse = await overlayAppClient.automations.parseDeleteResponse(res).catch(() => ({}))
+      setAutomations((prev) => removeAutomationById(prev, automation._id))
       for (const chatId of payload.linkedConversationIds ?? []) {
         dispatchChatDeleted({ chatId })
       }
@@ -125,132 +105,39 @@ export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void
 
   if (loading) return <SidebarListSkeleton rows={3} />
 
-  if (automations.length === 0) {
-    return <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No automations yet</p>
-  }
-
   return (
-    <>
-    <div className="space-y-0.5">
-      {automations.map((automation) => {
-        const statusLabel = automation.lastError
-          ? 'Error'
-          : automation.enabled
-            ? 'Enabled'
-            : 'Paused'
-        const iconColor = automation.lastError
-          ? 'text-red-500'
-          : automation.enabled
-            ? 'text-green-500'
-            : 'text-[var(--muted-light)]'
-        const conversationId = automation.sourceConversationId || automation.conversationId
-        const automationLabel = automation.name || automation.title || 'Untitled automation'
-        const isActive = activeAutomationId === automation._id || activeId === automation._id || activeId === conversationId
-        const isEditing = editingAutomationId === automation._id
-        const isDeleting = deletingAutomationIds.includes(automation._id)
-        const isConfirmingDelete = pendingDeleteAutomationId === automation._id
-        return (
-          <div
-            key={automation._id}
-            title={automation.lastError || statusLabel}
-            onMouseLeave={() => {
-              if (isConfirmingDelete) setPendingDeleteAutomationId(null)
-            }}
-            className={`group/automation-row flex h-7 w-full items-center gap-1 rounded-md px-2 py-0 text-xs transition-colors ${
-              isActive
-                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-            }`}
-          >
-            <button
-              type="button"
-              disabled={isDeleting || pendingNavId === automation._id}
-              onClick={async () => {
-                if (isEditing) return
-                setPendingNavId(automation._id)
-                try {
-                  await overlayAppClient.automations.getResponse(
-                    { automationId: automation._id },
-                    { credentials: 'same-origin', cache: 'no-store' },
-                  ).catch(() => null)
-                } finally {
-                  setPendingNavId(null)
-                  router.push(automationHref(automation))
-                  onNavigate?.()
-                }
-              }}
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-0.5 text-left disabled:cursor-default disabled:opacity-50"
-            >
-              {pendingNavId === automation._id ? (
-                <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-[var(--muted)]" />
-              ) : (
-                <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
-              )}
-              {isEditing ? (
-                <input
-                  autoFocus
-                  value={editingAutomationName}
-                  onChange={(event) => setEditingAutomationName(event.target.value)}
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      void commitAutomationRename(automation)
-                    } else if (event.key === 'Escape') {
-                      event.preventDefault()
-                      cancelAutomationRename()
-                    }
-                  }}
-                  onBlur={() => void commitAutomationRename(automation)}
-                  className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
-                />
-              ) : (
-                <span className="flex-1 truncate text-left">{automationLabel}</span>
-              )}
-            </button>
-            {!isEditing ? (
-              <>
-                {isConfirmingDelete ? (
-                  <button
-                    type="button"
-                    onClick={(event) => void performDeleteAutomation(automation, event)}
-                    disabled={isDeleting}
-                    className={`${inlineConfirmDeleteButtonClass} disabled:opacity-30`}
-                    aria-label="Confirm delete automation"
-                  >
-                    Confirm
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={(event) => beginAutomationRename(automation, event)}
-                      disabled={isDeleting}
-                      className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
-                      aria-label="Rename automation"
-                    >
-                      <Pencil size={11} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setPendingDeleteAutomationId(automation._id)
-                      }}
-                      disabled={isDeleting}
-                      className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-red-500 disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
-                      aria-label="Delete automation"
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </>
-                )}
-              </>
-            ) : null}
-          </div>
+    <AutomationsInlineList
+      automations={automations}
+      activeId={activeId}
+      activeAutomationId={activeAutomationId}
+      editingAutomationId={editingAutomationId}
+      editingAutomationName={editingAutomationName}
+      pendingDeleteAutomationId={pendingDeleteAutomationId}
+      deletingAutomationIds={deletingAutomationIds}
+      pendingNavId={pendingNavId}
+      onNavigateAutomation={(automation, href) => {
+        setPendingNavId(automation._id)
+        void overlayAppClient.automations.getResponse(
+          { automationId: automation._id },
+          { credentials: 'same-origin', cache: 'no-store' },
         )
-      })}
-    </div>
-    </>
+          .catch(() => null)
+          .finally(() => {
+            setPendingNavId(null)
+            router.push(href)
+            onNavigate?.()
+          })
+      }}
+      onBeginRename={beginAutomationRename}
+      onEditingNameChange={setEditingAutomationName}
+      onCommitRename={(automation) => void commitAutomationRename(automation)}
+      onCancelRename={cancelAutomationRename}
+      onRequestDelete={(automation, event) => {
+        event.stopPropagation()
+        setPendingDeleteAutomationId(automation._id)
+      }}
+      onConfirmDelete={(automation, event) => void performDeleteAutomation(automation, event)}
+      onClearPendingDelete={() => setPendingDeleteAutomationId(null)}
+    />
   )
 }
