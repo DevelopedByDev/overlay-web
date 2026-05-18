@@ -948,7 +948,7 @@ export interface IntegrationSummary {
   name: string
   description: string
   logoUrl: string | null
-  isConnected: boolean
+  isConnected?: boolean
   connectedAccountId?: string | null
 }
 
@@ -984,6 +984,8 @@ export interface SkillSummary {
   instructions: string
   enabled?: boolean
   projectId?: string
+  createdAt?: number
+  updatedAt?: number
 }
 
 export interface CreateSkillRequest {

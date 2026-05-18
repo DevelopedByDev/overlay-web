@@ -3,32 +3,12 @@
 // Compatibility wrapper: extension registry metadata is canonical in @overlay/app-core,
 // with transport in @overlay/api-client and reusable presentation in @overlay/modules-react.
 import { useSearchParams } from 'next/navigation'
-import { Lock, LayoutGrid } from 'lucide-react'
 import dynamic from 'next/dynamic'
+import { AllExtensionsComingSoonView, AppsComingSoonView } from '@overlay/modules-react/extensions'
 
 const IntegrationsView = dynamic(() => import('./IntegrationsView'))
 const SkillsView = dynamic(() => import('./SkillsView'))
 const McpServersView = dynamic(() => import('./McpServersView'))
-
-function ComingSoonView({ title, icon: Icon }: {
-  title: string
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
-}) {
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-16 shrink-0 items-center border-b border-[var(--border)] px-6">
-        <h2 className="text-sm font-medium text-[var(--foreground)]">{title}</h2>
-      </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-[var(--muted)]">
-        <Icon size={40} strokeWidth={1} className="text-[var(--muted-light)] opacity-80" />
-        <div className="space-y-1 text-center">
-          <p className="text-sm font-medium text-[var(--foreground)]">{title} coming soon</p>
-          <p className="text-xs text-[var(--muted-light)]">This feature is under development</p>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 export default function ToolsView({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
@@ -36,8 +16,8 @@ export default function ToolsView({ userId }: { userId: string }) {
 
   if (view === 'skills') return <SkillsView userId={userId} />
   if (view === 'mcps') return <McpServersView userId={userId} />
-  if (view === 'apps') return <ComingSoonView title="Apps" icon={Lock} />
-  if (view === 'all') return <ComingSoonView title="All Extensions" icon={LayoutGrid} />
+  if (view === 'apps') return <AppsComingSoonView />
+  if (view === 'all') return <AllExtensionsComingSoonView />
 
   return <IntegrationsView userId={userId} />
 }

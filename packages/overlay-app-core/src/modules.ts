@@ -1,15 +1,13 @@
 import type {
   AppSettings,
-  IntegrationSummary,
   KnowledgeFile,
   MemoryRow,
-  McpServerSummary,
   NoteDoc,
   OutputSummary,
   ProjectSummary,
   SettingsSubview,
-  SkillSummary,
 } from './contracts'
+export { filterExtensionCatalog, type ExtensionCatalogItem } from './extensions'
 
 export type FeatureModuleId =
   | 'files-knowledge'
@@ -114,36 +112,6 @@ export function collectProjectDescendantIds(
 ): string[] {
   const children = projects.filter((project) => project.parentId === projectId)
   return children.flatMap((child) => [child._id, ...collectProjectDescendantIds(projects, child._id)])
-}
-
-export type ExtensionCatalogItem =
-  | ({ kind: 'integration' } & IntegrationSummary)
-  | ({ kind: 'skill' } & SkillSummary)
-  | ({ kind: 'mcp' } & McpServerSummary)
-
-export function filterExtensionCatalog(
-  items: readonly ExtensionCatalogItem[],
-  options: { query?: string; kind?: ExtensionCatalogItem['kind'] | 'all'; enabledOnly?: boolean } = {},
-): ExtensionCatalogItem[] {
-  const q = options.query?.trim().toLowerCase()
-  return items.filter((item) => {
-    if (options.kind && options.kind !== 'all' && item.kind !== options.kind) return false
-    if (options.enabledOnly) {
-      const enabled =
-        item.kind === 'integration'
-          ? item.isConnected
-          : item.kind === 'skill'
-            ? item.enabled !== false
-            : item.enabled
-      if (!enabled) return false
-    }
-    if (!q) return true
-    const text = [item.name, 'description' in item ? item.description : undefined, item.kind]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-    return text.includes(q)
-  })
 }
 
 export function resolveSettingsSection(

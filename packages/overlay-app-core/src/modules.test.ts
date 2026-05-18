@@ -47,7 +47,11 @@ test('extension catalog filter handles kind and query', () => {
     { kind: 'skill' as const, _id: 's1', name: 'Reporter', description: 'Daily reports', instructions: '', enabled: true },
   ]
   assert.deepEqual(filterExtensionCatalog(items, { query: 'report' }).map((item) => item.kind), ['skill'])
-  assert.deepEqual(filterExtensionCatalog(items, { kind: 'integration', enabledOnly: true }).map((item) => item.name), ['Gmail'])
+  assert.deepEqual(
+    filterExtensionCatalog(items, { kind: 'integration', enabledOnly: true })
+      .map((item) => (item.kind === 'integration' ? item.name : '')),
+    ['Gmail'],
+  )
 })
 
 test('resolveSettingsSection falls back to first registered section', () => {

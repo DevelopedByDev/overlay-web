@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, type UIEvent } from 'react'
 import { Loader2, X, Search } from 'lucide-react'
+import { resolveIntegrationName, truncateIntegrationDescription } from '@overlay/app-core'
 import { IntegrationDialogRowSkeleton } from '@/components/ui/Skeleton'
 import { overlayAppClient } from '@/lib/overlay-app-client'
 
@@ -14,42 +15,6 @@ interface PickerItem {
 }
 
 const SEARCH_DEBOUNCE_MS = 300
-
-const KNOWN_NAMES: Record<string, string> = {
-  gmail: 'Gmail',
-  googlecalendar: 'Google Calendar',
-  googlesheets: 'Google Sheets',
-  googledrive: 'Google Drive',
-  googlemeet: 'Google Meet',
-  notion: 'Notion',
-  outlook: 'Outlook',
-  twitter: 'X (Twitter)',
-  asana: 'Asana',
-  linkedin: 'LinkedIn',
-  github: 'GitHub',
-  composio: 'Composio',
-}
-
-function sanitizeName(name: string): string {
-  return name.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
-}
-
-function resolvedName(slug: string, apiName: string): string {
-  const resolvedApiName = sanitizeName(apiName)
-  if (resolvedApiName) return resolvedApiName
-  if (KNOWN_NAMES[slug]) return KNOWN_NAMES[slug]
-  const base = sanitizeName(slug)
-  return base
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function truncateDescription(desc: string): string {
-  const compact = desc.replace(/\s+/g, ' ').trim()
-  return compact.length <= 84 ? compact : `${compact.slice(0, 83).trimEnd()}...`
-}
 
 const DEFAULT_OVERLAY_CLASS =
   'fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-5'
@@ -110,7 +75,7 @@ export function IntegrationsDialog({
       const pageItems = Array.isArray(data?.items) ? data.items as PickerItem[] : []
 
       const resolve = (row: PickerItem[]) =>
-        row.map((item) => ({ ...item, name: resolvedName(item.slug, item.name) }))
+        row.map((item) => ({ ...item, name: resolveIntegrationName(item.slug, item.name) }))
 
       setItems((prev) => {
         const merged = append ? [...prev, ...resolve(pageItems)] : resolve(pageItems)
@@ -254,7 +219,7 @@ export function IntegrationsDialog({
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-[var(--foreground)]">{item.name}</p>
-                  <p className="truncate text-xs text-[var(--muted)]">{truncateDescription(item.description || item.slug)}</p>
+                  <p className="truncate text-xs text-[var(--muted)]">{truncateIntegrationDescription(item.description || item.slug)}</p>
                 </div>
                 {item.isConnected ? (
                   <button

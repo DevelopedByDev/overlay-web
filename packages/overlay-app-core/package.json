@@ -10,6 +10,7 @@
     "./app-shell": "./src/app-shell.ts",
     "./contracts": "./src/contracts.ts",
     "./knowledge": "./src/knowledge.ts",
+    "./extensions": "./src/extensions.ts",
     "./modules": "./src/modules.ts",
     "./notes": "./src/notes.ts",
     "./projects": "./src/projects.ts",
