@@ -926,6 +926,23 @@ export interface NotebookAgentRequest {
   userId?: string
 }
 
+export interface NotebookEdit {
+  id: string
+  description: string
+  startLine: number
+  endLine: number
+  originalLines: string[]
+  newLines: string[]
+}
+
+export type NotebookAgentStreamEvent =
+  | { type: 'thinking'; thinking?: string }
+  | { type: 'tool_call'; tool?: string; toolInput?: Record<string, unknown> }
+  | { type: 'edit_proposal'; edit?: NotebookEdit }
+  | { type: 'text'; text?: string }
+  | { type: 'done' }
+  | { type: 'error'; error?: string }
+
 export interface IntegrationSummary {
   slug: string
   name: string

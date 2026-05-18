@@ -26,7 +26,7 @@ import {
 import { getInternalApiBaseUrl } from '@/lib/url'
 import { executeSearchKnowledge } from '@/lib/tools/overlay-executes'
 import type { OverlayToolsOptions } from '@/lib/tools/types'
-import type { NotebookEdit, NotebookAgentStreamEvent } from '@/lib/notebook-agent-contract'
+import type { NotebookEdit, NotebookAgentStreamEvent } from '@overlay/app-core'
 import { NOTEBOOK_AGENT_PROMPT } from '@/lib/notebook-agent-prompts'
 import { resolveMentionsContext } from '@/lib/mention-resolver'
 import { summarizeErrorForLog } from '@/lib/safe-log'

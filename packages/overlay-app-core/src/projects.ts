@@ -1,9 +1,9 @@
 import type { ConversationSummary, CreateFileRequest, KnowledgeFile, ProjectSummary } from './contracts'
 import { canMoveKnowledgeFile, opensInDocumentEditor } from './knowledge'
+export { NOTES_CHANGED_EVENT } from './notes'
 
 export const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 export const PROJECTS_CHANGED_EVENT = 'overlay:projects-changed'
-export const NOTES_CHANGED_EVENT = 'overlay:notes-changed'
 
 export type ProjectRouteView = 'chat' | 'note' | 'file'
 export type ProjectHubTab = 'chats' | 'files' | 'instructions'

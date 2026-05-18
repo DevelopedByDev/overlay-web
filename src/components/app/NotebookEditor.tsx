@@ -32,15 +32,11 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
-  ArrowLeft,
   Bold,
   BookImage,
   Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Code,
-  FolderOpen,
   Heading1,
   Heading2,
   Heading3,
@@ -49,12 +45,8 @@ import {
   List,
   ListOrdered,
   ListTodo,
-  MessageCircle,
   Minus,
-  Pencil,
-  Plus,
   Quote,
-  Send,
   SmilePlus,
   Strikethrough,
   Subscript as SubscriptIcon,
@@ -73,11 +65,40 @@ import { useAppSettings } from './AppSettingsProvider'
 import { ExportMenu } from './ExportMenu'
 import { overlayAppClient } from '@/lib/overlay-app-client'
 import {
+  FILES_CHANGED_EVENT,
+  NOTEBOOK_INLINE_MATH_MIGRATION_REGEX,
+  NOTES_CHANGED_EVENT,
+  canonicalFileToNotebookNote,
+  createLocalNotebookNote,
+  createNotebookAgentMentions,
+  createNotebookDraftState,
+  createNotebookFileUpdateRequest,
+  createNotebookPersistedNote,
+  createRenamedNotebookNote,
+  notebookAgentEventToUiItem,
+  normalizeNotebookContent,
+  normalizeNotebookTitle,
+  parseNotebookAgentStreamLine,
+  removeNotebookNote,
+  upsertNotebookNote,
+  type CanonicalNoteFile,
+  type NotebookAgentUiItem,
+  type NotebookNote,
+} from '@overlay/app-core'
+import {
+  NotebookAgentComposer,
+  NotebookAgentHeader,
+  NotebookAgentPanel,
+  NotebookEmptyState,
+  NotebookFloatingFormatToolbar,
+  NotebookHeader,
+  NotebookNotesSidebar,
+} from '@overlay/modules-react/notes'
+import {
   InlineDiffExtension,
   INLINE_DIFF_CSS,
   getPendingDiffs,
 } from '@/components/notebook/InlineDiffExtension'
-import type { NotebookAgentStreamEvent } from '@/lib/notebook-agent-contract'
 import { noteContentFromEditor } from '@/lib/notebook-editor-blocks'
 import { readStoredActModelId, ACT_MODEL_KEY } from '@/lib/chat-model-prefs'
 import {
@@ -88,293 +109,8 @@ const MarkdownMessage = dynamic(() => import('./MarkdownMessage').then((mod) => 
 import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from './chat-interface/mention-types'
 
-interface Note {
-  _id: string
-  title: string
-  content: string
-  tags: string[]
-  projectId?: string
-  createdAt: number
-  updatedAt: number
-  shareVisibility?: 'private' | 'public'
-  shareToken?: string | null
-}
-
-interface CanonicalNoteFile {
-  _id: string
-  name: string
-  content?: string
-  textContent?: string
-  projectId?: string
-  createdAt?: number
-  updatedAt?: number
-}
-
-function canonicalFileToNote(file: CanonicalNoteFile): Note {
-  return {
-    _id: file._id,
-    title: file.name || 'Untitled',
-    content: file.textContent ?? file.content ?? '',
-    tags: [],
-    projectId: file.projectId,
-    createdAt: file.createdAt ?? Date.now(),
-    updatedAt: file.updatedAt ?? Date.now(),
-  }
-}
-
-type NotebookAgentUiItem =
-  | { type: 'user'; text: string }
-  | { type: 'thinking'; text: string }
-  | { type: 'tool_call'; tool: string; toolInput?: Record<string, unknown> }
-  | { type: 'text'; text: string }
-  | { type: 'error'; text: string }
-
 const lowlight = createLowlight(common)
 const NOTEBOOK_INLINE_DIFF_STYLE_ID = 'notebook-inline-diff-styles'
-const NOTES_CHANGED_EVENT = 'overlay:notes-changed'
-const FILES_CHANGED_EVENT = 'overlay:files-changed'
-const NOTEBOOK_INLINE_MATH_MIGRATION_REGEX = /(?<!\$)\$(?![\d\s$])([^$\n]*(?:\\[a-zA-Z@]+|[=^_{}]|[a-zA-Z]\s*[+\-*/=^_]|[+\-*/=^_]\s*[a-zA-Z]|[a-zA-Z])[^$\n]*)\$(?![\d$])/g
-
-const markdownLineBreak = /\r\n?/g
-const htmlTagPattern = /<\/?[a-z][\s\S]*>/i
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function parseInlineMarkdown(value: string): string {
-  let html = escapeHtml(value)
-
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>')
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>')
-  html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>')
-  html = html.replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, '$1<em>$2</em>')
-  html = html.replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,!?:;])/g, '$1<em>$2</em>')
-
-  return html
-}
-
-function renderParagraph(lines: string[]): string {
-  const content = lines.map((line) => parseInlineMarkdown(line)).join('<br />')
-  return content ? `<p>${content}</p>` : ''
-}
-
-function parseTableRow(line: string): string[] | null {
-  const match = line.match(/^\|(.+)\|$/)
-  if (!match) return null
-  return match[1].split('|').map((cell) => cell.trim())
-}
-
-function isTableSeparator(line: string): boolean {
-  return /^\|(?:\s*:?-+:?\s*\|)+$/.test(line.trim())
-}
-
-function parseTableAlignments(line: string): ('left' | 'center' | 'right' | null)[] {
-  const cells = parseTableRow(line)
-  if (!cells) return []
-  return cells.map((cell) => {
-    const trimmed = cell.trim()
-    const left = trimmed.startsWith(':')
-    const right = trimmed.endsWith(':')
-    if (left && right) return 'center'
-    if (right) return 'right'
-    if (left) return 'left'
-    return null
-  })
-}
-
-function renderTableRow(
-  cells: string[],
-  tag: 'td' | 'th',
-  alignments?: ('left' | 'center' | 'right' | null)[],
-): string {
-  const cellsHtml = cells
-    .map((cell, i) => {
-      const align = alignments?.[i]
-      const style = align ? ` style="text-align: ${align};"` : ''
-      return `<${tag}${style}>${parseInlineMarkdown(cell)}</${tag}>`
-    })
-    .join('')
-  return `<tr>${cellsHtml}</tr>`
-}
-
-function markdownToHtml(markdown: string): string {
-  const lines = markdown.replace(markdownLineBreak, '\n').split('\n')
-  const blocks: string[] = []
-  let paragraphLines: string[] = []
-  let listItems: string[] = []
-  let listType: 'ul' | 'ol' | null = null
-  let codeLines: string[] = []
-  let inCodeBlock = false
-  let tableRows: string[][] = []
-  let tableAlignments: ('left' | 'center' | 'right' | null)[] = []
-  let inTable = false
-  let tableHasHeader = false
-
-  const flushParagraph = (): void => {
-    if (paragraphLines.length > 0) {
-      const paragraph = renderParagraph(paragraphLines)
-      if (paragraph) blocks.push(paragraph)
-      paragraphLines = []
-    }
-  }
-
-  const flushList = (): void => {
-    if (listType && listItems.length > 0) {
-      blocks.push(`<${listType}>${listItems.join('')}</${listType}>`)
-    }
-    listItems = []
-    listType = null
-  }
-
-  const flushCodeBlock = (): void => {
-    if (inCodeBlock) {
-      blocks.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
-      codeLines = []
-      inCodeBlock = false
-    }
-  }
-
-  const flushTable = (): void => {
-    if (tableRows.length === 0) return
-
-    let thead = ''
-    let tbodyRows = tableRows
-
-    if (tableHasHeader && tableRows.length > 0) {
-      thead = `<thead>${renderTableRow(tableRows[0], 'th', tableAlignments)}</thead>`
-      tbodyRows = tableRows.slice(1)
-    }
-
-    const tbody =
-      tbodyRows.length > 0
-        ? `<tbody>${tbodyRows.map((row) => renderTableRow(row, 'td', tableAlignments)).join('')}</tbody>`
-        : ''
-
-    blocks.push(`<table>${thead}${tbody}</table>`)
-    tableRows = []
-    tableAlignments = []
-    inTable = false
-    tableHasHeader = false
-  }
-
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd()
-
-    const tableRowCells = parseTableRow(line)
-
-    if (tableRowCells) {
-      if (!inTable) {
-        flushParagraph()
-        flushList()
-        inTable = true
-        tableRows = [tableRowCells]
-      } else if (isTableSeparator(line)) {
-        tableHasHeader = true
-        tableAlignments = parseTableAlignments(line)
-      } else {
-        tableRows.push(tableRowCells)
-      }
-      continue
-    }
-
-    if (inTable) {
-      flushTable()
-    }
-
-    if (line.startsWith('```')) {
-      flushParagraph()
-      flushList()
-      if (inCodeBlock) {
-        flushCodeBlock()
-      } else {
-        inCodeBlock = true
-        codeLines = []
-      }
-      continue
-    }
-
-    if (inCodeBlock) {
-      codeLines.push(rawLine)
-      continue
-    }
-
-    if (!line.trim()) {
-      flushParagraph()
-      flushList()
-      continue
-    }
-
-    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/)
-    if (headingMatch) {
-      flushParagraph()
-      flushList()
-      const level = headingMatch[1].length
-      blocks.push(`<h${level}>${parseInlineMarkdown(headingMatch[2])}</h${level}>`)
-      continue
-    }
-
-    if (/^---+$/.test(line) || /^\*\*\*+$/.test(line)) {
-      flushParagraph()
-      flushList()
-      blocks.push('<hr />')
-      continue
-    }
-
-    const blockquoteMatch = line.match(/^>\s+(.+)$/)
-    if (blockquoteMatch) {
-      flushParagraph()
-      flushList()
-      blocks.push(`<blockquote><p>${parseInlineMarkdown(blockquoteMatch[1])}</p></blockquote>`)
-      continue
-    }
-
-    const unorderedMatch = line.match(/^[-*]\s+(.+)$/)
-    if (unorderedMatch) {
-      flushParagraph()
-      if (listType && listType !== 'ul') flushList()
-      listType = 'ul'
-      listItems.push(`<li><p>${parseInlineMarkdown(unorderedMatch[1])}</p></li>`)
-      continue
-    }
-
-    const orderedMatch = line.match(/^\d+\.\s+(.+)$/)
-    if (orderedMatch) {
-      flushParagraph()
-      if (listType && listType !== 'ol') flushList()
-      listType = 'ol'
-      listItems.push(`<li><p>${parseInlineMarkdown(orderedMatch[1])}</p></li>`)
-      continue
-    }
-
-    flushList()
-    paragraphLines.push(line)
-  }
-
-  if (inTable) {
-    flushTable()
-  }
-
-  flushParagraph()
-  flushList()
-  flushCodeBlock()
-
-  return blocks.join('')
-}
-
-function normalizeNoteContent(content: string): string {
-  const trimmed = content.trim()
-  if (!trimmed) return ''
-  if (htmlTagPattern.test(trimmed)) return content
-  return markdownToHtml(content)
-}
 
 function promptForValue(message: string, defaultValue = ''): string | null {
   if (typeof window === 'undefined') return null
@@ -397,13 +133,12 @@ export default function NotebookEditor({
   const searchParams = useSearchParams()
   const { settings } = useAppSettings()
   const showOwnSidebar = !hideSidebar && settings.useSecondarySidebar
-  const [notes, setNotes] = useState<Note[]>([])
-  const [activeNote, setActiveNote] = useState<Note | null>(null)
+  const [notes, setNotes] = useState<NotebookNote[]>([])
+  const [activeNote, setActiveNote] = useState<NotebookNote | null>(null)
   const [title, setTitle] = useState('')
   const [isDirty, setIsDirty] = useState(false)
   const [showSlashMenu, setShowSlashMenu] = useState(false)
   const [showFloatingFormatToolbar, setShowFloatingFormatToolbar] = useState(false)
-  const [isFormatButtonHovered, setIsFormatButtonHovered] = useState(false)
   const [slashMenuPosition, setSlashMenuPosition] = useState({ top: 0, left: 0 })
   const [slashMenuFilter, setSlashMenuFilter] = useState('')
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0)
@@ -417,7 +152,7 @@ export default function NotebookEditor({
   const [showModelPicker, setShowModelPicker] = useState(false)
   const notebookAgentAbortRef = useRef<AbortController | null>(null)
   const modelPickerRef = useRef<HTMLDivElement>(null)
-  const activeNoteRef = useRef<Note | null>(null)
+  const activeNoteRef = useRef<NotebookNote | null>(null)
   const titleRef = useRef('')
   const isDirtyRef = useRef(false)
   const pendingNoteIdRef = useRef<string | null>(null)
@@ -819,14 +554,14 @@ export default function NotebookEditor({
       const res = await overlayAppClient.files.getResponse({ kind: 'note' })
       if (res.ok) {
         const data = (await res.json()) as CanonicalNoteFile[]
-        setNotes(data.map(canonicalFileToNote))
+        setNotes(data.map(canonicalFileToNotebookNote))
       }
     } catch {
       // ignore
     }
   }, [hideSidebar])
 
-  const openNote = useCallback((note: Note) => {
+  const openNote = useCallback((note: NotebookNote) => {
     flushSaveRef.current()
     setIsDirty(false)
     setActiveNote(note)
@@ -900,7 +635,7 @@ export default function NotebookEditor({
       try {
         const res = await overlayAppClient.files.getResponse({ fileId: noteId })
         if (!res.ok) return
-        const note = canonicalFileToNote((await res.json()) as CanonicalNoteFile)
+        const note = canonicalFileToNotebookNote((await res.json()) as CanonicalNoteFile)
         if (!cancelled) {
           if (hideSidebar) setNotes([note])
           openNote(note)
@@ -923,7 +658,7 @@ export default function NotebookEditor({
       return
     }
 
-    editor.commands.setContent(normalizeNoteContent(activeNote.content || ''))
+    editor.commands.setContent(normalizeNotebookContent(activeNote.content || ''))
     migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, activeNote?._id])
@@ -995,27 +730,25 @@ export default function NotebookEditor({
     const noteTitle = pendingTitleRef.current
     const content = pendingContentRef.current
     try {
-      const res = await overlayAppClient.files.updateResponse({ fileId: noteId, name: noteTitle, textContent: content })
+      const res = await overlayAppClient.files.updateResponse(createNotebookFileUpdateRequest({
+        noteId,
+        title: noteTitle,
+        content,
+      }))
       if (!res.ok) {
         isDirtyRef.current = true
         setIsDirty(true)
         return
       }
       const data = (await res.json()) as { file?: CanonicalNoteFile }
-      const note = data.file
-        ? canonicalFileToNote(data.file)
-        : {
-            _id: noteId,
-            title: noteTitle.trim() || 'Untitled',
-            content,
-            tags: [],
-            createdAt: activeNoteRef.current?.createdAt ?? Date.now(),
-            updatedAt: Date.now(),
-          }
-      setNotes((prev) => {
-        const next = prev.filter((item) => item._id !== note._id)
-        return [note, ...next]
+      const note = createNotebookPersistedNote({
+        noteId,
+        title: noteTitle,
+        content,
+        file: data.file,
+        fallbackNote: activeNoteRef.current,
       })
+      setNotes((prev) => upsertNotebookNote(prev, note))
       window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
       window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
     } catch {
@@ -1049,11 +782,7 @@ export default function NotebookEditor({
     const modelId = selectedModelId
 
     setAgentItems((prev) => [...prev, { type: 'user', text: message }])
-    const mentionsForRequest = agentMentions.map((m) => ({
-      type: m.type,
-      id: m.id,
-      name: m.name,
-    }))
+    const mentionsForRequest = createNotebookAgentMentions(agentMentions)
     setAgentInput('')
     setAgentMentions([])
 
@@ -1064,7 +793,7 @@ export default function NotebookEditor({
     try {
       const res = await overlayAppClient.notes.notebookAgentResponse({
         noteContent,
-        noteTitle: title.trim() || 'Untitled',
+        noteTitle: normalizeNotebookTitle(title),
         message,
         modelId,
         projectId: activeNote.projectId,
@@ -1107,46 +836,17 @@ export default function NotebookEditor({
         for (const line of lines) {
           const trimmed = line.trim()
           if (!trimmed) continue
-          let evt: NotebookAgentStreamEvent
-          try {
-            evt = JSON.parse(trimmed) as NotebookAgentStreamEvent
-          } catch {
+          const evt = parseNotebookAgentStreamLine(trimmed)
+          if (!evt) continue
+
+          if (evt.type === 'edit_proposal') {
+            const edit = evt.edit
+            if (edit) editor.chain().focus().addDiffProposal(edit).run()
             continue
           }
-          switch (evt.type) {
-            case 'thinking':
-              if (evt.thinking?.trim()) {
-                setAgentItems((prev) => [...prev, { type: 'thinking', text: evt.thinking! }])
-              }
-              break
-            case 'tool_call':
-              setAgentItems((prev) => [
-                ...prev,
-                { type: 'tool_call', tool: evt.tool ?? 'tool', toolInput: evt.toolInput },
-              ])
-              break
-            case 'text':
-              if (evt.text?.trim()) {
-                setAgentItems((prev) => [...prev, { type: 'text', text: evt.text! }])
-              }
-              break
-            case 'edit_proposal': {
-              const edit = evt.edit
-              if (!edit) break
-              editor.chain().focus().addDiffProposal(edit).run()
-              break
-            }
-            case 'error':
-              setAgentItems((prev) => [
-                ...prev,
-                { type: 'error', text: evt.error ?? 'Unknown error' },
-              ])
-              break
-            case 'done':
-              break
-            default:
-              break
-          }
+
+          const item = notebookAgentEventToUiItem(evt)
+          if (item) setAgentItems((prev) => [...prev, item])
         }
       }
     } catch (e) {
@@ -1164,22 +864,15 @@ export default function NotebookEditor({
     if (res.ok) {
       const data = (await res.json()) as { id: string; file?: CanonicalNoteFile }
       if (data.file) {
-        const note = canonicalFileToNote(data.file)
-        setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
+        const note = canonicalFileToNotebookNote(data.file)
+        setNotes((prev) => upsertNotebookNote(prev, note))
         window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
         window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
         openNote(note)
         return
       }
-      const note = {
-        _id: data.id,
-        title: 'Untitled',
-        content: '',
-        tags: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      }
-      setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
+      const note = createLocalNotebookNote(data.id)
+      setNotes((prev) => upsertNotebookNote(prev, note))
       window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
       window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
       openNote(note)
@@ -1197,7 +890,7 @@ export default function NotebookEditor({
         router.replace('/app/notes')
       }
     }
-    setNotes((prev) => prev.filter((note) => note._id !== noteId))
+    setNotes((prev) => removeNotebookNote(prev, noteId))
     window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
     if (showOwnSidebar) {
       await loadNotes()
@@ -1213,23 +906,23 @@ export default function NotebookEditor({
   async function commitTitleChange() {
     const current = activeNoteRef.current
     if (!current) return
-    const nextTitle = titleRef.current.trim() || 'Untitled'
+    const content = editor?.getHTML() || current.content || ''
+    const draftState = createNotebookDraftState({
+      note: current,
+      draftTitle: titleRef.current,
+      draftContent: content,
+    })
+    const nextTitle = draftState.title
     if (nextTitle !== titleRef.current) {
       setTitle(nextTitle)
       titleRef.current = nextTitle
     }
     if (nextTitle === current.title) return
 
-    const content = editor?.getHTML() || current.content || ''
-    const note = {
-      ...current,
-      title: nextTitle,
-      content,
-      updatedAt: Date.now(),
-    }
+    const note = createRenamedNotebookNote({ note: current, title: nextTitle, content })
     setActiveNote(note)
     activeNoteRef.current = note
-    setNotes((prev) => [note, ...prev.filter((item) => item._id !== note._id)])
+    setNotes((prev) => upsertNotebookNote(prev, note))
     window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
 
     isDirtyRef.current = true
@@ -1248,191 +941,135 @@ export default function NotebookEditor({
     })
   }
 
-  const floatingToolbarButtonClass =
-    'inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40'
+  const modelPicker = (
+    <div ref={modelPickerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => !agentRunning && setShowModelPicker((v) => !v)}
+        disabled={agentRunning}
+        className={`flex h-8 min-h-8 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:py-1 ${
+          agentRunning ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+        }`}
+      >
+        <span className="min-w-0 truncate">{getChatModelDisplayName(selectedModelId)}</span>
+        <ChevronDown size={11} className="shrink-0" />
+      </button>
+      {showModelPicker && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+          <div className="max-h-72 overflow-y-auto">
+            {getModelsByIntelligence(false).map((m) => {
+              const isSel = m.id === selectedModelId
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedModelId(m.id)
+                    try {
+                      localStorage.setItem(ACT_MODEL_KEY, m.id)
+                    } catch { /* ignore */ }
+                    setShowModelPicker(false)
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[var(--surface-muted)] ${
+                    isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
+                    {m.name}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 
-  const floatingToolbarActiveButtonClass =
-    'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+  const assistantHeader = (
+    <NotebookAgentHeader
+      pendingDiffCount={editor ? getPendingDiffs(editor).length : 0}
+      modelPicker={modelPicker}
+      onAcceptAllDiffs={() => editor?.chain().focus().acceptAllDiffs().run()}
+      onRejectAllDiffs={() => editor?.chain().focus().rejectAllDiffs().run()}
+    />
+  )
 
-  const floatingToolbarDividerClass = 'mx-1 h-5 w-px shrink-0 bg-[var(--border)]'
+  const agentComposer = (
+    <NotebookAgentComposer
+      running={agentRunning}
+      canSend={Boolean(agentInput.trim())}
+      onSend={() => void runNotebookAgent()}
+      onStop={stopNotebookAgent}
+      input={
+        <MentionInput
+          ref={agentInputRef}
+          value={agentInput}
+          onChange={setAgentInput}
+          onMentionsChange={setAgentMentions}
+          onUploadFile={() => { /* note assistant: no file upload here */ }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              if (!agentRunning && agentInput.trim()) void runNotebookAgent()
+            }
+          }}
+          placeholder="Ask about this note or describe edits, use @ to reference files, skills..."
+          disabled={agentRunning}
+        />
+      }
+    />
+  )
+
+  const overlayLogo = (
+    <NextImage
+      src="/assets/overlay-logo.png"
+      alt=""
+      width={14}
+      height={14}
+      className="mt-0.5 size-3.5 shrink-0 select-none"
+      draggable={false}
+    />
+  )
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header - shows note title when active, otherwise "Notes" */}
-      {activeNote ? (
-        <div className="flex h-16 shrink-0 border-b border-[var(--border)]">
-          {/* Left side - Note title section */}
-          <div className="flex flex-1 items-center justify-between gap-3 px-6">
-            <button
-              type="button"
-              onClick={() => void handleBackToFiles()}
-              title="Back to files"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-            >
-              <ArrowLeft size={17} />
-            </button>
-            <input
-              type="text"
-              value={title}
-              onChange={handleTitleChange}
-              onBlur={() => void commitTitleChange()}
-              onKeyDown={handleTitleKeyDown}
-              placeholder="Note title..."
-              className="flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
-              style={{ fontFamily: 'var(--font-serif)' }}
-            />
-            <div className="ml-3 flex shrink-0 items-center gap-2">
-              {projectName && (
-                <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
-                  <FolderOpen size={9} />
-                  {projectName}
-                </span>
-              )}
-              {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
-              {activeNote && (
-                <ExportMenu
-                  type="note"
-                  title={title || 'Untitled'}
-                  content={editor?.getHTML() || activeNote.content || ''}
-                  metadata={{
-                    createdAt: activeNote.createdAt,
-                    updatedAt: activeNote.updatedAt,
-                  }}
-                />
-              )}
-              <button
-                type="button"
-                onClick={() => void handleToggleAgentPanel()}
-                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-                  agentPanelOpen ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
-                }`}
-                aria-label={agentPanelOpen ? 'Close note assistant' : 'Open note assistant'}
-                title="Note assistant"
-              >
-                <MessageCircle size={16} />
-              </button>
-            </div>
-          </div>
-          {/* Right side - Assistant header (only when open) */}
-          {agentPanelOpen && (
-            <div className="flex w-[min(400px,92vw)] shrink-0 items-center justify-between gap-3 border-l border-[var(--border)] px-4">
-              <span className="text-xs font-medium text-[var(--foreground)]">Assistant</span>
-              <div className="flex items-center gap-2">
-                {editor && getPendingDiffs(editor).length > 0 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => editor.chain().focus().acceptAllDiffs().run()}
-                      className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1 text-[11px] text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-                    >
-                      Accept all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor.chain().focus().rejectAllDiffs().run()}
-                      className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                    >
-                      Reject all
-                    </button>
-                  </>
-                )}
-                <div ref={modelPickerRef} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => !agentRunning && setShowModelPicker((v) => !v)}
-                    disabled={agentRunning}
-                    className={`flex h-8 min-h-8 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:py-1 ${
-                      agentRunning ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
-                    }`}
-                  >
-                    <span className="min-w-0 truncate">{getChatModelDisplayName(selectedModelId)}</span>
-                    <ChevronDown size={11} className="shrink-0" />
-                  </button>
-                  {showModelPicker && (
-                    <div className="absolute right-0 top-full z-20 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
-                      <div className="max-h-72 overflow-y-auto">
-                        {getModelsByIntelligence(false).map((m) => {
-                          const isSel = m.id === selectedModelId
-                          return (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedModelId(m.id)
-                                try {
-                                  localStorage.setItem(ACT_MODEL_KEY, m.id)
-                                } catch { /* ignore */ }
-                                setShowModelPicker(false)
-                              }}
-                              className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[var(--surface-muted)] ${
-                                isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'
-                              }`}
-                            >
-                              <span className="flex items-center gap-2">
-                                {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                                {m.name}
-                              </span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
-          <div className="shrink-0">
-            <h2 className="text-sm font-medium text-[var(--foreground)]">Notes</h2>
-          </div>
-          <div className="flex-1" />
-          <button
-            onClick={createNote}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
-          >
-            <Plus size={14} />
-            New note
-          </button>
-        </div>
-      )}
+      <NotebookHeader
+        activeNote={activeNote}
+        title={title}
+        projectName={projectName}
+        isDirty={isDirty}
+        agentPanelOpen={agentPanelOpen}
+        exportMenu={activeNote ? (
+          <ExportMenu
+            type="note"
+            title={title || 'Untitled'}
+            content={editor?.getHTML() || activeNote.content || ''}
+            metadata={{
+              createdAt: activeNote.createdAt,
+              updatedAt: activeNote.updatedAt,
+            }}
+          />
+        ) : null}
+        assistantHeader={assistantHeader}
+        onBackToFiles={() => void handleBackToFiles()}
+        onCreateNote={() => void createNote()}
+        onTitleChange={handleTitleChange}
+        onTitleBlur={() => void commitTitleChange()}
+        onTitleKeyDown={handleTitleKeyDown}
+        onToggleAgentPanel={() => void handleToggleAgentPanel()}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         {showOwnSidebar && (
-          <div className="w-52 h-full flex flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
-            <div className="flex h-16 items-center border-b border-[var(--border)] px-3">
-              <button
-                onClick={createNote}
-                className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
-              >
-                <Plus size={13} />
-                New note
-              </button>
-            </div>
-          <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-            {notes.map((note) => (
-              <div
-                key={note._id}
-                onClick={() => openNote(note)}
-                className={`group flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 transition-colors ${
-                  activeNote?._id === note._id
-                    ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                    : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                <span className="text-xs truncate">{note.title || 'Untitled'}</span>
-                <button
-                  onClick={(event) => void deleteNote(note._id, event)}
-                  className="ml-1 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                >
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+          <NotebookNotesSidebar
+            notes={notes}
+            activeNoteId={activeNote?._id}
+            onCreateNote={() => void createNote()}
+            onOpenNote={openNote}
+            onDeleteNote={(noteId, event) => void deleteNote(noteId, event)}
+          />
       )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1444,311 +1081,22 @@ export default function NotebookEditor({
                 <EditorContent editor={editor} />
               </div>
 
-              <div className="absolute bottom-5 right-5 z-30 flex max-w-[calc(100%-2.5rem)] items-center gap-1 overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-1.5 shadow-lg">
-                <button
-                  type="button"
-                  onClick={() => setShowFloatingFormatToolbar((prev) => !prev)}
-                  onMouseEnter={() => setIsFormatButtonHovered(true)}
-                  onMouseLeave={() => setIsFormatButtonHovered(false)}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  aria-label={showFloatingFormatToolbar ? 'Close formatting toolbar' : 'Open formatting toolbar'}
-                  aria-expanded={showFloatingFormatToolbar}
-                  title={showFloatingFormatToolbar ? 'Close formatting toolbar' : 'Formatting'}
-                >
-                  {showFloatingFormatToolbar ? (
-                    <ChevronRight size={16} />
-                  ) : isFormatButtonHovered ? (
-                    <ChevronLeft size={16} />
-                  ) : (
-                    <Pencil size={16} />
-                  )}
-                </button>
-
-                {showFloatingFormatToolbar && (
-                  <>
-                    <div className={floatingToolbarDividerClass} />
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('heading', { level: 1 }) ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Heading 1"
-                      title="Heading 1"
-                    >
-                      <Heading1 size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('heading', { level: 2 }) ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Heading 2"
-                      title="Heading 2"
-                    >
-                      <Heading2 size={15} />
-                    </button>
-                    <div className={floatingToolbarDividerClass} />
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleBold().run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('bold') ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Bold"
-                      title="Bold"
-                    >
-                      <Bold size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleItalic().run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('italic') ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Italic"
-                      title="Italic"
-                    >
-                      <Italic size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleUnderline().run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('underline') ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Underline"
-                      title="Underline"
-                    >
-                      <UnderlineIcon size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleStrike().run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('strike') ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Strikethrough"
-                      title="Strikethrough"
-                    >
-                      <Strikethrough size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleCode().run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('code') ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Inline code"
-                      title="Inline code"
-                    >
-                      <Code size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleHighlight().run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('highlight') ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Highlight"
-                      title="Highlight"
-                    >
-                      <Highlighter size={15} />
-                    </button>
-                    <div className={floatingToolbarDividerClass} />
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleBulletList().run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('bulletList') ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Bullet list"
-                      title="Bullet list"
-                    >
-                      <List size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('orderedList') ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Numbered list"
-                      title="Numbered list"
-                    >
-                      <ListOrdered size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().toggleTaskList().run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive('taskList') ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Task list"
-                      title="Task list"
-                    >
-                      <ListTodo size={15} />
-                    </button>
-                    <div className={floatingToolbarDividerClass} />
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().setTextAlign('left').run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive({ textAlign: 'left' }) ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Align left"
-                      title="Align left"
-                    >
-                      <AlignLeft size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().setTextAlign('center').run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive({ textAlign: 'center' }) ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Align center"
-                      title="Align center"
-                    >
-                      <AlignCenter size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editor?.chain().focus().setTextAlign('right').run()}
-                      className={`${floatingToolbarButtonClass} ${
-                        editor?.isActive({ textAlign: 'right' }) ? floatingToolbarActiveButtonClass : ''
-                      }`}
-                      aria-label="Align right"
-                      title="Align right"
-                    >
-                      <AlignRight size={15} />
-                    </button>
-                  </>
-                )}
-              </div>
+              <NotebookFloatingFormatToolbar
+                editor={editor}
+                open={showFloatingFormatToolbar}
+                onOpenChange={setShowFloatingFormatToolbar}
+              />
             </div>
             {agentPanelOpen && (
-              <aside
-                className="flex w-[min(400px,92vw)] shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--surface)]"
-                aria-label="Note assistant"
-              >
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
-                  {agentItems.length === 0 && (
-                    <div className="text-center py-8">
-                      <p className="text-sm text-[var(--muted)]">Ask about this note or describe edits...</p>
-                    </div>
-                  )}
-                  {agentItems.map((item, idx) => {
-                    if (item.type === 'user') {
-                      return (
-                        <div key={idx} className="flex justify-end">
-                          <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:max-w-[75%]">
-                            <span className="whitespace-pre-wrap">{item.text}</span>
-                          </div>
-                        </div>
-                      )
-                    }
-                    if (item.type === 'thinking') {
-                      return (
-                        <div key={idx} className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                          <span
-                            className="overlay-stream-marker overlay-stream-marker--standalone h-4 w-4"
-                            aria-label={item.text}
-                            role="img"
-                          />
-                        </div>
-                      )
-                    }
-                    if (item.type === 'tool_call') {
-                      const toolLabel = item.tool === 'search_knowledge' ? 'Searching knowledge' :
-                        item.tool === 'read_note' ? 'Reading note' :
-                        item.tool === 'propose_edit' ? 'Proposing edit' :
-                        item.tool === 'finish' ? 'Done' : item.tool
-                      const isRunning = agentRunning && idx === agentItems.length - 1
-                      return (
-                        <div key={idx} className="flex w-full max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug">
-                          <div className="relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
-                            <div className="relative z-[1] shrink-0 rounded-full bg-[var(--background)] p-px">
-                              <NextImage
-                                src="/assets/overlay-logo.png"
-                                alt=""
-                                width={14}
-                                height={14}
-                                className="mt-0.5 size-3.5 shrink-0 select-none"
-                                draggable={false}
-                              />
-                            </div>
-                          </div>
-                          <span className={isRunning ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>
-                            {toolLabel}
-                          </span>
-                        </div>
-                      )
-                    }
-                    if (item.type === 'text') {
-                      return (
-                        <div key={idx} className="flex items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            <MarkdownMessage
-                              text={item.text ?? ''}
-                              isStreaming={agentRunning && idx === agentItems.length - 1}
-                            />
-                          </div>
-                        </div>
-                      )
-                    }
-                    return (
-                      <div key={idx} className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-700 dark:text-red-300">
-                        {item.text}
-                      </div>
-                    )
-                  })}
-                </div>
-                <div className="shrink-0 p-3">
-                  <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                    <div className="p-2.5">
-                      <MentionInput
-                        ref={agentInputRef}
-                        value={agentInput}
-                        onChange={setAgentInput}
-                        onMentionsChange={setAgentMentions}
-                        onUploadFile={() => { /* note assistant: no file upload here */ }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            if (!agentRunning && agentInput.trim()) void runNotebookAgent()
-                          }
-                        }}
-                        placeholder="Ask about this note or describe edits, use @ to reference files, skills..."
-                        disabled={agentRunning}
-                      />
-                      <div className="mt-2 flex min-h-9 items-center justify-end gap-2">
-                        {agentRunning ? (
-                          <button
-                            type="button"
-                            onClick={stopNotebookAgent}
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80"
-                            aria-label="Stop"
-                          >
-                            <div className="h-3.5 w-3.5 rounded-sm bg-[var(--background)]" />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void runNotebookAgent()}
-                            disabled={!agentInput.trim()}
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"
-                            aria-label="Send"
-                          >
-                            <Send size={17} strokeWidth={1.75} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </aside>
+              <NotebookAgentPanel
+                items={agentItems}
+                running={agentRunning}
+                logo={overlayLogo}
+                composer={agentComposer}
+                renderMarkdownMessage={(text, isStreaming) => (
+                  <MarkdownMessage text={text} isStreaming={isStreaming} />
+                )}
+              />
             )}
             </div>
             <SlashMenu
@@ -1766,21 +1114,7 @@ export default function NotebookEditor({
             />
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <p className="mb-2 text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
-                notes
-              </p>
-              <p className="text-sm text-[var(--muted)] mb-4">Select a note or create a new one</p>
-              <button
-                onClick={createNote}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
-              >
-                <Plus size={14} />
-                New Note
-              </button>
-            </div>
-          </div>
+          <NotebookEmptyState onCreateNote={() => void createNote()} />
         )}
       </div>
     </div>
