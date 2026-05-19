@@ -37,6 +37,31 @@ Every file under `src/server/**/*.ts` starts with `import 'server-only'`. Import
 
 Scripts: `scripts/phase-1.3-restructure-server-shared.sh`, `scripts/phase-1.3-update-imports.mjs`, `scripts/phase-1.3-add-server-only.mjs`.
 
+## Phase 1.4 — isomorphic `src/shared/`
+
+Everything under `src/shared/` must be importable from client and server bundles: no `fs`, no ad-hoc `process.env`, no Node builtins, no `server-only` / `@/server/*`, no `'use client'` modules.
+
+**Centralized public env:** `@/shared/env/public-env` (only `NEXT_PUBLIC_*` and build-time `NODE_ENV` for `isDevelopmentBuild()`).
+
+**Server env:** `@/server/env/server-env` for `VERCEL_URL`, `SENTRY_DSN`, dev URL overrides.
+
+**Splits / moves:**
+
+| Former `src/shared/` | New location |
+| --- | --- |
+| `web/url.ts` (`getBaseUrl`, `getInternalApiBaseUrl`) | `@/server/web/app-url` |
+| `web/url.ts` (pure URL helpers) | `@/shared/web/normalize-app-url` |
+| `security/ssrf.ts` | `@/server/security/ssrf` |
+| `security/security-events.ts` | `@/server/observability/security-events` |
+| `storage/convex-file-content` (`hashTextContent`) | `@/server/storage/text-content-hash` |
+| `database/convex-react-client.ts` | `@/components/providers/convex-react-client` (+ `@/shared/database/convex-url`) |
+| `app/{async-sessions-store,navigation-progress}.tsx` | `@/components/providers/*` |
+| `features/.../mention-types` (canonical) | `@/shared/knowledge/mention-types` (feature file re-exports) |
+
+**Checks:** `npm run check:shared-isomorphic` and ESLint `no-restricted-imports` / `no-restricted-syntax` on `src/shared/**` (excluding `*.test.ts` and `env/public-env.ts`).
+
+**Convex:** Functions must import shared modules, not `src/server/*` (those re-export or use `server-only` for Next). Convex-safe shared modules include `storage/storage-keys`, `ai/sandbox/daytona-pricing`, and `ai/gateway/model-pricing`.
+
 ## Canonical Packages
 
 - `@overlay/app-core`: app shell registries, contracts, and pure module controllers.

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { MessageSquare, Check, Pencil, Trash2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
-import { useAsyncSessions } from '@/shared/app/async-sessions-store'
+import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,

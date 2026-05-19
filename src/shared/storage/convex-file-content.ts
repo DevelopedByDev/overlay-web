@@ -1,17 +1,14 @@
-import { createHash } from 'node:crypto'
-
 /**
- * Convex document size limit is 1 MiB; stay under with room for metadata.
- * @see https://docs.convex.dev/database/limits
+ * Pure helpers for splitting file text to fit Convex document limits (no Node crypto/fs).
  */
+
+/** Convex document size limit is 1 MiB; stay under with room for metadata. */
 export const MAX_FILE_CONTENT_UTF8_BYTES = 850_000
 
-export function utf8ByteLength(s: string): number {
-  return Buffer.byteLength(s, 'utf8')
-}
+const textEncoder = new TextEncoder()
 
-export function hashTextContent(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex')
+export function utf8ByteLength(s: string): number {
+  return textEncoder.encode(s).length
 }
 
 /**

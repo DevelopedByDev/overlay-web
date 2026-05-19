@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { logSecurityEvent } from '@/shared/security/security-events'
+import { logSecurityEvent } from '@/server/observability/security-events'
 import { rateLimitByIp } from '@/server/security/rate-limit'
 
 export async function POST(request: NextRequest) {

@@ -46,7 +46,7 @@ import {
 } from '@/shared/chat/persist-assistant-turn'
 import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import { maybeRepairFreeTierLeakedPerplexityText } from '@/shared/chat/leaked-perplexity-tool-repair'
-import { getInternalApiBaseUrl } from '@/shared/web/url'
+import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { sanitizeUiMessagesForModelApi } from '@/shared/chat/sanitize-ui-messages-for-model'
 import {
   compactMessagesForContext,

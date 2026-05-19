@@ -23,7 +23,7 @@ import {
   DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
 } from '@/shared/ai/gateway/model-types'
-import { getInternalApiBaseUrl } from '@/shared/web/url'
+import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { executeSearchKnowledge } from '@/server/tools/tools/overlay-executes'
 import type { OverlayToolsOptions } from '@/server/tools/tools/types'
 import type { NotebookEdit, NotebookAgentStreamEvent } from '@overlay/app-core'

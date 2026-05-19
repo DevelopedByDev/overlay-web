@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { useAsyncSessions } from '@/shared/app/async-sessions-store'
+import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 
 export default function BackgroundPollManager() {
   const { sessions, completeSession, activeViewerIds } = useAsyncSessions()

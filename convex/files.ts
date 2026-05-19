@@ -10,7 +10,7 @@ import {
   getStorageBytesUsed,
   getStorageLimitForSubscription,
 } from './lib/storageQuota'
-import { assertOwnedFileR2Key, isOwnedFileR2Key, isOwnedOutputR2Key } from '../src/server/storage/storage-keys'
+import { assertOwnedFileR2Key, isOwnedFileR2Key, isOwnedOutputR2Key } from '../src/shared/storage/storage-keys'
 
 const utf8Encoder = new TextEncoder()
 

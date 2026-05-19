@@ -52,4 +52,4 @@ export const stripe = new Proxy({} as Stripe, {
 })
 
 
-export { getBaseUrl } from '@/shared/web/url'
+export { getBaseUrl } from '@/server/web/app-url'

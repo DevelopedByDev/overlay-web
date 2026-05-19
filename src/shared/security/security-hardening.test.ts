@@ -152,7 +152,7 @@ test('media tools are exposed only for structured media intent', async () => {
 })
 
 test('storage key ownership checks enforce user-scoped prefixes', async () => {
-  const storageKeys = await import(new URL('./storage-keys.ts', import.meta.url).href)
+  const storageKeys = await import(new URL('../storage/storage-keys.ts', import.meta.url).href)
 
   const ownedFileKey = storageKeys.keyForFile('user_123', 'file_1', 'report.pdf')
   const ownedOutputKey = storageKeys.keyForOutput('user_123', 'output_1', 'video.mp4')

@@ -1,9 +1,9 @@
 import { Suspense } from 'react'
 import { getSession } from '@/server/auth/workos-auth'
 import AppSidebar from '@/components/layout/AppSidebar'
-import { AsyncSessionsProvider } from '@/shared/app/async-sessions-store'
+import { AsyncSessionsProvider } from '@/components/providers/async-sessions-store'
 import BackgroundPollManager from '@/components/providers/BackgroundPollManager'
-import { NavigationProgressProvider, NavigationProgressBar } from '@/shared/app/navigation-progress'
+import { NavigationProgressProvider, NavigationProgressBar } from '@/components/providers/navigation-progress'
 import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
 import { OnboardingProvider } from '@/components/providers/OnboardingProvider'
 

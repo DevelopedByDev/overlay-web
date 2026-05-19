@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { logSecurityEvent } from '@/shared/security/security-events'
+import { logSecurityEvent } from '@/server/observability/security-events'
 
 type RateLimitWindow = {
   count: number

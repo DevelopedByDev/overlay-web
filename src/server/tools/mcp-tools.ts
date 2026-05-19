@@ -6,7 +6,7 @@ import { convex } from '@/server/database/convex'
 import { jsonSchemaToZod } from './mcp-schema-to-zod'
 import { getInternalApiSecret } from './internal-api-secret'
 import { fireAndForgetRecordToolInvocation } from './tools/record-tool-invocation'
-import { validatePublicNetworkUrl } from '@/shared/security/ssrf'
+import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 
 // Dynamic import of MCP SDK (ESM)
 type McpClientModule = typeof import('@modelcontextprotocol/sdk/client/index.js')

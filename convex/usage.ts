@@ -4,7 +4,7 @@ import { requireAccessToken, requireServerSecret, validateServerSecret } from '.
 import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../src/shared/ai/gateway/model-types'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from './lib/storageQuota'
-import { roundCurrencyAmount } from '../src/server/ai/sandbox/daytona-pricing'
+import { roundCurrencyAmount } from '../src/shared/ai/sandbox/daytona-pricing'
 import { derivePlanAmountCents, derivePlanKind } from '../src/shared/billing/billing-pricing'
 
 function getPastWeekDates(): string[] {

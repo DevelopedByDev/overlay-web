@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
-import { hashTextContent } from '@/shared/storage/convex-file-content'
+import { hashTextContent } from '@/server/storage/text-content-hash'
 
 type CanonicalFile = {
   _id: string

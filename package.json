@@ -29,6 +29,7 @@
     "chat-react:typecheck": "npm --prefix packages/overlay-chat-react run typecheck",
     "modules-react:typecheck": "npm --prefix packages/overlay-modules-react run typecheck",
     "check:module-boundaries": "node scripts/ensure-module-presentational-boundaries.mjs",
+    "check:shared-isomorphic": "node scripts/enforce-shared-isomorphic.mjs",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "video:studio": "npx remotion studio src/remotion/index.ts",
     "video:render:launch": "mkdir -p renders && npx remotion render src/remotion/index.ts overlay-launch-video renders/overlay-launch-video.mp4",

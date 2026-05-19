@@ -103,7 +103,7 @@ import {
   removeCachedChat,
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
-import { useAsyncSessions } from '@/shared/app/async-sessions-store'
+import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { FileViewerPanel } from '@/features/files/components/FileViewer'
 import { DelayedTooltip } from './DelayedTooltip'

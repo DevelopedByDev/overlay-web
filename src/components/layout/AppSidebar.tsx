@@ -20,7 +20,7 @@ import {
 import type { AuthUser } from '@/shared/auth/session-types'
 import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
-import { useAsyncSessions } from '@/shared/app/async-sessions-store'
+import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { formatBytes } from '@/shared/storage/storage-limits'
 import {

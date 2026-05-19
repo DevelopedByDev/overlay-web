@@ -4,7 +4,7 @@ import { requireAccessToken, requireServerSecret, validateServerSecret } from '.
 import {
   computeDaytonaRuntimeCost,
   roundCurrencyAmount,
-} from '../src/server/ai/sandbox/daytona-pricing'
+} from '../src/shared/ai/sandbox/daytona-pricing'
 import { applyMarkupToCents, centsToDollarAmount } from '../src/shared/billing/billing-pricing'
 import { applyUsageEvents } from './usage'
 

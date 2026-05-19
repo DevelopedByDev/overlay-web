@@ -1,3 +1,4 @@
+import { publicEnv } from '@/shared/env/public-env'
 import {
   DefaultChatTransport,
   type ChatTransport,
@@ -18,7 +19,7 @@ function normalizeRelayApi(value: string): string {
 }
 
 export function getCloudflareChatStreamRelayApi(): string | null {
-  const configured = process.env.NEXT_PUBLIC_CHAT_STREAM_RELAY_URL?.trim()
+  const configured = publicEnv.chatStreamRelayUrl
   return configured ? normalizeRelayApi(configured) : null
 }
 

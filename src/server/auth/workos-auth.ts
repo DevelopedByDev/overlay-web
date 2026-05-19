@@ -20,7 +20,7 @@ import {
   DESKTOP_AUTH_REDIRECT_URI,
   SESSION_TRANSFER_DEEP_LINK_PREFIX,
 } from '@/shared/auth/auth-constants'
-import { getBaseUrl } from '@/shared/web/url'
+import { getBaseUrl } from '@/server/web/app-url'
 import type { AuthUser, AuthSession } from '@/shared/auth/session-types'
 
 export type { AuthUser, AuthSession } from '@/shared/auth/session-types'

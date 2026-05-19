@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
-import { validatePublicNetworkUrl } from '@/shared/security/ssrf'
+import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 
 export async function POST(request: NextRequest) {
   try {

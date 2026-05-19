@@ -1,9 +1,13 @@
+import 'server-only'
+
 import * as Sentry from '@sentry/nextjs'
+import { publicEnv } from '@/shared/env/public-env'
+import { serverEnv } from '@/server/env/server-env'
 
 type SecurityEventLevel = 'info' | 'warning' | 'error'
 
 function sentryEnabled(): boolean {
-  return Boolean(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN)
+  return Boolean(serverEnv.sentryDsn || publicEnv.sentryDsn)
 }
 
 export function logSecurityEvent(

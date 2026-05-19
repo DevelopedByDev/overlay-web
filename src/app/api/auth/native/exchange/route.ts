@@ -3,7 +3,7 @@ import { authenticateNativeWithCode } from '@/server/auth/workos-auth'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
-import { logSecurityEvent } from '@/shared/security/security-events'
+import { logSecurityEvent } from '@/server/observability/security-events'
 import {
   isValidNativeAuthCode,
   isValidPkceVerifier,

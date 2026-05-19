@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { ConvexProvider } from 'convex/react'
-import { convexReactClient } from '@/shared/database/convex-react-client'
+import { convexReactClient } from '@/components/providers/convex-react-client'
 import { useAuth } from '@/contexts/AuthContext'
 
 type ConvexWorkOSContextValue = {

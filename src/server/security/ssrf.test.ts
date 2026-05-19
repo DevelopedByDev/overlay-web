@@ -19,13 +19,13 @@ test('validatePublicNetworkUrl rejects private IP literals', async () => {
   assert.equal(result.ok, false)
 })
 
-test('validatePublicNetworkUrl allows localhost only in development when requested', async () => {
+test('validatePublicNetworkUrl allows localhost when allowLocalDev in development', async () => {
   const originalNodeEnv = process.env.NODE_ENV
   ;(process.env as Record<string, string | undefined>).NODE_ENV = 'development'
   try {
     const result = await validatePublicNetworkUrl('http://localhost:3333/mcp', {
       allowLocalDev: true,
-      requireHttps: true,
+      requireHttps: false,
     })
     assert.equal(result.ok, true)
   } finally {

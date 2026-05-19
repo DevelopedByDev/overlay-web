@@ -5,7 +5,7 @@ import { internal } from './_generated/api'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import { applyStorageUsageDelta, ensureStorageAvailable } from './lib/storageQuota'
 import { classifyOutputType } from '../src/shared/tools/output-types'
-import { assertOwnedOutputR2Key, isOwnedOutputR2Key } from '../src/server/storage/storage-keys'
+import { assertOwnedOutputR2Key, isOwnedOutputR2Key } from '../src/shared/storage/storage-keys'
 
 async function authorizeUserAccess(params: {
   accessToken?: string

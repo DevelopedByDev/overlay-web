@@ -1,5 +1,8 @@
+import 'server-only'
+
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import { isDevelopmentRuntime } from '@/server/env/server-env'
 
 type ValidationOptions = {
   allowLocalDev?: boolean
@@ -67,7 +70,7 @@ export async function validatePublicNetworkUrl(
 
   const isDevLocalAllowed =
     options.allowLocalDev === true &&
-    process.env.NODE_ENV === 'development' &&
+    isDevelopmentRuntime() &&
     (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]' || parsed.hostname === '::1')
 
   if (options.requireHttps !== false && parsed.protocol !== 'https:' && !isDevLocalAllowed) {
