@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
       settingsSections: [...appShell.settingsSections],
       featureFlagRegistry: [...appShell.featureFlags],
       featureModules: [...appShell.featureModules],
+      sidebarActions: [...appShell.sidebarActions],
       settingsPanels: [...appShell.settingsPanels],
       toolRegistry: [...appShell.tools],
       integrationRegistry: [...appShell.integrations],

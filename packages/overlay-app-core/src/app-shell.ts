@@ -13,6 +13,7 @@ import type {
   OverlayPolicyGate,
   OverlaySettingsSection,
   OverlaySettingsPanel,
+  OverlaySidebarAction,
   OverlayThemeMetadata,
   OverlayToolRegistration,
   ThemePresetId,
@@ -149,6 +150,53 @@ export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = 
   },
 ] as const
 
+export const DEFAULT_OVERLAY_SIDEBAR_ACTIONS: readonly OverlaySidebarAction[] = [
+  {
+    id: 'chat.create',
+    label: 'New chat',
+    actionKey: 'chat.create',
+    navigationItemId: 'chat',
+    routePatterns: ['/app/chat'],
+    searchCategory: 'chat',
+    requiresAuth: true,
+    order: 10,
+  },
+  {
+    id: 'files.create-note',
+    label: 'New File',
+    actionKey: 'notes.create',
+    navigationItemId: 'files',
+    featureModuleId: 'files-knowledge',
+    routePatterns: ['/app/files', '/app/notes'],
+    searchCategory: 'file',
+    requiresAuth: true,
+    featureFlagId: 'knowledge',
+    order: 20,
+  },
+  {
+    id: 'projects.create',
+    label: 'New project',
+    actionKey: 'projects.create',
+    navigationItemId: 'projects',
+    featureModuleId: 'projects',
+    routePatterns: ['/app/projects'],
+    requiresAuth: true,
+    featureFlagId: 'projects',
+    order: 30,
+  },
+  {
+    id: 'automations.create',
+    label: 'New automation',
+    actionKey: 'automations.create',
+    navigationItemId: 'automations',
+    routePatterns: ['/app/automations'],
+    requiresAuth: true,
+    primaryNavAction: true,
+    featureFlagId: 'automations',
+    order: 40,
+  },
+] as const
+
 export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = [
   { id: 'general', sectionId: 'general', label: 'General', componentKey: 'overlay.settings.general', order: 10 },
   { id: 'account', sectionId: 'account', label: 'Account', componentKey: 'overlay.settings.account', order: 20 },
@@ -234,6 +282,7 @@ export const DEFAULT_OVERLAY_APP_CONFIG: OverlayAppConfig = {
   settingsSections: DEFAULT_OVERLAY_SETTINGS_SECTIONS,
   featureFlags: DEFAULT_OVERLAY_FEATURE_FLAGS,
   featureModules: DEFAULT_OVERLAY_FEATURE_MODULES,
+  sidebarActions: DEFAULT_OVERLAY_SIDEBAR_ACTIONS,
   settingsPanels: DEFAULT_OVERLAY_SETTINGS_PANELS,
   tools: DEFAULT_OVERLAY_TOOL_REGISTRY,
   integrations: DEFAULT_OVERLAY_INTEGRATION_REGISTRY,
@@ -332,6 +381,10 @@ export function resolveOverlayAppShellConfig(
     mergeRegistryById(DEFAULT_OVERLAY_FEATURE_MODULES, config.featureModules),
     featureFlags,
   )
+  const sidebarActions = filterFeatureRegistry(
+    mergeRegistryById(DEFAULT_OVERLAY_SIDEBAR_ACTIONS, config.sidebarActions),
+    featureFlags,
+  )
   const settingsPanels = filterFeatureRegistry(
     mergeRegistryById(DEFAULT_OVERLAY_SETTINGS_PANELS, config.settingsPanels),
     featureFlags,
@@ -356,6 +409,7 @@ export function resolveOverlayAppShellConfig(
     settingsSections,
     featureFlags,
     featureModules,
+    sidebarActions,
     settingsPanels,
     tools,
     integrations,
@@ -364,6 +418,29 @@ export function resolveOverlayAppShellConfig(
     appFeatureFlags: overlayFeatureFlagsToAppFeatureFlags(featureFlags),
     theme,
   }
+}
+
+export function appShellRouteMatches(pathname: string, routePattern: string): boolean {
+  if (pathname === routePattern) return true
+  return pathname.startsWith(`${routePattern}/`)
+}
+
+export function resolveSidebarActionForPath(
+  pathname: string,
+  actions: readonly OverlaySidebarAction[],
+): OverlaySidebarAction | null {
+  return [...actions]
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .find((action) => action.routePatterns.some((pattern) => appShellRouteMatches(pathname, pattern))) ?? null
+}
+
+export function resolveFeatureModuleForPath(
+  pathname: string,
+  modules: readonly OverlayFeatureModule[],
+): OverlayFeatureModule | null {
+  return [...modules]
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .find((module) => module.routePatterns.some((pattern) => appShellRouteMatches(pathname, pattern))) ?? null
 }
 
 export function overlayNavigationToDestinations(

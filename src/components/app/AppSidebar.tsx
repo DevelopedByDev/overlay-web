@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, FileText, LogOut, User,
@@ -11,14 +11,16 @@ import {
   FolderOpen, Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
   Workflow, Palette, ShieldCheck, Play, PanelsLeftRight, Mail,
 } from 'lucide-react'
-import type { OverlayIconName } from '@overlay/app-core'
+import {
+  resolveFeatureModuleForPath,
+  resolveSidebarActionForPath,
+  type OverlayIconName,
+  type OverlaySidebarSearchCategory,
+} from '@overlay/app-core'
 import type { AuthUser } from '@/lib/workos-auth'
 import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from './GuestGateProvider'
 import { useAsyncSessions } from '@/lib/async-sessions-store'
-import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
-import { dispatchChatCreated } from '@/lib/chat-title'
-import { upsertCachedChat } from '@/lib/chat-list-cache'
 import { useAppSettings } from './AppSettingsProvider'
 import { formatBytes } from '@/lib/storage-limits'
 import {
@@ -31,6 +33,7 @@ import { ChatInlinePanel } from './ChatInlinePanel'
 import { AutomationsInlinePanel } from './AutomationsInlinePanel'
 import ProjectsSidebar from './ProjectsSidebar'
 import ToolsSidebar from './ToolsSidebar'
+import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
 import { overlayAppShell } from '@/overlay.config'
 import { overlayAppClient } from '@/lib/overlay-app-client'
 import dynamic from 'next/dynamic'
@@ -109,6 +112,25 @@ function setStoredSidebarCollapsed(next: boolean) {
     window.dispatchEvent(new Event(SIDEBAR_COLLAPSED_EVENT))
   } catch {
     // ignore
+  }
+}
+
+function toMentionCategory(category: OverlaySidebarSearchCategory | undefined): MentionType | null {
+  switch (category) {
+    case 'file':
+      return 'file'
+    case 'connector':
+      return 'connector'
+    case 'automation':
+      return 'automation'
+    case 'skill':
+      return 'skill'
+    case 'mcp':
+      return 'mcp'
+    case 'chat':
+      return 'chat'
+    default:
+      return null
   }
 }
 
@@ -213,7 +235,6 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
-  const [automationCreatePending, setAutomationCreatePending] = useState(false)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const sidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapsed,
@@ -224,6 +245,26 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
+  const sidebarActions = overlayAppShell.sidebarActions
+  const activeFeatureModule = resolveFeatureModuleForPath(pathname, overlayAppShell.featureModules)
+  const primaryNavActionByItemId = useMemo(() => {
+    const entries = sidebarActions
+      .filter((action) => action.primaryNavAction && action.navigationItemId)
+      .map((action) => [action.navigationItemId!, action] as const)
+    return new Map(entries)
+  }, [sidebarActions])
+  const {
+    createChat,
+    runSidebarAction,
+  } = useAppSidebarActions({
+    user,
+    pathname,
+    searchParams: currentSearchParams,
+    requireAuth,
+    onCloseMobileMenu: () => setMobileMenuOpen(false),
+    onChatCreated: () => setChatPanelRefreshKey((value) => value + 1),
+    onProjectCreated: () => setProjectsPanelRefreshKey((value) => value + 1),
+  })
 
   useEffect(() => {
     function onProjectsChanged() {
@@ -240,7 +281,6 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   const filesOpen = pathname.startsWith('/app/files')
   const filesSectionOpen = filesOpen || notesOpen
   const chatOpen = pathname.startsWith('/app/chat')
-  const toolsOpen = pathname.startsWith('/app/tools')
   const automationsOpen = pathname.startsWith('/app/automations')
   const settingsPathActive = pathname.startsWith('/app/settings')
   const settingsSection = currentSearchParams.get('section') ?? 'general'
@@ -263,7 +303,12 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   }, [setEntitlements])
 
   useEffect(() => {
-    void loadEntitlements()
+    const timeoutId = window.setTimeout(() => {
+      void loadEntitlements()
+    }, 0)
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
   }, [loadEntitlements])
 
   useEffect(() => {
@@ -352,104 +397,6 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
     window.location.href = '/'
   }
 
-  async function handleCreateChat() {
-    if (!user) { requireAuth('send'); return }
-    const models = readNewChatModelFieldsFromStorage()
-    const res = await overlayAppClient.conversations.createResponse({
-      title: 'New Chat',
-      askModelIds: models.askModelIds,
-      actModelId: models.actModelId,
-      lastMode: models.lastMode,
-    })
-    if (!res.ok) return
-    const data = await res.json() as { id?: string; conversation?: { _id: string; title: string; lastModified: number } }
-    if (!data.id) return
-    const chat = data.conversation ?? { _id: data.id, title: 'New Chat', lastModified: 0 }
-    upsertCachedChat(chat)
-    dispatchChatCreated({ chat })
-    setChatPanelRefreshKey((value) => value + 1)
-    setMobileMenuOpen(false)
-    router.push(`/app/chat?id=${encodeURIComponent(data.id)}`)
-  }
-
-  async function handleCreateAutomationConversation() {
-    if (!user) { requireAuth('send'); return }
-    if (automationCreatePending) return
-    setAutomationCreatePending(true)
-    const models = readNewChatModelFieldsFromStorage()
-    const title = 'New automation'
-    try {
-      const res = await overlayAppClient.conversations.createResponse({
-        title,
-        askModelIds: models.askModelIds,
-        actModelId: models.actModelId,
-        lastMode: 'act',
-      })
-      if (!res.ok) return
-      const data = await res.json() as { id?: string; conversation?: { _id: string; title: string; lastModified: number } }
-      if (!data.id) return
-      const chat = data.conversation ?? { _id: data.id, title, lastModified: 0 }
-      upsertCachedChat(chat)
-      dispatchChatCreated({ chat })
-      let automationId: string | null = null
-      const automationRes = await overlayAppClient.automations.createResponse({
-        name: title,
-        description: 'Draft automation. Add a description before enabling it.',
-        instructions: 'Describe what this automation should do.',
-        enabled: false,
-        schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        modelId: models.actModelId,
-        sourceConversationId: data.id,
-      })
-      if (!automationRes.ok) return
-      const automationData = await automationRes.json() as { id?: string }
-      automationId = automationData.id ?? null
-      if (!automationId) return
-      window.dispatchEvent(new Event('overlay:automations-updated'))
-      setMobileMenuOpen(false)
-      const query = new URLSearchParams({ id: data.id, automationId })
-      router.push(`/app/automations?${query.toString()}`)
-    } finally {
-      setAutomationCreatePending(false)
-    }
-  }
-
-  async function handleCreateNote() {
-    if (!user) { requireAuth('nav'); return }
-    const parentId = pathname.startsWith('/app/files') ? currentSearchParams.get('folder') : null
-    const res = await overlayAppClient.files.createResponse({ kind: 'note', name: 'Untitled', textContent: '', parentId })
-    if (!res.ok) return
-    const data = await res.json() as { id?: string; file?: { _id: string; name?: string; content?: string; textContent?: string; createdAt?: number; updatedAt?: number } }
-    if (!data.id) return
-    const file = data.file
-    const updatedAt = file?.updatedAt ?? file?.createdAt ?? Number.MAX_SAFE_INTEGER
-    window.dispatchEvent(new CustomEvent('overlay:notes-changed', {
-      detail: {
-        note: {
-          _id: data.id,
-          title: file?.name || 'Untitled',
-          content: file?.textContent ?? file?.content ?? '',
-          tags: [],
-          createdAt: file?.createdAt ?? updatedAt,
-          updatedAt,
-        },
-      },
-    }))
-    window.dispatchEvent(new CustomEvent('overlay:files-changed'))
-    setMobileMenuOpen(false)
-    router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
-  }
-
-  async function handleCreateProject() {
-    if (!user) { requireAuth('nav'); return }
-    const res = await overlayAppClient.projects.createResponse({ name: 'Untitled Project' })
-    if (!res.ok) return
-    setProjectsPanelRefreshKey((value) => value + 1)
-    setMobileMenuOpen(false)
-    router.push('/app/projects')
-  }
-
   const brandLink = (
     <Link
       href={BRAND_CONFIG.homeHref}
@@ -523,19 +470,9 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
   /** Hide until loaded so paid users never see a flash of the upgrade CTA. */
   const showUpgradeCta = entitlements !== null && entitlements.tier === 'free'
   const contextualAction = inlineSecondaryDisabled
-      ? chatOpen
-        ? { label: 'New chat', onClick: handleCreateChat }
-      : filesSectionOpen
-          ? { label: 'New File', onClick: handleCreateNote }
-        : projectsOpen
-          ? { label: 'New project', onClick: handleCreateProject }
-          : automationsOpen
-            ? {
-                label: 'New automation',
-                onClick: handleCreateAutomationConversation,
-              }
-            : null
+    ? resolveSidebarActionForPath(pathname, sidebarActions)
     : null
+  const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
   const hasInlineChildren = (href?: string) =>
     inlineSecondaryDisabled && href === '/app/tools'
 
@@ -611,8 +548,9 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
                       requireAuth('nav')
                       return
                     }
-                    if (href === '/app/automations') {
-                      void handleCreateAutomationConversation()
+                    const primaryNavAction = primaryNavActionByItemId.get(item.id)
+                    if (primaryNavAction) {
+                      void runSidebarAction(primaryNavAction)
                       return
                     }
                     if (pathname.startsWith(href)) return
@@ -770,19 +708,19 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
 
         {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || filesSectionOpen || projectsOpen || automationsOpen) ? (
           <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
-            {contextualAction && (chatOpen || filesSectionOpen) ? (
+            {contextualAction && contextualSearchCategory ? (
               <div className="mb-3 flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => void contextualAction.onClick()}
+                  onClick={() => void runSidebarAction(contextualAction)}
                   className="flex flex-1 items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                 >
                   <span className="min-w-0 flex-1 text-left text-xs">{contextualAction.label}</span>
                 </button>
                 <button
                   type="button"
-                  title={chatOpen ? 'Search chats (\u2318K)' : 'Search files (\u2318K)'}
-                  onClick={() => openGlobalSearch(chatOpen ? 'chat' : 'file')}
+                  title={contextualSearchCategory === 'chat' ? 'Search chats (\u2318K)' : 'Search files (\u2318K)'}
+                  onClick={() => openGlobalSearch(contextualSearchCategory)}
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
                 >
                   <Search size={13} strokeWidth={1.75} />
@@ -791,7 +729,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
             ) : contextualAction ? (
               <button
                 type="button"
-                onClick={() => void contextualAction.onClick()}
+                onClick={() => void runSidebarAction(contextualAction)}
                 className="mb-3 flex w-full items-center gap-2.5 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
               >
                 <span className="min-w-0 flex-1 text-left">{contextualAction.label}</span>
@@ -1074,8 +1012,8 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       </div>
 
       <div className="hidden md:flex">
-        {settings.useSecondarySidebar && projectsOpen ? <ProjectsSidebar /> : null}
-        {settings.useSecondarySidebar && toolsOpen ? <ToolsSidebar /> : null}
+        {settings.useSecondarySidebar && activeFeatureModule?.id === 'projects' ? <ProjectsSidebar /> : null}
+        {settings.useSecondarySidebar && activeFeatureModule?.id === 'tools-extensions' ? <ToolsSidebar /> : null}
       </div>
 
       <GlobalSearchDialog
@@ -1083,7 +1021,7 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
         onClose={() => setGlobalSearchOpen(false)}
         initialCategory={globalSearchInitialCategory}
         onNewChat={() => {
-          void handleCreateChat()
+          void createChat()
         }}
       />
     </>

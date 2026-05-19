@@ -293,6 +293,36 @@ export interface OverlayFeatureModule {
   order?: number
 }
 
+export type OverlaySidebarActionKey =
+  | 'chat.create'
+  | 'notes.create'
+  | 'projects.create'
+  | 'automations.create'
+  | (string & {})
+
+export type OverlaySidebarSearchCategory =
+  | 'file'
+  | 'connector'
+  | 'automation'
+  | 'skill'
+  | 'mcp'
+  | 'chat'
+  | (string & {})
+
+export interface OverlaySidebarAction {
+  id: string
+  label: string
+  actionKey: OverlaySidebarActionKey
+  navigationItemId?: OverlayNavigationItem['id']
+  featureModuleId?: OverlayFeatureModuleId
+  routePatterns: readonly string[]
+  searchCategory?: OverlaySidebarSearchCategory
+  requiresAuth?: boolean
+  primaryNavAction?: boolean
+  featureFlagId?: OverlayFeatureFlagId
+  order?: number
+}
+
 export interface OverlaySettingsPanel {
   id: SettingsSubview | (string & {})
   label: string
@@ -398,6 +428,7 @@ export interface OverlayAppConfig {
   settingsSections?: readonly OverlaySettingsSection[]
   featureFlags?: readonly OverlayFeatureFlag[]
   featureModules?: readonly OverlayFeatureModule[]
+  sidebarActions?: readonly OverlaySidebarAction[]
   settingsPanels?: readonly OverlaySettingsPanel[]
   tools?: readonly OverlayToolRegistration[]
   integrations?: readonly OverlayIntegrationRegistration[]
@@ -413,6 +444,7 @@ export interface OverlayAppShellRegistry {
   settingsSections: readonly OverlaySettingsSection[]
   featureFlags: readonly OverlayFeatureFlag[]
   featureModules: readonly OverlayFeatureModule[]
+  sidebarActions: readonly OverlaySidebarAction[]
   settingsPanels: readonly OverlaySettingsPanel[]
   tools: readonly OverlayToolRegistration[]
   integrations: readonly OverlayIntegrationRegistration[]
@@ -468,6 +500,7 @@ export interface AppBootstrapResponse {
   settingsSections?: OverlaySettingsSection[]
   featureFlagRegistry?: OverlayFeatureFlag[]
   featureModules?: OverlayFeatureModule[]
+  sidebarActions?: OverlaySidebarAction[]
   settingsPanels?: OverlaySettingsPanel[]
   toolRegistry?: OverlayToolRegistration[]
   integrationRegistry?: OverlayIntegrationRegistration[]
