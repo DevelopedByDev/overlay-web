@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import { createArchitectureBoundaryConfigs } from "./scripts/eslint-boundary-rules.mjs";
 
 const sharedIsomorphicRules = {
   files: ["src/shared/**/*.ts", "src/shared/**/*.tsx"],
@@ -13,6 +14,21 @@ const sharedIsomorphicRules = {
           {
             group: ["@/server", "@/server/*"],
             message: "src/shared must not import server-only code.",
+          },
+          {
+            group: [
+              "@/features",
+              "@/features/*",
+              "@/components",
+              "@/components/*",
+              "@/app",
+              "@/app/*",
+              "@/hooks",
+              "@/hooks/*",
+              "@/contexts",
+              "@/contexts/*",
+            ],
+            message: "src/shared must only import other @/shared modules.",
           },
           {
             group: ["node:*"],
@@ -36,6 +52,7 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   sharedIsomorphicRules,
+  ...createArchitectureBoundaryConfigs(),
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

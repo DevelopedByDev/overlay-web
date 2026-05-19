@@ -62,6 +62,34 @@ Everything under `src/shared/` must be importable from client and server bundles
 
 **Convex:** Functions must import shared modules, not `src/server/*` (those re-export or use `server-only` for Next). Convex-safe shared modules include `storage/storage-keys`, `ai/sandbox/daytona-pricing`, and `ai/gateway/model-pricing`.
 
+## Phase 1.5 — ESLint import boundaries
+
+Rules live in `scripts/eslint-boundary-rules.mjs` and are wired from `eslint.config.mjs` via `no-restricted-imports` (no `eslint-plugin-boundaries`).
+
+| Layer | Enforcement |
+| --- | --- |
+| `src/app/**` | Error on `@/assets/*`, `@/types/*` (routes should use features, components, server, shared, hooks, contexts, packages) |
+| `src/features/<domain>/**` | Error on `@/features/<other>/*` (no cross-feature imports) |
+| `src/features/<domain>/**/components/**` | Also error on `@/server/*` |
+| `src/components/**` | Error on `@/features/*`, `@/server/*` |
+| `src/shared/**` | Error on non-`@/shared` layers (plus isomorphic rules in `eslint.config.mjs`) |
+| `src/lib/**` | Same as shared-only (legacy; folder mostly removed) |
+| `src/server/<domain>/**` | **Warn** on `@/server/<other>/*` (sibling domains; burn down over time) |
+
+**Known violations (lint `--quiet` on layers):** ~38 errors today — mostly cross-feature imports under `src/features/` and feature imports from `src/components/` (e.g. `AppSidebar`, `GlobalSearchDialog`). Server cross-domain imports surface as warnings only.
+
+**Verify:** `npx eslint src/app src/components src/features src/shared src/server` (full `npm run lint` may still report unrelated issues elsewhere).
+
+## Phase 1.6 — path aliases
+
+`tsconfig.json` adds explicit aliases (alongside `@/*` → `./src/*`):
+
+- `@/server/*` → `./src/server/*`
+- `@/shared/*` → `./src/shared/*`
+- `@/features/*` → `./src/features/*`
+
+TypeScript resolves the longer prefix first, so `@/server/foo` maps to `src/server/foo` without changing existing `@/…` imports.
+
 ## Canonical Packages
 
 - `@overlay/app-core`: app shell registries, contracts, and pure module controllers.
