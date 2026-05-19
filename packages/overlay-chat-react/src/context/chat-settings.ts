@@ -1,7 +1,7 @@
 /**
  * Extension-local mirror of the `ChatStreamingMode` type exposed by
  * `@overlay/app-core` and re-exported from
- * `overlay-landing/src/components/app/AppSettingsProvider.tsx`.
+ * `overlay-landing/src/components/providers/AppSettingsProvider.tsx`.
  *
  * The landing AppSettingsProvider wires React context, WorkOS sync, and
  * localStorage persistence — all of which the side panel supplies via its

@@ -1,6 +1,6 @@
 # Modular UI Migration Notes
 
-The old `src/components/app/*` feature screens are compatibility wrappers during the modularization period. They remain the web containers for routing, auth, uploads, browser APIs, billing, and local persistence. Canonical shared APIs now live in packages.
+Feature screens now live under `src/features/<domain>/components/` (Phase 1.1). They remain the web containers for routing, auth, uploads, browser APIs, billing, and local persistence. Shared primitives stay in `src/components/{ui,layout,providers}/`. Canonical shared APIs live in packages.
 
 ## Canonical Packages
 
@@ -15,12 +15,12 @@ The old `src/components/app/*` feature screens are compatibility wrappers during
 
 | Compatibility wrapper | Canonical direction |
 | --- | --- |
-| `src/components/app/KnowledgeView.tsx` | Contracts and controllers in `@overlay/app-core`, transport in `@overlay/api-client`, presentation in `@overlay/modules-react/knowledge`. |
-| `src/components/app/OutputsView.tsx` | Use output contracts, output API methods, and `OutputGallery`. |
-| `src/components/app/MemoriesView.tsx` | Use memory contracts, memory API methods, and memory controller helpers. |
-| `src/components/app/NotebookEditor.tsx` | Notes are canonical `kind: note` files; use notes API aliases and `NotesEditorShell`. |
-| `src/components/app/ProjectsView.tsx` and `ProjectsSidebar.tsx` | Use project contracts, project API methods, `buildProjectTree`, `ProjectTree`, and `ProjectDetail`. |
-| `src/components/app/ToolsView.tsx`, `IntegrationsView.tsx`, `SkillsView.tsx`, `McpServersView.tsx` | Use extension contracts, typed API methods, `filterExtensionCatalog`, `ExtensionCatalog`, and `McpServerForm`. |
+| `src/features/knowledge/components/KnowledgeView.tsx` | Contracts and controllers in `@overlay/app-core`, transport in `@overlay/api-client`, presentation in `@overlay/modules-react/knowledge`. |
+| (OutputsView — not yet in tree) | Use output contracts, output API methods, and `OutputGallery`. |
+| `src/features/knowledge/components/MemoriesView.tsx` | Use memory contracts, memory API methods, and memory controller helpers. |
+| `src/features/notebook/components/NotebookEditor.tsx` | Notes are canonical `kind: note` files; use notes API aliases and `NotesEditorShell`. |
+| `src/features/projects/components/ProjectsView.tsx` and `ProjectsSidebar.tsx` | Use project contracts, project API methods, `buildProjectTree`, `ProjectTree`, and `ProjectDetail`. |
+| `src/features/tools/components/ToolsView.tsx`, `src/features/integrations/components/*`, `src/features/automations/components/SkillsView.tsx` | Use extension contracts, typed API methods, `filterExtensionCatalog`, `ExtensionCatalog`, and `McpServerForm`. |
 | `src/app/app/settings/page.tsx` | Use settings registries, settings/account API methods, and `SettingsSectionRenderer`. |
 | `src/app/account/page.tsx` | Keep billing/account orchestration in web; share typed billing contracts through `@overlay/app-core` and transport through `@overlay/api-client`. |
 

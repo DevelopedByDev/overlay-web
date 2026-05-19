@@ -1,4 +1,4 @@
-import { AudiencePageTemplate } from "@/components/marketing/AudiencePageTemplate";
+import { AudiencePageTemplate } from "@/features/marketing/components/AudiencePageTemplate";
 import { AUDIENCE_PAGE_CONTENT } from "@/lib/audience-pages";
 
 const page = AUDIENCE_PAGE_CONTENT.education;

@@ -2,7 +2,7 @@ import { getSession } from '@/lib/workos-auth'
 import dynamic from 'next/dynamic'
 import { redirect } from 'next/navigation'
 
-const ProjectsView = dynamic(() => import('@/components/app/ProjectsView'), {
+const ProjectsView = dynamic(() => import('@/features/projects/components/ProjectsView'), {
   loading: () => <div className="flex min-h-[40vh] items-center justify-center text-sm text-[#888]">Loading...</div>,
 })
 

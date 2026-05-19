@@ -7,8 +7,8 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Mail, Moon, PanelsLeftRight, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
-import { TopUpPreferenceControl } from '@/components/billing/TopUpPreferenceControl'
-import { useAppSettings } from '@/components/app/AppSettingsProvider'
+import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
+import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { SettingsSectionSkeleton } from '@/components/ui/Skeleton'
 import { LIGHT_PRESETS, DARK_PRESETS } from '@/lib/themes'
 import { overlayAppClient } from '@/lib/overlay-app-client'
@@ -25,7 +25,7 @@ import {
 } from '@overlay/modules-react/settings'
 import dynamic from 'next/dynamic'
 
-const MemoriesView = dynamic(() => import('@/components/app/MemoriesView'))
+const MemoriesView = dynamic(() => import('@/features/knowledge/components/MemoriesView'))
 
 const SECTIONS = overlayAppShell.settingsSections
 const SETTINGS_PANELS = overlayAppShell.settingsPanels

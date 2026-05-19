@@ -2,7 +2,7 @@ import dynamic from 'next/dynamic'
 import { getSession } from '@/lib/workos-auth'
 import { redirect } from 'next/navigation'
 
-const IntegrationsView = dynamic(() => import('@/components/app/IntegrationsView'), {
+const IntegrationsView = dynamic(() => import('@/features/integrations/components/IntegrationsView'), {
   loading: () => <div className="flex min-h-[40vh] items-center justify-center text-sm text-[#888]">Loading...</div>,
 })
 

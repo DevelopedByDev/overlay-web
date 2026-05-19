@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { PageNavbar } from "@/components/PageNavbar";
+import { PageNavbar } from "@/components/layout/PageNavbar";
 import { LandingThemeProvider, useLandingTheme } from "@/contexts/LandingThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { sanitizeClientAuthRedirect } from "@/lib/auth-redirect";

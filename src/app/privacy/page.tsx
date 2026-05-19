@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { MarketingFooter } from "@/components/marketing/MarketingFooter";
-import { StaticMarketingShell, useStaticMarketingTheme } from "@/components/marketing/StaticMarketingShell";
+import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
+import { StaticMarketingShell, useStaticMarketingTheme } from "@/features/marketing/components/StaticMarketingShell";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
 
 const PRIVACY = [

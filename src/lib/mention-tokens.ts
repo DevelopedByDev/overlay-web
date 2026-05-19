@@ -5,7 +5,7 @@
  * can be parsed back into mention metadata at execution time.
  */
 
-import type { MentionType } from '@/components/app/chat-interface/mention-types'
+import type { MentionType } from '@/features/chat/components/chat-interface/mention-types'
 
 const VALID_TYPES: ReadonlySet<MentionType> = new Set([
   'file',

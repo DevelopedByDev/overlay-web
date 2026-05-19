@@ -1,11 +1,11 @@
 import { Suspense } from 'react'
 import { getSession } from '@/lib/workos-auth'
-import AppSidebar from '@/components/app/AppSidebar'
+import AppSidebar from '@/components/layout/AppSidebar'
 import { AsyncSessionsProvider } from '@/lib/async-sessions-store'
-import BackgroundPollManager from '@/components/app/BackgroundPollManager'
+import BackgroundPollManager from '@/components/providers/BackgroundPollManager'
 import { NavigationProgressProvider, NavigationProgressBar } from '@/lib/navigation-progress'
-import { GuestGateProvider } from '@/components/app/GuestGateProvider'
-import { OnboardingProvider } from '@/components/app/OnboardingProvider'
+import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
+import { OnboardingProvider } from '@/components/providers/OnboardingProvider'
 
 function AppMainFallback() {
   return (

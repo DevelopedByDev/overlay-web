@@ -1,4 +1,4 @@
-import ChatInterface from '@/components/app/ChatInterface'
+import ChatInterface from '@/features/chat/components/ChatInterface'
 import { getSession } from '@/lib/workos-auth'
 
 export default async function ChatPage() {

@@ -3,7 +3,7 @@ import dynamic from 'next/dynamic'
 import { getSession } from '@/lib/workos-auth'
 import { redirect } from 'next/navigation'
 
-const KnowledgeView = dynamic(() => import('@/components/app/KnowledgeView'), {
+const KnowledgeView = dynamic(() => import('@/features/knowledge/components/KnowledgeView'), {
   loading: () => <div className="flex min-h-[40vh] items-center justify-center text-sm text-[#888]">Loading...</div>,
 })
 

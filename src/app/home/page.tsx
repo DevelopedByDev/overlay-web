@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { MarketingFooter } from "@/components/marketing/MarketingFooter";
-import { StaticMarketingShell, useStaticMarketingTheme } from "@/components/marketing/StaticMarketingShell";
+import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
+import { StaticMarketingShell, useStaticMarketingTheme } from "@/features/marketing/components/StaticMarketingShell";
 import { useAuth } from "@/contexts/AuthContext";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
 import { MARKETING_GITHUB_URL, getMarketingAppHref } from "@/lib/marketing";

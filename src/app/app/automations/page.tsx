@@ -1,7 +1,7 @@
 import dynamic from 'next/dynamic'
 import { getSession } from '@/lib/workos-auth'
 
-const ChatInterface = dynamic(() => import('@/components/app/ChatInterface'))
+const ChatInterface = dynamic(() => import('@/features/chat/components/ChatInterface'))
 
 export default async function AutomationsPage() {
   const session = await getSession()

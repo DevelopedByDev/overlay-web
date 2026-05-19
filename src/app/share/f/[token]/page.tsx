@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { convex } from '@/lib/convex'
-import { SharedFileView } from '@/components/share/SharedFileView'
+import { SharedFileView } from '@/features/share/components/SharedFileView'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
