@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateObject } from 'ai'
 import { z } from 'zod'
-import { sanitizeChatTitle } from '@/lib/chat-title'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { getGatewayLanguageModel } from '@/lib/ai-gateway'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import type { Entitlements } from '@/lib/app-contracts'
-import { calculateTokenCostOrNull } from '@/lib/model-pricing'
+import { sanitizeChatTitle } from '@/shared/chat/chat-title'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { getGatewayLanguageModel } from '@/server/ai/gateway/ai-gateway'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import type { Entitlements } from '@/shared/app/app-contracts'
+import { calculateTokenCostOrNull } from '@/server/ai/gateway/model-pricing'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -15,8 +15,8 @@ import {
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
-} from '@/lib/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+} from '@/server/billing/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 const TITLE_MODEL = 'nvidia/nemotron-nano-9b-v2'
 const FALLBACK_TITLE = 'New Chat'

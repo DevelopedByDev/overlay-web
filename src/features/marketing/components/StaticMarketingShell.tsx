@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLandingTheme } from "@/contexts/LandingThemeContext";
-import { getMarketingAppHref, MARKETING_GITHUB_URL } from "@/lib/marketing";
+import { getMarketingAppHref, MARKETING_GITHUB_URL } from "@/features/landing/lib/marketing";
 
 export function useStaticMarketingTheme() {
   const { landingTheme, toggleLandingTheme, isLandingDark } = useLandingTheme();

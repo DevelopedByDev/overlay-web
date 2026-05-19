@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AutomationInstructionsEditor } from './AutomationInstructionsEditor'
-import { DEFAULT_MODEL_ID } from '@/lib/model-types'
-import { getModelsByIntelligence } from '@/lib/model-data'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type {
   AutomationDetail,
   AutomationDetailTab,

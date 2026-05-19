@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { convex } from '@/lib/convex'
-import { generatePresignedUploadUrl, getMaxPresignedUploadBytes, getR2PresignTtlSeconds, keyForFile } from '@/lib/r2'
-import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
-import { formatBytes } from '@/lib/storage-limits'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
-import { cleanupExpiredR2UploadIntents } from '@/lib/r2-upload-intents'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { convex } from '@/server/database/convex'
+import { generatePresignedUploadUrl, getMaxPresignedUploadBytes, getR2PresignTtlSeconds, keyForFile } from '@/server/storage/r2'
+import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
+import { formatBytes } from '@/shared/storage/storage-limits'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { cleanupExpiredR2UploadIntents } from '@/server/storage/r2-upload-intents'
 
 interface Entitlements {
   overlayStorageBytesUsed: number

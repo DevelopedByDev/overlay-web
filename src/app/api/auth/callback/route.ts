@@ -5,12 +5,12 @@ import {
   getBaseUrl,
   getSession,
   MOBILE_AUTH_REDIRECT_PATH,
-} from '@/lib/workos-auth'
-import { logAuthDebug, summarizeSessionForLog } from '@/lib/auth-debug'
-import { convex as serverConvex } from '@/lib/convex'
+} from '@/server/auth/workos-auth'
+import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
+import { convex as serverConvex } from '@/server/database/convex'
 import { createHash, randomBytes } from 'crypto'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { encryptSessionTransferPayload } from '@/lib/session-transfer-crypto'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { encryptSessionTransferPayload } from '@/server/auth/session-transfer-crypto'
 
 const SESSION_TRANSFER_TTL_MS = 90 * 1000
 

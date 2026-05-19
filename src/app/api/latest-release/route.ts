@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchLatestReleaseInfo } from "@/lib/latest-release";
+import { fetchLatestReleaseInfo } from "@/shared/web/latest-release";
 
 export async function GET() {
   try {

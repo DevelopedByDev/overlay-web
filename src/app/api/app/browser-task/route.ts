@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BrowserUse } from 'browser-use-sdk/v3'
 import type { ProxyCountryCode } from 'browser-use-sdk/v3'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { BROWSER_USE_TASK_INIT_USD, calculateBrowserUseV3TokenCost } from '@/lib/model-pricing'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import type { Entitlements } from '@/lib/app-contracts'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { BROWSER_USE_TASK_INIT_USD, calculateBrowserUseV3TokenCost } from '@/server/ai/gateway/model-pricing'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   buildInsufficientCreditsPayload,
   billableBudgetCentsFromProviderUsd,
@@ -16,8 +16,8 @@ import {
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
-} from '@/lib/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+} from '@/server/billing/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 300
 

@@ -1,15 +1,15 @@
 import { NextRequest } from 'next/server'
 import { experimental_generateVideo as generateVideo } from 'ai'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import { getGatewayVideoModel } from '@/lib/ai-gateway'
-import type { VideoSubMode } from '@/lib/model-types'
-import { getVideoModelsBySubMode } from '@/lib/model-data'
-import { calculateVideoCostOrNull } from '@/lib/model-pricing'
-import { uploadBuffer, keyForOutput, deleteObject } from '@/lib/r2'
-import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import type { Entitlements } from '@/lib/app-contracts'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { convex } from '@/server/database/convex'
+import { getGatewayVideoModel } from '@/server/ai/gateway/ai-gateway'
+import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
+import { getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
+import { calculateVideoCostOrNull } from '@/server/ai/gateway/model-pricing'
+import { uploadBuffer, keyForOutput, deleteObject } from '@/server/storage/r2'
+import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -18,8 +18,8 @@ import {
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
-} from '@/lib/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+} from '@/server/billing/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 300
 

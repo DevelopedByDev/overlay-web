@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { DEFAULT_MODEL_ID } from '../src/lib/model-types'
+import { DEFAULT_MODEL_ID } from '../src/shared/ai/gateway/model-types'
 import { internalMutation, mutation, query } from './_generated/server'
 import { internal } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'

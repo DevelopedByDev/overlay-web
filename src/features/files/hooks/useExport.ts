@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { htmlToMarkdown, chatMessagesToMarkdown } from '@/lib/export/markdown'
-import { exportChatToJSON, exportNoteToJSON } from '@/lib/export/json'
+import { htmlToMarkdown, chatMessagesToMarkdown } from '@/features/files/lib/export/markdown'
+import { exportChatToJSON, exportNoteToJSON } from '@/features/files/lib/export/json'
 
 interface ExportMessage {
   role: string
@@ -85,7 +85,7 @@ export function useExport({ type, title, content, metadata }: UseExportOptions) 
           }
 
           case 'pdf': {
-            const { generatePdfFromMarkdown } = await import('@/lib/export/pdf')
+            const { generatePdfFromMarkdown } = await import('@/features/files/lib/export/pdf')
             const md = getMarkdownContent()
             const blob = await generatePdfFromMarkdown(title, md)
             downloadFile(blob, `${safeTitle}.pdf`)
@@ -94,7 +94,7 @@ export function useExport({ type, title, content, metadata }: UseExportOptions) 
 
           case 'docx': {
             const { generateDocxFromMessages, generateDocxFromMarkdown } = await import(
-              '@/lib/export/docx'
+              '@/features/files/lib/export/docx'
             )
             let blob: Blob
             if (type === 'chat' && Array.isArray(content)) {

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { MentionCategory, MentionItem, MentionType } from './mention-types'
 
 interface CachedData {

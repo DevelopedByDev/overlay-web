@@ -50,7 +50,7 @@ import {
   isLegacyFreeTierDefaultModelId,
   type GenerationMode,
   type VideoSubMode,
-} from '@/lib/model-types'
+} from '@/shared/ai/gateway/model-types'
 import {
   IMAGE_MODELS,
   VIDEO_MODELS,
@@ -59,15 +59,15 @@ import {
   getModelsByIntelligence,
   getVideoModelsBySubMode,
   modelSupportsZeroDataRetention,
-} from '@/lib/model-data'
+} from '@/shared/ai/gateway/model-data'
 import {
   ACT_MODEL_KEY,
   CHAT_MODEL_KEY,
   readStoredActModelId,
   readStoredAskModelIds,
-} from '@/lib/chat-model-prefs'
-import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
-import type { WebSourceItem } from '@/lib/web-sources'
+} from '@/shared/chat/chat-model-prefs'
+import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
+import type { WebSourceItem } from '@/shared/web/web-sources'
 import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
 import { ChatHistoryMobileBar, ChatHistorySidebar } from './chat/ChatHistorySidebar'
 import {
@@ -95,32 +95,32 @@ import {
   dispatchChatModified,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
-} from '@/lib/chat-title'
+} from '@/shared/chat/chat-title'
 import {
   fetchChatList,
   getCachedChatList,
   primeChatList,
   removeCachedChat,
   upsertCachedChat,
-} from '@/lib/chat-list-cache'
-import { useAsyncSessions } from '@/lib/async-sessions-store'
+} from '@/shared/chat/chat-list-cache'
+import { useAsyncSessions } from '@/shared/app/async-sessions-store'
 import { WebSourcesSidebar } from './WebSourcesSidebar'
 import { FileViewerPanel } from '@/features/files/components/FileViewer'
 import { DelayedTooltip } from './DelayedTooltip'
-import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
+import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
-import { buildSharePageUrl } from '@/lib/share-url'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { buildSharePageUrl } from '@/features/share/lib/share-url'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/providers/ConvexProviderWithWorkOS'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
-import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
-import type { SkillDraftSummary } from '@/lib/skill-drafts'
-import type { AutomationDraftSummary } from '@/lib/automation-drafts'
-import { warmIntegrationLogoCache } from '@/lib/integration-logo-cache'
+import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
+import type { SkillDraftSummary } from '@/features/automations/lib/skill-drafts'
+import type { AutomationDraftSummary } from '@/features/automations/lib/automation-drafts'
+import { warmIntegrationLogoCache } from '@/features/integrations/lib/integration-logo-cache'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import {
   CHAT_GEN_MODE_KEY,

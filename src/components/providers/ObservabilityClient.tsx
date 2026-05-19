@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import * as Sentry from '@sentry/nextjs'
 import posthog from 'posthog-js'
 import { useAuth } from '@/contexts/AuthContext'
-import { redactUrlForTelemetry } from '@/lib/safe-url'
+import { redactUrlForTelemetry } from '@/shared/security/safe-url'
 
 function posthogConfigured(): boolean {
   return Boolean(

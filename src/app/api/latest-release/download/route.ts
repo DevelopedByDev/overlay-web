@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   CACHE_DURATION,
   fetchLatestReleaseInfo,
-} from "@/lib/latest-release";
+} from "@/shared/web/latest-release";
 
 export async function GET() {
   try {

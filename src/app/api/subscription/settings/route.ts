@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getDynamicTopUpConfig, isRecognizedTopUpAmount } from '@/lib/stripe-billing'
-import { TOP_UP_MIN_AMOUNT_CENTS, derivePlanKind } from '@/lib/billing-pricing'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getDynamicTopUpConfig, isRecognizedTopUpAmount } from '@/server/billing/stripe-billing'
+import { TOP_UP_MIN_AMOUNT_CENTS, derivePlanKind } from '@/shared/billing/billing-pricing'
 
 type BillingSettingsResponse = {
   planKind: 'free' | 'paid'

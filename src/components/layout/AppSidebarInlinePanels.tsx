@@ -22,7 +22,7 @@ import {
   type ProjectSummary,
 } from '@overlay/app-core'
 import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/projects'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 type Project = ProjectSummary
 type ProjectChat = ProjectChatSummary

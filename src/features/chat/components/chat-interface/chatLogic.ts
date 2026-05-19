@@ -1,15 +1,15 @@
 import type { UIMessage } from 'ai'
 import { getToolName, isReasoningUIPart, isToolUIPart } from 'ai'
-import type { AutomationDraftSummary } from '@/lib/automation-drafts'
-import type { SkillDraftSummary } from '@/lib/skill-drafts'
-import type { WebSourceItem } from '@/lib/web-sources'
-import { overlayAppClient } from '@/lib/overlay-app-client'
-import { safeHttpUrl } from '@/lib/safe-url'
+import type { AutomationDraftSummary } from '@/features/automations/lib/automation-drafts'
+import type { SkillDraftSummary } from '@/features/automations/lib/skill-drafts'
+import type { WebSourceItem } from '@/shared/web/web-sources'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 import {
   normalizeAgentAssistantText,
   redactOpaqueNotebookFileIdsInVisibleText,
   splitRedactedThinkingSegments,
-} from '@/lib/agent-assistant-text'
+} from '@/shared/chat/agent-assistant-text'
 import { INTEGRATION_SERVICE_NAMES } from './constants'
 import type {
   AssistantVisualBlock,

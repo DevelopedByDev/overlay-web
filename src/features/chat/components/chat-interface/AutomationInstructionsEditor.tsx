@@ -13,7 +13,7 @@ import Typography from '@tiptap/extension-typography'
 import { Bold, Code, Italic, List, ListOrdered, ListTodo, Quote } from 'lucide-react'
 import { common, createLowlight } from 'lowlight'
 import { overlayMentionSuggestion } from './tiptap-mention-suggestion'
-import { serializeMentionToken } from '@/lib/mention-tokens'
+import { serializeMentionToken } from '@/shared/knowledge/mention-tokens'
 import type { MentionType } from './mention-types'
 
 const lowlight = createLowlight(common)

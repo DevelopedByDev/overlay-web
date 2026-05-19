@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe, getBaseUrl } from '@/lib/stripe'
-import { getSession } from '@/lib/workos-auth'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { stripe, getBaseUrl } from '@/server/billing/stripe'
+import { getSession } from '@/server/auth/workos-auth'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import {
   clampPaidPlanAmountCents,
   clampTopUpAmountCents,
   formatDollarAmount,
-} from '@/lib/billing-pricing'
-import { getPlanQuantityForCheckout, isRecognizedTopUpAmount, resolvePaidUnitPriceId } from '@/lib/stripe-billing'
+} from '@/shared/billing/billing-pricing'
+import { getPlanQuantityForCheckout, isRecognizedTopUpAmount, resolvePaidUnitPriceId } from '@/server/billing/stripe-billing'
 
 export async function POST(request: NextRequest) {
   try {

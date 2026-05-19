@@ -8,7 +8,7 @@ import {
   detectDaytonaResourceProfileId,
   type DaytonaWorkspaceState,
   type DaytonaWorkspaceTier,
-} from '../src/lib/daytona-pricing'
+} from '../src/server/ai/sandbox/daytona-pricing'
 
 const OVERLAY_WORKSPACE_LABELS = {
   overlay: 'true',

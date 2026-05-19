@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
+import { getSession } from '@/server/auth/workos-auth'
 
 export async function GET() {
   const session = await getSession()

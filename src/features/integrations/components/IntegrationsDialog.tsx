@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { Loader2, X, Search } from 'lucide-react'
 import { resolveIntegrationName, truncateIntegrationDescription } from '@overlay/app-core'
 import { IntegrationDialogRowSkeleton } from '@/components/ui/Skeleton'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 interface PickerItem {
   slug: string

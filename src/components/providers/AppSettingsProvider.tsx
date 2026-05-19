@@ -12,8 +12,8 @@ import {
   useRef,
   useState,
 } from 'react'
-import { getPresetCssVars, isThemePresetId } from '@/lib/themes'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { getPresetCssVars, isThemePresetId } from '@/shared/app/themes'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 export type { AppSettings, ChatStreamingMode, ThemePreference, ThemePresetId } from '@overlay/app-core'
 

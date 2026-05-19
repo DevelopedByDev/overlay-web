@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
   isLegacyFreeTierDefaultModelId,
-} from '@/lib/model-types'
-import { canUsePaidBudgetFeatures } from '@/lib/billing-runtime'
-import { convex } from '@/lib/convex'
+} from '@/shared/ai/gateway/model-types'
+import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
+import { convex } from '@/server/database/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type ConversationDoc = {

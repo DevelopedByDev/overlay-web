@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og'
-import { convex } from '@/lib/convex'
+import { convex } from '@/server/database/convex'
 
 export const runtime = 'nodejs'
 export const alt = 'Shared chat — Overlay'

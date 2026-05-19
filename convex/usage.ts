@@ -2,10 +2,10 @@ import { v } from 'convex/values'
 import { mutation, query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from './_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from './lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from './lib/authDebug'
-import { FREE_TIER_AUTO_MODEL_ID } from '../src/lib/model-types'
+import { FREE_TIER_AUTO_MODEL_ID } from '../src/shared/ai/gateway/model-types'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from './lib/storageQuota'
-import { roundCurrencyAmount } from '../src/lib/daytona-pricing'
-import { derivePlanAmountCents, derivePlanKind } from '../src/lib/billing-pricing'
+import { roundCurrencyAmount } from '../src/server/ai/sandbox/daytona-pricing'
+import { derivePlanAmountCents, derivePlanKind } from '../src/shared/billing/billing-pricing'
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []

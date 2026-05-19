@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppSettings, ChatModePreference, ThemePresetId } from '@overlay/app-core'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { isThemePresetId } from '@/lib/themes'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { isThemePresetId } from '@/shared/app/themes'
 
 const MAX_MODEL_ID_LENGTH = 160
 const MAX_ASK_MODEL_IDS = 4

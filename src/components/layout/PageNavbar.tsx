@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
-import { AUDIENCE_PAGES, getMarketingAppHref, MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/lib/marketing";
+import { AUDIENCE_PAGES, getMarketingAppHref, MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/features/landing/lib/marketing";
 
 const DESKTOP_NAV = [
   { href: "/home#product", label: "Product", match: (pathname: string) => pathname === "/home" },

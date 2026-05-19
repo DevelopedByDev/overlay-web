@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Globe, Loader2, Lock, MoreVertical, Share2 } from 'lucide-react'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
-import { buildSharePageUrl } from '@/lib/share-url'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { buildSharePageUrl } from '@/features/share/lib/share-url'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 interface FileShareMenuProps {
   fileId: string

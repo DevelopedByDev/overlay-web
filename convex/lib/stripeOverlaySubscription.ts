@@ -1,5 +1,5 @@
 import type Stripe from 'stripe'
-import { quantityToPlanAmountCents } from '../../src/lib/billing-pricing'
+import { quantityToPlanAmountCents } from '../../src/shared/billing/billing-pricing'
 
 function resolveStripeEnvValue(primary: string, devKey: string): string | undefined {
   if (process.env.VERCEL_ENV === 'production') {

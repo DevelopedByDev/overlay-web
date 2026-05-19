@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 import posthog from "posthog-js";
-import { redactUrlForTelemetry } from "@/lib/safe-url";
+import { redactUrlForTelemetry } from "@/shared/security/safe-url";
 
 // Always use overlay:// for deep links (registered in WorkOS for both environments)
 const APP_PROTOCOL = 'overlay';

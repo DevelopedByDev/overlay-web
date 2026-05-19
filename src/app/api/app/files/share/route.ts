@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { convex } from '@/server/database/convex'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 function buildShareUrl(request: NextRequest, token: string): string {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/lib/service-auth'
-import { hasValidSessionCookieSignature } from '@/lib/session-cookie-signature'
+import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
+import { hasValidSessionCookieSignature } from '@/server/auth/session-cookie-signature'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 const CSP_REPORT_PATH = '/api/security/csp-report'

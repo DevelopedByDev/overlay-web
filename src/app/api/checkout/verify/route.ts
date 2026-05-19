@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe } from '@/lib/stripe'
-import { getSession } from '@/lib/workos-auth'
-import { convex } from '@/lib/convex'
-import { quantityToPlanAmountCents } from '@/lib/billing-pricing'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { resolvePaidUnitPriceId } from '@/lib/stripe-billing'
+import { stripe } from '@/server/billing/stripe'
+import { getSession } from '@/server/auth/workos-auth'
+import { convex } from '@/server/database/convex'
+import { quantityToPlanAmountCents } from '@/shared/billing/billing-pricing'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { resolvePaidUnitPriceId } from '@/server/billing/stripe-billing'
 
 function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscription) {
   const now = Date.now()

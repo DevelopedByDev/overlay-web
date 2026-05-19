@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateObject } from 'ai'
 import { z } from 'zod'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { convex } from '@/server/database/convex'
 import {
   FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
   isLegacyFreeTierDefaultModelId,
-} from '@/lib/model-types'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/lib/model-pricing'
-import { getGatewayLanguageModel } from '@/lib/ai-gateway'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import type { Entitlements } from '@/lib/app-contracts'
+} from '@/shared/ai/gateway/model-types'
+import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/gateway/model-pricing'
+import { getGatewayLanguageModel } from '@/server/ai/gateway/ai-gateway'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
@@ -23,8 +23,8 @@ import {
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
-} from '@/lib/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+} from '@/server/billing/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 120
 

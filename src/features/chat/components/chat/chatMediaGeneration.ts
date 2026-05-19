@@ -1,6 +1,6 @@
 import { cloneGenerationResultsMap } from '@overlay/chat-core'
-import { overlayAppClient } from '@/lib/overlay-app-client'
-import type { VideoSubMode } from '@/lib/model-types'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
 import { buildMediaSummary } from '../chat-interface/chatLogic'
 import type { ConversationRuntime, ConversationUiState, GenerationResult } from '../chat-interface/types'
 

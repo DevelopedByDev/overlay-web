@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
-import { getPostHogClient } from '@/lib/posthog-server'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getSession } from '@/server/auth/workos-auth'
+import { getPostHogClient } from '@/server/observability/posthog-server'
 
 export async function POST() {
   try {

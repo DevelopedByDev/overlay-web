@@ -4,7 +4,7 @@
 // with typed transport in @overlay/api-client.
 import { useState, useEffect, useCallback } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'lucide-react'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 interface MemoryListItem {
   key: string

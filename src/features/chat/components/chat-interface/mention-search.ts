@@ -5,7 +5,7 @@
  * TipTap suggestion plugin). Same fetch + cache + scoring policy as `useMentionData`.
  */
 
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { MentionCategory, MentionItem, MentionType } from './mention-types'
 
 interface CachedData {

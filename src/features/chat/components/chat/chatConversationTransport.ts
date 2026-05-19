@@ -1,4 +1,4 @@
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { ChatMessageMetadata, ChatOutput } from '../chat-interface/types'
 
 export type RawConversationMessage = {

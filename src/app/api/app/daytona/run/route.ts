@@ -1,7 +1,7 @@
 import { posix as pathPosix } from 'node:path'
 import type { Sandbox } from '@daytonaio/sdk'
 import { NextRequest, NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
+import { convex } from '@/server/database/convex'
 import {
   accrueWorkspaceSpend,
   downloadSandboxFile,
@@ -13,14 +13,14 @@ import {
   startIfNeeded,
   uploadSandboxBuffer,
   type DaytonaRuntime,
-} from '@/lib/daytona'
-import { computeDaytonaRuntimeCost, getDaytonaResourceProfile } from '@/lib/daytona-pricing'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { classifyOutputType } from '@/lib/output-types'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
-import { getSession } from '@/lib/workos-auth'
-import type { Entitlements } from '@/lib/app-contracts'
+} from '@/server/ai/sandbox/daytona'
+import { computeDaytonaRuntimeCost, getDaytonaResourceProfile } from '@/server/ai/sandbox/daytona-pricing'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { classifyOutputType } from '@/shared/tools/output-types'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { getSession } from '@/server/auth/workos-auth'
+import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   buildInsufficientCreditsPayload,
   ensureBudgetAvailable,
@@ -29,9 +29,9 @@ import {
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
-} from '@/lib/billing-runtime'
-import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl, deleteObject } from '@/lib/r2'
-import { checkGlobalR2Budget } from '@/lib/r2-budget'
+} from '@/server/billing/billing-runtime'
+import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl, deleteObject } from '@/server/storage/r2'
+import { checkGlobalR2Budget } from '@/server/storage/r2-budget'
 
 export const maxDuration = 300
 

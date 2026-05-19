@@ -6,7 +6,7 @@ import {
   getStorageLimitBytes,
   type LegacyOverlayTier,
   type OverlayPlanKind,
-} from '../../src/lib/billing-pricing'
+} from '../../src/shared/billing/billing-pricing'
 
 type SubscriptionCtx = MutationCtx
 

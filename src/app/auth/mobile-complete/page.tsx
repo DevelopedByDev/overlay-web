@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   clearStoredMobilePkceChallenge,
   getStoredMobilePkceChallenge,
-} from '@/lib/mobile-auth-client'
+} from '@/shared/auth/mobile-auth-client'
 
 export default function MobileCompletePage() {
   const [status, setStatus] = useState<'loading' | 'error'>('loading')

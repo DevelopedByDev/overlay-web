@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ConvexHttpClient } from 'convex/browser'
 
 import { api } from '../../../../../convex/_generated/api'
-import { clearSession, getSession } from '@/lib/workos-auth'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { deleteObjects } from '@/lib/r2'
-import { stripe } from '@/lib/stripe'
+import { clearSession, getSession } from '@/server/auth/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { deleteObjects } from '@/server/storage/r2'
+import { stripe } from '@/server/billing/stripe'
 import { WorkOS } from '@workos-inc/node'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 /**
  * POST /api/account/delete

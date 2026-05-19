@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { AUDIENCE_PAGES } from "@/lib/marketing";
+import { AUDIENCE_PAGES } from "@/features/landing/lib/marketing";
 
 export function AudienceShowcase({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark";

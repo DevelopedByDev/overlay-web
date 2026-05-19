@@ -8,8 +8,8 @@ import {
 import { internal, api } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
-import { calculateEmbeddingCostOrNull } from '../src/lib/model-pricing'
-import { applyMarkupToDollars } from '../src/lib/billing-pricing'
+import { calculateEmbeddingCostOrNull } from '../src/server/ai/gateway/model-pricing'
+import { applyMarkupToDollars } from '../src/shared/billing/billing-pricing'
 
 export type HybridSearchChunk = {
   text: string

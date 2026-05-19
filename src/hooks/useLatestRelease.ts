@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { LATEST_RELEASE_DOWNLOAD_PATH } from "@/lib/latest-release";
+import { LATEST_RELEASE_DOWNLOAD_PATH } from "@/shared/web/latest-release";
 
 interface ReleaseInfo {
   version: string;

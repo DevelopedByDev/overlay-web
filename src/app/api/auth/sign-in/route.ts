@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateWithPassword } from '@/lib/workos-auth'
-import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/lib/rate-limit'
+import { authenticateWithPassword } from '@/server/auth/workos-auth'
+import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/server/security/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {

@@ -5,7 +5,7 @@ import { ArrowUpRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { WorkspaceCanvas } from "@/features/landing/components/ProductCanvases";
-import { MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/lib/marketing";
+import { MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/features/landing/lib/marketing";
 
 const HERO_LABELS = [
   "chat",

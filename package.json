@@ -37,10 +37,10 @@
     "test:auth:cookie": "node --experimental-strip-types scripts/auth-cookie-inspect.ts",
     "test:auth:refresh": "node --experimental-strip-types scripts/auth-refresh-check.ts",
     "test:automations": "node --test --experimental-strip-types src/lib/automations.test.ts",
-    "test:billing": "node --test --experimental-strip-types src/lib/billing-pricing.test.ts",
+    "test:billing": "node --test --experimental-strip-types src/shared/billing/billing-pricing.test.ts",
     "pricing:sync": "node --experimental-strip-types scripts/sync-vercel-ai-gateway-pricing.ts",
-    "test:pricing": "tsx --test src/lib/model-pricing.test.ts",
-    "test:chat-history": "node --test --experimental-strip-types src/lib/chat-history-persistence.test.ts",
+    "test:pricing": "tsx --test src/server/ai/gateway/model-pricing.test.ts",
+    "test:chat-history": "node --test --experimental-strip-types src/server/chat/chat-history-persistence.test.ts",
     "test:file-text-search": "node --test --experimental-strip-types src/lib/file-text-search.test.ts",
     "test:daytona:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-tool-smoke.ts",
     "test:daytona:reconcile:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-reconcile-smoke.ts",
@@ -60,7 +60,7 @@
     "stripe:setup:variable-pricing": "node --env-file=.env.local --experimental-strip-types scripts/stripe-variable-pricing-setup.ts",
     "billing:migrate:staging": "node --env-file=.env.local --experimental-strip-types scripts/variable-pricing-migration.ts",
     "billing:audit:stripe": "node --experimental-strip-types scripts/stripe-dynamic-pricing-audit.ts",
-    "test:auth:native-validation": "node --test --experimental-strip-types src/lib/native-auth-validation.test.ts src/lib/native-refresh-rate-limit.test.ts",
+    "test:auth:native-validation": "node --test --experimental-strip-types src/server/auth/native-auth-validation.test.ts src/server/auth/native-refresh-rate-limit.test.ts",
     "test:auth:native-smoke": "node --env-file=.env.local --experimental-strip-types scripts/native-auth-security-smoke.ts"
   },
   "dependencies": {
@@ -146,6 +146,7 @@
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "server-only": "^0.0.1",
     "stripe": "^20.3.1",
     "zod": "^3.25.76"
   },

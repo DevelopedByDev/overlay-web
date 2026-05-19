@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateNativeWithCode } from '@/lib/workos-auth'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
-import { logSecurityEvent } from '@/lib/security-events'
+import { authenticateNativeWithCode } from '@/server/auth/workos-auth'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { logSecurityEvent } from '@/shared/security/security-events'
 import {
   isValidNativeAuthCode,
   isValidPkceVerifier,
-} from '@/lib/native-auth-validation'
+} from '@/server/auth/native-auth-validation'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',

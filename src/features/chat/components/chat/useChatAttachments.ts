@@ -6,7 +6,7 @@ import {
   pastedTextFileName,
   shouldAttachPastedTextAsFile,
 } from '@overlay/chat-core'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SUPPORTED_INPUT_IMAGE_TYPES } from '../chat-interface/constants'
 import type { AttachedImage, PendingChatDocument } from '../chat-interface/types'
 

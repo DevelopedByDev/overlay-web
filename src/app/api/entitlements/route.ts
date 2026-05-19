@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
-import { logAuthDebug, summarizeSessionForLog } from '@/lib/auth-debug'
-import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
+import { convex } from '@/server/database/convex'
+import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
+import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getSession } from '@/server/auth/workos-auth'
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'

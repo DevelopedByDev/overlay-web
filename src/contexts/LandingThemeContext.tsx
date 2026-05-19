@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
-import { LANDING_THEME_STORAGE_KEY } from "@/lib/landingThemeConstants";
+import { LANDING_THEME_STORAGE_KEY } from "@/features/landing/lib/landingThemeConstants";
 
 export type LandingTheme = "light" | "dark";
 

@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/nextjs'
 import posthog from 'posthog-js'
-import { sanitizeSentryEvent } from '@/lib/sentry-sanitize'
+import { sanitizeSentryEvent } from '@/shared/security/sentry-sanitize'
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,

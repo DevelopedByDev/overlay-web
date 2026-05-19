@@ -1,9 +1,9 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerProviderKey } from '@/lib/server-provider-keys'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { getBaseUrl } from '@/lib/url'
+import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { getBaseUrl } from '@/shared/web/url'
 
 type ComposioAppRecord = {
   key?: string

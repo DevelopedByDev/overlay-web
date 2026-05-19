@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
-import type { Entitlements } from '@/lib/app-contracts'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import type { Entitlements } from '@/shared/app/app-contracts'
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 const ESTIMATED_TRANSCRIPTION_SECONDS = 60

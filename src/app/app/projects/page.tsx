@@ -1,4 +1,4 @@
-import { getSession } from '@/lib/workos-auth'
+import { getSession } from '@/server/auth/workos-auth'
 import dynamic from 'next/dynamic'
 import { redirect } from 'next/navigation'
 

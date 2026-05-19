@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import { addMemory, listMemories, removeMemory } from '@/lib/app-store'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { memoriesToClientListRows, segmentMemoryForIngestion } from '@/lib/memory-display-segments'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { convex } from '@/server/database/convex'
+import { addMemory, listMemories, removeMemory } from '@/shared/app/app-store'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { memoriesToClientListRows, segmentMemoryForIngestion } from '@/shared/knowledge/memory-display-segments'
 import type { Id } from '../../../../../convex/_generated/dataModel'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 type MemoryDoc = {
   _id: string

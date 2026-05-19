@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { logSecurityEvent } from '@/lib/security-events'
-import { rateLimitByIp } from '@/lib/rate-limit'
+import { logSecurityEvent } from '@/shared/security/security-events'
+import { rateLimitByIp } from '@/server/security/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {

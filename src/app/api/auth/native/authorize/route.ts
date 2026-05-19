@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getNativeAuthorizationUrl, normalizeCodeChallenge } from '@/lib/workos-auth'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
-import { logSecurityEvent } from '@/lib/security-events'
+import { getNativeAuthorizationUrl, normalizeCodeChallenge } from '@/server/auth/workos-auth'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { logSecurityEvent } from '@/shared/security/security-events'
 import {
   isAllowedNativeRedirectUri,
   isAllowedWorkOsAuthorizationUrl,
   isNativeAuthProvider,
   isValidNativeAuthState,
-} from '@/lib/native-auth-validation'
+} from '@/server/auth/native-auth-validation'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',

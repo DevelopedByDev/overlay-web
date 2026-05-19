@@ -4,7 +4,7 @@ import { MoonStar, SunMedium } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
-import { MARKETING_GITHUB_URL } from "@/lib/marketing";
+import { MARKETING_GITHUB_URL } from "@/features/landing/lib/marketing";
 
 export function MarketingFooter() {
   const landing = useLandingThemeOptional();

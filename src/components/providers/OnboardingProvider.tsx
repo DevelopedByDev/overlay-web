@@ -11,7 +11,7 @@ import {
 } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 import type { TourStep } from '@/features/account/components/OnboardingTour'
 

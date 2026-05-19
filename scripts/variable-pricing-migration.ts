@@ -11,7 +11,7 @@ import {
   derivePlanKind,
   legacyTierPlanAmountCents,
   planAmountCentsToQuantity,
-} from '../src/lib/billing-pricing.ts'
+} from '../src/shared/billing/billing-pricing.ts'
 
 loadLocalEnv()
 

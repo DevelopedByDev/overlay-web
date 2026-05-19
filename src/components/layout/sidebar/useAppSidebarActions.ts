@@ -3,10 +3,10 @@
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { OverlaySidebarAction, OverlaySidebarActionKey } from '@overlay/app-core'
-import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
-import { dispatchChatCreated } from '@/lib/chat-title'
-import { upsertCachedChat } from '@/lib/chat-list-cache'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { readNewChatModelFieldsFromStorage } from '@/shared/chat/chat-model-prefs'
+import { dispatchChatCreated } from '@/shared/chat/chat-title'
+import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
 
 export interface UseAppSidebarActionsOptions {

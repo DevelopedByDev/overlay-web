@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { runActTurnForScheduledAutomation } from '@/lib/agent/run-act-turn'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { runActTurnForScheduledAutomation } from '@/server/agent/run-act-turn'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export const maxDuration = 800

@@ -1,11 +1,11 @@
 import { cookies } from 'next/headers'
 import { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { ONBOARDING_SEEN_COOKIE } from '@/lib/onboarding-cookie'
+import { getSession } from '@/server/auth/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
 
 export async function GET(request: NextRequest) {
   const session = await getSession()

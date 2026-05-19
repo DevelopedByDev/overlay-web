@@ -9,7 +9,7 @@ import { createConversationUiState } from '@overlay/chat-core'
 import {
   createPersistentChatTransport,
   getCloudflareChatStreamRelayApi,
-} from '@/lib/cloudflare-chat-transport'
+} from '@/shared/chat/cloudflare-chat-transport'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 
 function createConversationRuntime(

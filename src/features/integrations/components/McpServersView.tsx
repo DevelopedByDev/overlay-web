@@ -23,7 +23,7 @@ import {
   type TestMcpServerResponse,
 } from '@overlay/app-core'
 import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 interface DialogState {
   mode: 'create' | 'edit'

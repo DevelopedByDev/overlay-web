@@ -20,10 +20,10 @@ import {
 } from '@overlay/app-core'
 import { ExtensionPageHeader, IntegrationsPanel } from '@overlay/modules-react/extensions'
 import { IntegrationListSkeleton } from '@/components/ui/Skeleton'
-import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/lib/integrations-events'
-import { setIntegrationLogoUrl } from '@/lib/integration-logo-cache'
+import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/features/integrations/lib/integrations-events'
+import { setIntegrationLogoUrl } from '@/features/integrations/lib/integration-logo-cache'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 const LIST_PAGE_SIZE = 8
 

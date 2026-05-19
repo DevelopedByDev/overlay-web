@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
 import type { NextRequest } from 'next/server'
 
 type AppSubscriptionResponse = {

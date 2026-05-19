@@ -6,7 +6,7 @@ import {
   derivePlanAmountCents,
   derivePlanKind,
   planAmountCentsToQuantity,
-} from '../src/lib/billing-pricing'
+} from '../src/shared/billing/billing-pricing'
 
 // Minimum gap between two period-start timestamps that counts as a genuine
 // rollover. Anything smaller is treated as the same billing cycle (repeated

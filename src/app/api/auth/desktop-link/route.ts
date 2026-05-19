@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
+import { getSession } from '@/server/auth/workos-auth'
 import { createHash, randomBytes } from 'crypto'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { summarizeErrorForLog } from '@/lib/safe-log'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import {
   decryptSessionTransferPayload,
   encryptSessionTransferPayload,
-} from '@/lib/session-transfer-crypto'
-import { normalizeCodeChallenge } from '@/lib/workos-auth'
+} from '@/server/auth/session-transfer-crypto'
+import { normalizeCodeChallenge } from '@/server/auth/workos-auth'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',

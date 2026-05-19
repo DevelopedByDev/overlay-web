@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
 import type { Doc, Id } from './_generated/dataModel'
-import { derivePlanKind } from '../src/lib/billing-pricing'
+import { derivePlanKind } from '../src/shared/billing/billing-pricing'
 
 const automationSchedule = v.object({
   kind: v.union(

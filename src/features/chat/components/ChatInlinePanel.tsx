@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { MessageSquare, Check, Pencil, Trash2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
-import { useAsyncSessions } from '@/lib/async-sessions-store'
+import { useAsyncSessions } from '@/shared/app/async-sessions-store'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
@@ -16,9 +16,9 @@ import {
   type ChatCreatedDetail,
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
-} from '@/lib/chat-title'
-import { fetchChatList, getCachedChatList, removeCachedChat, upsertCachedChat } from '@/lib/chat-list-cache'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+} from '@/shared/chat/chat-title'
+import { fetchChatList, getCachedChatList, removeCachedChat, upsertCachedChat } from '@/shared/chat/chat-list-cache'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'

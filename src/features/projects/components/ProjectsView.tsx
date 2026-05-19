@@ -11,7 +11,7 @@ import {
   type ChatCreatedDetail,
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
-} from '@/lib/chat-title'
+} from '@/shared/chat/chat-title'
 import {
   FILES_CHANGED_EVENT,
   PROJECT_META_UPDATED_EVENT,
@@ -37,8 +37,8 @@ import { FileViewerSkeleton } from '@/components/ui/Skeleton'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@/features/files/components/FileViewer'
 import { FileShareMenu } from '@/features/files/components/FileShareMenu'
-import { buildSharePageUrl } from '@/lib/share-url'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { buildSharePageUrl } from '@/features/share/lib/share-url'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 type HubChat = ProjectChatSummary
 type ProjectFileRecord = ProjectFileSummary

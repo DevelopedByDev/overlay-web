@@ -2,11 +2,11 @@
  * Lightweight sanity checks for unified tool policy vs bucket mapping.
  * Run: npx tsx scripts/unified-tools-sanity.ts   (or: node --experimental-strip-types)
  */
-import { overlayToolIdSet } from '../src/lib/tools/policy.ts'
+import { overlayToolIdSet } from '../src/server/tools/tools/policy.ts'
 import {
   shouldPersistToolInvocation,
   toolCostBucketForId,
-} from '../src/lib/tools/tool-buckets.ts'
+} from '../src/server/tools/tools/tool-buckets.ts'
 
 function fail(msg: string): never {
   console.error(msg)

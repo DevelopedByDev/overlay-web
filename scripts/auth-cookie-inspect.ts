@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto'
-import { summarizeSessionForLog } from '../src/lib/auth-debug.ts'
-import { decryptSessionCookiePayload } from '../src/lib/session-transfer-crypto.ts'
+import { summarizeSessionForLog } from '../src/server/auth/auth-debug.ts'
+import { decryptSessionCookiePayload } from '../src/server/auth/session-transfer-crypto.ts'
 
 function getArg(name: string): string | null {
   const exact = `--${name}`

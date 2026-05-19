@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const SOURCE_URL = 'https://ai-gateway.vercel.sh/v1/models'
-const OUTPUT_PATH = path.join(process.cwd(), 'src/lib/generated/vercel-ai-gateway-pricing.ts')
+const OUTPUT_PATH = path.join(process.cwd(), 'src/shared/ai/gateway/generated/vercel-ai-gateway-pricing.ts')
 
 type GatewayModelResponse = {
   id: string

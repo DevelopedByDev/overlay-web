@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import posthog from 'posthog-js'
 import { FileViewer, getFileType, isEditableType } from '@/features/files/components/FileViewer'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   FILES_CHANGED_EVENT,
   IMPORT_MEMORY_PROMPT,

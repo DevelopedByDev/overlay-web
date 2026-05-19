@@ -11,12 +11,12 @@ import { DeleteAccountSection } from '@/features/account/components/DeleteAccoun
 import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { PageNavbar } from '@/components/layout/PageNavbar'
-import { formatBytes } from '@/lib/storage-limits'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { formatBytes } from '@/shared/storage/storage-limits'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   getStoredDesktopPkceChallenge,
   persistMobilePkceChallengeFromUrl,
-} from '@/lib/mobile-auth-client'
+} from '@/shared/auth/mobile-auth-client'
 import {
   marketingBody,
   marketingHeading,
@@ -24,7 +24,7 @@ import {
   marketingPageTitle,
   marketingPanel,
   marketingPanelLg,
-} from '@/lib/landingPageStyles'
+} from '@/features/landing/lib/landingPageStyles'
 import type { AccountEntitlements, BillingSettings, TopUpHistoryItem } from '@overlay/app-core'
 import { normalizeTopUpDraft } from '@overlay/app-core/settings-account'
 import {

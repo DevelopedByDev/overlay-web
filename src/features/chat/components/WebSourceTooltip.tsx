@@ -2,9 +2,9 @@
 
 import React, { useRef, useState, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import type { WebSourceItem } from '@/lib/web-sources'
-import { webSourceDisplayKey } from '@/lib/web-sources'
-import { safeHttpUrl } from '@/lib/safe-url'
+import type { WebSourceItem } from '@/shared/web/web-sources'
+import { webSourceDisplayKey } from '@/shared/web/web-sources'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 
 const SHOW_DELAY_MS = 200
 const HIDE_GRACE_MS = 120

@@ -6,7 +6,7 @@ import {
   FolderOpen, Folder, ChevronRight, MessageSquare,
   BookOpen, Loader2, Trash2, Pencil,
 } from 'lucide-react'
-import { CHAT_TITLE_UPDATED_EVENT, dispatchChatDeleted, type ChatTitleUpdatedDetail } from '@/lib/chat-title'
+import { CHAT_TITLE_UPDATED_EVENT, dispatchChatDeleted, type ChatTitleUpdatedDetail } from '@/shared/chat/chat-title'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import {
   ProjectFileTreeNode,
@@ -15,7 +15,7 @@ import {
   type ProjectNote,
   type ProjectFile,
 } from '@/features/projects/components/ProjectFileTree'
-import { readNewChatModelFieldsFromStorage } from '@/lib/chat-model-prefs'
+import { readNewChatModelFieldsFromStorage } from '@/shared/chat/chat-model-prefs'
 import {
   PROJECT_META_UPDATED_EVENT,
   createProjectFolderRequest,
@@ -37,7 +37,7 @@ import {
   childProjects,
 } from '@overlay/app-core'
 import { ProjectsSidebarFrame } from '@overlay/modules-react/projects'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 // ─── Project tree node ────────────────────────────────────────────────────────
 

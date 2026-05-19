@@ -63,7 +63,7 @@ import { common, createLowlight } from 'lowlight'
 import SlashMenu, { type SlashMenuItem } from './SlashMenu'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   FILES_CHANGED_EVENT,
   NOTEBOOK_INLINE_MATH_MIGRATION_REGEX,
@@ -99,12 +99,12 @@ import {
   INLINE_DIFF_CSS,
   getPendingDiffs,
 } from '@/features/notebook/components/InlineDiffExtension'
-import { noteContentFromEditor } from '@/lib/notebook-editor-blocks'
-import { readStoredActModelId, ACT_MODEL_KEY } from '@/lib/chat-model-prefs'
+import { noteContentFromEditor } from '@/features/notebook/lib/notebook-editor-blocks'
+import { readStoredActModelId, ACT_MODEL_KEY } from '@/shared/chat/chat-model-prefs'
 import {
   getModelsByIntelligence,
   getChatModelDisplayName,
-} from '@/lib/model-data'
+} from '@/shared/ai/gateway/model-data'
 const MarkdownMessage = dynamic(() =>
   import('@/features/chat/components/MarkdownMessage').then((mod) => ({ default: mod.MarkdownMessage })),
 )

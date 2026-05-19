@@ -3,8 +3,8 @@
 import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
-import { dispatchChatDeleted } from '@/lib/chat-title'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { dispatchChatDeleted } from '@/shared/chat/chat-title'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { AutomationSummary } from '@overlay/app-core'
 import type { DeleteAutomationResponse } from '@overlay/app-core/automations'
 import {

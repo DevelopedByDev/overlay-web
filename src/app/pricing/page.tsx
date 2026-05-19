@@ -16,7 +16,7 @@ import {
   centsToDollarAmount,
   formatDollarAmount,
   getStorageLimitBytes,
-} from '@/lib/billing-pricing'
+} from '@/shared/billing/billing-pricing'
 import {
   marketingBody,
   marketingFeatureText,
@@ -24,8 +24,8 @@ import {
   marketingMuted,
   marketingPageTitle,
   marketingPanel,
-} from '@/lib/landingPageStyles'
-import { formatBytes } from '@/lib/storage-limits'
+} from '@/features/landing/lib/landingPageStyles'
+import { formatBytes } from '@/shared/storage/storage-limits'
 
 const TIER_STARTER_CENTS = 800
 const TIER_PRO_CENTS = 2_400

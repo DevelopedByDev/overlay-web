@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
-import { getTopUpPreferenceSnapshot } from '@/lib/billing-runtime'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
+import { convex } from '@/server/database/convex'
+import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getSession } from '@/server/auth/workos-auth'
 
 type ConvexEntitlements = {
   tier: 'free' | 'pro' | 'max'

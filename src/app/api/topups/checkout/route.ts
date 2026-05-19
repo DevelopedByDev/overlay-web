@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/workos-auth'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { stripe, getBaseUrl } from '@/lib/stripe'
-import { getTopUpPriceId, getTopUpQuantityForCheckout, isRecognizedTopUpAmount } from '@/lib/stripe-billing'
-import { clampTopUpAmountCents, formatDollarAmount } from '@/lib/billing-pricing'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { sameOriginPathUrl } from '@/lib/safe-url'
+import { getSession } from '@/server/auth/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { stripe, getBaseUrl } from '@/server/billing/stripe'
+import { getTopUpPriceId, getTopUpQuantityForCheckout, isRecognizedTopUpAmount } from '@/server/billing/stripe-billing'
+import { clampTopUpAmountCents, formatDollarAmount } from '@/shared/billing/billing-pricing'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { sameOriginPathUrl } from '@/shared/security/safe-url'
 
 function resolveReturnUrl(baseUrl: string, returnPath: unknown, state: 'success' | 'canceled') {
   const url = new URL(sameOriginPathUrl(baseUrl, returnPath, '/account'))

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { generateText } from 'ai'
-import { convex } from '@/lib/convex'
-import { getOpenRouterLanguageModel } from '@/lib/ai-gateway'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/lib/model-types'
-import { DEFAULT_CHAT_SUGGESTIONS } from '@/lib/chat-suggestions-defaults'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { getSession } from '@/lib/workos-auth'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { convex } from '@/server/database/convex'
+import { getOpenRouterLanguageModel } from '@/server/ai/gateway/ai-gateway'
+import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getSession } from '@/server/auth/workos-auth'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)

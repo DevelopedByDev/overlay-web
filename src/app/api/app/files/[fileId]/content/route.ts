@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { generatePresignedDownloadUrl } from '@/lib/r2'
-import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/lib/storage-keys'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { generatePresignedDownloadUrl } from '@/server/storage/r2'
+import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/server/storage/storage-keys'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const runtime = 'nodejs'
 

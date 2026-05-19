@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { clearSession } from '@/lib/workos-auth'
+import { clearSession } from '@/server/auth/workos-auth'
 
 export async function POST() {
   try {

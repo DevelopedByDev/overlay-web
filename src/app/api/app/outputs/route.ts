@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { isKnownOutputType } from '@/lib/output-types'
-import { deleteObject } from '@/lib/r2'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { isOwnedOutputR2Key } from '@/lib/storage-keys'
-import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { isKnownOutputType } from '@/shared/tools/output-types'
+import { deleteObject } from '@/server/storage/r2'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { isOwnedOutputR2Key } from '@/server/storage/storage-keys'
+import { convex } from '@/server/database/convex'
 
 type OutputFile = {
   _id: string

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { convex } from '@/server/database/convex'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 
 export async function GET(request: NextRequest) {
   try {

@@ -1,5 +1,5 @@
 import dynamic from 'next/dynamic'
-import { getSession } from '@/lib/workos-auth'
+import { getSession } from '@/server/auth/workos-auth'
 
 const ChatInterface = dynamic(() => import('@/features/chat/components/ChatInterface'))
 

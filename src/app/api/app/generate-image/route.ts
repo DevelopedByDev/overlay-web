@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateImage } from 'ai'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import { getGatewayImageModel } from '@/lib/ai-gateway'
-import { IMAGE_MODELS } from '@/lib/model-data'
-import { calculateImageCostOrNull } from '@/lib/model-pricing'
-import { uploadBuffer, keyForOutput } from '@/lib/r2'
-import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/lib/r2-budget'
-import { deleteObject } from '@/lib/r2'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import type { Entitlements } from '@/lib/app-contracts'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { convex } from '@/server/database/convex'
+import { getGatewayImageModel } from '@/server/ai/gateway/ai-gateway'
+import { IMAGE_MODELS } from '@/shared/ai/gateway/model-data'
+import { calculateImageCostOrNull } from '@/server/ai/gateway/model-pricing'
+import { uploadBuffer, keyForOutput } from '@/server/storage/r2'
+import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
+import { deleteObject } from '@/server/storage/r2'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -18,8 +18,8 @@ import {
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
-} from '@/lib/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+} from '@/server/billing/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 120
 

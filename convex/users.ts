@@ -7,7 +7,7 @@ import {
   DEFAULT_MARKUP_BASIS_POINTS,
   derivePlanAmountCents,
   derivePlanKind,
-} from '../src/lib/billing-pricing'
+} from '../src/shared/billing/billing-pricing'
 
 // Sync user profile from auth system (called after login).
 // For new users, always sets currentPeriodStart/End so the billingPeriodStart

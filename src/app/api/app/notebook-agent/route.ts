@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server'
 import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from 'ai'
 import { z } from 'zod'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import { getGatewayLanguageModel } from '@/lib/ai-gateway'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import type { Entitlements } from '@/lib/app-contracts'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { convex } from '@/server/database/convex'
+import { getGatewayLanguageModel } from '@/server/ai/gateway/ai-gateway'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
@@ -16,21 +16,21 @@ import {
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
-} from '@/lib/billing-runtime'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/lib/model-pricing'
-import { createNotebookTextEmitter } from '@/lib/notebook-agent-stream'
+} from '@/server/billing/billing-runtime'
+import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/gateway/model-pricing'
+import { createNotebookTextEmitter } from '@/server/agent/notebook-agent-stream'
 import {
   DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
-} from '@/lib/model-types'
-import { getInternalApiBaseUrl } from '@/lib/url'
-import { executeSearchKnowledge } from '@/lib/tools/overlay-executes'
-import type { OverlayToolsOptions } from '@/lib/tools/types'
+} from '@/shared/ai/gateway/model-types'
+import { getInternalApiBaseUrl } from '@/shared/web/url'
+import { executeSearchKnowledge } from '@/server/tools/tools/overlay-executes'
+import type { OverlayToolsOptions } from '@/server/tools/tools/types'
 import type { NotebookEdit, NotebookAgentStreamEvent } from '@overlay/app-core'
-import { NOTEBOOK_AGENT_PROMPT } from '@/lib/notebook-agent-prompts'
-import { resolveMentionsContext } from '@/lib/mention-resolver'
-import { summarizeErrorForLog } from '@/lib/safe-log'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { NOTEBOOK_AGENT_PROMPT } from '@/server/agent/notebook-agent-prompts'
+import { resolveMentionsContext } from '@/server/knowledge/mention-resolver'
+import { summarizeErrorForLog } from '@/shared/security/safe-log'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 120
 

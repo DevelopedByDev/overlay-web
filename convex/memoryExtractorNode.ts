@@ -6,8 +6,8 @@ import { api, internal } from "./_generated/api";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { calculateTokenCostOrNull } from "../src/lib/model-pricing";
-import { applyMarkupToDollars } from "../src/lib/billing-pricing";
+import { calculateTokenCostOrNull } from "../src/server/ai/gateway/model-pricing";
+import { applyMarkupToDollars } from "../src/shared/billing/billing-pricing";
 
 const GATEWAY_CHAT_URL =
   process.env.AI_GATEWAY_URL?.trim() ||

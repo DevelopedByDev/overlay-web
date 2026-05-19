@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
+import { convex } from '@/server/database/convex'
 import {
   DEFAULT_CONTEXT_CHARS,
   DEFAULT_MAX_MATCHES_PER_FILE,
@@ -8,11 +8,11 @@ import {
   MAX_QUERY_CHARS,
   dedupeFileIdsPreserveOrder,
   findSubstringMatchesInText,
-} from '@/lib/file-text-search'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
+} from '@/shared/storage/file-text-search'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 60
 

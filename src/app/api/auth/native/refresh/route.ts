@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { refreshSessionFromRefreshToken } from '@/lib/workos-auth'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
-import { getNativeRefreshTokenBucketKey } from '@/lib/native-refresh-rate-limit'
+import { refreshSessionFromRefreshToken } from '@/server/auth/workos-auth'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { getNativeRefreshTokenBucketKey } from '@/server/auth/native-refresh-rate-limit'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',

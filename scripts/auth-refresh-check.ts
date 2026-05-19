@@ -1,5 +1,5 @@
 import { WorkOS } from '@workos-inc/node'
-import { summarizeJwtForLog, summarizeOpaqueTokenForLog } from '../src/lib/auth-debug.ts'
+import { summarizeJwtForLog, summarizeOpaqueTokenForLog } from '../src/server/auth/auth-debug.ts'
 
 function getArg(name: string): string | null {
   const exact = `--${name}`

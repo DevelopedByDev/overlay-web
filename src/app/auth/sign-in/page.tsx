@@ -6,11 +6,11 @@ import Link from "next/link";
 import { PageNavbar } from "@/components/layout/PageNavbar";
 import { LandingThemeProvider, useLandingTheme } from "@/contexts/LandingThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { sanitizeClientAuthRedirect } from "@/lib/auth-redirect";
+import { sanitizeClientAuthRedirect } from "@/shared/auth/auth-redirect";
 import {
   persistMobilePkceChallengeFromUrl,
   resolveCodeChallengeForSso,
-} from "@/lib/mobile-auth-client";
+} from "@/shared/auth/mobile-auth-client";
 import {
   marketingAuthCard,
   marketingAuthMuted,
@@ -18,7 +18,7 @@ import {
   marketingPrimaryField,
   marketingSsoButton,
   marketingSubmitButton,
-} from "@/lib/landingPageStyles";
+} from "@/features/landing/lib/landingPageStyles";
 
 function SignInContent() {
   const { isLandingDark } = useLandingTheme();

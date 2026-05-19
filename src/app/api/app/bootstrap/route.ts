@@ -8,20 +8,20 @@ import {
   type Entitlements,
 } from '@overlay/app-core'
 import overlayAppConfig from '@/overlay.config'
-import { getSession } from '@/lib/workos-auth'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
+import { getSession } from '@/server/auth/workos-auth'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import {
   DEFAULT_MODEL_ID,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
-} from '@/lib/model-types'
+} from '@/shared/ai/gateway/model-types'
 import {
   AVAILABLE_MODELS,
   IMAGE_MODELS,
   VIDEO_MODELS,
-} from '@/lib/model-data'
+} from '@/shared/ai/gateway/model-data'
 
 export async function GET(request: NextRequest) {
   try {

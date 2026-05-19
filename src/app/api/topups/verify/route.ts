@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { stripe } from '@/lib/stripe'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { stripe } from '@/server/billing/stripe'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 async function findLatestPaidTopUpSession(userId: string) {
   const page = await stripe.checkout.sessions.list({ limit: 50 })

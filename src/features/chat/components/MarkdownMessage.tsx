@@ -17,22 +17,22 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import type { Pluggable } from 'unified'
-import { mergeGfmTableContinuationLines } from '@/lib/markdown-table-fix'
+import { mergeGfmTableContinuationLines } from '@/shared/markdown/markdown-table-fix'
 import {
   normalizeAgentAssistantText,
   stripThinkingPlaceholderMarkdown,
-} from '@/lib/agent-assistant-text'
-import type { SourceCitationMap } from '@/lib/ask-knowledge-context'
-import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } from '@/lib/web-sources'
-import { safeHttpUrl } from '@/lib/safe-url'
-import { shimIncompleteMarkdown } from '@/lib/shim-incomplete-markdown'
-import { normalizeAssistantMathMarkdown } from '@/lib/math-markdown-normalize'
+} from '@/shared/chat/agent-assistant-text'
+import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
+import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } from '@/shared/web/web-sources'
+import { safeHttpUrl } from '@/shared/security/safe-url'
+import { shimIncompleteMarkdown } from '@/shared/markdown/shim-incomplete-markdown'
+import { normalizeAssistantMathMarkdown } from '@/shared/markdown/math-markdown-normalize'
 import { WebSourceTooltip } from './WebSourceTooltip'
 import {
   getIntegrationLogoUrl,
   resolveSlugFromName,
   warmIntegrationLogoCache,
-} from '@/lib/integration-logo-cache'
+} from '@/features/integrations/lib/integration-logo-cache'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 

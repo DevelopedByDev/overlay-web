@@ -4,17 +4,17 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { AskModelSelectionMode } from '../chat-interface/types'
-import type { GenerationMode, VideoSubMode } from '@/lib/model-types'
+import type { GenerationMode, VideoSubMode } from '@/shared/ai/gateway/model-types'
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
-} from '@/lib/model-types'
-import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/model-data'
+} from '@/shared/ai/gateway/model-types'
+import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
 import {
   ACT_MODEL_KEY,
   CHAT_MODEL_KEY,
-} from '@/lib/chat-model-prefs'
+} from '@/shared/chat/chat-model-prefs'
 import {
   CHAT_GEN_MODE_KEY,
   IMAGE_MODEL_SELECTION_MODE_KEY,

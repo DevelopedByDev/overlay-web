@@ -10,11 +10,11 @@ import {
   type ChatDeletedDetail,
   type ChatModifiedDetail,
   type ChatTitleUpdatedDetail,
-} from '@/lib/chat-title'
+} from '@/shared/chat/chat-title'
 import {
   removeCachedChat,
   upsertCachedChat,
-} from '@/lib/chat-list-cache'
+} from '@/shared/chat/chat-list-cache'
 import type { Conversation, ConversationUiState } from '../chat-interface/types'
 
 export function useChatListEventSync({

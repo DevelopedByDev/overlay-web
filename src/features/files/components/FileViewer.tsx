@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { FileText, Music, FileQuestion, Download, Loader2, FileType } from 'lucide-react'
-import { safeHttpUrl } from '@/lib/safe-url'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 
 // ─── Type detection ───────────────────────────────────────────────────────────
 

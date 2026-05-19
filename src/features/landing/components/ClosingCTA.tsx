@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
-import { MARKETING_SALES_URL } from "@/lib/marketing";
+import { MARKETING_SALES_URL } from "@/features/landing/lib/marketing";
 
 export function ClosingCTA({
   theme,

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { getVerifiedAccessTokenClaims, debugAccessTokenVerification } from '../../../../../../convex/lib/auth'
-import { rateLimitByIp } from '@/lib/rate-limit'
+import { rateLimitByIp } from '@/server/security/rate-limit'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',

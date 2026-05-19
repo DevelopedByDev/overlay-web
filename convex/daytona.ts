@@ -4,8 +4,8 @@ import { requireAccessToken, requireServerSecret, validateServerSecret } from '.
 import {
   computeDaytonaRuntimeCost,
   roundCurrencyAmount,
-} from '../src/lib/daytona-pricing'
-import { applyMarkupToCents, centsToDollarAmount } from '../src/lib/billing-pricing'
+} from '../src/server/ai/sandbox/daytona-pricing'
+import { applyMarkupToCents, centsToDollarAmount } from '../src/shared/billing/billing-pricing'
 import { applyUsageEvents } from './usage'
 
 async function authorizeUserAccess(params: {

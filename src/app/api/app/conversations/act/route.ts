@@ -1,75 +1,75 @@
 import { after, NextRequest, NextResponse } from 'next/server'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from 'ai'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import { resolveMentionsContext } from '@/lib/mention-resolver'
-import { listMemories } from '@/lib/app-store'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { convex } from '@/server/database/convex'
+import { resolveMentionsContext } from '@/server/knowledge/mention-resolver'
+import { listMemories } from '@/shared/app/app-store'
 import {
   getGatewayLanguageModel,
   getGatewayParallelSearchTool,
   getGatewayPerplexitySearchTool,
   getOpenRouterLanguageModelCapturingRoutedModel,
-} from '@/lib/ai-gateway'
-import { getChatModelDisplayName, modelSupportsZeroDataRetention } from '@/lib/model-data'
-import { getChatModelFallbackCandidates } from '@/lib/model-fallbacks'
-import { userFacingOpenRouterError } from '@/lib/openrouter-service'
-import { createBrowserUnifiedTools } from '@/lib/composio-tools'
-import { createWebTools } from '@/lib/web-tools'
-import { createMcpToolSet } from '@/lib/mcp-tools'
+} from '@/server/ai/gateway/ai-gateway'
+import { getChatModelDisplayName, modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
+import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallbacks'
+import { userFacingOpenRouterError } from '@/server/ai/gateway/openrouter-service'
+import { createBrowserUnifiedTools } from '@/server/tools/composio-tools'
+import { createWebTools } from '@/server/web/web-tools'
+import { createMcpToolSet } from '@/server/tools/mcp-tools'
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
   isLegacyFreeTierDefaultModelId,
   isNvidiaNimChatModelId,
-} from '@/lib/model-types'
-import { MAX_TOOL_STEPS_ACT } from '@/lib/tools/policy'
+} from '@/shared/ai/gateway/model-types'
+import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
 import {
   allowedOverlayToolIdsForTurn,
   HIGH_RISK_TOOL_AUTHORIZATION_NOTE,
-} from '@/lib/tools/exposure-policy'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/lib/model-pricing'
-import { buildAutoRetrievalBundle } from '@/lib/ask-knowledge-context'
-import { buildDocumentContextBundle } from '@/lib/document-context-builder'
-import { parseIndexedAttachmentsFromRequest } from '@/lib/knowledge-agent-types'
+} from '@/server/tools/tools/exposure-policy'
+import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/gateway/model-pricing'
+import { buildAutoRetrievalBundle } from '@/server/knowledge/ask-knowledge-context'
+import { buildDocumentContextBundle } from '@/server/agent/document-context-builder'
+import { parseIndexedAttachmentsFromRequest } from '@/shared/knowledge/knowledge-agent-types'
 import {
   filterComposioToolSet,
   filterComposioToolSetForPaidOnlyFeatures,
-} from '@/lib/tools/composio-filter'
-import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
-import { createFreeTierGatedStubTools } from '@/lib/tools/free-tier-gated-stub-tools'
-import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
+} from '@/server/tools/tools/composio-filter'
+import { fireAndForgetRecordToolInvocation } from '@/server/tools/tools/record-tool-invocation'
+import { createFreeTierGatedStubTools } from '@/server/tools/tools/free-tier-gated-stub-tools'
+import { mergeReplyContextIntoMessagesForModel } from '@/shared/chat/reply-context-for-model'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
-} from '@/lib/persist-assistant-turn'
-import { normalizeAgentAssistantText } from '@/lib/agent-assistant-text'
-import { maybeRepairFreeTierLeakedPerplexityText } from '@/lib/leaked-perplexity-tool-repair'
-import { getInternalApiBaseUrl } from '@/lib/url'
-import { sanitizeUiMessagesForModelApi } from '@/lib/sanitize-ui-messages-for-model'
+} from '@/shared/chat/persist-assistant-turn'
+import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
+import { maybeRepairFreeTierLeakedPerplexityText } from '@/shared/chat/leaked-perplexity-tool-repair'
+import { getInternalApiBaseUrl } from '@/shared/web/url'
+import { sanitizeUiMessagesForModelApi } from '@/shared/chat/sanitize-ui-messages-for-model'
 import {
   compactMessagesForContext,
   contextSummaryScope,
   type ContextSummarySnapshot,
-} from '@/lib/context-compaction'
-import { buildSecondarySystemPromptExtension } from '@/lib/operator-system-prompt'
+} from '@/server/chat/context-compaction'
+import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
 import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
-} from '@/lib/chat-message-persistence'
+} from '@/server/chat/chat-message-persistence'
 import {
   summarizeErrorForLog,
   summarizeToolInputForLog,
   summarizeToolSetForLog,
-} from '@/lib/safe-log'
+} from '@/shared/security/safe-log'
 import {
   createNvidiaNimChatLanguageModel,
   resolveNvidiaApiKey,
-} from '@/lib/nvidia-nim-openai'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { isVerifiedChatStreamRelayRequest } from '@/lib/chat-stream-relay-auth'
-import type { AppSettings, Entitlements } from '@/lib/app-contracts'
+} from '@/server/ai/gateway/nvidia-nim-openai'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
+import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
 import {
   buildInsufficientCreditsPayload,
   billableBudgetCentsFromProviderUsd,
@@ -81,12 +81,12 @@ import {
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
-} from '@/lib/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+} from '@/server/billing/billing-runtime'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import {
   classifyMediaToolIntentForTurn,
   normalizeStructuredMediaToolIntent,
-} from '@/lib/media-tool-intent'
+} from '@/server/tools/media-tool-intent'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 function summarizeToolOutputForLog(output: unknown): string {
@@ -494,9 +494,9 @@ export async function POST(request: NextRequest) {
       cloneMessagesWithIndexedFileHint,
       indexedFilesSystemNote,
       indexedFilesSystemNotePreloaded,
-    } = await import('@/lib/knowledge-agent-instructions')
-    const { MATH_FORMAT_INSTRUCTION } = await import('@/lib/math-format-instructions')
-    const { TABLE_FORMAT_INSTRUCTION } = await import('@/lib/markdown-table-instructions')
+    } = await import('@/server/agent/knowledge-agent-instructions')
+    const { MATH_FORMAT_INSTRUCTION } = await import('@/shared/markdown/math-format-instructions')
+    const { TABLE_FORMAT_INSTRUCTION } = await import('@/shared/markdown/markdown-table-instructions')
     const _ttftDebug = process.env.TTFT_DEBUG === 'true'
     let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
     if (_ttftDebug) _t0 = performance.now()

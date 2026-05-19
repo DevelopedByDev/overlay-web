@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { logAuthDebug, summarizeSessionForLog } from '@/lib/auth-debug'
-import { getSession } from '@/lib/workos-auth'
-import { rateLimitByIp } from '@/lib/rate-limit'
+import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
+import { getSession } from '@/server/auth/workos-auth'
+import { rateLimitByIp } from '@/server/security/rate-limit'
 
 export async function GET(request: NextRequest) {
   try {

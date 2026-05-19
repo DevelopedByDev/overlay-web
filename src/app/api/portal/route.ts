@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe, getBaseUrl } from '@/lib/stripe'
-import { getSession } from '@/lib/workos-auth'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { convex } from '@/lib/convex'
-import { resolvePortalConfigurationId } from '@/lib/stripe-billing'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { stripe, getBaseUrl } from '@/server/billing/stripe'
+import { getSession } from '@/server/auth/workos-auth'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { convex } from '@/server/database/convex'
+import { resolvePortalConfigurationId } from '@/server/billing/stripe-billing'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 interface Subscription {
   userId: string

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { convex } from '@/lib/convex'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { validatePublicNetworkUrl } from '@/lib/ssrf'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { convex } from '@/server/database/convex'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { validatePublicNetworkUrl } from '@/shared/security/ssrf'
 
 async function validateMcpUrl(url: unknown): Promise<string | null> {
   const result = await validatePublicNetworkUrl(url, { allowLocalDev: true, requireHttps: true })

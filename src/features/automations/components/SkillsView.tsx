@@ -19,7 +19,7 @@ import {
   type SkillSummary,
 } from '@overlay/app-core'
 import { ExtensionPageHeader, SkillDialog, SkillsPanel } from '@overlay/modules-react/extensions'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 interface DialogState {
   mode: 'create' | 'edit'

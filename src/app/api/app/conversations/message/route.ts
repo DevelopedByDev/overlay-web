@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { convex } from '@/lib/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { convex } from '@/server/database/convex'
 import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
-} from '@/lib/chat-message-persistence'
+} from '@/server/chat/chat-message-persistence'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {

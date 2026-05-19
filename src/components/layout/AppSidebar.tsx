@@ -17,12 +17,12 @@ import {
   type OverlayIconName,
   type OverlaySidebarSearchCategory,
 } from '@overlay/app-core'
-import type { AuthUser } from '@/lib/workos-auth'
+import type { AuthUser } from '@/shared/auth/session-types'
 import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
-import { useAsyncSessions } from '@/lib/async-sessions-store'
+import { useAsyncSessions } from '@/shared/app/async-sessions-store'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { formatBytes } from '@/lib/storage-limits'
+import { formatBytes } from '@/shared/storage/storage-limits'
 import {
   FilesInlinePanel,
   InlineNavChildren,
@@ -35,7 +35,7 @@ import ProjectsSidebar from '@/features/projects/components/ProjectsSidebar'
 import ToolsSidebar from '@/features/tools/components/ToolsSidebar'
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
 import { overlayAppShell } from '@/overlay.config'
-import { overlayAppClient } from '@/lib/overlay-app-client'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/features/chat/components/chat-interface/mention-types'

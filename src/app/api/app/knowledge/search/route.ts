@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { convex } from '@/lib/convex'
-import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
-import { getInternalApiSecret } from '@/lib/internal-api-secret'
+import { convex } from '@/server/database/convex'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import type { HybridSearchChunk } from '../../../../../../convex/knowledge'
-import { enforceRateLimits, getClientIp } from '@/lib/rate-limit'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 60
 const MAX_QUERY_CHARS = 500
