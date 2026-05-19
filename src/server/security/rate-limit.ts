@@ -135,7 +135,7 @@ async function takeRateLimits(rules: RateLimitRule[]): Promise<RateLimitTakeResu
   }
 
   try {
-    const backendResults = await convex.mutation<RateLimitTakeResult[]>('rateLimits:takeManyByServer', {
+    const backendResults = await convex.mutation<RateLimitTakeResult[]>('platform/rateLimits:takeManyByServer', {
       serverSecret: getInternalApiSecret(),
       rules: normalizedRules.map(({ rule }) => rule),
     }, {

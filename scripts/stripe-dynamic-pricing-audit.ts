@@ -117,7 +117,7 @@ async function getConvexSubscription(target: DeploymentTarget, userId?: string):
   if (!userId) return null
   try {
     const serverSecret = getInternalApiSecret()
-    return await callConvex<SubscriptionRow | null>(target, 'query', 'subscriptions:getByUserIdByServer', {
+    return await callConvex<SubscriptionRow | null>(target, 'query', 'billing/subscriptions:getByUserIdByServer', {
       serverSecret,
       userId,
     })

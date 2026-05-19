@@ -55,8 +55,8 @@ export async function POST(request: NextRequest) {
     }
 
     const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'files:search-text:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
-      { bucket: 'files:search-text:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
+      { bucket: 'files/files:search-text:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
+      { bucket: 'files/files:search-text:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
 
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
         truncated = true
         break
       }
-      const fileRow: ConvexFileGetResult | null = await convex.query<ConvexFileGetResult>('files:get', {
+      const fileRow: ConvexFileGetResult | null = await convex.query<ConvexFileGetResult>('files/files:get', {
         fileId: fileId as Id<'files'>,
         userId,
         serverSecret,

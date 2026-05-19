@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     const session = await authenticateNativeWithCode(code, codeVerifier)
 
-    await convex.mutation('users:syncUserProfileByServer', {
+    await convex.mutation('auth/users:syncUserProfileByServer', {
       serverSecret: getInternalApiSecret(),
       userId: session.user.id,
       email: session.user.email,

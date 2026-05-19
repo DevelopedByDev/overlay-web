@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     autoTopUpEnabled?: boolean
     autoTopUpAmountCents?: number
     offSessionConsentAt?: number
-  } | null>('subscriptions:getByUserIdByServer', {
+  } | null>('billing/subscriptions:getByUserIdByServer', {
     serverSecret: getInternalApiSecret(),
     userId: auth.userId,
   })
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     planKind?: 'free' | 'paid'
     autoTopUpAmountCents?: number
     offSessionConsentAt?: number
-  } | null>('subscriptions:getByUserIdByServer', {
+  } | null>('billing/subscriptions:getByUserIdByServer', {
     serverSecret: getInternalApiSecret(),
     userId: auth.userId,
   })
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await convex.mutation<{ success: boolean; error?: string }>(
-    'subscriptions:updateBillingPreferencesByServer',
+    'billing/subscriptions:updateBillingPreferencesByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId: auth.userId,

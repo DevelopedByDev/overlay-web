@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const entitlements = await convex.query<AppSubscriptionResponse | null>(
-      'usage:getEntitlementsByServer',
+      'platform/usage:getEntitlementsByServer',
       {
         userId: auth.userId,
         serverSecret: getInternalApiSecret(),

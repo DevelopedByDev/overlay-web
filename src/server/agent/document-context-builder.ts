@@ -51,7 +51,7 @@ async function fetchFileParts(args: {
         content: string
         textContent?: string
         userId: string
-      }>('files:get', {
+      }>('files/files:get', {
         fileId: fileId as unknown as Id<'files'>,
         userId,
         serverSecret,

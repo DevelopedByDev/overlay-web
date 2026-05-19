@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const fileId = searchParams.get('fileId')
     if (fileId) {
-      const file = await convex.query('files:get', {
+      const file = await convex.query('files/files:get', {
         fileId,
         userId: auth.userId,
         serverSecret,
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     if (conversationId !== null) args.conversationId = conversationId
     if (outputType !== null) args.outputType = outputType
     if (kind === 'folder' || kind === 'note' || kind === 'upload' || kind === 'output') args.kind = kind
-    const files = await convex.query('files:list', args)
+    const files = await convex.query('files/files:list', args)
     return NextResponse.json(files ?? [])
   } catch {
     return NextResponse.json({ error: 'Failed to fetch files' }, { status: 500 })
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       }
       const uploadIntent = kind === 'output'
         ? null
-        : await convex.query<R2UploadIntent | null>('files:getUploadIntentByServer', {
+        : await convex.query<R2UploadIntent | null>('files/files:getUploadIntentByServer', {
           userId: auth.userId,
           serverSecret,
           r2Key,
@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
       }
       await checkGlobalR2Budget(actualSize)
       if (kind === 'output') {
-        id = await convex.mutation('files:create', {
+        id = await convex.mutation('files/files:create', {
           ...args,
           type: 'file',
           r2Key,
@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
         const { type: _type, ...storageArgs } = args
         void _type
         try {
-          id = await convex.mutation('files:createWithStorage', {
+          id = await convex.mutation('files/files:createWithStorage', {
             ...storageArgs,
             r2Key,
             sizeBytes: actualSize,
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
         }
         if (!id) throw new Error('File create returned no id')
         if (uploadIntent) {
-          await convex.mutation('files:finalizeUploadIntentByServer', {
+          await convex.mutation('files/files:finalizeUploadIntentByServer', {
             userId: auth.userId,
             serverSecret,
             r2Key,
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
       for (let p = 0; p < parts.length; p++) {
         const part = parts[p]!
         const partName = partedFileName(name, p + 1, total)
-        const partId = await convex.mutation<string>('files:create', {
+        const partId = await convex.mutation<string>('files/files:create', {
           ...args,
           name: partName,
           content: part,
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
         args.content = fullText
         args.contentHash = hashTextContent(fullText)
       }
-      id = await convex.mutation('files:create', args)
+      id = await convex.mutation('files/files:create', args)
     }
 
     return NextResponse.json({ id, ids: ids.length ? ids : undefined, parts: ids.length || undefined })
@@ -257,7 +257,7 @@ export async function PATCH(request: NextRequest) {
     } else if ((textContent ?? content) !== undefined) {
       args.content = textContent ?? content
     }
-    await convex.mutation('files:update', args)
+    await convex.mutation('files/files:update', args)
     return NextResponse.json({ success: true })
   } catch (error) {
     return storageErrorResponse(error, 'Failed to update file')
@@ -282,7 +282,7 @@ export async function DELETE(request: NextRequest) {
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
 
     const r2Entries = await convex.query<Array<{ fileId: string; r2Key?: string; storageId?: string }>>(
-      'files:getR2KeysForSubtree',
+      'files/files:getR2KeysForSubtree',
       { fileId, userId: auth.userId, serverSecret },
     )
     const r2Keys = (r2Entries ?? []).flatMap((entry) => {
@@ -298,7 +298,7 @@ export async function DELETE(request: NextRequest) {
       await deleteObjects(r2Keys)
       console.log(`[FilesDelete] Deleted ${r2Keys.length} R2 objects for fileId=${fileId}`)
     }
-    await convex.mutation('files:remove', {
+    await convex.mutation('files/files:remove', {
       fileId,
       userId: auth.userId,
       serverSecret,

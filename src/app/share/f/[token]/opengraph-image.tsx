@@ -39,7 +39,7 @@ export default async function OpengraphImage(
 ) {
   const { token } = await params
   const file = await convex.query<SharedFile | null>(
-    'files:getPublicByToken',
+    'files/files:getPublicByToken',
     { token },
     { background: true },
   )

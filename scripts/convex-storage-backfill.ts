@@ -21,7 +21,7 @@ async function main() {
     const result = await callConvex<BackfillResult>(
       target,
       'action',
-      'storageAdmin:backfillStorageUsageByServer',
+      'files/storageAdmin:backfillStorageUsageByServer',
       { serverSecret: secret },
     )
     console.log(`\n[${target.toUpperCase()}]`)

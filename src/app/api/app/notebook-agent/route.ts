@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
   if (rateLimitResponse) return rateLimitResponse
   const serverSecret = getInternalApiSecret()
 
-  const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+  const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
     serverSecret,
     userId,
   })
@@ -252,7 +252,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const refreshedEntitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+  const refreshedEntitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
     serverSecret,
     userId,
   })
@@ -402,7 +402,7 @@ export async function POST(request: NextRequest) {
 	              })
 	              budgetReservationId = null
 	            } else {
-	              await convex.mutation('usage:recordBatch', {
+	              await convex.mutation('platform/usage:recordBatch', {
 	                serverSecret,
 	                userId,
 	                events,

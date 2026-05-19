@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       errorMessage?: string
     }>
   >(
-    'subscriptions:listBudgetTopUpsByServer',
+    'billing/subscriptions:listBudgetTopUpsByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId: auth.userId,

@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     const serverSecret = getInternalApiSecret()
     const automationId = body.automationId as Id<'automations'>
-    const automation = await convex.query('automations:get', {
+    const automation = await convex.query('automations/automations:get', {
       automationId,
       userId: auth.userId,
       serverSecret,
@@ -71,14 +71,14 @@ export async function POST(request: NextRequest) {
       | Id<'conversations'>
       | undefined
 
-    runId = await convex.mutation('automations:createManualRun', {
+    runId = await convex.mutation('automations/automations:createManualRun', {
       automationId,
       userId: auth.userId,
       serverSecret,
       scheduledFor,
     }, { throwOnError: true }) as Id<'automationRuns'>
 
-    await convex.mutation('automations:markManualRunStarted', {
+    await convex.mutation('automations/automations:markManualRunStarted', {
       runId,
       userId: auth.userId,
       serverSecret,
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       scheduledFor,
     })
 
-    await convex.mutation('automations:markManualRunCompleted', {
+    await convex.mutation('automations/automations:markManualRunCompleted', {
       runId,
       userId: auth.userId,
       serverSecret,
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = summarizeError(error).slice(0, 1000)
     if (runId && userId) {
-      await convex.mutation('automations:markManualRunFailed', {
+      await convex.mutation('automations/automations:markManualRunFailed', {
         runId,
         userId,
         serverSecret: getInternalApiSecret(),

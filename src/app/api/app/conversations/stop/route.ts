@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     const serverSecret = getInternalApiSecret()
     const relayStop = isVerifiedChatStreamRelayRequest(request)
-    const result = await convex.mutation('conversations:stopGeneratingMessage', {
+    const result = await convex.mutation('chat/conversations:stopGeneratingMessage', {
       conversationId: conversationId as Id<'conversations'>,
       ...(body.messageId ? { messageId: body.messageId as Id<'conversationMessages'> } : {}),
       ...(relayStop && typeof body.partialContent === 'string' ? { partialContent: body.partialContent } : {}),

@@ -31,7 +31,7 @@ export type SharedConversation = {
 
 async function loadShared(token: string): Promise<SharedConversation | null> {
   return await convex.query<SharedConversation | null>(
-    'conversations:getPublicByToken',
+    'chat/conversations:getPublicByToken',
     { token },
     { background: true },
   )

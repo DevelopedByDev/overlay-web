@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     ])
     if (rateLimitResponse) return rateLimitResponse
 
-    const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('usage:getEntitlementsByServer', {
+    const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('platform/usage:getEntitlementsByServer', {
       serverSecret: getInternalApiSecret(),
       userId,
     })

@@ -22,7 +22,7 @@ async function main() {
       const result = await callConvex<CleanupResult>(
         target,
         'mutation',
-        'conversations:cleanupConversationMessageDeltas',
+        'chat/conversations:cleanupConversationMessageDeltas',
         {
           serverSecret: secret,
           cutoffMinutes,

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     if (rateLimitResponse) return rateLimitResponse
 
     const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
       serverSecret,
       userId: auth.userId,
     })
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       }
 
       const data = await groqResponse.json()
-      await convex.mutation('usage:recordBatch', {
+      await convex.mutation('platform/usage:recordBatch', {
         serverSecret,
         userId: auth.userId,
         events: [{

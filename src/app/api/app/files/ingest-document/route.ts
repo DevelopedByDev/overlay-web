@@ -121,8 +121,8 @@ export async function POST(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, {})
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'files:ingest-document:ip', key: getClientIp(request), limit: 40, windowMs: 60 * 60_000 },
-      { bucket: 'files:ingest-document:user', key: auth.userId, limit: 20, windowMs: 60 * 60_000 },
+      { bucket: 'files/files:ingest-document:ip', key: getClientIp(request), limit: 40, windowMs: 60 * 60_000 },
+      { bucket: 'files/files:ingest-document:user', key: auth.userId, limit: 20, windowMs: 60 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
 
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
       (sum, part, index) => sum + (index === 0 ? Math.max(utf8ByteLength(part), buf.byteLength) : utf8ByteLength(part)),
       0,
     )
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
       userId: auth.userId,
       serverSecret,
     }, { throwOnError: true })
@@ -228,7 +228,7 @@ export async function POST(request: NextRequest) {
       let fid: Id<'files'>
       try {
         const created = await convex.mutation<Id<'files'>>(
-          'files:create',
+          'files/files:create',
           {
             userId: auth.userId,
             serverSecret,

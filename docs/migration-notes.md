@@ -90,6 +90,37 @@ Rules live in `scripts/eslint-boundary-rules.mjs` and are wired from `eslint.con
 
 TypeScript resolves the longer prefix first, so `@/server/foo` maps to `src/server/foo` without changing existing `@/…` imports.
 
+## Phase 1.7 — Convex domain folders
+
+Convex modules now live under `convex/<domain>/` with paths like `chat/conversations:list` (folder + module file). Root `convex/` keeps only `schema.ts`, `convex.config.ts`, `lib/{auth,authDebug,logging}.ts`, and `_generated/`.
+
+| Old root file | New path |
+| --- | --- |
+| `conversations.ts` | `chat/conversations.ts` |
+| `files.ts` | `files/files.ts` |
+| `notes.ts` | `files/notes.ts` |
+| `knowledge.ts` | `knowledge/knowledge.ts` |
+| `memories.ts`, `memoryExtractor*.ts` | `knowledge/` |
+| `subscriptions.ts`, `stripe.ts`, `stripeSync.ts` | `billing/` |
+| `lib/stripeOverlaySubscription.ts` | `billing/lib/` |
+| `users.ts`, `serviceAuth.ts`, `sessionTransfer.ts`, `authDebug.ts` | `auth/` |
+| `automations.ts`, `automationRunner.ts` | `automations/` |
+| `projects.ts` | `projects/projects.ts` |
+| `outputs.ts` | `outputs/outputs.ts` |
+| `skills.ts`, `mcpServers.ts` | `integrations/` |
+| `daytona.ts`, `daytonaReconcile.ts` | `ai/sandbox/` |
+| `usage.ts`, `rateLimits.ts`, `uiSettings.ts`, `http.ts`, `crons.ts`, `keys.ts`, `seedDemoAccount.ts` | `platform/` |
+| `storageAdmin.ts` | `files/storageAdmin.ts` |
+| `lib/storageQuota.ts` | `files/lib/storageQuota.ts` |
+
+**Call sites:** BFF routes use string paths (`convex.query('files/files:get', …)`). Typed client code uses nested `api` / `internal` (e.g. `api.chat.conversations`, `internal.knowledge.memoryExtractorNode`).
+
+**Barrels:** Per-domain `index.ts` barrels were not kept — re-exporting multiple modules (`files` + `notes`, `skills` + `mcpServers`) collides on shared export names in TypeScript and can pull `"use node"` modules into the default bundle. Each `.ts` file is its own Convex module.
+
+**Script:** `scripts/phase-1.7-restructure-convex.mjs` (moves + path remap).
+
+**Verify:** `npx convex codegen` (with dev deployment env), `npm run typecheck`, targeted ESLint on `convex/`, then `npm run convex:push:dev` (and prod when ready).
+
 ## Canonical Packages
 
 - `@overlay/app-core`: app shell registries, contracts, and pure module controllers.

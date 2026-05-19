@@ -43,17 +43,17 @@ export async function GET(request: NextRequest) {
               lastName?: string
               profilePictureUrl?: string
             }
-          } | null>('users:getUserProfile', {
+          } | null>('auth/users:getUserProfile', {
             accessToken: auth.accessToken,
             userId: auth.userId,
           })
         : Promise.resolve(null),
-      convex.query<Entitlements | null>('usage:getEntitlementsByServer', {
+      convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
         userId: auth.userId,
         serverSecret,
       }),
       convex.query<AppSettings>(
-        'uiSettings:getByServer',
+        'platform/uiSettings:getByServer',
         {
           userId: auth.userId,
           serverSecret,

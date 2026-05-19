@@ -104,7 +104,7 @@ type PersistArgs = {
 
 async function persistStarters({ serverSecret, userId, prompts, day }: PersistArgs): Promise<boolean> {
   try {
-    const result = (await convex.mutation('users:setChatStartersByServer', {
+    const result = (await convex.mutation('auth/users:setChatStartersByServer', {
       serverSecret,
       userId,
       prompts,
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
     const today = utcDateKey()
     const firstName = session.user.firstName?.trim() ?? ''
 
-    const cached = await convex.query<{ prompts: string[]; day: string } | null>('users:getChatStartersByServer', {
+    const cached = await convex.query<{ prompts: string[]; day: string } | null>('auth/users:getChatStartersByServer', {
       serverSecret,
       userId,
     })

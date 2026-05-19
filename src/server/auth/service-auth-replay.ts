@@ -6,7 +6,7 @@ import type { ServiceAuthPayload } from '@/server/auth/service-auth'
 
 export async function consumeServiceAuthReplayNonce(payload: ServiceAuthPayload): Promise<boolean> {
   const result = await convex.mutation<{ consumed: boolean; reason?: string }>(
-    'serviceAuth:consumeReplayNonceByServer',
+    'auth/serviceAuth:consumeReplayNonceByServer',
     {
       serverSecret: getInternalApiSecret(),
       jti: payload.jti,

@@ -29,7 +29,7 @@ export async function PATCH(request: NextRequest) {
     }
     const serverSecret = getInternalApiSecret()
     const result = await convex.mutation<{ token: string | null; visibility: 'private' | 'public' }>(
-      'conversations:setShare',
+      'chat/conversations:setShare',
       {
         conversationId: body.conversationId as Id<'conversations'>,
         userId: auth.userId,

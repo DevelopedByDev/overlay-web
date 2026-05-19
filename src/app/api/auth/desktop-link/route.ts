@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     const token = randomBytes(16).toString('hex')
     const expiresAt = Date.now() + SESSION_TRANSFER_TTL_MS
 
-    await convex.mutation('sessionTransfer:storeToken', {
+    await convex.mutation('auth/sessionTransfer:storeToken', {
       serverSecret: getInternalApiSecret(),
       token,
       codeChallenge,
@@ -128,7 +128,7 @@ export async function GET(request: Request) {
       )
     }
 
-    const dataJson = await convex.mutation<string>('sessionTransfer:consumeToken', {
+    const dataJson = await convex.mutation<string>('auth/sessionTransfer:consumeToken', {
       token,
       codeVerifier,
       serverSecret: getInternalApiSecret(),

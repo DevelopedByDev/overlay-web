@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
   }
 
   const serverSecret = getInternalApiSecret()
-  const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+  const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
     userId,
     serverSecret,
   })
@@ -346,7 +346,7 @@ export async function POST(request: NextRequest) {
       const fileId = rawFileId.trim()
       if (!fileId) continue
 
-      const file = await convex.query<OverlayFileRecord | null>('files:get', {
+      const file = await convex.query<OverlayFileRecord | null>('files/files:get', {
         fileId,
         userId,
         serverSecret,
@@ -426,7 +426,7 @@ export async function POST(request: NextRequest) {
 
       let createdOutputId: string | null = null
       try {
-        createdOutputId = await convex.mutation<string | null>('outputs:create', {
+        createdOutputId = await convex.mutation<string | null>('outputs/outputs:create', {
           userId,
           serverSecret,
           type,

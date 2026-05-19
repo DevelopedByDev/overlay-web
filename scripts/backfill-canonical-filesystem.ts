@@ -33,7 +33,7 @@ async function main() {
     const result = await callConvex<BackfillResult>(
       target,
       'mutation',
-      'files:backfillCanonicalFilesystem',
+      'files/files:backfillCanonicalFilesystem',
       {
         serverSecret: secret,
         dryRun,

@@ -19,7 +19,7 @@ async function main() {
     const result = await callConvex<FinalizeResult>(
       target,
       'mutation',
-      'conversations:finalizeStaleGeneratingMessages',
+      'chat/conversations:finalizeStaleGeneratingMessages',
       {
         serverSecret: secret,
         ...(cutoffMinutes !== undefined ? { cutoffMinutes } : {}),

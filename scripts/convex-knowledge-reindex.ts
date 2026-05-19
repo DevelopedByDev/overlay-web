@@ -17,7 +17,7 @@ async function main() {
     const result = await callConvex<ReindexResult>(
       target,
       'action',
-      'storageAdmin:reindexAllCanonicalFilesByServer',
+      'files/storageAdmin:reindexAllCanonicalFilesByServer',
       {
         serverSecret: secret,
         ...(Number.isFinite(limit) ? { limit } : {}),

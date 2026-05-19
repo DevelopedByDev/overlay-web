@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
 
     // Otherwise, look up customer from our database
     if (!customerId) {
-      const subscription = await convex.query<Subscription>('subscriptions:getByUserId', {
+      const subscription = await convex.query<Subscription>('billing/subscriptions:getByUserId', {
         accessToken: auth?.accessToken ?? authSession?.accessToken ?? '',
         userId,
       })
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (customerId && !subscription?.stripeCustomerId) {
-        await convex.mutation('subscriptions:upsertSubscription', {
+        await convex.mutation('billing/subscriptions:upsertSubscription', {
           serverSecret: getInternalApiSecret(),
           userId,
           email: browserUser?.email || subscription?.email,

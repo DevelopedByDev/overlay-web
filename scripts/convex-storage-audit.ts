@@ -60,7 +60,7 @@ async function main() {
     const result = await callConvex<AuditResult>(
       target,
       'query',
-      'storageAdmin:auditByServer',
+      'files/storageAdmin:auditByServer',
       { serverSecret: secret },
     )
     printSection(target, result)

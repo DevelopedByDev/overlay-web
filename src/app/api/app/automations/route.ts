@@ -167,7 +167,7 @@ async function appendAutomationUpdateNote(params: {
 }) {
   const conversationId = params.automation.sourceConversationId || params.automation.conversationId
   if (!conversationId) return
-  await convex.mutation('conversations:addMessage', {
+  await convex.mutation('chat/conversations:addMessage', {
     conversationId,
     userId: params.userId,
     serverSecret: params.serverSecret,
@@ -191,7 +191,7 @@ export async function GET(request: NextRequest) {
     const includeRuns = request.nextUrl.searchParams.get('runs') === 'true'
 
     if (automationId && includeRuns) {
-      const runs = await convex.query('automations:listRuns', {
+      const runs = await convex.query('automations/automations:listRuns', {
         automationId: automationId as Id<'automations'>,
         userId: auth.userId,
         serverSecret,
@@ -200,7 +200,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (automationId) {
-      const automation = await convex.query('automations:get', {
+      const automation = await convex.query('automations/automations:get', {
         automationId: automationId as Id<'automations'>,
         userId: auth.userId,
         serverSecret,
@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(automation)
     }
 
-    const automations = await convex.query('automations:list', {
+    const automations = await convex.query('automations/automations:list', {
       userId: auth.userId,
       serverSecret,
       includeDeleted,
@@ -242,8 +242,8 @@ export async function POST(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'automations:write:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
-      { bucket: 'automations:write:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
+      { bucket: 'automations/automations:write:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
+      { bucket: 'automations/automations:write:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
     if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {
@@ -254,14 +254,14 @@ export async function POST(request: NextRequest) {
     }
     if (body.enabled !== false) {
       const serverSecret = getInternalApiSecret()
-      const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('usage:getEntitlementsByServer', {
+      const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('platform/usage:getEntitlementsByServer', {
         userId: auth.userId,
         serverSecret,
       })
       if (entitlements?.planKind !== 'paid') {
         return NextResponse.json({ error: 'Enabled automations require a paid plan.' }, { status: 403 })
       }
-      const existing = await convex.query<Array<{ enabled?: boolean }>>('automations:list', {
+      const existing = await convex.query<Array<{ enabled?: boolean }>>('automations/automations:list', {
         userId: auth.userId,
         serverSecret,
       })
@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: `You can enable up to ${MAX_ENABLED_AUTOMATIONS} automations.` }, { status: 403 })
       }
     }
-    const id = await convex.mutation('automations:create', {
+    const id = await convex.mutation('automations/automations:create', {
       userId: auth.userId,
       serverSecret: getInternalApiSecret(),
       name: body.name,
@@ -315,8 +315,8 @@ export async function PATCH(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'automations:update:ip', key: getClientIp(request), limit: 60, windowMs: 10 * 60_000 },
-      { bucket: 'automations:update:user', key: auth.userId, limit: 30, windowMs: 10 * 60_000 },
+      { bucket: 'automations/automations:update:ip', key: getClientIp(request), limit: 60, windowMs: 10 * 60_000 },
+      { bucket: 'automations/automations:update:user', key: auth.userId, limit: 30, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
     if (!body.automationId) {
@@ -328,7 +328,7 @@ export async function PATCH(request: NextRequest) {
 
     const serverSecret = getInternalApiSecret()
     if (body.action === 'resume' || body.enabled === true) {
-      const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('usage:getEntitlementsByServer', {
+      const entitlements = await convex.query<{ planKind?: 'free' | 'paid' }>('platform/usage:getEntitlementsByServer', {
         userId: auth.userId,
         serverSecret,
       })
@@ -342,12 +342,12 @@ export async function PATCH(request: NextRequest) {
       serverSecret,
     }
     if (body.action === 'pause') {
-      await convex.mutation('automations:pause', args, { throwOnError: true })
+      await convex.mutation('automations/automations:pause', args, { throwOnError: true })
     } else if (body.action === 'resume') {
-      await convex.mutation('automations:resume', args, { throwOnError: true })
+      await convex.mutation('automations/automations:resume', args, { throwOnError: true })
     } else {
-      const before = await convex.query('automations:get', args) as AutomationForUpdateNote | null
-      await convex.mutation('automations:update', {
+      const before = await convex.query('automations/automations:get', args) as AutomationForUpdateNote | null
+      await convex.mutation('automations/automations:update', {
         ...args,
         name: body.name,
         description: body.description,
@@ -406,7 +406,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'automationId required' }, { status: 400 })
     }
     const serverSecret = getInternalApiSecret()
-    const automation = await convex.query('automations:get', {
+    const automation = await convex.query('automations/automations:get', {
       automationId: automationId as Id<'automations'>,
       userId: auth.userId,
       serverSecret,
@@ -421,14 +421,14 @@ export async function DELETE(request: NextRequest) {
       isDraftPlaceholder ? automation?.sourceConversationId : undefined,
     ].filter((id, index, ids): id is Id<'conversations'> => Boolean(id && ids.indexOf(id) === index))
 
-    await convex.mutation('automations:remove', {
+    await convex.mutation('automations/automations:remove', {
       automationId: automationId as Id<'automations'>,
       userId: auth.userId,
       serverSecret,
     }, { throwOnError: true })
 
     for (const conversationId of linkedConversationIds) {
-      await convex.mutation('conversations:remove', {
+      await convex.mutation('chat/conversations:remove', {
         conversationId,
         userId: auth.userId,
         serverSecret,

@@ -122,7 +122,7 @@ export async function reserveProviderBudget(params: {
 
   const reservationId = params.reservationId ?? createBudgetReservationId(params.kind)
   await convex.mutation(
-    'usage:reserveBudgetByServer',
+    'platform/usage:reserveBudgetByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId: params.userId,
@@ -151,7 +151,7 @@ export async function finalizeProviderBudgetReservation(params: {
   if (!params.reservationId) return { success: true, skipped: true } as const
   const actualCents = billableBudgetCentsFromProviderUsd(params.actualProviderCostUsd)
   return await convex.mutation(
-    'usage:finalizeBudgetReservationByServer',
+    'platform/usage:finalizeBudgetReservationByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId: params.userId,
@@ -171,7 +171,7 @@ export async function releaseProviderBudgetReservation(params: {
 }) {
   if (!params.reservationId) return { success: true, skipped: true } as const
   return await convex.mutation(
-    'usage:releaseBudgetReservationByServer',
+    'platform/usage:releaseBudgetReservationByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId: params.userId,
@@ -190,7 +190,7 @@ export async function markProviderBudgetReconcile(params: {
 }) {
   if (!params.reservationId) return { success: true, skipped: true } as const
   return await convex.mutation(
-    'usage:markBudgetReservationReconcileByServer',
+    'platform/usage:markBudgetReservationReconcileByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId: params.userId,
@@ -203,7 +203,7 @@ export async function markProviderBudgetReconcile(params: {
 
 export async function refreshEntitlementsForUser(userId: string): Promise<Entitlements | null> {
   return await convex.query<Entitlements | null>(
-    'usage:getEntitlementsByServer',
+    'platform/usage:getEntitlementsByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId,

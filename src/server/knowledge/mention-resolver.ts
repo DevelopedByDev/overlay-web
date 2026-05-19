@@ -79,7 +79,7 @@ async function resolveOne(
     switch (m.type) {
       case 'file': {
         const file = await convex
-          .query<FileDoc | null>('files:get', { fileId: m.id, userId, serverSecret })
+          .query<FileDoc | null>('files/files:get', { fileId: m.id, userId, serverSecret })
           .catch(() => null)
         if (!file) {
           return `- file id=${m.id} name="${safeName}" — (not found)`
@@ -94,7 +94,7 @@ async function resolveOne(
       }
       case 'automation': {
         const a = await convex
-          .query<AutomationDoc | null>('automations:get', {
+          .query<AutomationDoc | null>('automations/automations:get', {
             automationId: m.id,
             userId,
             serverSecret,
@@ -121,7 +121,7 @@ async function resolveOne(
       }
       case 'mcp': {
         const mcp = await convex
-          .query<McpDoc | null>('mcpServers:get', {
+          .query<McpDoc | null>('integrations/mcpServers:get', {
             mcpServerId: m.id,
             userId,
             serverSecret,
@@ -141,7 +141,7 @@ async function resolveOne(
       }
       case 'chat': {
         const c = await convex
-          .query<ConversationDoc | null>('conversations:get', {
+          .query<ConversationDoc | null>('chat/conversations:get', {
             conversationId: m.id,
             userId,
             serverSecret,

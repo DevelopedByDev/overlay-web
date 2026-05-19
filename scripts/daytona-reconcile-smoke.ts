@@ -41,14 +41,14 @@ function getTarget(): 'dev' | 'prod' {
 }
 
 async function getEntitlements(target: 'dev' | 'prod', userId: string, serverSecret: string) {
-  return await callConvex<Entitlements>(target, 'query', 'usage:getEntitlementsByServer', {
+  return await callConvex<Entitlements>(target, 'query', 'platform/usage:getEntitlementsByServer', {
     userId,
     serverSecret,
   })
 }
 
 async function getWorkspace(target: 'dev' | 'prod', userId: string, serverSecret: string) {
-  return await callConvex<WorkspaceRecord | null>(target, 'query', 'daytona:getWorkspaceByUserId', {
+  return await callConvex<WorkspaceRecord | null>(target, 'query', 'ai/sandbox/daytona:getWorkspaceByUserId', {
     userId,
     serverSecret,
   })

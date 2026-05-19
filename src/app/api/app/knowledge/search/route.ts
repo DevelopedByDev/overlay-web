@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import type { HybridSearchChunk } from '../../../../../../convex/knowledge'
+import type { HybridSearchChunk } from '../../../../../../convex/knowledge/knowledge'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 60
@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
     }
 
     const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'knowledge:search:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
-      { bucket: 'knowledge:search:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
+      { bucket: 'knowledge/knowledge:search:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
+      { bucket: 'knowledge/knowledge:search:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
 
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     const serverSecret = getInternalApiSecret()
-    const result = await convex.action<{ chunks: HybridSearchChunk[] }>('knowledge:hybridSearch', {
+    const result = await convex.action<{ chunks: HybridSearchChunk[] }>('knowledge/knowledge:hybridSearch', {
       accessToken: auth?.accessToken,
       userId,
       serverSecret,

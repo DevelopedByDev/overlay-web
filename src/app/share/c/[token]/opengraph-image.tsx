@@ -31,7 +31,7 @@ export default async function OpengraphImage(
 ) {
   const { token } = await params
   const conv = await convex.query<SharedConversation | null>(
-    'conversations:getPublicByToken',
+    'chat/conversations:getPublicByToken',
     { token },
     { background: true },
   )

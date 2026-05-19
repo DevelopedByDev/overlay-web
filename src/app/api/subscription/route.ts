@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
   const fetchConvexEntitlements = async (nextUserId: string) =>
     await convex.query<ConvexEntitlements>(
-      'usage:getEntitlementsByServer',
+      'platform/usage:getEntitlementsByServer',
       {
         userId: nextUserId,
         serverSecret: getInternalApiSecret(),

@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     const offSessionConsentAt = Number.parseInt(checkoutSession.metadata?.offSessionConsentAt ?? '0', 10) || undefined
     const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
 
-    await convex.mutation('subscriptions:upsertSubscription', {
+    await convex.mutation('billing/subscriptions:upsertSubscription', {
       serverSecret: getInternalApiSecret(),
       userId: authSession.user.id,
       stripeCustomerId: checkoutSession.customer as string,

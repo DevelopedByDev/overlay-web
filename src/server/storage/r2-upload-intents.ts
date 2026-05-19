@@ -22,7 +22,7 @@ export async function cleanupExpiredR2UploadIntents(params: {
   serverSecret: string
   limit?: number
 }): Promise<number> {
-  const expired = await convex.query<ExpiredUploadIntent[]>('files:listExpiredUploadIntentsByServer', {
+  const expired = await convex.query<ExpiredUploadIntent[]>('files/files:listExpiredUploadIntentsByServer', {
     userId: params.userId,
     serverSecret: params.serverSecret,
     now: Date.now(),
@@ -33,7 +33,7 @@ export async function cleanupExpiredR2UploadIntents(params: {
   if (safeExpired.length === 0) return 0
 
   await deleteObjects(safeExpired.map((intent) => intent.r2Key))
-  await convex.mutation('files:expireUploadIntentsByServer', {
+  await convex.mutation('files/files:expireUploadIntentsByServer', {
     userId: params.userId,
     serverSecret: params.serverSecret,
     intentIds: safeExpired.map((intent) => intent._id),
@@ -47,7 +47,7 @@ export async function expireR2UploadIntent(params: {
   serverSecret: string
   intentId: Id<'r2UploadIntents'>
 }): Promise<void> {
-  await convex.mutation('files:expireUploadIntentsByServer', {
+  await convex.mutation('files/files:expireUploadIntentsByServer', {
     userId: params.userId,
     serverSecret: params.serverSecret,
     intentIds: [params.intentId],

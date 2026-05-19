@@ -72,7 +72,7 @@ export function getPlanQuantityForCheckout(planAmountCents: number): number {
 
 async function getBillingState(userId: string): Promise<SubscriptionBillingState | null> {
   return await convex.query<SubscriptionBillingState | null>(
-    'subscriptions:getByUserIdByServer',
+    'billing/subscriptions:getByUserIdByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId,
@@ -136,7 +136,7 @@ export async function maybeAutoTopUpBudget(params: {
       stripePaymentIntentId?: string
     }>
   >(
-    'subscriptions:listBudgetTopUpsByServer',
+    'billing/subscriptions:listBudgetTopUpsByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId: params.userId,
@@ -185,7 +185,7 @@ export async function maybeAutoTopUpBudget(params: {
     })
 
     await convex.mutation(
-      'subscriptions:recordBudgetTopUpByServer',
+      'billing/subscriptions:recordBudgetTopUpByServer',
       {
         serverSecret: getInternalApiSecret(),
         userId: params.userId,
@@ -206,7 +206,7 @@ export async function maybeAutoTopUpBudget(params: {
     } as const
   } catch (error) {
     await convex.mutation(
-      'subscriptions:recordBudgetTopUpByServer',
+      'billing/subscriptions:recordBudgetTopUpByServer',
       {
         serverSecret: getInternalApiSecret(),
         userId: params.userId,

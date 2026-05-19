@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     const serverSecret = getInternalApiSecret()
-    const conversation = await convex.query<{ _id: string } | null>('conversations:get', {
+    const conversation = await convex.query<{ _id: string } | null>('chat/conversations:get', {
       conversationId: conversationId as Id<'conversations'>,
       userId: auth.userId,
       serverSecret,

@@ -33,7 +33,7 @@ async function settleScheduledAutomationTurn(params: {
   fallbackText: string
 }) {
   await convex.mutation(
-    'conversations:settleGeneratingMessagesForTurn',
+    'chat/conversations:settleGeneratingMessagesForTurn',
     {
       conversationId: params.conversationId,
       userId: params.userId,
@@ -91,7 +91,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
   const serverSecret = getInternalApiSecret()
   const title = `Automation: ${input.name}`
   const conversationId = input.conversationId ?? await convex.mutation<Id<'conversations'>>(
-    'conversations:create',
+    'chat/conversations:create',
     {
       userId: input.userId,
       serverSecret,

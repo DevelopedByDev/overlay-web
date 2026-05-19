@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         sourceConversationId?: Id<'conversations'>
         conversationId?: Id<'conversations'>
       }
-    } | null>('automations:getRunForExecutionByServer', {
+    } | null>('automations/automations:getRunForExecutionByServer', {
       runId: body.runId as Id<'automationRuns'>,
       serverSecret: getInternalApiSecret(),
     })

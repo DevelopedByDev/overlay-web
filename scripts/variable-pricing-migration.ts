@@ -60,7 +60,7 @@ async function listSandboxSubscriptions(stripe: Stripe) {
 async function main() {
   const apply = readArg('apply') === 'true'
   const serverSecret = getInternalApiSecret()
-  const convexRows = await callConvex<SubscriptionRow[]>('dev', 'query', 'subscriptions:listAllByServer', {
+  const convexRows = await callConvex<SubscriptionRow[]>('dev', 'query', 'billing/subscriptions:listAllByServer', {
     serverSecret,
   })
 
@@ -98,7 +98,7 @@ async function main() {
 
     if (!apply) continue
 
-    await callConvex<string>('dev', 'mutation', 'subscriptions:upsertSubscription', {
+    await callConvex<string>('dev', 'mutation', 'billing/subscriptions:upsertSubscription', {
       serverSecret,
       userId: row.userId,
       email: row.email,

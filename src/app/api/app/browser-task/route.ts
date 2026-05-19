@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
       serverSecret,
       userId: auth.userId,
     })
@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
       }).catch(() => {})
     })
 
-    const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+    const updated = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
       serverSecret,
       userId: auth.userId,
     })

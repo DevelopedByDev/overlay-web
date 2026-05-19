@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
           session: summarizeSessionForLog(session),
           convexInspection: await inspectAccessToken(session.accessToken, result.user.id),
         })
-        const syncResult = await serverConvex.mutation<{ success: boolean; isNewUser: boolean }>('users:syncUserProfileByServer', {
+        const syncResult = await serverConvex.mutation<{ success: boolean; isNewUser: boolean }>('auth/users:syncUserProfileByServer', {
           serverSecret: getInternalApiSecret(),
           userId: result.user.id,
           email: result.user.email,
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
         const token = randomBytes(16).toString('hex')
         const expiresAt = Date.now() + SESSION_TRANSFER_TTL_MS
 
-        await serverConvex.mutation('sessionTransfer:storeToken', {
+        await serverConvex.mutation('auth/sessionTransfer:storeToken', {
           serverSecret: getInternalApiSecret(),
           token,
           codeChallenge: authState.codeChallenge,

@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
 
     await convex.mutation(
-      'conversations:addMessage',
+      'chat/conversations:addMessage',
       {
         conversationId: body.conversationId as Id<'conversations'>,
         userId: auth.userId,
@@ -105,7 +105,7 @@ export async function DELETE(request: NextRequest) {
     try {
       const serverSecret = getInternalApiSecret()
       await convex.mutation(
-        'conversations:deleteTurn',
+        'chat/conversations:deleteTurn',
         {
           conversationId: conversationId as Id<'conversations'>,
           userId: auth.userId,

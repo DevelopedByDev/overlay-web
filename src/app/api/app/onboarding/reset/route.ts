@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
-  const result = await convex.mutation('users:resetOnboarding', {
+  const result = await convex.mutation('auth/users:resetOnboarding', {
     serverSecret: getInternalApiSecret(),
     userId: auth.userId,
   })

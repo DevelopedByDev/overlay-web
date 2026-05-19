@@ -29,7 +29,7 @@ export async function PATCH(request: NextRequest) {
     }
     const serverSecret = getInternalApiSecret()
     const result = await convex.mutation<{ token: string | null; visibility: 'private' | 'public' }>(
-      'files:setShare',
+      'files/files:setShare',
       {
         fileId: body.fileId as Id<'files'>,
         userId: auth.userId,

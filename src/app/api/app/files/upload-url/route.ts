@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId: requestUserId })
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'files:upload-url:ip', key: getClientIp(request), limit: 60, windowMs: 60 * 60_000 },
-      { bucket: 'files:upload-url:user', key: auth.userId, limit: 30, windowMs: 60 * 60_000 },
+      { bucket: 'files/files:upload-url:ip', key: getClientIp(request), limit: 60, windowMs: 60 * 60_000 },
+      { bucket: 'files/files:upload-url:user', key: auth.userId, limit: 30, windowMs: 60 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
 
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const userId = auth.userId
     const serverSecret = getInternalApiSecret()
 
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
       serverSecret,
       userId,
     })
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     const fileIdPlaceholder = `tmp-${Date.now()}-${randomBytes(9).toString('base64url')}`
     const r2Key = keyForFile(userId, fileIdPlaceholder, fileName)
     const expiresIn = getR2PresignTtlSeconds()
-    await convex.mutation('files:createUploadIntentByServer', {
+    await convex.mutation('files/files:createUploadIntentByServer', {
       userId,
       serverSecret,
       r2Key,

@@ -26,7 +26,7 @@ export function fireAndForgetRecordToolInvocation(args: {
       : String(args.error ?? '').slice(0, 2000)
 
   void convex.mutation(
-    'usage:recordToolInvocation',
+    'platform/usage:recordToolInvocation',
     {
       accessToken: args.accessToken,
       serverSecret: args.serverSecret,

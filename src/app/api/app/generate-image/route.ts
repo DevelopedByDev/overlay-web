@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
 
     // ── Subscription enforcement ──────────────────────────────────────────────
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
       serverSecret,
       userId: auth.userId,
     })
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
       }
       const fileName = `overlay-image-${Date.now()}.png`
       outputId = await convex.mutation<string>(
-        'outputs:create',
+        'outputs/outputs:create',
         {
           userId: auth.userId,
           serverSecret,
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
       console.log(`[GenerateImage] ✅ Uploaded ${imageBuffer.length}B to R2 key=${r2Key}`)
 
       await convex.mutation(
-        'outputs:update',
+        'outputs/outputs:update',
         {
           outputId: persistedOutputId,
           userId: auth.userId,
@@ -236,7 +236,7 @@ export async function POST(request: NextRequest) {
       if (outputId) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to save generated image'
         await convex.mutation(
-          'outputs:update',
+          'outputs/outputs:update',
           {
             outputId,
             userId: auth.userId,
@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
           }],
         })
         if (recordResult) {
-          const updated = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+          const updated = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
             serverSecret,
             userId: auth.userId,
           })

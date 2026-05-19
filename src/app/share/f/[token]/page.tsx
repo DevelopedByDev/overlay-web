@@ -22,7 +22,7 @@ export type SharedFile = {
 
 async function loadShared(token: string): Promise<SharedFile | null> {
   return await convex.query<SharedFile | null>(
-    'files:getPublicByToken',
+    'files/files:getPublicByToken',
     { token },
     { background: true },
   )

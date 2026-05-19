@@ -45,14 +45,14 @@ async function getCanonicalNote(args: {
   userId: string
   serverSecret: string
 }): Promise<CanonicalFile | null> {
-  const direct = await convex.query<CanonicalFile | null>('files:get', {
+  const direct = await convex.query<CanonicalFile | null>('files/files:get', {
     fileId: args.noteId,
     userId: args.userId,
     serverSecret: args.serverSecret,
   }).catch(() => null)
   if (direct?.kind === 'note') return direct
 
-  const migrated = await convex.query<CanonicalFile | null>('files:getByLegacyNoteId', {
+  const migrated = await convex.query<CanonicalFile | null>('files/files:getByLegacyNoteId', {
     noteId: args.noteId,
     userId: args.userId,
     serverSecret: args.serverSecret,
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     }
 
     const projectId = request.nextUrl.searchParams.get('projectId')
-    const files = await convex.query<CanonicalFile[]>('files:list', {
+    const files = await convex.query<CanonicalFile[]>('files/files:list', {
       userId: auth.userId,
       serverSecret,
       kind: 'note',
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
     const content = body.content || ''
 
-    const fileId = await convex.mutation<string>('files:create', {
+    const fileId = await convex.mutation<string>('files/files:create', {
       userId: auth.userId,
       serverSecret,
       name: body.title || 'Untitled',
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       contentHash: content ? hashTextContent(content) : undefined,
       projectId: body.projectId ?? undefined,
     })
-    const file = await convex.query<CanonicalFile | null>('files:get', {
+    const file = await convex.query<CanonicalFile | null>('files/files:get', {
       fileId,
       userId: auth.userId,
       serverSecret,
@@ -148,7 +148,7 @@ export async function PATCH(request: NextRequest) {
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     const content = body.content
 
-    await convex.mutation('files:update', {
+    await convex.mutation('files/files:update', {
       userId: auth.userId,
       serverSecret,
       fileId: existing._id,
@@ -158,7 +158,7 @@ export async function PATCH(request: NextRequest) {
         : {}),
       projectId: body.projectId,
     })
-    const file = await convex.query<CanonicalFile | null>('files:get', {
+    const file = await convex.query<CanonicalFile | null>('files/files:get', {
       fileId: existing._id,
       userId: auth.userId,
       serverSecret,
@@ -189,7 +189,7 @@ export async function DELETE(request: NextRequest) {
     const existing = await getCanonicalNote({ noteId, userId: auth.userId, serverSecret })
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    await convex.mutation('files:remove', {
+    await convex.mutation('files/files:remove', {
       fileId: existing._id,
       userId: auth.userId,
       serverSecret,

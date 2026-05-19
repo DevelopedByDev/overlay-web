@@ -328,7 +328,7 @@ async function buildMcpToolSet(args: {
 }): Promise<ToolSet> {
   const serverSecret = args.serverSecret ?? getInternalApiSecret()
   console.log(`[MCP] Fetching enabled MCP servers for user ${args.userId}`)
-  const configs = (await convex.query('mcpServers:listEnabled', {
+  const configs = (await convex.query('integrations/mcpServers:listEnabled', {
     userId: args.userId,
     accessToken: args.accessToken,
     serverSecret,

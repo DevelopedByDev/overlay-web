@@ -2,7 +2,7 @@ import 'server-only'
 
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import type { HybridSearchChunk } from '../../../convex/knowledge'
+import type { HybridSearchChunk } from '../../../convex/knowledge/knowledge'
 import type { AutoRetrievalBundle, SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 
 /** Retrieval-only context for the model. Durable facts the user wants remembered are written via save_memory (Ask or Act), not here. */
@@ -26,7 +26,7 @@ export async function buildAutoRetrievalBundle(args: {
   }
 
   try {
-    const result = await convex.action<{ chunks: HybridSearchChunk[] } | null>('knowledge:hybridSearch', {
+    const result = await convex.action<{ chunks: HybridSearchChunk[] } | null>('knowledge/knowledge:hybridSearch', {
       accessToken: args.accessToken,
       userId: args.userId,
       serverSecret: getInternalApiSecret(),

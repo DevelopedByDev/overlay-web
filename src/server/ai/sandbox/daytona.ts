@@ -147,7 +147,7 @@ function canHotResizeUp(
 
 async function fetchWorkspaceByUserId(userId: string): Promise<DaytonaWorkspaceRecord | null> {
   return await convex.query<DaytonaWorkspaceRecord | null>(
-    'daytona:getWorkspaceByUserId',
+    'ai/sandbox/daytona:getWorkspaceByUserId',
     {
       userId,
       serverSecret: getInternalApiSecret(),
@@ -171,7 +171,7 @@ async function upsertWorkspaceRecord(input: {
   lastKnownStoppedAt?: number
 }): Promise<DaytonaWorkspaceRecord> {
   const workspace = await convex.mutation<DaytonaWorkspaceRecord | null>(
-    'daytona:upsertWorkspace',
+    'ai/sandbox/daytona:upsertWorkspace',
     {
       ...input,
       serverSecret: getInternalApiSecret(),
@@ -563,7 +563,7 @@ export async function accrueWorkspaceSpend(params: {
   | null
 > {
   return await convex.mutation(
-    'daytona:accrueUsageByServer',
+    'ai/sandbox/daytona:accrueUsageByServer',
     {
       serverSecret: getInternalApiSecret(),
       userId: params.workspace.userId,

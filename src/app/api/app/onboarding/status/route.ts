@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ hasSeenOnboarding: true })
   }
 
-  const result = (await convex.query('users:getOnboardingStatus', {
+  const result = (await convex.query('auth/users:getOnboardingStatus', {
     serverSecret: getInternalApiSecret(),
     userId,
   })) as { hasSeenOnboarding?: boolean } | null

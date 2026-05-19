@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     const noteId = request.nextUrl.searchParams.get('noteId') ?? undefined
 
     if (memoryId) {
-      const memory = await convex.query<MemoryDoc[]>('memories:list', {
+      const memory = await convex.query<MemoryDoc[]>('knowledge/memories:list', {
         userId: auth.userId,
         serverSecret,
         includeDeleted: true,
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(match)
     }
 
-    const fromConvex = await convex.query<MemoryDoc[]>('memories:list', {
+    const fromConvex = await convex.query<MemoryDoc[]>('knowledge/memories:list', {
       userId: auth.userId,
       serverSecret,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
 
     const ids: string[] = []
     for (const chunk of chunks) {
-      const memoryId = await convex.mutation<string>('memories:add', {
+      const memoryId = await convex.mutation<string>('knowledge/memories:add', {
         userId: auth.userId,
         serverSecret,
         clientId: clientIdSingle,
@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
       ids.push(id)
     }
 
-    const memory = await convex.query<MemoryDoc[]>('memories:list', {
+    const memory = await convex.query<MemoryDoc[]>('knowledge/memories:list', {
       userId: auth.userId,
       serverSecret,
       includeDeleted: true,
@@ -200,7 +200,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'memoryId and content required' }, { status: 400 })
     }
 
-    await convex.mutation('memories:update', {
+    await convex.mutation('knowledge/memories:update', {
       userId: auth.userId,
       serverSecret,
       memoryId: body.memoryId.trim() as Id<'memories'>,
@@ -216,7 +216,7 @@ export async function PATCH(request: NextRequest) {
       tags: body.tags,
       actor: body.actor,
     })
-    const memory = await convex.query<MemoryDoc[]>('memories:list', {
+    const memory = await convex.query<MemoryDoc[]>('knowledge/memories:list', {
       userId: auth.userId,
       serverSecret,
       includeDeleted: true,
@@ -247,7 +247,7 @@ export async function DELETE(request: NextRequest) {
     const memoryId = body.memoryId ?? request.nextUrl.searchParams.get('memoryId')
     if (!memoryId) return NextResponse.json({ error: 'memoryId required' }, { status: 400 })
 
-    await convex.mutation('memories:remove', {
+    await convex.mutation('knowledge/memories:remove', {
       memoryId: memoryId as Id<'memories'>,
       userId: auth.userId,
       serverSecret,

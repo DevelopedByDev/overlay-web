@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
   // since the Convex row is already gone — see ARCHITECTURE notes.
   try {
     const convex = new ConvexHttpClient(resolveConvexUrl())
-    convexResult = await convex.mutation(api.users.deleteUserAccountByServer, {
+    convexResult = await convex.mutation(api.auth.users.deleteUserAccountByServer, {
       serverSecret: getInternalApiSecret(),
       userId,
     })

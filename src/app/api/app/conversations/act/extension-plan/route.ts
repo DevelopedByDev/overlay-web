@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
       ? FREE_TIER_DEFAULT_MODEL_ID
       : requestedModelId
     const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
       serverSecret,
       userId: auth.userId,
     })

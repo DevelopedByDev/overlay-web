@@ -626,7 +626,7 @@ export default function ChatInterface({
   })
 
   const liveMessages = useQuery(
-    api.conversations.watchGeneratingMessages,
+    api.chat.conversations.watchGeneratingMessages,
     activeChatId && authUser?.id && convexAccessToken
       ? {
           conversationId: activeChatId as Id<'conversations'>,
@@ -636,7 +636,7 @@ export default function ChatInterface({
       : 'skip',
   ) as Array<LiveConversationMessage> | undefined
   const liveMessageDeltas = useQuery(
-    api.conversations.watchGeneratingMessageDeltas,
+    api.chat.conversations.watchGeneratingMessageDeltas,
     activeChatId && authUser?.id && convexAccessToken
       ? {
           conversationId: activeChatId as Id<'conversations'>,

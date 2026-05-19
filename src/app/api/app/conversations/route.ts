@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
     const compactToolPayloads = readBooleanParam(searchParams.get('compactToolPayloads')) === true
 
     if (conversationId && !includeMessages) {
-      const conv = await convex.query<ConversationDoc | null>('conversations:get', {
+      const conv = await convex.query<ConversationDoc | null>('chat/conversations:get', {
         conversationId: conversationId as Id<'conversations'>,
         userId: auth.userId,
         serverSecret,
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (conversationId && includeMessages) {
-      const conv = await convex.query<ConversationDoc | null>('conversations:get', {
+      const conv = await convex.query<ConversationDoc | null>('chat/conversations:get', {
         conversationId: conversationId as Id<'conversations'>,
         userId: auth.userId,
         serverSecret,
@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
       let messages: ConversationMessageRow[]
       if (messageLimit) {
         try {
-          messages = await convex.query<ConversationMessageRow[]>('conversations:getRecentMessages', {
+          messages = await convex.query<ConversationMessageRow[]>('chat/conversations:getRecentMessages', {
             conversationId: conversationId as Id<'conversations'>,
             userId: auth.userId,
             serverSecret,
@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
             conversationId,
             error: error instanceof Error ? error.message : String(error),
           })
-          messages = await convex.query<ConversationMessageRow[]>('conversations:getMessages', {
+          messages = await convex.query<ConversationMessageRow[]>('chat/conversations:getMessages', {
             conversationId: conversationId as Id<'conversations'>,
             userId: auth.userId,
             serverSecret,
@@ -167,7 +167,7 @@ export async function GET(request: NextRequest) {
           routedModelId?: string
           status?: 'generating' | 'completed' | 'error'
         }>
-        >('conversations:getMessages', {
+        >('chat/conversations:getMessages', {
           conversationId: conversationId as Id<'conversations'>,
           userId: auth.userId,
           serverSecret,
@@ -228,7 +228,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (projectId) {
-      const list = await convex.query<ConversationDoc[]>('conversations:listByProject', {
+      const list = await convex.query<ConversationDoc[]>('chat/conversations:listByProject', {
         projectId,
         userId: auth.userId,
         serverSecret,
@@ -238,7 +238,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(list || [])
     }
 
-    const list = await convex.query<ConversationDoc[]>('conversations:list', {
+    const list = await convex.query<ConversationDoc[]>('chat/conversations:list', {
       userId: auth.userId,
       serverSecret,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
@@ -275,7 +275,7 @@ export async function POST(request: NextRequest) {
       budgetTotalCents?: number
       budgetRemainingCents?: number
     } | null>(
-      'usage:getEntitlementsByServer',
+      'platform/usage:getEntitlementsByServer',
       {
         userId: auth.userId,
         serverSecret,
@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
       : isFreeTierChatModelId(body.actModelId)
       ? body.actModelId
       : freeAskModelIds[0] ?? FREE_TIER_DEFAULT_MODEL_ID
-    const id = await convex.mutation<Id<'conversations'>>('conversations:create', {
+    const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
       userId: auth.userId,
       serverSecret,
       clientId: body.clientId?.trim() || undefined,
@@ -299,7 +299,7 @@ export async function POST(request: NextRequest) {
       actModelId: isFreeTier ? freeActModelId : (body.actModelId ?? body.askModelIds?.[0] ?? DEFAULT_MODEL_ID),
       lastMode: body.lastMode,
     })
-    const conversation = await convex.query<ConversationDoc | null>('conversations:get', {
+    const conversation = await convex.query<ConversationDoc | null>('chat/conversations:get', {
       conversationId: id,
       userId: auth.userId,
       serverSecret,
@@ -329,7 +329,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
     }
 
-    await convex.mutation('conversations:update', {
+    await convex.mutation('chat/conversations:update', {
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,
       serverSecret,
@@ -339,7 +339,7 @@ export async function PATCH(request: NextRequest) {
       actModelId: body.actModelId,
       lastMode: body.lastMode,
     })
-    const conversation = await convex.query<ConversationDoc | null>('conversations:get', {
+    const conversation = await convex.query<ConversationDoc | null>('chat/conversations:get', {
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,
       serverSecret,
@@ -369,7 +369,7 @@ export async function DELETE(request: NextRequest) {
     const conversationId = request.nextUrl.searchParams.get('conversationId')
     if (!conversationId) return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
 
-    await convex.mutation('conversations:remove', {
+    await convex.mutation('chat/conversations:remove', {
       conversationId: conversationId as Id<'conversations'>,
       userId: auth.userId,
       serverSecret,

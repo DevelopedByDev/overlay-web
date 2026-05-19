@@ -33,7 +33,7 @@ export async function checkGlobalR2Budget(requiredAdditionalBytes: number): Prom
 
   let totalUsed = 0
   try {
-    totalUsed = (await convex.query('storageAdmin:getTotalStorageBytesUsedByServer', {
+    totalUsed = (await convex.query('files/storageAdmin:getTotalStorageBytesUsedByServer', {
       serverSecret,
     })) ?? 0
   } catch (err) {

@@ -19,7 +19,7 @@ export async function GET(
     sizeBytes: number
     userId: string
   } | null>(
-    'files:getPublicR2KeyByTokenByServer',
+    'files/files:getPublicR2KeyByTokenByServer',
     { token, serverSecret },
     { throwOnError: true },
   )

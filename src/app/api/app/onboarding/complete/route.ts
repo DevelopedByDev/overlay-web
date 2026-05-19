@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   // or the deployment is behind, still set the cookie so the tour does not replay every load.
   let persistedToConvex = false
   try {
-    const result = await convex.mutation('users:markOnboardingComplete', {
+    const result = await convex.mutation('auth/users:markOnboardingComplete', {
       serverSecret: getInternalApiSecret(),
       userId,
       email: userEmail,

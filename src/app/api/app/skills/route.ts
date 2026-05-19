@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
 
     const projectId = request.nextUrl.searchParams.get('projectId')
-    const skills = await convex.query('skills:list', {
+    const skills = await convex.query('integrations/skills:list', {
       userId: auth.userId,
       serverSecret,
       projectId: projectId ?? undefined,
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'name, description, and instructions are required' }, { status: 400 })
     }
 
-    const skillId = await convex.mutation<string>('skills:create', {
+    const skillId = await convex.mutation<string>('integrations/skills:create', {
       userId: auth.userId,
       serverSecret,
       name: nameText,
@@ -60,7 +60,7 @@ export async function PATCH(request: NextRequest) {
     const { skillId, name, description, instructions, enabled } = body as Record<string, unknown>
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
 
-    await convex.mutation('skills:update', {
+    await convex.mutation('integrations/skills:update', {
       skillId,
       userId: auth.userId,
       serverSecret,
@@ -93,7 +93,7 @@ export async function DELETE(request: NextRequest) {
     const skillId = request.nextUrl.searchParams.get('skillId')
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
 
-    await convex.mutation('skills:remove', {
+    await convex.mutation('integrations/skills:remove', {
       skillId,
       userId: auth.userId,
       serverSecret,

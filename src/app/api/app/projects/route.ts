@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const projectId = request.nextUrl.searchParams.get('projectId')
 
     if (projectId) {
-      const project = await convex.query<ProjectDoc | null>('projects:get', {
+      const project = await convex.query<ProjectDoc | null>('projects/projects:get', {
         projectId: projectId as Id<'projects'>,
         userId: auth.userId,
         serverSecret,
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
     const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
 
-    const projects = await convex.query<ProjectDoc[]>('projects:list', {
+    const projects = await convex.query<ProjectDoc[]>('projects/projects:list', {
       userId: auth.userId,
       serverSecret,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
     const { name, parentId, instructions, clientId } = body
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
-    const id = await convex.mutation<Id<'projects'>>('projects:create', {
+    const id = await convex.mutation<Id<'projects'>>('projects/projects:create', {
       userId: auth.userId,
       serverSecret,
       clientId: clientId?.trim() || undefined,
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       instructions: instructions?.trim() || undefined,
       parentId: parentId ?? undefined,
     })
-    const project = await convex.query<ProjectDoc | null>('projects:get', {
+    const project = await convex.query<ProjectDoc | null>('projects/projects:get', {
       projectId: id,
       userId: auth.userId,
       serverSecret,
@@ -105,7 +105,7 @@ export async function PATCH(request: NextRequest) {
     const serverSecret = getInternalApiSecret()
     const { projectId, name, instructions, parentId } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
-    await convex.mutation('projects:update', {
+    await convex.mutation('projects/projects:update', {
       projectId: projectId as Id<'projects'>,
       userId: auth.userId,
       serverSecret,
@@ -113,7 +113,7 @@ export async function PATCH(request: NextRequest) {
       instructions,
       parentId: parentId ?? undefined,
     })
-    const project = await convex.query<ProjectDoc | null>('projects:get', {
+    const project = await convex.query<ProjectDoc | null>('projects/projects:get', {
       projectId: projectId as Id<'projects'>,
       userId: auth.userId,
       serverSecret,
@@ -142,7 +142,7 @@ export async function DELETE(request: NextRequest) {
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
 
     // Cascade delete child projects first (Convex mutation handles each project's items)
-    const allProjects = await convex.query<Array<{ _id: string; parentId?: string; deletedAt?: number }>>('projects:list', {
+    const allProjects = await convex.query<Array<{ _id: string; parentId?: string; deletedAt?: number }>>('projects/projects:list', {
       userId: auth.userId,
       serverSecret,
       includeDeleted: true,
@@ -150,7 +150,7 @@ export async function DELETE(request: NextRequest) {
     const toDelete = collectDescendants(allProjects || [], projectId)
     // Delete leaves first (reverse order so children before parents)
     for (const id of toDelete.reverse()) {
-      await convex.mutation('projects:remove', {
+      await convex.mutation('projects/projects:remove', {
         projectId: id as Id<'projects'>,
         userId: auth.userId,
         serverSecret,

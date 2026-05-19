@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     const amountCents = checkoutSession.amount_total
     const autoTopUpEnabled = checkoutSession.metadata?.autoTopUpEnabled === 'true'
-    await convex.mutation('subscriptions:recordBudgetTopUpByServer', {
+    await convex.mutation('billing/subscriptions:recordBudgetTopUpByServer', {
       serverSecret: getInternalApiSecret(),
       userId,
       amountCents,
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       stripePaymentIntentId: typeof checkoutSession.payment_intent === 'string' ? checkoutSession.payment_intent : undefined,
       status: 'succeeded',
     })
-    await convex.mutation('subscriptions:updateBillingPreferencesByServer', {
+    await convex.mutation('billing/subscriptions:updateBillingPreferencesByServer', {
       serverSecret: getInternalApiSecret(),
       userId,
       autoTopUpEnabled,

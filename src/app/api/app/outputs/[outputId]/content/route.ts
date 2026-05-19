@@ -25,7 +25,7 @@ export async function GET(
   const { outputId } = await params
   const serverSecret = getInternalApiSecret()
   const proxyTarget = await convex.query<{ r2Key?: string; url?: string; sizeBytes: number; type: string; fileName?: string; mimeType?: string } | null>(
-    'outputs:getStorageUrlForProxy',
+    'outputs/outputs:getStorageUrlForProxy',
     {
       outputId,
       userId: auth.userId,
@@ -42,7 +42,7 @@ export async function GET(
     if (!isOwnedOutputR2Key(auth.userId, proxyTarget.r2Key)) {
       return Response.json({ error: 'Not found' }, { status: 404 })
     }
-    await convex.mutation('usage:recordFileBandwidthByServer', {
+    await convex.mutation('platform/usage:recordFileBandwidthByServer', {
       serverSecret,
       userId: auth.userId,
       bytes: proxyTarget.sizeBytes ?? 0,

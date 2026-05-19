@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
 
-    const mcps = await convex.query('mcpServers:list', {
+    const mcps = await convex.query('integrations/mcpServers:list', {
       userId: auth.userId,
       serverSecret,
     })
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: urlError }, { status: 400 })
     }
 
-    const mcpServerId = await convex.mutation<string>('mcpServers:create', {
+    const mcpServerId = await convex.mutation<string>('integrations/mcpServers:create', {
       userId: auth.userId,
       serverSecret,
       name,
@@ -101,7 +101,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    await convex.mutation('mcpServers:update', {
+    await convex.mutation('integrations/mcpServers:update', {
       mcpServerId,
       userId: auth.userId,
       serverSecret,
@@ -140,7 +140,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'mcpServerId required' }, { status: 400 })
     }
 
-    await convex.mutation('mcpServers:remove', {
+    await convex.mutation('integrations/mcpServers:remove', {
       mcpServerId,
       userId: auth.userId,
       serverSecret,

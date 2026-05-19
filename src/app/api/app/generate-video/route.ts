@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       const markOutputFailed = async (errorMessage: string) => {
         if (!outputId) return
         await convex.mutation(
-          'outputs:update',
+          'outputs/outputs:update',
           {
             outputId,
             userId: auth.userId,
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // ── Subscription enforcement ────────────────────────────────────────
-        const entitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+        const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
           serverSecret,
           userId: auth.userId,
         })
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
         // ── Create pending output record ────────────────────────────────────
         try {
           outputId = await convex.mutation<string>(
-            'outputs:create',
+            'outputs/outputs:create',
             {
               userId: auth.userId,
               serverSecret,
@@ -333,7 +333,7 @@ export async function POST(request: NextRequest) {
         // ── Update Convex record to completed ───────────────────────────────────────
         try {
           await convex.mutation(
-            'outputs:update',
+            'outputs/outputs:update',
             {
               outputId: persistedOutputId,
               userId: auth.userId,

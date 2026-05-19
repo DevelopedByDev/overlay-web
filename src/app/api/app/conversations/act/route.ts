@@ -168,7 +168,7 @@ async function buildMessagesForModel(params: {
     content: string
     parts?: UIMessage['parts']
     routedModelId?: string
-  }>>('conversations:getMessages', {
+  }>>('chat/conversations:getMessages', {
     conversationId: params.conversationId,
     userId: params.userId,
     serverSecret: params.serverSecret,
@@ -294,7 +294,7 @@ function createGeneratingPersistenceTransform(params: {
     pendingText = ''
     lastFlushAt = Date.now()
     try {
-      await convex.mutation('conversations:appendGeneratingMessageDelta', {
+      await convex.mutation('chat/conversations:appendGeneratingMessageDelta', {
         messageId: params.messageId,
         textDelta,
         serverSecret: params.serverSecret,
@@ -348,7 +348,7 @@ function createGeneratingPersistenceTransform(params: {
             content: '',
             parts: newParts,
           }).parts
-          await convex.mutation('conversations:appendGeneratingMessageDelta', {
+          await convex.mutation('chat/conversations:appendGeneratingMessageDelta', {
             messageId: params.messageId,
             newParts: compactedParts as never,
             serverSecret: params.serverSecret,
@@ -398,7 +398,7 @@ function createGeneratingPersistenceTransform(params: {
               content: '',
               parts: newParts,
             }).parts
-            await convex.mutation('conversations:appendGeneratingMessageDelta', {
+            await convex.mutation('chat/conversations:appendGeneratingMessageDelta', {
               messageId: params.messageId,
               newParts: compactedParts as never,
               serverSecret: params.serverSecret,
@@ -577,8 +577,8 @@ export async function POST(request: NextRequest) {
       variantIndex: rawMultiModelSlotIndex,
     })
     const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'conversations:act:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
-      { bucket: 'conversations:act:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
+      { bucket: 'chat/conversations:act:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
+      { bucket: 'chat/conversations:act:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
     const requestedModelId: string = modelId || 'claude-sonnet-4-6'
@@ -589,11 +589,11 @@ export async function POST(request: NextRequest) {
     pendingServerSecret = serverSecret
 
     const [entitlements, appSettings] = await Promise.all([
-      convex.query<Entitlements>('usage:getEntitlementsByServer', {
+      convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
         serverSecret,
         userId,
       }),
-      convex.query<AppSettings>('uiSettings:getByServer', {
+      convex.query<AppSettings>('platform/uiSettings:getByServer', {
         userId,
         serverSecret,
       }),
@@ -642,7 +642,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const refreshedEntitlements = await convex.query<Entitlements>('usage:getEntitlementsByServer', {
+    const refreshedEntitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
       serverSecret,
       userId,
     })
@@ -728,7 +728,7 @@ export async function POST(request: NextRequest) {
       : (async () => {
           if (!cid || !latestUserContent) return
           try {
-            await convex.mutation('conversations:addMessage', {
+            await convex.mutation('chat/conversations:addMessage', {
               conversationId: cid,
               userId,
               serverSecret,
@@ -761,7 +761,7 @@ export async function POST(request: NextRequest) {
             importance?: number
             updatedAt?: number
           }>
-        >('memories:list', {
+        >('knowledge/memories:list', {
           userId,
           serverSecret,
         })
@@ -774,7 +774,7 @@ export async function POST(request: NextRequest) {
     type SkillRow = { name: string; instructions: string; enabled?: boolean }
     const skillsTask: Promise<SkillRow[]> = (async () => {
       try {
-        const allSkills = await convex.query<SkillRow[]>('skills:list', {
+        const allSkills = await convex.query<SkillRow[]>('integrations/skills:list', {
           serverSecret,
           userId,
         })
@@ -787,7 +787,7 @@ export async function POST(request: NextRequest) {
     const conversationTask: Promise<{ projectId?: string } | null> = (async () => {
       if (!cid) return null
       try {
-        return await convex.query<{ projectId?: string } | null>('conversations:get', {
+        return await convex.query<{ projectId?: string } | null>('chat/conversations:get', {
           conversationId: cid,
           userId,
           serverSecret,
@@ -843,7 +843,7 @@ export async function POST(request: NextRequest) {
     const projectTask: Promise<string> = (async () => {
       if (!conversationProjectId) return ''
       try {
-        const project = await convex.query<{ instructions?: string } | null>('projects:get', {
+        const project = await convex.query<{ instructions?: string } | null>('projects/projects:get', {
           projectId: conversationProjectId as Id<'projects'>,
           userId,
           serverSecret,
@@ -943,7 +943,7 @@ export async function POST(request: NextRequest) {
       historyBaseModelId,
     })
     const previousContextSummary = cid
-      ? await convex.query<ContextSummarySnapshot | null>('conversations:getContextSummary', {
+      ? await convex.query<ContextSummarySnapshot | null>('chat/conversations:getContextSummary', {
           conversationId: cid,
           userId,
           serverSecret,
@@ -981,7 +981,7 @@ export async function POST(request: NextRequest) {
     }
     if (cid && compaction.summaryToPersist) {
       const summary = compaction.summaryToPersist
-      await convex.mutation('conversations:upsertContextSummary', {
+      await convex.mutation('chat/conversations:upsertContextSummary', {
         conversationId: cid,
         userId,
         serverSecret,
@@ -1019,7 +1019,7 @@ export async function POST(request: NextRequest) {
     if (cid) {
       try {
         generatingMessageId = await convex.mutation<Id<'conversationMessages'>>(
-          'conversations:startGeneratingMessage',
+          'chat/conversations:startGeneratingMessage',
           {
             conversationId: cid,
             userId,
@@ -1314,7 +1314,7 @@ export async function POST(request: NextRequest) {
                 budgetReservationFinalized = true
                 budgetReservationId = null
               } else {
-                await convex.mutation('usage:recordBatch', {
+                await convex.mutation('platform/usage:recordBatch', {
                   serverSecret,
                   userId,
                   forceFreeTierLimits: !paid,
@@ -1442,7 +1442,7 @@ export async function POST(request: NextRequest) {
                 : undefined
             const finalParts = (normalizedPersistParts.length > 0 ? normalizedPersistParts : [{ type: 'text', text: persistContent }]) as never
             if (generatingMessageId) {
-              await convex.mutation('conversations:finalizeGeneratingMessage', {
+              await convex.mutation('chat/conversations:finalizeGeneratingMessage', {
                 messageId: generatingMessageId,
                 content: persistContent,
                 parts: finalParts,
@@ -1451,7 +1451,7 @@ export async function POST(request: NextRequest) {
                 serverSecret,
               })
             } else {
-              await convex.mutation('conversations:addMessage', {
+              await convex.mutation('chat/conversations:addMessage', {
                 conversationId: cid,
                 userId,
                 serverSecret,
@@ -1534,7 +1534,7 @@ export async function POST(request: NextRequest) {
             }
             if (generatingMessageId) {
               try {
-                await convex.mutation('conversations:failGeneratingMessage', {
+                await convex.mutation('chat/conversations:failGeneratingMessage', {
                   messageId: generatingMessageId,
                   errorText: userFacingOpenRouterError(err),
                   serverSecret,
@@ -1713,7 +1713,7 @@ export async function POST(request: NextRequest) {
 	    }
 	    if (pendingGeneratingMessageId && pendingServerSecret) {
       try {
-        await convex.mutation('conversations:failGeneratingMessage', {
+        await convex.mutation('chat/conversations:failGeneratingMessage', {
           messageId: pendingGeneratingMessageId,
           errorText: userFacingOpenRouterError(error),
           serverSecret: pendingServerSecret,

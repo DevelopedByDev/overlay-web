@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const settings = await convex.query<AppSettings>(
-      'uiSettings:getByServer',
+      'platform/uiSettings:getByServer',
       {
         userId: auth.userId,
         serverSecret: getInternalApiSecret(),
@@ -236,7 +236,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const settings = await convex.mutation<AppSettings>(
-      'uiSettings:upsertByServer',
+      'platform/uiSettings:upsertByServer',
       mutationArgs,
       { throwOnError: true },
     )

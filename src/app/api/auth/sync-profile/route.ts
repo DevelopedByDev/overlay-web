@@ -15,7 +15,7 @@ export async function POST() {
       )
     }
 
-    const result = await convex.mutation<{ success: boolean; isNewUser: boolean }>('users:syncUserProfileByServer', {
+    const result = await convex.mutation<{ success: boolean; isNewUser: boolean }>('auth/users:syncUserProfileByServer', {
       serverSecret: getInternalApiSecret(),
       userId: session.user.id,
       email: session.user.email,

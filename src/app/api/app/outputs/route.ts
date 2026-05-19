@@ -53,13 +53,13 @@ async function getCanonicalOutput(args: {
   userId: string
   serverSecret: string
 }): Promise<OutputFile | null> {
-  const direct = await convex.query<OutputFile | null>('files:get', {
+  const direct = await convex.query<OutputFile | null>('files/files:get', {
     fileId: args.outputId,
     userId: args.userId,
     serverSecret: args.serverSecret,
   }).catch(() => null)
   if (direct?.kind === 'output') return direct
-  const migrated = await convex.query<OutputFile | null>('files:getByLegacyOutputId', {
+  const migrated = await convex.query<OutputFile | null>('files/files:getByLegacyOutputId', {
     outputId: args.outputId,
     userId: args.userId,
     serverSecret: args.serverSecret,
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') ?? '50', 10)
     const conversationId = searchParams.get('conversationId')
 
-    const files = await convex.query<OutputFile[]>('files:list', {
+    const files = await convex.query<OutputFile[]>('files/files:list', {
       userId: auth.userId,
       serverSecret,
       kind: 'output',
@@ -122,7 +122,7 @@ export async function DELETE(request: NextRequest) {
       }
       await deleteObject(output.r2Key)
     }
-    await convex.mutation('files:remove', {
+    await convex.mutation('files/files:remove', {
       fileId: output._id,
       userId: auth.userId,
       serverSecret,
