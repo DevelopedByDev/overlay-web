@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, type UIEvent } from 'react'
+import Image from 'next/image'
 import { Loader2, X, Search } from 'lucide-react'
 import { resolveIntegrationName, truncateIntegrationDescription } from '@overlay/app-core'
 import { IntegrationDialogRowSkeleton } from '@/components/ui/Skeleton'
@@ -212,7 +213,14 @@ export function IntegrationsDialog({
                   style={{ width: 32, height: 32 }}
                 >
                   {item.logoUrl ? (
-                    <img src={item.logoUrl} alt={item.name} width={20} height={20} className="object-contain" />
+                    <Image
+                      src={item.logoUrl}
+                      alt={item.name}
+                      width={20}
+                      height={20}
+                      unoptimized
+                      className="object-contain"
+                    />
                   ) : (
                     <span className="text-sm font-bold text-[var(--foreground)]">{item.name.charAt(0).toUpperCase()}</span>
                   )}

@@ -8,6 +8,7 @@ import {
   useCallback,
   type CSSProperties,
 } from 'react'
+import Image from 'next/image'
 import { X, ArrowRight, Copy, Check, Plus, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { IntegrationsDialog } from '@/components/app/IntegrationsDialog'
@@ -84,11 +85,12 @@ function OnboardingConnectorCardLogo({
   return (
     <span className="mb-2 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
       {showImage ? (
-        <img
+        <Image
           src={logoUrl!}
           alt={name}
           width={28}
           height={28}
+          unoptimized
           className="h-7 w-7 object-contain"
           onError={() => setImgFailed(true)}
         />

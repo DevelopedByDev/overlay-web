@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import posthog from 'posthog-js'
+import Image from 'next/image'
 import {
   Send,
   Plus,
@@ -169,6 +170,8 @@ import type {
 } from './chat-interface/types'
 import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from './chat-interface/mention-types'
+
+const EMPTY_UI_MESSAGES: UIMessage[] = []
 
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -437,6 +440,12 @@ export default function ChatInterface({
     bodyForModel: string
     replyToTurnId?: string
   } | null>(null)
+  const clearTransientComposerState = useCallback(() => {
+    setPendingChatDocuments([])
+    setReplyContext(null)
+    setAttachmentError(null)
+    setComposerNotice(null)
+  }, [setAttachmentError, setPendingChatDocuments])
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   /** User turn ids currently playing the delete (fade-out) animation */
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
@@ -517,7 +526,12 @@ export default function ChatInterface({
     setExchangeGenTypes([...ui.exchangeGenTypes])
     setIsFirstMessage(ui.isFirstMessage)
     lastGeneratedImageUrlRef.current = ui.lastGeneratedImageUrl
-  }, [])
+  }, [
+    lastGeneratedImageUrlRef,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
+  ])
 
   const buildActiveUiStateSnapshot = useCallback((): ConversationUiState => {
     const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : null
@@ -545,6 +559,7 @@ export default function ChatInterface({
     generationResults,
     isFirstMessage,
     askModelSelectionMode,
+    lastGeneratedImageUrlRef,
     selectedActModel,
     selectedModels,
     selectedTabPerExchange,
@@ -593,8 +608,10 @@ export default function ChatInterface({
     if (!hideSidebar) router.replace('/app/chat')
   }, [
     applyUiStateToView,
+    clearTransientComposerState,
     hideSidebar,
     router,
+    runtimesRef,
     setActiveViewer,
   ])
 
@@ -765,7 +782,15 @@ export default function ChatInterface({
     setSelectedActModel(FREE_TIER_DEFAULT_MODEL_ID)
     localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_DEFAULT_MODEL_ID]))
     localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_DEFAULT_MODEL_ID)
-  }, [chatPrefsHydrated, activeChatId, isFreeTier, selectedActModel])
+  }, [
+    activeChatId,
+    chatPrefsHydrated,
+    isFreeTier,
+    selectedActModel,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
+  ])
 
   useEffect(() => {
     if (!chatPrefsHydrated || !effectiveOnlyAllowZdrModels) return
@@ -793,6 +818,9 @@ export default function ChatInterface({
     selectableTextModels,
     selectedActModel,
     selectedModels,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
   ])
 
   // ── data loading ──────────────────────────────────────────────────────────
@@ -1029,7 +1057,7 @@ export default function ChatInterface({
       completeSession(activeChatId, activeChatIdRef.current === activeChatId)
       void loadChats()
     }
-  }, [activeChatId, actChat, chat0, chat1, chat2, chat3, completeSession, liveMessages, loadChats, runtimeHydrationVersion])
+  }, [activeChatId, actChat, chat0, chat1, chat2, chat3, completeSession, liveMessages, loadChats, runtimeHydrationVersion, runtimesRef])
 
   useEffect(() => {
     if (!activeChatId || !liveMessageDeltas?.length) return
@@ -1086,7 +1114,7 @@ export default function ChatInterface({
     }
     forceLiveSyncRender((value) => value + 1)
     lastStreamChunkAtRef.current = Date.now()
-  }, [activeChatId, actChat, chat0, chat1, chat2, chat3, liveMessageDeltas, liveMessages])
+  }, [activeChatId, actChat, chat0, chat1, chat2, chat3, liveMessageDeltas, liveMessages, runtimesRef])
 
   // When loadChat finishes it bumps runtimeHydrationVersion. Explicitly sync the
   // runtime's loaded messages to the current useChat instances so the greeting
@@ -1110,7 +1138,7 @@ export default function ChatInterface({
     if (actChatRef.current.messages !== runtime.actChat.messages) {
       actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
     }
-  }, [activeChatId, runtimeHydrationVersion])
+  }, [activeChatId, actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, runtimeHydrationVersion, runtimesRef])
 
   useEffect(() => {
     if (!activeChatId) return
@@ -1232,7 +1260,7 @@ export default function ChatInterface({
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [activeChatId, actChat, activePersistedGenerating, chat0, chat1, chat2, chat3, completeSession, loadChats, mode, sessions])
+  }, [activeChatId, actChat, activePersistedGenerating, chat0, chat1, chat2, chat3, completeSession, loadChats, mode, runtimesRef, sessions])
 
   // Update title in local state + pendingTitleRef immediately, then broadcast.
   const applyChatTitleUpdate = useCallback((chatId: string, title: string) => {
@@ -1386,7 +1414,15 @@ export default function ChatInterface({
     setAskModelSelectionMode('single')
     setSelectedModels([primary])
     setSelectedActModel(primary)
-  }, [hasAutomationContext, askModelSelectionMode, selectedModels, selectedActModel])
+  }, [
+    askModelSelectionMode,
+    hasAutomationContext,
+    selectedActModel,
+    selectedModels,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
+  ])
   useEffect(() => {
     if (hideSidebar) return
     const browserIdParam =
@@ -1429,6 +1465,7 @@ export default function ChatInterface({
     idParam,
     mode,
     persistActiveRuntimeUiState,
+    clearTransientComposerState,
     setActiveViewer,
   ])
 
@@ -1869,7 +1906,15 @@ export default function ChatInterface({
         localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(one))
       }
     },
-    [generationMode, imageModelSelectionMode, isActiveLoading, isFreeTier, selectedImageModels],
+    [
+      generationMode,
+      imageModelSelectionMode,
+      isActiveLoading,
+      isFreeTier,
+      selectedImageModels,
+      setImageModelSelectionMode,
+      setSelectedImageModels,
+    ],
   )
 
   const handleVideoModelSelectionModeChange = useCallback(
@@ -1885,7 +1930,15 @@ export default function ChatInterface({
         localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(one))
       }
     },
-    [generationMode, videoModelSelectionMode, isActiveLoading, isFreeTier, selectedVideoModels],
+    [
+      generationMode,
+      isActiveLoading,
+      isFreeTier,
+      selectedVideoModels,
+      setSelectedVideoModels,
+      setVideoModelSelectionMode,
+      videoModelSelectionMode,
+    ],
   )
 
   function handleVideoSubModeChange(subMode: VideoSubMode) {
@@ -2018,6 +2071,9 @@ export default function ChatInterface({
       snapshotCurrentAskThreadsForModelPicker,
       persistNewChatAskModels,
       persistNewChatActModel,
+      setAskModelSelectionMode,
+      setSelectedActModel,
+      setSelectedModels,
     ],
   )
 
@@ -2056,13 +2112,6 @@ export default function ChatInterface({
   }
 
   // ── chat management ────────────────────────────────────────────────────────
-
-  function clearTransientComposerState() {
-    setPendingChatDocuments([])
-    setReplyContext(null)
-    setAttachmentError(null)
-    setComposerNotice(null)
-  }
 
   function clearRuntimeMessages(runtime: ConversationRuntime) {
     runtime.askChats.forEach((chat) => {
@@ -3133,7 +3182,7 @@ export default function ChatInterface({
     setGenerationMode(mode)
     setGenerationChip(null)
     localStorage.setItem(CHAT_GEN_MODE_KEY, mode)
-  }, [])
+  }, [setGenerationChip, setGenerationMode])
 
   const isActiveLoadingRef = useRef(isActiveLoading)
   isActiveLoadingRef.current = isActiveLoading
@@ -3174,7 +3223,7 @@ export default function ChatInterface({
     }
     window.addEventListener('keydown', onGlobalKeyDown, true)
     return () => window.removeEventListener('keydown', onGlobalKeyDown, true)
-  }, [])
+  }, [setGenerationChip, setGenerationMode])
 
   async function stopActiveChat() {
     if (!isActiveLoading) return
@@ -3333,7 +3382,7 @@ export default function ChatInterface({
       }
     }, 5000)
     return () => clearInterval(id)
-  }, [activeChatId, liveMessages])
+  }, [activeChatId, liveMessages, runtimesRef])
 
   // ── derived values for header ─────────────────────────────────────────────
 
@@ -3351,7 +3400,7 @@ export default function ChatInterface({
   const primaryMessageSource =
     activeRuntime.askChats.find((chat) => chat.messages.some((message) => message.role === 'user')) ??
     (activeRuntime.actChat.messages.some((message) => message.role === 'user') ? activeRuntime.actChat : activeRuntime.askChats[0])
-  const primaryMessages = (primaryMessageSource.messages as UIMessage[]) ?? []
+  const primaryMessages = (primaryMessageSource.messages as UIMessage[] | undefined) ?? EMPTY_UI_MESSAGES
   const hasRuntimeMessages =
     activeRuntime.actChat.messages.some((message) => message.role === 'user') ||
     activeRuntime.askChats.some((chat) => chat.messages.some((message) => message.role === 'user'))
@@ -4099,11 +4148,14 @@ export default function ChatInterface({
                           {getMessageImages(msg).length > 0 && (
                             <div className="mb-2 flex flex-wrap gap-1.5">
                               {getMessageImages(msg).map((imgUrl, imgIdx) => (
-                                <img
+                                <Image
                                   key={imgIdx}
                                   src={imgUrl}
                                   alt="Reference image"
-                                  className="max-h-36 rounded-lg object-cover"
+                                  width={144}
+                                  height={144}
+                                  unoptimized
+                                  className="h-auto max-h-36 w-auto rounded-lg object-cover"
                                 />
                               ))}
                             </div>
@@ -4398,8 +4450,14 @@ export default function ChatInterface({
               <div className="mb-2 flex min-w-0 flex-wrap gap-2">
                 {attachedImages.map((img, i) => (
                   <div key={`img-${i}`} className="relative group">
-                    <img src={img.dataUrl} alt={img.name}
-                      className="w-16 h-16 object-cover rounded-lg border border-[var(--border)]" />
+                    <Image
+                      src={img.dataUrl}
+                      alt={img.name}
+                      width={64}
+                      height={64}
+                      unoptimized
+                      className="h-16 w-16 rounded-lg border border-[var(--border)] object-cover"
+                    />
                     <button
                       onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
                       className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[var(--foreground)] text-[var(--background)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
