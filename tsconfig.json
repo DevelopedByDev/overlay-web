@@ -53,6 +53,12 @@
       "@overlay/app-core/*": [
         "./packages/overlay-app-core/src/*"
       ],
+      "@overlay/auth-contracts": [
+        "./packages/overlay-auth-contracts/src/index.ts"
+      ],
+      "@overlay/auth-contracts/*": [
+        "./packages/overlay-auth-contracts/src/*"
+      ],
       "@overlay/chat-core": [
         "./packages/overlay-chat-core/src/index.ts"
       ],
@@ -82,6 +88,12 @@
       ],
       "@overlay/modules-react/*": [
         "./packages/overlay-modules-react/src/*"
+      ],
+      "@overlay/storage-contracts": [
+        "./packages/overlay-storage-contracts/src/index.ts"
+      ],
+      "@overlay/storage-contracts/*": [
+        "./packages/overlay-storage-contracts/src/*"
       ],
       "@overlay/tools-core": [
         "./packages/overlay-tools-core/src/index.ts"

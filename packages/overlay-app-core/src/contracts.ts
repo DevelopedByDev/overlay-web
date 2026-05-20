@@ -1,4 +1,19 @@
 import type { LLMGateway as CoreLLMGateway } from '@overlay/llm-gateway'
+import type {
+  AuthProvider,
+  AuthUser,
+  Session,
+  TokenClaims,
+  User,
+  UserProfile,
+} from '@overlay/auth-contracts'
+import type {
+  ObjectStore,
+  ObjectSummary,
+  QueryResult,
+  VectorStore,
+} from '@overlay/storage-contracts'
+
 export type {
   LanguageModel,
   LLMGateway,
@@ -6,6 +21,33 @@ export type {
   ModelOptions,
   PricingInfo,
 } from '@overlay/llm-gateway'
+export type {
+  AuthProvider,
+  AuthUser,
+  Session,
+  TokenClaims,
+  User,
+  UserProfile,
+} from '@overlay/auth-contracts'
+export {
+  AuthConfigurationError,
+  AuthError,
+  ForbiddenError,
+  InvalidTokenError,
+  SessionExpiredError,
+  UnauthorizedError,
+  isAuthError,
+  type AuthErrorCode,
+} from '@overlay/auth-contracts'
+export type {
+  DownloadUrl,
+  FileMetadata,
+  ObjectStore,
+  ObjectSummary,
+  QueryResult,
+  UploadUrl,
+  VectorStore,
+} from '@overlay/storage-contracts'
 
 export type ThemePreference = 'light' | 'dark'
 /** Token streaming is the only supported mode; the field remains for API/storage compatibility. */
@@ -93,15 +135,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   onlyAllowZdrModels: false,
   dismissedZdrWarningGlobally: false,
   dismissedZdrWarningModelIds: [],
-}
-
-export interface AuthUser {
-  id: string
-  email: string
-  firstName?: string
-  lastName?: string
-  profilePictureUrl?: string
-  emailVerified?: boolean
 }
 
 export interface ChatModel {
@@ -1189,31 +1222,6 @@ export interface OnboardingCompleteResponse {
   persistedToConvex?: boolean
 }
 
-export interface Session {
-  accessToken: string
-  refreshToken?: string
-  user: AuthUser
-  expiresAt?: number
-}
-
-export interface TokenClaims {
-  iss: string
-  sub: string
-  aud?: string | string[]
-  exp: number
-  iat?: number
-  [claim: string]: unknown
-}
-
-export interface UserProfile {
-  id: string
-  email?: string
-  firstName?: string
-  lastName?: string
-  profilePictureUrl?: string
-  emailVerified?: boolean
-}
-
 export interface CheckoutArgs {
   userId: string
   email?: string
@@ -1258,20 +1266,6 @@ export interface UsageArgs {
   timestamp?: number
 }
 
-export interface ObjectSummary {
-  key: string
-  sizeBytes?: number
-  contentType?: string
-  lastModified?: string
-  etag?: string
-}
-
-export interface QueryResult {
-  id: string
-  score: number
-  metadata: Record<string, unknown>
-}
-
 export interface RateLimitSpec {
   bucket: string
   key: string | null | undefined
@@ -1293,43 +1287,12 @@ export interface RateLimitResult {
   decisions: RateLimitDecision[]
 }
 
-export interface AuthProvider {
-  getSession(req: Request): Promise<Session | null>
-  verifyAccessToken(token: string): Promise<TokenClaims | null>
-  getUserProfile(token: string): Promise<UserProfile | null>
-  deleteUser?(userId: string): Promise<void>
-}
-
 export interface BillingProvider {
   getEntitlements(userId: string): Promise<Entitlements>
   createCheckoutSession(args: CheckoutArgs): Promise<CheckoutResult>
   createPortalSession(userId: string): Promise<PortalResult>
   recordUsage(args: UsageArgs): Promise<void>
   cancelSubscription?(subscriptionId: string): Promise<void>
-}
-
-export interface ObjectStore {
-  getUploadUrl(
-    key: string,
-    contentType: string,
-  ): Promise<{ url: string; fields?: Record<string, string> }>
-  getDownloadUrl(key: string): Promise<string>
-  deleteObject(key: string): Promise<void>
-  listObjects(prefix: string): Promise<ObjectSummary[]>
-}
-
-export interface VectorStore {
-  upsert(args: {
-    id: string
-    vector: number[]
-    metadata: Record<string, unknown>
-  }): Promise<void>
-  query(args: {
-    vector: number[]
-    topK: number
-    filter?: Record<string, unknown>
-  }): Promise<QueryResult[]>
-  delete(id: string): Promise<void>
 }
 
 export interface RateLimiter {
