@@ -676,8 +676,8 @@ A second always-visible row underneath the list:
   1129–1146). No autosave — avoids accidental overwrites mid-edit.
 - After successful save, `value` reflects the server-side normalized
   response (so dedupe / lowercasing is visible immediately).
-- Re-opening the project's Settings tab shows the saved list as
-  selected (Success Criterion 7).
+- Re-opening the settings drawer to the GitHub repositories section
+  shows the saved list as selected (Success Criterion 7).
 
 ---
 

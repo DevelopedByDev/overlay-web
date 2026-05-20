@@ -41,7 +41,7 @@ Repository scoping closes this gap without requiring any change to how GitHub is
 
 ### Story 1 — Configure a repository allowlist for a project
 
-As a project owner, I want to open a project's Settings tab, navigate to the GitHub integration row, and select which repositories this project is allowed to access, so that the agent in this project cannot touch any other repository.
+As a project owner, I want to open a project's settings drawer, find the GitHub repositories section, and select which repositories this project is allowed to access, so that the agent in this project cannot touch any other repository.
 
 **Acceptance Criterion:** Given GitHub is connected and a project has GitHub enabled, the project owner can open project settings and see a repository picker for GitHub. After selecting one or more repositories and saving, the saved list is reflected immediately in the settings UI without a page reload.
 
