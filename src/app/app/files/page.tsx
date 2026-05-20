@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { getInitialKnowledgeFiles, getInitialKnowledgeMemories } from '@/server/app/route-data'
 import { redirect } from 'next/navigation'
 import { resolveKnowledgeLayout } from '@overlay/app-core'
@@ -46,7 +46,7 @@ export default async function FilesPage({
 }: {
   searchParams?: Promise<FilesSearchParams>
 }) {
-  const session = await getSession()
+  const session = await getOverlaySession()
   if (!session) redirect('/app/chat?signin=nav')
   const layout = resolveFilesLayout(await searchParams)
   return (

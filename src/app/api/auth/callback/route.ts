@@ -3,9 +3,9 @@ import {
   consumeAuthorizationState,
   handleCallback,
   getBaseUrl,
-  getSession,
   MOBILE_AUTH_REDIRECT_PATH,
-} from '@/server/auth/workos-auth'
+} from '@/server/auth/actions'
+import { getOverlaySession } from '@/server/auth/session'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { convex as serverConvex } from '@/server/database/convex'
 import { createHash, randomBytes } from 'crypto'
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Sync user profile to Convex (creates subscription record if it doesn't exist)
-    const session = await getSession()
+    const session = await getOverlaySession(request)
     logAuthDebug('/api/auth/callback post-handleCallback session', summarizeSessionForLog(session))
 
     const inspectAccessToken = async (accessToken: string, userId: string) => {

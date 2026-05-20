@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import AppSidebar from '@/components/layout/AppSidebar'
 import { AsyncSessionsProvider } from '@/components/providers/async-sessions-store'
 import BackgroundPollManager from '@/components/providers/BackgroundPollManager'
@@ -20,7 +20,7 @@ function AppMainFallback() {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await getSession()
+  const session = await getOverlaySession()
   const user = session?.user ?? null
   const [initialProjects, initialAutomations] = user
     ? await Promise.all([

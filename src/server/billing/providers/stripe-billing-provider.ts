@@ -214,4 +214,8 @@ export class StripeBillingProvider implements BillingProvider {
       { throwOnError: true },
     )
   }
+
+  async cancelSubscription(subscriptionId: string): Promise<void> {
+    await stripe.subscriptions.cancel(subscriptionId)
+  }
 }

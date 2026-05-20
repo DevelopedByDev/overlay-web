@@ -3,9 +3,20 @@ import 'server-only'
 import { createGateway, generateText, type ToolSet, stepCountIs, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
-import { getModel } from '@/shared/ai/gateway/model-data'
+import {
+  AVAILABLE_MODELS,
+  getModel,
+} from '@/shared/ai/gateway/model-data'
+import { estimateTokenCost } from '@/shared/ai/gateway/model-pricing'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/server/ai/gateway/openrouter-service'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
+import type {
+  LanguageModel,
+  LLMGateway,
+  ModelInfo,
+  ModelOptions,
+  PricingInfo,
+} from '@overlay/app-core'
 
 let cachedGateway: ReturnType<typeof createGateway> | null = null
 let cachedApiKey: string | null = null
@@ -704,5 +715,47 @@ export async function getGatewayParallelSearchTool(accessToken?: string, chatMod
   } catch (err) {
     console.error('[AI Gateway] parallel_search unavailable — check AI_GATEWAY_API_KEY:', err)
     return null
+  }
+}
+
+export class OpenRouterGateway implements LLMGateway {
+  async createLanguageModel(
+    modelId: string,
+    options: ModelOptions = {},
+  ): Promise<LanguageModel> {
+    const model = getModel(modelId)
+    const implementation = await getGatewayLanguageModel(modelId, options.accessToken)
+    return {
+      id: modelId,
+      provider: model?.provider,
+      implementation,
+    }
+  }
+
+  async listModels(): Promise<ModelInfo[]> {
+    return AVAILABLE_MODELS.map((model) => ({
+      id: model.id,
+      name: model.name,
+      provider: model.provider,
+      description: model.description,
+      supportsVision: model.supportsVision,
+      supportsReasoning: model.supportsReasoning,
+      supportsSearch: model.supportsSearch,
+      supportsZeroDataRetention: model.supportsZeroDataRetention,
+      pricePer1mTokens: model.pricePer1mTokens,
+    }))
+  }
+
+  async getModelPricing(modelId: string): Promise<PricingInfo> {
+    const model = getModel(modelId)
+    const estimate = estimateTokenCost(modelId, 1_000_000, 0, 0)
+    return {
+      modelId,
+      providerCostUsd: model?.pricePer1mTokens ?? estimate?.providerCostUsd,
+      pricingModelId: estimate?.pricingModelId ?? modelId,
+      pricingSource: estimate?.pricingSource ?? (model?.cost === 0 ? 'explicit-free' : undefined),
+      pricingType: estimate?.pricingType ?? 'language',
+      isFree: model?.cost === 0,
+    }
   }
 }

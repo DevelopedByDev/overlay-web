@@ -1,5 +1,5 @@
 import dynamic from 'next/dynamic'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { redirect } from 'next/navigation'
 
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'), {
@@ -7,7 +7,7 @@ const NotebookEditor = dynamic(() => import('@/features/notebook/components/Note
 })
 
 export default async function NotesPage() {
-  const session = await getSession()
+  const session = await getOverlaySession()
   if (!session) redirect('/app/chat?signin=nav')
   return <NotebookEditor userId={session.user.id} />
 }

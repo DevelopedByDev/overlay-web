@@ -1,8 +1,8 @@
 'use client'
 
 import type { RefObject } from 'react'
-import type { UseChatHelpers } from '@ai-sdk/react'
-import type { UIMessage } from 'ai'
+import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
+import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
 import { ChatMessage } from './ChatMessage'

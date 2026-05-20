@@ -11,7 +11,7 @@ import {
   Pencil,
   ArrowUp,
 } from 'lucide-react'
-import type { UIMessage } from 'ai'
+import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import {
   cloneConversationUiState,
   cloneGenerationResultsMap,
@@ -24,7 +24,7 @@ import {
   selectedModelForExchange,
 } from '@overlay/chat-core'
 import { ModelBadges, ModelQualitiesPanel } from '@overlay/chat-react'
-import { useQuery } from 'convex/react'
+import { useQuery } from '@/components/providers/convex-hooks'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'

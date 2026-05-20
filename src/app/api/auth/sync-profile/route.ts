@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { getPostHogClient } from '@/server/observability/posthog-server'
 
 export async function POST() {
   try {
-    const session = await getSession()
+    const session = await getOverlaySession()
     
     if (!session) {
       return NextResponse.json(

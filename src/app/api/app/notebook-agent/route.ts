@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server'
-import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from 'ai'
+import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { convex } from '@/server/database/convex'
-import { getGatewayLanguageModel } from '@/server/ai/gateway/ai-gateway'
+import { getLanguageModel } from '@/server/ai/model-runtime'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
@@ -17,7 +17,7 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/gateway/model-pricing'
+import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/pricing'
 import { createNotebookTextEmitter } from '@/server/agent/notebook-agent-stream'
 import {
   DEFAULT_MODEL_ID,
@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
 
       try {
         emit({ type: 'thinking', thinking: 'Analyzing note...' })
-        const model = await getGatewayLanguageModel(effectiveModelId, auth.accessToken)
+        const model = await getLanguageModel(effectiveModelId, auth.accessToken)
         const mentionsContext = await resolveMentionsContext(rawMentions, {
           userId,
           serverSecret,

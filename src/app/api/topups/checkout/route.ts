@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { stripe, getBaseUrl } from '@/server/billing/stripe'
 import { getTopUpPriceId, getTopUpQuantityForCheckout, isRecognizedTopUpAmount } from '@/server/billing/stripe-billing'
@@ -25,7 +25,7 @@ function resolveReturnUrl(baseUrl: string, returnPath: unknown, state: 'success'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const session = await getSession()
+    const session = await getOverlaySession()
     const auth = await resolveAuthenticatedAppUser(request, body)
     const userId = auth?.userId
     if (!userId) {

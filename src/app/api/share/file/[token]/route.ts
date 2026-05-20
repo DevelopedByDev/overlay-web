@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { generatePresignedDownloadUrl } from '@/server/storage/r2'
+import { generatePresignedDownloadUrl } from '@/server/storage/object-store'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/server/storage/storage-keys'
 
 export const runtime = 'nodejs'

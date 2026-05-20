@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/server/billing/stripe'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { convex } from '@/server/database/convex'
 import { quantityToPlanAmountCents } from '@/shared/billing/billing-pricing'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
@@ -25,7 +25,7 @@ function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscript
 
 export async function POST(request: NextRequest) {
   try {
-    const authSession = await getSession()
+    const authSession = await getOverlaySession()
 
     if (!authSession || !authSession.user) {
       return NextResponse.json(

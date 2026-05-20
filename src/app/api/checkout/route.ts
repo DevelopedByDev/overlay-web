@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe, getBaseUrl } from '@/server/billing/stripe'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import {
   clampPaidPlanAmountCents,
@@ -11,7 +11,7 @@ import { getPlanQuantityForCheckout, isRecognizedTopUpAmount, resolvePaidUnitPri
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
+    const session = await getOverlaySession()
 
     if (!session || !session.user) {
       return NextResponse.json(

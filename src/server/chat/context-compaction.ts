@@ -1,9 +1,9 @@
 import 'server-only'
 
-import { generateText, type UIMessage } from 'ai'
-import { getGatewayLanguageModel, getGatewayModelId } from '@/server/ai/gateway/ai-gateway'
+import { generateText, type UIMessage } from '@/server/ai/sdk'
+import { getGatewayModelId, getLanguageModel } from '@/server/ai/model-runtime'
 import { getModel } from '@/shared/ai/gateway/model-data'
-import { getGatewayModelPricing } from '@/server/ai/gateway/model-pricing'
+import { getGatewayModelPricing } from '@/server/ai/pricing'
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -303,7 +303,7 @@ export async function compactMessagesForContext(params: {
     const summary = params.generateSummaryText
       ? (await params.generateSummaryText({ prompt, targetSummaryTokens })).trim()
       : (await (async () => {
-          const model = await getGatewayLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, params.accessToken)
+          const model = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, params.accessToken)
           const result = await generateText({
             model,
             temperature: 0.1,

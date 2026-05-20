@@ -1,14 +1,14 @@
 import { cookies } from 'next/headers'
 import { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
 
 export async function GET(request: NextRequest) {
-  const session = await getSession()
+  const session = await getOverlaySession()
   const auth = await resolveAuthenticatedAppUser(request, {})
   if (!auth) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })

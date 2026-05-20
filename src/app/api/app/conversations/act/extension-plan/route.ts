@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateObject } from 'ai'
+import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { convex } from '@/server/database/convex'
@@ -8,8 +8,8 @@ import {
   isFreeTierChatModelId,
   isLegacyFreeTierDefaultModelId,
 } from '@/shared/ai/gateway/model-types'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/gateway/model-pricing'
-import { getGatewayLanguageModel } from '@/server/ai/gateway/ai-gateway'
+import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/pricing'
+import { getLanguageModel } from '@/server/ai/model-runtime'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
@@ -367,7 +367,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const model = await getGatewayLanguageModel(effectiveModelId, auth.accessToken)
+    const model = await getLanguageModel(effectiveModelId, auth.accessToken)
     const transcript = (messages ?? [])
       .filter((message) => message && typeof message.content === 'string')
       .map((message, index) => `${index + 1}. ${message.role.toUpperCase()}: ${message.content}`)

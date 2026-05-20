@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe, getBaseUrl } from '@/server/billing/stripe'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import { resolvePortalConfigurationId } from '@/server/billing/stripe-billing'
@@ -82,7 +82,7 @@ async function resolveVerifiedCustomerIdFromCheckoutSession(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
-    const authSession = await getSession()
+    const authSession = await getOverlaySession()
     const auth = await resolveAuthenticatedAppUser(request, body)
     const userId = auth?.userId
     if (!userId) {

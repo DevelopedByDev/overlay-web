@@ -29,4 +29,8 @@ export class NoOpBillingProvider implements BillingProvider {
   async recordUsage(args: UsageArgs): Promise<void> {
     void args
   }
+
+  async cancelSubscription(subscriptionId: string): Promise<void> {
+    void subscriptionId
+  }
 }

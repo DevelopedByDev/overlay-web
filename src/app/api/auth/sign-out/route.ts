@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { clearSession } from '@/server/auth/workos-auth'
+import { clearOverlaySession } from '@/server/auth/session'
 
 export async function POST() {
   try {
-    await clearSession()
+    await clearOverlaySession()
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[Auth] Sign-out error:', error)

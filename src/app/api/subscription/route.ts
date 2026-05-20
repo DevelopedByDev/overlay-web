@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
 import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 
 type ConvexEntitlements = {
   tier: 'free' | 'pro' | 'max'
@@ -20,7 +20,7 @@ type ConvexEntitlements = {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getSession()
+  const session = await getOverlaySession()
   if (!session || !session.user) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }

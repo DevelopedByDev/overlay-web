@@ -8,7 +8,7 @@ import {
   type Entitlements,
 } from '@overlay/app-core'
 import overlayAppConfig from '@/overlay.config'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     }
 
     const serverSecret = getInternalApiSecret()
-    const browserSession = await getSession()
+    const browserSession = await getOverlaySession()
 
     const [profile, entitlements, uiSettings] = await Promise.all([
       auth.accessToken

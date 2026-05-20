@@ -3,8 +3,8 @@
 /* eslint-disable react-hooks/refs */
 
 import { useCallback, useMemo, useRef } from 'react'
-import { Chat, useChat } from '@ai-sdk/react'
-import type { UIMessage } from 'ai'
+import { Chat, useChat } from '@/components/providers/ai-chat-client'
+import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { createConversationUiState } from '@overlay/chat-core'
 import {
   createPersistentChatTransport,

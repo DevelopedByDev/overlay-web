@@ -1322,6 +1322,7 @@ export interface AuthProvider {
   getSession(req: Request): Promise<Session | null>
   verifyAccessToken(token: string): Promise<TokenClaims | null>
   getUserProfile(token: string): Promise<UserProfile | null>
+  deleteUser?(userId: string): Promise<void>
 }
 
 export interface BillingProvider {
@@ -1329,6 +1330,7 @@ export interface BillingProvider {
   createCheckoutSession(args: CheckoutArgs): Promise<CheckoutResult>
   createPortalSession(userId: string): Promise<PortalResult>
   recordUsage(args: UsageArgs): Promise<void>
+  cancelSubscription?(subscriptionId: string): Promise<void>
 }
 
 export interface ObjectStore {

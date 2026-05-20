@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateObject } from 'ai'
+import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { sanitizeChatTitle } from '@/shared/chat/chat-title'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
-import { getGatewayLanguageModel } from '@/server/ai/gateway/ai-gateway'
+import { getLanguageModel } from '@/server/ai/model-runtime'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import type { Entitlements } from '@/shared/app/app-contracts'
-import { calculateTokenCostOrNull } from '@/server/ai/gateway/model-pricing'
+import { calculateTokenCostOrNull } from '@/server/ai/pricing'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ title: null })
     }
 
-    const model = await getGatewayLanguageModel(TITLE_MODEL, auth.accessToken)
+    const model = await getLanguageModel(TITLE_MODEL, auth.accessToken)
     let result: { object: z.infer<typeof titleSchema>; usage?: { inputTokens?: number; outputTokens?: number } }
     try {
       result = await generateObject({

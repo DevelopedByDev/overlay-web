@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readEmailVerificationTicket, verifyEmail, resendVerificationEmail } from '@/server/auth/workos-auth'
+import { readEmailVerificationTicket, verifyEmail, resendVerificationEmail } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export async function POST(request: NextRequest) {

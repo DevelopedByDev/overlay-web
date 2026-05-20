@@ -3,7 +3,7 @@ import { convex } from '@/server/database/convex'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 
 interface Entitlements {
   tier: 'free' | 'pro' | 'max'
@@ -68,7 +68,7 @@ function normalizeLimitValue(value: number | string): number {
 
 export async function GET() {
   try {
-    const session = await getSession()
+    const session = await getOverlaySession()
     logAuthDebug('/api/entitlements getSession result', summarizeSessionForLog(session))
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

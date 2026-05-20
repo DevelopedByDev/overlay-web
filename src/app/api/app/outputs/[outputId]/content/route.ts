@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
-import { generatePresignedDownloadUrl } from '@/server/storage/r2'
+import { generatePresignedDownloadUrl } from '@/server/storage/object-store'
 import { isOwnedOutputR2Key } from '@/server/storage/storage-keys'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 

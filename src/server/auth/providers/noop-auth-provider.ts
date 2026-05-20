@@ -22,4 +22,8 @@ export class NoOpAuthProvider implements AuthProvider {
     void token
     return null
   }
+
+  async deleteUser(userId: string): Promise<void> {
+    void userId
+  }
 }

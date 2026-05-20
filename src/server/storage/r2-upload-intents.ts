@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { Id } from '../../../convex/_generated/dataModel'
 import { convex } from '@/server/database/convex'
-import { deleteObjects } from '@/server/storage/r2'
+import { deleteObjects } from '@/server/storage/object-store'
 import { isOwnedFileR2Key } from '@/server/storage/storage-keys'
 
 type ExpiredUploadIntent = {

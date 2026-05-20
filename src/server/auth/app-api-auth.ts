@@ -1,8 +1,7 @@
 import 'server-only'
 
 import type { NextRequest } from 'next/server'
-import { getVerifiedAccessTokenClaims } from '../../../convex/lib/auth'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay'
 
@@ -14,7 +13,8 @@ export async function resolveAuthenticatedAppUser(
   request: NextRequest,
   body: { accessToken?: string; userId?: string },
 ): Promise<{ userId: string; accessToken: string } | null> {
-  const session = await getSession()
+  const ctx = getOverlayServerContext()
+  const session = await ctx.auth.getSession(request)
   if (session) {
     return { userId: session.user.id, accessToken: session.accessToken }
   }
@@ -48,7 +48,7 @@ export async function resolveAuthenticatedAppUser(
       : queryUserId
   if (!token || !uid) return null
 
-  const claims = await getVerifiedAccessTokenClaims(token)
+  const claims = await ctx.auth.verifyAccessToken(token)
   if (!claims || claims.sub !== uid) return null
 
   return { userId: uid, accessToken: token }

@@ -1,8 +1,8 @@
 'use client'
 
-import type { UseChatHelpers } from '@ai-sdk/react'
+import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { ComponentProps } from 'react'
-import type { UIMessage } from 'ai'
+import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   getChatModelDisplayName,

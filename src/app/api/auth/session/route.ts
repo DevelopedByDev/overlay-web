@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { rateLimitByIp } from '@/server/security/rate-limit'
 
 export async function GET(request: NextRequest) {
   try {
     const rateLimitResponse = await rateLimitByIp(request, 'auth:session', 60, 60_000)
     if (rateLimitResponse) return rateLimitResponse
-    const session = await getSession()
+    const session = await getOverlaySession()
     if (!session) {
       logAuthDebug('/api/auth/session unauthenticated')
       return NextResponse.json({ authenticated: false }, { status: 200 })

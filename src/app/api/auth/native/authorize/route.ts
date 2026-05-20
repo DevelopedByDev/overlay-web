@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getNativeAuthorizationUrl, normalizeCodeChallenge } from '@/server/auth/workos-auth'
+import { getNativeAuthorizationUrl, normalizeCodeChallenge } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import {

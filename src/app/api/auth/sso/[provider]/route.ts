@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthorizationUrl, normalizeAuthRedirect, normalizeCodeChallenge } from '@/server/auth/workos-auth'
+import { getAuthorizationUrl, normalizeAuthRedirect, normalizeCodeChallenge } from '@/server/auth/actions'
 
 type SSOProvider = 'google' | 'apple' | 'microsoft'
 

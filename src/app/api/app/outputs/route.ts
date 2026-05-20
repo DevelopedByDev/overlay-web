@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { isKnownOutputType } from '@/shared/tools/output-types'
-import { deleteObject } from '@/server/storage/r2'
+import { deleteObject } from '@/server/storage/object-store'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { isOwnedOutputR2Key } from '@/server/storage/storage-keys'
 import { convex } from '@/server/database/convex'

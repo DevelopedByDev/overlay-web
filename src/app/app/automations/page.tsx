@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import ChatInterface from '@/features/chat/components/ChatInterface'
 import { getInitialChatHistory } from '@/server/app/route-data'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
@@ -23,7 +23,7 @@ async function AutomationsRouteContent({
 }
 
 export default async function AutomationsPage() {
-  const session = await getSession()
+  const session = await getOverlaySession()
   return (
     <Suspense fallback={<ChatRouteSkeleton mode="automate" />}>
       <AutomationsRouteContent

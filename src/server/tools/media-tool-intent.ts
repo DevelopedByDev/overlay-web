@@ -1,10 +1,10 @@
 import 'server-only'
 
-import { generateObject } from 'ai'
 import { z } from 'zod'
-import { getGatewayLanguageModel } from '@/server/ai/gateway/ai-gateway'
+import { generateObject } from '@/server/ai/sdk'
+import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { Entitlements } from '@/shared/app/app-contracts'
-import { calculateTokenCostOrNull } from '@/server/ai/gateway/model-pricing'
+import { calculateTokenCostOrNull } from '@/server/ai/pricing'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -69,7 +69,7 @@ export async function classifyMediaToolIntentForTurn(params: {
   if (!reservation.ok) return null
 
   try {
-    const model = await getGatewayLanguageModel(MEDIA_INTENT_MODEL, params.accessToken)
+    const model = await getLanguageModel(MEDIA_INTENT_MODEL, params.accessToken)
     const result = await generateObject({
       model,
       schema: mediaIntentSchema,

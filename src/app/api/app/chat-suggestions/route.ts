@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { after } from 'next/server'
-import { generateText } from 'ai'
+import { generateText } from '@/server/ai/sdk'
 import { convex } from '@/server/database/convex'
-import { getOpenRouterLanguageModel } from '@/server/ai/gateway/ai-gateway'
+import { getLanguageModel } from '@/server/ai/model-runtime'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 function utcDateKey(): string {
@@ -61,7 +61,7 @@ function normalizeFourPrompts(raw: string[], firstName?: string): string[] {
 const DEFAULT_PROMPTS_NORMALIZED = normalizeFourPrompts([...DEFAULT_CHAT_SUGGESTIONS])
 
 async function generateStartersWithLLM(accessToken: string, firstName: string): Promise<string[] | null> {
-  const model = await getOpenRouterLanguageModel(FREE_TIER_AUTO_MODEL_ID, accessToken)
+  const model = await getLanguageModel(FREE_TIER_AUTO_MODEL_ID, accessToken)
   const result = await generateText({
     model,
     temperature: 0.88,
@@ -153,7 +153,7 @@ function scheduleRefreshForNewDay(args: {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
+    const session = await getOverlaySession()
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

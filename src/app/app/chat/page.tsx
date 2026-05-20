@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import ChatInterface from '@/features/chat/components/ChatInterface'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { getInitialChatHistory } from '@/server/app/route-data'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 
@@ -22,7 +22,7 @@ async function ChatRouteContent({
 }
 
 export default async function ChatPage() {
-  const session = await getSession()
+  const session = await getOverlaySession()
   return (
     <Suspense fallback={<ChatRouteSkeleton />}>
       <ChatRouteContent

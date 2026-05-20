@@ -1,5 +1,5 @@
-import type { UIMessage } from 'ai'
-import { getToolName, isReasoningUIPart, isToolUIPart } from 'ai'
+import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import { getToolName, isReasoningUIPart, isToolUIPart } from '@/shared/chat/ai-ui-message'
 import type { AutomationDraftSummary } from '@/features/automations/lib/automation-drafts'
 import type { SkillDraftSummary } from '@/features/automations/lib/skill-drafts'
 import type { WebSourceItem } from '@/shared/web/web-sources'

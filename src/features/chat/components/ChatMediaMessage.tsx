@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { Reply, Trash2 } from 'lucide-react'
 import { MediaSlotOutput } from '@overlay/chat-react'
-import type { UIMessage } from 'ai'
+import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
 import { getMessageImages, getMessageText, getUserReplyThreadMeta, getUserTurnId } from './chat-interface/chatLogic'

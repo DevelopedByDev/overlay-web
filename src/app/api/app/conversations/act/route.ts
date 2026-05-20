@@ -1,19 +1,19 @@
 import { after, NextRequest, NextResponse } from 'next/server'
-import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from 'ai'
-import type { LanguageModelV3 } from '@ai-sdk/provider'
+import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from '@/server/ai/sdk'
+import type { LanguageModelV3 } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { resolveMentionsContext } from '@/server/knowledge/mention-resolver'
 import { listMemories } from '@/shared/app/app-store'
 import {
-  getGatewayLanguageModel,
+  getLanguageModel,
   getGatewayParallelSearchTool,
   getGatewayPerplexitySearchTool,
   getOpenRouterLanguageModelCapturingRoutedModel,
-} from '@/server/ai/gateway/ai-gateway'
+} from '@/server/ai/model-runtime'
 import { getChatModelDisplayName, modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallbacks'
-import { userFacingOpenRouterError } from '@/server/ai/gateway/openrouter-service'
+import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { createBrowserUnifiedTools } from '@/server/tools/composio-tools'
 import { createWebTools } from '@/server/web/web-tools'
 import { createMcpToolSet } from '@/server/tools/mcp-tools'
@@ -29,7 +29,7 @@ import {
   allowedOverlayToolIdsForTurn,
   HIGH_RISK_TOOL_AUTHORIZATION_NOTE,
 } from '@/server/tools/tools/exposure-policy'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/gateway/model-pricing'
+import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/pricing'
 import { buildAutoRetrievalBundle } from '@/server/knowledge/ask-knowledge-context'
 import { buildDocumentContextBundle } from '@/server/agent/document-context-builder'
 import { parseIndexedAttachmentsFromRequest } from '@/shared/knowledge/knowledge-agent-types'
@@ -66,7 +66,7 @@ import {
 import {
   createNvidiaNimChatLanguageModel,
   resolveNvidiaApiKey,
-} from '@/server/ai/gateway/nvidia-nim-openai'
+} from '@/server/ai/model-runtime'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -1644,7 +1644,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      return getGatewayLanguageModel(attemptModelId, auth.accessToken || undefined)
+      return getLanguageModel(attemptModelId, auth.accessToken || undefined)
     }
 
     const fallbackModelIds = getChatModelFallbackCandidates({

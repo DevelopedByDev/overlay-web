@@ -3,7 +3,7 @@ import 'server-only'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ToolSet } from 'ai'
-import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
+import { getServerProviderKey } from '@/server/ai/provider-keys'
 
 type JsonRecord = Record<string, unknown>
 

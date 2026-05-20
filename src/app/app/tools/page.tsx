@@ -1,5 +1,5 @@
 import dynamic from 'next/dynamic'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { redirect } from 'next/navigation'
 
 const ToolsView = dynamic(() => import('@/features/tools/components/ToolsView'), {
@@ -7,7 +7,7 @@ const ToolsView = dynamic(() => import('@/features/tools/components/ToolsView'),
 })
 
 export default async function ToolsPage() {
-  const session = await getSession()
+  const session = await getOverlaySession()
   if (!session) {
     redirect('/app/chat?signin=nav')
   }

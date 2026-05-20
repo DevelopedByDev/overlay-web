@@ -19,7 +19,7 @@ import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { classifyOutputType } from '@/shared/tools/output-types'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   buildInsufficientCreditsPayload,
@@ -30,7 +30,7 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
-import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl, deleteObject } from '@/server/storage/r2'
+import { uploadBuffer as uploadBufferToR2, keyForOutput, generatePresignedDownloadUrl, deleteObject } from '@/server/storage/object-store'
 import { checkGlobalR2Budget } from '@/server/storage/r2-budget'
 
 export const maxDuration = 300
@@ -194,7 +194,7 @@ async function waitForSandboxFile(
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
+  const session = await getOverlaySession()
 
   const {
     task,

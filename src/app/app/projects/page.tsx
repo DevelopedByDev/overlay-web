@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import dynamic from 'next/dynamic'
 import { redirect } from 'next/navigation'
 import { getInitialProjectList } from '@/server/app/route-data'
@@ -21,7 +21,7 @@ async function ProjectsRouteContent({
 }
 
 export default async function ProjectsPage() {
-  const session = await getSession()
+  const session = await getOverlaySession()
   if (!session) {
     redirect('/app/chat?signin=nav')
   }

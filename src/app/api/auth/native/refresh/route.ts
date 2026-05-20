@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { refreshSessionFromRefreshToken } from '@/server/auth/workos-auth'
+import { refreshSessionFromRefreshToken } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { getNativeRefreshTokenBucketKey } from '@/server/auth/native-refresh-rate-limit'
 

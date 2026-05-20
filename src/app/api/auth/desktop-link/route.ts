@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getSession } from '@/server/auth/workos-auth'
+import { getOverlaySession } from '@/server/auth/session'
 import { createHash, randomBytes } from 'crypto'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
@@ -8,7 +8,7 @@ import {
   decryptSessionTransferPayload,
   encryptSessionTransferPayload,
 } from '@/server/auth/session-transfer-crypto'
-import { normalizeCodeChallenge } from '@/server/auth/workos-auth'
+import { normalizeCodeChallenge } from '@/server/auth/actions'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -32,7 +32,7 @@ function hashTransferTokenForLog(token: string): string {
 
 export async function POST(request: Request) {
   try {
-    const session = await getSession()
+    const session = await getOverlaySession(request)
     
     if (!session || !session.user) {
       return NextResponse.json(

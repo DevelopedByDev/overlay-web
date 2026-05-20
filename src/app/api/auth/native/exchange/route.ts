@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateNativeWithCode } from '@/server/auth/workos-auth'
+import { authenticateNativeWithCode } from '@/server/auth/actions'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'

@@ -1,5 +1,5 @@
-import type { UIMessage } from 'ai'
-import type { Chat } from '@ai-sdk/react'
+import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import type { Chat } from '@/components/providers/ai-chat-client'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { OutputType } from '@/shared/tools/output-types'
 import type { AutomationDraftSummary } from '@/features/automations/lib/automation-drafts'

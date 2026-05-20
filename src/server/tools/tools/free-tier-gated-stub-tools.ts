@@ -2,7 +2,10 @@ import 'server-only'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
-import { parallelSearchInputSchema, perplexitySearchInputSchema } from '@/server/ai/gateway/ai-gateway'
+import {
+  parallelSearchInputSchema,
+  perplexitySearchInputSchema,
+} from '@/server/ai/model-runtime'
 
 const interactiveBrowserInputSchema = z.object({
   task: z.string().describe('What to do in the browser — natural language'),
