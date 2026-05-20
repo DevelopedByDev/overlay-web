@@ -143,7 +143,7 @@ test('settings and account methods preserve billing/auth route contracts', async
   assert.equal(calls[3]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[3]!), { sessionId: 'cs_123' })
 
-  assert.equal(String(calls[4]!.input), 'https://example.test/api/subscription/settings')
+  assert.equal(String(calls[4]!.input), 'https://example.test/api/v1/subscription/settings')
   assert.equal(calls[4]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[4]!), {
     autoTopUpEnabled: true,
