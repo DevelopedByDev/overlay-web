@@ -41,6 +41,12 @@
       "@overlay/api-client/*": [
         "./packages/overlay-api-client/src/*"
       ],
+      "@overlay/agent-runtime": [
+        "./packages/overlay-agent-runtime/src/index.ts"
+      ],
+      "@overlay/agent-runtime/*": [
+        "./packages/overlay-agent-runtime/src/*"
+      ],
       "@overlay/app-core": [
         "./packages/overlay-app-core/src/index.ts"
       ],
@@ -76,6 +82,12 @@
       ],
       "@overlay/modules-react/*": [
         "./packages/overlay-modules-react/src/*"
+      ],
+      "@overlay/tools-core": [
+        "./packages/overlay-tools-core/src/index.ts"
+      ],
+      "@overlay/tools-core/*": [
+        "./packages/overlay-tools-core/src/*"
       ],
       "@overlay/ui": [
         "./packages/overlay-ui/src/index.ts"
