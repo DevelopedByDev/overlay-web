@@ -436,6 +436,13 @@ export interface OverlayAppConfig {
   policyGates?: readonly OverlayPolicyGate[]
   theme?: Partial<OverlayThemeMetadata>
   modelPolicy?: OverlayModelPolicyHooks
+  authProvider?: AuthProvider
+  billingProvider?: BillingProvider
+  objectStore?: ObjectStore
+  vectorStore?: VectorStore
+  llmGateway?: LLMGateway
+  rateLimiter?: RateLimiter
+  eventBus?: EventBus
 }
 
 export interface OverlayAppShellRegistry {
@@ -1361,4 +1368,14 @@ export interface RateLimiter {
 export interface EventBus {
   publish(topic: string, payload: unknown): Promise<void>
   subscribe(topic: string, handler: (payload: unknown) => void): () => void
+}
+
+export interface OverlayServerContext {
+  auth: AuthProvider
+  billing: BillingProvider
+  objectStore: ObjectStore
+  vectorStore: VectorStore
+  llmGateway: LLMGateway
+  rateLimiter: RateLimiter
+  eventBus: EventBus
 }

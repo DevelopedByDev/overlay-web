@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { NoteService, NoteServiceError } from '@/server/notes'
 import type { CreateNoteRequest, UpdateNoteRequest } from '@overlay/app-core'
@@ -25,33 +24,44 @@ async function readJsonBody<T>(request: NextRequest, fallback: T): Promise<T> {
   }
 }
 
+async function requireSession(request: NextRequest) {
+  const session = await ctx.auth.getSession(request)
+  if (!session) {
+    return {
+      response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    } as const
+  }
+  return { session } as const
+}
+
 function toErrorResponse(error: unknown, fallbackMessage: string) {
   if (error instanceof NoteServiceError) {
     return NextResponse.json({ error: error.message }, { status: error.statusCode })
   }
 
-  console.error(`[Notes API] ${fallbackMessage}:`, error)
+  console.error(`[Notes v1 API] ${fallbackMessage}:`, error)
   return NextResponse.json({ error: fallbackMessage }, { status: 500 })
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireSession(request)
+    if ('response' in auth) return auth.response
 
     const noteId = request.nextUrl.searchParams.get('noteId')
     if (noteId) {
-      const note = await noteService.getNote({ noteId, userId: auth.userId })
+      const note = await noteService.getNote({
+        noteId,
+        userId: auth.session.user.id,
+      })
       if (!note) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(note)
     }
 
-    const projectId = request.nextUrl.searchParams.get('projectId') ?? undefined
-    const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
     const notes = await noteService.listNotes({
-      userId: auth.userId,
-      projectId,
-      includeDeleted,
+      userId: auth.session.user.id,
+      projectId: request.nextUrl.searchParams.get('projectId') ?? undefined,
+      includeDeleted: readBooleanParam(request.nextUrl.searchParams.get('includeDeleted')),
     })
     return NextResponse.json(notes)
   } catch (error) {
@@ -61,15 +71,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await readJsonBody<CreateNoteRequest>(request, {})
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireSession(request)
+    if ('response' in auth) return auth.response
 
+    const body = await readJsonBody<CreateNoteRequest>(request, {})
     const result = await noteService.createNote({
       title: body.title,
       content: body.content,
       projectId: body.projectId,
-      userId: auth.userId,
+      userId: auth.session.user.id,
     })
     return NextResponse.json(result)
   } catch (error) {
@@ -79,16 +89,16 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const body = await readJsonBody<Partial<UpdateNoteRequest>>(request, {})
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireSession(request)
+    if ('response' in auth) return auth.response
 
+    const body = await readJsonBody<Partial<UpdateNoteRequest>>(request, {})
     const result = await noteService.updateNote({
       noteId: body.noteId ?? '',
       title: body.title,
       content: body.content,
       projectId: body.projectId,
-      userId: auth.userId,
+      userId: auth.session.user.id,
     })
     return NextResponse.json(result)
   } catch (error) {
@@ -98,13 +108,12 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const body = await readJsonBody<{ accessToken?: string; userId?: string }>(request, {})
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireSession(request)
+    if ('response' in auth) return auth.response
 
     const result = await noteService.deleteNote({
       noteId: request.nextUrl.searchParams.get('noteId'),
-      userId: auth.userId,
+      userId: auth.session.user.id,
     })
     return NextResponse.json(result)
   } catch (error) {

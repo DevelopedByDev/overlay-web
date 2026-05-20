@@ -7,6 +7,10 @@ const withBundleAnalyzer = createBundleAnalyzer({
   openAnalyzer: false,
 });
 
+const hasSentryUploadConfig = Boolean(
+  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
+);
+
 const staticSecurityHeaders = [
   {
     key: "X-Content-Type-Options",
@@ -66,11 +70,12 @@ const nextConfig: NextConfig = {
 export default withBundleAnalyzer(withSentryConfig(nextConfig, {
   silent: !process.env.CI,
   webpack: {
+    disableSentryConfig: !hasSentryUploadConfig,
     treeshake: {
       removeDebugLogging: true,
     },
   },
-  ...(process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
+  ...(hasSentryUploadConfig
     ? {
         authToken: process.env.SENTRY_AUTH_TOKEN,
         org: process.env.SENTRY_ORG,
