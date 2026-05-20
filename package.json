@@ -68,8 +68,11 @@
     "@ai-sdk/google": "^3.0.43",
     "@ai-sdk/groq": "^3.0.29",
     "@ai-sdk/openai": "^3.0.41",
+    "@ai-sdk/openai-compatible": "^2.0.47",
+    "@ai-sdk/provider": "^3.0.10",
     "@ai-sdk/react": "^3.0.118",
     "@ai-sdk/xai": "^3.0.67",
+    "@aws-sdk/client-s3": "^3.1019.0",
     "@aws-sdk/s3-request-presigner": "^3.1019.0",
     "@composio/core": "^0.6.7",
     "@composio/vercel": "^0.6.7",
@@ -85,6 +88,7 @@
     "@overlay/modules-react": "file:./packages/overlay-modules-react",
     "@overlay/ui": "file:./packages/overlay-ui",
     "@sentry/nextjs": "^10.46.0",
+    "@tiptap/core": "^3.20.1",
     "@tiptap/extension-code-block-lowlight": "^3.20.1",
     "@tiptap/extension-emoji": "^3.20.1",
     "@tiptap/extension-highlight": "^3.20.1",
@@ -147,6 +151,7 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "stripe": "^20.3.1",
+    "unified": "^11.0.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {
