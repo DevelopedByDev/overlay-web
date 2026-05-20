@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type {
+  BillingProvider,
   CreateNoteRequest,
   CreateNoteResponse,
   DeleteNoteResponse,
@@ -8,6 +9,7 @@ import type {
   UpdateNoteRequest,
   UpdateNoteResponse,
 } from '@overlay/app-core'
+import { BillingQuotaError, QuotaEnforcer } from '@overlay/billing'
 
 export interface NoteRecord {
   _id: string
@@ -84,7 +86,10 @@ function noteRecordToDoc(note: NoteRecord): ServerNoteDoc {
 }
 
 export class NoteService {
-  constructor(private readonly context: { noteRepository: NoteRepository }) {}
+  constructor(private readonly context: {
+    billing?: Pick<BillingProvider, 'getEntitlements'>
+    noteRepository: NoteRepository
+  }) {}
 
   async getNote(args: {
     userId: string
@@ -106,6 +111,7 @@ export class NoteService {
   async createNote(
     args: Omit<CreateNoteRequest, 'accessToken' | 'userId'> & { userId: string },
   ): Promise<CreateNoteResponse> {
+    await this.assertWriteQuota(args.userId)
     const content = args.content ?? ''
     const result = await this.context.noteRepository.createNote({
       userId: args.userId,
@@ -163,6 +169,18 @@ export class NoteService {
       success: true,
       noteId: result.noteId,
       deletedAt: result.deletedAt,
+    }
+  }
+
+  private async assertWriteQuota(userId: string): Promise<void> {
+    if (!this.context.billing) return
+    try {
+      await new QuotaEnforcer(this.context.billing).assertAllowed({ userId, kind: 'write' })
+    } catch (error) {
+      if (error instanceof BillingQuotaError) {
+        throw new NoteServiceError(error.message, 402)
+      }
+      throw error
     }
   }
 }

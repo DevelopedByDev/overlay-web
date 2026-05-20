@@ -1203,7 +1203,7 @@ export interface OnboardingCompleteResponse {
 
 export interface RateLimitSpec {
   bucket: string
-  key: string | null | undefined
+  key?: string | null | undefined
   limit: number
   windowMs: number
 }

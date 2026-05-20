@@ -1,15 +1,11 @@
-import { NextRequest } from 'next/server'
-import { GET as getBillingSettings, POST as updateBillingSettings } from '@/app/api/subscription/settings/route'
-import { validateApiBoundary } from '../../_utils/boundary'
+import type { NextRequest } from 'next/server'
+import { handleBffRoute, type BffDomainService } from '../../_utils/bff'
+import * as domainService from '@/server/app-api/v1/subscription/settings/route'
 
 export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
-  return getBillingSettings(request)
+  return handleBffRoute(request, {}, domainService.GET as BffDomainService)
 }
 
 export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
-  return updateBillingSettings(request)
+  return handleBffRoute(request, {}, domainService.POST as BffDomainService)
 }
