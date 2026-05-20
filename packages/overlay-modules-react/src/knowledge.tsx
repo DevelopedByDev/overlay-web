@@ -909,6 +909,29 @@ export function FolderCard({
   )
 }
 
+function KnowledgeFileCardsSkeleton({ cards = 10 }: { cards?: number }) {
+  return (
+    <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4" aria-hidden>
+      {Array.from({ length: cards }).map((_, index) => (
+        <div
+          key={index}
+          className="mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]"
+          style={{ breakInside: 'avoid' }}
+        >
+          <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
+            <div className="ui-skeleton-line h-9 w-9 rounded-md" />
+          </div>
+          <div className="space-y-2 px-3 py-2.5">
+            <div className={`ui-skeleton-line h-3 rounded ${index % 3 === 0 ? 'w-4/5' : index % 3 === 1 ? 'w-3/5' : 'w-2/3'}`} />
+            <div className="ui-skeleton-line h-2.5 w-2/5 rounded opacity-75" />
+            <div className="ui-skeleton-line h-2 w-1/4 rounded opacity-60" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function KnowledgeFilesPanel({
   loading,
   filesCount,
@@ -945,7 +968,9 @@ export function KnowledgeFilesPanel({
   onMove: (fileId: string, parentId: string | null) => void
 }) {
   void onCreateFirstMemory
-  if (loading) return <FileTreeSkeleton rows={10} />
+  if (loading) {
+    return layout === 'cards' ? <KnowledgeFileCardsSkeleton /> : <FileTreeSkeleton rows={10} />
+  }
   if (filesCount === 0) return <KnowledgeEmptyState kind="file" message="No files yet" />
   if (nodes.length === 0) return <KnowledgeEmptyState kind="search" message="No files match your search" />
   if (layout === 'list') {

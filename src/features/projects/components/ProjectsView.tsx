@@ -4,6 +4,7 @@
 // typed transport lives in @overlay/api-client, and reusable presentation lives in @overlay/modules-react.
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { Folder, Loader2, Plus } from 'lucide-react'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
@@ -17,9 +18,11 @@ import {
   PROJECT_META_UPDATED_EVENT,
   PROJECTS_CHANGED_EVENT,
   createProjectNoteRequest,
+  childProjects as getChildProjects,
   projectHubHref,
   projectItemHref,
   projectRouteViewForFile,
+  rootProjects as getRootProjects,
   sortProjectChats,
   sortProjectFilesByUpdated,
   type ProjectChatSummary,
@@ -32,7 +35,6 @@ import {
   ProjectHubActions,
   ProjectHubHeader,
   ProjectHubTabs,
-  ProjectsEmptyLanding,
 } from '@overlay/modules-react/projects'
 import { FileViewerSkeleton } from '@/components/ui/Skeleton'
 import dynamic from 'next/dynamic'
@@ -425,34 +427,107 @@ function ProjectHubBody({
   )
 }
 
-// ─── Empty Projects landing (no projectId) ───────────────────────────────────
+// ─── Projects landing (no projectId) ─────────────────────────────────────────
 
-function ProjectsEmpty() {
+function formatProjectUpdatedAt(updatedAt: number): string {
+  if (!Number.isFinite(updatedAt)) return ''
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(updatedAt))
+}
+
+function ProjectsLanding({
+  projects,
+  loading,
+  creating,
+  onCreateProject,
+}: {
+  projects: readonly ProjectSummary[]
+  loading: boolean
+  creating: boolean
+  onCreateProject: () => void
+}) {
   const router = useRouter()
-  const [creating, setCreating] = useState(false)
+  const rootProjectRows = useMemo(() => {
+    const roots = getRootProjects(projects)
+    return roots.length > 0 ? roots : [...projects]
+  }, [projects])
 
-  async function createProject() {
-    if (creating) return
-    setCreating(true)
-    try {
-      const res = await overlayAppClient.projects.createResponse({ name: 'Untitled project' })
-      if (!res.ok) return
-      const data = (await res.json().catch(() => ({}))) as {
-        id?: string
-        project?: { _id?: string; name?: string }
-      }
-      const id = data.project?._id || data.id
-      const name = data.project?.name || 'Untitled project'
-      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
-      if (id) {
-        router.push(projectHubHref({ _id: id, name }))
-      }
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  return <ProjectsEmptyLanding creating={creating} onCreateProject={() => void createProject()} />
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:px-4 md:py-0">
+        <h1
+          className="text-lg font-medium text-[var(--foreground)]"
+          style={{ fontFamily: 'var(--font-serif)' }}
+        >
+          Projects
+        </h1>
+        <button
+          type="button"
+          onClick={onCreateProject}
+          disabled={creating}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+        >
+          {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+          New project
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        {loading && projects.length === 0 ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+                <div className="ui-skeleton-line mb-4 h-8 w-8 rounded-md" />
+                <div className="ui-skeleton-line mb-2 h-3.5 w-36 rounded" />
+                <div className="ui-skeleton-line h-3 w-2/3 rounded opacity-75" />
+              </div>
+            ))}
+          </div>
+        ) : rootProjectRows.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {rootProjectRows.map((project) => {
+              const subprojectCount = getChildProjects(projects, project._id).length
+              const updatedLabel = formatProjectUpdatedAt(project.updatedAt)
+              return (
+                <button
+                  key={project._id}
+                  type="button"
+                  onClick={() => router.push(projectHubHref(project))}
+                  className="group flex min-h-32 flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-colors hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)]"
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]">
+                      <Folder size={16} strokeWidth={1.75} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[var(--foreground)]">{project.name}</p>
+                      {project.description || project.instructions ? (
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
+                          {project.description || project.instructions}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-[var(--muted)]">Project workspace</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-5 flex items-center justify-between gap-3 text-[11px] text-[var(--muted-light)]">
+                    <span>{subprojectCount > 0 ? `${subprojectCount} nested project${subprojectCount === 1 ? '' : 's'}` : 'Project'}</span>
+                    {updatedLabel ? <span>Updated {updatedLabel}</span> : null}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="flex min-h-full flex-col items-center justify-center gap-4 px-6">
+            <p className="text-sm text-[var(--muted)]">No projects yet.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ─── ProjectsView ─────────────────────────────────────────────────────────────
@@ -466,12 +541,69 @@ export default function ProjectsView({
   firstName?: string
   initialProjects?: ProjectSummary[]
 }) {
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const [projects, setProjects] = useState<ProjectSummary[]>(initialProjects)
+  const [projectsLoading, setProjectsLoading] = useState(initialProjects.length === 0)
+  const [creatingProject, setCreatingProject] = useState(false)
   const view = searchParams?.get('view') ?? null
   const id = searchParams?.get('id') ?? null
   const projectId = searchParams?.get('projectId') ?? null
-  const initialProject = projectId ? initialProjects.find((project) => project._id === projectId) : undefined
+  const initialProject = projectId ? projects.find((project) => project._id === projectId) : undefined
   const projectName = searchParams?.get('projectName') ?? initialProject?.name ?? undefined
+
+  const loadProjects = useCallback(async () => {
+    setProjectsLoading(true)
+    try {
+      const data = await overlayAppClient.projects.get<ProjectSummary[]>()
+      setProjects(Array.isArray(data) ? data : [])
+    } finally {
+      setProjectsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (initialProjects.length > 0) {
+      setProjects(initialProjects)
+      setProjectsLoading(false)
+    }
+  }, [initialProjects])
+
+  useEffect(() => {
+    void loadProjects()
+    function onProjectsChanged() {
+      void loadProjects()
+    }
+    window.addEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
+    return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
+  }, [loadProjects])
+
+  const createProject = useCallback(async () => {
+    if (creatingProject) return
+    setCreatingProject(true)
+    try {
+      const res = await overlayAppClient.projects.createResponse({ name: 'Untitled project' })
+      if (!res.ok) return
+      const data = (await res.json().catch(() => ({}))) as {
+        id?: string
+        project?: Partial<ProjectSummary> & { _id?: string; name?: string }
+      }
+      const created = data.project
+      if (created?._id && typeof created.createdAt === 'number' && typeof created.updatedAt === 'number') {
+        setProjects((prev) => [created as ProjectSummary, ...prev.filter((project) => project._id !== created._id)])
+      } else {
+        void loadProjects()
+      }
+      const createdId = created?._id || data.id
+      const createdName = created?.name || 'Untitled project'
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+      if (createdId) {
+        router.push(projectHubHref({ _id: createdId, name: createdName }))
+      }
+    } finally {
+      setCreatingProject(false)
+    }
+  }, [creatingProject, loadProjects, router])
 
   if (view === 'chat' && id) {
     return (
@@ -498,5 +630,12 @@ export default function ProjectsView({
     )
   }
 
-  return <ProjectsEmpty />
+  return (
+    <ProjectsLanding
+      projects={projects}
+      loading={projectsLoading}
+      creating={creatingProject}
+      onCreateProject={() => void createProject()}
+    />
+  )
 }

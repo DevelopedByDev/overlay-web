@@ -4,6 +4,7 @@ module.exports = {
     './src/**/*.{js,ts,jsx,tsx,mdx}',
     './packages/overlay-ui/src/**/*.{js,ts,jsx,tsx,mdx}',
     './packages/overlay-chat-react/src/**/*.{js,ts,jsx,tsx,mdx}',
+    './packages/overlay-modules-react/src/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {

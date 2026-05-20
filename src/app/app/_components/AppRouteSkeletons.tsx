@@ -34,12 +34,6 @@ function PageHeaderSkeleton({ actions = 2 }: { actions?: number }) {
 export function ChatRouteSkeleton({ mode = 'chat' }: { mode?: 'chat' | 'automate' }) {
   return (
     <div className="flex h-full min-w-0 overflow-hidden bg-[var(--background)]">
-      <div className="hidden h-full w-52 shrink-0 border-r border-[var(--border)] bg-[var(--surface-muted)] md:block">
-        <div className="flex h-16 items-center border-b border-[var(--border)] px-3">
-          <SkeletonBlock className="h-8 w-full rounded-md" />
-        </div>
-        <SidebarRows rows={mode === 'automate' ? 5 : 8} />
-      </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <PageHeaderSkeleton actions={mode === 'automate' ? 1 : 3} />
         <div className="flex min-h-0 flex-1 flex-col justify-between px-4 py-5">
@@ -66,6 +60,75 @@ export function ChatRouteSkeleton({ mode = 'chat' }: { mode?: 'chat' | 'automate
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+export type FilesRouteSkeletonLayout = 'list' | 'cards'
+
+function FilesHeaderSkeleton({ layout }: { layout: FilesRouteSkeletonLayout }) {
+  return (
+    <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
+      <div className="flex items-center gap-3">
+        <SkeletonBlock className="h-4 w-12" />
+        <SkeletonBlock className="h-3 w-14" />
+      </div>
+      <div className="flex items-center gap-2">
+        <SkeletonBlock className="h-8 w-8 rounded-md" />
+        <div className="flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5">
+          <SkeletonBlock className={`h-7 w-8 rounded ${layout === 'list' ? 'opacity-100' : 'opacity-55'}`} />
+          <SkeletonBlock className={`h-7 w-8 rounded ${layout === 'cards' ? 'opacity-100' : 'opacity-55'}`} />
+        </div>
+        <SkeletonBlock className="h-8 w-8 rounded-md" />
+        <SkeletonBlock className="h-8 w-8 rounded-md" />
+      </div>
+    </div>
+  )
+}
+
+function FilesListSkeletonRows({ rows = 10 }: { rows?: number }) {
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-0.5" aria-hidden>
+      {Array.from({ length: rows }).map((_, index) => (
+        <div key={index} className="flex items-center gap-2 rounded-lg px-3 py-2.5">
+          <SkeletonBlock className="h-3.5 w-3.5 shrink-0 rounded" />
+          <SkeletonBlock className={`h-3 ${index % 4 === 0 ? 'w-3/5' : index % 4 === 1 ? 'w-4/5' : 'w-2/3'}`} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function FilesCardSkeletonGrid({ cards = 10 }: { cards?: number }) {
+  return (
+    <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4" aria-hidden>
+      {Array.from({ length: cards }).map((_, index) => (
+        <div
+          key={index}
+          className="mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]"
+          style={{ breakInside: 'avoid' }}
+        >
+          <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
+            <SkeletonBlock className="h-9 w-9 rounded-md" />
+          </div>
+          <div className="space-y-2 px-3 py-2.5">
+            <SkeletonBlock className={`h-3 ${index % 3 === 0 ? 'w-4/5' : index % 3 === 1 ? 'w-3/5' : 'w-2/3'}`} />
+            <SkeletonBlock className="h-2.5 w-2/5 opacity-75" />
+            <SkeletonBlock className="h-2 w-1/4 opacity-60" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function FilesRouteSkeleton({ layout = 'list' }: { layout?: FilesRouteSkeletonLayout }) {
+  return (
+    <div className="flex h-full flex-col bg-[var(--background)]">
+      <FilesHeaderSkeleton layout={layout} />
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        {layout === 'cards' ? <FilesCardSkeletonGrid /> : <FilesListSkeletonRows />}
       </div>
     </div>
   )

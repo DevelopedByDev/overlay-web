@@ -3,11 +3,27 @@ import dynamic from 'next/dynamic'
 import { getSession } from '@/server/auth/workos-auth'
 import { getInitialKnowledgeFiles, getInitialKnowledgeMemories } from '@/server/app/route-data'
 import { redirect } from 'next/navigation'
-import { KnowledgeRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { resolveKnowledgeLayout } from '@overlay/app-core'
+import { FilesRouteSkeleton, type FilesRouteSkeletonLayout } from '../_components/AppRouteSkeletons'
 
 const KnowledgeView = dynamic(() => import('@/features/knowledge/components/KnowledgeView'), {
-  loading: () => <KnowledgeRouteSkeleton />,
+  loading: () => <FilesRouteSkeleton />,
 })
+
+type FilesSearchParams = {
+  layout?: string | string[]
+}
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function resolveFilesLayout(params?: FilesSearchParams): FilesRouteSkeletonLayout {
+  return resolveKnowledgeLayout({
+    layout: firstParam(params?.layout),
+    activeTab: 'files',
+  })
+}
 
 async function FilesRouteContent({ userId }: { userId: string }) {
   const [initialFiles, initialMemories] = await Promise.all([
@@ -25,11 +41,16 @@ async function FilesRouteContent({ userId }: { userId: string }) {
   )
 }
 
-export default async function FilesPage() {
+export default async function FilesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<FilesSearchParams>
+}) {
   const session = await getSession()
   if (!session) redirect('/app/chat?signin=nav')
+  const layout = resolveFilesLayout(await searchParams)
   return (
-    <Suspense fallback={<KnowledgeRouteSkeleton />}>
+    <Suspense fallback={<FilesRouteSkeleton layout={layout} />}>
       <FilesRouteContent userId={session.user.id} />
     </Suspense>
   )
