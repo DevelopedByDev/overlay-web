@@ -7,8 +7,8 @@ import {
   shouldAttachPastedTextAsFile,
 } from '@overlay/chat-core'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { SUPPORTED_INPUT_IMAGE_TYPES } from '../chat-interface/constants'
-import type { AttachedImage, PendingChatDocument } from '../chat-interface/types'
+import { SUPPORTED_INPUT_IMAGE_TYPES } from './chat-interface/constants'
+import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
 
 export function useChatAttachments({
   embedProjectId,

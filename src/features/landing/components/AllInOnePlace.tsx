@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Marketing “all in one place” block — typography only (no overlay panels).
  */
