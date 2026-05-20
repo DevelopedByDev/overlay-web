@@ -4227,7 +4227,7 @@ export default function ChatInterface({
               <FileViewerPanel
                 name={filePreview.name}
                 content={filePreviewContent}
-                url={`/api/app/files/${filePreview.fileId}/content`}
+                url={`/api/v1/files/${filePreview.fileId}/content`}
               />
             </div>
           </div>

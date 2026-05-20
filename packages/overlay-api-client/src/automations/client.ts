@@ -17,7 +17,7 @@ export class AutomationsClient {
   constructor(private readonly http: HttpContext) {}
 
   private path(query?: AutomationQuery): string {
-    return this.http.appendQuery('/api/app/automations', query as QueryParams | undefined)
+    return this.http.appendQuery('/api/v1/automations', query as QueryParams | undefined)
   }
 
   get<T = AutomationSummary[] | AutomationSummary>(query?: AutomationQuery, init?: RequestInit) {
@@ -30,24 +30,24 @@ export class AutomationsClient {
 
   create(body: CreateAutomationRequest, init?: RequestInit) {
     return this.http.json<CreateAutomationResponse>(
-      '/api/app/automations',
+      '/api/v1/automations',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
   createResponse(body: CreateAutomationRequest, init?: RequestInit) {
-    return this.http.request('/api/app/automations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/automations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   update(body: UpdateAutomationRequest, init?: RequestInit) {
     return this.http.json<{ success?: boolean; error?: string }>(
-      '/api/app/automations',
+      '/api/v1/automations',
       this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
     )
   }
 
   updateResponse(body: UpdateAutomationRequest, init?: RequestInit) {
-    return this.http.request('/api/app/automations', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
+    return this.http.request('/api/v1/automations', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
   deleteResponse(query: { automationId: string }, init?: RequestInit) {
@@ -60,23 +60,23 @@ export class AutomationsClient {
 
   run(body: AutomationRunRequest, init?: RequestInit) {
     return this.http.json<AutomationRunResponse>(
-      '/api/app/automations/run',
+      '/api/v1/automations/run',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
   runResponse(body: AutomationRunRequest, init?: RequestInit) {
-    return this.http.request('/api/app/automations/run', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/automations/run', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   test(body: AutomationTestRequest, init?: RequestInit) {
     return this.http.json<AutomationTestResponse>(
-      '/api/app/automations/test',
+      '/api/v1/automations/test',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
   testResponse(body: AutomationTestRequest, init?: RequestInit) {
-    return this.http.request('/api/app/automations/test', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/automations/test', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 }

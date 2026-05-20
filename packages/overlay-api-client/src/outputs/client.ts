@@ -7,7 +7,7 @@ export class OutputsClient {
   constructor(private readonly http: HttpContext) {}
 
   private path(query?: OutputQuery): string {
-    return this.http.appendQuery('/api/app/outputs', query as QueryParams | undefined)
+    return this.http.appendQuery('/api/v1/outputs', query as QueryParams | undefined)
   }
 
   get<T = OutputSummary[]>(query?: OutputQuery, init?: RequestInit) {
@@ -19,7 +19,7 @@ export class OutputsClient {
   }
 
   contentResponse(outputId: string, init?: RequestInit) {
-    return this.http.request(`/api/app/outputs/${encodeURIComponent(outputId)}/content`, init)
+    return this.http.request(`/api/v1/outputs/${encodeURIComponent(outputId)}/content`, init)
   }
 
   deleteResponse(query: { outputId: string }, init?: RequestInit) {

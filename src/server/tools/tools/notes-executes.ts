@@ -14,7 +14,7 @@ export async function executeListNotes(
     const projectId = input.projectId ?? options.projectId
     if (projectId) params.set('projectId', projectId)
     const res = await callInternalApiGet(
-      `/api/app/files?${params}`,
+      `/api/v1/files?${params}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -53,7 +53,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
       fileId: input.noteId.trim(),
     })
     const res = await callInternalApiGet(
-      `/api/app/files?${params}`,
+      `/api/v1/files?${params}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -97,7 +97,7 @@ export async function executeCreateNote(
 ) {
   try {
     const res = await callInternalApi(
-      '/api/app/files',
+      '/api/v1/files',
       {
         kind: 'note',
         name: input.title ?? 'Untitled',
@@ -129,7 +129,7 @@ export async function executeUpdateNote(
 ) {
   try {
     const res = await callInternalApi(
-      '/api/app/files',
+      '/api/v1/files',
       {
         fileId: input.noteId,
         name: input.title,
@@ -156,14 +156,14 @@ export async function executeUpdateNote(
 export async function executeDeleteNote(options: OverlayToolsOptions, input: { noteId: string }) {
   try {
     const url = options.baseUrl
-      ? `${options.baseUrl}/api/app/files?fileId=${encodeURIComponent(input.noteId.trim())}`
-      : `/api/app/files?fileId=${encodeURIComponent(input.noteId.trim())}`
+      ? `${options.baseUrl}/api/v1/files?fileId=${encodeURIComponent(input.noteId.trim())}`
+      : `/api/v1/files?fileId=${encodeURIComponent(input.noteId.trim())}`
     const serviceAuthHeader =
       options.serverSecret
         ? await buildServiceAuthToken({
             userId: options.userId,
             method: 'DELETE',
-            path: '/api/app/files',
+            path: '/api/v1/files',
           })
         : null
     const res = await fetch(url, {

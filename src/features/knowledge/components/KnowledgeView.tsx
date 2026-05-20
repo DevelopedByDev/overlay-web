@@ -1045,7 +1045,7 @@ export default function KnowledgeView({
                 <FileViewer
                   name={selectedFile.name}
                   content={fileContent}
-                  url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/app/files/${selectedFile._id}/content` : undefined}
+                  url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/v1/files/${selectedFile._id}/content` : undefined}
                 />
               </div>
             )}

@@ -16,7 +16,7 @@ function createConversationRuntime(
   chatId: string,
   uiOverrides: Partial<ConversationUiState> = {},
 ): ConversationRuntime {
-  const actTransport = '/api/app/conversations/act'
+  const actTransport = '/api/v1/conversations/act'
   const transport = () => createPersistentChatTransport({
     api: actTransport,
     prepareSendMessagesRequest: ({ api, id, messages, body, headers, credentials, trigger, messageId }) => ({

@@ -16,7 +16,7 @@ export async function executeBrowserRunTask(
   const { task, model, sessionId, keepAlive, proxyCountryCode } = input
   try {
     const res = await callInternalApi(
-      '/api/app/browser-task',
+      '/api/v1/browser-task',
       {
         task,
         model,

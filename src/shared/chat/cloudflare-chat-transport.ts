@@ -70,7 +70,7 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
   private readonly relayApi: string
 
   constructor(options: CloudflareChatTransportOptions<UI_MESSAGE>) {
-    const { relayApi, prepareSendMessagesRequest, api = '/api/app/conversations/act', ...rest } = options
+    const { relayApi, prepareSendMessagesRequest, api = '/api/v1/conversations/act', ...rest } = options
     super({ api, ...rest })
     this.relayApi = normalizeRelayApi(relayApi)
     this.fallbackTransport = new DefaultChatTransport({

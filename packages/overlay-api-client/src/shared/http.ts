@@ -1,3 +1,4 @@
+import { validateApiClientBoundary } from '../../../../src/shared/schemas/api-boundary'
 import type { CreateOverlayAppClientOptions, QueryParams } from './types'
 
 export function appendQuery(path: string, query?: QueryParams): string {
@@ -25,6 +26,16 @@ export function jsonRequest(body: unknown, init: RequestInit = {}): RequestInit 
     ...init,
     headers,
     body: JSON.stringify(body),
+  }
+}
+
+function bodyForBoundaryValidation(body: BodyInit | null | undefined): unknown {
+  if (typeof body !== 'string') return undefined
+  if (!body.trim()) return {}
+  try {
+    return JSON.parse(body)
+  } catch {
+    return body
   }
 }
 
@@ -66,6 +77,11 @@ export function createHttpContext(options: CreateOverlayAppClientOptions): HttpC
     if (requestInit.credentials === undefined) {
       requestInit.credentials = 'same-origin'
     }
+    validateApiClientBoundary({
+      body: bodyForBoundaryValidation(requestInit.body),
+      method: requestInit.method,
+      path,
+    })
     return fetchImpl(toUrl(options.baseUrl, path), requestInit)
   }
 

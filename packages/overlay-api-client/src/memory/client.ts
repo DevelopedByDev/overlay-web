@@ -12,7 +12,7 @@ export class MemoryClient {
   constructor(private readonly http: HttpContext) {}
 
   private path(query?: MemoryQuery): string {
-    return this.http.appendQuery('/api/app/memory', query as QueryParams | undefined)
+    return this.http.appendQuery('/api/v1/memory', query as QueryParams | undefined)
   }
 
   get<T = MemoryRow[] | MemoryRow>(query?: MemoryQuery, init?: RequestInit) {
@@ -24,22 +24,22 @@ export class MemoryClient {
   }
 
   create(body: CreateMemoryRequest, init?: RequestInit) {
-    return this.http.json<CreateMemoryResponse>('/api/app/memory', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.json<CreateMemoryResponse>('/api/v1/memory', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   createResponse(body: CreateMemoryRequest, init?: RequestInit) {
-    return this.http.request('/api/app/memory', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/memory', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   update(body: UpdateMemoryRequest, init?: RequestInit) {
     return this.http.json<{ success: boolean; memory?: MemoryRow | null; error?: string }>(
-      '/api/app/memory',
+      '/api/v1/memory',
       this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
     )
   }
 
   updateResponse(body: UpdateMemoryRequest, init?: RequestInit) {
-    return this.http.request('/api/app/memory', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
+    return this.http.request('/api/v1/memory', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
   deleteResponse(query: { memoryId: string }, init?: RequestInit) {

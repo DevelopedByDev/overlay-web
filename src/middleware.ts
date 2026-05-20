@@ -8,7 +8,7 @@ const CSP_REPORT_PATH = '/api/security/csp-report'
 const IS_DEVELOPMENT = process.env.NODE_ENV !== 'production'
 
 // '/app' is intentionally public so guests can view the shell.
-// /api/app/* performs route-level auth so native clients can use bearer tokens
+// /api/v1/* performs route-level auth so native clients can use bearer tokens
 // instead of browser session cookies.
 const PROTECTED_ROUTES = ['/account', '/api/entitlements', '/api/portal', '/api/convex']
 

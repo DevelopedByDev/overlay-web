@@ -113,7 +113,7 @@ export async function warmIntegrationLogoCache(): Promise<void> {
 
   inflight = (async () => {
     try {
-      const res = await fetch('/api/app/integrations?action=search&limit=100')
+      const res = await fetch('/api/v1/integrations?action=search&limit=100')
       if (!res.ok) return
       const data = (await res.json()) as { items?: Array<{ slug: string; logoUrl?: string | null }> }
       const items = Array.isArray(data?.items) ? data.items : []

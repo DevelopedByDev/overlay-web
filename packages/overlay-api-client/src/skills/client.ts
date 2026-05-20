@@ -13,7 +13,7 @@ export class SkillsClient {
   constructor(private readonly http: HttpContext) {}
 
   private path(query?: SkillQuery): string {
-    return this.http.appendQuery('/api/app/skills', query as QueryParams | undefined)
+    return this.http.appendQuery('/api/v1/skills', query as QueryParams | undefined)
   }
 
   get<T = SkillSummary[]>(query?: SkillQuery, init?: RequestInit) {
@@ -25,22 +25,22 @@ export class SkillsClient {
   }
 
   create(body: CreateSkillRequest, init?: RequestInit) {
-    return this.http.json<CreateEntityResponse>('/api/app/skills', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.json<CreateEntityResponse>('/api/v1/skills', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   createResponse(body: CreateSkillRequest, init?: RequestInit) {
-    return this.http.request('/api/app/skills', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/skills', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   update(body: UpdateSkillRequest, init?: RequestInit) {
     return this.http.json<MutationSuccessResponse>(
-      '/api/app/skills',
+      '/api/v1/skills',
       this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
     )
   }
 
   updateResponse(body: UpdateSkillRequest, init?: RequestInit) {
-    return this.http.request('/api/app/skills', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
+    return this.http.request('/api/v1/skills', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
   deleteResponse(query: { skillId: string }, init?: RequestInit) {

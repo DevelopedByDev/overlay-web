@@ -9,11 +9,11 @@ export class AutomationRunsClient {
   constructor(private readonly http: HttpContext) {}
 
   runResponse(body: AutomationRunRequest, init?: RequestInit) {
-    return this.http.request('/api/app/automations/run', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/automations/run', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   testResponse(body: AutomationTestRequest, init?: RequestInit) {
-    return this.http.request('/api/app/automations/test', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/automations/test', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   parseRunDetail(response: Response) {

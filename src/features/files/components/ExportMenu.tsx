@@ -87,8 +87,8 @@ export function ExportMenu({
     try {
       const endpoint =
         type === 'chat'
-          ? '/api/app/conversations/share'
-          : '/api/app/files/share'
+          ? '/api/v1/conversations/share'
+          : '/api/v1/files/share'
       const idKey = type === 'chat' ? 'conversationId' : 'fileId'
       const res = await fetch(endpoint, {
         method: 'PATCH',

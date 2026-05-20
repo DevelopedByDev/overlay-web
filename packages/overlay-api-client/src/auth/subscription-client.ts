@@ -9,11 +9,11 @@ export class SubscriptionClient {
   constructor(private readonly http: HttpContext) {}
 
   get(init?: RequestInit) {
-    return this.http.json<Entitlements>('/api/app/subscription', init)
+    return this.http.json<Entitlements>('/api/v1/subscription', init)
   }
 
   getResponse(init?: RequestInit) {
-    return this.http.request('/api/app/subscription', init)
+    return this.http.request('/api/v1/subscription', init)
   }
 
   getSettings(init?: RequestInit) {

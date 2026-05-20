@@ -14,7 +14,7 @@ export class ConversationsClient {
   constructor(private readonly http: HttpContext) {}
 
   private path(query?: ConversationQuery): string {
-    return this.http.appendQuery('/api/app/conversations', query as QueryParams | undefined)
+    return this.http.appendQuery('/api/v1/conversations', query as QueryParams | undefined)
   }
 
   get<T = ConversationGetResponse>(query?: ConversationQuery, init?: RequestInit) {
@@ -27,24 +27,24 @@ export class ConversationsClient {
 
   create(body: CreateConversationRequest, init?: RequestInit) {
     return this.http.json<CreateConversationResponse>(
-      '/api/app/conversations',
+      '/api/v1/conversations',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
   createResponse(body: CreateConversationRequest, init?: RequestInit) {
-    return this.http.request('/api/app/conversations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/conversations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   update(body: UpdateConversationRequest, init?: RequestInit) {
     return this.http.json<ConversationSummary>(
-      '/api/app/conversations',
+      '/api/v1/conversations',
       this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
     )
   }
 
   updateResponse(body: UpdateConversationRequest, init?: RequestInit) {
-    return this.http.request('/api/app/conversations', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
+    return this.http.request('/api/v1/conversations', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
   deleteResponse(query: { conversationId: string }, init?: RequestInit) {
@@ -53,20 +53,20 @@ export class ConversationsClient {
 
   addMessage(body: ConversationMessageRequest, init?: RequestInit) {
     return this.http.json<{ success: boolean; conversationId: string; turnId: string }>(
-      '/api/app/conversations/message',
+      '/api/v1/conversations/message',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
   addMessageResponse(body: ConversationMessageRequest, init?: RequestInit) {
-    return this.http.request('/api/app/conversations/message', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/conversations/message', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   deleteMessageResponse(
     body: { conversationId?: string; turnId?: string; accessToken?: string; userId?: string },
     init?: RequestInit,
   ) {
-    return this.http.request('/api/app/conversations/message', this.http.jsonRequest(body, { ...init, method: 'DELETE' }))
+    return this.http.request('/api/v1/conversations/message', this.http.jsonRequest(body, { ...init, method: 'DELETE' }))
   }
 
   stopResponse(
@@ -78,6 +78,6 @@ export class ConversationsClient {
     },
     init?: RequestInit,
   ) {
-    return this.http.request('/api/app/conversations/stop', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/conversations/stop', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 }
