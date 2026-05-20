@@ -458,77 +458,182 @@ Mirrors existing typed-client conventions.
 
 ---
 
-## 6. UI — repo picker in project settings
+## 6. UI — project settings drawer (REVISED)
 
-### Component placement decision (deviation from spec wording)
+### Component placement decision
 
-The spec says "open a project's Settings tab". **There is no Settings
-tab on this branch** — `ProjectHubTab = 'chats' | 'files' |
-'instructions'` (`packages/overlay-app-core/src/projects.ts:9`).
+The spec says "open a project's Settings tab" but the user has
+explicitly chosen a different UI direction: a **push-style settings
+drawer** triggered by a gear icon in the project hub header, holding
+a **sectioned settings shell** of which the GitHub repo picker is the
+first section.
 
-Two viable approaches:
+Confirmed decisions:
 
-- **A. Add a new `'settings'` tab to `ProjectHubTab`** (the literal
-  spec reading). Adds a fourth tab to the project hub for one
-  setting in v1. Future-proof but bigger UI surface change.
-- **B. Render the picker beneath the existing Instructions tab**, as
-  a separate section labeled "Integrations". Lower-friction; reuses
-  the existing tab; matches the spec's deeper intent ("next to the
-  existing integration toggles"). The current branch has no
-  per-project integration toggles to be "next to", so the picker
-  stands on its own.
+- **Trigger:** gear icon in `ProjectHubHeader`'s `actions` slot
+  (`src/components/app/ProjectsView.tsx:370–382`). Clicking toggles
+  the drawer open/closed.
+- **Layout:** push/split — when open, the existing project hub
+  content area squishes to roughly 60% width and the drawer occupies
+  the remaining ~40% (default 360px, min 320px, max 480px). The
+  drawer stays open across tab switches; the user can continue
+  browsing Chats/Files/Instructions while the drawer is open.
+- **Structure:** sectioned settings shell. The drawer has a small
+  left rail of section labels (vertical stack of buttons) and a
+  scrollable content panel. v1 ships with one section:
+  "GitHub repositories". The shell is designed so adding sections
+  later is a one-line registry entry.
+- **Mobile / narrow-screen fallback:** below the project hub's
+  responsive breakpoint (≤ 768px), the push drawer falls back to a
+  modal-overlay drawer (full-height right slide-in over the content,
+  click-outside-to-close). The same component handles both modes;
+  the layout container chooses push vs. overlay based on a media
+  query.
 
-**Recommendation: A — add a `'settings'` tab.** Mixing integration
-scoping with prose instructions in the same scrollable area is
-confusing and will lose discoverability the moment a second
-per-project setting is added. The cost of one extra tab button is
-small, and Story 1's acceptance criterion ("open a project's
-Settings tab") reads as load-bearing language for this feature.
-
-This is the only deviation from the literal spec wording — surfaced
-here so the orchestrator can override.
+Story 1's acceptance criterion uses the phrase "Settings tab" but the
+behavioral intent ("open project settings → see/configure repository
+allowlist → save → see saved state without page reload") is preserved.
+Stories 2–6 are unaffected by the trigger UX.
 
 ### Component file paths
 
-- New: `packages/overlay-modules-react/src/projects-settings.tsx`
-  - Exports `ProjectSettingsTabContent`.
-  - Renders the `GithubRepoAllowlistPicker` child component.
-  - Reasoning: keeps `projects.tsx` (1524 LOC) from growing further
-    — it is already past the project's 350 LOC soft cap.
-- New: `packages/overlay-modules-react/src/github-repo-picker.tsx`
-  - Exports `GithubRepoAllowlistPicker` (presentational), accepts
-    props `{ value, options, loading, error, onChange, onAddManual,
-    onRetryLoad, manualEntry }`. Single responsibility.
-- Modified: `packages/overlay-app-core/src/projects.ts`
-  - Add `'settings'` to `ProjectHubTab` union.
+- **New:** `packages/overlay-modules-react/src/project-settings-drawer.tsx`
+  - Exports `ProjectSettingsDrawer` (presentational shell).
+  - Props: `{ open, onOpenChange, sections, activeSectionId,
+    onActiveSectionChange, layoutMode: 'push' | 'overlay', width? }`.
+  - Renders the left rail (section list) + right content panel + a
+    close button.
+  - Handles overlay-mode click-outside and Escape-to-close.
+  - Push-mode is just layout — no overlay behavior.
+- **New:** `packages/overlay-modules-react/src/project-settings-sections.tsx`
+  - Exports a `ProjectSettingsSection` type:
+    `{ id: string; label: string; icon?: ReactNode; render: (ctx: ProjectSettingsSectionContext) => ReactNode }`.
+  - Exports `createProjectSettingsSections(ctx)` — returns the v1
+    section list with one entry, the GitHub repositories section,
+    whose `render` returns `<GithubRepoAllowlistPicker {...} />`.
+  - Designed so future sections (e.g. "Member access", "Notifications")
+    are added by pushing one more entry into the array.
+- **New:** `packages/overlay-modules-react/src/github-repo-picker.tsx`
+  - Exports `GithubRepoAllowlistPicker` (presentational), props
+    `{ value, options, loading, error, onChange, onAddManual,
+    onRetryLoad, manualEntry }`. Single responsibility — unchanged
+    from prior plan.
+- **Modified:** `packages/overlay-app-core/src/projects.ts`
+  - **Do NOT add `'settings'` to `ProjectHubTab`** (the drawer is
+    not a tab).
+  - Add `ProjectSettingsSectionId` (a string-literal union starting
+    with `'github-repositories'`).
   - Add `GithubRepositoryOption` and `GithubRepoAllowlistDraftState`
-    types and helpers (normalize, dedupe, validate manual entry).
-- Modified: `packages/overlay-modules-react/src/projects.tsx` (lines
-  1025–1148)
-  - Add `'Settings'` tab button.
-  - Render `<ProjectSettingsTabContent ... />` when tab is active.
-- Modified: `src/components/app/ProjectsView.tsx`
-  - Add data-fetching glue for the picker:
-    - On entering Settings tab AND GitHub toolkit enabled → fetch
-      via `overlayAppClient.integrations.github.listRepositories()`.
-    - Wire save through `overlayAppClient.projects.update()` with
-      the new `githubRepoAllowlist` field.
+    types and presentation helpers (normalize, dedupe, validate
+    manual entry — these wrap the shared regex from §2).
+- **Modified:** `packages/overlay-modules-react/src/projects.tsx`
+  - `ProjectHubHeader`: extend `actions` rendering to include a
+    gear-icon button when the parent passes a `settingsDrawer`
+    handle. The button toggles the drawer's open state via a
+    parent-owned callback (presentational; no internal state).
+- **Modified:** `src/components/app/ProjectsView.tsx`
+  - Owns drawer state:
+    - `settingsDrawerOpen: boolean` (persisted to `localStorage` key
+      `overlay.project-settings-drawer.open`).
+    - `activeSettingsSectionId: ProjectSettingsSectionId` (persisted
+      similarly so the user returns to the same section).
+  - Lays out the project hub as a flex row: `[main content
+    (flex-1)] [drawer (fixed-width, conditional)]`. When the drawer
+    is closed, the main content occupies full width. When open, the
+    drawer is rendered as a sibling, not an overlay.
+  - At narrow viewports (`window.matchMedia('(max-width: 768px)')`),
+    pass `layoutMode='overlay'` to the drawer and render it as an
+    absolute-positioned right slide-in.
+  - Data-fetching:
+    - On drawer open AND the GitHub repos section is active AND
+      GitHub is user-connected, fetch the repo list via
+      `overlayAppClient.integrations.github.listRepositories()`.
+    - Save via `overlayAppClient.projects.update()` with the new
+      `githubRepoAllowlist` field.
     - Local optimistic update; no page reload (Story 1 AC).
 
 ### Visibility rule (clarify Q9)
 
-The picker is hidden when the GitHub toolkit is disabled for the
-project. **Caveat (open question, see §11):** on the current branch
-there is **no per-project GitHub-toolkit toggle**. So in v1 the
-visibility rule reduces to: hide when **GitHub is not connected at
-the user level** (i.e., the user has no Composio connected account
-with `appName === 'github'`). When per-project toolkit toggles arrive
-later, the rule becomes "hidden if either the user is not connected
-OR the project has GitHub disabled".
+The gear icon is **always visible** in the project hub header — it
+opens the settings drawer regardless of GitHub state, because the
+drawer is designed to host more sections in the future.
 
-We get the user-level connection status from
+The **GitHub repositories section itself** within the drawer is
+conditional:
+
+- If the user has no Composio connection for `appName === 'github'`,
+  the section renders an empty state with a "Connect GitHub" link
+  rather than the picker. The section button in the left rail still
+  appears (it's not hidden), with a small "Not connected" subtitle.
+- When per-project toolkit toggles eventually land
+  (`enabledIntegrationSlugs`), an additional condition ANDs in:
+  "AND the project has GitHub enabled in its toolkit list." This is
+  a one-line follow-up.
+
+We get user-level connection status from
 `overlayAppClient.integrations.get()` (already loaded by
 `IntegrationsView.tsx:70–80`).
+
+### Search / filter behavior
+
+- Single text input, case-insensitive substring match against
+  `fullName`.
+- Picker is a checkbox list. Already-selected repos render at the
+  top, even if not in the current search filter, so they cannot be
+  "lost" by typing a query.
+- Empty result of the filter shows a single line: "No matches. You
+  can also type an `owner/name` and click Add to include a repo you
+  don't see here."
+
+### Loading / empty / error states
+
+| Condition                            | UI |
+|--------------------------------------|----|
+| `loading === true`                   | Skeleton list with spinner |
+| `items.length === 0 && !error`       | "No repositories found in your GitHub account." + manual-entry input always visible |
+| `error === 'fetch_failed'`           | Warning banner + Retry button + manual-entry input visible |
+| `error === 'github_not_connected'`   | Section shows "Connect GitHub" empty state, not the picker |
+| `value.length > 0 && all unselected` | "All repositories are accessible" hint (permissive default) |
+
+### Manual entry fallback
+
+A second always-visible row underneath the list:
+
+```
+[ owner/name________________ ]  [ Add ]
+```
+
+- Validates against the same regex as the server.
+- On Add: pushes to `value` and clears the input.
+- Manual entries are merged into `value` and saved like any other.
+
+### Save / dirty / round-trip behavior
+
+- Picker is controlled (`value` + `onChange`).
+- `ProjectsView` holds a draft state and saves on **explicit Save**
+  button (matches existing project-instructions flow at lines
+  1129–1146). No autosave — avoids accidental overwrites mid-edit.
+- After successful save, `value` reflects the server-side normalized
+  response (so dedupe / lowercasing is visible immediately).
+- Re-opening the drawer to the GitHub repositories section shows
+  the saved list as selected (Success Criterion 7).
+
+### Drawer-specific UX details
+
+- **Persisting open/closed:** the user's choice persists across page
+  loads via `localStorage`. New projects default to closed; once a
+  user opens the drawer, future visits to *any* project respect the
+  last-known state. The active section also persists. Rationale: a
+  user who has configured allowlists in three projects probably
+  wants the drawer in the same state on the fourth.
+- **Keyboard:** `Esc` closes the drawer in overlay mode; in push
+  mode `Esc` is a no-op (the drawer is part of the layout, not a
+  modal). `Cmd/Ctrl + ,` is reserved for a future global shortcut
+  and is **not** wired in v1 (YAGNI).
+- **Width resizing:** out of scope for v1 — fixed default width. If
+  users complain, add a drag handle in v1.1.
+- **Drawer header:** project name (read-only) + close button.
+  Matches existing `IntegrationsDialog` header conventions.
 
 ### Search / filter behavior
 
@@ -784,9 +889,13 @@ Ordered for Phase 3. Each entry: action — path — purpose.
     - Add `integrations.github.listRepositories` method and its
       `GithubRepositoryListResponse` type.
 12. **MODIFY** `packages/overlay-app-core/src/projects.ts`
-    - Extend `ProjectHubTab` union to add `'settings'`.
+    - **Do NOT** extend `ProjectHubTab` (no Settings tab — drawer
+      replaces it).
+    - Add `ProjectSettingsSectionId` union (v1: just
+      `'github-repositories'`; designed for future entries).
     - Add `GithubRepositoryOption`,
-      `GithubRepoAllowlistDraftState` types.
+      `GithubRepoAllowlistDraftState`,
+      `ProjectSettingsDrawerState` types.
     - Add presentation-helpers: filter+sort, manual-entry
       validation (calls into the shared normalizer regex).
 
@@ -794,24 +903,34 @@ Ordered for Phase 3. Each entry: action — path — purpose.
 
 13. **CREATE** `packages/overlay-modules-react/src/github-repo-picker.tsx`
     - `GithubRepoAllowlistPicker` presentational component.
-14. **CREATE** `packages/overlay-modules-react/src/projects-settings.tsx`
-    - `ProjectSettingsTabContent` — wraps the picker, accepts data +
-      callbacks.
-15. **MODIFY** `packages/overlay-modules-react/src/projects.tsx`
-    - Extend `ProjectHubTabsProps` with the new `settings` tab
-      props.
-    - Add a `Settings` tab button.
-    - Render `<ProjectSettingsTabContent />` when `activeTab ===
-      'settings'`.
-16. **MODIFY** `src/components/app/ProjectsView.tsx`
+14. **CREATE** `packages/overlay-modules-react/src/project-settings-sections.tsx`
+    - `ProjectSettingsSection` type + `createProjectSettingsSections(ctx)`
+      factory. v1 returns one entry (the GitHub repositories section).
+      Designed so adding sections is a one-line append.
+15. **CREATE** `packages/overlay-modules-react/src/project-settings-drawer.tsx`
+    - `ProjectSettingsDrawer` presentational shell. Renders left
+      section rail + right content panel + close button. Supports
+      both `layoutMode='push'` and `layoutMode='overlay'`.
+    - Handles Escape-to-close and click-outside-to-close in overlay
+      mode only.
+16. **MODIFY** `packages/overlay-modules-react/src/projects.tsx`
+    - `ProjectHubHeader`: extend the `actions` rendering to accept a
+      `settingsDrawer` toggle handle (gear-icon button) when the
+      parent passes one in. Presentational — no internal state.
+    - **No tab strip change** (drawer is not a tab).
+17. **MODIFY** `src/components/app/ProjectsView.tsx`
+    - Owns drawer state (open/closed + active section), persisted to
+      `localStorage`.
+    - Lays out project hub as a flex row; drawer is a sibling, not
+      an overlay (push mode). Falls back to overlay mode at
+      `≤ 768px` viewport width via `window.matchMedia`.
     - Add state for repo list (`items`, `loading`, `error`,
       `manualEntry`, `draftAllowlist`).
-    - Fetch on entering the Settings tab when GitHub is connected.
+    - Fetch on drawer open + GitHub repos section active + GitHub
+      user-connected.
     - Wire save via `overlayAppClient.projects.update()` with
       `githubRepoAllowlist`.
     - Apply server-normalized response back to local state.
-    - Hide the tab itself when GitHub is not connected (see §11
-      open question for the future toolkit-toggle interaction).
 
 ### Tests for the new modules (already listed but enumerated for tasks)
 
@@ -819,19 +938,25 @@ Ordered for Phase 3. Each entry: action — path — purpose.
 
 ### Counts
 
-- **Created:** 7 files (4 source + 3 tests).
-- **Modified:** 7 files.
-- **Total:** 14 file changes.
+- **Created:** 8 files (5 source + 3 tests). (+1 vs. prior plan:
+  drawer shell + section registry replace the single Settings tab
+  content file.)
+- **Modified:** 7 files. (Unchanged total — `ProjectHubTab` union
+  change is dropped; `ProjectHubHeader` gear button takes its place.)
+- **Total:** 15 file changes.
 
 ---
 
 ## 11. Risks / open questions for the orchestrator
 
-1. **Settings tab vs. embedded section.** §6 deviates from the spec's
-   wording ("Settings tab") only insofar as we are *creating* the tab
-   that the spec assumes exists. If the orchestrator wants option B
-   (embed under Instructions), the file changes in §10 items 12, 14,
-   15 simplify. Flag if you want B.
+1. **Settings drawer (push, sectioned shell) replaces the spec's
+   "Settings tab" wording.** Confirmed by orchestrator after Phase 2:
+   gear-icon trigger in `ProjectHubHeader`, push layout with overlay
+   fallback at ≤ 768px, and a sectioned shell whose first section is
+   the GitHub repositories picker. Stories 1–6 acceptance criteria
+   are preserved behaviorally; only the trigger surface and layout
+   change. The drawer is designed to host future per-project
+   settings (sections register via a one-line factory append).
 
 2. **No existing toolkit-level toggle on this branch.** The spec
    ("hide picker when the GitHub toolkit is disabled for the
