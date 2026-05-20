@@ -59,9 +59,13 @@ const TOOLBAR_FILLED_BUTTON_CLASS =
 export default function KnowledgeView({
   userId: _userId,
   mode = 'knowledge',
+  initialFiles,
+  initialMemories,
 }: {
   userId: string
   mode?: 'knowledge' | 'files'
+  initialFiles?: FileNode[]
+  initialMemories?: MemoryListItem[]
 }) {
   void _userId
   const router = useRouter()
@@ -108,8 +112,8 @@ export default function KnowledgeView({
   }, [outputFilterOpen])
 
   // ── Memories state ──
-  const [memories, setMemories] = useState<MemoryListItem[]>([])
-  const [memoriesLoading, setMemoriesLoading] = useState(true)
+  const [memories, setMemories] = useState<MemoryListItem[]>(() => initialMemories ?? [])
+  const [memoriesLoading, setMemoriesLoading] = useState(initialMemories === undefined)
   const [selectedMemory, setSelectedMemory] = useState<MemoryListItem | null>(null)
   const [showAddMemory, setShowAddMemory] = useState(false)
   const [addText, setAddText] = useState('')
@@ -126,8 +130,8 @@ export default function KnowledgeView({
   const [fileUploadError, setFileUploadError] = useState<string | null>(null)
 
   // ── File system state ──
-  const [files, setFiles] = useState<FileNode[]>([])
-  const [filesLoading, setFilesLoading] = useState(true)
+  const [files, setFiles] = useState<FileNode[]>(() => initialFiles ?? [])
+  const [filesLoading, setFilesLoading] = useState(initialFiles === undefined)
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [fileContent, setFileContent] = useState('')
   const [fileTitle, setFileTitle] = useState('')

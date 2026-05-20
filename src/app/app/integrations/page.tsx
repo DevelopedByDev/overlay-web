@@ -1,13 +1,25 @@
+import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { getSession } from '@/server/auth/workos-auth'
 import { redirect } from 'next/navigation'
+import { getInitialIntegrationsData } from '@/server/app/route-data'
+import { IntegrationsRouteSkeleton } from '../_components/AppRouteSkeletons'
 
 const IntegrationsView = dynamic(() => import('@/features/integrations/components/IntegrationsView'), {
-  loading: () => <div className="flex min-h-[40vh] items-center justify-center text-sm text-[#888]">Loading...</div>,
+  loading: () => <IntegrationsRouteSkeleton />,
 })
+
+async function IntegrationsRouteContent({ userId }: { userId: string }) {
+  const initialData = await getInitialIntegrationsData()
+  return <IntegrationsView userId={userId} initialData={initialData} />
+}
 
 export default async function IntegrationsPage() {
   const session = await getSession()
   if (!session) redirect('/app/chat?signin=nav')
-  return <IntegrationsView userId={session.user.id} />
+  return (
+    <Suspense fallback={<IntegrationsRouteSkeleton />}>
+      <IntegrationsRouteContent userId={session.user.id} />
+    </Suspense>
+  )
 }

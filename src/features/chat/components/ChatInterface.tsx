@@ -1,5 +1,6 @@
 import { Suspense, type ReactNode } from 'react'
 import ChatExperience from './ChatExperience'
+import type { CachedConversation } from '@/shared/chat/chat-list-cache'
 
 type ChatInterfaceProps = {
   userId: string | null
@@ -9,6 +10,7 @@ type ChatInterfaceProps = {
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
   belowEmptyComposer?: ReactNode
+  initialChats?: CachedConversation[]
 }
 
 function ChatInterfaceFallback() {

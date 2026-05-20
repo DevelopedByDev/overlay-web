@@ -296,10 +296,10 @@ function ProjectNode({
 
 // ─── Main ProjectsSidebar ─────────────────────────────────────────────────────
 
-export default function ProjectsSidebar() {
+export default function ProjectsSidebar({ initialProjects }: { initialProjects?: Project[] } = {}) {
   const router = useRouter()
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
+  const [projects, setProjects] = useState<Project[]>(() => initialProjects ?? [])
+  const [loading, setLoading] = useState(initialProjects === undefined)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [projectDraftName, setProjectDraftName] = useState('')

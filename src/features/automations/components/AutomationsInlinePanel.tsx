@@ -15,11 +15,17 @@ import {
 } from '@overlay/app-core/automations'
 import { AutomationsInlineList } from '@overlay/modules-react/automations'
 
-export function AutomationsInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
+export function AutomationsInlinePanel({
+  initialAutomations,
+  onNavigate,
+}: {
+  initialAutomations?: AutomationSummary[]
+  onNavigate?: () => void
+}) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [automations, setAutomations] = useState<AutomationSummary[]>([])
-  const [loading, setLoading] = useState(true)
+  const [automations, setAutomations] = useState<AutomationSummary[]>(() => initialAutomations ?? [])
+  const [loading, setLoading] = useState(initialAutomations === undefined)
   const [editingAutomationId, setEditingAutomationId] = useState<string | null>(null)
   const [editingAutomationName, setEditingAutomationName] = useState('')
   const [pendingDeleteAutomationId, setPendingDeleteAutomationId] = useState<string | null>(null)

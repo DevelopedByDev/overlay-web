@@ -157,6 +157,7 @@ export default function ChatInterface({
   mode = 'chat',
   hideHeader = false,
   belowEmptyComposer,
+  initialChats,
 }: {
   userId: string | null
   firstName?: string
@@ -165,6 +166,7 @@ export default function ChatInterface({
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
   belowEmptyComposer?: React.ReactNode
+  initialChats?: Conversation[]
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -196,7 +198,7 @@ export default function ChatInterface({
     }
   }, [setActiveViewer])
 
-  const [chats, setChats] = useState<Conversation[]>(() => getCachedChatList() ?? [])
+  const [chats, setChats] = useState<Conversation[]>(() => initialChats ?? getCachedChatList() ?? [])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const {
     runtimesRef,
@@ -228,6 +230,10 @@ export default function ChatInterface({
   const closeSourcesPanel = useCallback(() => setSourcesPanel(null), [])
   /** File preview dialog state. */
   const [filePreview, setFilePreview] = useState<{ name: string; fileId: string } | null>(null)
+
+  useEffect(() => {
+    if (initialChats) primeChatList(initialChats)
+  }, [initialChats])
   const [filePreviewContent, setFilePreviewContent] = useState('')
   const openFilePreview = useCallback(async (name: string, fileIds: string[]) => {
     const fileId = fileIds[0]

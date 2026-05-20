@@ -27,12 +27,56 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 const LIST_PAGE_SIZE = 8
 
-export default function IntegrationsView({ userId: _userId }: { userId: string }) {
+type IntegrationsInitialData = {
+  bootstrap?: AppBootstrapResponse | null
+  connected?: ConnectedIntegrationsResponse | null
+  catalog?: IntegrationSearchResponse | null
+}
+
+function buildInitialIntegrationState(initialData?: IntegrationsInitialData) {
+  const connected = new Set(initialData?.connected?.connected || [])
+  let catalogItems: ConnectorCatalogItem[] = []
+
+  if (initialData?.bootstrap?.integrationRegistry) {
+    catalogItems = mergeConnectorCatalogEntries(
+      catalogItems,
+      integrationRegistryToConnectorCatalog(initialData.bootstrap.integrationRegistry),
+    )
+  }
+
+  const connectedItems = (Array.isArray(initialData?.connected?.items) ? initialData.connected.items : []).map((item) =>
+    connectorFromIntegrationSummary({ ...item, isConnected: true }),
+  )
+  catalogItems = mergeConnectorCatalogEntries(catalogItems, connectedItems)
+
+  const searchedItems = (Array.isArray(initialData?.catalog?.items) ? initialData.catalog.items : []).map((item) =>
+    connectorFromIntegrationSummary(item),
+  )
+  catalogItems = mergeConnectorCatalogEntries(catalogItems, searchedItems)
+
+  const logos: Record<string, string | null> = {}
+  for (const item of catalogItems) {
+    logos[item.slug] = item.logoUrl ?? null
+    logos[item.composioId] = item.logoUrl ?? null
+  }
+
+  return { connected, catalogItems, logos }
+}
+
+export default function IntegrationsView({
+  userId: _userId,
+  initialData,
+}: {
+  userId: string
+  initialData?: IntegrationsInitialData
+}) {
   void _userId
-  const [connected, setConnected] = useState<Set<string>>(new Set())
-  const [catalogItems, setCatalogItems] = useState<ConnectorCatalogItem[]>([])
-  const [logos, setLogos] = useState<Record<string, string | null>>({})
-  const [isLoading, setIsLoading] = useState(true)
+  const hasInitialData = Boolean(initialData?.bootstrap || initialData?.connected || initialData?.catalog)
+  const initialState = useMemo(() => buildInitialIntegrationState(initialData), [initialData])
+  const [connected, setConnected] = useState<Set<string>>(() => initialState.connected)
+  const [catalogItems, setCatalogItems] = useState<ConnectorCatalogItem[]>(() => initialState.catalogItems)
+  const [logos, setLogos] = useState<Record<string, string | null>>(() => initialState.logos)
+  const [isLoading, setIsLoading] = useState(!hasInitialData)
   const [connecting, setConnecting] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -53,6 +97,13 @@ export default function IntegrationsView({ userId: _userId }: { userId: string }
       return next
     })
   }, [])
+
+  useEffect(() => {
+    for (const item of initialState.catalogItems) {
+      setIntegrationLogoUrl(item.slug, item.logoUrl ?? null)
+      setIntegrationLogoUrl(item.composioId, item.logoUrl ?? null)
+    }
+  }, [initialState.catalogItems])
 
   const loadRegistry = useCallback(async () => {
     try {

@@ -26,6 +26,7 @@ import {
   type ProjectFileSummary,
   type ProjectHubTab,
   type ProjectMetaUpdatedDetail,
+  type ProjectSummary,
 } from '@overlay/app-core'
 import {
   ProjectHubActions,
@@ -456,12 +457,21 @@ function ProjectsEmpty() {
 
 // ─── ProjectsView ─────────────────────────────────────────────────────────────
 
-export default function ProjectsView({ userId, firstName }: { userId: string; firstName?: string }) {
+export default function ProjectsView({
+  userId,
+  firstName,
+  initialProjects = [],
+}: {
+  userId: string
+  firstName?: string
+  initialProjects?: ProjectSummary[]
+}) {
   const searchParams = useSearchParams()
   const view = searchParams?.get('view') ?? null
   const id = searchParams?.get('id') ?? null
-  const projectName = searchParams?.get('projectName') ?? undefined
   const projectId = searchParams?.get('projectId') ?? null
+  const initialProject = projectId ? initialProjects.find((project) => project._id === projectId) : undefined
+  const projectName = searchParams?.get('projectName') ?? initialProject?.name ?? undefined
 
   if (view === 'chat' && id) {
     return (

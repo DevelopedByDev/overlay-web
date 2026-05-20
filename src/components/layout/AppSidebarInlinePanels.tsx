@@ -124,16 +124,18 @@ export function FilesInlinePanel({
 }
 
 export function ProjectsInlinePanel({
+  initialProjects,
   refreshKey,
   onNavigate,
 }: {
+  initialProjects?: Project[]
   refreshKey: number
   onNavigate?: () => void
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
+  const [projects, setProjects] = useState<Project[]>(() => initialProjects ?? [])
+  const [loading, setLoading] = useState(initialProjects === undefined)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [itemsByProject, setItemsByProject] = useState<Record<string, ProjectResourceItems>>({})
   const [itemsLoading, setItemsLoading] = useState<Set<string>>(new Set())
@@ -150,9 +152,9 @@ export function ProjectsInlinePanel({
   }, [])
 
   useEffect(() => {
-    setLoading(true)
+    if (initialProjects === undefined) setLoading(true)
     void loadProjects()
-  }, [loadProjects, refreshKey])
+  }, [initialProjects, loadProjects, refreshKey])
 
   const loadProjectItems = useCallback(async (projectId: string) => {
     setItemsLoading((prev) => new Set(prev).add(projectId))

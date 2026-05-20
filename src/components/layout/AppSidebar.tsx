@@ -14,8 +14,10 @@ import {
 import {
   resolveFeatureModuleForPath,
   resolveSidebarActionForPath,
+  type AutomationSummary,
   type OverlayIconName,
   type OverlaySidebarSearchCategory,
+  type ProjectSummary,
 } from '@overlay/app-core'
 import type { AuthUser } from '@/shared/auth/session-types'
 import { useAuth } from '@/contexts/AuthContext'
@@ -218,7 +220,15 @@ function StorageBar({ entitlements }: { entitlements: Entitlements | null }) {
   )
 }
 
-export default function AppSidebar({ user: serverUser }: { user: AuthUser | null }) {
+export default function AppSidebar({
+  user: serverUser,
+  initialProjects,
+  initialAutomations,
+}: {
+  user: AuthUser | null
+  initialProjects?: ProjectSummary[]
+  initialAutomations?: AutomationSummary[]
+}) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
   const currentSearchParams = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search)
@@ -751,12 +761,16 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
               ) : null}
               {projectsOpen ? (
                 <ProjectsInlinePanel
+                  initialProjects={initialProjects}
                   refreshKey={projectsPanelRefreshKey}
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
               {automationsOpen ? (
-                <AutomationsInlinePanel onNavigate={() => setMobileMenuOpen(false)} />
+                <AutomationsInlinePanel
+                  initialAutomations={initialAutomations}
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
               ) : null}
             </div>
           </div>
@@ -1012,7 +1026,9 @@ export default function AppSidebar({ user: serverUser }: { user: AuthUser | null
       </div>
 
       <div className="hidden md:flex">
-        {settings.useSecondarySidebar && activeFeatureModule?.id === 'projects' ? <ProjectsSidebar /> : null}
+        {settings.useSecondarySidebar && activeFeatureModule?.id === 'projects' ? (
+          <ProjectsSidebar initialProjects={initialProjects} />
+        ) : null}
         {settings.useSecondarySidebar && activeFeatureModule?.id === 'tools-extensions' ? <ToolsSidebar /> : null}
       </div>
 
