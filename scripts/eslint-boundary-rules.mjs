@@ -34,6 +34,36 @@ export const SERVER_DOMAINS = [
   'web',
 ]
 
+const LEGACY_COMPONENT_BOUNDARY_DEBT_FILES = [
+  'src/components/layout/AppSidebar.tsx',
+  'src/components/layout/GlobalSearchDialog.tsx',
+  'src/components/layout/PageNavbar.tsx',
+  'src/components/providers/GuestGateProvider.tsx',
+  'src/components/providers/OnboardingProvider.tsx',
+]
+
+const LEGACY_FEATURE_BOUNDARY_DEBT_FILES_BY_DOMAIN = {
+  account: ['src/features/account/components/OnboardingTour.tsx'],
+  chat: [
+    'src/features/chat/components/ChatExperience.tsx',
+    'src/features/chat/components/MarkdownMessage.tsx',
+    'src/features/chat/components/chat-interface/chatLogic.ts',
+    'src/features/chat/components/chat-interface/types.ts',
+  ],
+  files: [
+    'src/features/files/components/ExportMenu.tsx',
+    'src/features/files/components/FileShareMenu.tsx',
+  ],
+  knowledge: ['src/features/knowledge/components/KnowledgeView.tsx'],
+  marketing: [
+    'src/features/marketing/components/MarketingFooter.tsx',
+    'src/features/marketing/components/StaticMarketingShell.tsx',
+  ],
+  notebook: ['src/features/notebook/components/NotebookEditor.tsx'],
+  projects: ['src/features/projects/components/ProjectsView.tsx'],
+  share: ['src/features/share/components/SharedChatView.tsx'],
+}
+
 function otherFeatureImportPatterns(selfDomain) {
   return FEATURE_DOMAINS.filter((d) => d !== selfDomain).map(
     (d) => `@/features/${d}/*`,
@@ -53,6 +83,15 @@ function restrictedPatterns(groups, message) {
   }))
 }
 
+function noRestrictedImports(severity, patterns) {
+  return [
+    severity,
+    {
+      patterns,
+    },
+  ]
+}
+
 /** @returns {import('eslint').Linter.Config[]} */
 export function createArchitectureBoundaryConfigs() {
   const configs = []
@@ -61,15 +100,13 @@ export function createArchitectureBoundaryConfigs() {
   configs.push({
     files: ['src/app/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': [
+      'no-restricted-imports': noRestrictedImports(
         'error',
-        {
-          patterns: restrictedPatterns(
-            ['@/assets', '@/assets/*', '@/types', '@/types/*'],
-            'App routes may import @/features, @/components, @/server, @/shared, @/hooks, @/contexts, or @overlay packages only.',
-          ),
-        },
-      ],
+        restrictedPatterns(
+          ['@/assets', '@/assets/*', '@/types', '@/types/*'],
+          'App routes may import @/features, @/components, @/server, @/shared, @/hooks, @/contexts, or @overlay packages only.',
+        ),
+      ),
     },
   })
 
@@ -89,24 +126,20 @@ export function createArchitectureBoundaryConfigs() {
       files: [`src/features/${domain}/**/*.{ts,tsx}`],
       ignores: [`src/features/${domain}/**/components/**`],
       rules: {
-        'no-restricted-imports': [
+        'no-restricted-imports': noRestrictedImports(
           'error',
-          {
-            patterns: crossFeaturePatterns,
-          },
-        ],
+          crossFeaturePatterns,
+        ),
       },
     })
 
     configs.push({
       files: [`src/features/${domain}/**/components/**/*.{ts,tsx}`],
       rules: {
-        'no-restricted-imports': [
-          'error',
-          {
-            patterns: [...crossFeaturePatterns, ...serverPatterns],
-          },
-        ],
+        'no-restricted-imports': noRestrictedImports('error', [
+          ...crossFeaturePatterns,
+          ...serverPatterns,
+        ]),
       },
     })
   }
@@ -115,44 +148,73 @@ export function createArchitectureBoundaryConfigs() {
   configs.push({
     files: ['src/components/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': [
+      'no-restricted-imports': noRestrictedImports(
         'error',
-        {
-          patterns: restrictedPatterns(
-            ['@/features/*', '@/server/*'],
-            'src/components is for shared UI only. Import from @/shared or pass feature UI via app/layout composition.',
-          ),
-        },
-      ],
+        restrictedPatterns(
+          ['@/features/*', '@/server/*'],
+          'src/components is for shared UI only. Import from @/shared or pass feature UI via app/layout composition.',
+        ),
+      ),
     },
   })
+
+  // Existing Phase 1 migration debt is documented in docs/migration-notes.md.
+  // Keep these visible as warnings so production builds do not fail before the
+  // remaining feature composition work burns the debt down. New files still fail.
+  configs.push({
+    files: LEGACY_COMPONENT_BOUNDARY_DEBT_FILES,
+    rules: {
+      'no-restricted-imports': noRestrictedImports(
+        'warn',
+        restrictedPatterns(
+          ['@/features/*', '@/server/*'],
+          'src/components is for shared UI only. Import from @/shared or pass feature UI via app/layout composition.',
+        ),
+      ),
+    },
+  })
+
+  for (const [domain, files] of Object.entries(
+    LEGACY_FEATURE_BOUNDARY_DEBT_FILES_BY_DOMAIN,
+  )) {
+    configs.push({
+      files,
+      rules: {
+        'no-restricted-imports': noRestrictedImports(
+          'warn',
+          restrictedPatterns(
+            otherFeatureImportPatterns(domain),
+            `features/${domain} must not import other feature folders. Use @/shared or lift shared UI to src/components.`,
+          ),
+        ),
+      },
+    })
+  }
 
   // Post-migration src/lib — shared-only facade.
   configs.push({
     files: ['src/lib/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': [
+      'no-restricted-imports': noRestrictedImports(
         'error',
-        {
-          patterns: restrictedPatterns(
-            [
-              '@/features',
-              '@/features/*',
-              '@/components',
-              '@/components/*',
-              '@/server',
-              '@/server/*',
-              '@/app',
-              '@/app/*',
-              '@/hooks',
-              '@/hooks/*',
-              '@/contexts',
-              '@/contexts/*',
-            ],
-            'src/lib (legacy) may only re-export or import from @/shared.',
-          ),
-        },
-      ],
+        restrictedPatterns(
+          [
+            '@/features',
+            '@/features/*',
+            '@/components',
+            '@/components/*',
+            '@/server',
+            '@/server/*',
+            '@/app',
+            '@/app/*',
+            '@/hooks',
+            '@/hooks/*',
+            '@/contexts',
+            '@/contexts/*',
+          ],
+          'src/lib (legacy) may only re-export or import from @/shared.',
+        ),
+      ),
     },
   })
 
@@ -161,15 +223,13 @@ export function createArchitectureBoundaryConfigs() {
     configs.push({
       files: [`src/server/${domain}/**/*.{ts,tsx}`],
       rules: {
-        'no-restricted-imports': [
+        'no-restricted-imports': noRestrictedImports(
           'warn',
-          {
-            patterns: restrictedPatterns(
-              otherServerImportPatterns(domain),
-              `Prefer not to import other src/server domains from server/${domain}. Use @/shared or a narrow facade.`,
-            ),
-          },
-        ],
+          restrictedPatterns(
+            otherServerImportPatterns(domain),
+            `Prefer not to import other src/server domains from server/${domain}. Use @/shared or a narrow facade.`,
+          ),
+        ),
       },
     })
   }

@@ -76,7 +76,7 @@ Rules live in `scripts/eslint-boundary-rules.mjs` and are wired from `eslint.con
 | `src/lib/**` | Same as shared-only (legacy; folder mostly removed) |
 | `src/server/<domain>/**` | **Warn** on `@/server/<other>/*` (sibling domains; burn down over time) |
 
-**Known violations (lint `--quiet` on layers):** ~38 errors today — mostly cross-feature imports under `src/features/` and feature imports from `src/components/` (e.g. `AppSidebar`, `GlobalSearchDialog`). Server cross-domain imports surface as warnings only.
+**Known violations:** 38 legacy component / feature-boundary violations are allowlisted as warnings in `scripts/eslint-boundary-rules.mjs` so production builds can pass while the debt is burned down. New files outside that baseline still fail as errors. Server cross-domain imports surface as warnings only.
 
 **Verify:** `npx eslint src/app src/components src/features src/shared src/server` (full `npm run lint` may still report unrelated issues elsewhere).
 
