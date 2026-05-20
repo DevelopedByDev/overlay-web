@@ -18,6 +18,9 @@
     "./settings-account": "./src/settings-account.ts",
     "./theme": "./src/theme.ts"
   },
+  "dependencies": {
+    "@overlay/llm-gateway": "file:../overlay-llm-gateway"
+  },
   "scripts": {
     "test": "tsx --test src/*.test.ts",
     "typecheck": "tsc --noEmit"

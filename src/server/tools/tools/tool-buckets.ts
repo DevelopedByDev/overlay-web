@@ -28,7 +28,13 @@ const INTERNAL_TOOL_IDS = new Set<string>([
 export function toolCostBucketForId(toolId: string): ToolCostBucket {
   if (toolId === 'perplexity_search' || toolId === 'parallel_search') return 'perplexity'
   if (toolId === 'generate_image') return 'image'
-  if (toolId === 'generate_video') return 'video'
+  if (
+    toolId === 'generate_video' ||
+    toolId === 'animate_image' ||
+    toolId === 'generate_video_with_reference' ||
+    toolId === 'apply_motion_control' ||
+    toolId === 'edit_video'
+  ) return 'video'
   if (toolId === 'browser_run_task' || toolId === 'interactive_browser_session') return 'browser'
   if (toolId === 'run_daytona_sandbox') return 'daytona'
   if (INTERNAL_TOOL_IDS.has(toolId)) return 'internal'

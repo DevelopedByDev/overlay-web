@@ -1,3 +1,12 @@
+import type { LLMGateway as CoreLLMGateway } from '@overlay/llm-gateway'
+export type {
+  LanguageModel,
+  LLMGateway,
+  ModelInfo,
+  ModelOptions,
+  PricingInfo,
+} from '@overlay/llm-gateway'
+
 export type ThemePreference = 'light' | 'dark'
 /** Token streaming is the only supported mode; the field remains for API/storage compatibility. */
 export type ChatStreamingMode = 'token'
@@ -440,7 +449,7 @@ export interface OverlayAppConfig {
   billingProvider?: BillingProvider
   objectStore?: ObjectStore
   vectorStore?: VectorStore
-  llmGateway?: LLMGateway
+  llmGateway?: CoreLLMGateway
   rateLimiter?: RateLimiter
   eventBus?: EventBus
 }
@@ -1263,40 +1272,6 @@ export interface QueryResult {
   metadata: Record<string, unknown>
 }
 
-export interface ModelOptions {
-  accessToken?: string
-  provider?: string
-  headers?: Record<string, string>
-  metadata?: Record<string, unknown>
-}
-
-export interface LanguageModel {
-  id: string
-  provider?: string
-  implementation: unknown
-}
-
-export interface ModelInfo {
-  id: string
-  name: string
-  provider: string
-  description?: string
-  supportsVision?: boolean
-  supportsReasoning?: boolean
-  supportsSearch?: boolean
-  supportsZeroDataRetention?: boolean
-  pricePer1mTokens?: number
-}
-
-export interface PricingInfo {
-  modelId: string
-  providerCostUsd?: number
-  pricingModelId?: string
-  pricingSource?: string
-  pricingType?: string
-  isFree?: boolean
-}
-
 export interface RateLimitSpec {
   bucket: string
   key: string | null | undefined
@@ -1357,12 +1332,6 @@ export interface VectorStore {
   delete(id: string): Promise<void>
 }
 
-export interface LLMGateway {
-  createLanguageModel(modelId: string, options?: ModelOptions): Promise<LanguageModel>
-  listModels(): Promise<ModelInfo[]>
-  getModelPricing(modelId: string): Promise<PricingInfo>
-}
-
 export interface RateLimiter {
   check(key: string, limits: RateLimitSpec[]): Promise<RateLimitResult>
 }
@@ -1377,7 +1346,7 @@ export interface OverlayServerContext {
   billing: BillingProvider
   objectStore: ObjectStore
   vectorStore: VectorStore
-  llmGateway: LLMGateway
+  llmGateway: CoreLLMGateway
   rateLimiter: RateLimiter
   eventBus: EventBus
 }
