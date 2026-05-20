@@ -1,3 +1,4 @@
+import '../src/storybook.css'
 import '../src/styles.css'
 
 const preview = {

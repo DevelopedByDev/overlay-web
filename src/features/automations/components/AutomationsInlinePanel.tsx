@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { SidebarListSkeleton } from '@/components/ui/Skeleton'
+import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { dispatchChatDeleted } from '@/shared/chat/chat-title'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { AutomationSummary } from '@overlay/app-core'

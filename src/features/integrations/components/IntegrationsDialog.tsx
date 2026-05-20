@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, type UIEvent } from 'react'
 import Image from 'next/image'
 import { Loader2, X, Search } from 'lucide-react'
 import { resolveIntegrationName, truncateIntegrationDescription } from '@overlay/app-core'
-import { IntegrationDialogRowSkeleton } from '@/components/ui/Skeleton'
+import { IntegrationDialogRowSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 interface PickerItem {

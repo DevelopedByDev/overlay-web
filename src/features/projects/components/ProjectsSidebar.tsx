@@ -7,7 +7,7 @@ import {
   BookOpen, Loader2, Trash2, Pencil,
 } from 'lucide-react'
 import { CHAT_TITLE_UPDATED_EVENT, dispatchChatDeleted, type ChatTitleUpdatedDetail } from '@/shared/chat/chat-title'
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { ConfirmDialog } from '@overlay/ui/overlays'
 import {
   ProjectFileTreeNode,
   type Project,

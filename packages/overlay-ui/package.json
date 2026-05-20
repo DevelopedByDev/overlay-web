@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./styles.css": "./src/styles.css",
+    "./tokens": "./src/tokens.ts",
     "./primitives": "./src/primitives.ts",
     "./feedback": "./src/feedback.ts",
     "./overlays": "./src/overlays.ts",
@@ -23,7 +24,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test --experimental-strip-types src/**/*.test.mjs",
+    "test": "node --test --experimental-strip-types src/*.test.mjs src/**/*.test.mjs",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build"
   },

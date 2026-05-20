@@ -36,7 +36,7 @@ import {
   ProjectHubHeader,
   ProjectHubTabs,
 } from '@overlay/modules-react/projects'
-import { FileViewerSkeleton } from '@/components/ui/Skeleton'
+import { FileViewerSkeleton } from '@overlay/ui/feedback'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@/features/files/components/FileViewer'
 import { FileShareMenu } from '@/features/files/components/FileShareMenu'

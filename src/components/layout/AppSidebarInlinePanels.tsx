@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { SidebarListSkeleton } from '@/components/ui/Skeleton'
+import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   FILES_CHANGED_EVENT,
   NOTES_CHANGED_EVENT,
