@@ -295,6 +295,7 @@ export default defineSchema({
     clientId: v.optional(v.string()),
     name: v.string(),
     instructions: v.optional(v.string()),
+    githubRepoAllowlist: v.optional(v.array(v.string())),
     parentId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
