@@ -29,7 +29,7 @@ function getR2Endpoint(): string {
   return `https://${requireR2Env('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`
 }
 
-function getR2BucketName(): string {
+export function getR2BucketName(): string {
   return requireR2Env('R2_BUCKET_NAME')
 }
 
@@ -65,7 +65,7 @@ export function createR2Client(): S3Client {
 }
 
 let _client: S3Client | null = null
-function getR2Client(): S3Client {
+export function getR2Client(): S3Client {
   if (!_client) _client = createR2Client()
   return _client
 }

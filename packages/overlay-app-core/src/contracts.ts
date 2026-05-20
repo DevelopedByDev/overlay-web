@@ -895,7 +895,7 @@ export interface OutputQueryContract {
   conversationId?: string
 }
 
-export interface DeleteOutputResponse extends MutationSuccessResponse {}
+export type DeleteOutputResponse = MutationSuccessResponse
 
 export interface NoteQueryContract {
   noteId?: string
@@ -1171,4 +1171,194 @@ export interface OnboardingStatusResponse {
 export interface OnboardingCompleteResponse {
   ok: boolean
   persistedToConvex?: boolean
+}
+
+export interface Session {
+  accessToken: string
+  refreshToken?: string
+  user: AuthUser
+  expiresAt?: number
+}
+
+export interface TokenClaims {
+  iss: string
+  sub: string
+  aud?: string | string[]
+  exp: number
+  iat?: number
+  [claim: string]: unknown
+}
+
+export interface UserProfile {
+  id: string
+  email?: string
+  firstName?: string
+  lastName?: string
+  profilePictureUrl?: string
+  emailVerified?: boolean
+}
+
+export interface CheckoutArgs {
+  userId: string
+  email?: string
+  kind?: 'paid_plan' | 'budget_topup'
+  planAmountCents?: number
+  topUpAmountCents?: number
+  autoTopUpEnabled?: boolean
+  successUrl?: string
+  cancelUrl?: string
+  returnUrl?: string
+  metadata?: Record<string, string | number | boolean | null | undefined>
+}
+
+export interface CheckoutResult {
+  url: string
+  providerSessionId?: string
+}
+
+export interface PortalResult {
+  url: string
+  providerSessionId?: string
+}
+
+export type UsageKind =
+  | 'ask'
+  | 'write'
+  | 'agent'
+  | 'embedding'
+  | 'transcription'
+  | 'generation'
+  | 'sandbox'
+
+export interface UsageArgs {
+  userId: string
+  accessToken?: string
+  type: UsageKind
+  modelId?: string
+  inputTokens?: number
+  outputTokens?: number
+  cachedTokens?: number
+  cost: number
+  timestamp?: number
+}
+
+export interface ObjectSummary {
+  key: string
+  sizeBytes?: number
+  contentType?: string
+  lastModified?: string
+  etag?: string
+}
+
+export interface QueryResult {
+  id: string
+  score: number
+  metadata: Record<string, unknown>
+}
+
+export interface ModelOptions {
+  accessToken?: string
+  provider?: string
+  headers?: Record<string, string>
+  metadata?: Record<string, unknown>
+}
+
+export interface LanguageModel {
+  id: string
+  provider?: string
+  implementation: unknown
+}
+
+export interface ModelInfo {
+  id: string
+  name: string
+  provider: string
+  description?: string
+  supportsVision?: boolean
+  supportsReasoning?: boolean
+  supportsSearch?: boolean
+  supportsZeroDataRetention?: boolean
+  pricePer1mTokens?: number
+}
+
+export interface PricingInfo {
+  modelId: string
+  providerCostUsd?: number
+  pricingModelId?: string
+  pricingSource?: string
+  pricingType?: string
+  isFree?: boolean
+}
+
+export interface RateLimitSpec {
+  bucket: string
+  key: string | null | undefined
+  limit: number
+  windowMs: number
+}
+
+export interface RateLimitDecision {
+  bucket: string
+  allowed: boolean
+  remaining: number
+  retryAfterSeconds: number
+  resetAt?: number
+}
+
+export interface RateLimitResult {
+  allowed: boolean
+  retryAfterSeconds: number
+  decisions: RateLimitDecision[]
+}
+
+export interface AuthProvider {
+  getSession(req: Request): Promise<Session | null>
+  verifyAccessToken(token: string): Promise<TokenClaims | null>
+  getUserProfile(token: string): Promise<UserProfile | null>
+}
+
+export interface BillingProvider {
+  getEntitlements(userId: string): Promise<Entitlements>
+  createCheckoutSession(args: CheckoutArgs): Promise<CheckoutResult>
+  createPortalSession(userId: string): Promise<PortalResult>
+  recordUsage(args: UsageArgs): Promise<void>
+}
+
+export interface ObjectStore {
+  getUploadUrl(
+    key: string,
+    contentType: string,
+  ): Promise<{ url: string; fields?: Record<string, string> }>
+  getDownloadUrl(key: string): Promise<string>
+  deleteObject(key: string): Promise<void>
+  listObjects(prefix: string): Promise<ObjectSummary[]>
+}
+
+export interface VectorStore {
+  upsert(args: {
+    id: string
+    vector: number[]
+    metadata: Record<string, unknown>
+  }): Promise<void>
+  query(args: {
+    vector: number[]
+    topK: number
+    filter?: Record<string, unknown>
+  }): Promise<QueryResult[]>
+  delete(id: string): Promise<void>
+}
+
+export interface LLMGateway {
+  createLanguageModel(modelId: string, options?: ModelOptions): Promise<LanguageModel>
+  listModels(): Promise<ModelInfo[]>
+  getModelPricing(modelId: string): Promise<PricingInfo>
+}
+
+export interface RateLimiter {
+  check(key: string, limits: RateLimitSpec[]): Promise<RateLimitResult>
+}
+
+export interface EventBus {
+  publish(topic: string, payload: unknown): Promise<void>
+  subscribe(topic: string, handler: (payload: unknown) => void): () => void
 }
