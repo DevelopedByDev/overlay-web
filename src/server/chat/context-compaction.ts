@@ -1,7 +1,6 @@
 import 'server-only'
 
-import { generateText, type UIMessage } from '@/server/ai/sdk'
-import { getGatewayModelId, getLanguageModel } from '@/server/ai/model-runtime'
+import type { UIMessage } from 'ai'
 import { getModel } from '@/shared/ai/gateway/model-data'
 import { getGatewayModelPricing } from '@/server/ai/pricing'
 import {
@@ -127,9 +126,10 @@ async function getLiveGatewayModels(): Promise<Map<string, GatewayModelListEntry
   }
 }
 
-function gatewayIdCandidates(modelId: string): string[] {
+async function gatewayIdCandidates(modelId: string): Promise<string[]> {
   const out = new Set<string>([modelId])
   try {
+    const { getGatewayModelId } = await import('@/server/ai/model-runtime')
     out.add(getGatewayModelId(modelId))
   } catch {
     // Non-Gateway models fall back to snapshot/manual metadata.
@@ -152,7 +152,7 @@ function manualContextWindow(modelId: string): number | null {
 export async function resolveModelContextWindow(modelId: string): Promise<number> {
   const liveModels = await getLiveGatewayModels()
   if (liveModels) {
-    for (const candidate of gatewayIdCandidates(modelId)) {
+    for (const candidate of await gatewayIdCandidates(modelId)) {
       const contextWindow = contextWindowFromEntry(liveModels.get(candidate))
       if (contextWindow) return contextWindow
     }
@@ -303,6 +303,10 @@ export async function compactMessagesForContext(params: {
     const summary = params.generateSummaryText
       ? (await params.generateSummaryText({ prompt, targetSummaryTokens })).trim()
       : (await (async () => {
+          const [{ getLanguageModel }, { generateText }] = await Promise.all([
+            import('@/server/ai/model-runtime'),
+            import('@/server/ai/sdk'),
+          ])
           const model = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, params.accessToken)
           const result = await generateText({
             model,
