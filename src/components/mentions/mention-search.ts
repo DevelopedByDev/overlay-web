@@ -1,12 +1,10 @@
-'use client'
-
 /**
  * Non-hook variant of the mention data fetcher for use outside React (e.g. from a
  * TipTap suggestion plugin). Same fetch + cache + scoring policy as `useMentionData`.
  */
 
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import type { MentionCategory, MentionItem, MentionType } from './mention-types'
+import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 interface CachedData {
   files: MentionItem[]

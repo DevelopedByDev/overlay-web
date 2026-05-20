@@ -11,7 +11,7 @@ import {
   Upload,
   Zap,
 } from 'lucide-react'
-import type { MentionCategory, MentionItem, MentionType } from './mention-types'
+import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
   FileText,

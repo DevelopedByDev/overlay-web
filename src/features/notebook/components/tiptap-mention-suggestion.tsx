@@ -9,9 +9,9 @@
 
 import type { SuggestionOptions, SuggestionProps } from '@tiptap/suggestion'
 import { ReactRenderer } from '@tiptap/react'
-import { MentionPopup } from './MentionPopup'
-import { searchMentions } from './mention-search'
-import type { MentionCategory, MentionItem, MentionType } from './mention-types'
+import { MentionPopup } from '@/components/mentions/MentionPopup'
+import { searchMentions } from '@/components/mentions/mention-search'
+import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 interface PopupState {
   query: string

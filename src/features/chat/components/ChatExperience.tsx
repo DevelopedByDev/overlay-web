@@ -143,7 +143,7 @@ import type {
   LiveMessageDelta,
 } from './chat-interface/types'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
-import type { MentionItem } from './chat-interface/mention-types'
+import type { MentionItem } from '@/shared/knowledge/mention-types'
 
 const EMPTY_UI_MESSAGES: UIMessage[] = []
 

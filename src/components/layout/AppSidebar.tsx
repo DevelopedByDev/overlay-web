@@ -40,7 +40,7 @@ import { overlayAppShell } from '@/overlay.config'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
-import type { MentionType } from '@/features/chat/components/chat-interface/mention-types'
+import type { MentionType } from '@/shared/knowledge/mention-types'
 
 const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
   'arrow-up': ArrowUp,

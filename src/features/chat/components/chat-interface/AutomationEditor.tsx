@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { AutomationInstructionsEditor } from './AutomationInstructionsEditor'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -25,6 +24,12 @@ import {
   AUTOMATION_DETAIL_TABS,
   AutomationEditorForm,
 } from '@overlay/modules-react/automations'
+
+const AutomationInstructionsEditor = lazy(() =>
+  import('@/features/notebook/components/AutomationInstructionsEditor').then((mod) => ({
+    default: mod.AutomationInstructionsEditor,
+  })),
+)
 
 export type {
   AutomationDetail,
@@ -141,7 +146,18 @@ export function AutomationEditorPanel({
       onSave={() => void saveAutomation()}
       onTest={() => void testAutomation()}
       renderInstructionsEditor={({ value, onChange }) => (
-        <AutomationInstructionsEditor value={value} onChange={onChange} />
+        <Suspense
+          fallback={
+            <div className="min-h-[18rem] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+              <div className="ui-skeleton-line mb-3 h-4 w-40 rounded" />
+              <div className="ui-skeleton-line mb-2 h-3 w-full rounded" />
+              <div className="ui-skeleton-line mb-2 h-3 w-5/6 rounded" />
+              <div className="ui-skeleton-line h-3 w-2/3 rounded" />
+            </div>
+          }
+        >
+          <AutomationInstructionsEditor value={value} onChange={onChange} />
+        </Suspense>
       )}
     />
   )

@@ -8,9 +8,9 @@ import {
   useRef,
   useState,
 } from 'react'
-import { MentionPopup } from './MentionPopup'
+import { MentionPopup } from '@/components/mentions/MentionPopup'
 import { useMentionData } from './useMentionData'
-import type { MentionCategory, MentionItem, MentionType } from './mention-types'
+import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 export interface MentionInputHandle {
   focus: () => void

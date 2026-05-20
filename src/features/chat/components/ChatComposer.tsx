@@ -7,7 +7,7 @@ import type { ClipboardEventHandler, Dispatch, RefObject, SetStateAction } from 
 import type { GenerationMode } from '@/shared/ai/gateway/model-types'
 import { DelayedTooltip } from './DelayedTooltip'
 import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
-import type { MentionItem } from './chat-interface/mention-types'
+import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { AttachedImage, Entitlements, PendingChatDocument } from './chat-interface/types'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'

@@ -1,5 +1,5 @@
 import 'katex/dist/katex.min.css'
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { lazy, Suspense, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
@@ -14,8 +14,8 @@ import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } fr
 import { shimIncompleteMarkdown } from '../lib/shim-incomplete-markdown'
 import type { ChatStreamingMode } from '../context/chat-settings'
 import { WebSourceTooltip } from './WebSourceTooltip'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+
+const LazySyntaxHighlighter = lazy(() => import('./LazySyntaxHighlighter'))
 
 function useDocumentThemeIsDark(): boolean {
   return useSyncExternalStore(
@@ -216,23 +216,11 @@ function CodeBlock({ language, children }: { language: string; children: string 
           {copied ? 'Copied!' : 'Copy code'}
         </button>
       </div>
-      <SyntaxHighlighter
-        style={isDark ? oneDark : oneLight}
-        language={language}
-        PreTag="div"
-        customStyle={{
-          margin: 0,
-          borderRadius: '0 0 10px 10px',
-          background: isDark ? 'transparent' : '#f8f8f8',
-          fontSize: '0.85rem',
-          lineHeight: '1.6',
-        }}
-        codeTagProps={{
-          style: { fontFamily: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" },
-        }}
-      >
-        {children}
-      </SyntaxHighlighter>
+      <Suspense fallback={<pre className="m-0 overflow-x-auto p-3 text-sm"><code>{children}</code></pre>}>
+        <LazySyntaxHighlighter isDark={isDark} language={language}>
+          {children}
+        </LazySyntaxHighlighter>
+      </Suspense>
     </div>
   )
 }

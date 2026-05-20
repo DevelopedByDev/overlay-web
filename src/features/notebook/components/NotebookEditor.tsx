@@ -109,7 +109,7 @@ const MarkdownMessage = dynamic(() =>
   import('@/features/chat/components/MarkdownMessage').then((mod) => ({ default: mod.MarkdownMessage })),
 )
 import { MentionInput, type MentionInputHandle } from '@/features/chat/components/chat-interface/MentionInput'
-import type { MentionItem } from '@/features/chat/components/chat-interface/mention-types'
+import type { MentionItem } from '@/shared/knowledge/mention-types'
 
 const lowlight = createLowlight(common)
 const NOTEBOOK_INLINE_DIFF_STYLE_ID = 'notebook-inline-diff-styles'

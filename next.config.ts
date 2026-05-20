@@ -1,5 +1,11 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
+import createBundleAnalyzer from "@next/bundle-analyzer";
+
+const withBundleAnalyzer = createBundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+  openAnalyzer: false,
+});
 
 const staticSecurityHeaders = [
   {
@@ -57,7 +63,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withSentryConfig(nextConfig, {
+export default withBundleAnalyzer(withSentryConfig(nextConfig, {
   silent: !process.env.CI,
   webpack: {
     treeshake: {
@@ -72,4 +78,4 @@ export default withSentryConfig(nextConfig, {
         widenClientFileUpload: true,
       }
     : {}),
-});
+}));
