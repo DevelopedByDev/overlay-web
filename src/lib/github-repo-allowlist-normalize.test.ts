@@ -96,3 +96,18 @@ test('normalizeGithubRepoAllowlist: canonical valid forms accepted', async () =>
   const result = normalizeGithubRepoAllowlist(input)
   assert.deepEqual(result, ['a/b', 'acme/web', 'me-co/awesome.tool_v2'])
 })
+
+// PATCH /api/app/projects contract: when the route forwards
+// githubRepoAllowlist through this normalizer, a rejection must
+// surface the offending raw input verbatim so the client can show
+// the user exactly which entry was bad in an HTTP 400 response.
+test('PATCH route contract: rejection error message contains the offending entry verbatim', async () => {
+  const { normalizeGithubRepoAllowlist } = await import(
+    new URL('../../convex/lib/github-repo-allowlist-normalize.ts', import.meta.url).href,
+  )
+  const offender = 'BAD ENTRY/with spaces'
+  assert.throws(
+    () => normalizeGithubRepoAllowlist([offender]),
+    (err: unknown) => (err as Error).message.includes(offender),
+  )
+})

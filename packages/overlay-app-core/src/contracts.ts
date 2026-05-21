@@ -1095,6 +1095,7 @@ export interface UpdateProjectRequest {
   name?: string
   instructions?: string
   parentId?: string | null
+  githubRepoAllowlist?: string[]
   accessToken?: string
   userId?: string
 }
