@@ -5,7 +5,7 @@ test('extractRepoFromComposioGithubArgs extracts repo from full_name format', as
   const { extractRepoFromComposioGithubArgs } = await import(
     new URL('./github-repo-allowlist.ts', import.meta.url).href,
   )
-  const result = extractRepoFromComposioGithubArgs('GITHUB_GET_REPO', {
+  const result = extractRepoFromComposioGithubArgs({
     full_name: 'octocat/Hello',
   })
   assert.deepEqual(result, { owner: 'octocat', name: 'hello' })
@@ -15,7 +15,7 @@ test('extractRepoFromComposioGithubArgs extracts repo from owner+repo format', a
   const { extractRepoFromComposioGithubArgs } = await import(
     new URL('./github-repo-allowlist.ts', import.meta.url).href,
   )
-  const result = extractRepoFromComposioGithubArgs('GITHUB_GET_REPO', {
+  const result = extractRepoFromComposioGithubArgs({
     owner: 'octocat',
     repo: 'Hello',
   })
@@ -26,7 +26,7 @@ test('extractRepoFromComposioGithubArgs extracts repo from owner+name format', a
   const { extractRepoFromComposioGithubArgs } = await import(
     new URL('./github-repo-allowlist.ts', import.meta.url).href,
   )
-  const result = extractRepoFromComposioGithubArgs('GITHUB_LIST_BRANCHES', {
+  const result = extractRepoFromComposioGithubArgs({
     owner: 'octocat',
     name: 'Hello',
   })
@@ -37,7 +37,7 @@ test('extractRepoFromComposioGithubArgs returns null when no repo argument prese
   const { extractRepoFromComposioGithubArgs } = await import(
     new URL('./github-repo-allowlist.ts', import.meta.url).href,
   )
-  const result = extractRepoFromComposioGithubArgs('GITHUB_LIST_USER_ORGANIZATIONS', {
+  const result = extractRepoFromComposioGithubArgs({
     username: 'octocat',
   })
   assert.equal(result, null)
@@ -176,4 +176,24 @@ test('GITHUB_FORK_REPOSITORY requires both source and target repos on allowlist 
     {},
   )
   assert.equal(executeStub2.mock.callCount(), 1)
+})
+
+// Regression: a fork call WITHOUT explicit target fields would, on the GitHub
+// API, fork to the caller's default account — outside the allowlist. The
+// wrap must block fork tools when no explicit, allowed target is supplied.
+test('GITHUB_FORK_REPOSITORY blocks when target fields are missing (default-deny)', async () => {
+  const { applyGithubRepoAllowlistToTools, buildGithubRepoPolicy } = await import(
+    new URL('./github-repo-allowlist.ts', import.meta.url).href,
+  )
+  const policy = buildGithubRepoPolicy(['acme/web'])
+  const executeStub = mock.fn(async (_input: unknown, _ctx: unknown) => ({ ok: true }))
+  const toolSet = { GITHUB_FORK_REPOSITORY: { execute: executeStub } }
+  const wrapped = applyGithubRepoAllowlistToTools(toolSet, policy)
+  const result = await wrapped.GITHUB_FORK_REPOSITORY.execute(
+    { owner: 'acme', repo: 'web' },
+    {},
+  ) as { ok: boolean; error?: string }
+  assert.equal(executeStub.mock.callCount(), 0)
+  assert.equal(result.ok, false)
+  assert.equal(result.error, 'repo_not_in_allowlist')
 })

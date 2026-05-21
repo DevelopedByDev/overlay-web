@@ -21,12 +21,13 @@ export function isGithubComposioTool(name: string): boolean {
  * Both owner and name are trimmed and lowercased before returning.
  * Returns null if the input is not an object or no valid repo arguments are found.
  *
- * @param toolName - The Composio tool name (used for fork/transfer target rule)
+ * Fork/transfer destination detection lives at the call site in
+ * applyGithubRepoAllowlistToTools (it dispatches on the tool name).
+ *
  * @param input - The tool arguments (treated defensively as unknown)
  * @returns An object with { owner: string; name: string } or null
  */
 export function extractRepoFromComposioGithubArgs(
-  toolName: string,
   input: unknown,
 ): { owner: string; name: string } | null {
   // Defensive: only proceed if input is an object
@@ -88,10 +89,6 @@ export function extractRepoFromComposioGithubArgs(
       }
     }
   }
-
-  // Suppress unused parameter warning — toolName is used by the fork rule in
-  // applyGithubRepoAllowlistToTools rather than here.
-  void toolName
 
   // No matching rule found
   return null
@@ -158,7 +155,20 @@ export type GithubRepoPolicy = {
  * @returns A policy object with an `allows` method for fast case-insensitive lookup
  */
 export function buildGithubRepoPolicy(list: readonly string[] | undefined): GithubRepoPolicy {
-  const safeList: readonly string[] = list ?? []
+  // Defense-in-depth: even though the normalizer is the authoritative
+  // validation step (HTTP and Convex mutation paths both go through it),
+  // a malformed entry that bypassed normalization (e.g. direct DB write,
+  // future call site error) would silently sit in the set and never match
+  // a "owner/name" lookup — converting an intended-allowed repo into an
+  // effective deny. Filter to exactly "owner/name" shape here so the
+  // chokepoint never surprises the operator.
+  const safeList: readonly string[] = (list ?? []).filter((entry) => {
+    if (typeof entry !== 'string') return false
+    const slashes = entry.match(/\//g)?.length ?? 0
+    if (slashes !== 1) return false
+    const [owner, name] = entry.split('/')
+    return Boolean(owner && name)
+  })
   const enabled = safeList.length > 0
 
   // Pre-compute a lowercased set for O(1) lookup
@@ -275,7 +285,7 @@ export function applyGithubRepoAllowlistToTools<T extends Record<string, unknown
     const isForkOrTransfer = name.includes('_FORK_') || name.includes('_TRANSFER_')
 
     const wrappedExecute = async (input: unknown, ctx: unknown): Promise<unknown> => {
-      const sourceTarget = extractRepoFromComposioGithubArgs(name, input)
+      const sourceTarget = extractRepoFromComposioGithubArgs(input)
 
       // No repo found — non-repo-scoped op (e.g. LIST_USER_ORGANIZATIONS); allow
       if (sourceTarget === null) {
@@ -291,13 +301,16 @@ export function applyGithubRepoAllowlistToTools<T extends Record<string, unknown
         })
       }
 
-      // For fork/transfer tools, also validate the destination repo
+      // For fork/transfer tools, also validate the destination repo.
+      // Default-deny: if the target fields are missing, GitHub would fork to
+      // the caller's default account (outside the allowlist). Block in that
+      // case too — require an explicit target that is itself on the list.
       if (isForkOrTransfer) {
         const forkTarget = extractForkTargetFromComposioGithubArgs(input)
-        if (forkTarget !== null && !policy.allows(forkTarget)) {
+        if (forkTarget === null || !policy.allows(forkTarget)) {
           return buildRepoBlockedToolResult({
             toolName: name,
-            target: forkTarget,
+            target: forkTarget ?? sourceTarget,
             allowed: policy.list,
           })
         }
