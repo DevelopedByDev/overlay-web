@@ -96,9 +96,11 @@ test('applyGithubRepoAllowlistToTools passes allowed repo through unchanged', as
     new URL('./github-repo-allowlist.ts', import.meta.url).href,
   )
   const policy = buildGithubRepoPolicy(['acme/web'])
-  const executeStub = mock.fn(
-    async (_input: unknown, _ctx: unknown) => ({ ok: true, data: 'real-result' }),
-  )
+  // Params declared so the mock's Parameters tuple types as [unknown, unknown];
+  // the assertion below indexes arguments[0]. eslint-disable-next-line —
+  // unused-vars doesn't recognize node:test mock signatures.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const executeStub = mock.fn(async (_input: unknown, _ctx: unknown) => ({ ok: true, data: 'real-result' }))
   const toolSet = { GITHUB_GET_REPO: { execute: executeStub } }
   const wrapped = applyGithubRepoAllowlistToTools(toolSet, policy)
   const result = await wrapped.GITHUB_GET_REPO.execute({ full_name: 'acme/web' }, {})
@@ -186,7 +188,7 @@ test('GITHUB_FORK_REPOSITORY blocks when target fields are missing (default-deny
     new URL('./github-repo-allowlist.ts', import.meta.url).href,
   )
   const policy = buildGithubRepoPolicy(['acme/web'])
-  const executeStub = mock.fn(async (_input: unknown, _ctx: unknown) => ({ ok: true }))
+  const executeStub = mock.fn(async () => ({ ok: true }))
   const toolSet = { GITHUB_FORK_REPOSITORY: { execute: executeStub } }
   const wrapped = applyGithubRepoAllowlistToTools(toolSet, policy)
   const result = await wrapped.GITHUB_FORK_REPOSITORY.execute(
