@@ -37,6 +37,10 @@ import {
   filterComposioToolSet,
   filterComposioToolSetForPaidOnlyFeatures,
 } from '@/lib/tools/composio-filter'
+import {
+  buildGithubRepoPolicy,
+  applyGithubRepoAllowlistToTools,
+} from '@/lib/tools/github-repo-allowlist'
 import { fireAndForgetRecordToolInvocation } from '@/lib/tools/record-tool-invocation'
 import { createFreeTierGatedStubTools } from '@/lib/tools/free-tier-gated-stub-tools'
 import { mergeReplyContextIntoMessagesForModel } from '@/lib/reply-context-for-model'
@@ -840,17 +844,20 @@ export async function POST(request: NextRequest) {
 
     // Wave 2: project fetch + auto-retrieval. Both depend on the projectId resolved above.
     const conversationProjectId: string | undefined = conv?.projectId
-    const projectTask: Promise<string> = (async () => {
-      if (!conversationProjectId) return ''
+    const projectTask: Promise<{ instructions: string; githubRepoAllowlist: string[] | undefined }> = (async () => {
+      if (!conversationProjectId) return { instructions: '', githubRepoAllowlist: undefined }
       try {
-        const project = await convex.query<{ instructions?: string } | null>('projects:get', {
+        const project = await convex.query<{ instructions?: string; githubRepoAllowlist?: string[] } | null>('projects:get', {
           projectId: conversationProjectId as Id<'projects'>,
           userId,
           serverSecret,
         })
-        return project?.instructions?.trim() || ''
+        return {
+          instructions: project?.instructions?.trim() || '',
+          githubRepoAllowlist: project?.githubRepoAllowlist,
+        }
       } catch {
-        return ''
+        return { instructions: '', githubRepoAllowlist: undefined }
       }
     })()
 
@@ -873,11 +880,14 @@ export async function POST(request: NextRequest) {
       }
     })()
 
-    const [projectInstructions, autoRetrievalBundle, mentionsContext] = await Promise.all([
+    const [projectResult, autoRetrievalBundle, mentionsContext] = await Promise.all([
       projectTask,
       autoRetrievalTask,
       mentionsContextTask,
     ])
+    const projectInstructions: string = projectResult.instructions
+    // per-turn wrap is load-bearing; do not cache per-project
+    const githubRepoPolicy = buildGithubRepoPolicy(projectResult.githubRepoAllowlist)
     const autoRetrieval: string = autoRetrievalBundle.extension
     const sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> =
       autoRetrievalBundle.citations
@@ -1061,9 +1071,12 @@ export async function POST(request: NextRequest) {
         : Promise.resolve(null),
     ])
     if (_ttftDebug) _tTools = performance.now()
-    const composioTools = filterComposioToolSetForPaidOnlyFeatures(
-      filterComposioToolSet(composioRaw),
-      paid,
+    const composioTools = applyGithubRepoAllowlistToTools(
+      filterComposioToolSetForPaidOnlyFeatures(
+        filterComposioToolSet(composioRaw),
+        paid,
+      ),
+      githubRepoPolicy,
     )
     const composioForAgent: ToolSet = isMultiModelFollowUpSlot ? {} : composioTools
     const freeTierStubsActive = !paid && !isMultiModelFollowUpSlot
@@ -1122,6 +1135,11 @@ export async function POST(request: NextRequest) {
       '\n' +
       HIGH_RISK_TOOL_AUTHORIZATION_NOTE +
       '\nOnly use Composio or other third-party integration tools when the user explicitly asked in this chat to act on that external service or account.'
+    const githubRepoScopeNote = githubRepoPolicy.enabled
+      ? '\n\nGitHub repository scope: For this project you may only act on the following GitHub repositories: ' +
+        githubRepoPolicy.list.join(', ') +
+        '. Any GitHub tool call targeting another repository will be refused by the system before reaching GitHub. Do not attempt operations on other repositories.'
+      : ''
     const knowledgeNote =
       '\n' +
       (paid ? ACT_KNOWLEDGE_WEB_TOOLS_NOTE : ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB) +
@@ -1188,6 +1206,7 @@ export async function POST(request: NextRequest) {
         browserToolNote +
         sandboxToolNote +
         toolAuthorizationNote +
+        githubRepoScopeNote +
         knowledgeNote +
         memoryContext +
         (docContextBundle.contextText ? '\n\n' + docContextBundle.contextText : '') +
