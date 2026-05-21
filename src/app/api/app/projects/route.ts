@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
-import { normalizeGithubRepoAllowlist } from '@/lib/github-repo-allowlist-normalize'
+import { normalizeGithubRepoAllowlist } from '../../../../../convex/lib/github-repo-allowlist-normalize'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type ProjectDoc = {
