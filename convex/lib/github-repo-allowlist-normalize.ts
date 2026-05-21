@@ -3,6 +3,12 @@
  * - Owner: starts with lowercase letter or digit, followed by lowercase letters, digits, or hyphens
  * - Slash separator
  * - Repo: lowercase letters, digits, dots, underscores, or hyphens
+ *
+ * **DUPLICATED INTENTIONALLY in `packages/overlay-app-core/src/projects.ts`**
+ * (as `GITHUB_REPO_ALLOWLIST_REGEX_DISPLAY`) because the `app-core` package
+ * is framework-agnostic and its tsconfig include glob does not extend into
+ * `convex/lib/`. The two definitions MUST be kept in sync — the consistency
+ * is asserted by a test in `src/lib/github-repo-allowlist-normalize.test.ts`.
  */
 export const GITHUB_REPO_ALLOWLIST_REGEX = /^[a-z0-9][a-z0-9-]*\/[a-z0-9._-]+$/
 

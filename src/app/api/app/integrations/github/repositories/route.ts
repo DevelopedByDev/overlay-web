@@ -116,19 +116,33 @@ export async function GET(request: NextRequest) {
 
     // Parse query parameters
     const { searchParams } = new URL(request.url)
-    const cursor = searchParams.get('cursor') ?? undefined
+
+    // cursor: opaque string forwarded to Composio. Validated against a permissive
+    // alphanumeric/base64-ish character set before forwarding to avoid forwarding
+    // attacker-controlled values into the SDK's URL construction (defense in depth).
+    const rawCursor = searchParams.get('cursor')
+    const cursor = rawCursor && /^[A-Za-z0-9+/=_.\-]{1,512}$/.test(rawCursor) ? rawCursor : undefined
+
+    // limit: clamp to [1, 200] with default 100. parseInt may return NaN for
+    // non-numeric input; Number.isFinite guards against propagating NaN into
+    // Math.min (which would yield NaN and be forwarded to the SDK).
     const limitParam = searchParams.get('limit')
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
     const limit = Math.min(
-      limitParam ? parseInt(limitParam, 10) : 100,
-      200
+      Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 100,
+      200,
     )
 
-    // Load Composio SDK and initialize
-    let composio: unknown
+    // Load Composio SDK and create a per-user session. The session binds the
+    // outbound tool calls to the user's connected GitHub account.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let session: any
     try {
-      composio = await loadComposioSDK(apiKey)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const composio: any = await loadComposioSDK(apiKey)
+      session = await composio.create(auth.userId)
     } catch (err) {
-      console.error('[GitHub Repositories] Failed to load Composio SDK:', err)
+      console.error('[GitHub Repositories] Failed to load Composio SDK or create session:', err)
       return NextResponse.json(
         {
           items: [],
@@ -138,16 +152,16 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Call Composio LIST_REPOSITORIES action
+    // Execute the GITHUB_LIST_REPOS tool via the session. This matches the
+    // documented Composio SDK API (session.execute(toolSlug, args)) — the
+    // earlier draft used a non-existent composio.getAction() method.
     let result: unknown
     try {
-      // Use the Composio SDK to list repositories for the user's connected GitHub account
-      const action = (composio as any).getAction('LIST_REPOSITORIES', 'github')
-      const params: Record<string, unknown> = { limit }
+      const args: Record<string, unknown> = { per_page: limit }
       if (cursor) {
-        params.cursor = cursor
+        args.cursor = cursor
       }
-      result = await action.execute(params)
+      result = await session.execute('GITHUB_LIST_REPOS', args)
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
       const isRateLimit =

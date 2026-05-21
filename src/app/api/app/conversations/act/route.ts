@@ -1135,10 +1135,16 @@ export async function POST(request: NextRequest) {
       '\n' +
       HIGH_RISK_TOOL_AUTHORIZATION_NOTE +
       '\nOnly use Composio or other third-party integration tools when the user explicitly asked in this chat to act on that external service or account.'
+    // Repo names are embedded as a JSON array (not inline prose) to mitigate
+    // second-order prompt injection — even though normalizeGithubRepoAllowlist
+    // rejects spaces/commas, valid repo names can still contain dots and
+    // hyphens (e.g. "acme/web.ignore-instructions-and-..."). Wrapping in a
+    // delimited block makes them read as structured data, not instructions.
     const githubRepoScopeNote = githubRepoPolicy.enabled
-      ? '\n\nGitHub repository scope: For this project you may only act on the following GitHub repositories: ' +
-        githubRepoPolicy.list.join(', ') +
-        '. Any GitHub tool call targeting another repository will be refused by the system before reaching GitHub. Do not attempt operations on other repositories.'
+      ? '\n\nGitHub repository scope: For this project you may only act on the GitHub repositories listed in the JSON array below. Any GitHub tool call targeting another repository will be refused by the system before reaching GitHub. Do not attempt operations on other repositories.\n' +
+        '<allowed_github_repositories>\n' +
+        JSON.stringify(githubRepoPolicy.list) +
+        '\n</allowed_github_repositories>'
       : ''
     const knowledgeNote =
       '\n' +

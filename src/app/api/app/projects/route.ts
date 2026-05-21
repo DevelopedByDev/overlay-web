@@ -109,8 +109,25 @@ export async function PATCH(request: NextRequest) {
     const { projectId, name, instructions, parentId, githubRepoAllowlist } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
 
-    // Defense in depth: validate allowlist locally before dispatching to Convex
+    // Defense in depth: validate allowlist locally before dispatching to Convex.
+    // The body cast above only types the field; a malicious or buggy client could
+    // still send a non-array (null, string, prototype gadget, etc.) past JSON.parse.
     if (githubRepoAllowlist !== undefined) {
+      if (!Array.isArray(githubRepoAllowlist)) {
+        return NextResponse.json(
+          { error: 'githubRepoAllowlist must be an array of owner/name strings' },
+          { status: 400 },
+        )
+      }
+      // Cap input length before normalization to avoid an O(n) CPU-cost amplifier.
+      // The normalizer truncates to 100; bound the input at 200 (some headroom for
+      // dedupe). Anything larger is almost certainly user error or abuse.
+      if (githubRepoAllowlist.length > 200) {
+        return NextResponse.json(
+          { error: 'githubRepoAllowlist exceeds maximum length (200 entries)' },
+          { status: 400 },
+        )
+      }
       try {
         normalizeGithubRepoAllowlist(githubRepoAllowlist)
       } catch (error) {

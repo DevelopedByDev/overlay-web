@@ -10,23 +10,10 @@ export type ProjectHubTab = 'chats' | 'files' | 'instructions'
 
 export type ProjectSettingsSectionId = 'github-repositories'
 
-export interface ProjectSettingsDrawerState {
-  open: boolean
-  activeSectionId: ProjectSettingsSectionId
-}
-
 export interface GithubRepositoryOption {
   fullName: string
   private?: boolean
   archived?: boolean
-}
-
-export interface GithubRepoAllowlistDraftState {
-  selected: readonly string[]
-  options: readonly GithubRepositoryOption[]
-  loading: boolean
-  error: 'github_not_connected' | 'fetch_failed' | 'rate_limited' | null
-  manualEntry: string
 }
 
 export interface ProjectMetaUpdatedDetail {
@@ -315,6 +302,15 @@ export function conversationsToProjectChats(conversations: readonly Conversation
   }))
 }
 
+/**
+ * Client-side mirror of `GITHUB_REPO_ALLOWLIST_REGEX` from
+ * `convex/lib/github-repo-allowlist-normalize.ts`.
+ *
+ * **DUPLICATED INTENTIONALLY** because the `app-core` package is framework-
+ * agnostic and its tsconfig include glob does not extend into `convex/lib/`.
+ * Both definitions MUST stay in sync; the consistency invariant is asserted
+ * by a test in `src/lib/github-repo-allowlist-normalize.test.ts`.
+ */
 const GITHUB_REPO_ALLOWLIST_REGEX_DISPLAY = /^[a-z0-9][a-z0-9-]*\/[a-z0-9._-]+$/
 
 export function isValidGithubRepoFullName(candidate: string): boolean {

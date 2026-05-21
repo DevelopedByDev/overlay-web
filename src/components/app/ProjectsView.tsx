@@ -252,7 +252,6 @@ function ProjectHubBody({
   // ─── Draft allowlist state (seeded from project doc on project change) ────
 
   const [draftAllowlist, setDraftAllowlist] = useState<readonly string[]>([])
-  const [savingAllowlist, setSavingAllowlist] = useState(false)
 
   // Load the project doc to seed the allowlist
   useEffect(() => {
@@ -274,8 +273,10 @@ function ProjectHubBody({
     return () => { cancelled = true }
   }, [projectId])
 
-  async function saveAllowlist(next: readonly string[]) {
-    setSavingAllowlist(true)
+  // Auto-save the allowlist on every change. Wrapped in useCallback so the
+  // identity is stable across renders — the settings-sections useMemo below
+  // closes over this and would otherwise rebuild every render.
+  const saveAllowlist = useCallback(async (next: readonly string[]) => {
     try {
       const res = await overlayAppClient.projects.update({
         projectId,
@@ -286,10 +287,8 @@ function ProjectHubBody({
       }
     } catch {
       // No-op: the draft remains in the UI; the user can retry
-    } finally {
-      setSavingAllowlist(false)
     }
-  }
+  }, [projectId])
 
   // ─── Repo list fetch state ────────────────────────────────────────────────
 
@@ -573,7 +572,9 @@ function ProjectHubBody({
     />
   )
 
-  // Build settings sections with the repo picker props + an inline save button
+  // Build settings sections with the repo picker props. saveAllowlist and
+  // fetchRepoList are wrapped in useCallback so their identities are stable
+  // and this memo only rebuilds on real state changes (no eslint suppression).
   const settingsSections = useMemo(
     () =>
       createProjectSettingsSections({
@@ -598,8 +599,7 @@ function ProjectHubBody({
           onRetryLoad: () => void fetchRepoList(),
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [draftAllowlist, repoOptions, repoLoading, repoError, manualEntry, savingAllowlist],
+    [draftAllowlist, repoOptions, repoLoading, repoError, manualEntry, saveAllowlist, fetchRepoList],
   )
 
   return (
