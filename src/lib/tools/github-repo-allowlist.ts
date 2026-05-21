@@ -26,7 +26,9 @@ export function isGithubComposioTool(name: string): boolean {
  * @returns An object with { owner: string; name: string } or null
  */
 export function extractRepoFromComposioGithubArgs(
-  toolName: string,
+  // toolName is read in Task 8 for the fork/transfer target rule; underscore
+  // prefix tells TS's noUnusedParameters this is intentional for now.
+  _toolName: string,
   input: unknown,
 ): { owner: string; name: string } | null {
   // Defensive: only proceed if input is an object
