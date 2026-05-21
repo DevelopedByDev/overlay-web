@@ -74,3 +74,6 @@ renders/*
 .almanac/.capture-*
 .almanac/.bootstrap-*
 .almanac/.ingest-*
+
+# pnpm lockfile — project uses npm + package-lock.json as authoritative
+pnpm-lock.yaml
