@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/lib/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/lib/app-api-auth'
 import { convex } from '@/lib/convex'
+import { normalizeGithubRepoAllowlist } from '@/lib/github-repo-allowlist-normalize'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type ProjectDoc = {
@@ -97,22 +98,48 @@ export async function PATCH(request: NextRequest) {
       name?: string
       instructions?: string
       parentId?: string | null
+      githubRepoAllowlist?: string[]
       accessToken?: string
       userId?: string
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { projectId, name, instructions, parentId } = body
+    const { projectId, name, instructions, parentId, githubRepoAllowlist } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
-    await convex.mutation('projects:update', {
-      projectId: projectId as Id<'projects'>,
-      userId: auth.userId,
-      serverSecret,
-      name,
-      instructions,
-      parentId: parentId ?? undefined,
-    })
+
+    // Defense in depth: validate allowlist locally before dispatching to Convex
+    if (githubRepoAllowlist !== undefined) {
+      try {
+        normalizeGithubRepoAllowlist(githubRepoAllowlist)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid allowlist'
+        return NextResponse.json({ error: message }, { status: 400 })
+      }
+    }
+
+    // Apply regular update if there are non-allowlist fields
+    if (name !== undefined || instructions !== undefined || parentId !== undefined) {
+      await convex.mutation('projects:update', {
+        projectId: projectId as Id<'projects'>,
+        userId: auth.userId,
+        serverSecret,
+        name,
+        instructions,
+        parentId: parentId ?? undefined,
+      })
+    }
+
+    // Apply allowlist update if present
+    if (githubRepoAllowlist !== undefined) {
+      await convex.mutation('projects:setGithubRepoAllowlist', {
+        projectId: projectId as Id<'projects'>,
+        userId: auth.userId,
+        serverSecret,
+        repos: githubRepoAllowlist,
+      })
+    }
+
     const project = await convex.query<ProjectDoc | null>('projects:get', {
       projectId: projectId as Id<'projects'>,
       userId: auth.userId,
