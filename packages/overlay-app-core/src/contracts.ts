@@ -1010,6 +1010,23 @@ export interface IntegrationConnectionResponse {
   error?: string
 }
 
+export interface GithubRepositoryListItem {
+  fullName: string
+  private?: boolean
+  archived?: boolean
+}
+
+export interface GithubRepositoryListQuery {
+  cursor?: string
+  limit?: number
+}
+
+export interface GithubRepositoryListResponse {
+  items: GithubRepositoryListItem[]
+  nextCursor: string | null
+  error?: 'github_not_connected' | 'fetch_failed' | 'rate_limited'
+}
+
 export interface SkillSummary {
   _id: string
   name: string

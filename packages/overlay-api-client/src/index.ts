@@ -33,6 +33,8 @@ import type {
   IntegrationConnectionRequest,
   IntegrationConnectionResponse,
   IntegrationSearchResponse,
+  GithubRepositoryListQuery,
+  GithubRepositoryListResponse,
   FileQueryContract,
   FileShareRequest,
   FileShareResponse,
@@ -273,6 +275,8 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     appendQuery('/api/app/projects', query as QueryParams | undefined)
   const integrationsPath = (query?: IntegrationQuery) =>
     appendQuery('/api/app/integrations', query as QueryParams | undefined)
+  const githubRepositoriesPath = (query?: GithubRepositoryListQuery) =>
+    appendQuery('/api/app/integrations/github/repositories', query as QueryParams | undefined)
   const skillsPath = (query?: SkillQuery) => appendQuery('/api/app/skills', query as QueryParams | undefined)
   const mcpsPath = (query?: McpServerQuery) => appendQuery('/api/app/mcps', query as QueryParams | undefined)
   const automationsPath = (query?: AutomationQuery) =>
@@ -479,6 +483,12 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
         request('/api/app/integrations', jsonRequest(body, { ...init, method: 'PATCH' })),
       deleteResponse: (query?: IntegrationQuery, init?: RequestInit) =>
         request(integrationsPath(query), { ...init, method: 'DELETE' }),
+      github: {
+        listRepositories: (query?: GithubRepositoryListQuery, init?: RequestInit) =>
+          json<GithubRepositoryListResponse>(githubRepositoriesPath(query), init),
+        listRepositoriesResponse: (query?: GithubRepositoryListQuery, init?: RequestInit) =>
+          request(githubRepositoriesPath(query), init),
+      },
     },
     skills: {
       get: <T = SkillSummary[]>(query?: SkillQuery, init?: RequestInit) =>
