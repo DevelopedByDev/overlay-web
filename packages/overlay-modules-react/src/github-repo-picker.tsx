@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertCircle, Github, Loader2, Search } from 'lucide-react'
+import { AlertCircle, GitBranch, Loader2, Search } from 'lucide-react'
 import {
   isValidGithubRepoFullName,
   sortGithubRepoOptionsSelectedFirst,
@@ -83,7 +83,7 @@ export function GithubRepoAllowlistPicker({
       {error === 'github_not_connected' && (
         <div className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3 text-xs text-[var(--muted)]">
           <div className="flex items-center gap-2 font-medium text-[var(--foreground)]">
-            <Github size={13} className="shrink-0" />
+            <GitBranch size={13} className="shrink-0" />
             GitHub not connected
           </div>
           <p className="mt-1 leading-relaxed">
