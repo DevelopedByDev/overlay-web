@@ -294,6 +294,14 @@ export function applyGithubRepoAllowlistToTools<T extends Record<string, unknown
 
       // Check source repo
       if (!policy.allows(sourceTarget)) {
+        // Structured log for support / observability. Searchable via the
+        // [github-allowlist] prefix; one line per blocked call so log volume
+        // remains bounded by the model's tool-call rate (already governed).
+        console.warn('[github-allowlist] blocked', JSON.stringify({
+          toolName: name,
+          blockedRepo: `${sourceTarget.owner}/${sourceTarget.name}`,
+          reason: 'source-not-in-allowlist',
+        }))
         return buildRepoBlockedToolResult({
           toolName: name,
           target: sourceTarget,
@@ -308,6 +316,13 @@ export function applyGithubRepoAllowlistToTools<T extends Record<string, unknown
       if (isForkOrTransfer) {
         const forkTarget = extractForkTargetFromComposioGithubArgs(input)
         if (forkTarget === null || !policy.allows(forkTarget)) {
+          console.warn('[github-allowlist] blocked', JSON.stringify({
+            toolName: name,
+            blockedRepo: forkTarget
+              ? `${forkTarget.owner}/${forkTarget.name}`
+              : `${sourceTarget.owner}/${sourceTarget.name}`,
+            reason: forkTarget ? 'target-not-in-allowlist' : 'fork-target-missing',
+          }))
           return buildRepoBlockedToolResult({
             toolName: name,
             target: forkTarget ?? sourceTarget,

@@ -37,6 +37,11 @@ async function getComposioApiKey(accessToken: string): Promise<string | null> {
 /**
  * Extracts repository full name from a Composio repository object.
  * Tries multiple possible field names since Composio's response shape may vary.
+ *
+ * Returns only values that contain a literal `/` separator — bare repository
+ * names without an owner prefix would render in the picker but fail validation
+ * on save (the normalizer regex requires `owner/name`), producing confusing
+ * 400 errors. Skip them at the extractor instead.
  */
 function extractRepositoryFullName(item: unknown): string | null {
   if (!item || typeof item !== 'object') return null
@@ -52,11 +57,13 @@ function extractRepositoryFullName(item: unknown): string | null {
       ? (record.repository as Record<string, unknown>).full_name
       : null)
 
-  if (typeof fullName === 'string' && fullName.trim()) {
-    return fullName.trim()
-  }
-
-  return null
+  if (typeof fullName !== 'string') return null
+  const trimmed = fullName.trim()
+  if (!trimmed) return null
+  // Must contain exactly one '/' producing two non-empty segments.
+  const parts = trimmed.split('/')
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null
+  return trimmed
 }
 
 /**

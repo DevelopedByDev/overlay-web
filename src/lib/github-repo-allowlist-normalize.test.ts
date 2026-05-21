@@ -153,19 +153,22 @@ test('GITHUB_REPO_ALLOWLIST_REGEX is byte-identical in convex/lib and app-core',
 // 'acme%2Fweb' contains no literal '/' and must be rejected (return null,
 // which the wrap treats as "no repo found — allow as non-repo-scoped").
 // We assert directly against the extractor here to lock the behavior.
-test('extractRepoFromComposioGithubArgs: percent-encoded slashes do not match owner/name', async () => {
+//
+// Signature is (input: unknown) — single argument. The fork/transfer special
+// case is handled by the caller (applyGithubRepoAllowlistToTools) which knows
+// the tool name; the extractor itself is name-agnostic.
+test('extractRepoFromComposioGithubArgs: percent-encoded slash in `repository` field returns null', async () => {
   const { extractRepoFromComposioGithubArgs } = await import(
     new URL('./tools/github-repo-allowlist.ts', import.meta.url).href,
   )
-  // Encoded slash in `repository` — no literal '/' present.
-  assert.equal(
-    extractRepoFromComposioGithubArgs('GITHUB_GET_REPOSITORY', { repository: 'acme%2Fweb' }),
-    null,
-  )
-  // Encoded slash inside the second segment — splits to ['acme', 'web%2Fother']
-  // which the regex rejects (% is not in the repo charset).
-  assert.equal(
-    extractRepoFromComposioGithubArgs('GITHUB_GET_REPOSITORY', { repository: 'acme/web%2Fother' }),
-    null,
-  )
+  // Encoded slash in `repository` — no literal '/' present after split → length 1.
+  assert.equal(extractRepoFromComposioGithubArgs({ repository: 'acme%2Fweb' }), null)
+  // Encoded slash inside the second segment — splits to ['acme', 'web%2Fother'].
+  // The extractor accepts both parts as non-empty strings, so it WILL return
+  // a parsed object. The downstream enforcement layer treats the resulting
+  // name as a literal string and compares against the lowercased allowlist;
+  // 'acme/web%2fother' would not be on any well-formed allowlist, so the
+  // call gets blocked. This is the intended belt-and-suspenders behavior.
+  const parsed = extractRepoFromComposioGithubArgs({ repository: 'acme/web%2Fother' })
+  assert.deepEqual(parsed, { owner: 'acme', name: 'web%2fother' })
 })

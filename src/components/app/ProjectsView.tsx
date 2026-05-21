@@ -276,6 +276,11 @@ function ProjectHubBody({
   // Auto-save the allowlist on every change. Wrapped in useCallback so the
   // identity is stable across renders — the settings-sections useMemo below
   // closes over this and would otherwise rebuild every render.
+  // saveError surfaces a server-side persistence failure so the user knows
+  // their last toggle didn't reach the server. The draft state remains in
+  // the UI so they can retry by toggling again or dismissing the error.
+  const [saveError, setSaveError] = useState(false)
+
   const saveAllowlist = useCallback(async (next: readonly string[]) => {
     try {
       const res = await overlayAppClient.projects.update({
@@ -284,11 +289,14 @@ function ProjectHubBody({
       })
       if (res?.project) {
         setDraftAllowlist(res.project.githubRepoAllowlist ?? [])
+        setSaveError(false)
       }
     } catch {
-      // No-op: the draft remains in the UI; the user can retry
+      setSaveError(true)
     }
   }, [projectId])
+
+  const dismissSaveError = useCallback(() => setSaveError(false), [])
 
   // ─── Repo list fetch state ────────────────────────────────────────────────
 
@@ -583,6 +591,7 @@ function ProjectHubBody({
           options: repoOptions,
           loading: repoLoading,
           error: repoError,
+          saveError,
           manualEntry,
           onChange: (next) => {
             setDraftAllowlist(next)
@@ -597,9 +606,10 @@ function ProjectHubBody({
           },
           onManualEntryChange: setManualEntry,
           onRetryLoad: () => void fetchRepoList(),
+          onDismissSaveError: dismissSaveError,
         },
       }),
-    [draftAllowlist, repoOptions, repoLoading, repoError, manualEntry, saveAllowlist, fetchRepoList],
+    [draftAllowlist, repoOptions, repoLoading, repoError, saveError, manualEntry, saveAllowlist, fetchRepoList, dismissSaveError],
   )
 
   return (

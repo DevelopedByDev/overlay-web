@@ -13,11 +13,15 @@ export interface GithubRepoAllowlistPickerProps {
   options: readonly GithubRepositoryOption[]
   loading: boolean
   error: 'github_not_connected' | 'fetch_failed' | 'rate_limited' | null
+  /** True when the last save round-trip failed; the parent surfaces this to give the user retry feedback. */
+  saveError: boolean
   manualEntry: string
   onChange: (next: readonly string[]) => void
   onAddManual: (entry: string) => void
   onManualEntryChange: (text: string) => void
   onRetryLoad: () => void
+  /** Dismiss handler for the save-error banner; clears the error in the parent. */
+  onDismissSaveError: () => void
 }
 
 export function GithubRepoAllowlistPicker({
@@ -25,11 +29,13 @@ export function GithubRepoAllowlistPicker({
   options,
   loading,
   error,
+  saveError,
   manualEntry,
   onChange,
   onAddManual,
   onManualEntryChange,
   onRetryLoad,
+  onDismissSaveError,
 }: GithubRepoAllowlistPickerProps) {
   const [query, setQuery] = useState('')
   const [manualEntryError, setManualEntryError] = useState<string | null>(null)
@@ -111,6 +117,21 @@ export function GithubRepoAllowlistPicker({
         <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-xs text-[var(--muted)]">
           <AlertCircle size={13} className="shrink-0 text-amber-500" />
           GitHub rate limit hit — try again later.
+        </div>
+      )}
+
+      {saveError && (
+        <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-[var(--muted)]">
+          <AlertCircle size={13} className="shrink-0 text-red-500" />
+          <span className="flex-1">Could not save your changes. Try toggling again.</span>
+          <button
+            type="button"
+            onClick={onDismissSaveError}
+            aria-label="Dismiss save error"
+            className="shrink-0 rounded px-2 py-0.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
