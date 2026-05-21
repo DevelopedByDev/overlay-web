@@ -1069,6 +1069,7 @@ export interface ProjectSummary {
   description?: string
   instructions?: string
   parentId?: string | null
+  githubRepoAllowlist?: string[]
   deletedAt?: number
   updatedAt: number
   createdAt: number

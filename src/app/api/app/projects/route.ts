@@ -12,6 +12,7 @@ type ProjectDoc = {
   name: string
   instructions?: string
   parentId?: string | null
+  githubRepoAllowlist?: string[]
   createdAt: number
   updatedAt: number
   deletedAt?: number

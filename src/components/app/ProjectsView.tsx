@@ -22,10 +22,13 @@ import {
   projectRouteViewForFile,
   sortProjectChats,
   sortProjectFilesByUpdated,
+  type ConnectedIntegrationsResponse,
+  type GithubRepositoryOption,
   type ProjectChatSummary,
   type ProjectFileSummary,
   type ProjectHubTab,
   type ProjectMetaUpdatedDetail,
+  type ProjectSettingsSectionId,
 } from '@overlay/app-core'
 import {
   ProjectHubActions,
@@ -33,6 +36,8 @@ import {
   ProjectHubTabs,
   ProjectsEmptyLanding,
 } from '@overlay/modules-react/projects'
+import { ProjectSettingsDrawer } from '@overlay/modules-react/project-settings-drawer'
+import { createProjectSettingsSections } from '@overlay/modules-react/project-settings-sections'
 import { FileViewerSkeleton } from '@/components/ui/Skeleton'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from './FileViewer'
@@ -45,6 +50,26 @@ type ProjectFileRecord = ProjectFileSummary
 
 const ChatInterface = dynamic(() => import('./ChatInterface'))
 const NotebookEditor = dynamic(() => import('./NotebookEditor'))
+
+// ─── localStorage helpers (SSR-safe) ─────────────────────────────────────────
+
+function localStorageGet(key: string): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function localStorageSet(key: string, value: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Safari private mode or storage quota exceeded — silently ignore
+  }
+}
 
 // ─── File viewer fetched by ID ────────────────────────────────────────────────
 
@@ -167,23 +192,160 @@ function ProjectHubBody({
   const [instructionsSavedAt, setInstructionsSavedAt] = useState<number | null>(null)
   const instructionsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Load project instructions
+  // ─── Settings drawer state (persisted to localStorage) ───────────────────
+
+  const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false)
+  const [activeSettingsSectionId, setActiveSettingsSectionId] =
+    useState<ProjectSettingsSectionId>('github-repositories')
+
+  // Hydrate from localStorage on mount (SSR-safe)
+  useEffect(() => {
+    const storedOpen = localStorageGet('overlay.project-settings-drawer.open')
+    if (storedOpen === 'true') setSettingsDrawerOpen(true)
+    const storedSection = localStorageGet('overlay.project-settings-drawer.active-section')
+    if (storedSection === 'github-repositories') {
+      setActiveSettingsSectionId('github-repositories')
+    }
+  }, [])
+
+  // Persist drawer open state
+  useEffect(() => {
+    localStorageSet('overlay.project-settings-drawer.open', String(settingsDrawerOpen))
+  }, [settingsDrawerOpen])
+
+  // Persist active section
+  useEffect(() => {
+    localStorageSet('overlay.project-settings-drawer.active-section', activeSettingsSectionId)
+  }, [activeSettingsSectionId])
+
+  // ─── Push vs overlay layout mode (responsive at 768px) ───────────────────
+
+  const [layoutMode, setLayoutMode] = useState<'push' | 'overlay'>('push')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mq = window.matchMedia('(max-width: 768px)')
+    setLayoutMode(mq.matches ? 'overlay' : 'push')
+    function handleChange(e: MediaQueryListEvent) {
+      setLayoutMode(e.matches ? 'overlay' : 'push')
+    }
+    mq.addEventListener('change', handleChange)
+    return () => mq.removeEventListener('change', handleChange)
+  }, [])
+
+  // ─── GitHub connection detection ──────────────────────────────────────────
+
+  const [githubConnected, setGithubConnected] = useState(false)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await overlayAppClient.integrations.get<ConnectedIntegrationsResponse>()
+        const connected = Array.isArray(res?.connected) ? res.connected : []
+        setGithubConnected(connected.includes('github'))
+      } catch {
+        setGithubConnected(false)
+      }
+    })()
+  }, [])
+
+  // ─── Draft allowlist state (seeded from project doc on project change) ────
+
+  const [draftAllowlist, setDraftAllowlist] = useState<readonly string[]>([])
+  const [savingAllowlist, setSavingAllowlist] = useState(false)
+
+  // Load the project doc to seed the allowlist
   useEffect(() => {
     let cancelled = false
-    setInstructionsLoaded(false)
-    overlayAppClient.projects.get<{ instructions?: string } | null>({ projectId })
-      .then((data: { instructions?: string } | null) => {
+    void (async () => {
+      try {
+        const data = await overlayAppClient.projects.get<{
+          instructions?: string
+          githubRepoAllowlist?: string[]
+        } | null>({ projectId })
         if (cancelled) return
+        setDraftAllowlist(data?.githubRepoAllowlist ?? [])
         setInstructions((data?.instructions ?? '') as string)
         setInstructionsLoaded(true)
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setInstructionsLoaded(true)
-      })
-    return () => {
-      cancelled = true
-    }
+      }
+    })()
+    return () => { cancelled = true }
   }, [projectId])
+
+  async function saveAllowlist(next: readonly string[]) {
+    setSavingAllowlist(true)
+    try {
+      const res = await overlayAppClient.projects.update({
+        projectId,
+        githubRepoAllowlist: [...next],
+      })
+      if (res?.project) {
+        setDraftAllowlist(res.project.githubRepoAllowlist ?? [])
+      }
+    } catch {
+      // No-op: the draft remains in the UI; the user can retry
+    } finally {
+      setSavingAllowlist(false)
+    }
+  }
+
+  // ─── Repo list fetch state ────────────────────────────────────────────────
+
+  const [repoOptions, setRepoOptions] = useState<readonly GithubRepositoryOption[]>([])
+  const [repoLoading, setRepoLoading] = useState(false)
+  const [repoError, setRepoError] =
+    useState<'github_not_connected' | 'fetch_failed' | 'rate_limited' | null>(null)
+  const [manualEntry, setManualEntry] = useState('')
+
+  const fetchRepoList = useCallback(async () => {
+    if (!githubConnected) {
+      setRepoError('github_not_connected')
+      return
+    }
+    setRepoLoading(true)
+    setRepoError(null)
+    try {
+      const res = await overlayAppClient.integrations.github.listRepositories()
+      if (res.error) {
+        setRepoError(res.error)
+      } else {
+        setRepoOptions(
+          res.items.map((item) => ({
+            fullName: item.fullName,
+            private: item.private,
+            archived: item.archived,
+          })),
+        )
+      }
+    } catch {
+      setRepoError('fetch_failed')
+    } finally {
+      setRepoLoading(false)
+    }
+  }, [githubConnected])
+
+  // Trigger fetch when drawer opens to the GitHub section with GitHub connected
+  useEffect(() => {
+    if (
+      settingsDrawerOpen &&
+      activeSettingsSectionId === 'github-repositories'
+    ) {
+      if (!githubConnected) {
+        setRepoError('github_not_connected')
+        return
+      }
+      // Only fetch if we haven't loaded yet and are not already loading
+      if (repoOptions.length === 0 && !repoLoading && repoError === null) {
+        void fetchRepoList()
+      }
+    }
+  }, [settingsDrawerOpen, activeSettingsSectionId, githubConnected, repoOptions.length, repoLoading, repoError, fetchRepoList])
+
+  // ─── Load project instructions ────────────────────────────────────────────
+  // Note: instructions are loaded together with the allowlist in the combined
+  // project fetch above, but we keep the existing save path below unchanged.
 
   const loadHubItems = useCallback(async () => {
     setListsLoading(true)
@@ -374,6 +536,10 @@ function ProjectHubBody({
       draftName={draftName}
       savingName={savingName}
       actions={headerActions}
+      settingsToggle={{
+        open: settingsDrawerOpen,
+        onToggle: () => setSettingsDrawerOpen((v) => !v),
+      }}
       onStartRename={() => { setDraftName(projectName); setEditingName(true) }}
       onDraftNameChange={setDraftName}
       onCommitRename={() => void commitProjectRename()}
@@ -407,18 +573,62 @@ function ProjectHubBody({
     />
   )
 
+  // Build settings sections with the repo picker props + an inline save button
+  const settingsSections = useMemo(
+    () =>
+      createProjectSettingsSections({
+        githubRepoPickerProps: {
+          value: draftAllowlist,
+          options: repoOptions,
+          loading: repoLoading,
+          error: repoError,
+          manualEntry,
+          onChange: (next) => {
+            setDraftAllowlist(next)
+            // Auto-save on every toggle — matches the pattern used for instructions
+            void saveAllowlist(next)
+          },
+          onAddManual: (entry) => {
+            if (draftAllowlist.includes(entry)) return
+            const next = [...draftAllowlist, entry]
+            setDraftAllowlist(next)
+            void saveAllowlist(next)
+          },
+          onManualEntryChange: setManualEntry,
+          onRetryLoad: () => void fetchRepoList(),
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draftAllowlist, repoOptions, repoLoading, repoError, manualEntry, savingAllowlist],
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {projectHeaderTitle}
-      <div className="min-h-0 flex-1">
-        <ChatInterface
-          userId={userId}
-          firstName={firstName}
-          hideSidebar
-          hideHeader
-          projectName={projectName}
-          belowEmptyComposer={tabs}
-        />
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <ChatInterface
+            userId={userId}
+            firstName={firstName}
+            hideSidebar
+            hideHeader
+            projectName={projectName}
+            belowEmptyComposer={tabs}
+          />
+        </div>
+        {settingsDrawerOpen ? (
+          <div className={layoutMode === 'overlay' ? 'relative' : ''}>
+            <ProjectSettingsDrawer
+              open={settingsDrawerOpen}
+              onOpenChange={setSettingsDrawerOpen}
+              projectName={projectName}
+              sections={settingsSections}
+              activeSectionId={activeSettingsSectionId}
+              onActiveSectionChange={setActiveSettingsSectionId}
+              layoutMode={layoutMode}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   )

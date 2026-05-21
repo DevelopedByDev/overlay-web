@@ -12,7 +12,9 @@
     "./projects": "./src/projects.tsx",
     "./extensions": "./src/extensions.tsx",
     "./settings": "./src/settings.tsx",
-    "./automations": "./src/automations.tsx"
+    "./automations": "./src/automations.tsx",
+    "./project-settings-sections": "./src/project-settings-sections.tsx",
+    "./github-repo-picker": "./src/github-repo-picker.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
