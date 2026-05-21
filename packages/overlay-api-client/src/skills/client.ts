@@ -6,7 +6,7 @@ import type {
   UpdateSkillRequest,
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
-import type { QueryParams } from '../shared/types'
+import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type { SkillQuery } from './types'
 
 export class SkillsClient {
@@ -17,7 +17,11 @@ export class SkillsClient {
   }
 
   get<T = SkillSummary[]>(query?: SkillQuery, init?: RequestInit) {
-    return this.http.json<T>(this.path(query), init)
+    return this.http.jsonData<T>(this.path(query), init)
+  }
+
+  getPage<T = SkillSummary>(query?: SkillQuery, init?: RequestInit) {
+    return this.http.json<PaginatedEnvelope<T>>(this.path(query), init)
   }
 
   getResponse(query?: SkillQuery, init?: RequestInit) {

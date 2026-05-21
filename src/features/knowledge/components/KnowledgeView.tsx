@@ -279,13 +279,13 @@ export default function KnowledgeView({
 
   const loadMemories = useCallback(async () => {
     try {
-      setMemories(await overlayAppClient.memory.get<MemoryListItem[]>())
+      setMemories(await overlayAppClient.memory.get<MemoryListItem[]>({ limit: 100 }))
     } catch { /* ignore */ } finally { setMemoriesLoading(false) }
   }, [])
 
   const loadFiles = useCallback(async () => {
     try {
-      setFiles(await overlayAppClient.files.get<FileNode[]>())
+      setFiles(await overlayAppClient.files.get<FileNode[]>({ limit: 100 }))
     } catch { /* ignore */ } finally { setFilesLoading(false) }
   }, [])
 

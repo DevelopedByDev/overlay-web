@@ -64,6 +64,7 @@ import SlashMenu, { type SlashMenuItem } from './SlashMenu'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 import {
   FILES_CHANGED_EVENT,
   NOTEBOOK_INLINE_MATH_MIGRATION_REGEX,
@@ -553,9 +554,9 @@ export default function NotebookEditor({
   const loadNotes = useCallback(async () => {
     if (hideSidebar) return
     try {
-      const res = await overlayAppClient.files.getResponse({ kind: 'note' })
+      const res = await overlayAppClient.files.getResponse({ kind: 'note', limit: 100 })
       if (res.ok) {
-        const data = (await res.json()) as CanonicalNoteFile[]
+        const data = unwrapPaginatedData<CanonicalNoteFile>(await res.json())
         setNotes(data.map(canonicalFileToNotebookNote))
       }
     } catch {

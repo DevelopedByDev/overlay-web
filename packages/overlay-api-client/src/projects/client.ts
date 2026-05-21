@@ -7,7 +7,7 @@ import type {
   UpdateProjectResponse,
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
-import type { QueryParams } from '../shared/types'
+import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type { ProjectQuery } from './types'
 
 export class ProjectsClient {
@@ -18,7 +18,11 @@ export class ProjectsClient {
   }
 
   get<T = ProjectSummary[] | ProjectSummary>(query?: ProjectQuery, init?: RequestInit) {
-    return this.http.json<T>(this.path(query), init)
+    return this.http.jsonData<T>(this.path(query), init)
+  }
+
+  getPage<T = ProjectSummary>(query?: ProjectQuery, init?: RequestInit) {
+    return this.http.json<PaginatedEnvelope<T>>(this.path(query), init)
   }
 
   getResponse(query?: ProjectQuery, init?: RequestInit) {

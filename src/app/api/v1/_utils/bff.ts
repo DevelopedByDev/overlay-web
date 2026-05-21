@@ -6,6 +6,8 @@ import {
   markRateLimitsSatisfied,
 } from '@/server/security/rate-limit'
 import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
+import { handleIdempotentMutation } from '@/server/app-api/idempotency'
+import { standardizePaginatedListResponse } from '@/server/app-api/pagination'
 import { validateApiBoundary } from './boundary'
 
 export type BffRouteContext = {
@@ -53,5 +55,6 @@ export async function handleBffRoute(
     markRateLimitsSatisfied(request)
   }
 
-  return service(request, context)
+  const response = await handleIdempotentMutation(request, auth.userId, async () => service(request, context))
+  return standardizePaginatedListResponse(request, response)
 }

@@ -110,6 +110,34 @@ test('module feature methods use canonical app endpoints', async () => {
   assert.deepEqual(await jsonBody(calls[8]!), { automationId: 'auto_1' })
 })
 
+test('list helpers unwrap paginated envelopes while getPage preserves metadata', async () => {
+  const calls: RecordedRequest[] = []
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async (input, init) => {
+      calls.push({ input, init })
+      return new Response(JSON.stringify({
+        data: [{ _id: 'proj_1', name: 'Alpha', createdAt: 1, updatedAt: 2 }],
+        nextCursor: 'next',
+        hasMore: true,
+        total: 2,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    },
+  })
+
+  const list = await client.projects.get<Array<{ _id: string; name: string }>>({ limit: 1, sort: 'name', order: 'asc' })
+  assert.deepEqual(list, [{ _id: 'proj_1', name: 'Alpha', createdAt: 1, updatedAt: 2 }])
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/projects?limit=1&sort=name&order=asc')
+
+  const page = await client.projects.getPage<{ _id: string; name: string }>({ cursor: 'next' })
+  assert.equal(page.hasMore, true)
+  assert.equal(page.nextCursor, 'next')
+  assert.deepEqual(page.data, [{ _id: 'proj_1', name: 'Alpha', createdAt: 1, updatedAt: 2 }])
+})
+
 test('settings and account methods preserve billing/auth route contracts', async () => {
   const { calls, client } = createRecordedClient()
 

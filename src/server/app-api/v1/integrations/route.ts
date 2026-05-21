@@ -142,7 +142,8 @@ export async function GET(request: NextRequest) {
     if (action === 'search') {
       const q = searchParams.get('q') || ''
       const cursor = searchParams.get('cursor') || ''
-      const limit = Math.min(parseInt(searchParams.get('limit') || '12'), 50)
+      const parsedLimit = Number.parseInt(searchParams.get('limit') || '20', 10)
+      const limit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 20, 1), 100)
 
       const userId = auth.userId
 
@@ -164,7 +165,7 @@ export async function GET(request: NextRequest) {
       url.searchParams.set('limit', String(limit))
 
       const res = await fetch(url.toString(), { headers: { 'x-api-key': apiKey } })
-      if (!res.ok) return NextResponse.json({ items: [], nextCursor: null })
+      if (!res.ok) return NextResponse.json({ data: [], items: [], hasMore: false, nextCursor: null })
       const data = await res.json()
 
       // items may be under data.items or data directly as an array
@@ -196,7 +197,13 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      return NextResponse.json({ items, nextCursor: data.nextCursor ?? null })
+      const nextCursor = typeof data.nextCursor === 'string' && data.nextCursor ? data.nextCursor : null
+      return NextResponse.json({
+        data: items,
+        items,
+        nextCursor,
+        hasMore: nextCursor !== null,
+      })
     }
 
     // Default: return connected integration slugs (scoped to this user's entity)
@@ -222,7 +229,7 @@ export async function GET(request: NextRequest) {
         logoUrl: item.logoUrl,
       }))
 
-    return NextResponse.json({ connected, items })
+    return NextResponse.json({ connected, data: items, items, hasMore: false })
   } catch {
     return NextResponse.json({ connected: [] })
   }

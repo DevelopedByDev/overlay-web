@@ -8,7 +8,7 @@ import type {
   UpdateMcpServerRequest,
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
-import type { QueryParams } from '../shared/types'
+import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type { McpServerQuery } from './types'
 
 export class McpServersClient {
@@ -19,7 +19,11 @@ export class McpServersClient {
   }
 
   get<T = McpServerSummary[]>(query?: McpServerQuery, init?: RequestInit) {
-    return this.http.json<T>(this.path(query), init)
+    return this.http.jsonData<T>(this.path(query), init)
+  }
+
+  getPage<T = McpServerSummary>(query?: McpServerQuery, init?: RequestInit) {
+    return this.http.json<PaginatedEnvelope<T>>(this.path(query), init)
   }
 
   getResponse(query?: McpServerQuery, init?: RequestInit) {

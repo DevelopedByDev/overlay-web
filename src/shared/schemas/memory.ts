@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { AuthFields, BooleanQueryValue, IdQuery, IntegerQueryValue, UnknownResponse } from './common'
+import { AuthFields, BooleanQueryValue, IdQuery, IntegerQueryValue, PaginationQuery, UnknownResponse } from './common'
 
-export const MemoryListQuery = z.object({
+export const MemoryListQuery = PaginationQuery.extend({
   memoryId: IdQuery,
   raw: BooleanQueryValue,
   updatedSince: IntegerQueryValue,

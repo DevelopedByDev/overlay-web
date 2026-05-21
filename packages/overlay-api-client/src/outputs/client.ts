@@ -1,6 +1,6 @@
 import type { DeleteOutputResponse, OutputSummary } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
-import type { QueryParams } from '../shared/types'
+import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type { OutputQuery } from './types'
 
 export class OutputsClient {
@@ -11,7 +11,11 @@ export class OutputsClient {
   }
 
   get<T = OutputSummary[]>(query?: OutputQuery, init?: RequestInit) {
-    return this.http.json<T>(this.path(query), init)
+    return this.http.jsonData<T>(this.path(query), init)
+  }
+
+  getPage<T = OutputSummary>(query?: OutputQuery, init?: RequestInit) {
+    return this.http.json<PaginatedEnvelope<T>>(this.path(query), init)
   }
 
   getResponse(query?: OutputQuery, init?: RequestInit) {

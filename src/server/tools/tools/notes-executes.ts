@@ -2,6 +2,7 @@ import 'server-only'
 
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { OverlayToolsOptions } from './types'
 
 export async function executeListNotes(
@@ -11,6 +12,7 @@ export async function executeListNotes(
   try {
     const params = new URLSearchParams({ userId: options.userId })
     params.set('kind', 'note')
+    params.set('limit', '100')
     const projectId = input.projectId ?? options.projectId
     if (projectId) params.set('projectId', projectId)
     const res = await callInternalApiGet(
@@ -25,12 +27,12 @@ export async function executeListNotes(
       const err = await res.json().catch(() => ({ error: 'Failed to list notes' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to list notes' }
     }
-    const notes = (await res.json()) as Array<{
+    const notes = unwrapPaginatedData<{
       _id: string
       name?: string
       updatedAt: number
       projectId?: string
-    }>
+    }>(await res.json())
     const slim = notes.map((n) => ({
       noteId: n._id,
       title: n.name || 'Untitled',

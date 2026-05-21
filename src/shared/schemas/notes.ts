@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { AuthFields, BooleanQueryValue, IdQuery, UnknownResponse } from './common'
+import { AuthFields, BooleanQueryValue, IdQuery, PaginationQuery, UnknownResponse } from './common'
 
-export const NoteListQuery = z.object({
+export const NoteListQuery = PaginationQuery.extend({
   noteId: IdQuery,
   projectId: IdQuery,
   includeDeleted: BooleanQueryValue,

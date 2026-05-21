@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { AuthFields, EmptyQuery, EmptyRequest, FormDataBoundary, UnknownResponse } from './common'
+import { AuthFields, EmptyQuery, EmptyRequest, FormDataBoundary, PaginationQuery, UnknownResponse } from './common'
 
 export const BootstrapQuery = EmptyQuery
 export const SubscriptionQuery = EmptyQuery
@@ -20,7 +20,7 @@ export const BrowserTaskRequest = z.object({
   task: z.string().optional(),
 }).passthrough()
 
-export const EntityListQuery = z.object({
+export const EntityListQuery = PaginationQuery.extend({
   projectId: z.string().optional(),
   skillId: z.string().optional(),
   mcpServerId: z.string().optional(),

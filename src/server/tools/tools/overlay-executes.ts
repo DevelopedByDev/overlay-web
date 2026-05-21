@@ -4,6 +4,7 @@ import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-ap
 import type { OverlayToolsOptions } from './types'
 import { buildAutomationDraftFromTurn, type AutomationScheduleDraft } from '@/features/automations/lib/automation-drafts'
 import { buildSkillDraftFromTurn } from '@/features/automations/lib/skill-drafts'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 
 export async function executeSearchKnowledge(
   options: OverlayToolsOptions,
@@ -231,7 +232,7 @@ export async function executeListSkills(
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/v1/skills',
+      '/api/v1/skills?limit=100',
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -241,13 +242,13 @@ export async function executeListSkills(
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch skills' }
     }
-    const skills = (await res.json()) as Array<{
+    const skills = unwrapPaginatedData<{
       _id: string
       name: string
       description?: string
       instructions: string
       enabled?: boolean
-    }>
+    }>(await res.json())
     const enabledSkills = skills.filter((s) => s.enabled !== false)
     if (input.query) {
       const q = input.query.toLowerCase()
@@ -274,7 +275,7 @@ export async function executeListAutomations(
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/v1/automations',
+      '/api/v1/automations?limit=100',
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -284,7 +285,7 @@ export async function executeListAutomations(
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch automations' }
     }
-    const automations = (await res.json()) as Array<{
+    const automations = unwrapPaginatedData<{
       _id: string
       name: string
       description?: string
@@ -294,7 +295,7 @@ export async function executeListAutomations(
       nextRunAt?: number
       lastRunAt?: number
       lastError?: string
-    }>
+    }>(await res.json())
     if (input.query) {
       const q = input.query.toLowerCase()
       return {

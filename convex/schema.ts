@@ -126,6 +126,27 @@ export default defineSchema({
     .index('by_bucketKey', ['bucketKey'])
     .index('by_resetAt', ['resetAt']),
 
+  apiIdempotencyKeys: defineTable({
+    userId: v.string(),
+    keyHash: v.string(),
+    requestHash: v.string(),
+    method: v.string(),
+    path: v.string(),
+    status: v.union(v.literal('processing'), v.literal('completed')),
+    responseStatus: v.optional(v.number()),
+    responseHeaders: v.optional(v.array(v.object({
+      name: v.string(),
+      value: v.string(),
+    }))),
+    responseBody: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index('by_keyHash', ['keyHash'])
+    .index('by_expiresAt', ['expiresAt'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
+
   serviceAuthReplayNonces: defineTable({
     jti: v.string(),
     subject: v.string(),

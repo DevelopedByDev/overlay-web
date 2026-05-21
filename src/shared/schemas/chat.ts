@@ -1,13 +1,12 @@
 import { z } from 'zod'
-import { AuthFields, BooleanQueryValue, IdQuery, IntegerQueryValue, UnknownResponse } from './common'
+import { AuthFields, BooleanQueryValue, IdQuery, IntegerQueryValue, PaginationQuery, UnknownResponse } from './common'
 
-export const ConversationListQuery = z.object({
+export const ConversationListQuery = PaginationQuery.extend({
   conversationId: IdQuery,
   messages: BooleanQueryValue,
   projectId: IdQuery,
   updatedSince: IntegerQueryValue,
   includeDeleted: BooleanQueryValue,
-  limit: IntegerQueryValue,
   beforeCreatedAt: IntegerQueryValue,
   compactToolPayloads: BooleanQueryValue,
 })

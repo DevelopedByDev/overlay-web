@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'lucide-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 
 interface MemoryListItem {
   key: string
@@ -107,9 +108,9 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
 
   const loadMemories = useCallback(async () => {
     try {
-      const res = await overlayAppClient.memory.getResponse()
+      const res = await overlayAppClient.memory.getResponse({ limit: 100 })
       if (res.ok) {
-        const rows = (await res.json()) as MemoryListItem[]
+        const rows = unwrapPaginatedData<MemoryListItem>(await res.json())
         setMemories(uniqueMemoriesFromRows(rows))
       }
     } catch {

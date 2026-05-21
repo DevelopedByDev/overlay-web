@@ -1,11 +1,9 @@
 import { z } from 'zod'
-import { AuthFields, IntegerQueryValue, UnknownResponse } from './common'
+import { AuthFields, PaginationQuery, UnknownResponse } from './common'
 
-export const IntegrationListQuery = z.object({
+export const IntegrationListQuery = PaginationQuery.extend({
   action: z.string().optional(),
   q: z.string().optional(),
-  cursor: z.string().optional(),
-  limit: IntegerQueryValue,
 })
 
 export const IntegrationConnectRequest = z.object({

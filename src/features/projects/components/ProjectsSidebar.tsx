@@ -87,9 +87,9 @@ function ProjectNode({
       setItemsLoading(true)
       try {
         const [chats, notes, files] = await Promise.all([
-          overlayAppClient.conversations.get<ProjectChat[]>({ projectId: project._id }),
-          overlayAppClient.files.get<ProjectFile[]>({ kind: 'note', projectId: project._id }),
-          overlayAppClient.files.get<ProjectFile[]>({ projectId: project._id }),
+          overlayAppClient.conversations.get<ProjectChat[]>({ projectId: project._id, limit: 100 }),
+          overlayAppClient.files.get<ProjectFile[]>({ kind: 'note', projectId: project._id, limit: 100 }),
+          overlayAppClient.files.get<ProjectFile[]>({ projectId: project._id, limit: 100 }),
         ])
         if (cancelled) return
         const noteRows = Array.isArray(notes) ? projectNotesFromFiles(notes) : []
@@ -331,7 +331,7 @@ export default function ProjectsSidebar({ initialProjects }: { initialProjects?:
 
   const loadProjects = useCallback(async () => {
     try {
-      setProjects(await overlayAppClient.projects.get<Project[]>())
+      setProjects(await overlayAppClient.projects.get<Project[]>({ limit: 100 }))
     } catch { /* ignore */ } finally { setLoading(false) }
   }, [])
 
@@ -353,9 +353,9 @@ export default function ProjectsSidebar({ initialProjects }: { initialProjects?:
     setItemsLoading(true)
     try {
       const [chats, notes, files] = await Promise.all([
-        overlayAppClient.conversations.get<ProjectChat[]>({ projectId }),
-        overlayAppClient.files.get<ProjectFile[]>({ kind: 'note', projectId }),
-        overlayAppClient.files.get<ProjectFile[]>({ projectId }),
+        overlayAppClient.conversations.get<ProjectChat[]>({ projectId, limit: 100 }),
+        overlayAppClient.files.get<ProjectFile[]>({ kind: 'note', projectId, limit: 100 }),
+        overlayAppClient.files.get<ProjectFile[]>({ projectId, limit: 100 }),
       ])
       setProjectChats(Array.isArray(chats) ? chats : [])
       setProjectNotes(Array.isArray(notes) ? projectNotesFromFiles(notes) : [])

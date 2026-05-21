@@ -1,6 +1,6 @@
 import type { ConversationSummary } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
-import type { QueryParams } from '../shared/types'
+import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type {
   ConversationGetResponse,
   ConversationMessageRequest,
@@ -18,7 +18,11 @@ export class ConversationsClient {
   }
 
   get<T = ConversationGetResponse>(query?: ConversationQuery, init?: RequestInit) {
-    return this.http.json<T>(this.path(query), init)
+    return this.http.jsonData<T>(this.path(query), init)
+  }
+
+  getPage<T = ConversationSummary>(query?: ConversationQuery, init?: RequestInit) {
+    return this.http.json<PaginatedEnvelope<T>>(this.path(query), init)
   }
 
   getResponse(query?: ConversationQuery, init?: RequestInit) {

@@ -10,7 +10,7 @@ import type {
   UpdateAutomationRequest,
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
-import type { QueryParams } from '../shared/types'
+import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type { AutomationQuery } from './types'
 
 export class AutomationsClient {
@@ -21,7 +21,11 @@ export class AutomationsClient {
   }
 
   get<T = AutomationSummary[] | AutomationSummary>(query?: AutomationQuery, init?: RequestInit) {
-    return this.http.json<T>(this.path(query), init)
+    return this.http.jsonData<T>(this.path(query), init)
+  }
+
+  getPage<T = AutomationSummary>(query?: AutomationQuery, init?: RequestInit) {
+    return this.http.json<PaginatedEnvelope<T>>(this.path(query), init)
   }
 
   getResponse(query?: AutomationQuery, init?: RequestInit) {

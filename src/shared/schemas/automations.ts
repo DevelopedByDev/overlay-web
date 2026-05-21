@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { AuthFields, BooleanQueryValue, IdQuery, UnknownResponse } from './common'
+import { AuthFields, BooleanQueryValue, IdQuery, PaginationQuery, UnknownResponse } from './common'
 
-export const AutomationListQuery = z.object({
+export const AutomationListQuery = PaginationQuery.extend({
   automationId: IdQuery,
   projectId: IdQuery,
   includeDeleted: BooleanQueryValue,

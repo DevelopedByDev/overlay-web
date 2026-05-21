@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { AuthFields, BooleanQueryValue, FormDataBoundary, IdQuery, IntegerQueryValue, UnknownResponse } from './common'
+import { AuthFields, BooleanQueryValue, FormDataBoundary, IdQuery, IntegerQueryValue, PaginationQuery, UnknownResponse } from './common'
 
-export const FileListQuery = z.object({
+export const FileListQuery = PaginationQuery.extend({
   fileId: IdQuery,
   projectId: IdQuery,
   kind: z.string().optional(),
@@ -61,9 +61,8 @@ export const SearchFileTextRequest = z.object({
 
 export const IngestDocumentForm = FormDataBoundary
 
-export const OutputListQuery = z.object({
+export const OutputListQuery = PaginationQuery.extend({
   type: z.string().optional(),
-  limit: IntegerQueryValue,
   conversationId: IdQuery,
 })
 

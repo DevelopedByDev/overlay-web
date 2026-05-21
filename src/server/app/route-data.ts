@@ -12,6 +12,7 @@ import type {
   ProjectSummary,
 } from '@overlay/app-core'
 import type { CachedConversation } from '@/shared/chat/chat-list-cache'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { getBaseUrl } from '@/server/web/app-url'
 
 export type InitialIntegrationsRouteData = {
@@ -43,27 +44,31 @@ async function fetchAppJson<T>(path: string, fallback: T): Promise<T> {
     headers: cookie ? { cookie } : undefined,
   })
   if (!response.ok) return fallback
-  return response.json().catch(() => fallback) as Promise<T>
+  const value = await response.json().catch(() => fallback)
+  if (Array.isArray(fallback)) {
+    return unwrapPaginatedData(value as unknown, fallback as unknown[]) as T
+  }
+  return value as T
 }
 
 export function getInitialChatHistory(): Promise<CachedConversation[]> {
-  return fetchAppJson<CachedConversation[]>('/api/v1/conversations', [])
+  return fetchAppJson<CachedConversation[]>('/api/v1/conversations?limit=100', [])
 }
 
 export function getInitialProjectList(): Promise<ProjectSummary[]> {
-  return fetchAppJson<ProjectSummary[]>('/api/v1/projects', [])
+  return fetchAppJson<ProjectSummary[]>('/api/v1/projects?limit=100', [])
 }
 
 export function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
-  return fetchAppJson<KnowledgeFileNode[]>('/api/v1/files', [])
+  return fetchAppJson<KnowledgeFileNode[]>('/api/v1/files?limit=100', [])
 }
 
 export function getInitialKnowledgeMemories(): Promise<MemoryRow[]> {
-  return fetchAppJson<MemoryRow[]>('/api/v1/memory', [])
+  return fetchAppJson<MemoryRow[]>('/api/v1/memory?limit=100', [])
 }
 
 export function getInitialAutomationsList(): Promise<AutomationSummary[]> {
-  return fetchAppJson<AutomationSummary[]>('/api/v1/automations', [])
+  return fetchAppJson<AutomationSummary[]>('/api/v1/automations?limit=100', [])
 }
 
 export async function getInitialIntegrationsData(): Promise<InitialIntegrationsRouteData> {

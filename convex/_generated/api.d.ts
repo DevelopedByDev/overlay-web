@@ -37,6 +37,7 @@ import type * as lib_logging from "../lib/logging.js";
 import type * as outputs_outputs from "../outputs/outputs.js";
 import type * as platform_crons from "../platform/crons.js";
 import type * as platform_http from "../platform/http.js";
+import type * as platform_idempotency from "../platform/idempotency.js";
 import type * as platform_rateLimits from "../platform/rateLimits.js";
 import type * as platform_seedDemoAccount from "../platform/seedDemoAccount.js";
 import type * as platform_uiSettings from "../platform/uiSettings.js";
@@ -79,6 +80,7 @@ declare const fullApi: ApiFromModules<{
   "outputs/outputs": typeof outputs_outputs;
   "platform/crons": typeof platform_crons;
   "platform/http": typeof platform_http;
+  "platform/idempotency": typeof platform_idempotency;
   "platform/rateLimits": typeof platform_rateLimits;
   "platform/seedDemoAccount": typeof platform_seedDemoAccount;
   "platform/uiSettings": typeof platform_uiSettings;

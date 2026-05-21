@@ -1,4 +1,5 @@
 import { validateApiClientBoundary } from '../../../../src/shared/schemas/api-boundary'
+import { isPaginatedEnvelope } from '../../../../src/shared/api/pagination'
 import type { CreateOverlayAppClientOptions, QueryParams } from './types'
 
 export function appendQuery(path: string, query?: QueryParams): string {
@@ -54,12 +55,19 @@ export async function parseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T
 }
 
+export async function parseJsonData<T>(response: Response): Promise<T> {
+  const value = await response.json()
+  return (isPaginatedEnvelope(value) ? value.data : value) as T
+}
+
 export interface HttpContext {
   request(path: string, init?: RequestInit): Promise<Response>
   json<T>(path: string, init?: RequestInit): Promise<T>
+  jsonData<T>(path: string, init?: RequestInit): Promise<T>
   appendQuery: typeof appendQuery
   jsonRequest: typeof jsonRequest
   parseJson: typeof parseJson
+  parseJsonData: typeof parseJsonData
 }
 
 export function createHttpContext(options: CreateOverlayAppClientOptions): HttpContext {
@@ -89,11 +97,17 @@ export function createHttpContext(options: CreateOverlayAppClientOptions): HttpC
     return parseJson<T>(await request(path, init))
   }
 
+  async function jsonData<T>(path: string, init?: RequestInit): Promise<T> {
+    return parseJsonData<T>(await request(path, init))
+  }
+
   return {
     request,
     json,
+    jsonData,
     appendQuery,
     jsonRequest,
     parseJson,
+    parseJsonData,
   }
 }

@@ -17,6 +17,15 @@ export const IntegerQueryValue = z
 
 export const IdQuery = z.string().min(1).optional()
 
+export const PaginationQuery = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  sort: z.enum(['createdAt', 'updatedAt', 'name']).default('updatedAt'),
+  order: z.enum(['asc', 'desc']).default('desc'),
+})
+
+export type PaginationQuery = z.infer<typeof PaginationQuery>
+
 export const JsonRecord = z.record(z.string(), z.unknown())
 
 export const FormDataBoundary = z.instanceof(FormData)

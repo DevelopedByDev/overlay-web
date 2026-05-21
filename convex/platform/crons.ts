@@ -45,4 +45,11 @@ crons.interval(
   {},
 )
 
+crons.interval(
+  'api idempotency cleanup',
+  { hours: 1 },
+  internal.platform.idempotency.cleanupExpiredInternal,
+  {},
+)
+
 export default crons

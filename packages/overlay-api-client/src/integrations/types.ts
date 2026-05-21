@@ -1,7 +1,7 @@
-export interface IntegrationQuery {
+import type { PaginationQuery } from '../shared/types'
+
+export interface IntegrationQuery extends PaginationQuery {
   action?: 'search' | string
-  limit?: number
   slug?: string
   q?: string
-  cursor?: string
 }

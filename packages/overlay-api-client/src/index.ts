@@ -1,6 +1,14 @@
 export { createOverlayAppClient, type OverlayAppClient } from './create-overlay-app-client'
 
-export type { CreateOverlayAppClientOptions, ErrorResponse, Pagination } from './shared/types'
+export type {
+  CreateOverlayAppClientOptions,
+  ErrorResponse,
+  PaginatedEnvelope,
+  Pagination,
+  PaginationOrder,
+  PaginationQuery,
+  PaginationSort,
+} from './shared/types'
 export type {
   ConversationGetResponse,
   ConversationMessageRequest,

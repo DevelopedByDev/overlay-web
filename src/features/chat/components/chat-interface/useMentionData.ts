@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 interface CachedData {
@@ -62,16 +63,18 @@ export function useMentionData() {
     try {
       const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
         await Promise.allSettled([
-          overlayAppClient.files.getResponse().then((r) => r.ok ? r.json() : []),
+          overlayAppClient.files.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : []),
           overlayAppClient.integrations.getResponse().then((r) => r.ok ? r.json() : { items: [] }),
-          overlayAppClient.automations.getResponse().then((r) => r.ok ? r.json() : []),
-          overlayAppClient.skills.getResponse().then((r) => r.ok ? r.json() : []),
-          overlayAppClient.mcpServers.getResponse().then((r) => r.ok ? r.json() : []),
-          overlayAppClient.conversations.getResponse().then((r) => r.ok ? r.json() : []),
+          overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : []),
+          overlayAppClient.skills.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : []),
+          overlayAppClient.mcpServers.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : []),
+          overlayAppClient.conversations.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : []),
         ])
 
       const files: MentionItem[] = (
-        filesRes.status === 'fulfilled' ? (Array.isArray(filesRes.value) ? filesRes.value : []) : []
+        filesRes.status === 'fulfilled'
+          ? unwrapPaginatedData<{ _id: string; name?: string; kind?: string; mimeType?: string }>(filesRes.value)
+          : []
       ).map((f: { _id: string; name?: string; kind?: string; mimeType?: string }) => ({
         type: 'file' as const,
         id: f._id,
@@ -93,7 +96,9 @@ export function useMentionData() {
       )
 
       const automations: MentionItem[] = (
-        automationsRes.status === 'fulfilled' ? (Array.isArray(automationsRes.value) ? automationsRes.value : []) : []
+        automationsRes.status === 'fulfilled'
+          ? unwrapPaginatedData<{ _id: string; name?: string; description?: string; deletedAt?: number }>(automationsRes.value)
+          : []
       )
         .filter((a: { deletedAt?: number }) => !a.deletedAt)
         .map((a: { _id: string; name?: string; description?: string }) => ({
@@ -105,7 +110,9 @@ export function useMentionData() {
         }))
 
       const skills: MentionItem[] = (
-        skillsRes.status === 'fulfilled' ? (Array.isArray(skillsRes.value) ? skillsRes.value : []) : []
+        skillsRes.status === 'fulfilled'
+          ? unwrapPaginatedData<{ _id: string; name: string; description?: string; enabled?: boolean }>(skillsRes.value)
+          : []
       )
         .filter((s: { enabled?: boolean }) => s.enabled !== false)
         .map((s: { _id: string; name: string; description?: string }) => ({
@@ -117,7 +124,9 @@ export function useMentionData() {
         }))
 
       const mcps: MentionItem[] = (
-        mcpsRes.status === 'fulfilled' ? (Array.isArray(mcpsRes.value) ? mcpsRes.value : []) : []
+        mcpsRes.status === 'fulfilled'
+          ? unwrapPaginatedData<{ _id: string; name: string; description?: string; url?: string }>(mcpsRes.value)
+          : []
       ).map((m: { _id: string; name: string; description?: string; url?: string }) => ({
         type: 'mcp' as const,
         id: m._id,
@@ -127,7 +136,9 @@ export function useMentionData() {
       }))
 
       const chats: MentionItem[] = (
-        chatsRes.status === 'fulfilled' ? (Array.isArray(chatsRes.value) ? chatsRes.value : []) : []
+        chatsRes.status === 'fulfilled'
+          ? unwrapPaginatedData<{ _id: string; title: string }>(chatsRes.value)
+          : []
       ).map((c: { _id: string; title: string }) => ({
         type: 'chat' as const,
         id: c._id,

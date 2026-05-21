@@ -14,7 +14,7 @@ import type {
   UpdateFileRequest,
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
-import type { QueryParams } from '../shared/types'
+import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type { FileQuery } from './types'
 
 export class FilesClient {
@@ -25,7 +25,11 @@ export class FilesClient {
   }
 
   get<T = KnowledgeFile[] | KnowledgeFile>(query?: FileQuery, init?: RequestInit) {
-    return this.http.json<T>(this.path(query), init)
+    return this.http.jsonData<T>(this.path(query), init)
+  }
+
+  getPage<T = KnowledgeFile>(query?: FileQuery, init?: RequestInit) {
+    return this.http.json<PaginatedEnvelope<T>>(this.path(query), init)
   }
 
   getResponse(query?: FileQuery, init?: RequestInit) {

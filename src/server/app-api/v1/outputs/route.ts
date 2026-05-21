@@ -78,7 +78,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const rawType = searchParams.get('type')
     const type = rawType && isKnownOutputType(rawType) ? rawType : null
-    const limit = parseInt(searchParams.get('limit') ?? '50', 10)
     const conversationId = searchParams.get('conversationId')
 
     const files = await convex.query<OutputFile[]>('files/files:list', {
@@ -90,7 +89,6 @@ export async function GET(request: NextRequest) {
       .filter((file) => !conversationId || file.conversationId === conversationId)
       .filter((file) => !type || file.outputType === type)
       .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, Number.isFinite(limit) ? limit : 50)
       .map(asOutput)
 
     return NextResponse.json(outputs)
