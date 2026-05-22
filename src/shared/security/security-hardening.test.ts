@@ -5,7 +5,7 @@ test('service auth tokens are path, method, user, time, and replay bound', async
   process.env.INTERNAL_API_SECRET = 'test-internal-secret'
   process.env.INTERNAL_SERVICE_AUTH_SECRET = 'test-service-auth-secret'
 
-  const serviceAuth = await import(new URL('./service-auth.ts', import.meta.url).href)
+  const serviceAuth = await import(new URL('../../server/auth/service-auth.ts', import.meta.url).href)
 
   const token = await serviceAuth.buildServiceAuthToken({
     userId: 'user_123',
@@ -75,7 +75,7 @@ test('service auth can separate middleware verification from route replay consum
   process.env.INTERNAL_API_SECRET = 'test-internal-secret'
   process.env.INTERNAL_SERVICE_AUTH_SECRET = 'test-service-auth-secret'
 
-  const serviceAuth = await import(new URL('./service-auth.ts', import.meta.url).href)
+  const serviceAuth = await import(new URL('../../server/auth/service-auth.ts', import.meta.url).href)
   const token = await serviceAuth.buildServiceAuthToken({
     userId: 'user_789',
     method: 'POST',
@@ -120,7 +120,7 @@ test('service auth can separate middleware verification from route replay consum
 })
 
 test('media tools are exposed only for structured media intent', async () => {
-  const exposure = await import(new URL('./tools/exposure-policy.ts', import.meta.url).href)
+  const exposure = await import(new URL('../../server/tools/tools/exposure-policy.ts', import.meta.url).href)
 
   const ordinaryTurn = exposure.allowedOverlayToolIdsForTurn({
     latestUserText: 'Generate a product thumbnail image from my notes.',

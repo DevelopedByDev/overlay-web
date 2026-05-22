@@ -1,5 +1,6 @@
 import type { ConversationSummary } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
+import type { MutationRequestInit } from '../shared/mutation'
 import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type {
   ConversationGetResponse,
@@ -29,14 +30,14 @@ export class ConversationsClient {
     return this.http.request(this.path(query), init)
   }
 
-  create(body: CreateConversationRequest, init?: RequestInit) {
+  create(body: CreateConversationRequest, init?: MutationRequestInit) {
     return this.http.json<CreateConversationResponse>(
       '/api/v1/conversations',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
-  createResponse(body: CreateConversationRequest, init?: RequestInit) {
+  createResponse(body: CreateConversationRequest, init?: MutationRequestInit) {
     return this.http.request('/api/v1/conversations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
@@ -55,14 +56,14 @@ export class ConversationsClient {
     return this.http.request(this.path(query), { ...init, method: 'DELETE' })
   }
 
-  addMessage(body: ConversationMessageRequest, init?: RequestInit) {
+  addMessage(body: ConversationMessageRequest, init?: MutationRequestInit) {
     return this.http.json<{ success: boolean; conversationId: string; turnId: string }>(
       '/api/v1/conversations/message',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
-  addMessageResponse(body: ConversationMessageRequest, init?: RequestInit) {
+  addMessageResponse(body: ConversationMessageRequest, init?: MutationRequestInit) {
     return this.http.request('/api/v1/conversations/message', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
@@ -80,7 +81,7 @@ export class ConversationsClient {
       partialContent?: string
       partialParts?: Array<Record<string, unknown>>
     },
-    init?: RequestInit,
+    init?: MutationRequestInit,
   ) {
     return this.http.request('/api/v1/conversations/stop', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }

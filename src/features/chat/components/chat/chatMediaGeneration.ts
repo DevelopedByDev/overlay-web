@@ -116,15 +116,18 @@ function appendMediaSummary(
       assistantMessage as never,
     ]
   })
-  void overlayAppClient.conversations.addMessageResponse({
-    conversationId: params.chatId,
-    turnId: params.turnId,
-    mode: 'act',
-    role: 'assistant',
-    content: summary,
-    contentType: 'text',
-    parts: [{ type: 'text', text: summary }],
-  })
+  void overlayAppClient.conversations.addMessageResponse(
+    {
+      conversationId: params.chatId,
+      turnId: params.turnId,
+      mode: 'act',
+      role: 'assistant',
+      content: summary,
+      contentType: 'text',
+      parts: [{ type: 'text', text: summary }],
+    },
+    { idempotencyKey: `${params.turnId}:assistant` },
+  )
   params.completeSession(params.chatId, params.isChatActive(params.chatId))
   void params.loadChats()
   void params.loadSubscription()

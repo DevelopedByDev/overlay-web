@@ -14,6 +14,7 @@ import type {
   UpdateFileRequest,
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
+import type { MutationRequestInit } from '../shared/mutation'
 import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type { FileQuery } from './types'
 
@@ -40,11 +41,11 @@ export class FilesClient {
     return this.http.request(`/api/v1/files/${encodeURIComponent(fileId)}/content`, init)
   }
 
-  create(body: CreateFileRequest, init?: RequestInit) {
+  create(body: CreateFileRequest, init?: MutationRequestInit) {
     return this.http.json<CreateFileResponse>('/api/v1/files', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
-  createResponse(body: CreateFileRequest, init?: RequestInit) {
+  createResponse(body: CreateFileRequest, init?: MutationRequestInit) {
     return this.http.request('/api/v1/files', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 

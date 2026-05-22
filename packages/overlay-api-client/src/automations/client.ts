@@ -10,6 +10,7 @@ import type {
   UpdateAutomationRequest,
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
+import type { MutationRequestInit } from '../shared/mutation'
 import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type { AutomationQuery } from './types'
 
@@ -32,14 +33,14 @@ export class AutomationsClient {
     return this.http.request(this.path(query), init)
   }
 
-  create(body: CreateAutomationRequest, init?: RequestInit) {
+  create(body: CreateAutomationRequest, init?: MutationRequestInit) {
     return this.http.json<CreateAutomationResponse>(
       '/api/v1/automations',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
-  createResponse(body: CreateAutomationRequest, init?: RequestInit) {
+  createResponse(body: CreateAutomationRequest, init?: MutationRequestInit) {
     return this.http.request('/api/v1/automations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
@@ -62,14 +63,14 @@ export class AutomationsClient {
     return this.http.parseJson<DeleteAutomationResponse>(response)
   }
 
-  run(body: AutomationRunRequest, init?: RequestInit) {
+  run(body: AutomationRunRequest, init?: MutationRequestInit) {
     return this.http.json<AutomationRunResponse>(
       '/api/v1/automations/run',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
-  runResponse(body: AutomationRunRequest, init?: RequestInit) {
+  runResponse(body: AutomationRunRequest, init?: MutationRequestInit) {
     return this.http.request('/api/v1/automations/run', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 

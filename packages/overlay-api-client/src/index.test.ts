@@ -193,3 +193,22 @@ test('settings and account methods preserve billing/auth route contracts', async
   assert.equal(calls[7]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[7]!), { sessionId: 'cs_topup' })
 })
+
+test('mutation helpers send Idempotency-Key when idempotencyKey is set', async () => {
+  const { calls, client } = createRecordedClient()
+  const key = 'conv-create-abc'
+
+  await client.conversations.createResponse(
+    { title: 'Test', lastMode: 'act' },
+    { idempotencyKey: key },
+  )
+  await client.conversations.addMessageResponse(
+    { conversationId: 'c1', turnId: 't1', mode: 'act', role: 'user', content: 'hi' },
+    { idempotencyKey: 'turn-t1' },
+  )
+  await client.files.createResponse({ name: 'doc.txt', type: 'file' }, { idempotencyKey: 'file-1' })
+
+  assert.equal(new Headers(calls[0]!.init?.headers).get('Idempotency-Key'), key)
+  assert.equal(new Headers(calls[1]!.init?.headers).get('Idempotency-Key'), 'turn-t1')
+  assert.equal(new Headers(calls[2]!.init?.headers).get('Idempotency-Key'), 'file-1')
+})

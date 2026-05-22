@@ -92,6 +92,7 @@ import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
+import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
@@ -2183,13 +2184,16 @@ export default function ChatInterface({
     const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
     const initialSelectedModels = askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4)
     const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
-    const res = await overlayAppClient.conversations.createResponse({
-      title: initialTitle,
-      askModelIds: initialSelectedModels,
-      actModelId: selectedActModel,
-      lastMode: 'act',
-      ...(embedProjectId ? { projectId: embedProjectId } : {}),
-    })
+    const res = await overlayAppClient.conversations.createResponse(
+      {
+        title: initialTitle,
+        askModelIds: initialSelectedModels,
+        actModelId: selectedActModel,
+        lastMode: 'act',
+        ...(embedProjectId ? { projectId: embedProjectId } : {}),
+      },
+      { idempotencyKey: createIdempotencyKey() },
+    )
     if (res.ok) {
       const data = await res.json()
       setInterruptedExchangeIdx(null)
@@ -2286,18 +2290,26 @@ export default function ChatInterface({
           .map((part) => part.text!.trim())
           .join('\n\n') || (message.role === 'assistant' ? '[Response]' : '[Message]')
         const parts = (message.parts ?? []).filter((part) => part.type === 'text' || part.type === 'file')
-        const res = await overlayAppClient.conversations.addMessageResponse({
-          conversationId: branchChatId,
-          turnId: message.turnId,
-          mode: message.mode ?? 'act',
-          role: message.role,
-          content,
-          parts,
-          modelId: message.model,
-          contentType: message.contentType ?? 'text',
-          variantIndex: message.variantIndex,
-          ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId, replySnippet: message.replySnippet } : {}),
-        })
+        const branchTurnKey = message.turnId?.trim()
+        const res = await overlayAppClient.conversations.addMessageResponse(
+          {
+            conversationId: branchChatId,
+            turnId: message.turnId,
+            mode: message.mode ?? 'act',
+            role: message.role,
+            content,
+            parts,
+            modelId: message.model,
+            contentType: message.contentType ?? 'text',
+            variantIndex: message.variantIndex,
+            ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId, replySnippet: message.replySnippet } : {}),
+          },
+          {
+            idempotencyKey: branchTurnKey
+              ? `${branchTurnKey}:${message.role ?? 'unknown'}`
+              : createIdempotencyKey(),
+          },
+        )
         if (!res.ok) throw new Error('Could not copy branch messages')
       }
       const branchRuntime = runtimesRef.current.get(branchChatId)
@@ -2901,18 +2913,21 @@ export default function ChatInterface({
       setGenerationChip(null)
       setReplyContext(null)
       setIsFirstMessage(false)
-      void overlayAppClient.conversations.addMessageResponse({
-        conversationId: chatId,
-        turnId: mediaTurnId,
-        mode: 'act',
-        role: 'user',
-        content: text,
-        parts: [{ type: 'text', text }],
-        modelId: activeModels[0],
-        ...(replyCtxSnapshot?.replyToTurnId
-          ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
-          : {}),
-      })
+      void overlayAppClient.conversations.addMessageResponse(
+        {
+          conversationId: chatId,
+          turnId: mediaTurnId,
+          mode: 'act',
+          role: 'user',
+          content: text,
+          parts: [{ type: 'text', text }],
+          modelId: activeModels[0],
+          ...(replyCtxSnapshot?.replyToTurnId
+            ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
+            : {}),
+        },
+        { idempotencyKey: `${mediaTurnId}:user` },
+      )
 
       if (wasFirst && text) startFirstMessageRename(chatId, text)
       startSession(chatId, mediaSessionMode, activeChatTitleSnapshot ?? '', targetRuntime.askChats[0].messages.length)

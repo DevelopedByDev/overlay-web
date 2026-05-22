@@ -1,5 +1,7 @@
 import { validateApiClientBoundary } from '../../../../src/shared/schemas/api-boundary'
 import { isPaginatedEnvelope } from '../../../../src/shared/api/pagination'
+import type { MutationRequestInit } from './mutation'
+import { toRequestInit } from './mutation'
 import type { CreateOverlayAppClientOptions, QueryParams } from './types'
 
 export function appendQuery(path: string, query?: QueryParams): string {
@@ -18,13 +20,14 @@ export function toUrl(baseUrl: string | undefined, path: string): string {
   return new URL(path, baseUrl).toString()
 }
 
-export function jsonRequest(body: unknown, init: RequestInit = {}): RequestInit {
-  const headers = new Headers(init.headers)
+export function jsonRequest(body: unknown, init: MutationRequestInit = {}): RequestInit {
+  const resolved = toRequestInit(init)
+  const headers = new Headers(resolved.headers)
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
   return {
-    ...init,
+    ...resolved,
     headers,
     body: JSON.stringify(body),
   }
@@ -65,7 +68,7 @@ export interface HttpContext {
   json<T>(path: string, init?: RequestInit): Promise<T>
   jsonData<T>(path: string, init?: RequestInit): Promise<T>
   appendQuery: typeof appendQuery
-  jsonRequest: typeof jsonRequest
+  jsonRequest: (body: unknown, init?: MutationRequestInit) => RequestInit
   parseJson: typeof parseJson
   parseJsonData: typeof parseJsonData
 }
