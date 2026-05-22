@@ -69,6 +69,7 @@ import {
   resolveNvidiaApiKey,
 } from '@/server/ai/model-runtime'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { emitChatCompleted, emitChatFailed } from '@/server/shared/webhooks'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
 import {
@@ -487,6 +488,9 @@ export async function POST(request: NextRequest) {
   let budgetReservationId: string | null = null
   let budgetReservationFinalized = false
   let currentUserId: string | undefined
+  let actWebhookConversationId: Id<'conversations'> | undefined
+  let actWebhookTurnId: string | undefined
+  let actWebhookSkip = false
   try {
     const {
       ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
@@ -549,6 +553,7 @@ export async function POST(request: NextRequest) {
       multiModelSlotIndex?: number
       multiModelTotal?: number
     } = await request.json()
+    actWebhookSkip = automationExecution === true
     const auth = await resolveAuthenticatedAppUser(request, {
       accessToken,
       userId: requestedUserId,
@@ -698,6 +703,8 @@ export async function POST(request: NextRequest) {
 
     const cid = conversationId as Id<'conversations'> | undefined
     const tid = (turnId?.trim() || `act-${Date.now()}`)
+    actWebhookConversationId = cid
+    actWebhookTurnId = tid
 
     const multiModelTotal =
       typeof rawMultiModelTotal === 'number' && rawMultiModelTotal > 0
@@ -1470,6 +1477,14 @@ export async function POST(request: NextRequest) {
                 variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
               })
             }
+            if (!actWebhookSkip && cid) {
+              emitChatCompleted({
+                userId,
+                conversationId: cid,
+                turnId: tid,
+                modelId: attemptModelId,
+              })
+            }
           }
         } catch (err) {
           console.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
@@ -1542,6 +1557,14 @@ export async function POST(request: NextRequest) {
                   errorText: userFacingOpenRouterError(err),
                   serverSecret,
                 })
+                if (!actWebhookSkip) {
+                  emitChatFailed({
+                    userId,
+                    conversationId: actWebhookConversationId,
+                    turnId: actWebhookTurnId,
+                    error: userFacingOpenRouterError(err),
+                  })
+                }
               } catch (failErr) {
                 console.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(failErr))
               }
@@ -1721,6 +1744,14 @@ export async function POST(request: NextRequest) {
           errorText: userFacingOpenRouterError(error),
           serverSecret: pendingServerSecret,
         })
+        if (!actWebhookSkip && currentUserId) {
+          emitChatFailed({
+            userId: currentUserId,
+            conversationId: actWebhookConversationId,
+            turnId: actWebhookTurnId,
+            error: userFacingOpenRouterError(error),
+          })
+        }
       } catch (err) {
         console.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(err))
       }

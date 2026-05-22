@@ -5,6 +5,7 @@ import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/webhooks'
 
 export const maxDuration = 800
 
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
   if (boundaryError) return boundaryError
   let runId: Id<'automationRuns'> | null = null
   let userId: string | null = null
+  let automationId: Id<'automations'> | null = null
 
   try {
     const body = await request.json().catch(() => ({})) as {
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     const serverSecret = getInternalApiSecret()
-    const automationId = body.automationId as Id<'automations'>
+    automationId = body.automationId as Id<'automations'>
     const automation = await convex.query('automations/automations:get', {
       automationId,
       userId: auth.userId,
@@ -112,6 +114,13 @@ export async function POST(request: NextRequest) {
       now: Date.now(),
     }, { throwOnError: true })
 
+    emitAutomationFinished({
+      userId: auth.userId,
+      automationId,
+      runId,
+      conversationId: result.conversationId,
+    })
+
     return NextResponse.json({
       success: true,
       runId,
@@ -127,6 +136,14 @@ export async function POST(request: NextRequest) {
         error: message,
         now: Date.now(),
       }).catch(() => null)
+    }
+    if (runId && userId && automationId) {
+      emitAutomationFailed({
+        userId,
+        automationId,
+        runId,
+        error: message,
+      })
     }
     console.error('[automations/test]', error)
     return NextResponse.json({ error: 'Failed to test automation', message }, { status: 500 })

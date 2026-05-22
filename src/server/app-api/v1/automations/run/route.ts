@@ -6,12 +6,16 @@ import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { convex } from '@/server/database/convex'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay'
+import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/webhooks'
 
 export const maxDuration = 800
 
 export async function POST(request: NextRequest) {
   const boundaryError = await validateApiBoundary(request)
   if (boundaryError) return boundaryError
+  let runId: string | undefined
+  let automationId: string | undefined
+  let userId: string | undefined
   try {
     const serviceAuthHeader = request.headers.get(getServiceAuthHeaderName())
     const serviceAuth = serviceAuthHeader
@@ -32,6 +36,7 @@ export async function POST(request: NextRequest) {
       runId?: string
     }
     if (!body.runId) return NextResponse.json({ error: 'runId required' }, { status: 400 })
+    runId = body.runId
     const payload = await convex.query<{
       run: { status: string; scheduledFor: number; turnId?: string; conversationId?: Id<'conversations'> }
       automation: {
@@ -55,6 +60,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Automation run is not executable' }, { status: 409 })
     }
     const { run, automation } = payload
+    automationId = automation._id
+    userId = automation.userId
     if (automation.userId !== serviceAuth.userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -75,12 +82,28 @@ export async function POST(request: NextRequest) {
       scheduledFor: run.scheduledFor,
     })
 
+    emitAutomationFinished({
+      userId: automation.userId,
+      automationId: automation._id,
+      runId: body.runId,
+      conversationId: result.conversationId,
+    })
+
     return NextResponse.json({
       success: true,
       conversationId: result.conversationId,
     })
   } catch (error) {
     console.error('[automations/run]', error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    if (runId && automationId && userId) {
+      emitAutomationFailed({
+        userId,
+        automationId,
+        runId,
+        error: message.slice(0, 1000),
+      })
+    }
     return NextResponse.json(
       {
         error: 'Failed to run automation',

@@ -1,5 +1,11 @@
 import type { ZodTypeAny } from 'zod'
 import {
+  CreateWebhookSubscriptionRequest,
+  DeleteWebhookSubscriptionRequest,
+  UpdateWebhookSubscriptionRequest,
+  WebhookSubscriptionListQuery,
+} from './webhooks'
+import {
   ActConversationRequest,
   AddConversationMessageRequest,
   AutomationListQuery,
@@ -150,6 +156,10 @@ const exactBoundaries: Record<string, ApiBoundarySchema> = {
   'GET /api/v1/subscription/settings': { query: BillingSettingsQuery },
   'POST /api/v1/subscription/settings': { json: UpdateBillingSettingsRequest },
   'POST /api/v1/transcribe': { formData: TranscribeRequest },
+  'GET /api/v1/webhooks': { query: WebhookSubscriptionListQuery },
+  'POST /api/v1/webhooks': { json: CreateWebhookSubscriptionRequest },
+  'PATCH /api/v1/webhooks': { json: UpdateWebhookSubscriptionRequest },
+  'DELETE /api/v1/webhooks': { query: DeleteWebhookSubscriptionRequest, json: DeleteWebhookSubscriptionRequest },
 }
 
 const dynamicBoundaries: DynamicBoundary[] = [

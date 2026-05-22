@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AuthFields } from './common'
 
 export const WEBHOOK_EVENT_TYPES = [
   'chat.completed',
@@ -29,3 +30,25 @@ export const WebhookSubscriptionCreateSchema = z.object({
 })
 
 export type WebhookSubscriptionCreate = z.infer<typeof WebhookSubscriptionCreateSchema>
+
+export const WebhookSubscriptionListQuery = z.object({
+  ...AuthFields,
+}).passthrough()
+
+export const CreateWebhookSubscriptionRequest = WebhookSubscriptionCreateSchema.extend({
+  ...AuthFields,
+}).passthrough()
+
+export const UpdateWebhookSubscriptionRequest = z.object({
+  ...AuthFields,
+  subscriptionId: z.string().min(1),
+  url: z.string().url().optional(),
+  events: z.array(WebhookEventTypeSchema).min(1).optional(),
+  description: z.string().max(500).optional(),
+  enabled: z.boolean().optional(),
+}).passthrough()
+
+export const DeleteWebhookSubscriptionRequest = z.object({
+  ...AuthFields,
+  subscriptionId: z.string().min(1),
+})
