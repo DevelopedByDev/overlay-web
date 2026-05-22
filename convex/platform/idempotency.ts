@@ -4,6 +4,7 @@ import type { MutationCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
 const PRUNE_BATCH_SIZE = 100
+const STREAM_IDEMPOTENCY_RESPONSE_MARKER = '__overlay_stream_started__'
 
 const responseHeadersValidator = v.array(v.object({
   name: v.string(),
@@ -77,6 +78,36 @@ export const reserveByServer = mutation({
     })
 
     return { status: 'reserved' as const }
+  },
+})
+
+export const completeStreamStartedByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    keyHash: v.string(),
+    requestHash: v.string(),
+  },
+  returns: v.object({ completed: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+
+    const existing = await ctx.db
+      .query('apiIdempotencyKeys')
+      .withIndex('by_keyHash', (q) => q.eq('keyHash', args.keyHash))
+      .unique()
+    if (!existing || existing.requestHash !== args.requestHash) {
+      return { completed: false }
+    }
+
+    await ctx.db.patch(existing._id, {
+      status: 'completed',
+      responseStatus: 200,
+      responseHeaders: [{ name: 'x-overlay-idempotency-kind', value: 'stream' }],
+      responseBody: STREAM_IDEMPOTENCY_RESPONSE_MARKER,
+      updatedAt: Date.now(),
+    })
+
+    return { completed: true }
   },
 })
 

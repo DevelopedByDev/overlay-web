@@ -52,4 +52,10 @@ crons.interval(
   {},
 )
 
+crons.interval(
+  'outbound webhook delivery',
+  { minutes: 1 },
+  internal.webhooks.deliveryRunner.runMinuteTick,
+)
+
 export default crons

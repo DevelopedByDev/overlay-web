@@ -786,4 +786,42 @@ export default defineSchema({
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
     .index('by_shareToken', ['shareToken']),
+
+  webhookSubscriptions: defineTable({
+    userId: v.string(),
+    url: v.string(),
+    secret: v.string(),
+    events: v.array(v.string()),
+    enabled: v.boolean(),
+    description: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_enabled', ['userId', 'enabled']),
+
+  webhookDeliveries: defineTable({
+    userId: v.string(),
+    subscriptionId: v.id('webhookSubscriptions'),
+    eventId: v.string(),
+    eventType: v.string(),
+    payloadJson: v.string(),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('delivering'),
+      v.literal('delivered'),
+      v.literal('failed'),
+      v.literal('dead'),
+    ),
+    attemptCount: v.number(),
+    nextAttemptAt: v.number(),
+    lastError: v.optional(v.string()),
+    lastStatusCode: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_status_nextAttemptAt', ['status', 'nextAttemptAt'])
+    .index('by_subscriptionId_eventId', ['subscriptionId', 'eventId'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
 })

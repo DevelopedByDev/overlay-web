@@ -21,12 +21,17 @@ type AuthorizedStream = StreamMetadata & {
 type DurableObjectInput = {
   bodyText: string
   cookie: string
+  idempotencyKey: string | null
   nextOrigin: string
   relaySecret: string
   requestId: string
   streamId: string
   userAgent: string
   metadata: StreamMetadata
+}
+
+function buildActStreamIdempotencyKey(turnId: string, slotIndex: number): string {
+  return `act:${turnId.trim()}:${Math.max(0, Math.floor(slotIndex))}`
 }
 
 type SessionRow = {
@@ -180,12 +185,15 @@ async function routeToStreamObject(
   const stub = env.CHAT_STREAMS.getByName(streamName)
   const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID()
   const userAgent = request.headers.get('user-agent') ?? ''
+  const idempotencyKey = request.headers.get('Idempotency-Key')?.trim()
+    || buildActStreamIdempotencyKey(authorized.turnId, authorized.variantIndex)
   return stub.fetch(`https://chat-stream.internal/${action}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       bodyText,
       cookie,
+      idempotencyKey,
       nextOrigin: env.OVERLAY_NEXT_ORIGIN,
       relaySecret: env.CHAT_STREAM_RELAY_SECRET,
       requestId,
@@ -430,16 +438,23 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     body.streamPersistenceMode = 'cloudflare-relay'
     const controller = new AbortController()
     this.upstreamAbortController = controller
+    const upstreamHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Cookie': input.cookie,
+      'User-Agent': input.userAgent,
+      'x-request-id': input.requestId,
+      'x-overlay-chat-stream-relay': 'cloudflare',
+      'x-overlay-chat-stream-secret': input.relaySecret,
+    }
+    const idempotencyKey = input.idempotencyKey?.trim()
+      || buildActStreamIdempotencyKey(input.metadata.turnId, input.metadata.variantIndex)
+    if (idempotencyKey) {
+      upstreamHeaders['Idempotency-Key'] = idempotencyKey
+    }
+
     const response = await fetch(new URL('/api/app/conversations/act', input.nextOrigin), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': input.cookie,
-        'User-Agent': input.userAgent,
-        'x-request-id': input.requestId,
-        'x-overlay-chat-stream-relay': 'cloudflare',
-        'x-overlay-chat-stream-secret': input.relaySecret,
-      },
+      headers: upstreamHeaders,
       body: JSON.stringify(body),
       signal: controller.signal,
     })

@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { logSecurityEvent } from '@/server/observability/security-events'
+import { isStreamIdempotencyMarker } from '@/shared/api/idempotency-markers'
 
 type CachedHeader = {
   name: string
@@ -27,6 +28,11 @@ const MUTATION_METHODS = new Set(['POST', 'PATCH', 'DELETE'])
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000
 const MAX_IDEMPOTENCY_KEY_LENGTH = 255
 const MAX_CACHED_RESPONSE_BYTES = 512 * 1024
+const STREAM_IDEMPOTENCY_PATHS = new Set([
+  '/api/v1/conversations/act',
+  '/api/v1/conversations/act/extension-plan',
+])
+
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
   'content-encoding',
@@ -102,6 +108,35 @@ async function cacheableResponsePayload(response: Response): Promise<{
   }
 }
 
+function isStreamIdempotencyPath(pathname: string): boolean {
+  return STREAM_IDEMPOTENCY_PATHS.has(pathname)
+}
+
+async function completeStreamStartedReservation(
+  keyHash: string,
+  requestHash: string,
+): Promise<void> {
+  await convex.mutation<CompletionResult>(
+    'platform/idempotency:completeStreamStartedByServer',
+    {
+      serverSecret: getInternalApiSecret(),
+      keyHash,
+      requestHash,
+    },
+    {
+      throwOnError: true,
+      timeoutMs: 10_000,
+      suppressNetworkConsoleError: true,
+    },
+  ).catch((error) => {
+    logSecurityEvent(
+      'api_idempotency_stream_complete_failed',
+      { reason: error instanceof Error ? error.message : String(error) },
+      'warning',
+    )
+  })
+}
+
 async function discardReservation(keyHash: string, requestHash: string): Promise<void> {
   await convex.mutation(
     'platform/idempotency:discardByServer',
@@ -174,7 +209,18 @@ export async function handleIdempotentMutation(
     return NextResponse.json({ error: 'Idempotency reservation failed' }, { status: 503 })
   }
 
-  if (reservation.status === 'replay') return cachedResponseToResponse(reservation)
+  if (reservation.status === 'replay') {
+    if (isStreamIdempotencyMarker(reservation.responseBody)) {
+      return NextResponse.json(
+        {
+          error: 'Stream already started for this Idempotency-Key',
+          code: 'stream_already_started',
+        },
+        { status: 409 },
+      )
+    }
+    return cachedResponseToResponse(reservation)
+  }
   if (reservation.status === 'conflict') {
     return NextResponse.json(
       { error: 'Idempotency-Key was already used for a different request' },
@@ -198,6 +244,19 @@ export async function handleIdempotentMutation(
 
   const payload = await cacheableResponsePayload(response)
   if (!payload) {
+    if (
+      isStreamIdempotencyPath(request.nextUrl.pathname) &&
+      response.ok
+    ) {
+      await completeStreamStartedReservation(keyHash, requestHash)
+      const headers = new Headers(response.headers)
+      headers.set('Idempotency-Status', 'stream-started')
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      })
+    }
     await discardReservation(keyHash, requestHash)
     return response
   }

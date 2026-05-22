@@ -11,6 +11,7 @@ import {
   getCloudflareChatStreamRelayApi,
 } from '@/shared/chat/cloudflare-chat-transport'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
+import { buildActStreamIdempotencyKey } from '@/shared/api/act-idempotency'
 
 function createConversationRuntime(
   chatId: string,
@@ -19,18 +20,36 @@ function createConversationRuntime(
   const actTransport = '/api/v1/conversations/act'
   const transport = () => createPersistentChatTransport({
     api: actTransport,
-    prepareSendMessagesRequest: ({ api, id, messages, body, headers, credentials, trigger, messageId }) => ({
-      api,
-      headers,
-      credentials,
-      body: {
-        ...body,
-        id,
-        messages: messages.at(-1) ? [messages.at(-1)] : [],
-        trigger,
-        messageId,
-      },
-    }),
+    prepareSendMessagesRequest: ({ api, id, messages, body, headers, credentials, trigger, messageId }) => {
+      const bodyRecord = (body ?? {}) as Record<string, unknown>
+      const turnId = typeof bodyRecord.turnId === 'string' ? bodyRecord.turnId.trim() : ''
+      const slotFromBody = bodyRecord.multiModelSlotIndex ?? bodyRecord.variantIndex
+      let slotIndex = typeof slotFromBody === 'number' && Number.isFinite(slotFromBody)
+        ? slotFromBody
+        : 0
+      const askSlotMatch = /:ask:(\d+)$/.exec(id)
+      if (askSlotMatch) {
+        slotIndex = Number(askSlotMatch[1])
+      }
+
+      const nextHeaders = new Headers(headers)
+      if (turnId) {
+        nextHeaders.set('Idempotency-Key', buildActStreamIdempotencyKey(turnId, slotIndex))
+      }
+
+      return {
+        api,
+        headers: nextHeaders,
+        credentials,
+        body: {
+          ...body,
+          id,
+          messages: messages.at(-1) ? [messages.at(-1)] : [],
+          trigger,
+          messageId,
+        },
+      }
+    },
   })
   const askChats: ConversationRuntime['askChats'] = [
     new Chat({

@@ -1,0 +1,88 @@
+import { v } from 'convex/values'
+import { mutation, query } from '../_generated/server'
+import { requireServerSecret } from '../lib/auth'
+
+const eventTypesValidator = v.array(v.string())
+
+export const createByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    url: v.string(),
+    events: eventTypesValidator,
+    description: v.optional(v.string()),
+    enabled: v.optional(v.boolean()),
+    secret: v.optional(v.string()),
+  },
+  returns: v.id('webhookSubscriptions'),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+
+    const now = Date.now()
+    const secret = args.secret?.trim() || crypto.randomUUID()
+    return await ctx.db.insert('webhookSubscriptions', {
+      userId: args.userId,
+      url: args.url.trim(),
+      secret,
+      events: args.events,
+      enabled: args.enabled ?? true,
+      description: args.description?.trim() || undefined,
+      createdAt: now,
+      updatedAt: now,
+    })
+  },
+})
+
+export const listByServer = query({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.array(v.object({
+    _id: v.id('webhookSubscriptions'),
+    url: v.string(),
+    events: eventTypesValidator,
+    enabled: v.boolean(),
+    description: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+
+    const rows = await ctx.db
+      .query('webhookSubscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .collect()
+
+    return rows.map((row) => ({
+      _id: row._id,
+      url: row.url,
+      events: row.events,
+      enabled: row.enabled,
+      description: row.description,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }))
+  },
+})
+
+export const removeByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    subscriptionId: v.id('webhookSubscriptions'),
+  },
+  returns: v.object({ removed: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+
+    const existing = await ctx.db.get(args.subscriptionId)
+    if (!existing || existing.userId !== args.userId) {
+      return { removed: false }
+    }
+
+    await ctx.db.delete(args.subscriptionId)
+    return { removed: true }
+  },
+})
