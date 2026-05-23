@@ -16,7 +16,7 @@ import type {
   ModelInfo,
   ModelOptions,
   PricingInfo,
-} from '@overlay/app-core'
+} from '@overlay/llm-gateway'
 
 let cachedGateway: ReturnType<typeof createGateway> | null = null
 let cachedApiKey: string | null = null

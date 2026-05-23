@@ -18,6 +18,12 @@
     "./settings-account": "./src/settings-account.ts",
     "./theme": "./src/theme.ts"
   },
+  "dependencies": {
+    "@overlay/auth-contracts": "file:../overlay-auth-contracts",
+    "@overlay/billing": "file:../overlay-billing",
+    "@overlay/llm-gateway": "file:../overlay-llm-gateway",
+    "@overlay/storage-contracts": "file:../overlay-storage-contracts"
+  },
   "scripts": {
     "test": "tsx --test src/*.test.ts",
     "typecheck": "tsc --noEmit"

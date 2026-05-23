@@ -6,7 +6,7 @@ import type {
   ModelInfo,
   ModelOptions,
   PricingInfo,
-} from '@overlay/app-core'
+} from '@overlay/llm-gateway'
 
 export class NoOpLLMGateway implements LLMGateway {
   async createLanguageModel(

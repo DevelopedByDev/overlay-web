@@ -1,0 +1,82 @@
+import type {
+  AutomationRunRequest,
+  AutomationRunResponse,
+  AutomationSummary,
+  AutomationTestRequest,
+  AutomationTestResponse,
+  CreateAutomationRequest,
+  CreateAutomationResponse,
+  DeleteAutomationResponse,
+  UpdateAutomationRequest,
+} from '@overlay/app-core'
+import type { HttpContext } from '../shared/http'
+import type { QueryParams } from '../shared/types'
+import type { AutomationQuery } from './types'
+
+export class AutomationsClient {
+  constructor(private readonly http: HttpContext) {}
+
+  private path(query?: AutomationQuery): string {
+    return this.http.appendQuery('/api/app/automations', query as QueryParams | undefined)
+  }
+
+  get<T = AutomationSummary[] | AutomationSummary>(query?: AutomationQuery, init?: RequestInit) {
+    return this.http.json<T>(this.path(query), init)
+  }
+
+  getResponse(query?: AutomationQuery, init?: RequestInit) {
+    return this.http.request(this.path(query), init)
+  }
+
+  create(body: CreateAutomationRequest, init?: RequestInit) {
+    return this.http.json<CreateAutomationResponse>(
+      '/api/app/automations',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  createResponse(body: CreateAutomationRequest, init?: RequestInit) {
+    return this.http.request('/api/app/automations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+  }
+
+  update(body: UpdateAutomationRequest, init?: RequestInit) {
+    return this.http.json<{ success?: boolean; error?: string }>(
+      '/api/app/automations',
+      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
+    )
+  }
+
+  updateResponse(body: UpdateAutomationRequest, init?: RequestInit) {
+    return this.http.request('/api/app/automations', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
+  }
+
+  deleteResponse(query: { automationId: string }, init?: RequestInit) {
+    return this.http.request(this.path(query), { ...init, method: 'DELETE' })
+  }
+
+  parseDeleteResponse(response: Response) {
+    return this.http.parseJson<DeleteAutomationResponse>(response)
+  }
+
+  run(body: AutomationRunRequest, init?: RequestInit) {
+    return this.http.json<AutomationRunResponse>(
+      '/api/app/automations/run',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  runResponse(body: AutomationRunRequest, init?: RequestInit) {
+    return this.http.request('/api/app/automations/run', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+  }
+
+  test(body: AutomationTestRequest, init?: RequestInit) {
+    return this.http.json<AutomationTestResponse>(
+      '/api/app/automations/test',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  testResponse(body: AutomationTestRequest, init?: RequestInit) {
+    return this.http.request('/api/app/automations/test', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+  }
+}

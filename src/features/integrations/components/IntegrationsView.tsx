@@ -20,7 +20,7 @@ import {
   type IntegrationSearchResponse,
 } from '@overlay/app-core'
 import { ExtensionPageHeader, IntegrationsPanel } from '@overlay/modules-react/extensions'
-import { IntegrationListSkeleton } from '@/components/ui/Skeleton'
+import { IntegrationListSkeleton } from '@overlay/ui/feedback'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/features/integrations/lib/integrations-events'
 import { setIntegrationLogoUrl } from '@/features/integrations/lib/integration-logo-cache'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'

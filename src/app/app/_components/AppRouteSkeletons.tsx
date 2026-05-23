@@ -162,22 +162,16 @@ export function KnowledgeRouteSkeleton() {
 
 export function ProjectsRouteSkeleton() {
   return (
-    <div className="flex h-full bg-[var(--background)]">
-      <div className="hidden h-full w-72 shrink-0 border-r border-[var(--border)] bg-[var(--surface-muted)] md:block">
-        <PageHeaderSkeleton actions={1} />
-        <SidebarRows rows={7} />
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <PageHeaderSkeleton actions={2} />
-        <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-              <SkeletonBlock className="mb-3 h-4 w-36" />
-              <SkeletonBlock className="mb-2 h-3 w-full" />
-              <SkeletonBlock className="h-3 w-2/3" />
-            </div>
-          ))}
-        </div>
+    <div className="flex h-full flex-col bg-[var(--background)]">
+      <PageHeaderSkeleton actions={1} />
+      <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+            <SkeletonBlock className="mb-4 h-8 w-8 rounded-md" />
+            <SkeletonBlock className="mb-2 h-3.5 w-36" />
+            <SkeletonBlock className="h-3 w-2/3 opacity-75" />
+          </div>
+        ))}
       </div>
     </div>
   )

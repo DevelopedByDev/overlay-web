@@ -102,7 +102,7 @@ import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-default
 import type { SkillDraftSummary } from '@/features/automations/lib/skill-drafts'
 import type { AutomationDraftSummary } from '@/features/automations/lib/automation-drafts'
 import { warmIntegrationLogoCache } from '@/features/integrations/lib/integration-logo-cache'
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { ConfirmDialog } from '@overlay/ui/overlays'
 import {
   CHAT_GEN_MODE_KEY,
   DEFAULT_CHAT_TITLE,

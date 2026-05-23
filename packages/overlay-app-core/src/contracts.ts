@@ -1,3 +1,61 @@
+import type { LLMGateway as CoreLLMGateway } from '@overlay/llm-gateway'
+import type {
+  AuthProvider,
+  AuthUser,
+} from '@overlay/auth-contracts'
+import type {
+  ObjectStore,
+  VectorStore,
+} from '@overlay/storage-contracts'
+import type {
+  BillingProvider,
+  Entitlements,
+} from '@overlay/billing'
+
+export type {
+  LanguageModel,
+  LLMGateway,
+  ModelInfo,
+  ModelOptions,
+  PricingInfo,
+} from '@overlay/llm-gateway'
+export type {
+  AuthProvider,
+  AuthUser,
+  Session,
+  TokenClaims,
+  User,
+  UserProfile,
+} from '@overlay/auth-contracts'
+export {
+  AuthConfigurationError,
+  AuthError,
+  ForbiddenError,
+  InvalidTokenError,
+  SessionExpiredError,
+  UnauthorizedError,
+  isAuthError,
+  type AuthErrorCode,
+} from '@overlay/auth-contracts'
+export type {
+  DownloadUrl,
+  FileMetadata,
+  ObjectStore,
+  ObjectSummary,
+  QueryResult,
+  UploadUrl,
+  VectorStore,
+} from '@overlay/storage-contracts'
+export type {
+  BillingProvider,
+  CheckoutArgs,
+  CheckoutResult,
+  Entitlements,
+  PortalResult,
+  UsageArgs,
+  UsageKind,
+} from '@overlay/billing'
+
 export type ThemePreference = 'light' | 'dark'
 /** Token streaming is the only supported mode; the field remains for API/storage compatibility. */
 export type ChatStreamingMode = 'token'
@@ -84,15 +142,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   onlyAllowZdrModels: false,
   dismissedZdrWarningGlobally: false,
   dismissedZdrWarningModelIds: [],
-}
-
-export interface AuthUser {
-  id: string
-  email: string
-  firstName?: string
-  lastName?: string
-  profilePictureUrl?: string
-  emailVerified?: boolean
 }
 
 export interface ChatModel {
@@ -440,7 +489,7 @@ export interface OverlayAppConfig {
   billingProvider?: BillingProvider
   objectStore?: ObjectStore
   vectorStore?: VectorStore
-  llmGateway?: LLMGateway
+  llmGateway?: CoreLLMGateway
   rateLimiter?: RateLimiter
   eventBus?: EventBus
 }
@@ -465,34 +514,6 @@ export interface AppBootstrapDefaults {
   chatModelId?: string
   imageModelId?: string
   videoModelId?: string
-}
-
-export interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  planKind?: 'free' | 'paid'
-  planAmountCents?: number
-  creditsUsed: number
-  creditsTotal: number
-  budgetUsedCents?: number
-  budgetTotalCents?: number
-  budgetRemainingCents?: number
-  autoTopUpEnabled?: boolean
-  topUpAmountCents?: number
-  autoTopUpAmountCents?: number
-  autoTopUpConsentGranted?: boolean
-  topUpMinAmountCents?: number
-  topUpMaxAmountCents?: number
-  topUpStepAmountCents?: number
-  dailyUsage: { ask: number; write: number; agent: number }
-  dailyLimits?: { ask: number; write: number; agent: number }
-  overlayStorageBytesUsed?: number
-  overlayStorageBytesLimit?: number
-  transcriptionSecondsUsed?: number
-  transcriptionSecondsLimit?: number
-  localTranscriptionEnabled?: boolean
-  resetAt?: string
-  billingPeriodEnd?: string
-  lastSyncedAt?: number
 }
 
 export interface AppBootstrapResponse {
@@ -1181,123 +1202,6 @@ export interface OnboardingCompleteResponse {
   persistedToConvex?: boolean
 }
 
-export interface Session {
-  accessToken: string
-  refreshToken?: string
-  user: AuthUser
-  expiresAt?: number
-}
-
-export interface TokenClaims {
-  iss: string
-  sub: string
-  aud?: string | string[]
-  exp: number
-  iat?: number
-  [claim: string]: unknown
-}
-
-export interface UserProfile {
-  id: string
-  email?: string
-  firstName?: string
-  lastName?: string
-  profilePictureUrl?: string
-  emailVerified?: boolean
-}
-
-export interface CheckoutArgs {
-  userId: string
-  email?: string
-  kind?: 'paid_plan' | 'budget_topup'
-  planAmountCents?: number
-  topUpAmountCents?: number
-  autoTopUpEnabled?: boolean
-  successUrl?: string
-  cancelUrl?: string
-  returnUrl?: string
-  metadata?: Record<string, string | number | boolean | null | undefined>
-}
-
-export interface CheckoutResult {
-  url: string
-  providerSessionId?: string
-}
-
-export interface PortalResult {
-  url: string
-  providerSessionId?: string
-}
-
-export type UsageKind =
-  | 'ask'
-  | 'write'
-  | 'agent'
-  | 'embedding'
-  | 'transcription'
-  | 'generation'
-  | 'sandbox'
-
-export interface UsageArgs {
-  userId: string
-  accessToken?: string
-  type: UsageKind
-  modelId?: string
-  inputTokens?: number
-  outputTokens?: number
-  cachedTokens?: number
-  cost: number
-  timestamp?: number
-}
-
-export interface ObjectSummary {
-  key: string
-  sizeBytes?: number
-  contentType?: string
-  lastModified?: string
-  etag?: string
-}
-
-export interface QueryResult {
-  id: string
-  score: number
-  metadata: Record<string, unknown>
-}
-
-export interface ModelOptions {
-  accessToken?: string
-  provider?: string
-  headers?: Record<string, string>
-  metadata?: Record<string, unknown>
-}
-
-export interface LanguageModel {
-  id: string
-  provider?: string
-  implementation: unknown
-}
-
-export interface ModelInfo {
-  id: string
-  name: string
-  provider: string
-  description?: string
-  supportsVision?: boolean
-  supportsReasoning?: boolean
-  supportsSearch?: boolean
-  supportsZeroDataRetention?: boolean
-  pricePer1mTokens?: number
-}
-
-export interface PricingInfo {
-  modelId: string
-  providerCostUsd?: number
-  pricingModelId?: string
-  pricingSource?: string
-  pricingType?: string
-  isFree?: boolean
-}
-
 export interface RateLimitSpec {
   bucket: string
   key: string | null | undefined
@@ -1319,51 +1223,6 @@ export interface RateLimitResult {
   decisions: RateLimitDecision[]
 }
 
-export interface AuthProvider {
-  getSession(req: Request): Promise<Session | null>
-  verifyAccessToken(token: string): Promise<TokenClaims | null>
-  getUserProfile(token: string): Promise<UserProfile | null>
-  deleteUser?(userId: string): Promise<void>
-}
-
-export interface BillingProvider {
-  getEntitlements(userId: string): Promise<Entitlements>
-  createCheckoutSession(args: CheckoutArgs): Promise<CheckoutResult>
-  createPortalSession(userId: string): Promise<PortalResult>
-  recordUsage(args: UsageArgs): Promise<void>
-  cancelSubscription?(subscriptionId: string): Promise<void>
-}
-
-export interface ObjectStore {
-  getUploadUrl(
-    key: string,
-    contentType: string,
-  ): Promise<{ url: string; fields?: Record<string, string> }>
-  getDownloadUrl(key: string): Promise<string>
-  deleteObject(key: string): Promise<void>
-  listObjects(prefix: string): Promise<ObjectSummary[]>
-}
-
-export interface VectorStore {
-  upsert(args: {
-    id: string
-    vector: number[]
-    metadata: Record<string, unknown>
-  }): Promise<void>
-  query(args: {
-    vector: number[]
-    topK: number
-    filter?: Record<string, unknown>
-  }): Promise<QueryResult[]>
-  delete(id: string): Promise<void>
-}
-
-export interface LLMGateway {
-  createLanguageModel(modelId: string, options?: ModelOptions): Promise<LanguageModel>
-  listModels(): Promise<ModelInfo[]>
-  getModelPricing(modelId: string): Promise<PricingInfo>
-}
-
 export interface RateLimiter {
   check(key: string, limits: RateLimitSpec[]): Promise<RateLimitResult>
 }
@@ -1378,7 +1237,7 @@ export interface OverlayServerContext {
   billing: BillingProvider
   objectStore: ObjectStore
   vectorStore: VectorStore
-  llmGateway: LLMGateway
+  llmGateway: CoreLLMGateway
   rateLimiter: RateLimiter
   eventBus: EventBus
 }
