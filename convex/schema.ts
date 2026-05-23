@@ -295,6 +295,10 @@ export default defineSchema({
     clientId: v.optional(v.string()),
     name: v.string(),
     instructions: v.optional(v.string()),
+    // Per-toolkit allowlist (e.g. ["github", "notion"]) from the "Projects
+    // as agents" work on a sibling branch. Declared here so the shared dev
+    // DB validator accepts existing documents that already carry the field.
+    enabledIntegrationSlugs: v.optional(v.array(v.string())),
     parentId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
