@@ -304,7 +304,7 @@ export function conversationsToProjectChats(conversations: readonly Conversation
 
 /**
  * Client-side mirror of `GITHUB_REPO_ALLOWLIST_REGEX` from
- * `convex/lib/github-repo-allowlist-normalize.ts`.
+ * `convex/lib/github_repo_allowlist_normalize.ts`.
  *
  * **DUPLICATED INTENTIONALLY** because the `app-core` package is framework-
  * agnostic and its tsconfig include glob does not extend into `convex/lib/`.

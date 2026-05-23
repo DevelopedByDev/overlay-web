@@ -20,6 +20,7 @@ import type * as http from "../http.js";
 import type * as knowledge from "../knowledge.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
+import type * as lib_github_repo_allowlist_normalize from "../lib/github_repo_allowlist_normalize.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_storageQuota from "../lib/storageQuota.js";
 import type * as lib_stripeOverlaySubscription from "../lib/stripeOverlaySubscription.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   knowledge: typeof knowledge;
   "lib/auth": typeof lib_auth;
   "lib/authDebug": typeof lib_authDebug;
+  "lib/github_repo_allowlist_normalize": typeof lib_github_repo_allowlist_normalize;
   "lib/logging": typeof lib_logging;
   "lib/storageQuota": typeof lib_storageQuota;
   "lib/stripeOverlaySubscription": typeof lib_stripeOverlaySubscription;

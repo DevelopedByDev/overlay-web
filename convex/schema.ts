@@ -295,6 +295,10 @@ export default defineSchema({
     clientId: v.optional(v.string()),
     name: v.string(),
     instructions: v.optional(v.string()),
+    // Per-toolkit allowlist (e.g. ["github", "notion"]) — owned by the
+    // "Projects as agents" work on the user's other branch. Declared here
+    // as optional so the dev DB validator accepts existing documents.
+    enabledIntegrationSlugs: v.optional(v.array(v.string())),
     githubRepoAllowlist: v.optional(v.array(v.string())),
     parentId: v.optional(v.string()),
     createdAt: v.number(),

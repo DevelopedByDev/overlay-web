@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import type { Id } from './_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from './lib/auth'
-import { normalizeGithubRepoAllowlist } from './lib/github-repo-allowlist-normalize'
+import { normalizeGithubRepoAllowlist } from './lib/github_repo_allowlist_normalize'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
