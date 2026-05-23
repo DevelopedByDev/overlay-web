@@ -19,7 +19,12 @@ export const overlayAppConfig = defineOverlayAppConfig({
   brand: {
     ...DEFAULT_OVERLAY_BRAND_CONFIG,
   },
-  navigation: [...DEFAULT_OVERLAY_NAVIGATION],
+  // Project-first sidebar: only Projects is a top-level destination. Chat,
+  // Files, Extensions, and Automations are accessed via the project hub
+  // (each project's own internal tabs) rather than as global views. The
+  // default registry still defines them so deep links keep working; this
+  // app instance just doesn't surface them in the primary nav.
+  navigation: DEFAULT_OVERLAY_NAVIGATION.filter((item) => item.id === 'projects'),
   settingsSections: [...DEFAULT_OVERLAY_SETTINGS_SECTIONS],
   featureFlags: [...DEFAULT_OVERLAY_FEATURE_FLAGS],
   featureModules: [...DEFAULT_OVERLAY_FEATURE_MODULES],

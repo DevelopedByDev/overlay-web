@@ -1,6 +1,7 @@
 export * from './knowledge'
 export * from './notes'
 export * from './projects'
+export * from './project-avatar'
 export * from './extensions'
 export * from './settings'
 export * from './automations'
