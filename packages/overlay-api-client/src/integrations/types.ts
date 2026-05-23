@@ -4,4 +4,5 @@ export interface IntegrationQuery {
   slug?: string
   q?: string
   cursor?: string
+  projectId?: string
 }
