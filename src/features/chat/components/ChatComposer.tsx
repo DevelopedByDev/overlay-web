@@ -16,6 +16,7 @@ export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnI
 
 export type ChatComposerProps = {
   mode: 'chat' | 'automate'
+  projectId?: string | null
   showCenteredEmptyChat: boolean
   greetingLine: string
   emptyChatStarters: string[]
@@ -131,6 +132,7 @@ function ComposerInputCard(props: ChatComposerProps & { disabledSend: boolean })
           onMentionsChange={props.onMentionsChange}
           onPaste={props.onPaste}
           onUploadFile={() => props.docInputRef.current?.click()}
+          projectId={props.projectId}
           placeholder={props.mode === 'automate' ? 'Describe an automation, use @ to reference files, skills, automations...' : 'Ask anything, use @ to reference files, skills, automations...'}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {

@@ -36,12 +36,17 @@ function scoreMatch(item: MentionItem, query: string): number {
   return 0
 }
 
-export function useMentionData() {
+export function useMentionData(projectId?: string | null) {
   const [loading, setLoading] = useState(false)
   const cacheRef = useRef<CachedData | null>(null)
+  const cacheProjectIdRef = useRef<string | null | undefined>(undefined)
   const fetchingRef = useRef(false)
 
   const fetchAllData = useCallback(async (): Promise<CachedData> => {
+    if (cacheProjectIdRef.current !== projectId) {
+      cacheRef.current = null
+      cacheProjectIdRef.current = projectId
+    }
     if (cacheRef.current) return cacheRef.current
 
     if (fetchingRef.current) {
@@ -62,12 +67,14 @@ export function useMentionData() {
     try {
       const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
         await Promise.allSettled([
-          overlayAppClient.files.getResponse().then((r) => r.ok ? r.json() : []),
-          overlayAppClient.integrations.getResponse().then((r) => r.ok ? r.json() : { items: [] }),
-          overlayAppClient.automations.getResponse().then((r) => r.ok ? r.json() : []),
-          overlayAppClient.skills.getResponse().then((r) => r.ok ? r.json() : []),
-          overlayAppClient.mcpServers.getResponse().then((r) => r.ok ? r.json() : []),
-          overlayAppClient.conversations.getResponse().then((r) => r.ok ? r.json() : []),
+          overlayAppClient.files.getResponse(projectId ? { projectId } : undefined).then((r) => r.ok ? r.json() : []),
+          projectId
+            ? overlayAppClient.integrations.getResponse({ projectId }).then((r) => r.ok ? r.json() : { items: [] })
+            : Promise.resolve({ items: [] }),
+          overlayAppClient.automations.getResponse(projectId ? { projectId } : undefined).then((r) => r.ok ? r.json() : []),
+          overlayAppClient.skills.getResponse(projectId ? { projectId } : undefined).then((r) => r.ok ? r.json() : []),
+          overlayAppClient.mcpServers.getResponse(projectId ? { projectId } : undefined).then((r) => r.ok ? r.json() : []),
+          overlayAppClient.conversations.getResponse(projectId ? { projectId } : undefined).then((r) => r.ok ? r.json() : []),
         ])
 
       const files: MentionItem[] = (
@@ -142,7 +149,7 @@ export function useMentionData() {
       setLoading(false)
       fetchingRef.current = false
     }
-  }, [])
+  }, [projectId])
 
   const search = useCallback(
     async (query: string): Promise<MentionCategory[]> => {

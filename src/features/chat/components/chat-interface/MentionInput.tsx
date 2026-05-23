@@ -34,6 +34,7 @@ interface MentionInputProps {
   placeholder?: string
   className?: string
   disabled?: boolean
+  projectId?: string | null
 }
 
 const MENTION_ATTR = 'data-mention'
@@ -168,6 +169,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       placeholder,
       className,
       disabled,
+      projectId,
     },
     ref
   ) {
@@ -185,7 +187,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
      * than typed by the user; on close-without-select we strip that orphan @. */
     const buttonInsertedAtRef = useRef(false)
 
-    const { search, loading } = useMentionData()
+    const { search, loading } = useMentionData(projectId)
 
     // Sync explicit external value commands into the editor (clear on send,
     // populate restored draft after hydration). Normal typing stays local to

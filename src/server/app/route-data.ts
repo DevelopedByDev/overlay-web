@@ -66,11 +66,19 @@ export function getInitialAutomationsList(): Promise<AutomationSummary[]> {
   return fetchAppJson<AutomationSummary[]>('/api/app/automations', [])
 }
 
-export async function getInitialIntegrationsData(): Promise<InitialIntegrationsRouteData> {
+export async function getInitialIntegrationsData(projectId?: string): Promise<InitialIntegrationsRouteData> {
+  const connectedPath = projectId
+    ? `/api/app/integrations?projectId=${encodeURIComponent(projectId)}`
+    : null
+  const catalogPath = `/api/app/integrations?action=search&limit=100${
+    projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''
+  }`
   const [bootstrap, connected, catalog] = await Promise.all([
     fetchAppJson<AppBootstrapResponse | null>('/api/app/bootstrap', null),
-    fetchAppJson<ConnectedIntegrationsResponse | null>('/api/app/integrations', null),
-    fetchAppJson<IntegrationSearchResponse | null>('/api/app/integrations?action=search&limit=100', null),
+    connectedPath
+      ? fetchAppJson<ConnectedIntegrationsResponse | null>(connectedPath, null)
+      : Promise.resolve(null),
+    fetchAppJson<IntegrationSearchResponse | null>(catalogPath, null),
   ])
 
   return { bootstrap, connected, catalog }

@@ -12,7 +12,6 @@ import Image from 'next/image'
 import { X, ArrowRight, Copy, Check, Plus, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
-import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/features/integrations/lib/integrations-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 /** Paste in ChatGPT, Claude, etc., then paste the reply into Overlay to save as memories. */
@@ -371,43 +370,11 @@ export function OnboardingTour({
     }
   }, [postTourPhase])
 
-  // Track connected toolkits so cards reflect connections in real time after the
-  // OAuth popup completes (signaled via overlay:integrations-changed / BroadcastChannel).
+  // Integrations are project-owned, so onboarding can only send users to the
+  // project chooser instead of showing global connection state.
   useEffect(() => {
     if (postTourPhase !== 'connectors') return
-
-    let cancelled = false
-    async function loadConnected() {
-      try {
-        const res = await overlayAppClient.integrations.getResponse()
-        if (!res.ok || cancelled) return
-        const data = (await res.json()) as { connected?: string[] }
-        if (cancelled) return
-        setConnectedSlugs(new Set(data.connected ?? []))
-      } catch {
-        // ignore
-      }
-    }
-
-    void loadConnected()
-
-    const onChanged = () => { void loadConnected() }
-    window.addEventListener('overlay:integrations-changed', onChanged)
-    window.addEventListener('focus', onChanged)
-    let bc: BroadcastChannel | null = null
-    try {
-      bc = new BroadcastChannel(INTEGRATIONS_BC_CHANNEL)
-      bc.onmessage = onChanged
-    } catch {
-      // BroadcastChannel unsupported
-    }
-
-    return () => {
-      cancelled = true
-      window.removeEventListener('overlay:integrations-changed', onChanged)
-      window.removeEventListener('focus', onChanged)
-      bc?.close()
-    }
+    setConnectedSlugs(new Set())
   }, [postTourPhase])
 
   const finishPostTour = useCallback(() => {
@@ -420,36 +387,16 @@ export function OnboardingTour({
   }, [onDone])
 
   const dialogConnect = useCallback(async (slug: string) => {
-    const oauthTab = window.open('about:blank', '_blank')
-    try {
-      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: slug })
-      const data = (await res.json().catch(() => ({}))) as { redirectUrl?: string; connectionId?: string; error?: string }
-      if (!res.ok) {
-        oauthTab?.close()
-        throw new Error(data.error || 'Failed to initiate connection')
-      }
-      if (data.redirectUrl) {
-        if (oauthTab) oauthTab.location.href = data.redirectUrl
-        else window.open(data.redirectUrl, '_blank')
-        notifyIntegrationsChanged()
-      } else if (data.connectionId) {
-        oauthTab?.close()
-        notifyIntegrationsChanged()
-      } else {
-        oauthTab?.close()
-        throw new Error('No OAuth URL returned')
-      }
-    } catch (err) {
-      oauthTab?.close()
-      throw err
-    }
-  }, [])
+    void slug
+    router.push('/app/integrations')
+    finishPostTour()
+  }, [finishPostTour, router])
 
   const dialogDisconnect = useCallback(async (slug: string) => {
-    const res = await overlayAppClient.integrations.disconnectResponse(slug)
-    if (!res.ok) throw new Error('Failed to disconnect')
-    notifyIntegrationsChanged()
-  }, [])
+    void slug
+    router.push('/app/integrations')
+    finishPostTour()
+  }, [finishPostTour, router])
 
   const connectPopularConnector = useCallback(
     async (slug: string) => {
@@ -650,8 +597,8 @@ export function OnboardingTour({
               </button>
             </div>
             <p className="mb-4 text-xs leading-relaxed text-[var(--muted)]">
-              Optional — connect apps you use with Overlay. Use Connect on a card below (same OAuth flow as Extensions), or{' '}
-              <span className="text-[var(--foreground)]">Add</span> to search the full integration catalog.
+              Optional — choose a project before connecting apps. Pick a card below, or{' '}
+              <span className="text-[var(--foreground)]">Add</span> to browse the full integration catalog.
             </p>
 
             <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
@@ -689,7 +636,7 @@ export function OnboardingTour({
                           {busy ? (
                             <Loader2 size={12} className="animate-spin" aria-hidden />
                           ) : null}
-                          Connect
+                          Choose project
                         </>
                       )}
                     </button>
@@ -704,7 +651,7 @@ export function OnboardingTour({
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)]/60 py-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
             >
               <Plus size={16} strokeWidth={2} className="text-[var(--muted)]" aria-hidden />
-              Add integration
+              Browse integrations
             </button>
 
             <div className="mt-6 flex flex-wrap items-center justify-end gap-2">

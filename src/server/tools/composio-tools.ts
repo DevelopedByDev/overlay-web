@@ -4,6 +4,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ToolSet } from 'ai'
 import { getServerProviderKey } from '@/server/ai/provider-keys'
+import { projectComposioEntityId } from '@/server/tools/composio-entity'
 
 type JsonRecord = Record<string, unknown>
 
@@ -131,9 +132,10 @@ async function loadComposioModules(): Promise<{
 }
 
 /**
- * Cache of resolved Composio tool sets, keyed by userId. The first request per user
- * per process pays the ~700–1000ms init cost; subsequent requests inside TTL are
- * basically free. In-flight promises are stored so concurrent requests coalesce.
+ * Cache of resolved Composio tool sets, keyed by project Composio entity. The
+ * first request per project per process pays the ~700–1000ms init cost;
+ * subsequent requests inside TTL are basically free. In-flight promises are
+ * stored so concurrent requests coalesce.
  */
 type ComposioCacheEntry = {
   tools: ToolSet
@@ -145,6 +147,7 @@ const COMPOSIO_CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
 async function buildBrowserUnifiedTools(args: {
   userId: string
+  projectId: string
   accessToken?: string
 }): Promise<ToolSet> {
   const apiKey = await getComposioApiKey(args.accessToken)
@@ -154,7 +157,7 @@ async function buildBrowserUnifiedTools(args: {
 
   const { Composio, VercelProvider } = await loadComposioModules()
   const composio = new Composio({ apiKey, provider: new VercelProvider() })
-  const session = await composio.create(args.userId)
+  const session = await composio.create(projectComposioEntityId(args.userId, args.projectId))
   const rawTools = (await session.tools()) as ToolSet
   const wrappedTools = {} as ToolSet
   const { resolve } = resolveComposioSessionIdFactory()
@@ -191,38 +194,42 @@ async function buildBrowserUnifiedTools(args: {
 
 export async function createBrowserUnifiedTools(args: {
   userId: string
+  projectId: string
   accessToken?: string
 }): Promise<ToolSet> {
   const now = Date.now()
-  const cached = composioCache.get(args.userId)
+  const cacheKey = projectComposioEntityId(args.userId, args.projectId)
+  const cached = composioCache.get(cacheKey)
   if (cached && now - cached.createdAt < COMPOSIO_CACHE_TTL_MS) {
     return cached.tools
   }
 
-  const existing = composioInFlight.get(args.userId)
+  const existing = composioInFlight.get(cacheKey)
   if (existing) return existing
 
   const promise = (async () => {
     try {
       const tools = await buildBrowserUnifiedTools(args)
-      composioCache.set(args.userId, { tools, createdAt: Date.now() })
+      composioCache.set(cacheKey, { tools, createdAt: Date.now() })
       return tools
     } finally {
-      composioInFlight.delete(args.userId)
+      composioInFlight.delete(cacheKey)
     }
   })()
-  composioInFlight.set(args.userId, promise)
+  composioInFlight.set(cacheKey, promise)
   return promise
 }
 
 /** Fire-and-forget pre-warm. Errors are swallowed — the real call will surface them. */
 export function prewarmBrowserUnifiedTools(args: {
   userId: string
+  projectId: string
   accessToken?: string
 }): void {
-  const cached = composioCache.get(args.userId)
+  const cacheKey = projectComposioEntityId(args.userId, args.projectId)
+  const cached = composioCache.get(cacheKey)
   if (cached && Date.now() - cached.createdAt < COMPOSIO_CACHE_TTL_MS) return
-  if (composioInFlight.has(args.userId)) return
+  if (composioInFlight.has(cacheKey)) return
   void createBrowserUnifiedTools(args).catch(() => {
     // swallow — next real call will throw and surface properly
   })

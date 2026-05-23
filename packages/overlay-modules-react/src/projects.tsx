@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ChangeEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
-import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, MessageSquare, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, MessageSquare, Pencil, Plug, Plus, Trash2, Upload } from 'lucide-react'
 import type {
   ConversationSummary,
   KnowledgeFile,
@@ -1022,7 +1022,15 @@ export function ProjectHubActions({
   )
 }
 
+export interface ProjectConnectedIntegration {
+  slug: string
+  name: string
+  description?: string
+  logoUrl?: string | null
+}
+
 export interface ProjectHubTabsProps {
+  projectId: string
   activeTab: ProjectHubTab
   chats: readonly ProjectChatSummary[]
   files: readonly ProjectFileSummary[]
@@ -1031,6 +1039,9 @@ export interface ProjectHubTabsProps {
   instructionsLoaded: boolean
   savingInstructions?: boolean
   instructionsSavedAt?: number | null
+  connectedIntegrations: ReadonlyArray<ProjectConnectedIntegration>
+  integrationsLoading: boolean
+  lastIntegrationsError?: string | null
   onTabChange: (tab: ProjectHubTab) => void
   onOpenChat: (id: string) => void
   onOpenFile: (file: ProjectFileSummary) => void
@@ -1038,6 +1049,7 @@ export interface ProjectHubTabsProps {
 }
 
 export function ProjectHubTabs({
+  projectId,
   activeTab,
   chats,
   files,
@@ -1046,6 +1058,9 @@ export function ProjectHubTabs({
   instructionsLoaded,
   savingInstructions,
   instructionsSavedAt,
+  connectedIntegrations,
+  integrationsLoading,
+  lastIntegrationsError,
   onTabChange,
   onOpenChat,
   onOpenFile,
@@ -1142,9 +1157,81 @@ export function ProjectHubTabs({
           <div className="flex h-4 items-center text-[11px] text-[var(--muted-light)]">
             {savingInstructions ? 'Saving…' : instructionsSavedAt ? 'Saved' : ''}
           </div>
+          <ProjectIntegrationsSection
+            projectId={projectId}
+            connectedIntegrations={connectedIntegrations}
+            integrationsLoading={integrationsLoading}
+            lastIntegrationsError={lastIntegrationsError}
+          />
         </div>
       )}
     </div>
+  )
+}
+
+function ProjectIntegrationsSection({
+  projectId,
+  connectedIntegrations,
+  integrationsLoading,
+  lastIntegrationsError,
+}: {
+  projectId: string
+  connectedIntegrations: ReadonlyArray<ProjectConnectedIntegration>
+  integrationsLoading: boolean
+  lastIntegrationsError?: string | null
+}) {
+  const integrationsHref = `/app/integrations?projectId=${encodeURIComponent(projectId)}`
+
+  return (
+    <section className="mt-4 border-t border-[var(--border)] pt-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Integrations</h3>
+        <a href={integrationsHref} className="text-xs text-[var(--foreground)] underline">
+          {connectedIntegrations.length > 0 ? 'Manage' : 'Connect'}
+        </a>
+      </div>
+      {lastIntegrationsError ? (
+        <p className="text-xs text-red-500">{lastIntegrationsError}</p>
+      ) : integrationsLoading ? (
+        <div className="flex justify-center py-4 text-[var(--muted)]">
+          <Loader2 size={16} className="animate-spin" />
+        </div>
+      ) : connectedIntegrations.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-6 text-center">
+          <Plug size={28} strokeWidth={1} className="text-[var(--muted-light)]" />
+          <p className="mt-2 text-sm text-[var(--muted)]">No integrations connected to this project yet.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col">
+          {connectedIntegrations.map((integration) => (
+            <div key={integration.slug} className="flex items-center gap-3 py-2">
+              {integration.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={integration.logoUrl}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="h-7 w-7 rounded-md border border-[var(--border)] object-contain"
+                />
+              ) : (
+                <div className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-xs font-medium text-[var(--muted)]">
+                  {integration.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm text-[var(--foreground)]">{integration.name}</div>
+                {integration.description ? (
+                  <div className="hidden truncate text-xs text-[var(--muted-light)] sm:block">
+                    {integration.description}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 

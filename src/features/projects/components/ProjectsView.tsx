@@ -169,6 +169,11 @@ function ProjectHubBody({
   const [savingInstructions, setSavingInstructions] = useState(false)
   const [instructionsSavedAt, setInstructionsSavedAt] = useState<number | null>(null)
   const instructionsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [connectedIntegrations, setConnectedIntegrations] = useState<
+    Array<{ slug: string; name: string; description?: string; logoUrl?: string | null }>
+  >([])
+  const [integrationsLoading, setIntegrationsLoading] = useState(true)
+  const [lastIntegrationsError, setLastIntegrationsError] = useState<string | null>(null)
 
   // Load project instructions
   useEffect(() => {
@@ -182,6 +187,45 @@ function ProjectHubBody({
       })
       .catch(() => {
         if (!cancelled) setInstructionsLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    let cancelled = false
+    setIntegrationsLoading(true)
+    setLastIntegrationsError(null)
+    overlayAppClient.integrations.getResponse({ projectId })
+      .then(async (res) => {
+        if (!res.ok) {
+          if (!cancelled) setLastIntegrationsError('Could not load project integrations.')
+          return
+        }
+        const data = (await res.json().catch(() => ({}))) as {
+          connected?: string[]
+          items?: Array<{ slug: string; name: string; description?: string; logoUrl?: string | null }>
+        }
+        if (cancelled) return
+        const items = Array.isArray(data.items) ? data.items : []
+        const connectedSlugs = new Set(Array.isArray(data.connected) ? data.connected : [])
+        setConnectedIntegrations(
+          items
+            .filter((item) => item.slug && connectedSlugs.has(item.slug))
+            .map((item) => ({
+              slug: item.slug,
+              name: item.name || item.slug,
+              description: item.description,
+              logoUrl: item.logoUrl ?? null,
+            })),
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setLastIntegrationsError('Could not load project integrations.')
+      })
+      .finally(() => {
+        if (!cancelled) setIntegrationsLoading(false)
       })
     return () => {
       cancelled = true
@@ -395,6 +439,7 @@ function ProjectHubBody({
 
   const tabs = (
     <ProjectHubTabs
+      projectId={projectId}
       activeTab={activeTab}
       chats={sortedChats}
       files={sortedFiles}
@@ -403,6 +448,9 @@ function ProjectHubBody({
       instructionsLoaded={instructionsLoaded}
       savingInstructions={savingInstructions}
       instructionsSavedAt={instructionsSavedAt}
+      connectedIntegrations={connectedIntegrations}
+      integrationsLoading={integrationsLoading}
+      lastIntegrationsError={lastIntegrationsError}
       onTabChange={setActiveTab}
       onOpenChat={openChat}
       onOpenFile={openFile}

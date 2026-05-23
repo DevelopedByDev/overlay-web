@@ -1,9 +1,13 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NextRequest, NextResponse } from 'next/server'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { convex } from '@/server/database/convex'
 import { getServerProviderKey } from '@/server/ai/provider-keys'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { projectComposioEntityId } from '@/server/tools/composio-entity'
 import { getBaseUrl } from '@/server/web/app-url'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type ComposioAppRecord = {
   key?: string
@@ -17,6 +21,15 @@ type ComposioAppRecord = {
   logo?: string
   logoUrl?: string
 }
+
+type ConnectedAccountRecord = {
+  id?: string
+  appName?: string
+}
+
+type ProjectAccessResult =
+  | { ok: true; entityId: string }
+  | { ok: false; response: NextResponse }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadComposioSDK(apiKey: string): Promise<any> {
@@ -53,6 +66,43 @@ function normalizeSlug(value: string): string {
   return value.trim().toLowerCase()
 }
 
+async function requireProjectComposioEntity(
+  projectId: string | null | undefined,
+  userId: string,
+): Promise<ProjectAccessResult> {
+  const trimmedProjectId = projectId?.trim()
+  if (!trimmedProjectId) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'projectId required' }, { status: 400 }),
+    }
+  }
+
+  try {
+    const project = await convex.query<{ _id: string } | null>('projects/projects:get', {
+      projectId: trimmedProjectId as Id<'projects'>,
+      userId,
+      serverSecret: getInternalApiSecret(),
+    })
+    if (!project) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: 'Project not found' }, { status: 404 }),
+      }
+    }
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Project not found' }, { status: 404 }),
+    }
+  }
+
+  return {
+    ok: true,
+    entityId: projectComposioEntityId(userId, trimmedProjectId),
+  }
+}
+
 function fallbackDisplayName(slug: string): string {
   return slug
     .split(/[_-]+/)
@@ -80,6 +130,16 @@ async function fetchAppRecord(apiKey: string, slug: string) {
   const data = await res.json() as ComposioAppRecord
   const item = mapAppRecord(data)
   return item.slug ? item : null
+}
+
+async function listConnectedAccounts(apiKey: string, entityId: string): Promise<ConnectedAccountRecord[]> {
+  const res = await fetch(
+    `https://backend.composio.dev/api/v1/connectedAccounts?entityId=${encodeURIComponent(entityId)}&page=1&pageSize=100`,
+    { headers: { 'x-api-key': apiKey } },
+  )
+  if (!res.ok) return []
+  const data = await res.json() as { items?: ConnectedAccountRecord[] }
+  return data.items ?? []
 }
 
 function getAllowedAppOrigins(): string[] {
@@ -134,6 +194,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const action = searchParams.get('action')
+    const projectId = searchParams.get('projectId')
 
     // Search toolkits for the discovery dialog
     if (action === 'search') {
@@ -141,17 +202,13 @@ export async function GET(request: NextRequest) {
       const cursor = searchParams.get('cursor') || ''
       const limit = Math.min(parseInt(searchParams.get('limit') || '12'), 50)
 
-      const userId = auth.userId
-
-    // Fetch connected accounts to annotate results
-      const connectedRes = await fetch(
-        `https://backend.composio.dev/api/v1/connectedAccounts?entityId=${encodeURIComponent(userId)}&page=1&pageSize=100`,
-        { headers: { 'x-api-key': apiKey } }
-      )
-      const connectedData = connectedRes.ok ? await connectedRes.json() : { items: [] }
       const connectedMap = new Map<string, string>()
-      for (const acc of connectedData.items || []) {
-        if (acc.appName) connectedMap.set(acc.appName.toLowerCase(), acc.id)
+      if (projectId) {
+        const projectAccess = await requireProjectComposioEntity(projectId, auth.userId)
+        if (!projectAccess.ok) return projectAccess.response
+        for (const acc of await listConnectedAccounts(apiKey, projectAccess.entityId)) {
+          if (acc.appName && acc.id) connectedMap.set(normalizeSlug(acc.appName), acc.id)
+        }
       }
 
       const url = new URL('https://backend.composio.dev/api/v1/apps')
@@ -196,17 +253,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ items, nextCursor: data.nextCursor ?? null })
     }
 
-    // Default: return connected integration slugs (scoped to this user's entity)
-    const userId = auth.userId
-    const res = await fetch(
-      `https://backend.composio.dev/api/v1/connectedAccounts?entityId=${encodeURIComponent(userId)}&page=1&pageSize=100`,
-      { headers: { 'x-api-key': apiKey } }
-    )
+    // Default: return connected integration slugs scoped to this project entity.
+    const projectAccess = await requireProjectComposioEntity(projectId, auth.userId)
+    if (!projectAccess.ok) return projectAccess.response
 
-    if (!res.ok) return NextResponse.json({ connected: [] })
-    const data = await res.json() as { items?: Array<{ appName?: string }> }
+    const accounts = await listConnectedAccounts(apiKey, projectAccess.entityId)
     const connected: string[] = [
-      ...new Set(((data.items ?? []) as Array<{ appName?: string }>)
+      ...new Set(accounts
         .map((item) => normalizeSlug(item.appName || ''))
         .filter(Boolean)),
     ]
@@ -232,21 +285,23 @@ export async function POST(request: NextRequest) {
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { action, toolkit } = body as { action?: string; toolkit?: string }
-    if (!toolkit) return NextResponse.json({ error: 'toolkit required' }, { status: 400 })
+    const { action, toolkit, projectId } = body as { action?: string; toolkit?: string; projectId?: string }
+    const toolkitSlug = normalizeSlug(toolkit ?? '')
+    if (!toolkitSlug) return NextResponse.json({ error: 'toolkit required' }, { status: 400 })
+
+    const projectAccess = await requireProjectComposioEntity(projectId, auth.userId)
+    if (!projectAccess.ok) return projectAccess.response
 
     const apiKey = await getComposioApiKey(auth.accessToken)
     if (!apiKey) return NextResponse.json({ error: 'Composio not configured' }, { status: 503 })
 
-    const userId = auth.userId
-
     const composio = await loadComposioSDK(apiKey)
 
     if (action === 'disconnect') {
-      // Find all connected accounts for this user+toolkit and delete them all
+      // Find all connected accounts for this project entity + toolkit and delete them all.
       const accounts = await composio.connectedAccounts.list({
-        userIds: [userId],
-        toolkitSlugs: [toolkit],
+        userIds: [projectAccess.entityId],
+        toolkitSlugs: [toolkitSlug],
       })
       const deleteRequests: Array<Promise<unknown>> = []
       for (const acc of accounts.items ?? []) {
@@ -266,24 +321,24 @@ export async function POST(request: NextRequest) {
     // Get an auth config for this toolkit; create a Composio-managed one if none exists
     let authConfigId: string
     try {
-      const authConfigs = await composio.authConfigs.list({ toolkit })
+      const authConfigs = await composio.authConfigs.list({ toolkit: toolkitSlug })
       const firstConfig = (authConfigs.items ?? authConfigs)?.[0]
       if (firstConfig?.id) {
         authConfigId = firstConfig.id
       } else {
         // Auto-create a Composio-managed auth config for this toolkit
-        const created = await composio.authConfigs.create(toolkit, {
+        const created = await composio.authConfigs.create(toolkitSlug, {
           type: 'use_composio_managed_auth',
         })
         authConfigId = created.id
       }
     } catch (err) {
       console.error('[Integrations] Failed to get/create auth config:', err)
-      return NextResponse.json({ error: `Could not find auth config for ${toolkit}` }, { status: 500 })
+      return NextResponse.json({ error: `Could not find auth config for ${toolkitSlug}` }, { status: 500 })
     }
 
     const connectionRequest = await composio.connectedAccounts.link(
-      userId,
+      projectAccess.entityId,
       authConfigId,
       { callbackUrl }
     )

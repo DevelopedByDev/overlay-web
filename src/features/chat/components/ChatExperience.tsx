@@ -4076,6 +4076,7 @@ export default function ChatInterface({
         {showAutomationChatTab && (
           <ChatComposer
             mode={mode}
+            projectId={embedProjectId}
             showCenteredEmptyChat={showCenteredEmptyChat}
             greetingLine={greetingLine}
             emptyChatStarters={emptyChatStarters}

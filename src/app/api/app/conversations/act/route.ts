@@ -707,13 +707,6 @@ export async function POST(request: NextRequest) {
     /** User message is persisted once (slot 0). Third-party (Composio) actions only on primary slot. */
     const isMultiModelFollowUpSlot = multiModelTotal > 1 && multiModelSlotIndex > 0
 
-    // P3.3: hoist Composio to Wave 1 — start before any await so it overlaps all prep work.
-    // Cache in composio-tools.ts makes this ~0ms on repeat requests within 10 minutes.
-    const composioToolsTask: Promise<ToolSet> = createBrowserUnifiedTools({
-      userId,
-      accessToken: auth.accessToken || undefined,
-    })
-
     // MCP servers are discovered at request time; 60s cache per user.
     const mcpToolsTask: Promise<ToolSet> = createMcpToolSet({
       userId,
@@ -840,6 +833,16 @@ export async function POST(request: NextRequest) {
 
     // Wave 2: project fetch + auto-retrieval. Both depend on the projectId resolved above.
     const conversationProjectId: string | undefined = conv?.projectId
+    // Composio integrations are project-owned. Chats outside a project receive
+    // no third-party account tools; project chats use the project's Composio entity.
+    const composioToolsTask: Promise<ToolSet> =
+      conversationProjectId && !isMultiModelFollowUpSlot
+        ? createBrowserUnifiedTools({
+            userId,
+            projectId: conversationProjectId,
+            accessToken: auth.accessToken || undefined,
+          })
+        : Promise.resolve({})
     const projectTask: Promise<string> = (async () => {
       if (!conversationProjectId) return ''
       try {

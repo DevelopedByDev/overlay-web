@@ -1005,6 +1005,7 @@ export interface ConnectedIntegrationsResponse {
 export interface IntegrationConnectionRequest {
   action?: 'connect' | 'disconnect'
   toolkit: string
+  projectId?: string
   accessToken?: string
   userId?: string
 }

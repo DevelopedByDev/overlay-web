@@ -4,6 +4,7 @@
 // @overlay/app-core, typed transport in @overlay/api-client, and reusable
 // presentation in @overlay/modules-react.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import posthog from 'posthog-js'
 import {
   DEFAULT_CONNECTOR_CATALOG,
@@ -32,6 +33,7 @@ type IntegrationsInitialData = {
   connected?: ConnectedIntegrationsResponse | null
   catalog?: IntegrationSearchResponse | null
 }
+type ProjectOption = { _id: string; name: string; updatedAt?: number; deletedAt?: number }
 
 function buildInitialIntegrationState(initialData?: IntegrationsInitialData) {
   const connected = new Set(initialData?.connected?.connected || [])
@@ -71,11 +73,15 @@ export default function IntegrationsView({
   initialData?: IntegrationsInitialData
 }) {
   void _userId
-  const hasInitialData = Boolean(initialData?.bootstrap || initialData?.connected || initialData?.catalog)
+  const searchParams = useSearchParams()
+  const projectId = searchParams?.get('projectId')?.trim() || ''
+  const hasInitialData = Boolean(projectId && (initialData?.bootstrap || initialData?.connected || initialData?.catalog))
   const initialState = useMemo(() => buildInitialIntegrationState(initialData), [initialData])
   const [connected, setConnected] = useState<Set<string>>(() => initialState.connected)
   const [catalogItems, setCatalogItems] = useState<ConnectorCatalogItem[]>(() => initialState.catalogItems)
   const [logos, setLogos] = useState<Record<string, string | null>>(() => initialState.logos)
+  const [projects, setProjects] = useState<ProjectOption[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
   const [isLoading, setIsLoading] = useState(!hasInitialData)
   const [connecting, setConnecting] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
@@ -119,8 +125,13 @@ export default function IntegrationsView({
   }, [rememberLogos])
 
   const loadConnected = useCallback(async () => {
+    if (!projectId) {
+      setConnected(new Set())
+      setIsLoading(false)
+      return
+    }
     try {
-      const data = await overlayAppClient.integrations.get<ConnectedIntegrationsResponse>()
+      const data = await overlayAppClient.integrations.get<ConnectedIntegrationsResponse>({ projectId })
       setConnected(new Set(data.connected || []))
       const items = (Array.isArray(data.items) ? data.items : []).map((item) =>
         connectorFromIntegrationSummary({ ...item, isConnected: true }),
@@ -134,18 +145,42 @@ export default function IntegrationsView({
     } finally {
       setIsLoading(false)
     }
-  }, [rememberLogos])
+  }, [projectId, rememberLogos])
 
   const loadCatalog = useCallback(async () => {
     try {
-      const data = await overlayAppClient.integrations.get<IntegrationSearchResponse>({ action: 'search', limit: 100 })
+      const data = await overlayAppClient.integrations.get<IntegrationSearchResponse>({
+        action: 'search',
+        limit: 100,
+        projectId: projectId || undefined,
+      })
       const items = (Array.isArray(data.items) ? data.items : []).map((item) => connectorFromIntegrationSummary(item))
       setCatalogItems((prev) => mergeConnectorCatalogEntries(prev, items))
       rememberLogos(items)
     } catch {
       // optional
     }
-  }, [rememberLogos])
+  }, [projectId, rememberLogos])
+
+  useEffect(() => {
+    if (projectId) return
+    let cancelled = false
+    setProjectsLoading(true)
+    overlayAppClient.projects.get<ProjectOption[]>()
+      .then((items) => {
+        if (cancelled) return
+        setProjects((items ?? []).filter((project) => !project.deletedAt))
+      })
+      .catch(() => {
+        if (!cancelled) setProjects([])
+      })
+      .finally(() => {
+        if (!cancelled) setProjectsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
 
   useEffect(() => {
     void loadRegistry()
@@ -182,6 +217,7 @@ export default function IntegrationsView({
   }, [loadConnected, loadCatalog])
 
   async function handleConnect(integration: ConnectorCatalogItem) {
+    if (!projectId) return
     if (connecting) return
     setConnectError(null)
     setConnecting(integration.composioId)
@@ -193,7 +229,10 @@ export default function IntegrationsView({
 
     try {
       if (connected.has(integration.composioId)) {
-        const res = await overlayAppClient.integrations.disconnectResponse(integration.composioId)
+        const res = await overlayAppClient.integrations.disconnectResponse({
+          toolkit: integration.composioId,
+          projectId,
+        })
         if (res.ok) {
           setConnected((prev) => {
             const next = new Set(prev)
@@ -207,7 +246,11 @@ export default function IntegrationsView({
           setConnectError(data.error || 'Failed to disconnect')
         }
       } else {
-        const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: integration.composioId })
+        const res = await overlayAppClient.integrations.connectResponse({
+          action: 'connect',
+          toolkit: integration.composioId,
+          projectId,
+        })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
           oauthTab?.close()
@@ -230,9 +273,10 @@ export default function IntegrationsView({
   }
 
   const dialogConnect = useCallback(async (slug: string) => {
+    if (!projectId) throw new Error('Choose a project before connecting integrations')
     const oauthTab = window.open('about:blank', '_blank')
     try {
-      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: slug })
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: slug, projectId })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         oauthTab?.close()
@@ -257,10 +301,11 @@ export default function IntegrationsView({
       oauthTab?.close()
       throw err
     }
-  }, [])
+  }, [projectId])
 
   const dialogDisconnect = useCallback(async (slug: string) => {
-    const res = await overlayAppClient.integrations.disconnectResponse(slug)
+    if (!projectId) throw new Error('Choose a project before disconnecting integrations')
+    const res = await overlayAppClient.integrations.disconnectResponse({ toolkit: slug, projectId })
     if (!res.ok) throw new Error('Failed to disconnect')
     setConnected((prev) => {
       const next = new Set(prev)
@@ -269,7 +314,7 @@ export default function IntegrationsView({
     })
     notifyIntegrationsChanged()
     posthog.capture('integration_disconnected', { integration: slug })
-  }, [])
+  }, [projectId])
 
   const connectedRows = useMemo(() => getConnectedConnectorRows(connected, catalogItems), [connected, catalogItems])
   const availableList = useMemo(() => getAvailableConnectorRows(connected, catalogItems, DEFAULT_CONNECTOR_CATALOG), [connected, catalogItems])
@@ -290,6 +335,53 @@ export default function IntegrationsView({
     () => filterConnectorCatalog(availableList, searchQuery),
     [availableList, searchQuery],
   )
+
+  if (!projectId) {
+    return (
+      <div className="flex h-full flex-col">
+        <ExtensionPageHeader
+          title="Integrations"
+          searchOpen={false}
+          searchQuery=""
+          searchPlaceholder="Search integrations…"
+          searchTitle="Search integrations"
+          onSearchOpenChange={() => {}}
+          onSearchQueryChange={() => {}}
+        />
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-2xl px-6 py-8">
+            <div className="mb-5">
+              <h3 className="text-sm font-medium text-[var(--foreground)]">Choose a project</h3>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                Integrations are connected separately for each project.
+              </p>
+            </div>
+
+            {projectsLoading ? (
+              <IntegrationListSkeleton rows={4} />
+            ) : projects.length > 0 ? (
+              <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
+                {projects.map((project) => (
+                  <a
+                    key={project._id}
+                    href={`/app/integrations?projectId=${encodeURIComponent(project._id)}`}
+                    className="flex items-center justify-between gap-4 py-3 text-sm transition-colors hover:bg-[var(--surface-subtle)]"
+                  >
+                    <span className="truncate text-[var(--foreground)]">{project.name}</span>
+                    <span className="shrink-0 text-xs text-[var(--muted)]">Open</span>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-sm text-[var(--muted)]">
+                No projects yet. <a href="/app/projects" className="text-[var(--foreground)] underline">Create a project</a> to connect integrations.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -325,6 +417,7 @@ export default function IntegrationsView({
         onClose={() => setIsDialogOpen(false)}
         onConnect={dialogConnect}
         onDisconnect={dialogDisconnect}
+        projectId={projectId}
       />
     </div>
   )

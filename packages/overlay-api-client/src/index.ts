@@ -179,6 +179,7 @@ export interface IntegrationQuery {
   slug?: string
   q?: string
   cursor?: string
+  projectId?: string
 }
 
 export interface SkillQuery {
@@ -188,11 +189,13 @@ export interface SkillQuery {
 
 export interface McpServerQuery {
   mcpServerId?: string
+  projectId?: string
 }
 
 export interface AutomationQuery {
   automationId?: string
   includeRuns?: boolean
+  projectId?: string
 }
 
 export interface MemoryQuery extends MemoryQueryContract {}
@@ -468,10 +471,15 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
           '/api/app/integrations',
           jsonRequest({ ...body, action: body.action ?? 'connect' }, { ...init, method: 'POST' }),
         ),
-      disconnectResponse: (toolkit: string, init?: RequestInit) =>
+      disconnectResponse: (toolkit: string | { toolkit: string; projectId?: string }, init?: RequestInit) =>
         request(
           '/api/app/integrations',
-          jsonRequest({ action: 'disconnect', toolkit }, { ...init, method: 'POST' }),
+          jsonRequest(
+            typeof toolkit === 'string'
+              ? { action: 'disconnect', toolkit }
+              : { action: 'disconnect', ...toolkit },
+            { ...init, method: 'POST' },
+          ),
         ),
       createResponse: (body: IntegrationConnectionRequest, init?: RequestInit) =>
         request('/api/app/integrations', jsonRequest(body, { ...init, method: 'POST' })),

@@ -25,12 +25,14 @@ export function IntegrationsDialog({
   onClose,
   onConnect,
   onDisconnect,
+  projectId,
   overlayClassName = DEFAULT_OVERLAY_CLASS,
 }: {
   isOpen: boolean
   onClose: () => void
   onConnect: (slug: string) => Promise<void>
   onDisconnect: (slug: string) => Promise<void>
+  projectId?: string
   /** Root overlay (e.g. higher z-index when opened from another modal). */
   overlayClassName?: string
 }) {
@@ -69,6 +71,7 @@ export function IntegrationsDialog({
         limit: 12,
         q: fetchQuery || undefined,
         cursor: cursor || undefined,
+        projectId,
       })
       if (reqId !== requestSeqRef.current) return
       if (!res.ok) throw new Error('Failed to load integrations')
@@ -100,7 +103,7 @@ export function IntegrationsDialog({
       if (append) { fetchingMoreRef.current = false; setLoadingMore(false) }
       else setLoadingInitial(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     if (!isOpen) return
