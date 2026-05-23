@@ -6,3 +6,8 @@ export interface IntegrationQuery {
   cursor?: string
   projectId?: string
 }
+
+export interface GithubRepositoryListQuery {
+  cursor?: string
+  limit?: number
+}

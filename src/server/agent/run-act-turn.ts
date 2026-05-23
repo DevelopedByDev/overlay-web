@@ -90,6 +90,13 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
 }> {
   const serverSecret = getInternalApiSecret()
   const title = `Automation: ${input.name}`
+  // projectId here is load-bearing for the GitHub repo allowlist enforcement:
+  // the act route reads conv.projectId from the conversation (not from the POST
+  // body) when building the per-turn allowlist policy. By passing input.projectId
+  // here, automation runs inherit the project's allowlist on the very next turn.
+  // If conversationId is supplied instead, the existing conversation's projectId
+  // is the source of truth — which is the intended behavior (conversations are
+  // permanently scoped to their project, including for automation re-runs).
   const conversationId = input.conversationId ?? await convex.mutation<Id<'conversations'>>(
     'chat/conversations:create',
     {

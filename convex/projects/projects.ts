@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { normalizeGithubRepoAllowlist } from '../lib/github_repo_allowlist_normalize'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -133,6 +134,34 @@ export const update = mutation({
     if (instructions !== undefined) patch.instructions = instructions.trim() || undefined
     if (parentId !== undefined) patch.parentId = parentId || undefined
     await ctx.db.patch(projectId, patch)
+  },
+})
+
+/**
+ * Sets the GitHub repository allowlist for a project.
+ * Normalizes and validates the repository list using the shared normalizer.
+ * Returns the normalized list for immediate client sync.
+ */
+export const setGithubRepoAllowlist = mutation({
+  args: {
+    projectId: v.id('projects'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    repos: v.array(v.string()),
+  },
+  handler: async (ctx, { projectId, userId, accessToken, serverSecret, repos }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    const project = await ctx.db.get(projectId)
+    if (!project || project.userId !== userId) {
+      throw new Error('Unauthorized')
+    }
+    const normalized = normalizeGithubRepoAllowlist(repos)
+    await ctx.db.patch(projectId, {
+      githubRepoAllowlist: normalized.length > 0 ? normalized : undefined,
+      updatedAt: Date.now(),
+    })
+    return normalized
   },
 })
 

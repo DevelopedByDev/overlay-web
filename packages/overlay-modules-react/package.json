@@ -13,7 +13,10 @@
     "./project-avatar": "./src/project-avatar.tsx",
     "./extensions": "./src/extensions.tsx",
     "./settings": "./src/settings.tsx",
-    "./automations": "./src/automations.tsx"
+    "./automations": "./src/automations.tsx",
+    "./project-settings-drawer": "./src/project-settings-drawer.tsx",
+    "./project-settings-sections": "./src/project-settings-sections.tsx",
+    "./github-repo-picker": "./src/github-repo-picker.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

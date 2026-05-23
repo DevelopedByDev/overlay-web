@@ -25,10 +25,13 @@ import {
   rootProjects as getRootProjects,
   sortProjectChats,
   sortProjectFilesByUpdated,
+  type ConnectedIntegrationsResponse,
+  type GithubRepositoryOption,
   type ProjectChatSummary,
   type ProjectFileSummary,
   type ProjectHubTab,
   type ProjectMetaUpdatedDetail,
+  type ProjectSettingsSectionId,
   type ProjectSummary,
 } from '@overlay/app-core'
 import {
@@ -36,6 +39,8 @@ import {
   ProjectHubHeader,
   ProjectHubTabs,
 } from '@overlay/modules-react/projects'
+import { ProjectSettingsDrawer } from '@overlay/modules-react/project-settings-drawer'
+import { createProjectSettingsSections } from '@overlay/modules-react/project-settings-sections'
 import { FileViewerSkeleton } from '@overlay/ui/feedback'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@/features/files/components/FileViewer'
@@ -48,6 +53,24 @@ type ProjectFileRecord = ProjectFileSummary
 
 const ChatInterface = dynamic(() => import('@/features/chat/components/ChatInterface'))
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'))
+
+function localStorageGet(key: string): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function localStorageSet(key: string, value: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Private browsing or quota errors should not break the project view.
+  }
+}
 
 // ─── File viewer fetched by ID ────────────────────────────────────────────────
 
@@ -175,14 +198,68 @@ function ProjectHubBody({
   const [integrationsLoading, setIntegrationsLoading] = useState(true)
   const [lastIntegrationsError, setLastIntegrationsError] = useState<string | null>(null)
 
-  // Load project instructions
+  const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false)
+  const [activeSettingsSectionId, setActiveSettingsSectionId] =
+    useState<ProjectSettingsSectionId>('github-repositories')
+  const [layoutMode, setLayoutMode] = useState<'push' | 'overlay'>('push')
+  const [githubConnected, setGithubConnected] = useState(false)
+  const [draftAllowlist, setDraftAllowlist] = useState<readonly string[]>([])
+  const [saveAllowlistError, setSaveAllowlistError] = useState(false)
+  const [repoOptions, setRepoOptions] = useState<readonly GithubRepositoryOption[]>([])
+  const [repoLoading, setRepoLoading] = useState(false)
+  const [repoError, setRepoError] =
+    useState<'github_not_connected' | 'fetch_failed' | 'rate_limited' | null>(null)
+  const [manualEntry, setManualEntry] = useState('')
+
+  useEffect(() => {
+    const storedOpen = localStorageGet('overlay.project-settings-drawer.open')
+    if (storedOpen === 'true') setSettingsDrawerOpen(true)
+    const storedSection = localStorageGet('overlay.project-settings-drawer.active-section')
+    if (storedSection === 'github-repositories') {
+      setActiveSettingsSectionId('github-repositories')
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorageSet('overlay.project-settings-drawer.open', String(settingsDrawerOpen))
+  }, [settingsDrawerOpen])
+
+  useEffect(() => {
+    localStorageSet('overlay.project-settings-drawer.active-section', activeSettingsSectionId)
+  }, [activeSettingsSectionId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mq = window.matchMedia('(max-width: 768px)')
+    setLayoutMode(mq.matches ? 'overlay' : 'push')
+    function handleChange(event: MediaQueryListEvent) {
+      setLayoutMode(event.matches ? 'overlay' : 'push')
+    }
+    mq.addEventListener('change', handleChange)
+    return () => mq.removeEventListener('change', handleChange)
+  }, [])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await overlayAppClient.integrations.get<ConnectedIntegrationsResponse>()
+        const connected = Array.isArray(response?.connected) ? response.connected : []
+        setGithubConnected(connected.includes('github'))
+      } catch {
+        setGithubConnected(false)
+      }
+    })()
+  }, [])
+
+  // Load project instructions and repository allowlist together.
   useEffect(() => {
     let cancelled = false
     setInstructionsLoaded(false)
-    overlayAppClient.projects.get<{ instructions?: string } | null>({ projectId })
-      .then((data: { instructions?: string } | null) => {
+    overlayAppClient.projects.get<{ instructions?: string; githubRepoAllowlist?: string[] } | null>({ projectId })
+      .then((data) => {
         if (cancelled) return
         setInstructions((data?.instructions ?? '') as string)
+        setDraftAllowlist(data?.githubRepoAllowlist ?? [])
         setInstructionsLoaded(true)
       })
       .catch(() => {
@@ -192,6 +269,71 @@ function ProjectHubBody({
       cancelled = true
     }
   }, [projectId])
+
+  const saveAllowlist = useCallback(async (next: readonly string[]) => {
+    try {
+      const response = await overlayAppClient.projects.update({
+        projectId,
+        githubRepoAllowlist: [...next],
+      })
+      if (response?.project) {
+        setDraftAllowlist(response.project.githubRepoAllowlist ?? [])
+      }
+      setSaveAllowlistError(false)
+    } catch {
+      setSaveAllowlistError(true)
+    }
+  }, [projectId])
+
+  const dismissSaveAllowlistError = useCallback(() => {
+    setSaveAllowlistError(false)
+  }, [])
+
+  const fetchRepoList = useCallback(async () => {
+    if (!githubConnected) {
+      setRepoError('github_not_connected')
+      return
+    }
+    setRepoLoading(true)
+    setRepoError(null)
+    try {
+      const response = await overlayAppClient.integrations.github.listRepositories()
+      if (response.error) {
+        setRepoError(response.error)
+      } else {
+        setRepoOptions(
+          response.items.map((item) => ({
+            fullName: item.fullName,
+            private: item.private,
+            archived: item.archived,
+          })),
+        )
+      }
+    } catch {
+      setRepoError('fetch_failed')
+    } finally {
+      setRepoLoading(false)
+    }
+  }, [githubConnected])
+
+  useEffect(() => {
+    if (!settingsDrawerOpen || activeSettingsSectionId !== 'github-repositories') return
+    if (!githubConnected) {
+      setRepoError('github_not_connected')
+      return
+    }
+    if (repoOptions.length === 0 && !repoLoading && repoError === null) {
+      void fetchRepoList()
+    }
+  }, [
+    settingsDrawerOpen,
+    activeSettingsSectionId,
+    githubConnected,
+    repoOptions.length,
+    repoLoading,
+    repoError,
+    fetchRepoList,
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -421,6 +563,10 @@ function ProjectHubBody({
       draftName={draftName}
       savingName={savingName}
       actions={headerActions}
+      settingsToggle={{
+        open: settingsDrawerOpen,
+        onToggle: () => setSettingsDrawerOpen((open) => !open),
+      }}
       onStartRename={() => { setDraftName(projectName); setEditingName(true) }}
       onDraftNameChange={setDraftName}
       onCommitRename={() => void commitProjectRename()}
@@ -458,17 +604,67 @@ function ProjectHubBody({
     />
   )
 
+  const settingsSections = useMemo(
+    () =>
+      createProjectSettingsSections({
+        githubRepoPickerProps: {
+          value: draftAllowlist,
+          options: repoOptions,
+          loading: repoLoading,
+          error: repoError,
+          saveError: saveAllowlistError,
+          manualEntry,
+          onChange: (next) => {
+            setDraftAllowlist(next)
+            void saveAllowlist(next)
+          },
+          onAddManual: (entry) => {
+            if (draftAllowlist.includes(entry)) return
+            const next = [...draftAllowlist, entry]
+            setDraftAllowlist(next)
+            setManualEntry('')
+            void saveAllowlist(next)
+          },
+          onManualEntryChange: setManualEntry,
+          onRetryLoad: () => void fetchRepoList(),
+          onDismissSaveError: dismissSaveAllowlistError,
+        },
+      }),
+    [
+      dismissSaveAllowlistError,
+      draftAllowlist,
+      fetchRepoList,
+      manualEntry,
+      repoError,
+      repoLoading,
+      repoOptions,
+      saveAllowlist,
+      saveAllowlistError,
+    ],
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {projectHeaderTitle}
-      <div className="min-h-0 flex-1">
-        <ChatInterface
-          userId={userId}
-          firstName={firstName}
-          hideSidebar
-          hideHeader
+      <div className="relative flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <ChatInterface
+            userId={userId}
+            firstName={firstName}
+            hideSidebar
+            hideHeader
+            projectName={projectName}
+            belowEmptyComposer={tabs}
+          />
+        </div>
+        <ProjectSettingsDrawer
+          open={settingsDrawerOpen}
+          onOpenChange={setSettingsDrawerOpen}
           projectName={projectName}
-          belowEmptyComposer={tabs}
+          sections={settingsSections}
+          activeSectionId={activeSettingsSectionId}
+          onActiveSectionChange={setActiveSettingsSectionId}
+          layoutMode={layoutMode}
         />
       </div>
     </div>

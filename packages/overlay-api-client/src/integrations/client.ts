@@ -1,5 +1,6 @@
 import type {
   ConnectedIntegrationsResponse,
+  GithubRepositoryListResponse,
   IntegrationConnectionRequest,
   IntegrationConnectionResponse,
   IntegrationSearchResponse,
@@ -7,13 +8,27 @@ import type {
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
 import type { QueryParams } from '../shared/types'
-import type { IntegrationQuery } from './types'
+import type { GithubRepositoryListQuery, IntegrationQuery } from './types'
 
 export class IntegrationsClient {
   constructor(private readonly http: HttpContext) {}
 
   private path(query?: IntegrationQuery): string {
     return this.http.appendQuery('/api/app/integrations', query as QueryParams | undefined)
+  }
+
+  private githubRepositoriesPath(query?: GithubRepositoryListQuery): string {
+    return this.http.appendQuery(
+      '/api/app/integrations/github/repositories',
+      query as QueryParams | undefined,
+    )
+  }
+
+  readonly github = {
+    listRepositories: (query?: GithubRepositoryListQuery, init?: RequestInit) =>
+      this.http.json<GithubRepositoryListResponse>(this.githubRepositoriesPath(query), init),
+    listRepositoriesResponse: (query?: GithubRepositoryListQuery, init?: RequestInit) =>
+      this.http.request(this.githubRepositoriesPath(query), init),
   }
 
   get<T = ConnectedIntegrationsResponse | IntegrationSearchResponse | IntegrationSummary[]>(

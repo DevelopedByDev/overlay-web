@@ -8,6 +8,14 @@ export const PROJECTS_CHANGED_EVENT = 'overlay:projects-changed'
 export type ProjectRouteView = 'chat' | 'note' | 'file'
 export type ProjectHubTab = 'chats' | 'files' | 'instructions'
 
+export type ProjectSettingsSectionId = 'github-repositories'
+
+export interface GithubRepositoryOption {
+  fullName: string
+  private?: boolean
+  archived?: boolean
+}
+
 export interface ProjectMetaUpdatedDetail {
   projectId?: string
   name?: string
@@ -292,4 +300,37 @@ export function conversationsToProjectChats(conversations: readonly Conversation
     updatedAt: conversation.updatedAt,
     lastModified: conversation.lastModified,
   }))
+}
+
+/**
+ * Client-side mirror of `GITHUB_REPO_ALLOWLIST_REGEX` from
+ * `convex/lib/github_repo_allowlist_normalize.ts`.
+ *
+ * **DUPLICATED INTENTIONALLY** because the `app-core` package is framework-
+ * agnostic and its tsconfig include glob does not extend into `convex/lib/`.
+ * Both definitions MUST stay in sync; the consistency invariant is asserted
+ * by a test in `src/server/tools/github-repo-allowlist-normalize.test.ts`.
+ */
+const GITHUB_REPO_ALLOWLIST_REGEX_DISPLAY = /^[a-z0-9][a-z0-9-]*\/[a-z0-9._-]+$/
+
+export function isValidGithubRepoFullName(candidate: string): boolean {
+  return GITHUB_REPO_ALLOWLIST_REGEX_DISPLAY.test(candidate.trim().toLowerCase())
+}
+
+export function sortGithubRepoOptionsSelectedFirst<T extends GithubRepositoryOption>(
+  options: readonly T[],
+  selected: readonly string[],
+  query: string,
+): T[] {
+  const selectedSet = new Set(selected)
+  const q = query.trim().toLowerCase()
+  const filtered = q
+    ? options.filter((option) => selectedSet.has(option.fullName) || option.fullName.includes(q))
+    : [...options]
+  return filtered.sort((a, b) => {
+    const aSelected = selectedSet.has(a.fullName) ? 0 : 1
+    const bSelected = selectedSet.has(b.fullName) ? 0 : 1
+    if (aSelected !== bSelected) return aSelected - bSelected
+    return a.fullName.localeCompare(b.fullName)
+  })
 }

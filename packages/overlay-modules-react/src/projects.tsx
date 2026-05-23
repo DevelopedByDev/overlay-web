@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ChangeEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
-import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, MessageSquare, Pencil, Plug, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, MessageSquare, Pencil, Plug, Plus, Settings, Trash2, Upload } from 'lucide-react'
 import type {
   ConversationSummary,
   KnowledgeFile,
@@ -842,6 +842,11 @@ export interface ProjectHubHeaderProps {
   draftName: string
   savingName?: boolean
   actions?: ReactNode
+  /** When provided, renders a gear button next to the project name that toggles the settings drawer. */
+  settingsToggle?: {
+    open: boolean
+    onToggle: () => void
+  }
   onStartRename: () => void
   onDraftNameChange: (value: string) => void
   onCommitRename: () => void
@@ -854,6 +859,7 @@ export function ProjectHubHeader({
   draftName,
   savingName,
   actions,
+  settingsToggle,
   onStartRename,
   onDraftNameChange,
   onCommitRename,
@@ -896,6 +902,17 @@ export function ProjectHubHeader({
           >
             <Pencil size={13} />
           </button>
+          {settingsToggle ? (
+            <button
+              type="button"
+              className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)] group-hover/project-head:opacity-100 focus-visible:opacity-100 aria-pressed:text-[var(--foreground)] aria-pressed:opacity-100"
+              aria-label="Project settings"
+              aria-pressed={settingsToggle.open}
+              onClick={settingsToggle.onToggle}
+            >
+              <Settings size={13} />
+            </button>
+          ) : null}
         </div>
       )}
       {actions}
