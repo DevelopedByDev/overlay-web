@@ -3,9 +3,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  FolderOpen, Folder, ChevronRight, MessageSquare,
+  ChevronRight, MessageSquare,
   BookOpen, Loader2, Trash2, Pencil,
 } from 'lucide-react'
+import { ProjectAvatar } from '@overlay/modules-react/project-avatar'
 import { CHAT_TITLE_UPDATED_EVENT, dispatchChatDeleted, type ChatTitleUpdatedDetail } from '@/shared/chat/chat-title'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import {
@@ -159,9 +160,7 @@ function ProjectNode({
         >
           <ChevronRight size={10} className={`transition-transform ${isOpen ? 'rotate-90' : ''}`} />
         </button>
-        {isOpen
-          ? <FolderOpen size={12} className="shrink-0 text-[#888]" />
-          : <Folder size={12} className="shrink-0 text-[#888]" />}
+        <ProjectAvatar projectId={project._id} name={project.name} size={16} />
         {renamingProjectId === project._id ? (
           <input
             className="min-w-0 flex-1 rounded border border-[#ccc] bg-white px-1 py-0.5 text-xs text-[#0a0a0a] outline-none"

@@ -10,6 +10,7 @@
     "./knowledge": "./src/knowledge.tsx",
     "./notes": "./src/notes.tsx",
     "./projects": "./src/projects.tsx",
+    "./project-avatar": "./src/project-avatar.tsx",
     "./extensions": "./src/extensions.tsx",
     "./settings": "./src/settings.tsx",
     "./automations": "./src/automations.tsx"
