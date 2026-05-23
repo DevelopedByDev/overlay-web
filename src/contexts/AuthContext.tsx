@@ -54,9 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
-      posthog.capture('user_signed_out')
+      try {
+        posthog.capture('user_signed_out')
+      } catch {
+        // ignore
+      }
       await fetch('/api/auth/sign-out', { method: 'POST' })
-      posthog.reset()
+      try {
+        posthog.reset()
+      } catch {
+        // ignore
+      }
       setUser(null)
       window.location.href = '/'
     } catch (error) {

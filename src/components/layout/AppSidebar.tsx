@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   MessageSquare, FileText, LogOut, User,
@@ -25,6 +25,7 @@ import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { formatBytes } from '@/shared/storage/storage-limits'
+import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   FilesInlinePanel,
   InlineNavChildren,
@@ -156,8 +157,10 @@ function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
 
   const { tier } = entitlements
   const planKind = entitlements.planKind ?? (tier === 'free' ? 'free' : 'paid')
-  const budgetUsedCents = entitlements.budgetUsedCents ?? entitlements.creditsUsed
-  const budgetTotalCents = entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100
+  const budgetUsedCents = entitlements.budgetUsedCents ?? entitlements.creditsUsed ?? 0
+  const budgetTotalCents =
+    entitlements.budgetTotalCents ??
+    (typeof entitlements.creditsTotal === 'number' ? Math.max(0, entitlements.creditsTotal * 100) : 0)
 
   if (planKind === 'free') {
     return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Upgrade to a paid plan to use premium models and budgeted tools.</p>
@@ -746,32 +749,34 @@ export default function AppSidebar({
               </button>
             ) : null}
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {chatOpen ? (
-                <ChatInlinePanel
-                  refreshKey={chatPanelRefreshKey}
-                  searchQuery=""
-                  onNavigate={() => setMobileMenuOpen(false)}
-                />
-              ) : null}
-              {notesOpen || filesOpen ? (
-                <FilesInlinePanel
-                  searchQuery=""
-                  onNavigate={() => setMobileMenuOpen(false)}
-                />
-              ) : null}
-              {projectsOpen ? (
-                <ProjectsInlinePanel
-                  initialProjects={initialProjects}
-                  refreshKey={projectsPanelRefreshKey}
-                  onNavigate={() => setMobileMenuOpen(false)}
-                />
-              ) : null}
-              {automationsOpen ? (
-                <AutomationsInlinePanel
-                  initialAutomations={initialAutomations}
-                  onNavigate={() => setMobileMenuOpen(false)}
-                />
-              ) : null}
+              <Suspense fallback={<SidebarListSkeleton />}>
+                {chatOpen ? (
+                  <ChatInlinePanel
+                    refreshKey={chatPanelRefreshKey}
+                    searchQuery=""
+                    onNavigate={() => setMobileMenuOpen(false)}
+                  />
+                ) : null}
+                {notesOpen || filesOpen ? (
+                  <FilesInlinePanel
+                    searchQuery=""
+                    onNavigate={() => setMobileMenuOpen(false)}
+                  />
+                ) : null}
+                {projectsOpen ? (
+                  <ProjectsInlinePanel
+                    initialProjects={initialProjects}
+                    refreshKey={projectsPanelRefreshKey}
+                    onNavigate={() => setMobileMenuOpen(false)}
+                  />
+                ) : null}
+                {automationsOpen ? (
+                  <AutomationsInlinePanel
+                    initialAutomations={initialAutomations}
+                    onNavigate={() => setMobileMenuOpen(false)}
+                  />
+                ) : null}
+              </Suspense>
             </div>
           </div>
         ) : null}
@@ -1027,9 +1032,15 @@ export default function AppSidebar({
 
       <div className="hidden md:flex">
         {settings.useSecondarySidebar && activeFeatureModule?.id === 'projects' ? (
-          <ProjectsSidebar initialProjects={initialProjects} />
+          <Suspense fallback={null}>
+            <ProjectsSidebar initialProjects={initialProjects} />
+          </Suspense>
         ) : null}
-        {settings.useSecondarySidebar && activeFeatureModule?.id === 'tools-extensions' ? <ToolsSidebar /> : null}
+        {settings.useSecondarySidebar && activeFeatureModule?.id === 'tools-extensions' ? (
+          <Suspense fallback={null}>
+            <ToolsSidebar />
+          </Suspense>
+        ) : null}
       </div>
 
       <GlobalSearchDialog

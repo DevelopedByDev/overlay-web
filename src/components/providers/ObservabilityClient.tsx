@@ -29,16 +29,24 @@ export default function ObservabilityClient() {
     const url = redactUrlForTelemetry(rawUrl)
     if (lastPageviewUrlRef.current === url) return
     lastPageviewUrlRef.current = url
-    posthog.capture('$pageview', {
-      $current_url: url,
-    })
+    try {
+      posthog.capture('$pageview', {
+        $current_url: url,
+      })
+    } catch {
+      // ignore blocked storage / init failures (common on mobile Safari private mode)
+    }
   }, [pathname, searchParams])
 
   useEffect(() => {
     if (!user) {
       Sentry.setUser(null)
       if (posthogConfigured()) {
-        posthog.reset()
+        try {
+          posthog.reset()
+        } catch {
+          // ignore
+        }
       }
       return
     }
@@ -51,11 +59,15 @@ export default function ObservabilityClient() {
 
     if (!posthogConfigured()) return
 
-    posthog.identify(user.id, {
-      email: user.email,
-      first_name: user.firstName ?? undefined,
-      last_name: user.lastName ?? undefined,
-    })
+    try {
+      posthog.identify(user.id, {
+        email: user.email,
+        first_name: user.firstName ?? undefined,
+        last_name: user.lastName ?? undefined,
+      })
+    } catch {
+      // ignore
+    }
   }, [user])
 
   return null

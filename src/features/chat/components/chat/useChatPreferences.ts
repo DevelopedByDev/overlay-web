@@ -46,64 +46,68 @@ export function useChatPreferences() {
   const lastGeneratedImageUrlRef = useRef<string | null>(null)
 
   useEffect(() => {
-    const saved = localStorage.getItem(CHAT_MODEL_KEY)
-    let restoredSelectedModels: string[] | null = null
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          restoredSelectedModels = parsed.slice(0, 4)
+    try {
+      const saved = localStorage.getItem(CHAT_MODEL_KEY)
+      let restoredSelectedModels: string[] | null = null
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            restoredSelectedModels = parsed.slice(0, 4)
+            setSelectedModels(restoredSelectedModels)
+          }
+        } catch {
+          restoredSelectedModels = [saved]
           setSelectedModels(restoredSelectedModels)
         }
+      }
+      if ((restoredSelectedModels?.length ?? 1) > 1) {
+        setAskModelSelectionMode('multiple')
+      }
+      const savedAct = localStorage.getItem(ACT_MODEL_KEY)
+      if (savedAct) setSelectedActModel(savedAct)
+      const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
+      if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
+
+      const imgMode = localStorage.getItem(IMAGE_MODEL_SELECTION_MODE_KEY)
+      if (imgMode === 'single' || imgMode === 'multiple') {
+        setImageModelSelectionMode(imgMode)
+      }
+      const vidMode = localStorage.getItem(VIDEO_MODEL_SELECTION_MODE_KEY)
+      if (vidMode === 'single' || vidMode === 'multiple') {
+        setVideoModelSelectionMode(vidMode)
+      }
+      try {
+        const rawImg = localStorage.getItem(SELECTED_IMAGE_MODELS_KEY)
+        if (rawImg) {
+          const parsed = JSON.parse(rawImg) as unknown
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const allowed = new Set(IMAGE_MODELS.map((m) => m.id))
+            const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
+            if (next.length > 0) setSelectedImageModels(next)
+          }
+        }
       } catch {
-        restoredSelectedModels = [saved]
-        setSelectedModels(restoredSelectedModels)
+        /* keep default */
       }
-    }
-    if ((restoredSelectedModels?.length ?? 1) > 1) {
-      setAskModelSelectionMode('multiple')
-    }
-    const savedAct = localStorage.getItem(ACT_MODEL_KEY)
-    if (savedAct) setSelectedActModel(savedAct)
-    const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
-    if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
-
-    const imgMode = localStorage.getItem(IMAGE_MODEL_SELECTION_MODE_KEY)
-    if (imgMode === 'single' || imgMode === 'multiple') {
-      setImageModelSelectionMode(imgMode)
-    }
-    const vidMode = localStorage.getItem(VIDEO_MODEL_SELECTION_MODE_KEY)
-    if (vidMode === 'single' || vidMode === 'multiple') {
-      setVideoModelSelectionMode(vidMode)
-    }
-    try {
-      const rawImg = localStorage.getItem(SELECTED_IMAGE_MODELS_KEY)
-      if (rawImg) {
-        const parsed = JSON.parse(rawImg) as unknown
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const allowed = new Set(IMAGE_MODELS.map((m) => m.id))
-          const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
-          if (next.length > 0) setSelectedImageModels(next)
+      try {
+        const rawVid = localStorage.getItem(SELECTED_VIDEO_MODELS_KEY)
+        if (rawVid) {
+          const parsed = JSON.parse(rawVid) as unknown
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const allowed = new Set(VIDEO_MODELS.map((m) => m.id))
+            const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
+            if (next.length > 0) setSelectedVideoModels(next)
+          }
         }
+      } catch {
+        /* keep default */
       }
     } catch {
-      /* keep default */
+      /* private browsing / blocked storage — keep defaults */
+    } finally {
+      setChatPrefsHydrated(true)
     }
-    try {
-      const rawVid = localStorage.getItem(SELECTED_VIDEO_MODELS_KEY)
-      if (rawVid) {
-        const parsed = JSON.parse(rawVid) as unknown
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const allowed = new Set(VIDEO_MODELS.map((m) => m.id))
-          const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
-          if (next.length > 0) setSelectedVideoModels(next)
-        }
-      }
-    } catch {
-      /* keep default */
-    }
-
-    setChatPrefsHydrated(true)
   }, [])
 
   return {
