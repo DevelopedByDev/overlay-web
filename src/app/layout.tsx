@@ -6,6 +6,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ObservabilityClient from "@/components/providers/ObservabilityClient";
 import { AppSettingsProvider } from "@/components/providers/AppSettingsProvider";
 import { ConvexProviderWithWorkOS } from "@/components/providers/ConvexProviderWithWorkOS";
+import AgentationDev from "@/components/dev/AgentationDev";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -93,6 +94,7 @@ export default function RootLayout({
         </AppSettingsProvider>
         <Analytics />
         <SpeedInsights />
+        <AgentationDev />
       </body>
     </html>
   );
