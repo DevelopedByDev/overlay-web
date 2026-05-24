@@ -126,6 +126,27 @@ export default defineSchema({
     .index('by_bucketKey', ['bucketKey'])
     .index('by_resetAt', ['resetAt']),
 
+  apiIdempotencyKeys: defineTable({
+    userId: v.string(),
+    keyHash: v.string(),
+    requestHash: v.string(),
+    method: v.string(),
+    path: v.string(),
+    status: v.union(v.literal('processing'), v.literal('completed')),
+    responseStatus: v.optional(v.number()),
+    responseHeaders: v.optional(v.array(v.object({
+      name: v.string(),
+      value: v.string(),
+    }))),
+    responseBody: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index('by_keyHash', ['keyHash'])
+    .index('by_expiresAt', ['expiresAt'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
+
   serviceAuthReplayNonces: defineTable({
     jti: v.string(),
     subject: v.string(),
@@ -765,4 +786,42 @@ export default defineSchema({
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
     .index('by_shareToken', ['shareToken']),
+
+  webhookSubscriptions: defineTable({
+    userId: v.string(),
+    url: v.string(),
+    secret: v.string(),
+    events: v.array(v.string()),
+    enabled: v.boolean(),
+    description: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_enabled', ['userId', 'enabled']),
+
+  webhookDeliveries: defineTable({
+    userId: v.string(),
+    subscriptionId: v.id('webhookSubscriptions'),
+    eventId: v.string(),
+    eventType: v.string(),
+    payloadJson: v.string(),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('delivering'),
+      v.literal('delivered'),
+      v.literal('failed'),
+      v.literal('dead'),
+    ),
+    attemptCount: v.number(),
+    nextAttemptAt: v.number(),
+    lastError: v.optional(v.string()),
+    lastStatusCode: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_status_nextAttemptAt', ['status', 'nextAttemptAt'])
+    .index('by_subscriptionId_eventId', ['subscriptionId', 'eventId'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
 })

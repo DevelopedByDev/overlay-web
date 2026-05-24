@@ -36,7 +36,7 @@ test('file methods preserve route paths, methods, queries, and JSON bodies', asy
   await client.files.shareResponse({ fileId: 'file_1', visibility: 'public' })
   await client.files.searchTextResponse({ fileIds: ['file_1'], query: 'alpha' })
 
-  assert.equal(String(calls[0]!.input), 'https://example.test/api/app/files/upload-url')
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/files/upload-url')
   assert.equal(calls[0]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[0]!), {
     name: 'plan.pdf',
@@ -46,15 +46,15 @@ test('file methods preserve route paths, methods, queries, and JSON bodies', asy
 
   assert.equal(
     String(calls[1]!.input),
-    'https://example.test/api/app/files/presign?name=plan.pdf&mimeType=application%2Fpdf&sizeBytes=42',
+    'https://example.test/api/v1/files/presign?name=plan.pdf&mimeType=application%2Fpdf&sizeBytes=42',
   )
   assert.equal(calls[1]!.init?.method, undefined)
 
-  assert.equal(String(calls[2]!.input), 'https://example.test/api/app/files/share')
+  assert.equal(String(calls[2]!.input), 'https://example.test/api/v1/files/share')
   assert.equal(calls[2]!.init?.method, 'PATCH')
   assert.deepEqual(await jsonBody(calls[2]!), { fileId: 'file_1', visibility: 'public' })
 
-  assert.equal(String(calls[3]!.input), 'https://example.test/api/app/files/search-text')
+  assert.equal(String(calls[3]!.input), 'https://example.test/api/v1/files/search-text')
   assert.equal(calls[3]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[3]!), { fileIds: ['file_1'], query: 'alpha' })
 })
@@ -76,38 +76,66 @@ test('module feature methods use canonical app endpoints', async () => {
   await client.automations.updateResponse({ automationId: 'auto_1', name: 'Renamed' })
   await client.automations.testResponse({ automationId: 'auto_1' })
 
-  assert.equal(String(calls[0]!.input), 'https://example.test/api/app/memory')
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/memory')
   assert.equal(calls[0]!.init?.method, 'PATCH')
   assert.deepEqual(await jsonBody(calls[0]!), { memoryId: 'mem_1', content: 'Updated' })
 
-  assert.equal(String(calls[1]!.input), 'https://example.test/api/app/outputs?outputId=out_1')
+  assert.equal(String(calls[1]!.input), 'https://example.test/api/v1/outputs?outputId=out_1')
   assert.equal(calls[1]!.init?.method, 'DELETE')
 
-  assert.equal(String(calls[2]!.input), 'https://example.test/api/app/notebook-agent')
+  assert.equal(String(calls[2]!.input), 'https://example.test/api/v1/notebook-agent')
   assert.equal(calls[2]!.init?.method, 'POST')
 
   assert.equal(
     String(calls[3]!.input),
-    'https://example.test/api/app/projects?projectId=proj_1&includeDeleted=true&updatedSince=123',
+    'https://example.test/api/v1/projects?projectId=proj_1&includeDeleted=true&updatedSince=123',
   )
 
-  assert.equal(String(calls[4]!.input), 'https://example.test/api/app/integrations')
+  assert.equal(String(calls[4]!.input), 'https://example.test/api/v1/integrations')
   assert.equal(calls[4]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[4]!), { toolkit: 'github', action: 'connect' })
 
-  assert.equal(String(calls[5]!.input), 'https://example.test/api/app/skills?skillId=skill_1')
+  assert.equal(String(calls[5]!.input), 'https://example.test/api/v1/skills?skillId=skill_1')
   assert.equal(calls[5]!.init?.method, 'DELETE')
 
-  assert.equal(String(calls[6]!.input), 'https://example.test/api/app/mcps/test')
+  assert.equal(String(calls[6]!.input), 'https://example.test/api/v1/mcps/test')
   assert.equal(calls[6]!.init?.method, 'POST')
 
-  assert.equal(String(calls[7]!.input), 'https://example.test/api/app/automations')
+  assert.equal(String(calls[7]!.input), 'https://example.test/api/v1/automations')
   assert.equal(calls[7]!.init?.method, 'PATCH')
   assert.deepEqual(await jsonBody(calls[7]!), { automationId: 'auto_1', name: 'Renamed' })
 
-  assert.equal(String(calls[8]!.input), 'https://example.test/api/app/automations/test')
+  assert.equal(String(calls[8]!.input), 'https://example.test/api/v1/automations/test')
   assert.equal(calls[8]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[8]!), { automationId: 'auto_1' })
+})
+
+test('list helpers unwrap paginated envelopes while getPage preserves metadata', async () => {
+  const calls: RecordedRequest[] = []
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async (input, init) => {
+      calls.push({ input, init })
+      return new Response(JSON.stringify({
+        data: [{ _id: 'proj_1', name: 'Alpha', createdAt: 1, updatedAt: 2 }],
+        nextCursor: 'next',
+        hasMore: true,
+        total: 2,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    },
+  })
+
+  const list = await client.projects.get<Array<{ _id: string; name: string }>>({ limit: 1, sort: 'name', order: 'asc' })
+  assert.deepEqual(list, [{ _id: 'proj_1', name: 'Alpha', createdAt: 1, updatedAt: 2 }])
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/projects?limit=1&sort=name&order=asc')
+
+  const page = await client.projects.getPage<{ _id: string; name: string }>({ cursor: 'next' })
+  assert.equal(page.hasMore, true)
+  assert.equal(page.nextCursor, 'next')
+  assert.deepEqual(page.data, [{ _id: 'proj_1', name: 'Alpha', createdAt: 1, updatedAt: 2 }])
 })
 
 test('settings and account methods preserve billing/auth route contracts', async () => {
@@ -143,7 +171,7 @@ test('settings and account methods preserve billing/auth route contracts', async
   assert.equal(calls[3]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[3]!), { sessionId: 'cs_123' })
 
-  assert.equal(String(calls[4]!.input), 'https://example.test/api/subscription/settings')
+  assert.equal(String(calls[4]!.input), 'https://example.test/api/v1/subscription/settings')
   assert.equal(calls[4]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[4]!), {
     autoTopUpEnabled: true,
@@ -164,4 +192,23 @@ test('settings and account methods preserve billing/auth route contracts', async
   assert.equal(String(calls[7]!.input), 'https://example.test/api/topups/verify')
   assert.equal(calls[7]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[7]!), { sessionId: 'cs_topup' })
+})
+
+test('mutation helpers send Idempotency-Key when idempotencyKey is set', async () => {
+  const { calls, client } = createRecordedClient()
+  const key = 'conv-create-abc'
+
+  await client.conversations.createResponse(
+    { title: 'Test', lastMode: 'act' },
+    { idempotencyKey: key },
+  )
+  await client.conversations.addMessageResponse(
+    { conversationId: 'c1', turnId: 't1', mode: 'act', role: 'user', content: 'hi' },
+    { idempotencyKey: 'turn-t1' },
+  )
+  await client.files.createResponse({ name: 'doc.txt', type: 'file' }, { idempotencyKey: 'file-1' })
+
+  assert.equal(new Headers(calls[0]!.init?.headers).get('Idempotency-Key'), key)
+  assert.equal(new Headers(calls[1]!.init?.headers).get('Idempotency-Key'), 'turn-t1')
+  assert.equal(new Headers(calls[2]!.init?.headers).get('Idempotency-Key'), 'file-1')
 })

@@ -279,13 +279,13 @@ export default function KnowledgeView({
 
   const loadMemories = useCallback(async () => {
     try {
-      setMemories(await overlayAppClient.memory.get<MemoryListItem[]>())
+      setMemories(await overlayAppClient.memory.get<MemoryListItem[]>({ limit: 100 }))
     } catch { /* ignore */ } finally { setMemoriesLoading(false) }
   }, [])
 
   const loadFiles = useCallback(async () => {
     try {
-      setFiles(await overlayAppClient.files.get<FileNode[]>())
+      setFiles(await overlayAppClient.files.get<FileNode[]>({ limit: 100 }))
     } catch { /* ignore */ } finally { setFilesLoading(false) }
   }, [])
 
@@ -1045,7 +1045,7 @@ export default function KnowledgeView({
                 <FileViewer
                   name={selectedFile.name}
                   content={fileContent}
-                  url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/app/files/${selectedFile._id}/content` : undefined}
+                  url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/v1/files/${selectedFile._id}/content` : undefined}
                 />
               </div>
             )}

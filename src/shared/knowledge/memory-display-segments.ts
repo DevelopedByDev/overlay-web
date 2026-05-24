@@ -99,7 +99,7 @@ export type MemoryRowForSidebar = {
 
 /**
  * Split pasted text into multiple stored memories when over ~300 chars
- * (paragraph/sentence aware). Used by POST /api/app/memory.
+ * (paragraph/sentence aware). Used by POST /api/v1/memory.
  */
 export function segmentMemoryForIngestion(text: string): string[] {
   return segmentMemoryForSidebarDisplay(text)

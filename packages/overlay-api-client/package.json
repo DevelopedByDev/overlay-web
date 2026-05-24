@@ -8,6 +8,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
   "peerDependencies": {
     "@overlay/app-core": "0.0.1"
   },

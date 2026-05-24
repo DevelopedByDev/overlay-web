@@ -1,4 +1,5 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { ChatMessageMetadata, ChatOutput } from '../chat-interface/types'
 
 export type RawConversationMessage = {
@@ -51,7 +52,7 @@ export async function loadConversationSnapshot({
       conversationId: chatId,
       messages: true,
     }),
-    overlayAppClient.files.getResponse({ kind: 'output', conversationId: chatId }),
+    overlayAppClient.files.getResponse({ kind: 'output', conversationId: chatId, limit: 100 }),
     shouldLoadMeta
       ? overlayAppClient.conversations.getResponse({ conversationId: chatId })
       : Promise.resolve(null),
@@ -69,9 +70,19 @@ export async function loadConversationSnapshot({
     ? data.messages as RawConversationMessage[]
     : []
 
-  const outputRows = outputsRes.ok ? await outputsRes.json() : []
-  const outputs: ChatOutput[] = Array.isArray(outputRows)
-    ? outputRows.map((file: {
+  const outputRows = outputsRes.ok
+    ? unwrapPaginatedData<{
+        _id: string
+        outputType?: string
+        prompt?: string
+        modelId?: string
+        downloadUrl?: string
+        createdAt?: number
+        updatedAt?: number
+        turnId?: string
+      }>(await outputsRes.json())
+    : []
+  const outputs: ChatOutput[] = outputRows.map((file: {
         _id: string
         outputType?: string
         prompt?: string
@@ -90,7 +101,6 @@ export async function loadConversationSnapshot({
         createdAt: file.createdAt ?? file.updatedAt ?? 0,
         turnId: file.turnId,
       }))
-    : []
 
   const meta = metaRes?.ok
     ? await metaRes.json() as ConversationMetaSnapshot

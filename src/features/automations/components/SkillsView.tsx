@@ -42,7 +42,7 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
 
   const loadSkills = useCallback(async () => {
     try {
-      setSkills(await overlayAppClient.skills.get<SkillSummary[]>())
+      setSkills(await overlayAppClient.skills.get<SkillSummary[]>({ limit: 100 }))
     } catch {
       // ignore
     } finally {

@@ -4,6 +4,7 @@ import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-ap
 import type { OverlayToolsOptions } from './types'
 import { buildAutomationDraftFromTurn, type AutomationScheduleDraft } from '@/features/automations/lib/automation-drafts'
 import { buildSkillDraftFromTurn } from '@/features/automations/lib/skill-drafts'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 
 export async function executeSearchKnowledge(
   options: OverlayToolsOptions,
@@ -12,7 +13,7 @@ export async function executeSearchKnowledge(
   const { query, sourceKind } = input
   try {
     const res = await callInternalApi(
-      '/api/app/knowledge/search',
+      '/api/v1/knowledge/search',
       {
         query,
         projectId: options.projectId,
@@ -44,7 +45,7 @@ export async function executeSearchInFiles(
   const { fileIds, query } = input
   try {
     const res = await callInternalApi(
-      '/api/app/files/search-text',
+      '/api/v1/files/search-text',
       {
         fileIds,
         query,
@@ -89,7 +90,7 @@ export async function executeSaveMemory(
   const { content, source, type, importance, tags } = input
   try {
     const res = await callInternalApi(
-      '/api/app/memory',
+      '/api/v1/memory',
       {
         content,
         source: source ?? 'chat',
@@ -183,7 +184,7 @@ export async function executeUpdateMemory(
   const { memoryId, content, type, importance, tags } = input
   try {
     const res = await callInternalApi(
-      '/api/app/memory',
+      '/api/v1/memory',
       { memoryId, content, type, importance, tags, ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
@@ -206,7 +207,7 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
   const { memoryId } = input
   try {
     const res = await callInternalApi(
-      '/api/app/memory',
+      '/api/v1/memory',
       { memoryId, ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
@@ -231,7 +232,7 @@ export async function executeListSkills(
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/app/skills',
+      '/api/v1/skills?limit=100',
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -241,13 +242,13 @@ export async function executeListSkills(
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch skills' }
     }
-    const skills = (await res.json()) as Array<{
+    const skills = unwrapPaginatedData<{
       _id: string
       name: string
       description?: string
       instructions: string
       enabled?: boolean
-    }>
+    }>(await res.json())
     const enabledSkills = skills.filter((s) => s.enabled !== false)
     if (input.query) {
       const q = input.query.toLowerCase()
@@ -274,7 +275,7 @@ export async function executeListAutomations(
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/app/automations',
+      '/api/v1/automations?limit=100',
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -284,7 +285,7 @@ export async function executeListAutomations(
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch automations' }
     }
-    const automations = (await res.json()) as Array<{
+    const automations = unwrapPaginatedData<{
       _id: string
       name: string
       description?: string
@@ -294,7 +295,7 @@ export async function executeListAutomations(
       nextRunAt?: number
       lastRunAt?: number
       lastError?: string
-    }>
+    }>(await res.json())
     if (input.query) {
       const q = input.query.toLowerCase()
       return {
@@ -355,7 +356,7 @@ export async function executeCreateAutomation(
 ) {
   try {
     const res = await callInternalApi(
-      '/api/app/automations',
+      '/api/v1/automations',
       {
         ...input,
         projectId: input.projectId ?? options.projectId,
@@ -396,7 +397,7 @@ export async function executeUpdateAutomation(
 ) {
   try {
     const res = await callInternalApi(
-      '/api/app/automations',
+      '/api/v1/automations',
       { ...input, ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
@@ -418,7 +419,7 @@ export async function executeUpdateAutomation(
 export async function executePauseAutomation(options: OverlayToolsOptions, input: { automationId: string }) {
   try {
     const res = await callInternalApi(
-      '/api/app/automations',
+      '/api/v1/automations',
       { automationId: input.automationId, action: 'pause', ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
@@ -434,7 +435,7 @@ export async function executePauseAutomation(options: OverlayToolsOptions, input
 export async function executeDeleteAutomation(options: OverlayToolsOptions, input: { automationId: string }) {
   try {
     const res = await callInternalApi(
-      '/api/app/automations',
+      '/api/v1/automations',
       { automationId: input.automationId, ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
@@ -459,7 +460,7 @@ export async function executeGenerateImage(
   const { prompt, modelId, aspectRatio, referenceImageUrl } = input
   try {
     const res = await callInternalApi(
-      '/api/app/generate-image',
+      '/api/v1/generate-image',
       {
         prompt,
         modelId,
@@ -510,7 +511,7 @@ export async function executeGenerateVideo(
   const { prompt, modelId, aspectRatio, duration, videoSubMode, imageUrl, referenceVideoUrl } = input
   try {
     const res = await callInternalApi(
-      '/api/app/generate-video',
+      '/api/v1/generate-video',
       {
         prompt,
         modelId,
@@ -614,7 +615,7 @@ export async function executeRunDaytonaSandbox(
 
   try {
     const res = await callInternalApi(
-      '/api/app/daytona/run',
+      '/api/v1/daytona/run',
       {
         task,
         runtime,

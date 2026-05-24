@@ -1,6 +1,14 @@
 export { createOverlayAppClient, type OverlayAppClient } from './create-overlay-app-client'
 
-export type { CreateOverlayAppClientOptions, ErrorResponse, Pagination } from './shared/types'
+export type {
+  CreateOverlayAppClientOptions,
+  ErrorResponse,
+  PaginatedEnvelope,
+  Pagination,
+  PaginationOrder,
+  PaginationQuery,
+  PaginationSort,
+} from './shared/types'
 export type {
   ConversationGetResponse,
   ConversationMessageRequest,
@@ -39,3 +47,5 @@ export { SettingsClient } from './settings/client'
 export { OnboardingClient } from './onboarding/client'
 export { AutomationRunsClient } from './automation-runs/client'
 export { createHttpContext, type HttpContext } from './shared/http'
+export { createIdempotencyKey, toRequestInit, type MutationRequestInit } from './shared/mutation'
+export * from '../../../src/shared/schemas'

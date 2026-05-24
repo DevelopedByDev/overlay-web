@@ -11,5 +11,5 @@
     "isolatedModules": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "../../src/shared/schemas/**/*.ts"]
 }

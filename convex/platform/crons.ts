@@ -45,4 +45,17 @@ crons.interval(
   {},
 )
 
+crons.interval(
+  'api idempotency cleanup',
+  { hours: 1 },
+  internal.platform.idempotency.cleanupExpiredInternal,
+  {},
+)
+
+crons.interval(
+  'outbound webhook delivery',
+  { minutes: 1 },
+  internal.webhooks.deliveryRunner.runMinuteTick,
+)
+
 export default crons

@@ -16,7 +16,7 @@ export default function BackgroundPollManager() {
   /** Warm personalized chat starters cache early so empty-chat chips rarely wait on the network. */
   useEffect(() => {
     const run = () => {
-      void fetch('/api/app/chat-suggestions', { credentials: 'same-origin' }).catch(() => {})
+      void fetch('/api/v1/chat-suggestions', { credentials: 'same-origin' }).catch(() => {})
     }
     if (typeof window.requestIdleCallback === 'function') {
       const id = window.requestIdleCallback(run, { timeout: 8000 })
@@ -34,7 +34,7 @@ export default function BackgroundPollManager() {
       await Promise.all(
         pending.map(async (session) => {
           try {
-            const url = `/api/app/conversations?conversationId=${session.id}&messages=true`
+            const url = `/api/v1/conversations?conversationId=${session.id}&messages=true`
             const res = await fetch(url)
             if (!res.ok) return
             const data = await res.json()

@@ -192,8 +192,8 @@ function ProjectHubBody({
     setListsLoading(true)
     try {
       const [chatsJson, filesJson] = await Promise.all([
-        overlayAppClient.conversations.get<ProjectChatSummary[]>({ projectId }),
-        overlayAppClient.files.get<ProjectFileRecord[]>({ projectId }),
+        overlayAppClient.conversations.get<ProjectChatSummary[]>({ projectId, limit: 100 }),
+        overlayAppClient.files.get<ProjectFileRecord[]>({ projectId, limit: 100 }),
       ])
       setChats(Array.isArray(chatsJson) ? chatsJson : [])
       setFiles(Array.isArray(filesJson) ? filesJson : [])
@@ -555,7 +555,7 @@ export default function ProjectsView({
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true)
     try {
-      const data = await overlayAppClient.projects.get<ProjectSummary[]>()
+      const data = await overlayAppClient.projects.get<ProjectSummary[]>({ limit: 100 })
       setProjects(Array.isArray(data) ? data : [])
     } finally {
       setProjectsLoading(false)

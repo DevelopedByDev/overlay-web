@@ -699,7 +699,7 @@ export interface KnowledgeFileTreeNode extends KnowledgeFile {
   children: KnowledgeFileTreeNode[]
 }
 
-export interface FileQueryContract {
+export interface FileQueryContract extends PaginationQueryContract {
   fileId?: string
   projectId?: string | null
   kind?: KnowledgeFileKind
@@ -857,7 +857,7 @@ export interface MemoryRow {
   updatedAt?: number
 }
 
-export interface MemoryQueryContract {
+export interface MemoryQueryContract extends PaginationQueryContract {
   memoryId?: string
   raw?: boolean
   updatedSince?: number
@@ -916,7 +916,7 @@ export interface OutputSummary {
   completedAt?: number
 }
 
-export interface OutputQueryContract {
+export interface OutputQueryContract extends PaginationQueryContract {
   outputId?: string
   type?: string
   limit?: number
@@ -925,7 +925,7 @@ export interface OutputQueryContract {
 
 export type DeleteOutputResponse = MutationSuccessResponse
 
-export interface NoteQueryContract {
+export interface NoteQueryContract extends PaginationQueryContract {
   noteId?: string
   projectId?: string | null
   includeDeleted?: boolean
@@ -1014,13 +1014,19 @@ export interface IntegrationSummary {
 }
 
 export interface IntegrationSearchResponse {
+  data?: IntegrationSummary[]
   items: IntegrationSummary[]
   nextCursor?: string | null
+  hasMore?: boolean
+  total?: number
 }
 
 export interface ConnectedIntegrationsResponse {
   connected: string[]
+  data?: IntegrationSummary[]
   items?: IntegrationSummary[]
+  hasMore?: boolean
+  total?: number
 }
 
 export interface IntegrationConnectionRequest {
@@ -1085,7 +1091,7 @@ export interface ProjectSummary {
   createdAt: number
 }
 
-export interface ProjectQueryContract {
+export interface ProjectQueryContract extends PaginationQueryContract {
   projectId?: string
   updatedSince?: number
   includeDeleted?: boolean
@@ -1203,7 +1209,7 @@ export interface OnboardingCompleteResponse {
 
 export interface RateLimitSpec {
   bucket: string
-  key: string | null | undefined
+  key?: string | null | undefined
   limit: number
   windowMs: number
 }
@@ -1224,6 +1230,23 @@ export interface RateLimitResult {
 
 export interface RateLimiter {
   check(key: string, limits: RateLimitSpec[]): Promise<RateLimitResult>
+}
+
+export type PaginationSort = 'createdAt' | 'updatedAt' | 'name'
+export type PaginationOrder = 'asc' | 'desc'
+
+export interface PaginationQueryContract {
+  cursor?: string
+  limit?: number
+  sort?: PaginationSort
+  order?: PaginationOrder
+}
+
+export interface PaginatedEnvelope<T> {
+  data: T[]
+  nextCursor?: string
+  hasMore: boolean
+  total?: number
 }
 
 export interface EventBus {

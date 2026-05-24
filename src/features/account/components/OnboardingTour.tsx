@@ -69,7 +69,7 @@ const DIALOG_SECONDARY_CLASS =
 const DIALOG_PRIMARY_CLASS =
   'rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-40'
 
-/** Logos from GET /api/app/integrations?action=search (Composio catalog), with emoji fallback. */
+/** Logos from GET /api/v1/integrations?action=search (Composio catalog), with emoji fallback. */
 function OnboardingConnectorCardLogo({
   name,
   fallbackEmoji,

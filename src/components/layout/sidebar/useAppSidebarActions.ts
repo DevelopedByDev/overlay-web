@@ -6,6 +6,7 @@ import type { OverlaySidebarAction, OverlaySidebarActionKey } from '@overlay/app
 import { readNewChatModelFieldsFromStorage } from '@/shared/chat/chat-model-prefs'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
+import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
 
@@ -50,12 +51,15 @@ export function useAppSidebarActions({
       return false
     }
     const models = readNewChatModelFieldsFromStorage()
-    const res = await overlayAppClient.conversations.createResponse({
-      title: 'New Chat',
-      askModelIds: models.askModelIds,
-      actModelId: models.actModelId,
-      lastMode: models.lastMode,
-    })
+    const res = await overlayAppClient.conversations.createResponse(
+      {
+        title: 'New Chat',
+        askModelIds: models.askModelIds,
+        actModelId: models.actModelId,
+        lastMode: models.lastMode,
+      },
+      { idempotencyKey: createIdempotencyKey() },
+    )
     if (!res.ok) return false
     const data = await res.json() as {
       id?: string
@@ -81,12 +85,16 @@ export function useAppSidebarActions({
     const models = readNewChatModelFieldsFromStorage()
     const title = 'New automation'
     try {
-      const res = await overlayAppClient.conversations.createResponse({
-        title,
-        askModelIds: models.askModelIds,
-        actModelId: models.actModelId,
-        lastMode: 'act',
-      })
+      const conversationKey = createIdempotencyKey()
+      const res = await overlayAppClient.conversations.createResponse(
+        {
+          title,
+          askModelIds: models.askModelIds,
+          actModelId: models.actModelId,
+          lastMode: 'act',
+        },
+        { idempotencyKey: conversationKey },
+      )
       if (!res.ok) return false
       const data = await res.json() as {
         id?: string
@@ -96,16 +104,19 @@ export function useAppSidebarActions({
       const chat = data.conversation ?? { _id: data.id, title, lastModified: 0 }
       upsertCachedChat(chat)
       dispatchChatCreated({ chat })
-      const automationRes = await overlayAppClient.automations.createResponse({
-        name: title,
-        description: 'Draft automation. Add a description before enabling it.',
-        instructions: 'Describe what this automation should do.',
-        enabled: false,
-        schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        modelId: models.actModelId,
-        sourceConversationId: data.id,
-      })
+      const automationRes = await overlayAppClient.automations.createResponse(
+        {
+          name: title,
+          description: 'Draft automation. Add a description before enabling it.',
+          instructions: 'Describe what this automation should do.',
+          enabled: false,
+          schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          modelId: models.actModelId,
+          sourceConversationId: data.id,
+        },
+        { idempotencyKey: createIdempotencyKey() },
+      )
       if (!automationRes.ok) return false
       const automationData = await automationRes.json() as { id?: string }
       const automationId = automationData.id ?? null
@@ -126,12 +137,15 @@ export function useAppSidebarActions({
       return false
     }
     const parentId = pathname.startsWith('/app/files') ? searchParams.get('folder') : null
-    const res = await overlayAppClient.files.createResponse({
-      kind: 'note',
-      name: 'Untitled',
-      textContent: '',
-      parentId,
-    })
+    const res = await overlayAppClient.files.createResponse(
+      {
+        kind: 'note',
+        name: 'Untitled',
+        textContent: '',
+        parentId,
+      },
+      { idempotencyKey: createIdempotencyKey() },
+    )
     if (!res.ok) return false
     const data = await res.json() as {
       id?: string

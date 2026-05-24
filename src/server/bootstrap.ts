@@ -5,7 +5,7 @@ import { OpenRouterGateway } from '@/server/ai/providers'
 import { WorkOSAuthProvider } from '@/server/auth/providers'
 import { StripeBillingProvider } from '@/server/billing/providers'
 import { ConvexNoteRepository, type NoteRepository } from '@/server/notes'
-import { InMemoryEventBus, InMemoryRateLimiter } from '@/server/shared/providers'
+import { ConvexRateLimiter, InMemoryEventBus } from '@/server/shared/providers'
 import { ConvexVectorStore, R2ObjectStore } from '@/server/storage/providers'
 import type {
   OverlayAppConfig,
@@ -25,7 +25,7 @@ export function createOverlayServerContext(
     objectStore: config.objectStore ?? new R2ObjectStore(),
     vectorStore: config.vectorStore ?? new ConvexVectorStore(),
     llmGateway: config.llmGateway ?? new OpenRouterGateway(),
-    rateLimiter: config.rateLimiter ?? new InMemoryRateLimiter(),
+    rateLimiter: config.rateLimiter ?? new ConvexRateLimiter(),
     eventBus: config.eventBus ?? new InMemoryEventBus(),
     noteRepository: new ConvexNoteRepository(),
   }

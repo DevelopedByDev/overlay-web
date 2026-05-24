@@ -29,7 +29,7 @@ function estimateTokens(chars: number): number {
 
 /** Check if content is a proxy URL (binary-backed file with no inline text). */
 function isBinaryProxyContent(content: string): boolean {
-  return content.startsWith('/api/app/files/')
+  return content.startsWith('/api/v1/files/') || content.startsWith('/api/app/files/')
 }
 
 /** Re-assemble multi-part file text from Convex file rows. */

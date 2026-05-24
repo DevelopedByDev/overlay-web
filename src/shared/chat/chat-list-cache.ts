@@ -1,4 +1,5 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 
 export type CachedConversation = {
   _id: string
@@ -56,10 +57,10 @@ export async function fetchChatList(options: { force?: boolean } = {}): Promise<
   }
   if (!options.force && inFlight) return inFlight
 
-  inFlight = overlayAppClient.conversations.getResponse()
+  inFlight = overlayAppClient.conversations.getResponse({ limit: 100 })
     .then(async (res) => {
       if (!res.ok) return cachedChats ?? []
-      const chats = await res.json() as CachedConversation[]
+      const chats = unwrapPaginatedData<CachedConversation>(await res.json())
       primeChatList(chats)
       return chats
     })

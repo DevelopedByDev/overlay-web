@@ -46,7 +46,7 @@ export function FilesInlinePanel({
 
   const loadItems = useCallback(async () => {
     try {
-      setFiles(await overlayAppClient.files.get<ProjectFile[]>())
+      setFiles(await overlayAppClient.files.get<ProjectFile[]>({ limit: 100 }))
     } catch {
       // ignore
     } finally {
@@ -143,7 +143,7 @@ export function ProjectsInlinePanel({
 
   const loadProjects = useCallback(async () => {
     try {
-      setProjects(await overlayAppClient.projects.get<Project[]>())
+      setProjects(await overlayAppClient.projects.get<Project[]>({ limit: 100 }))
     } catch {
       // ignore
     } finally {
@@ -160,9 +160,9 @@ export function ProjectsInlinePanel({
     setItemsLoading((prev) => new Set(prev).add(projectId))
     try {
       const [chats, notes, files] = await Promise.all([
-        overlayAppClient.conversations.get<ProjectChat[]>({ projectId }),
-        overlayAppClient.files.get<ProjectFile[]>({ kind: 'note', projectId }),
-        overlayAppClient.files.get<ProjectFile[]>({ projectId }),
+        overlayAppClient.conversations.get<ProjectChat[]>({ projectId, limit: 100 }),
+        overlayAppClient.files.get<ProjectFile[]>({ kind: 'note', projectId, limit: 100 }),
+        overlayAppClient.files.get<ProjectFile[]>({ projectId, limit: 100 }),
       ])
       const noteRows = Array.isArray(notes) ? projectNotesFromFiles(notes) : []
       const fileRows = Array.isArray(files) ? projectFilesExcludingNotes(files) : []

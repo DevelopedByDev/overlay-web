@@ -1,3 +1,7 @@
+import { validateApiClientBoundary } from '../../../../src/shared/schemas/api-boundary'
+import { isPaginatedEnvelope } from '../../../../src/shared/api/pagination'
+import type { MutationRequestInit } from './mutation'
+import { toRequestInit } from './mutation'
 import type { CreateOverlayAppClientOptions, QueryParams } from './types'
 
 export function appendQuery(path: string, query?: QueryParams): string {
@@ -16,15 +20,26 @@ export function toUrl(baseUrl: string | undefined, path: string): string {
   return new URL(path, baseUrl).toString()
 }
 
-export function jsonRequest(body: unknown, init: RequestInit = {}): RequestInit {
-  const headers = new Headers(init.headers)
+export function jsonRequest(body: unknown, init: MutationRequestInit = {}): RequestInit {
+  const resolved = toRequestInit(init)
+  const headers = new Headers(resolved.headers)
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
   return {
-    ...init,
+    ...resolved,
     headers,
     body: JSON.stringify(body),
+  }
+}
+
+function bodyForBoundaryValidation(body: BodyInit | null | undefined): unknown {
+  if (typeof body !== 'string') return undefined
+  if (!body.trim()) return {}
+  try {
+    return JSON.parse(body)
+  } catch {
+    return body
   }
 }
 
@@ -43,12 +58,19 @@ export async function parseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T
 }
 
+export async function parseJsonData<T>(response: Response): Promise<T> {
+  const value = await response.json()
+  return (isPaginatedEnvelope(value) ? value.data : value) as T
+}
+
 export interface HttpContext {
   request(path: string, init?: RequestInit): Promise<Response>
   json<T>(path: string, init?: RequestInit): Promise<T>
+  jsonData<T>(path: string, init?: RequestInit): Promise<T>
   appendQuery: typeof appendQuery
-  jsonRequest: typeof jsonRequest
+  jsonRequest: (body: unknown, init?: MutationRequestInit) => RequestInit
   parseJson: typeof parseJson
+  parseJsonData: typeof parseJsonData
 }
 
 export function createHttpContext(options: CreateOverlayAppClientOptions): HttpContext {
@@ -66,6 +88,11 @@ export function createHttpContext(options: CreateOverlayAppClientOptions): HttpC
     if (requestInit.credentials === undefined) {
       requestInit.credentials = 'same-origin'
     }
+    validateApiClientBoundary({
+      body: bodyForBoundaryValidation(requestInit.body),
+      method: requestInit.method,
+      path,
+    })
     return fetchImpl(toUrl(options.baseUrl, path), requestInit)
   }
 
@@ -73,11 +100,17 @@ export function createHttpContext(options: CreateOverlayAppClientOptions): HttpC
     return parseJson<T>(await request(path, init))
   }
 
+  async function jsonData<T>(path: string, init?: RequestInit): Promise<T> {
+    return parseJsonData<T>(await request(path, init))
+  }
+
   return {
     request,
     json,
+    jsonData,
     appendQuery,
     jsonRequest,
     parseJson,
+    parseJsonData,
   }
 }

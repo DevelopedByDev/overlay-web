@@ -1,4 +1,6 @@
-export interface FileQuery {
+import type { PaginationQuery } from '../shared/types'
+
+export interface FileQuery extends PaginationQuery {
   fileId?: string
   projectId?: string | null
   kind?: 'folder' | 'note' | 'upload' | 'output' | string

@@ -13,7 +13,7 @@ export class IntegrationsClient {
   constructor(private readonly http: HttpContext) {}
 
   private path(query?: IntegrationQuery): string {
-    return this.http.appendQuery('/api/app/integrations', query as QueryParams | undefined)
+    return this.http.appendQuery('/api/v1/integrations', query as QueryParams | undefined)
   }
 
   get<T = ConnectedIntegrationsResponse | IntegrationSearchResponse | IntegrationSummary[]>(
@@ -29,31 +29,31 @@ export class IntegrationsClient {
 
   connect(body: IntegrationConnectionRequest, init?: RequestInit) {
     return this.http.json<IntegrationConnectionResponse>(
-      '/api/app/integrations',
+      '/api/v1/integrations',
       this.http.jsonRequest({ ...body, action: body.action ?? 'connect' }, { ...init, method: 'POST' }),
     )
   }
 
   connectResponse(body: IntegrationConnectionRequest, init?: RequestInit) {
     return this.http.request(
-      '/api/app/integrations',
+      '/api/v1/integrations',
       this.http.jsonRequest({ ...body, action: body.action ?? 'connect' }, { ...init, method: 'POST' }),
     )
   }
 
   disconnectResponse(toolkit: string, init?: RequestInit) {
     return this.http.request(
-      '/api/app/integrations',
+      '/api/v1/integrations',
       this.http.jsonRequest({ action: 'disconnect', toolkit }, { ...init, method: 'POST' }),
     )
   }
 
   createResponse(body: IntegrationConnectionRequest, init?: RequestInit) {
-    return this.http.request('/api/app/integrations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/integrations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   updateResponse(body: IntegrationConnectionRequest, init?: RequestInit) {
-    return this.http.request('/api/app/integrations', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
+    return this.http.request('/api/v1/integrations', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
   deleteResponse(query?: IntegrationQuery, init?: RequestInit) {

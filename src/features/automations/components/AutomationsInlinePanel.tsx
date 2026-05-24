@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { dispatchChatDeleted } from '@/shared/chat/chat-title'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { AutomationSummary } from '@overlay/app-core'
 import type { DeleteAutomationResponse } from '@overlay/app-core/automations'
 import {
@@ -36,8 +37,8 @@ export function AutomationsInlinePanel({
 
   const loadAutomations = useCallback(async () => {
     try {
-      const res = await overlayAppClient.automations.getResponse()
-      if (res.ok) setAutomations(await res.json())
+      const res = await overlayAppClient.automations.getResponse({ limit: 100 })
+      if (res.ok) setAutomations(unwrapPaginatedData<AutomationSummary>(await res.json()))
     } catch {
       // ignore
     } finally {

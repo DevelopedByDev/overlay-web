@@ -45,7 +45,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
 
   const loadServers = useCallback(async () => {
     try {
-      setServers(await overlayAppClient.mcpServers.get<McpServerSummary[]>())
+      setServers(await overlayAppClient.mcpServers.get<McpServerSummary[]>({ limit: 100 }))
     } catch {
       // ignore
     } finally {

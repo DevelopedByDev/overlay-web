@@ -1,0 +1,141 @@
+import 'server-only'
+
+import type { RateLimitSpec } from '@overlay/app-core'
+
+const TEN_MINUTES = 10 * 60_000
+const ONE_HOUR = 60 * 60_000
+
+export const CHAT_RATE_LIMITS: RateLimitSpec[] = [
+  { bucket: 'chat/conversations:act:ip', limit: 120, windowMs: TEN_MINUTES },
+  { bucket: 'chat/conversations:act:user', limit: 60, windowMs: TEN_MINUTES },
+]
+
+const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
+  'GET /api/v1/chat-suggestions': [
+    { bucket: 'helper:chat-suggestions:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'helper:chat-suggestions:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/browser-task': [
+    { bucket: 'browser-task:ip', limit: 20, windowMs: TEN_MINUTES },
+    { bucket: 'browser-task:user', limit: 10, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/knowledge/search': [
+    { bucket: 'knowledge/knowledge:search:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'knowledge/knowledge:search:user', limit: 60, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/memory': [
+    { bucket: 'memory:write:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'memory:write:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/generate-tab-group-label': [
+    { bucket: 'helper:tab-label:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'helper:tab-label:user', limit: 60, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/transcribe': [
+    { bucket: 'transcribe:ip', limit: 30, windowMs: TEN_MINUTES },
+    { bucket: 'transcribe:user', limit: 15, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/generate-image': [
+    { bucket: 'generation:image:ip', limit: 30, windowMs: TEN_MINUTES },
+    { bucket: 'generation:image:user', limit: 15, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/daytona/run': [
+    { bucket: 'sandbox:daytona:ip', limit: 20, windowMs: TEN_MINUTES },
+    { bucket: 'sandbox:daytona:user', limit: 10, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/generate-title': [
+    { bucket: 'helper:title:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'helper:title:user', limit: 60, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/automations': [
+    { bucket: 'automations/automations:write:ip', limit: 30, windowMs: TEN_MINUTES },
+    { bucket: 'automations/automations:write:user', limit: 15, windowMs: TEN_MINUTES },
+  ],
+  'PATCH /api/v1/automations': [
+    { bucket: 'automations/automations:update:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'automations/automations:update:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/notebook-agent': [
+    { bucket: 'notebook-agent:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'notebook-agent:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/conversations/act': CHAT_RATE_LIMITS,
+  'GET /api/v1/files/presign': [
+    { bucket: 'files/files:presign:ip', limit: 60, windowMs: ONE_HOUR },
+    { bucket: 'files/files:presign:user', limit: 30, windowMs: ONE_HOUR },
+  ],
+  'POST /api/v1/generate-video': [
+    { bucket: 'generation:video:ip', limit: 20, windowMs: TEN_MINUTES },
+    { bucket: 'generation:video:user', limit: 10, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/files/ingest-document': [
+    { bucket: 'files/files:ingest-document:ip', limit: 40, windowMs: ONE_HOUR },
+    { bucket: 'files/files:ingest-document:user', limit: 20, windowMs: ONE_HOUR },
+  ],
+  'POST /api/v1/conversations/act/extension-plan': [
+    { bucket: 'extension-plan:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'extension-plan:user', limit: 60, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/conversations/message': [
+    { bucket: 'conversation-message:ip', limit: 240, windowMs: TEN_MINUTES },
+    { bucket: 'conversation-message:user', limit: 120, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/files/upload-url': [
+    { bucket: 'files/files:upload-url:ip', limit: 60, windowMs: ONE_HOUR },
+    { bucket: 'files/files:upload-url:user', limit: 30, windowMs: ONE_HOUR },
+  ],
+  'POST /api/v1/files/search-text': [
+    { bucket: 'files/files:search-text:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'files/files:search-text:user', limit: 60, windowMs: TEN_MINUTES },
+  ],
+}
+
+type DynamicEndpointRateLimit = {
+  method: string
+  pattern: RegExp
+  limits: RateLimitSpec[]
+}
+
+const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
+  {
+    method: 'GET',
+    pattern: /^\/api\/v1\/outputs\/[^/]+\/content$/,
+    limits: [
+      { bucket: 'r2-download:output:ip', limit: 600, windowMs: TEN_MINUTES },
+      { bucket: 'r2-download:output:user', limit: 300, windowMs: TEN_MINUTES },
+    ],
+  },
+  {
+    method: 'GET',
+    pattern: /^\/api\/v1\/files\/[^/]+\/content$/,
+    limits: [
+      { bucket: 'r2-download:file:ip', limit: 600, windowMs: TEN_MINUTES },
+      { bucket: 'r2-download:file:user', limit: 300, windowMs: TEN_MINUTES },
+    ],
+  },
+]
+
+function keyForBucket(bucket: string, userId: string, ip: string): string {
+  if (bucket.endsWith(':ip')) return ip
+  if (bucket.endsWith(':user')) return userId
+  return userId
+}
+
+export function getEndpointRateLimitSpecs(args: {
+  ip: string
+  method: string
+  pathname: string
+  userId: string
+}): RateLimitSpec[] {
+  const method = args.method.toUpperCase()
+  const pathname = args.pathname.replace(/\/+$/, '') || '/'
+  const exact = ENDPOINT_RATE_LIMITS[`${method} ${pathname}`]
+  const templates = exact ?? DYNAMIC_ENDPOINT_RATE_LIMITS.find((entry) => {
+    return entry.method === method && entry.pattern.test(pathname)
+  })?.limits
+
+  return (templates ?? []).map((template: RateLimitSpec) => ({
+    ...template,
+    key: template.key ?? keyForBucket(template.bucket, args.userId, args.ip),
+  }))
+}

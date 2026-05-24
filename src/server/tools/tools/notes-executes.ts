@@ -2,6 +2,7 @@ import 'server-only'
 
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { OverlayToolsOptions } from './types'
 
 export async function executeListNotes(
@@ -11,10 +12,11 @@ export async function executeListNotes(
   try {
     const params = new URLSearchParams({ userId: options.userId })
     params.set('kind', 'note')
+    params.set('limit', '100')
     const projectId = input.projectId ?? options.projectId
     if (projectId) params.set('projectId', projectId)
     const res = await callInternalApiGet(
-      `/api/app/files?${params}`,
+      `/api/v1/files?${params}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -25,12 +27,12 @@ export async function executeListNotes(
       const err = await res.json().catch(() => ({ error: 'Failed to list notes' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to list notes' }
     }
-    const notes = (await res.json()) as Array<{
+    const notes = unwrapPaginatedData<{
       _id: string
       name?: string
       updatedAt: number
       projectId?: string
-    }>
+    }>(await res.json())
     const slim = notes.map((n) => ({
       noteId: n._id,
       title: n.name || 'Untitled',
@@ -53,7 +55,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
       fileId: input.noteId.trim(),
     })
     const res = await callInternalApiGet(
-      `/api/app/files?${params}`,
+      `/api/v1/files?${params}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -97,7 +99,7 @@ export async function executeCreateNote(
 ) {
   try {
     const res = await callInternalApi(
-      '/api/app/files',
+      '/api/v1/files',
       {
         kind: 'note',
         name: input.title ?? 'Untitled',
@@ -129,7 +131,7 @@ export async function executeUpdateNote(
 ) {
   try {
     const res = await callInternalApi(
-      '/api/app/files',
+      '/api/v1/files',
       {
         fileId: input.noteId,
         name: input.title,
@@ -156,14 +158,14 @@ export async function executeUpdateNote(
 export async function executeDeleteNote(options: OverlayToolsOptions, input: { noteId: string }) {
   try {
     const url = options.baseUrl
-      ? `${options.baseUrl}/api/app/files?fileId=${encodeURIComponent(input.noteId.trim())}`
-      : `/api/app/files?fileId=${encodeURIComponent(input.noteId.trim())}`
+      ? `${options.baseUrl}/api/v1/files?fileId=${encodeURIComponent(input.noteId.trim())}`
+      : `/api/v1/files?fileId=${encodeURIComponent(input.noteId.trim())}`
     const serviceAuthHeader =
       options.serverSecret
         ? await buildServiceAuthToken({
             userId: options.userId,
             method: 'DELETE',
-            path: '/api/app/files',
+            path: '/api/v1/files',
           })
         : null
     const res = await fetch(url, {

@@ -5,25 +5,25 @@ export class OnboardingClient {
   constructor(private readonly http: HttpContext) {}
 
   status(init?: RequestInit) {
-    return this.http.json<OnboardingStatusResponse>('/api/app/onboarding/status', init)
+    return this.http.json<OnboardingStatusResponse>('/api/v1/onboarding/status', init)
   }
 
   statusResponse(init?: RequestInit) {
-    return this.http.request('/api/app/onboarding/status', init)
+    return this.http.request('/api/v1/onboarding/status', init)
   }
 
   complete(body: { accessToken?: string; userId?: string } = {}, init?: RequestInit) {
     return this.http.json<OnboardingCompleteResponse>(
-      '/api/app/onboarding/complete',
+      '/api/v1/onboarding/complete',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
   completeResponse(body: { accessToken?: string; userId?: string } = {}, init?: RequestInit) {
-    return this.http.request('/api/app/onboarding/complete', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/onboarding/complete', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   resetResponse(body: { accessToken?: string; userId?: string } = {}, init?: RequestInit) {
-    return this.http.request('/api/app/onboarding/reset', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+    return this.http.request('/api/v1/onboarding/reset', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 }

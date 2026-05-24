@@ -113,7 +113,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
     role: 'user',
     parts: [{ type: 'text', text: buildAutomationUserMessage(input) }],
   }
-  const path = '/api/app/conversations/act'
+  const path = '/api/v1/conversations/act'
   const serviceToken = await buildServiceAuthToken({
     userId: input.userId,
     method: 'POST',

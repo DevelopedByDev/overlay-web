@@ -52,7 +52,7 @@ export function readStoredActModelId(): string {
   return readStoredAskModelIds()[0] ?? DEFAULT_MODEL_ID
 }
 
-/** Body fields for POST /api/app/conversations from sidebar — server clamps models for free tier. */
+/** Body fields for POST /api/v1/conversations from sidebar — server clamps models for free tier. */
 export function readNewChatModelFieldsFromStorage(): {
   askModelIds: string[]
   actModelId: string

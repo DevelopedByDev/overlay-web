@@ -5,12 +5,12 @@ test('service auth tokens are path, method, user, time, and replay bound', async
   process.env.INTERNAL_API_SECRET = 'test-internal-secret'
   process.env.INTERNAL_SERVICE_AUTH_SECRET = 'test-service-auth-secret'
 
-  const serviceAuth = await import(new URL('./service-auth.ts', import.meta.url).href)
+  const serviceAuth = await import(new URL('../../server/auth/service-auth.ts', import.meta.url).href)
 
   const token = await serviceAuth.buildServiceAuthToken({
     userId: 'user_123',
     method: 'POST',
-    path: '/api/app/notes',
+    path: '/api/v1/notes',
     ttlMs: 5_000,
   })
 
@@ -18,7 +18,7 @@ test('service auth tokens are path, method, user, time, and replay bound', async
     await serviceAuth.verifyServiceAuthToken(token, {
       userId: 'user_123',
       method: 'POST',
-      path: '/api/app/notes',
+      path: '/api/v1/notes',
     }),
     { userId: 'user_123' },
   )
@@ -28,7 +28,7 @@ test('service auth tokens are path, method, user, time, and replay bound', async
     await serviceAuth.verifyServiceAuthToken(token, {
       userId: 'user_123',
       method: 'POST',
-      path: '/api/app/notes',
+      path: '/api/v1/notes',
     }),
     { userId: 'user_123' },
   )
@@ -38,7 +38,7 @@ test('service auth tokens are path, method, user, time, and replay bound', async
     await serviceAuth.verifyServiceAuthToken(token, {
       userId: 'user_123',
       method: 'POST',
-      path: '/api/app/notes',
+      path: '/api/v1/notes',
     }),
     null,
   )
@@ -47,7 +47,7 @@ test('service auth tokens are path, method, user, time, and replay bound', async
     await serviceAuth.verifyServiceAuthToken(token, {
       userId: 'user_123',
       method: 'GET',
-      path: '/api/app/notes',
+      path: '/api/v1/notes',
     }),
     null,
   )
@@ -56,7 +56,7 @@ test('service auth tokens are path, method, user, time, and replay bound', async
     await serviceAuth.verifyServiceAuthToken(token, {
       userId: 'user_456',
       method: 'POST',
-      path: '/api/app/notes',
+      path: '/api/v1/notes',
     }),
     null,
   )
@@ -65,7 +65,7 @@ test('service auth tokens are path, method, user, time, and replay bound', async
     await serviceAuth.verifyServiceAuthToken(token, {
       userId: 'user_123',
       method: 'POST',
-      path: '/api/app/files',
+      path: '/api/v1/files',
     }),
     null,
   )
@@ -75,11 +75,11 @@ test('service auth can separate middleware verification from route replay consum
   process.env.INTERNAL_API_SECRET = 'test-internal-secret'
   process.env.INTERNAL_SERVICE_AUTH_SECRET = 'test-service-auth-secret'
 
-  const serviceAuth = await import(new URL('./service-auth.ts', import.meta.url).href)
+  const serviceAuth = await import(new URL('../../server/auth/service-auth.ts', import.meta.url).href)
   const token = await serviceAuth.buildServiceAuthToken({
     userId: 'user_789',
     method: 'POST',
-    path: '/api/app/automations/run',
+    path: '/api/v1/automations/run',
     ttlMs: 5_000,
   })
 
@@ -87,7 +87,7 @@ test('service auth can separate middleware verification from route replay consum
     await serviceAuth.verifyServiceAuthToken(token, {
       userId: 'user_789',
       method: 'POST',
-      path: '/api/app/automations/run',
+      path: '/api/v1/automations/run',
       consumeReplay: false,
     }),
     { userId: 'user_789' },
@@ -98,7 +98,7 @@ test('service auth can separate middleware verification from route replay consum
     await serviceAuth.verifyServiceAuthToken(token, {
       userId: 'user_789',
       method: 'POST',
-      path: '/api/app/automations/run',
+      path: '/api/v1/automations/run',
       replayConsumer: () => {
         if (consumed) return false
         consumed = true
@@ -112,7 +112,7 @@ test('service auth can separate middleware verification from route replay consum
     await serviceAuth.verifyServiceAuthToken(token, {
       userId: 'user_789',
       method: 'POST',
-      path: '/api/app/automations/run',
+      path: '/api/v1/automations/run',
       replayConsumer: () => false,
     }),
     null,
@@ -120,7 +120,7 @@ test('service auth can separate middleware verification from route replay consum
 })
 
 test('media tools are exposed only for structured media intent', async () => {
-  const exposure = await import(new URL('./tools/exposure-policy.ts', import.meta.url).href)
+  const exposure = await import(new URL('../../server/tools/tools/exposure-policy.ts', import.meta.url).href)
 
   const ordinaryTurn = exposure.allowedOverlayToolIdsForTurn({
     latestUserText: 'Generate a product thumbnail image from my notes.',

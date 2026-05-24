@@ -18,3 +18,20 @@ export interface Pagination {
   hasMore?: boolean
   earliestCreatedAt?: number
 }
+
+export type PaginationSort = 'createdAt' | 'updatedAt' | 'name'
+export type PaginationOrder = 'asc' | 'desc'
+
+export interface PaginationQuery {
+  cursor?: string
+  limit?: number
+  sort?: PaginationSort
+  order?: PaginationOrder
+}
+
+export interface PaginatedEnvelope<T> {
+  data: T[]
+  nextCursor?: string
+  hasMore: boolean
+  total?: number
+}
