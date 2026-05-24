@@ -18,7 +18,7 @@ import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 export const maxDuration = 60
 
 function isBinaryProxyContent(content: string): boolean {
-  return content.startsWith('/api/v1/files/') || content.startsWith('/api/app/files/')
+  return content.startsWith('/api/v1/files/')
 }
 
 export type SearchTextMatchRow = {

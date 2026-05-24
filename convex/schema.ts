@@ -64,7 +64,7 @@ export default defineSchema({
     lastName: v.optional(v.string()),
     profilePictureUrl: v.optional(v.string()),
     lastLoginAt: v.optional(v.number()),
-    /** Personalized empty-state prompts; refreshed daily (UTC) via /api/app/chat-suggestions. */
+    /** Personalized empty-state prompts; refreshed daily (UTC) via /api/v1/chat-suggestions. */
     chatStarterPrompts: v.optional(v.array(v.string())),
     chatStarterDay: v.optional(v.string()),
     // Onboarding tour state
@@ -738,7 +738,7 @@ export default defineSchema({
     .index('by_turnId', ['turnId']),
 
   // Knowledge base and project files. Text content is stored in `content`.
-  // Binary originals (images, PDFs, etc.) use Cloudflare R2 via `r2Key`; served via /api/app/files/[id]/content.
+  // Binary originals (images, PDFs, etc.) use Cloudflare R2 via `r2Key`; served via /api/v1/files/[id]/content.
   // `storageId` is legacy Convex File Storage only (no longer written by the app).
   r2UploadIntents: defineTable({
     userId: v.string(),

@@ -23,7 +23,7 @@ function utf8ByteLength(value: string): number {
 }
 
 function buildProxyUrl(fileId: Id<'files'>): string {
-  return `/api/app/files/${fileId}/content`
+  return `/api/v1/files/${fileId}/content`
 }
 
 async function authorizeUserAccess(params: {

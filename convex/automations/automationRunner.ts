@@ -156,7 +156,7 @@ export const runAutomation = internalAction({
     })
 
     try {
-      const runPath = '/api/app/automations/run'
+      const runPath = '/api/v1/automations/run'
       const serviceAuthToken = await buildServiceAuthToken({
         userId: automation.userId,
         method: 'POST',

@@ -55,7 +55,7 @@ async function getWorkspace(target: 'dev' | 'prod', userId: string, serverSecret
 }
 
 async function ensureRunningWorkspace(baseUrl: string, userId: string, serverSecret: string, outputPath: string) {
-  const res = await fetch(`${baseUrl}/api/app/daytona/run`, {
+  const res = await fetch(`${baseUrl}/api/v1/daytona/run`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

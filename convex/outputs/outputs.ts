@@ -19,7 +19,7 @@ async function authorizeUserAccess(params: {
 }
 
 function buildProxyUrl(outputId: Id<'outputs'>): string {
-  return `/api/app/outputs/${outputId}/content`
+  return `/api/v1/outputs/${outputId}/content`
 }
 
 function resolveStoredType(output: {

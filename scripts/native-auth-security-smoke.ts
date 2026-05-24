@@ -127,8 +127,8 @@ async function main() {
   })
   await assertStatus(invalidCode, 400, 'malformed code should be rejected before WorkOS exchange')
 
-  const unauthenticatedApp = await fetch(`${baseUrl}/api/app/conversations`)
-  await assertStatus(unauthenticatedApp, 401, '/api/app/* should reject unauthenticated requests')
+  const unauthenticatedApp = await fetch(`${baseUrl}/api/v1/conversations`)
+  await assertStatus(unauthenticatedApp, 401, '/api/v1/* should reject unauthenticated requests')
 
   console.log(`Native auth security smoke passed against ${baseUrl}`)
 }

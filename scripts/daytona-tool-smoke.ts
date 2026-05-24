@@ -131,7 +131,7 @@ async function main() {
   try {
     console.log('[daytona smoke] starting', { baseUrl, userId, outputPath })
 
-    const response = await fetch(`${baseUrl}/api/app/daytona/run`, {
+    const response = await fetch(`${baseUrl}/api/v1/daytona/run`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

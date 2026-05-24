@@ -5,17 +5,11 @@ import { paginateArray } from './pagination-core'
 
 type ListItem = Record<string, unknown>
 
-const COMPAT_ROUTE_HEADER = 'x-overlay-api-compat-route'
-
-function isCompatRequest(request: NextRequest): boolean {
-  return request.headers.has(COMPAT_ROUTE_HEADER)
-}
-
 export async function standardizePaginatedListResponse(
   request: NextRequest,
   response: Response,
 ): Promise<Response> {
-  if (request.method !== 'GET' || isCompatRequest(request) || !response.ok) return response
+  if (request.method !== 'GET' || !response.ok) return response
   const contentType = response.headers.get('content-type') ?? ''
   if (!contentType.includes('application/json')) return response
 
