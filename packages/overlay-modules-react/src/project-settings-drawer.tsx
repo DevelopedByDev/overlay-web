@@ -30,7 +30,7 @@ export function ProjectSettingsDrawer({
   activeSectionId,
   onActiveSectionChange,
   layoutMode,
-  width = 360,
+  width = 520,
 }: ProjectSettingsDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null)
 
@@ -55,7 +55,7 @@ export function ProjectSettingsDrawer({
     <div
       ref={drawerRef}
       className="flex h-full flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)]"
-      style={{ width: `${width}px` }}
+      style={{ width: layoutMode === 'overlay' ? `min(${width}px, 100vw)` : `${width}px` }}
     >
       {/* Header */}
       <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
@@ -73,7 +73,7 @@ export function ProjectSettingsDrawer({
       {/* Body: two-column layout */}
       <div className="flex min-h-0 flex-1">
         {/* Left rail: section buttons */}
-        <nav className="flex w-36 shrink-0 flex-col gap-0.5 border-r border-[var(--border)] p-2">
+        <nav className="flex w-32 shrink-0 flex-col gap-0.5 border-r border-[var(--border)] p-2">
           {sections.map((section) => {
             const isActive = section.id === activeSectionId
             return (
@@ -82,7 +82,7 @@ export function ProjectSettingsDrawer({
                 type="button"
                 onClick={() => onActiveSectionChange(section.id)}
                 className={[
-                  'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors',
+                  'flex min-h-8 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors',
                   isActive
                     ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                     : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',

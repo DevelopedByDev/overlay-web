@@ -14,8 +14,8 @@ export function createProjectSettingsSections(
 ): ProjectSettingsSection[] {
   return [
     {
-      id: 'github-repositories',
-      label: 'GitHub repositories',
+      id: 'integrations',
+      label: 'Integrations',
       icon: <GitBranch size={14} />,
       render: () => <GithubRepoAllowlistPicker {...ctx.githubRepoPickerProps} />,
     },

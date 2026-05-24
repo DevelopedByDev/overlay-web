@@ -18,6 +18,10 @@ import {
 export const overlayAppConfig = defineOverlayAppConfig({
   brand: {
     ...DEFAULT_OVERLAY_BRAND_CONFIG,
+    name: 'Starter Stack AI',
+    shortName: 'Starter Stack AI',
+    logoAlt: 'Starter Stack AI',
+    organizationName: 'Starter Stack AI',
   },
   // Project-first sidebar: only Projects is a top-level destination. Chat,
   // Files, Extensions, and Automations are accessed via the project hub

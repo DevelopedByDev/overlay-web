@@ -330,7 +330,8 @@ export default function ProjectsSidebar({ initialProjects }: { initialProjects?:
 
   const loadProjects = useCallback(async () => {
     try {
-      setProjects(await overlayAppClient.projects.get<Project[]>())
+      const nextProjects = await overlayAppClient.projects.get<Project[]>()
+      setProjects(Array.isArray(nextProjects) ? nextProjects : [])
     } catch { /* ignore */ } finally { setLoading(false) }
   }, [])
 

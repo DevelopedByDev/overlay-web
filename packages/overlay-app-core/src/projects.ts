@@ -8,7 +8,14 @@ export const PROJECTS_CHANGED_EVENT = 'overlay:projects-changed'
 export type ProjectRouteView = 'chat' | 'note' | 'file'
 export type ProjectHubTab = 'chats' | 'files' | 'instructions'
 
-export type ProjectSettingsSectionId = 'github-repositories'
+export type ProjectSettingsSectionId =
+  | 'chats'
+  | 'files'
+  | 'instructions'
+  | 'integrations'
+  | 'mcps'
+  | 'skills'
+  | 'tools'
 
 export interface GithubRepositoryOption {
   fullName: string

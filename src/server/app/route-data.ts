@@ -51,7 +51,9 @@ export function getInitialChatHistory(): Promise<CachedConversation[]> {
 }
 
 export function getInitialProjectList(): Promise<ProjectSummary[]> {
-  return fetchAppJson<ProjectSummary[]>('/api/app/projects', [])
+  return fetchAppJson<unknown>('/api/app/projects', []).then((projects) =>
+    Array.isArray(projects) ? projects as ProjectSummary[] : [],
+  )
 }
 
 export function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {

@@ -169,7 +169,7 @@ export default function IntegrationsView({
     overlayAppClient.projects.get<ProjectOption[]>()
       .then((items) => {
         if (cancelled) return
-        setProjects((items ?? []).filter((project) => !project.deletedAt))
+        setProjects(Array.isArray(items) ? items.filter((project) => !project.deletedAt) : [])
       })
       .catch(() => {
         if (!cancelled) setProjects([])

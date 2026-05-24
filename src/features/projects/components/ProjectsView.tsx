@@ -2,9 +2,9 @@
 
 // Compatibility wrapper: canonical project contracts/controllers live in @overlay/app-core,
 // typed transport lives in @overlay/api-client, and reusable presentation lives in @overlay/modules-react.
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { Folder, Loader2, Plus } from 'lucide-react'
+import { BookOpen, ExternalLink, FileText, Folder, Loader2, MessageSquare, Plug, Plus, Server, Sparkles, Wrench } from 'lucide-react'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
@@ -29,7 +29,6 @@ import {
   type GithubRepositoryOption,
   type ProjectChatSummary,
   type ProjectFileSummary,
-  type ProjectHubTab,
   type ProjectMetaUpdatedDetail,
   type ProjectSettingsSectionId,
   type ProjectSummary,
@@ -37,10 +36,9 @@ import {
 import {
   ProjectHubActions,
   ProjectHubHeader,
-  ProjectHubTabs,
 } from '@overlay/modules-react/projects'
-import { ProjectSettingsDrawer } from '@overlay/modules-react/project-settings-drawer'
-import { createProjectSettingsSections } from '@overlay/modules-react/project-settings-sections'
+import { ProjectSettingsDrawer, type ProjectSettingsSection } from '@overlay/modules-react/project-settings-drawer'
+import { GithubRepoAllowlistPicker } from '@overlay/modules-react/github-repo-picker'
 import { FileViewerSkeleton } from '@overlay/ui/feedback'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@/features/files/components/FileViewer'
@@ -53,6 +51,25 @@ type ProjectFileRecord = ProjectFileSummary
 
 const ChatInterface = dynamic(() => import('@/features/chat/components/ChatInterface'))
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'))
+const ProjectMcpServersView = dynamic(() => import('@/features/integrations/components/McpServersView'))
+const ProjectSkillsView = dynamic(() => import('@/features/automations/components/SkillsView'))
+
+const PROJECT_SETTINGS_SECTION_IDS = [
+  'chats',
+  'files',
+  'instructions',
+  'integrations',
+  'mcps',
+  'skills',
+  'tools',
+] as const satisfies readonly ProjectSettingsSectionId[]
+
+function resolveProjectSettingsSectionId(value: string | null): ProjectSettingsSectionId | null {
+  if (value === 'github-repositories') return 'integrations'
+  return PROJECT_SETTINGS_SECTION_IDS.includes(value as ProjectSettingsSectionId)
+    ? (value as ProjectSettingsSectionId)
+    : null
+}
 
 function localStorageGet(key: string): string | null {
   if (typeof window === 'undefined') return null
@@ -161,7 +178,238 @@ function ProjectFileView({ fileId }: { fileId: string }) {
   )
 }
 
-// ─── Project hub: ChatInterface + Chats / Files / Instructions tabs ──────────
+function ProjectDrawerSectionIntro({
+  title,
+  description,
+  action,
+}: {
+  title: string
+  description?: string
+  action?: ReactNode
+}) {
+  return (
+    <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold text-[var(--foreground)]">{title}</h2>
+        {description ? <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{description}</p> : null}
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  )
+}
+
+function ProjectDrawerLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a
+      href={href}
+      className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+    >
+      {children}
+      <ExternalLink size={12} />
+    </a>
+  )
+}
+
+function ProjectChatsSettingsPanel({
+  chats,
+  loading,
+  onOpenChat,
+}: {
+  chats: readonly HubChat[]
+  loading?: boolean
+  onOpenChat: (id: string) => void
+}) {
+  return (
+    <section>
+      <ProjectDrawerSectionIntro
+        title="Chats"
+      />
+      {loading ? (
+        <div className="flex justify-center py-8 text-[var(--muted)]">
+          <Loader2 size={16} className="animate-spin" />
+        </div>
+      ) : chats.length === 0 ? (
+        <p className="rounded-md border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted)]">
+          No chats yet.
+        </p>
+      ) : (
+        <ul className="divide-y divide-[var(--border)]">
+          {chats.map((chat) => (
+            <li key={chat._id}>
+              <button
+                type="button"
+                onClick={() => onOpenChat(chat._id)}
+                className="flex w-full items-center gap-2 py-2.5 text-left text-sm text-[var(--foreground)] transition-colors hover:opacity-80"
+              >
+                <MessageSquare size={14} className="shrink-0 text-[var(--muted-light)]" />
+                <span className="min-w-0 flex-1 truncate">{chat.title || 'Untitled'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function ProjectFilesSettingsPanel({
+  files,
+  loading,
+  onOpenFile,
+}: {
+  files: readonly ProjectFileRecord[]
+  loading?: boolean
+  onOpenFile: (file: ProjectFileRecord) => void
+}) {
+  return (
+    <section>
+      <ProjectDrawerSectionIntro
+        title="Files"
+      />
+      {loading ? (
+        <div className="flex justify-center py-8 text-[var(--muted)]">
+          <Loader2 size={16} className="animate-spin" />
+        </div>
+      ) : files.length === 0 ? (
+        <p className="rounded-md border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted)]">
+          No files yet.
+        </p>
+      ) : (
+        <ul className="divide-y divide-[var(--border)]">
+          {files.map((file) => (
+            <li key={file._id}>
+              <button
+                type="button"
+                onClick={() => onOpenFile(file)}
+                className="flex w-full items-center gap-2 py-2.5 text-left text-sm text-[var(--foreground)] transition-colors hover:opacity-80"
+              >
+                {projectRouteViewForFile(file) === 'note' ? (
+                  <BookOpen size={14} className="shrink-0 text-[var(--muted-light)]" />
+                ) : (
+                  <FileText size={14} className="shrink-0 text-[var(--muted-light)]" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{file.name || 'Untitled'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function ProjectInstructionsSettingsPanel({
+  instructions,
+  instructionsLoaded,
+  savingInstructions,
+  instructionsSavedAt,
+  onInstructionsChange,
+}: {
+  instructions: string
+  instructionsLoaded: boolean
+  savingInstructions?: boolean
+  instructionsSavedAt?: number | null
+  onInstructionsChange: (value: string) => void
+}) {
+  return (
+    <section>
+      <ProjectDrawerSectionIntro
+        title="Instructions"
+      />
+      <textarea
+        value={instructions}
+        disabled={!instructionsLoaded}
+        onChange={(event) => onInstructionsChange(event.target.value)}
+        placeholder={instructionsLoaded ? 'Project instructions...' : 'Loading...'}
+        rows={12}
+        className="min-h-64 w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm leading-6 text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] disabled:opacity-60"
+      />
+      <div className="mt-2 flex h-4 items-center text-[11px] text-[var(--muted-light)]">
+        {savingInstructions ? 'Saving...' : instructionsSavedAt ? 'Saved' : ''}
+      </div>
+    </section>
+  )
+}
+
+function ProjectIntegrationsSettingsPanel({
+  projectId,
+  connectedIntegrations,
+  integrationsLoading,
+  lastIntegrationsError,
+  githubRepoPicker,
+}: {
+  projectId: string
+  connectedIntegrations: ReadonlyArray<{ slug: string; name: string; description?: string; logoUrl?: string | null }>
+  integrationsLoading: boolean
+  lastIntegrationsError?: string | null
+  githubRepoPicker: ReactNode
+}) {
+  const integrationsHref = `/app/integrations?projectId=${encodeURIComponent(projectId)}`
+
+  return (
+    <section>
+      <ProjectDrawerSectionIntro
+        title="Integrations"
+        action={<ProjectDrawerLink href={integrationsHref}>Manage</ProjectDrawerLink>}
+      />
+      {lastIntegrationsError ? (
+        <p className="text-xs text-red-500">{lastIntegrationsError}</p>
+      ) : integrationsLoading ? (
+        <div className="flex justify-center py-6 text-[var(--muted)]">
+          <Loader2 size={16} className="animate-spin" />
+        </div>
+      ) : connectedIntegrations.length === 0 ? (
+        <div className="rounded-md border border-dashed border-[var(--border)] px-3 py-6 text-center">
+          <Plug size={24} strokeWidth={1.25} className="mx-auto text-[var(--muted-light)]" />
+          <p className="mt-2 text-xs text-[var(--muted)]">No integrations connected to this project yet.</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-[var(--border)]">
+          {connectedIntegrations.map((integration) => (
+            <div key={integration.slug} className="flex items-center gap-3 py-2.5">
+              {integration.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={integration.logoUrl}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="h-7 w-7 rounded-md border border-[var(--border)] object-contain"
+                />
+              ) : (
+                <div className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] text-xs font-medium text-[var(--muted)]">
+                  {integration.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm text-[var(--foreground)]">{integration.name}</p>
+                {integration.description ? (
+                  <p className="truncate text-xs text-[var(--muted-light)]">{integration.description}</p>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-5 border-t border-[var(--border)] pt-5">
+        {githubRepoPicker}
+      </div>
+    </section>
+  )
+}
+
+function ProjectToolsSettingsPanel() {
+  return (
+    <section>
+      <ProjectDrawerSectionIntro
+        title="Tools"
+        action={<ProjectDrawerLink href="/app/tools?view=all">Open</ProjectDrawerLink>}
+      />
+    </section>
+  )
+}
+
+// ─── Project hub: ChatInterface + drawer-based project controls ──────────────
 
 function ProjectHubBody({
   projectId,
@@ -177,7 +425,6 @@ function ProjectHubBody({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<ProjectHubTab>('chats')
   const [chats, setChats] = useState<HubChat[]>([])
   const [files, setFiles] = useState<ProjectFileRecord[]>([])
   const [listsLoading, setListsLoading] = useState(true)
@@ -200,7 +447,7 @@ function ProjectHubBody({
 
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false)
   const [activeSettingsSectionId, setActiveSettingsSectionId] =
-    useState<ProjectSettingsSectionId>('github-repositories')
+    useState<ProjectSettingsSectionId>('chats')
   const [layoutMode, setLayoutMode] = useState<'push' | 'overlay'>('push')
   const [githubConnected, setGithubConnected] = useState(false)
   const [draftAllowlist, setDraftAllowlist] = useState<readonly string[]>([])
@@ -215,9 +462,8 @@ function ProjectHubBody({
     const storedOpen = localStorageGet('overlay.project-settings-drawer.open')
     if (storedOpen === 'true') setSettingsDrawerOpen(true)
     const storedSection = localStorageGet('overlay.project-settings-drawer.active-section')
-    if (storedSection === 'github-repositories') {
-      setActiveSettingsSectionId('github-repositories')
-    }
+    const resolvedSection = resolveProjectSettingsSectionId(storedSection)
+    if (resolvedSection) setActiveSettingsSectionId(resolvedSection)
   }, [])
 
   useEffect(() => {
@@ -317,7 +563,7 @@ function ProjectHubBody({
   }, [githubConnected])
 
   useEffect(() => {
-    if (!settingsDrawerOpen || activeSettingsSectionId !== 'github-repositories') return
+    if (!settingsDrawerOpen || activeSettingsSectionId !== 'integrations') return
     if (!githubConnected) {
       setRepoError('github_not_connected')
       return
@@ -482,12 +728,12 @@ function ProjectHubBody({
     router.push(projectItemHref({ project: { _id: projectId, name: projectName }, view: 'note', id: data.id }))
   }
 
-  function openChat(id: string) {
+  const openChat = useCallback((id: string) => {
     router.push(projectItemHref({ project: { _id: projectId, name: projectName }, view: 'chat', id }))
-  }
-  function openFile(file: ProjectFileRecord) {
+  }, [projectId, projectName, router])
+  const openFile = useCallback((file: ProjectFileRecord) => {
     router.push(projectItemHref({ project: { _id: projectId, name: projectName }, view: projectRouteViewForFile(file), id: file._id }))
-  }
+  }, [projectId, projectName, router])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -510,7 +756,7 @@ function ProjectHubBody({
     }
   }
 
-  function onInstructionsChange(val: string) {
+  const onInstructionsChange = useCallback((val: string) => {
     setInstructions(val)
     if (instructionsSaveTimer.current) clearTimeout(instructionsSaveTimer.current)
     instructionsSaveTimer.current = setTimeout(async () => {
@@ -522,7 +768,7 @@ function ProjectHubBody({
         setSavingInstructions(false)
       }
     }, 700)
-  }
+  }, [projectId])
 
   // Header actions: + dropdown, Upload dropdown
   const [plusOpen, setPlusOpen] = useState(false)
@@ -583,63 +829,127 @@ function ProjectHubBody({
     [files],
   )
 
-  const tabs = (
-    <ProjectHubTabs
-      projectId={projectId}
-      activeTab={activeTab}
-      chats={sortedChats}
-      files={sortedFiles}
-      listsLoading={listsLoading}
-      instructions={instructions}
-      instructionsLoaded={instructionsLoaded}
-      savingInstructions={savingInstructions}
-      instructionsSavedAt={instructionsSavedAt}
-      connectedIntegrations={connectedIntegrations}
-      integrationsLoading={integrationsLoading}
-      lastIntegrationsError={lastIntegrationsError}
-      onTabChange={setActiveTab}
-      onOpenChat={openChat}
-      onOpenFile={openFile}
-      onInstructionsChange={onInstructionsChange}
-    />
-  )
-
   const settingsSections = useMemo(
-    () =>
-      createProjectSettingsSections({
-        githubRepoPickerProps: {
-          value: draftAllowlist,
-          options: repoOptions,
-          loading: repoLoading,
-          error: repoError,
-          saveError: saveAllowlistError,
-          manualEntry,
-          onChange: (next) => {
+    (): ProjectSettingsSection[] => {
+      const githubRepoPicker = (
+        <GithubRepoAllowlistPicker
+          value={draftAllowlist}
+          options={repoOptions}
+          loading={repoLoading}
+          error={repoError}
+          saveError={saveAllowlistError}
+          manualEntry={manualEntry}
+          onChange={(next) => {
             setDraftAllowlist(next)
             void saveAllowlist(next)
-          },
-          onAddManual: (entry) => {
+          }}
+          onAddManual={(entry) => {
             if (draftAllowlist.includes(entry)) return
             const next = [...draftAllowlist, entry]
             setDraftAllowlist(next)
             setManualEntry('')
             void saveAllowlist(next)
-          },
-          onManualEntryChange: setManualEntry,
-          onRetryLoad: () => void fetchRepoList(),
-          onDismissSaveError: dismissSaveAllowlistError,
+          }}
+          onManualEntryChange={setManualEntry}
+          onRetryLoad={() => void fetchRepoList()}
+          onDismissSaveError={dismissSaveAllowlistError}
+        />
+      )
+
+      return [
+        {
+          id: 'chats',
+          label: 'Chats',
+          icon: <MessageSquare size={14} />,
+          render: () => <ProjectChatsSettingsPanel chats={sortedChats} loading={listsLoading} onOpenChat={openChat} />,
         },
-      }),
+        {
+          id: 'files',
+          label: 'Files',
+          icon: <FileText size={14} />,
+          render: () => <ProjectFilesSettingsPanel files={sortedFiles} loading={listsLoading} onOpenFile={openFile} />,
+        },
+        {
+          id: 'instructions',
+          label: 'Instructions',
+          icon: <BookOpen size={14} />,
+          render: () => (
+            <ProjectInstructionsSettingsPanel
+              instructions={instructions}
+              instructionsLoaded={instructionsLoaded}
+              savingInstructions={savingInstructions}
+              instructionsSavedAt={instructionsSavedAt}
+              onInstructionsChange={onInstructionsChange}
+            />
+          ),
+        },
+        {
+          id: 'integrations',
+          label: 'Integrations',
+          icon: <Plug size={14} />,
+          render: () => (
+            <ProjectIntegrationsSettingsPanel
+              projectId={projectId}
+              connectedIntegrations={connectedIntegrations}
+              integrationsLoading={integrationsLoading}
+              lastIntegrationsError={lastIntegrationsError}
+              githubRepoPicker={githubRepoPicker}
+            />
+          ),
+        },
+        {
+          id: 'mcps',
+          label: 'MCPs',
+          icon: <Server size={14} />,
+          render: () => (
+            <div className="-m-4 h-[calc(100vh-7rem)] min-h-[28rem]">
+              <ProjectMcpServersView userId={userId} />
+            </div>
+          ),
+        },
+        {
+          id: 'skills',
+          label: 'Skills',
+          icon: <Sparkles size={14} />,
+          render: () => (
+            <div className="-m-4 h-[calc(100vh-7rem)] min-h-[28rem]">
+              <ProjectSkillsView userId={userId} />
+            </div>
+          ),
+        },
+        {
+          id: 'tools',
+          label: 'Tools',
+          icon: <Wrench size={14} />,
+          render: () => <ProjectToolsSettingsPanel />,
+        },
+      ]
+    },
     [
+      connectedIntegrations,
       dismissSaveAllowlistError,
       draftAllowlist,
       fetchRepoList,
+      instructions,
+      instructionsLoaded,
+      instructionsSavedAt,
+      integrationsLoading,
+      lastIntegrationsError,
+      listsLoading,
       manualEntry,
+      onInstructionsChange,
+      openChat,
+      openFile,
+      projectId,
       repoError,
       repoLoading,
       repoOptions,
       saveAllowlist,
       saveAllowlistError,
+      savingInstructions,
+      sortedChats,
+      sortedFiles,
+      userId,
     ],
   )
 
@@ -654,7 +964,6 @@ function ProjectHubBody({
             hideSidebar
             hideHeader
             projectName={projectName}
-            belowEmptyComposer={tabs}
           />
         </div>
         <ProjectSettingsDrawer
@@ -665,6 +974,7 @@ function ProjectHubBody({
           activeSectionId={activeSettingsSectionId}
           onActiveSectionChange={setActiveSettingsSectionId}
           layoutMode={layoutMode}
+          width={560}
         />
       </div>
     </div>
@@ -787,8 +1097,12 @@ export default function ProjectsView({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [projects, setProjects] = useState<ProjectSummary[]>(initialProjects)
-  const [projectsLoading, setProjectsLoading] = useState(initialProjects.length === 0)
+  const safeInitialProjects = useMemo(
+    () => (Array.isArray(initialProjects) ? initialProjects : []),
+    [initialProjects],
+  )
+  const [projects, setProjects] = useState<ProjectSummary[]>(safeInitialProjects)
+  const [projectsLoading, setProjectsLoading] = useState(safeInitialProjects.length === 0)
   const [creatingProject, setCreatingProject] = useState(false)
   const view = searchParams?.get('view') ?? null
   const id = searchParams?.get('id') ?? null
@@ -807,11 +1121,11 @@ export default function ProjectsView({
   }, [])
 
   useEffect(() => {
-    if (initialProjects.length > 0) {
-      setProjects(initialProjects)
+    if (safeInitialProjects.length > 0) {
+      setProjects(safeInitialProjects)
       setProjectsLoading(false)
     }
-  }, [initialProjects])
+  }, [safeInitialProjects])
 
   useEffect(() => {
     void loadProjects()

@@ -410,12 +410,12 @@ export default function AppSidebar({
   const brandLink = (
     <Link
       href={BRAND_CONFIG.homeHref}
-      className="flex min-w-0 items-center gap-2"
+      className="flex min-w-0 max-w-full items-center gap-2"
       onClick={() => setMobileMenuOpen(false)}
     >
       <Image src={BRAND_CONFIG.logoSrc} alt={BRAND_CONFIG.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
       <span
-        className="truncate text-xl font-medium tracking-tight"
+        className="min-w-0 truncate text-base font-medium tracking-tight"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
         {BRAND_CONFIG.shortName ?? BRAND_CONFIG.name}
@@ -447,7 +447,7 @@ export default function AppSidebar({
     >
       <Image src={BRAND_CONFIG.logoSrc} alt={BRAND_CONFIG.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
       <span
-        className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
+        className="min-w-0 truncate text-base font-medium tracking-tight text-[var(--foreground)]"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
         {BRAND_CONFIG.shortName ?? BRAND_CONFIG.name}

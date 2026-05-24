@@ -8,6 +8,7 @@ import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-default
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { parseChatSuggestionsJson } from '@/server/chat/chat-suggestions-json'
 
 function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)
@@ -79,13 +80,9 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
 {"prompts":["...","...","...","..."]}`,
   })
 
-  const raw = result.text.trim()
-  const jsonStr = raw
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim()
+  const parsed = parseChatSuggestionsJson(result.text)
+  if (!parsed) return null
 
-  const parsed = JSON.parse(jsonStr) as { prompts?: unknown }
   const promptsUnknown = parsed.prompts
   if (!Array.isArray(promptsUnknown)) return null
   const strings = promptsUnknown
