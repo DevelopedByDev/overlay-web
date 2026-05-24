@@ -4,16 +4,18 @@
  * Do not add server secrets or non-NEXT_PUBLIC vars here.
  */
 
-function read(name: string): string {
-  return process.env[name]?.trim() ?? ''
+function read(value: string | undefined): string {
+  return value?.trim() ?? ''
 }
 
 export const publicEnv = {
-  appUrl: read('NEXT_PUBLIC_APP_URL'),
-  convexUrl: read('NEXT_PUBLIC_CONVEX_URL'),
-  devConvexUrl: read('DEV_NEXT_PUBLIC_CONVEX_URL') || read('NEXT_PUBLIC_DEV_CONVEX_URL'),
-  chatStreamRelayUrl: read('NEXT_PUBLIC_CHAT_STREAM_RELAY_URL'),
-  sentryDsn: read('NEXT_PUBLIC_SENTRY_DSN'),
+  appUrl: read(process.env.NEXT_PUBLIC_APP_URL),
+  convexUrl: read(process.env.NEXT_PUBLIC_CONVEX_URL),
+  devConvexUrl:
+    read(process.env.NEXT_PUBLIC_DEV_CONVEX_URL) ||
+    read(process.env.DEV_NEXT_PUBLIC_CONVEX_URL),
+  chatStreamRelayUrl: read(process.env.NEXT_PUBLIC_CHAT_STREAM_RELAY_URL),
+  sentryDsn: read(process.env.NEXT_PUBLIC_SENTRY_DSN),
 } as const
 
 /** True in development builds (inlined by the bundler). */
