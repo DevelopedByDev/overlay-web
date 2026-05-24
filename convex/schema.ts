@@ -158,6 +158,31 @@ export default defineSchema({
     .index('by_jti', ['jti'])
     .index('by_expiresAt', ['expiresAt']),
 
+  apiKeys: defineTable({
+    keyHash: v.string(),
+    name: v.optional(v.string()),
+    userId: v.string(),
+    scopes: v.array(v.union(
+      v.literal('chat:read'),
+      v.literal('chat:write'),
+      v.literal('files:read'),
+      v.literal('files:write'),
+      v.literal('admin'),
+    )),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    createdBy: v.optional(v.string()),
+    createdFromIp: v.optional(v.string()),
+    lastUsedAt: v.optional(v.number()),
+    lastUsedIp: v.optional(v.string()),
+    revokedAt: v.optional(v.number()),
+    revokedReason: v.optional(v.string()),
+  })
+    .index('by_keyHash', ['keyHash'])
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_expiresAt', ['expiresAt'])
+    .index('by_revokedAt', ['revokedAt']),
+
   // Append-only audit log: one row per billing period per user.
   // Written to on every usage batch for raw token counts and a credit snapshot.
   // Never read for enforcement — use subscriptions.creditsUsed for that.

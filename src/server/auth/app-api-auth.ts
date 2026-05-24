@@ -4,6 +4,23 @@ import type { NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay'
+import { ApiKeyService, isApiKeyCandidate } from '@/server/auth/api-keys'
+import { hasRequiredApiKeyScopes, type ApiKeyScope } from '@/shared/auth/api-key-scopes'
+
+export type AuthenticatedAppUser = {
+  userId: string
+  accessToken: string
+  authType: 'session' | 'api-key' | 'service' | 'access-token'
+  apiKeyId?: string
+  scopes?: ApiKeyScope[]
+}
+
+type ResolveAuthenticatedAppUserOptions = {
+  clientIp?: string
+  requiredApiKeyScopes?: readonly ApiKeyScope[]
+}
+
+const authenticatedAppUsers = new WeakMap<Request, AuthenticatedAppUser>()
 
 /**
  * Browser requests use the session cookie. Server-side tool calls (e.g. Agent)
@@ -12,11 +29,42 @@ import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay
 export async function resolveAuthenticatedAppUser(
   request: NextRequest,
   body: { accessToken?: string; userId?: string },
-): Promise<{ userId: string; accessToken: string } | null> {
+  options: ResolveAuthenticatedAppUserOptions = {},
+): Promise<AuthenticatedAppUser | null> {
+  const cached = getCachedAuthenticatedAppUser(request, options.requiredApiKeyScopes)
+  if (cached) return cached
+
   const ctx = getOverlayServerContext()
   const session = await ctx.auth.getSession(request)
   if (session) {
-    return { userId: session.user.id, accessToken: session.accessToken }
+    return cacheAuthenticatedAppUser(request, {
+      userId: session.user.id,
+      accessToken: session.accessToken,
+      authType: 'session',
+    })
+  }
+
+  const authHeader = request.headers.get('authorization')
+  const bearer =
+    authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : undefined
+  if (shouldAttemptApiKeyAuth(bearer, options)) {
+    const apiKeyAuth = await ApiKeyService.validate({
+      apiKey: bearer,
+      clientIp: options.clientIp,
+      requiredScopes: options.requiredApiKeyScopes,
+    }).catch((error) => {
+      console.error('[api-key-auth] validation failed', error)
+      return null
+    })
+    if (apiKeyAuth) {
+      return cacheAuthenticatedAppUser(request, {
+        userId: apiKeyAuth.userId,
+        accessToken: '',
+        authType: 'api-key',
+        apiKeyId: apiKeyAuth.id,
+        scopes: apiKeyAuth.scopes,
+      })
+    }
   }
 
   const internalUserId =
@@ -33,12 +81,13 @@ export async function resolveAuthenticatedAppUser(
     },
   )
   if (serviceAuth) {
-    return { userId: serviceAuth.userId, accessToken: '' }
+    return cacheAuthenticatedAppUser(request, {
+      userId: serviceAuth.userId,
+      accessToken: '',
+      authType: 'service',
+    })
   }
 
-  const authHeader = request.headers.get('authorization')
-  const bearer =
-    authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : undefined
   const token =
     (typeof body.accessToken === 'string' && body.accessToken.trim()) || bearer
   const queryUserId = request.nextUrl.searchParams.get('userId')?.trim() || ''
@@ -51,5 +100,36 @@ export async function resolveAuthenticatedAppUser(
   const claims = await ctx.auth.verifyAccessToken(token)
   if (!claims || claims.sub !== uid) return null
 
-  return { userId: uid, accessToken: token }
+  return cacheAuthenticatedAppUser(request, { userId: uid, accessToken: token, authType: 'access-token' })
+}
+
+function shouldAttemptApiKeyAuth(
+  bearer: string | undefined,
+  options: ResolveAuthenticatedAppUserOptions,
+): bearer is string {
+  if (!isApiKeyCandidate(bearer)) return false
+  return Boolean(options.requiredApiKeyScopes?.length)
+}
+
+function cacheAuthenticatedAppUser(
+  request: Request,
+  auth: AuthenticatedAppUser,
+): AuthenticatedAppUser {
+  authenticatedAppUsers.set(request, auth)
+  return auth
+}
+
+function getCachedAuthenticatedAppUser(
+  request: Request,
+  requiredApiKeyScopes: readonly ApiKeyScope[] | undefined,
+): AuthenticatedAppUser | null {
+  const cached = authenticatedAppUsers.get(request)
+  if (!cached) return null
+  if (
+    cached.authType === 'api-key' &&
+    !hasRequiredApiKeyScopes(cached.scopes ?? [], requiredApiKeyScopes)
+  ) {
+    return null
+  }
+  return cached
 }

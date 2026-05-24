@@ -10,6 +10,7 @@
 
 import type * as ai_sandbox_daytona from "../ai/sandbox/daytona.js";
 import type * as ai_sandbox_daytonaReconcile from "../ai/sandbox/daytonaReconcile.js";
+import type * as auth_apiKeys from "../auth/apiKeys.js";
 import type * as auth_authDebug from "../auth/authDebug.js";
 import type * as auth_serviceAuth from "../auth/serviceAuth.js";
 import type * as auth_sessionTransfer from "../auth/sessionTransfer.js";
@@ -56,6 +57,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "ai/sandbox/daytona": typeof ai_sandbox_daytona;
   "ai/sandbox/daytonaReconcile": typeof ai_sandbox_daytonaReconcile;
+  "auth/apiKeys": typeof auth_apiKeys;
   "auth/authDebug": typeof auth_authDebug;
   "auth/serviceAuth": typeof auth_serviceAuth;
   "auth/sessionTransfer": typeof auth_sessionTransfer;
