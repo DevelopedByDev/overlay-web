@@ -2,6 +2,7 @@
 
 import { useState, type ChangeEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, MessageSquare, Pencil, Plug, Plus, Settings, Trash2, Upload } from 'lucide-react'
+import { ProjectAvatar } from './project-avatar'
 import type {
   ConversationSummary,
   KnowledgeFile,
@@ -837,6 +838,7 @@ export function ProjectsInlineTree({
 }
 
 export interface ProjectHubHeaderProps {
+  projectId: string
   projectName: string
   editingName: boolean
   draftName: string
@@ -854,6 +856,7 @@ export interface ProjectHubHeaderProps {
 }
 
 export function ProjectHubHeader({
+  projectId,
   projectName,
   editingName,
   draftName,
@@ -867,7 +870,7 @@ export function ProjectHubHeader({
 }: ProjectHubHeaderProps) {
   return (
     <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:px-4 md:py-0">
-      <FolderOpen size={16} className="shrink-0 text-[var(--muted)]" />
+      <ProjectAvatar projectId={projectId} name={projectName} size={16} />
       {editingName ? (
         <input
           className="min-w-0 flex-1 max-w-md rounded border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"

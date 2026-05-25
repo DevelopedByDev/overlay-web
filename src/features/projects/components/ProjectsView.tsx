@@ -804,6 +804,7 @@ function ProjectHubBody({
 
   const projectHeaderTitle = (
     <ProjectHubHeader
+      projectId={projectId}
       projectName={projectName}
       editingName={editingName}
       draftName={draftName}
