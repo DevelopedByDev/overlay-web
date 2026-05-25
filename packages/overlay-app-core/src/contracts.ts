@@ -1160,6 +1160,7 @@ export interface DeleteProjectResponse extends MutationSuccessResponse {
 
 export interface McpServerSummary {
   _id: string
+  projectId: string
   name: string
   description?: string
   transport: 'sse' | 'streamable-http'
@@ -1181,6 +1182,7 @@ export type McpAuthConfig =
   | Record<string, never>
 
 export interface CreateMcpServerRequest {
+  projectId: string
   name: string
   description?: string
   transport: McpTransport
@@ -1195,6 +1197,7 @@ export interface CreateMcpServerRequest {
 
 export interface UpdateMcpServerRequest extends Partial<CreateMcpServerRequest> {
   mcpServerId: string
+  projectId: string
 }
 
 export interface TestMcpServerRequest {

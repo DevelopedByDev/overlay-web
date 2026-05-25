@@ -23,17 +23,20 @@ export async function resolveAuthenticatedAppUser(
     typeof body.userId === 'string' && body.userId.trim()
       ? body.userId.trim()
       : request.nextUrl.searchParams.get('userId')?.trim() || ''
-  const serviceAuth = await verifyServiceAuthToken(
-    request.headers.get(getServiceAuthHeaderName()),
-    {
-      method: request.method,
-      path: request.nextUrl.pathname,
-      userId: internalUserId || undefined,
-      replayConsumer: consumeServiceAuthReplayNonce,
-    },
-  )
-  if (serviceAuth) {
-    return { userId: serviceAuth.userId, accessToken: '' }
+  const serviceAuthHeader = request.headers.get(getServiceAuthHeaderName())
+  if (serviceAuthHeader?.trim()) {
+    const serviceAuth = await verifyServiceAuthToken(
+      serviceAuthHeader,
+      {
+        method: request.method,
+        path: request.nextUrl.pathname,
+        userId: internalUserId || undefined,
+        replayConsumer: consumeServiceAuthReplayNonce,
+      },
+    )
+    if (serviceAuth) {
+      return { userId: serviceAuth.userId, accessToken: '' }
+    }
   }
 
   const authHeader = request.headers.get('authorization')

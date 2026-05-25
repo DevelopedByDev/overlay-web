@@ -189,16 +189,19 @@ export async function middleware(request: NextRequest) {
 
   if (isProtectedRoute(pathname)) {
     if (pathname.startsWith('/api/')) {
-      const serviceAuth = await verifyServiceAuthToken(
-        request.headers.get(getServiceAuthHeaderName()),
-        {
-          method: request.method,
-          path: pathname,
-          consumeReplay: false,
-        },
-      )
-      if (serviceAuth) {
-        return nextResponse()
+      const serviceAuthHeader = request.headers.get(getServiceAuthHeaderName())
+      if (serviceAuthHeader?.trim()) {
+        const serviceAuth = await verifyServiceAuthToken(
+          serviceAuthHeader,
+          {
+            method: request.method,
+            path: pathname,
+            consumeReplay: false,
+          },
+        )
+        if (serviceAuth) {
+          return nextResponse()
+        }
       }
     }
 

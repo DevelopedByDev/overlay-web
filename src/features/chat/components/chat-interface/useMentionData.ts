@@ -73,7 +73,9 @@ export function useMentionData(projectId?: string | null) {
             : Promise.resolve({ items: [] }),
           overlayAppClient.automations.getResponse(projectId ? { projectId } : undefined).then((r) => r.ok ? r.json() : []),
           overlayAppClient.skills.getResponse(projectId ? { projectId } : undefined).then((r) => r.ok ? r.json() : []),
-          overlayAppClient.mcpServers.getResponse(projectId ? { projectId } : undefined).then((r) => r.ok ? r.json() : []),
+          projectId
+            ? overlayAppClient.mcpServers.getResponse({ projectId }).then((r) => r.ok ? r.json() : [])
+            : Promise.resolve([]),
           overlayAppClient.conversations.getResponse(projectId ? { projectId } : undefined).then((r) => r.ok ? r.json() : []),
         ])
 

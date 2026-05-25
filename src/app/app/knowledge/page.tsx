@@ -4,6 +4,7 @@ import { getOverlaySession } from '@/server/auth/session'
 import { getInitialKnowledgeFiles, getInitialKnowledgeMemories } from '@/server/app/route-data'
 import { redirect } from 'next/navigation'
 import { KnowledgeRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { AppAuthRedirect } from '../_components/AppAuthRedirect'
 
 const KnowledgeView = dynamic(() => import('@/features/knowledge/components/KnowledgeView'), {
   loading: () => <KnowledgeRouteSkeleton />,
@@ -30,7 +31,7 @@ export default async function KnowledgePage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
   const session = await getOverlaySession()
-  if (!session) redirect('/app/chat?signin=nav')
+  if (!session) return <AppAuthRedirect />
   const params = await searchParams
   const rawView = params?.view
   const view = Array.isArray(rawView) ? rawView[0] : rawView

@@ -76,7 +76,6 @@ const PROFILE_APP_LINKS = [
   { label: 'Chrome Extension', icon: Chrome },
 ] as const
 
-const SETTINGS_SECTIONS = overlayAppShell.settingsSections
 const BRAND_CONFIG = overlayAppShell.brand
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'overlay:app-sidebar-collapsed'
@@ -293,7 +292,6 @@ export default function AppSidebar({
   const chatOpen = pathname.startsWith('/app/chat')
   const automationsOpen = pathname.startsWith('/app/automations')
   const settingsPathActive = pathname.startsWith('/app/settings')
-  const settingsSection = currentSearchParams.get('section') ?? 'general'
   const inlineSecondaryDisabled = !settings.useSecondarySidebar
   const toolsView = (() => {
     const current = currentSearchParams.get('view')
@@ -360,16 +358,13 @@ export default function AppSidebar({
       if (!item || item.disabled || !item.href) return
       e.preventDefault()
       if (pathname.startsWith(item.href)) return
-      if (isGuestConfirmed && item.href !== '/app/chat') { requireAuth('nav'); return }
+      if (isGuestConfirmed && item.href !== BRAND_CONFIG.homeHref) { requireAuth('nav'); return }
       setPendingNav({ href: item.href, fromPath: pathname })
       router.push(item.href)
     }
     window.addEventListener('keydown', onNavShortcut, true)
     return () => window.removeEventListener('keydown', onNavShortcut, true)
   }, [pathname, router, user, isGuestConfirmed, requireAuth])
-
-  /** Sub-items only while the settings route is open (avoids orphan dropdown state off-route). */
-  const settingsNavExpanded = settingsPathActive
 
   useEffect(() => {
     if (!accountMenuOpen) return
@@ -554,7 +549,7 @@ export default function AppSidebar({
                   type="button"
                   onClick={() => {
                     if (!href) return
-                    if (isGuestConfirmed && href !== '/app/chat') {
+                    if (isGuestConfirmed && href !== BRAND_CONFIG.homeHref) {
                       requireAuth('nav')
                       return
                     }
@@ -661,59 +656,6 @@ export default function AppSidebar({
               </div>
             )
           })}
-          <div className="mt-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                if (settingsPathActive) return
-                if (!user) { requireAuth('settings'); return }
-                setMobileMenuOpen(false)
-                setPendingNav({ href: '/app/settings', fromPath: pathname })
-                router.push('/app/settings')
-              }}
-              title="Settings · ⌥7"
-              aria-label="Settings"
-              className={`group flex h-9 w-full items-center rounded-md px-3 text-sm transition-colors ${
-                settingsPathActive
-                  ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-              } ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}
-            >
-              <Settings size={15} />
-              {!sidebarCollapsed ? <div className="min-w-0 flex-1 text-left">Settings</div> : null}
-              {!sidebarCollapsed ? (
-                <span
-                  className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-light)] opacity-0 transition-opacity group-hover:opacity-100 ${
-                    settingsNavExpanded ? '' : '-rotate-90'
-                  }`}
-                  aria-hidden
-                >
-                  <ChevronDown size={13} />
-                </span>
-              ) : null}
-            </button>
-            {!sidebarCollapsed && settingsNavExpanded ? (
-              <div className="mt-1 space-y-0.5 pl-7">
-                {SETTINGS_SECTIONS.map(({ id, label, href: sectionHref }) => {
-                  const active = settingsPathActive && settingsSection === id
-                  return (
-                    <Link
-                      key={id}
-                      href={sectionHref ?? `/app/settings?section=${id}`}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex w-full items-center rounded-md px-3 py-1.5 text-xs transition-colors ${
-                        active
-                          ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                          : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-                      }`}
-                    >
-                      <span className="flex-1 text-left">{label}</span>
-                    </Link>
-                  )
-                })}
-              </div>
-            ) : null}
-          </div>
         </nav>
 
         {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || filesSectionOpen || projectsOpen || automationsOpen) ? (
@@ -825,6 +767,20 @@ export default function AppSidebar({
                 ))}
               </div>
               <div className="border-t border-[var(--border)]">
+                <Link
+                  href="/app/settings"
+                  title="Settings · ⌥7"
+                  onClick={() => {
+                    setAccountMenuOpen(false)
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                    settingsPathActive ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+                  }`}
+                >
+                  <Settings size={13} />
+                  Settings
+                </Link>
                 <Link
                   href="/account"
                   onClick={() => {
@@ -952,6 +908,17 @@ export default function AppSidebar({
                   ))}
                 </div>
                 <div className="border-t border-[var(--border)]">
+                  <Link
+                    href="/app/settings"
+                    title="Settings · ⌥7"
+                    onClick={() => setMobileAccountOpen(false)}
+                    className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                      settingsPathActive ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+                    }`}
+                  >
+                    <Settings size={13} />
+                    Settings
+                  </Link>
                   <Link
                     href="/account"
                     onClick={() => setMobileAccountOpen(false)}

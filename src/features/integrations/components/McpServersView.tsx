@@ -30,7 +30,7 @@ interface DialogState {
   server?: McpServerSummary
 }
 
-export default function McpServersView({ userId: _userId }: { userId: string }) {
+export default function McpServersView({ userId: _userId, projectId }: { userId: string; projectId?: string }) {
   void _userId
   const [servers, setServers] = useState<McpServerSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -44,14 +44,19 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   }, [])
 
   const loadServers = useCallback(async () => {
+    if (!projectId) {
+      setServers([])
+      setLoading(false)
+      return
+    }
     try {
-      setServers(await overlayAppClient.mcpServers.get<McpServerSummary[]>())
+      setServers(await overlayAppClient.mcpServers.get<McpServerSummary[]>({ projectId }))
     } catch {
       // ignore
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     void loadServers()
@@ -63,24 +68,26 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   )
 
   async function handleSaveServer(values: McpServerFormValues): Promise<boolean> {
+    if (!projectId) return false
     if (dialog?.mode === 'edit' && dialog.server) {
-      const res = await overlayAppClient.mcpServers.updateResponse(createMcpUpdateRequest(dialog.server._id, values))
+      const res = await overlayAppClient.mcpServers.updateResponse(createMcpUpdateRequest(dialog.server._id, values, projectId))
       if (!res.ok) return false
       setServers((prev) => upsertMcpServerSummary(prev, updateMcpSummaryFromForm(dialog.server!, values)))
       dispatchMcpsChanged()
       return true
     }
 
-    const res = await overlayAppClient.mcpServers.createResponse(createMcpCreateRequest(values))
+    const res = await overlayAppClient.mcpServers.createResponse(createMcpCreateRequest(values, projectId))
     if (!res.ok) return false
     const { id } = (await res.json()) as { id: string }
-    setServers((prev) => upsertMcpServerSummary(prev, createMcpSummaryFromForm(id, values)))
+    setServers((prev) => upsertMcpServerSummary(prev, createMcpSummaryFromForm(id, values, projectId)))
     dispatchMcpsChanged()
     return true
   }
 
   async function handleDeleteServer(server: McpServerSummary): Promise<boolean> {
-    const res = await overlayAppClient.mcpServers.deleteResponse({ mcpServerId: server._id })
+    if (!projectId) return false
+    const res = await overlayAppClient.mcpServers.deleteResponse({ mcpServerId: server._id, projectId })
     if (!res.ok) return false
     setServers((prev) => removeMcpServerSummary(prev, server._id))
     dispatchMcpsChanged()
@@ -102,7 +109,8 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
     const newEnabled = !server.enabled
     setServers((prev) => prev.map((item) => (item._id === server._id ? setMcpServerEnabled(item, newEnabled) : item)))
     try {
-      const res = await overlayAppClient.mcpServers.updateResponse({ mcpServerId: server._id, enabled: newEnabled })
+      if (!projectId) return
+      const res = await overlayAppClient.mcpServers.updateResponse({ mcpServerId: server._id, projectId, enabled: newEnabled })
       if (res.ok) dispatchMcpsChanged()
     } catch {
       // ignore optimistic update errors, matching prior behavior

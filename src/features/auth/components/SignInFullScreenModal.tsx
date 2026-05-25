@@ -19,7 +19,7 @@ interface Props {
 }
 
 export function SignInFullScreenModal({ reason, onClose, isClosing = false }: Props) {
-  const pathname = usePathname() ?? '/app/chat'
+  const pathname = usePathname() ?? '/app/projects'
   const redirectTo = pathname.replace(/[?#].*$/, '')
   const [mounted, setMounted] = useState(false)
 

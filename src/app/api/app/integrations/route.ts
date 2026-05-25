@@ -27,6 +27,8 @@ type ConnectedAccountRecord = {
   appName?: string
 }
 
+type ComposioErrorKind = 'configuration' | 'provider'
+
 type ProjectAccessResult =
   | { ok: true; entityId: string }
   | { ok: false; response: NextResponse }
@@ -64,6 +66,47 @@ function firstNonEmptyString(...values: Array<unknown>): string | null {
 
 function normalizeSlug(value: string): string {
   return value.trim().toLowerCase()
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return ''
+  }
+}
+
+function sanitizedErrorMessage(error: unknown): string {
+  return errorMessage(error).replace(/\bak_[A-Za-z0-9_-]+\b/g, '[REDACTED]')
+}
+
+function classifyComposioError(error: unknown): ComposioErrorKind {
+  const message = errorMessage(error)
+  if (
+    /\b401\b/.test(message) ||
+    /invalid api key/i.test(message) ||
+    /http_unauthorized/i.test(message)
+  ) {
+    return 'configuration'
+  }
+  return 'provider'
+}
+
+function composioFailureResponse(error: unknown, context: string): NextResponse {
+  const kind = classifyComposioError(error)
+  console.error(`[Integrations] Composio ${context} failed: ${sanitizedErrorMessage(error)}`)
+  if (kind === 'configuration') {
+    return integrationConnectionErrorResponse(
+      'Composio API key is invalid or expired. Update COMPOSIO_API_KEY to connect integrations.',
+    )
+  }
+  return integrationConnectionErrorResponse('Composio is temporarily unavailable. Try again in a moment.')
+}
+
+function integrationConnectionErrorResponse(error: string): NextResponse {
+  return NextResponse.json({ success: false, error })
 }
 
 async function requireProjectComposioEntity(
@@ -281,11 +324,17 @@ export async function GET(request: NextRequest) {
 // POST - initiate connection (returns redirect URL) or disconnect
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
+    let body: { accessToken?: string; userId?: string; action?: string; toolkit?: string; projectId?: string }
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { action, toolkit, projectId } = body as { action?: string; toolkit?: string; projectId?: string }
+    const { action, toolkit, projectId } = body
     const toolkitSlug = normalizeSlug(toolkit ?? '')
     if (!toolkitSlug) return NextResponse.json({ error: 'toolkit required' }, { status: 400 })
 
@@ -293,24 +342,28 @@ export async function POST(request: NextRequest) {
     if (!projectAccess.ok) return projectAccess.response
 
     const apiKey = await getComposioApiKey(auth.accessToken)
-    if (!apiKey) return NextResponse.json({ error: 'Composio not configured' }, { status: 503 })
+    if (!apiKey) return integrationConnectionErrorResponse('Composio is not configured.')
 
     const composio = await loadComposioSDK(apiKey)
 
     if (action === 'disconnect') {
       // Find all connected accounts for this project entity + toolkit and delete them all.
-      const accounts = await composio.connectedAccounts.list({
-        userIds: [projectAccess.entityId],
-        toolkitSlugs: [toolkitSlug],
-      })
-      const deleteRequests: Array<Promise<unknown>> = []
-      for (const acc of accounts.items ?? []) {
-        if (acc && typeof acc === 'object' && 'id' in acc && typeof acc.id === 'string') {
-          deleteRequests.push(composio.connectedAccounts.delete(acc.id))
+      try {
+        const accounts = await composio.connectedAccounts.list({
+          userIds: [projectAccess.entityId],
+          toolkitSlugs: [toolkitSlug],
+        })
+        const deleteRequests: Array<Promise<unknown>> = []
+        for (const acc of accounts.items ?? []) {
+          if (acc && typeof acc === 'object' && 'id' in acc && typeof acc.id === 'string') {
+            deleteRequests.push(composio.connectedAccounts.delete(acc.id))
+          }
         }
+        await Promise.all(deleteRequests)
+        return NextResponse.json({ success: true })
+      } catch (error) {
+        return composioFailureResponse(error, `disconnect ${toolkitSlug}`)
       }
-      await Promise.all(deleteRequests)
-      return NextResponse.json({ success: true })
     }
 
     // action === 'connect' — get OAuth redirect URL via Composio SDK
@@ -333,15 +386,24 @@ export async function POST(request: NextRequest) {
         authConfigId = created.id
       }
     } catch (err) {
-      console.error('[Integrations] Failed to get/create auth config:', err)
-      return NextResponse.json({ error: `Could not find auth config for ${toolkitSlug}` }, { status: 500 })
+      return composioFailureResponse(err, `auth config lookup for ${toolkitSlug}`)
     }
 
-    const connectionRequest = await composio.connectedAccounts.link(
-      projectAccess.entityId,
-      authConfigId,
-      { callbackUrl }
-    )
+    let connectionRequest: {
+      id?: string | null
+      connectionId?: string | null
+      redirectUrl?: string | null
+      status?: string | null
+    }
+    try {
+      connectionRequest = await composio.connectedAccounts.link(
+        projectAccess.entityId,
+        authConfigId,
+        { callbackUrl }
+      )
+    } catch (error) {
+      return composioFailureResponse(error, `connect link for ${toolkitSlug}`)
+    }
 
     const redirectUrl =
       typeof connectionRequest.redirectUrl === 'string' &&
@@ -354,7 +416,8 @@ export async function POST(request: NextRequest) {
       connectionId: connectionRequest.id ?? connectionRequest.connectionId ?? null,
       status: connectionRequest.status ?? null,
     })
-  } catch {
+  } catch (error) {
+    console.error('[Integrations] Failed to process integration request:', error)
     return NextResponse.json({ error: 'Failed to process integration request' }, { status: 500 })
   }
 }

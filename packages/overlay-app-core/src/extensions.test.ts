@@ -4,6 +4,7 @@ import {
   createMcpCreateRequest,
   createMcpSummaryFromForm,
   createMcpTestRequest,
+  createMcpUpdateRequest,
   createSkillCreateRequest,
   createSkillSummaryFromForm,
   filterConnectorCatalog,
@@ -105,7 +106,20 @@ test('mcp helpers preserve request bodies, filtering, test messages, and local s
     headerValue: '',
     timeoutMs: 12_000,
   }
-  assert.deepEqual(createMcpCreateRequest(values), {
+  assert.deepEqual(createMcpCreateRequest(values, 'project_1'), {
+    projectId: 'project_1',
+    name: 'Docs',
+    description: 'Docs tools',
+    transport: 'streamable-http',
+    url: 'https://mcp.example.test',
+    enabled: true,
+    authType: 'bearer',
+    authConfig: { bearerToken: 'token' },
+    timeoutMs: 12_000,
+  })
+  assert.deepEqual(createMcpUpdateRequest('mcp_1', values, 'project_1'), {
+    mcpServerId: 'mcp_1',
+    projectId: 'project_1',
     name: 'Docs',
     description: 'Docs tools',
     transport: 'streamable-http',
@@ -121,7 +135,8 @@ test('mcp helpers preserve request bodies, filtering, test messages, and local s
     authType: 'bearer',
     authConfig: { bearerToken: 'token' },
   })
-  const server = createMcpSummaryFromForm('mcp_1', values, 10)
+  const server = createMcpSummaryFromForm('mcp_1', values, 'project_1', 10)
+  assert.equal(server.projectId, 'project_1')
   assert.equal(server.hasAuth, true)
   assert.equal(setMcpServerEnabled(server, false, 20).updatedAt, 20)
   assert.deepEqual(filterMcpServers([server], 'docs').map((item) => item._id), ['mcp_1'])

@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function SignInCornerPopover({ onDismiss, isClosing = false }: Props) {
-  const pathname = usePathname() ?? '/app/chat'
+  const pathname = usePathname() ?? '/app/projects'
   const [mounted, setMounted] = useState(false)
 
   useLayoutEffect(() => {

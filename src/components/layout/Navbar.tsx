@@ -103,7 +103,7 @@ export function Navbar({
   const menuBtnClass = isDark
     ? 'inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-600 text-zinc-300'
     : 'inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] text-[#52525b]'
-  const appHref = authState.authenticated ? '/app/chat' : '/auth/sign-in?redirect=%2Fapp%2Fchat'
+  const appHref = authState.authenticated ? '/app/projects' : '/auth/sign-in?redirect=%2Fapp%2Fprojects'
 
   const navLinks = (
     <div ref={navLinksRef} className="flex items-center gap-3 sm:gap-5 md:gap-6">

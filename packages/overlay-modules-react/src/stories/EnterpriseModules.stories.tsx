@@ -61,7 +61,7 @@ const skills: Array<{ kind: 'skill' } & SkillSummary> = [
 ]
 
 const mcps: Array<{ kind: 'mcp' } & McpServerSummary> = [
-  { kind: 'mcp', _id: 'mcp-1', name: 'Internal Tools', transport: 'streamable-http', url: 'https://tools.example/mcp', enabled: true, authType: 'bearer', createdAt: now, updatedAt: now },
+  { kind: 'mcp', _id: 'mcp-1', projectId: 'project-1', name: 'Internal Tools', transport: 'streamable-http', url: 'https://tools.example/mcp', enabled: true, authType: 'bearer', createdAt: now, updatedAt: now },
 ]
 
 const settingsSections: OverlaySettingsSection[] = [

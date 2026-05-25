@@ -1,6 +1,6 @@
 import dynamic from 'next/dynamic'
 import { getOverlaySession } from '@/server/auth/session'
-import { redirect } from 'next/navigation'
+import { AppAuthRedirect } from '../_components/AppAuthRedirect'
 
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'), {
   loading: () => <div className="flex min-h-[40vh] items-center justify-center text-sm text-[#888]">Loading...</div>,
@@ -8,6 +8,6 @@ const NotebookEditor = dynamic(() => import('@/features/notebook/components/Note
 
 export default async function NotesPage() {
   const session = await getOverlaySession()
-  if (!session) redirect('/app/chat?signin=nav')
+  if (!session) return <AppAuthRedirect />
   return <NotebookEditor userId={session.user.id} />
 }

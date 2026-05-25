@@ -21,6 +21,7 @@ export interface IncomingMention {
 export interface ResolveOptions {
   userId: string
   serverSecret: string
+  projectId?: string
   /** Pass already-loaded skills if the caller has them; resolver matches by name first. */
   enabledSkills?: Array<{ name: string; instructions: string }>
 }
@@ -120,10 +121,12 @@ async function resolveOne(
         return `- skill id=${m.id} name="${safeName}"`
       }
       case 'mcp': {
+        if (!opts.projectId) return `- mcp id=${m.id} name="${safeName}" — (not available outside a project)`
         const mcp = await convex
           .query<McpDoc | null>('integrations/mcpServers:get', {
             mcpServerId: m.id,
             userId,
+            projectId: opts.projectId,
             serverSecret,
           })
           .catch(() => null)

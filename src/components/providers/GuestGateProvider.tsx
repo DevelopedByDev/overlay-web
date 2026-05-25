@@ -16,7 +16,7 @@ import { SignInCornerPopover } from '@/features/auth/components/SignInCornerPopo
 export type GateReason = 'send' | 'nav' | 'history' | 'settings'
 
 interface GuestGateContextType {
-  requireAuth: (reason: GateReason) => void
+  requireAuth: (reason: GateReason, options?: { force?: boolean }) => void
   isModalOpen: boolean
 }
 
@@ -52,7 +52,11 @@ export function GuestGateProvider({ children }: { children: ReactNode }) {
   }, [isLoading, isAuthenticated, pathname])
 
   const requireAuth = useCallback(
-    (reason: GateReason) => {
+    (reason: GateReason, options?: { force?: boolean }) => {
+      if (options?.force) {
+        setModalReason(reason)
+        return
+      }
       if (!isLoading && !isAuthenticated) setModalReason(reason)
     },
     [isLoading, isAuthenticated],
@@ -81,7 +85,7 @@ export function GuestGateProvider({ children }: { children: ReactNode }) {
   return (
     <GuestGateContext.Provider value={{ requireAuth, isModalOpen: !!modalReason }}>
       {children}
-      {!isAuthenticated && (((!isLoading && !!modalReason) || modalClosing)) ? (
+      {((!isLoading && !!modalReason) || modalClosing) ? (
         <SignInFullScreenModal
           reason={modalReason ?? 'nav'}
           onClose={closeModal}

@@ -711,13 +711,6 @@ export async function POST(request: NextRequest) {
     /** User message is persisted once (slot 0). Third-party (Composio) actions only on primary slot. */
     const isMultiModelFollowUpSlot = multiModelTotal > 1 && multiModelSlotIndex > 0
 
-    // MCP servers are discovered at request time; 60s cache per user.
-    const mcpToolsTask: Promise<ToolSet> = createMcpToolSet({
-      userId,
-      accessToken: auth.accessToken || undefined,
-      serverSecret,
-    })
-
     // P3.2 Wave 1: user-message save + memories + skills + conversation fetch (for projectId).
     // These are all independent of each other; previously each was an await in sequence.
     const saveUserMessageTask: Promise<void> = isMultiModelFollowUpSlot
@@ -833,6 +826,7 @@ export async function POST(request: NextRequest) {
       userId,
       serverSecret,
       enabledSkills,
+      projectId: conv?.projectId,
     })
 
     // Wave 2: project fetch + auto-retrieval. Both depend on the projectId resolved above.
@@ -845,6 +839,16 @@ export async function POST(request: NextRequest) {
             userId,
             projectId: conversationProjectId,
             accessToken: auth.accessToken || undefined,
+          })
+        : Promise.resolve({})
+    // MCP servers are project-owned. Chats outside a project receive no MCP tools.
+    const mcpToolsTask: Promise<ToolSet> =
+      conversationProjectId && !isMultiModelFollowUpSlot
+        ? createMcpToolSet({
+            userId,
+            projectId: conversationProjectId,
+            accessToken: auth.accessToken || undefined,
+            serverSecret,
           })
         : Promise.resolve({})
     const projectTask: Promise<{ instructions: string; githubRepoAllowlist: string[] | undefined }> = (async () => {

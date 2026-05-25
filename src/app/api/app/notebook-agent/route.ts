@@ -332,6 +332,7 @@ export async function POST(request: NextRequest) {
         const mentionsContext = await resolveMentionsContext(rawMentions, {
           userId,
           serverSecret,
+          projectId,
         })
         const instructions = NOTEBOOK_AGENT_PROMPT + mentionsContext
         const emitText = createNotebookTextEmitter((text) => {

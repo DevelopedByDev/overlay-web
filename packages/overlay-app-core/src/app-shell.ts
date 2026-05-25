@@ -370,7 +370,7 @@ export function resolveOverlayAppShellConfig(
     cssVarKeys: config.theme?.cssVarKeys ?? DEFAULT_OVERLAY_THEME_METADATA.cssVarKeys,
   }
   const navigation = filterFeatureRegistry(
-    mergeRegistryById(DEFAULT_OVERLAY_NAVIGATION, config.navigation),
+    config.navigation ?? DEFAULT_OVERLAY_NAVIGATION,
     featureFlags,
   )
   const settingsSections = filterFeatureRegistry(

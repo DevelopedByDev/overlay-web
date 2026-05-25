@@ -25,6 +25,8 @@ import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/features/i
 import { setIntegrationLogoUrl } from '@/features/integrations/lib/integration-logo-cache'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useGuestGate } from '@/components/providers/GuestGateProvider'
+import { useAuth } from '@/contexts/AuthContext'
 
 const LIST_PAGE_SIZE = 8
 
@@ -90,6 +92,14 @@ export default function IntegrationsView({
   const [availableVisible, setAvailableVisible] = useState(LIST_PAGE_SIZE)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const { refreshSession } = useAuth()
+  const { requireAuth } = useGuestGate()
+
+  const handleUnauthorizedIntegrationRequest = useCallback(async (message: string) => {
+    setConnectError(message)
+    await refreshSession()
+    requireAuth('nav', { force: true })
+  }, [refreshSession, requireAuth])
 
   const rememberLogos = useCallback((items: readonly ConnectorCatalogItem[]) => {
     setLogos((prev) => {
@@ -183,10 +193,11 @@ export default function IntegrationsView({
   }, [projectId])
 
   useEffect(() => {
+    if (hasInitialData) return
     void loadRegistry()
     void loadConnected()
     void loadCatalog()
-  }, [loadCatalog, loadConnected, loadRegistry])
+  }, [hasInitialData, loadCatalog, loadConnected, loadRegistry])
 
   useEffect(() => {
     const onFocus = () => {
@@ -233,7 +244,12 @@ export default function IntegrationsView({
           toolkit: integration.composioId,
           projectId,
         })
-        if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 401) {
+          await handleUnauthorizedIntegrationRequest('Your session expired. Sign in again to manage integrations.')
+          return
+        }
+        if (res.ok && !data.error) {
           setConnected((prev) => {
             const next = new Set(prev)
             next.delete(integration.composioId)
@@ -242,7 +258,6 @@ export default function IntegrationsView({
           notifyIntegrationsChanged()
           posthog.capture('integration_disconnected', { integration: integration.composioId, integration_name: integration.name })
         } else {
-          const data = await res.json().catch(() => ({}))
           setConnectError(data.error || 'Failed to disconnect')
         }
       } else {
@@ -252,7 +267,10 @@ export default function IntegrationsView({
           projectId,
         })
         const data = await res.json().catch(() => ({}))
-        if (!res.ok) {
+        if (res.status === 401) {
+          oauthTab?.close()
+          await handleUnauthorizedIntegrationRequest('Your session expired. Sign in again to connect integrations.')
+        } else if (!res.ok || data.error) {
           oauthTab?.close()
           setConnectError(data.error || 'Failed to connect')
         } else if (data.redirectUrl) {
@@ -278,7 +296,12 @@ export default function IntegrationsView({
     try {
       const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: slug, projectId })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
+      if (res.status === 401) {
+        oauthTab?.close()
+        await handleUnauthorizedIntegrationRequest('Your session expired. Sign in again to connect integrations.')
+        throw new Error('Authentication required')
+      }
+      if (!res.ok || data.error) {
         oauthTab?.close()
         throw new Error(data.error || 'Failed to initiate connection')
       }
@@ -301,12 +324,17 @@ export default function IntegrationsView({
       oauthTab?.close()
       throw err
     }
-  }, [projectId])
+  }, [handleUnauthorizedIntegrationRequest, projectId])
 
   const dialogDisconnect = useCallback(async (slug: string) => {
     if (!projectId) throw new Error('Choose a project before disconnecting integrations')
     const res = await overlayAppClient.integrations.disconnectResponse({ toolkit: slug, projectId })
-    if (!res.ok) throw new Error('Failed to disconnect')
+    const data = await res.json().catch(() => ({}))
+    if (res.status === 401) {
+      await handleUnauthorizedIntegrationRequest('Your session expired. Sign in again to manage integrations.')
+      throw new Error('Authentication required')
+    }
+    if (!res.ok || data.error) throw new Error(data.error || 'Failed to disconnect')
     setConnected((prev) => {
       const next = new Set(prev)
       next.delete(slug)
@@ -314,7 +342,7 @@ export default function IntegrationsView({
     })
     notifyIntegrationsChanged()
     posthog.capture('integration_disconnected', { integration: slug })
-  }, [projectId])
+  }, [handleUnauthorizedIntegrationRequest, projectId])
 
   const connectedRows = useMemo(() => getConnectedConnectorRows(connected, catalogItems), [connected, catalogItems])
   const availableList = useMemo(() => getAvailableConnectorRows(connected, catalogItems, DEFAULT_CONNECTOR_CATALOG), [connected, catalogItems])

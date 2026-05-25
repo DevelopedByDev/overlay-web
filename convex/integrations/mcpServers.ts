@@ -1,6 +1,8 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import type { Id } from '../_generated/dataModel'
+import type { MutationCtx, QueryCtx } from '../_generated/server'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -13,27 +15,37 @@ async function authorizeUserAccess(params: {
   await requireAccessToken(params.accessToken ?? '', params.userId)
 }
 
+async function requireProjectOwner(ctx: QueryCtx | MutationCtx, projectId: string, userId: string) {
+  const project = await ctx.db.get(projectId as Id<'projects'>)
+  if (!project || project.userId !== userId || project.deletedAt) {
+    throw new Error('Project not found')
+  }
+}
+
 export const list = query({
   args: {
     userId: v.string(),
+    projectId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { userId, projectId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
+      await requireProjectOwner(ctx, projectId, userId)
     } catch {
       return []
     }
     const all = await ctx.db
       .query('mcpServers')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_userId_projectId', (q) => q.eq('userId', userId).eq('projectId', projectId))
       .order('desc')
       .collect()
     // Scrub authConfig from the response
     return all.map((s) => ({
       _id: s._id,
       userId: s.userId,
+      projectId: s.projectId ?? '',
       name: s.name,
       description: s.description,
       transport: s.transport,
@@ -51,19 +63,21 @@ export const list = query({
 export const listEnabled = query({
   args: {
     userId: v.string(),
+    projectId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { userId, projectId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
+      await requireProjectOwner(ctx, projectId, userId)
     } catch {
       return []
     }
     return await ctx.db
       .query('mcpServers')
-      .withIndex('by_userId_enabled', (q) =>
-        q.eq('userId', userId).eq('enabled', true)
+      .withIndex('by_userId_projectId_enabled', (q) =>
+        q.eq('userId', userId).eq('projectId', projectId).eq('enabled', true)
       )
       .collect()
   },
@@ -73,17 +87,19 @@ export const get = query({
   args: {
     mcpServerId: v.id('mcpServers'),
     userId: v.string(),
+    projectId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, { mcpServerId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { mcpServerId, userId, projectId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
+      await requireProjectOwner(ctx, projectId, userId)
     } catch {
       return null
     }
     const server = await ctx.db.get(mcpServerId)
-    if (!server || server.userId !== userId) return null
+    if (!server || server.userId !== userId || server.projectId !== projectId) return null
     return server
   },
 })
@@ -91,6 +107,7 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    projectId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.string(),
@@ -110,9 +127,11 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    await requireProjectOwner(ctx, args.projectId, args.userId)
     const now = Date.now()
     return await ctx.db.insert('mcpServers', {
       userId: args.userId,
+      projectId: args.projectId,
       name: args.name,
       description: args.description,
       transport: args.transport,
@@ -131,6 +150,7 @@ export const update = mutation({
   args: {
     mcpServerId: v.id('mcpServers'),
     userId: v.string(),
+    projectId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
@@ -148,10 +168,11 @@ export const update = mutation({
     ),
     timeoutMs: v.optional(v.number()),
   },
-  handler: async (ctx, { mcpServerId, userId, accessToken, serverSecret, ...updates }) => {
+  handler: async (ctx, { mcpServerId, userId, projectId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    await requireProjectOwner(ctx, projectId, userId)
     const server = await ctx.db.get(mcpServerId)
-    if (!server || server.userId !== userId) {
+    if (!server || server.userId !== userId || server.projectId !== projectId) {
       throw new Error('Unauthorized')
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
@@ -171,13 +192,15 @@ export const remove = mutation({
   args: {
     mcpServerId: v.id('mcpServers'),
     userId: v.string(),
+    projectId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, { mcpServerId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { mcpServerId, userId, projectId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    await requireProjectOwner(ctx, projectId, userId)
     const server = await ctx.db.get(mcpServerId)
-    if (!server || server.userId !== userId) {
+    if (!server || server.userId !== userId || server.projectId !== projectId) {
       throw new Error('Unauthorized')
     }
     await ctx.db.delete(mcpServerId)

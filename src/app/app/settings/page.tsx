@@ -49,7 +49,7 @@ export default function SettingsPage() {
 
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) router.replace('/app/chat?signin=nav')
+    if (!authLoading && !isAuthenticated) router.replace('/app/projects?signin=nav')
   }, [authLoading, isAuthenticated, router])
 
   const {

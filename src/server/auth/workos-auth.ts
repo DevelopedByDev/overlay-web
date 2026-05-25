@@ -827,6 +827,49 @@ export async function getSession(): Promise<AuthSession | null> {
   }
 }
 
+function readCookieValue(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) return null
+  for (const part of cookieHeader.split(';')) {
+    const separatorIndex = part.indexOf('=')
+    if (separatorIndex <= 0) continue
+    const key = part.slice(0, separatorIndex).trim()
+    if (key !== name) continue
+    const value = part.slice(separatorIndex + 1).trim()
+    try {
+      return decodeURIComponent(value)
+    } catch {
+      return value
+    }
+  }
+  return null
+}
+
+async function getSessionFromRequestCookie(req: Request): Promise<AuthSession | null> {
+  const cookieValue = readCookieValue(req.headers.get('cookie'), SESSION_COOKIE_NAME)
+  if (!cookieValue) return null
+
+  try {
+    const payload = verifySignedCookie(cookieValue)
+    if (!payload) return null
+
+    let session: AuthSession
+    try {
+      session = parseSessionPayload(payload)
+    } catch {
+      session = parseLegacySessionPayload(payload)
+    }
+
+    if (session.expiresAt < Date.now()) return null
+
+    const claims = await getVerifiedAccessTokenClaims(session.accessToken)
+    if (claims?.sub !== session.user.id) return null
+
+    return session
+  } catch {
+    return null
+  }
+}
+
 export async function clearSession(): Promise<void> {
   const cookieStore = await cookies()
   cookieStore.delete(SESSION_COOKIE_NAME)
@@ -956,9 +999,11 @@ function toUserProfile(claims: TokenClaims): UserProfile {
 
 export class WorkOSAuthProvider implements AuthProvider {
   async getSession(req: Request): Promise<Session | null> {
-    void req
     const session = await getSession()
-    return session ? toProviderSession(session) : null
+    if (session) return toProviderSession(session)
+
+    const requestSession = await getSessionFromRequestCookie(req)
+    return requestSession ? toProviderSession(requestSession) : null
   }
 
   async verifyAccessToken(token: string): Promise<TokenClaims | null> {

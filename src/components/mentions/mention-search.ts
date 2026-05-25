@@ -41,7 +41,7 @@ async function fetchAll(): Promise<CachedData> {
         overlayAppClient.integrations.getResponse().then((r) => (r.ok ? r.json() : { items: [] })),
         overlayAppClient.automations.getResponse().then((r) => (r.ok ? r.json() : [])),
         overlayAppClient.skills.getResponse().then((r) => (r.ok ? r.json() : [])),
-        overlayAppClient.mcpServers.getResponse().then((r) => (r.ok ? r.json() : [])),
+        Promise.resolve([]),
         overlayAppClient.conversations.getResponse().then((r) => (r.ok ? r.json() : [])),
       ])
 

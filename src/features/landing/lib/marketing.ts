@@ -46,5 +46,5 @@ export const AUDIENCE_PAGES: Array<{
 ];
 
 export function getMarketingAppHref(isAuthenticated: boolean) {
-  return isAuthenticated ? "/app/chat" : "/auth/sign-in?redirect=%2Fapp%2Fchat";
+  return isAuthenticated ? "/app/projects" : "/auth/sign-in?redirect=%2Fapp%2Fprojects";
 }

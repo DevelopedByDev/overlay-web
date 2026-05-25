@@ -10,12 +10,18 @@ import {
   resolveSidebarActionForPath,
 } from './app-shell'
 
-test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
+test('resolveOverlayAppShellConfig uses provided navigation as the visible navigation list', () => {
   const shell = resolveOverlayAppShellConfig({
     navigation: [
-      { ...DEFAULT_OVERLAY_NAVIGATION[0]!, label: 'Assistant' },
-      { id: 'admin', href: '/app/admin', label: 'Admin', icon: 'shield-check' },
+      DEFAULT_OVERLAY_NAVIGATION.find((item) => item.id === 'projects')!,
     ],
+  })
+
+  assert.deepEqual(shell.navigation.map((item) => item.id), ['projects'])
+})
+
+test('resolveOverlayAppShellConfig merges non-navigation registry overrides by id', () => {
+  const shell = resolveOverlayAppShellConfig({
     settingsPanels: [
       { ...DEFAULT_OVERLAY_SETTINGS_PANELS[0]!, label: 'Workspace general' },
       { id: 'security', sectionId: 'account', label: 'Security', componentKey: 'enterprise.security' },
@@ -29,8 +35,6 @@ test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
     ],
   })
 
-  assert.equal(shell.navigation.find((item) => item.id === 'chat')?.label, 'Assistant')
-  assert.equal(shell.navigation.find((item) => item.id === 'admin')?.href, '/app/admin')
   assert.equal(shell.settingsPanels.find((item) => item.id === 'general')?.label, 'Workspace general')
   assert.equal(shell.settingsPanels.find((item) => item.id === 'security')?.componentKey, 'enterprise.security')
   assert.equal(shell.featureModules.find((item) => item.id === 'files-knowledge')?.componentKey, 'enterprise.filesKnowledge')

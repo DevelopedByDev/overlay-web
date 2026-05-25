@@ -45,7 +45,7 @@ export class McpServersClient {
     return this.http.request('/api/app/mcps', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
-  deleteResponse(query: { mcpServerId: string }, init?: RequestInit) {
+  deleteResponse(query: { mcpServerId: string; projectId: string }, init?: RequestInit) {
     return this.http.request(this.path(query), { ...init, method: 'DELETE' })
   }
 

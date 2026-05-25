@@ -1,4 +1,3 @@
-import { Suspense } from 'react'
 import { getOverlaySession } from '@/server/auth/session'
 import AppSidebar from '@/components/layout/AppSidebar'
 import { AsyncSessionsProvider } from '@/components/providers/async-sessions-store'
@@ -7,17 +6,6 @@ import { NavigationProgressProvider, NavigationProgressBar } from '@/components/
 import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
 import { OnboardingProvider } from '@/components/providers/OnboardingProvider'
 import { getInitialAutomationsList, getInitialProjectList } from '@/server/app/route-data'
-
-function AppMainFallback() {
-  return (
-    <div className="flex min-h-full flex-col overflow-hidden bg-[var(--background)]">
-      <div className="h-16 shrink-0 border-b border-[var(--border)]" />
-      <div className="flex min-h-0 flex-1 flex-col justify-end px-4 pb-4">
-        <div className="mx-auto h-24 w-full max-w-[56rem] rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]" />
-      </div>
-    </div>
-  )
-}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getOverlaySession()
@@ -43,7 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 initialAutomations={initialAutomations}
               />
               <main className="flex-1 overflow-auto pt-14 md:pt-0">
-                <Suspense fallback={<AppMainFallback />}>{children}</Suspense>
+                {children}
               </main>
             </OnboardingProvider>
           </GuestGateProvider>

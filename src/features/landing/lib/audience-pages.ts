@@ -61,7 +61,7 @@ export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent>
       "Open-source posture for teams that care how the layer works.",
     ],
     primaryCta: { label: "Contact sales", href: MARKETING_SALES_URL, external: true },
-    secondaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fchat" },
+    secondaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fprojects" },
   },
   education: {
     metadata: {
@@ -105,7 +105,7 @@ export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent>
       "The same workspace supports capture, synthesis, and revision.",
       "A better fit than bouncing between chat tabs and separate note tools.",
     ],
-    primaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fchat" },
+    primaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fprojects" },
     secondaryCta: { label: "Contact sales", href: MARKETING_SALES_URL, external: true },
   },
   content: {
@@ -150,7 +150,7 @@ export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent>
       "Better continuity between research, writing, and generation.",
       "Fewer disconnected tools and fewer lost revision trails.",
     ],
-    primaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fchat" },
+    primaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fprojects" },
     secondaryCta: { label: "Contact sales", href: MARKETING_SALES_URL, external: true },
   },
   developers: {
@@ -195,7 +195,7 @@ export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent>
       "Supports tool use, browsing, context, and outputs in one product loop.",
       "Pairs well with technical workflows that need repeatability and traceability.",
     ],
-    primaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fchat" },
+    primaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fprojects" },
     secondaryCta: { label: "GitHub", href: MARKETING_GITHUB_URL, external: true },
   },
 };

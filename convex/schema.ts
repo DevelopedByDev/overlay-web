@@ -430,6 +430,7 @@ export default defineSchema({
 
   mcpServers: defineTable({
     userId: v.string(),
+    projectId: v.optional(v.string()),
     name: v.string(),
     description: v.optional(v.string()),
     transport: v.union(v.literal('sse'), v.literal('streamable-http')),
@@ -448,7 +449,9 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_userId_enabled', ['userId', 'enabled']),
+    .index('by_userId_enabled', ['userId', 'enabled'])
+    .index('by_userId_projectId', ['userId', 'projectId'])
+    .index('by_userId_projectId_enabled', ['userId', 'projectId', 'enabled']),
 
   conversations: defineTable({
     userId: v.string(),

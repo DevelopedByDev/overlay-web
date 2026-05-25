@@ -50,6 +50,7 @@ async function loadMcpModules() {
 interface McpServerConfig {
   _id: string
   userId: string
+  projectId: string
   name: string
   description?: string
   transport: 'sse' | 'streamable-http'
@@ -323,19 +324,21 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
 
 async function buildMcpToolSet(args: {
   userId: string
+  projectId: string
   accessToken?: string
   serverSecret?: string
 }): Promise<ToolSet> {
   const serverSecret = args.serverSecret ?? getInternalApiSecret()
-  console.log(`[MCP] Fetching enabled MCP servers for user ${args.userId}`)
+  console.log(`[MCP] Fetching enabled MCP servers for user ${args.userId} project ${args.projectId}`)
   const configs = (await convex.query('integrations/mcpServers:listEnabled', {
     userId: args.userId,
+    projectId: args.projectId,
     accessToken: args.accessToken,
     serverSecret,
   })) as McpServerConfig[]
 
   if (!configs || configs.length === 0) {
-    console.log(`[MCP] No enabled MCP servers found for user ${args.userId}`)
+    console.log(`[MCP] No enabled MCP servers found for user ${args.userId} project ${args.projectId}`)
     return {}
   }
   console.log(`[MCP] Found ${configs.length} enabled MCP server(s): ${configs.map(c => c.name).join(', ')}`)
@@ -374,28 +377,29 @@ async function buildMcpToolSet(args: {
 
 export async function createMcpToolSet(args: {
   userId: string
+  projectId: string
   accessToken?: string
   serverSecret?: string
 }): Promise<ToolSet> {
   const now = Date.now()
-  const cacheKey = args.userId
+  const cacheKey = `${args.userId}:${args.projectId}`
   const cached = mcpCache.get(cacheKey)
   if (cached && now - cached.createdAt < MCP_CACHE_TTL_MS) {
-    console.log(`[MCP] Cache hit for user ${args.userId}, returning ${Object.keys(cached.tools).length} cached tools`)
+    console.log(`[MCP] Cache hit for user ${args.userId} project ${args.projectId}, returning ${Object.keys(cached.tools).length} cached tools`)
     return cached.tools
   }
 
   const existing = mcpInFlight.get(cacheKey)
   if (existing) {
-    console.log(`[MCP] In-flight request for user ${args.userId}, awaiting`)
+    console.log(`[MCP] In-flight request for user ${args.userId} project ${args.projectId}, awaiting`)
     return existing
   }
 
-  console.log(`[MCP] Building MCP tool set for user ${args.userId}`)
+  console.log(`[MCP] Building MCP tool set for user ${args.userId} project ${args.projectId}`)
   const promise = (async () => {
     try {
       const tools = await buildMcpToolSet(args)
-      console.log(`[MCP] Built ${Object.keys(tools).length} MCP tools for user ${args.userId}`)
+      console.log(`[MCP] Built ${Object.keys(tools).length} MCP tools for user ${args.userId} project ${args.projectId}`)
       mcpCache.set(cacheKey, { tools, createdAt: Date.now() })
       return tools
     } finally {
@@ -409,12 +413,14 @@ export async function createMcpToolSet(args: {
 /** Fire-and-forget pre-warm. Errors are swallowed. */
 export function prewarmMcpTools(args: {
   userId: string
+  projectId: string
   accessToken?: string
   serverSecret?: string
 }): void {
-  const cached = mcpCache.get(args.userId)
+  const cacheKey = `${args.userId}:${args.projectId}`
+  const cached = mcpCache.get(cacheKey)
   if (cached && Date.now() - cached.createdAt < MCP_CACHE_TTL_MS) return
-  if (mcpInFlight.has(args.userId)) return
+  if (mcpInFlight.has(cacheKey)) return
   void createMcpToolSet(args).catch(() => {
     // swallow
   })

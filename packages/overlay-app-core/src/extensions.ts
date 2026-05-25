@@ -356,9 +356,10 @@ export function createMcpAuthConfig(values: McpServerFormValues): McpAuthConfig 
   return undefined
 }
 
-export function createMcpCreateRequest(values: McpServerFormValues): CreateMcpServerRequest {
+export function createMcpCreateRequest(values: McpServerFormValues, projectId: string): CreateMcpServerRequest {
   const authConfig = createMcpAuthConfig(values)
   return {
+    projectId,
     name: values.name.trim(),
     description: values.description.trim(),
     transport: values.transport,
@@ -370,10 +371,15 @@ export function createMcpCreateRequest(values: McpServerFormValues): CreateMcpSe
   }
 }
 
-export function createMcpUpdateRequest(mcpServerId: string, values: McpServerFormValues): UpdateMcpServerRequest {
+export function createMcpUpdateRequest(
+  mcpServerId: string,
+  values: McpServerFormValues,
+  projectId: string,
+): UpdateMcpServerRequest {
   const authConfig = createMcpAuthConfig(values)
   return {
     mcpServerId,
+    projectId,
     name: values.name.trim(),
     description: values.description.trim(),
     transport: values.transport,
@@ -394,10 +400,16 @@ export function createMcpTestRequest(values: McpServerFormValues): TestMcpServer
   }
 }
 
-export function createMcpSummaryFromForm(id: string, values: McpServerFormValues, now = Date.now()): McpServerSummary {
+export function createMcpSummaryFromForm(
+  id: string,
+  values: McpServerFormValues,
+  projectId: string,
+  now = Date.now(),
+): McpServerSummary {
   const authConfig = createMcpAuthConfig(values)
   return {
     _id: id,
+    projectId,
     name: values.name.trim(),
     description: values.description.trim(),
     transport: values.transport,

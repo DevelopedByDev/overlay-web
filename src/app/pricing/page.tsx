@@ -422,7 +422,7 @@ function PricingContent() {
                   <div className={theme.currentPlanPill}>{subscriptionLoading ? 'Loading…' : 'Current plan'}</div>
                 ) : (
                   <Link
-                    href={isAuthenticated ? '/app/chat' : '/auth/sign-in?redirect=%2Fapp%2Fchat'}
+                    href={isAuthenticated ? '/app/projects' : '/auth/sign-in?redirect=%2Fapp%2Fprojects'}
                     className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${theme.secondaryButton}`}
                   >
                     Start free

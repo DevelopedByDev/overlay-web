@@ -1,9 +1,9 @@
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { getOverlaySession } from '@/server/auth/session'
-import { redirect } from 'next/navigation'
 import { getInitialIntegrationsData } from '@/server/app/route-data'
 import { IntegrationsRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { AppAuthRedirect } from '../_components/AppAuthRedirect'
 
 const IntegrationsView = dynamic(() => import('@/features/integrations/components/IntegrationsView'), {
   loading: () => <IntegrationsRouteSkeleton />,
@@ -29,7 +29,7 @@ export default async function IntegrationsPage({
   searchParams?: Promise<IntegrationsSearchParams>
 }) {
   const session = await getOverlaySession()
-  if (!session) redirect('/app/chat?signin=nav')
+  if (!session) return <AppAuthRedirect />
   const projectId = readProjectId(await searchParams)
   return (
     <Suspense fallback={<IntegrationsRouteSkeleton />}>
