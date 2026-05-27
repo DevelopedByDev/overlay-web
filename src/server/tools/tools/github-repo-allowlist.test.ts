@@ -69,6 +69,29 @@ test('isGithubComposioTool returns false for empty string', async () => {
 
 // ── wrap + policy tests (Task 7) ──────────────────────────────────────────────
 
+// Fix 5 anchor: the act route distinguishes 'allowlist field absent on a
+// legacy project' (undefined → policy off, every repo allowed) from 'allowlist
+// explicitly empty' (deny-all). buildGithubRepoPolicy is the boundary that
+// honors that distinction; collapsing undefined → [] at the route layer
+// silently turns legacy projects into deny-all-GitHub.
+test('buildGithubRepoPolicy(undefined) yields a disabled policy (legacy projects, every repo allowed)', async () => {
+  const { buildGithubRepoPolicy } = await import(
+    new URL('./github-repo-allowlist.ts', import.meta.url).href,
+  )
+  const policy = buildGithubRepoPolicy(undefined)
+  assert.equal(policy.enabled, false)
+  assert.equal(policy.allows({ owner: 'anything', name: 'goes' }), true)
+})
+
+test('buildGithubRepoPolicy([]) yields an enabled-empty policy (deny-all)', async () => {
+  const { buildGithubRepoPolicy } = await import(
+    new URL('./github-repo-allowlist.ts', import.meta.url).href,
+  )
+  const policy = buildGithubRepoPolicy([])
+  assert.equal(policy.enabled, true)
+  assert.equal(policy.allows({ owner: 'anything', name: 'goes' }), false)
+})
+
 test('applyGithubRepoAllowlistToTools is identity when policy is disabled', async () => {
   const { applyGithubRepoAllowlistToTools, buildGithubRepoPolicy } = await import(
     new URL('./github-repo-allowlist.ts', import.meta.url).href,

@@ -861,9 +861,24 @@ export async function POST(request: NextRequest) {
         })
         return {
           instructions: project?.instructions?.trim() || '',
-          githubRepoAllowlist: project?.githubRepoAllowlist ?? [],
+          // Preserve undefined when the field is absent — buildGithubRepoPolicy
+          // treats undefined as "policy off" (every repo allowed) and []
+          // as "explicit empty list" (deny-all). Coercing undefined → []
+          // here would silently turn legacy projects (no githubRepoAllowlist
+          // field on the document) into deny-all-GitHub.
+          githubRepoAllowlist: project?.githubRepoAllowlist,
         }
-      } catch {
+      } catch (error) {
+        // Fail-closed: if the Convex query fails we cannot tell whether the
+        // project has an allowlist, so the safest posture is deny-all
+        // (enabled-empty). Log so operators can see the failure — the bare
+        // catch used to swallow these silently and the user saw deny-all
+        // with no diagnostic.
+        console.warn(
+          '[conversations/act] projects:get failed; failing closed for chat turn:',
+          conversationProjectId,
+          error instanceof Error ? error.message : String(error),
+        )
         return { instructions: '', githubRepoAllowlist: [] }
       }
     })()
