@@ -65,7 +65,11 @@
     "billing:migrate:staging": "node --env-file=.env.local --experimental-strip-types scripts/variable-pricing-migration.ts",
     "billing:audit:stripe": "node --experimental-strip-types scripts/stripe-dynamic-pricing-audit.ts",
     "test:auth:native-validation": "node --test --experimental-strip-types src/server/auth/native-auth-validation.test.ts src/server/auth/native-refresh-rate-limit.test.ts",
-    "test:auth:native-smoke": "node --env-file=.env.local --experimental-strip-types scripts/native-auth-security-smoke.ts"
+    "test:auth:native-smoke": "node --env-file=.env.local --experimental-strip-types scripts/native-auth-security-smoke.ts",
+    "secrets:login": "infisical login",
+    "secrets:pull": "infisical export --env=dev --format=dotenv > .env.local && echo '.env.local refreshed from Infisical (dev env)'",
+    "secrets:pull:preview": "infisical export --env=preview --format=dotenv",
+    "secrets:pull:prod": "infisical export --env=prod --format=dotenv"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
