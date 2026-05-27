@@ -831,30 +831,20 @@ export async function POST(request: NextRequest) {
 
     // Wave 2: project fetch + auto-retrieval. Both depend on the projectId resolved above.
     const conversationProjectId: string | undefined = conv?.projectId
-    // Composio integrations are project-owned. Chats outside a project receive
-    // no third-party account tools; project chats use the project's Composio entity.
-    const composioToolsTask: Promise<ToolSet> =
-      conversationProjectId && !isMultiModelFollowUpSlot
-        ? createBrowserUnifiedTools({
-            userId,
-            projectId: conversationProjectId,
-            accessToken: auth.accessToken || undefined,
-          })
-        : Promise.resolve({})
-    // MCP servers are project-owned. Chats outside a project receive no MCP tools.
-    const mcpToolsTask: Promise<ToolSet> =
-      conversationProjectId && !isMultiModelFollowUpSlot
-        ? createMcpToolSet({
-            userId,
-            projectId: conversationProjectId,
-            accessToken: auth.accessToken || undefined,
-            serverSecret,
-          })
-        : Promise.resolve({})
-    const projectTask: Promise<{ instructions: string; githubRepoAllowlist: string[] | undefined }> = (async () => {
-      if (!conversationProjectId) return { instructions: '', githubRepoAllowlist: undefined }
+    const projectTask: Promise<{
+      instructions: string
+      githubRepoAllowlist: string[] | undefined
+      githubToolsEnabled: string[] | undefined
+    }> = (async () => {
+      if (!conversationProjectId) {
+        return { instructions: '', githubRepoAllowlist: undefined, githubToolsEnabled: undefined }
+      }
       try {
-        const project = await convex.query<{ instructions?: string; githubRepoAllowlist?: string[] } | null>('projects/projects:get', {
+        const project = await convex.query<{
+          instructions?: string
+          githubRepoAllowlist?: string[]
+          githubToolsEnabled?: string[]
+        } | null>('projects/projects:get', {
           projectId: conversationProjectId as Id<'projects'>,
           userId,
           serverSecret,
@@ -867,21 +857,55 @@ export async function POST(request: NextRequest) {
           // here would silently turn legacy projects (no githubRepoAllowlist
           // field on the document) into deny-all-GitHub.
           githubRepoAllowlist: project?.githubRepoAllowlist,
+          // Preserve undefined when the field is absent — composio-tools
+          // (getEnabledGithubToolSlugs) treats undefined as "apply DEFAULT
+          // slug set" so legacy projects keep working. [] means "no GitHub
+          // tools at all" (explicit empty list).
+          githubToolsEnabled: project?.githubToolsEnabled,
         }
       } catch (error) {
         // Fail-closed: if the Convex query fails we cannot tell whether the
-        // project has an allowlist, so the safest posture is deny-all
-        // (enabled-empty). Log so operators can see the failure — the bare
-        // catch used to swallow these silently and the user saw deny-all
-        // with no diagnostic.
+        // project has an allowlist or which GitHub tools are enabled, so the
+        // safest posture is deny-all (enabled-empty for both fields). Log so
+        // operators can see the failure — the bare catch used to swallow
+        // these silently and the user saw deny-all with no diagnostic.
         console.warn(
           '[conversations/act] projects:get failed; failing closed for chat turn:',
           conversationProjectId,
           error instanceof Error ? error.message : String(error),
         )
-        return { instructions: '', githubRepoAllowlist: [] }
+        return { instructions: '', githubRepoAllowlist: [], githubToolsEnabled: [] }
       }
     })()
+    // Composio integrations are project-owned. Chats outside a project receive
+    // no third-party account tools; project chats use the project's Composio entity.
+    //
+    // We await projectTask before kicking off createBrowserUnifiedTools so the
+    // resolved `enabledGithubToolSlugs` participates in the Composio cache key.
+    // If we fired this in parallel (without slugs), the in-flight/cached entry
+    // would key on the default slug set; the real callers downstream that DO
+    // pass slugs would miss the cache and pay the full SDK round-trip.
+    const composioToolsTask: Promise<ToolSet> =
+      conversationProjectId && !isMultiModelFollowUpSlot
+        ? projectTask.then((p) =>
+            createBrowserUnifiedTools({
+              userId,
+              projectId: conversationProjectId,
+              accessToken: auth.accessToken || undefined,
+              enabledGithubToolSlugs: p.githubToolsEnabled,
+            }),
+          )
+        : Promise.resolve({})
+    // MCP servers are project-owned. Chats outside a project receive no MCP tools.
+    const mcpToolsTask: Promise<ToolSet> =
+      conversationProjectId && !isMultiModelFollowUpSlot
+        ? createMcpToolSet({
+            userId,
+            projectId: conversationProjectId,
+            accessToken: auth.accessToken || undefined,
+            serverSecret,
+          })
+        : Promise.resolve({})
 
     type AutoRetrievalResult = {
       extension: string
