@@ -34,7 +34,11 @@ type ComposioLike = {
 const CHAT_GITHUB_READONLY_TOOL_SLUGS = [
   // Repo metadata
   'GITHUB_GET_A_REPOSITORY',
-  'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER',
+  // NOTE: GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER removed (security/P1).
+  // Returns the full list of repos visible to the connected GitHub account
+  // (including private repos in any org), enumerating non-allowlisted repos.
+  // Repo discovery for the allowlist UI flows through the project-scoped
+  // /api/app/integrations/github/repositories endpoint instead.
   // File/directory content
   'GITHUB_GET_REPOSITORY_CONTENT',
   'GITHUB_GET_A_REPOSITORY_README',

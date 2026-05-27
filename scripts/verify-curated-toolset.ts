@@ -21,7 +21,8 @@ import { projectComposioEntityId } from '../src/server/tools/composio-entity'
 // Must match CHAT_GITHUB_READONLY_TOOL_SLUGS in src/server/tools/composio-tools.ts
 const CURATED: readonly string[] = [
   'GITHUB_GET_A_REPOSITORY',
-  'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER',
+  // GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER removed (security/P1):
+  // enumerates non-allowlisted repos.
   'GITHUB_GET_REPOSITORY_CONTENT',
   'GITHUB_GET_A_REPOSITORY_README',
   'GITHUB_LIST_COMMITS',

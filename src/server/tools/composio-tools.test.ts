@@ -109,10 +109,14 @@ test('curated GitHub toolset excludes allowlist-bypassing slugs', async () => {
     !requested.includes('GITHUB_SEARCH_CODE'),
     'GITHUB_SEARCH_CODE must be removed — its `q` query string can target non-allowlisted repos via `repo:` modifiers',
   )
-  // After Fix 1 (SEARCH_CODE removal) the curated list is exactly 10 slugs.
+  assert.ok(
+    !requested.includes('GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER'),
+    'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER must be removed — it enumerates non-allowlisted repos',
+  )
+  // After Fix 1 + Fix 2 the curated list is exactly 9 slugs.
   assert.equal(
     requested.length,
-    10,
-    `expected exactly 10 curated read-only GitHub slugs after dropping GITHUB_SEARCH_CODE, got ${requested.length}: ${requested.join(', ')}`,
+    9,
+    `expected exactly 9 curated read-only GitHub slugs after security pruning, got ${requested.length}: ${requested.join(', ')}`,
   )
 })
