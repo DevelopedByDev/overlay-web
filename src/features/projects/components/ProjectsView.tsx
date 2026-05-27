@@ -1878,7 +1878,6 @@ function ProjectHubBody({
             userId={userId}
             firstName={firstName}
             hideSidebar
-            hideHeader
             projectName={projectName}
           />
         </div>
