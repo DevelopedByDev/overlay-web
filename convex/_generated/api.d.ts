@@ -34,6 +34,7 @@ import type * as knowledge_memoryExtractorNode from "../knowledge/memoryExtracto
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
 import type * as lib_github_repo_allowlist_normalize from "../lib/github_repo_allowlist_normalize.js";
+import type * as lib_github_tools_enabled_normalize from "../lib/github_tools_enabled_normalize.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as outputs_outputs from "../outputs/outputs.js";
 import type * as platform_crons from "../platform/crons.js";
@@ -77,6 +78,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/authDebug": typeof lib_authDebug;
   "lib/github_repo_allowlist_normalize": typeof lib_github_repo_allowlist_normalize;
+  "lib/github_tools_enabled_normalize": typeof lib_github_tools_enabled_normalize;
   "lib/logging": typeof lib_logging;
   "outputs/outputs": typeof outputs_outputs;
   "platform/crons": typeof platform_crons;
