@@ -1,0 +1,59 @@
+{
+  "runtimeLicenseExceptions": [
+    {
+      "package": "@img/sharp-libvips-*",
+      "licenses": ["LGPL-3.0-or-later"],
+      "reason": "Native libvips binaries used by sharp/Next image processing. Review LGPL obligations before bundling enterprise images."
+    },
+    {
+      "package": "@img/sharp-wasm32",
+      "licenses": ["Apache-2.0 AND LGPL-3.0-or-later AND MIT"],
+      "reason": "Sharp WASM optional package. Review LGPL obligations before bundling enterprise images."
+    },
+    {
+      "package": "@img/sharp-win32-*",
+      "licenses": ["Apache-2.0 AND LGPL-3.0-or-later"],
+      "reason": "Sharp Windows optional package. Review LGPL obligations before bundling enterprise images."
+    },
+    {
+      "package": "@sentry/cli*",
+      "licenses": ["FSL-1.1-MIT"],
+      "reason": "Sentry release/source-map tooling. Confirm it is not shipped as product runtime code in enterprise artifacts."
+    },
+    {
+      "package": "busboy",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "format",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata declares MIT."
+    },
+    {
+      "package": "once",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare ISC."
+    },
+    {
+      "package": "streamsearch",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "wrappy",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare ISC."
+    },
+    {
+      "package": "ws",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "posthog-js",
+      "licenses": ["SEE LICENSE IN LICENSE"],
+      "reason": "Bundled license text declares Apache-2.0."
+    }
+  ]
+}

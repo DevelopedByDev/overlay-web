@@ -222,7 +222,13 @@ npm run convex:push:all    # Push to both prod and dev
 
 ## License
 
-[Add your license here]
+Overlay uses a split license model:
+
+- Core product surfaces are licensed under `AGPL-3.0-or-later`.
+- Reusable SDKs, contracts, protocol packages, and shared UI packages are licensed under `Apache-2.0`.
+- Overlay branding is governed by the trademark policy.
+
+See [`LICENSE.md`](LICENSE.md), [`docs/LICENSING.md`](docs/LICENSING.md), and [`TRADEMARKS.md`](TRADEMARKS.md).
 
 ---
 

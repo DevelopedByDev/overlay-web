@@ -4,6 +4,8 @@ This guide covers the Phase 6 runtime configuration path for running Overlay out
 
 For tenant boundaries and enterprise role modeling, see [Tenancy And Role Model](./TENANCY.md). The short version: self-hosted and managed-cloud enterprise deployments are single-customer deployments; students, teachers, parents, admins, departments, and classes are roles or groups inside that deployment, not tenants.
 
+For licensing and brand constraints, see [Licensing](./LICENSING.md) and [Legal Self-Hosting Notes](./LEGAL_SELF_HOSTING_NOTES.md). The short version: core product code is `AGPL-3.0-or-later`, reusable SDK/contract packages are `Apache-2.0`, and modified distributions need their own branding unless LayerNorm Inc. gives written permission.
+
 The app now loads configuration from three layers, highest precedence first:
 
 1. Environment variables.
