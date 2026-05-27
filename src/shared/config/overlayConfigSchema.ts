@@ -368,6 +368,12 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
       hasInternalServiceAuthSecret: Boolean(config.database.internalServiceAuthSecret),
       hasApiKeyHashSecret: Boolean(config.database.apiKeyHashSecret),
     },
+    tenancy: {
+      mode: config.capabilities.multiTenant ? 'shared-multi-tenant' : 'single-customer-deployment',
+      boundary: config.capabilities.multiTenant ? 'tenantId' : 'deployment',
+      tenantSwitcherAvailable: false,
+      phase6bRequiredForSharedDeployments: true,
+    },
     capabilities: { ...config.capabilities },
   }
 }

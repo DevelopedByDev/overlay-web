@@ -210,6 +210,20 @@ test('OverlayRuntimeConfigSchema requires API_KEY_HASH_SECRET when API keys are 
   )
 })
 
+test('OverlayRuntimeConfigSchema rejects multiTenant until Phase 6b tenant isolation is implemented', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          multiTenant: true,
+        },
+      }),
+    /multiTenant cannot be enabled until the Phase 6b tenant isolation work is implemented/,
+  )
+})
+
 test('OverlayRuntimeConfigSchema rejects secret-looking values in NEXT_PUBLIC fields', () => {
   assert.throws(
     () =>
@@ -229,7 +243,8 @@ test('OverlayRuntimeConfigSchema rejects secret-looking values in NEXT_PUBLIC fi
 
 test('redactOverlayRuntimeConfig never returns secret values', () => {
   const parsed = OverlayRuntimeConfigSchema.parse(minimalSaasConfig)
-  const redacted = JSON.stringify(redactOverlayRuntimeConfig(parsed))
+  const summary = redactOverlayRuntimeConfig(parsed)
+  const redacted = JSON.stringify(summary)
 
   assert.equal(redacted.includes('sk_test_staging'), false)
   assert.equal(redacted.includes('whsec_staging'), false)
@@ -237,4 +252,10 @@ test('redactOverlayRuntimeConfig never returns secret values', () => {
   assert.equal(redacted.includes('api_key_hash_staging'), false)
   assert.equal(redacted.includes('workos_staging_secret'), false)
   assert.equal(redacted.includes('r2_secret'), false)
+  assert.deepEqual(summary.tenancy, {
+    mode: 'single-customer-deployment',
+    boundary: 'deployment',
+    tenantSwitcherAvailable: false,
+    phase6bRequiredForSharedDeployments: true,
+  })
 })

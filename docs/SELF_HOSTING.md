@@ -2,6 +2,8 @@
 
 This guide covers the Phase 6 runtime configuration path for running Overlay outside the default Vercel, WorkOS, Stripe, and Cloudflare R2 SaaS setup.
 
+For tenant boundaries and enterprise role modeling, see [Tenancy And Role Model](./TENANCY.md). The short version: self-hosted and managed-cloud enterprise deployments are single-customer deployments; students, teachers, parents, admins, departments, and classes are roles or groups inside that deployment, not tenants.
+
 The app now loads configuration from three layers, highest precedence first:
 
 1. Environment variables.

@@ -7,6 +7,7 @@ Keep docs short and current. Prefer updating these files over adding new one-off
 - [Architecture](./architecture.md) - backend boundaries, auth, billing, storage, and client parity.
 - [Development](./development.md) - local setup, required env vars, scripts, and verification.
 - [Self Hosting](./SELF_HOSTING.md) - runtime config, provider swaps, deployment profiles, and secret placement.
+- [Tenancy](./TENANCY.md) - single-customer deployment boundary, role model, and Phase 6b shared-tenant checklist.
 - [Design](./design.md) - durable product and UI principles.
 - [Security](./security.md) - release gates and security-sensitive workflow notes.
 

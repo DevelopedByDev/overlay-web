@@ -34,6 +34,7 @@
     "check:module-boundaries": "node scripts/ensure-module-presentational-boundaries.mjs",
     "check:shared-isomorphic": "node scripts/enforce-shared-isomorphic.mjs",
     "check:vendor-boundaries": "node scripts/check-no-vendor-imports-in-routes.mjs",
+    "check:tenant-boundaries": "tsx scripts/check-tenant-boundaries.ts",
     "check:providers": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud NODE_OPTIONS=--conditions=react-server tsx --test src/server/bootstrap.test.ts && npm run check:vendor-boundaries",
     "check:config": "NODE_OPTIONS=--conditions=react-server tsx --test src/shared/config/overlayConfigSchema.test.ts src/server/config/loadOverlayConfig.test.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/check-overlay-config.ts",
     "docs:check:self-hosting": "NODE_OPTIONS=--conditions=react-server tsx scripts/check-self-hosting-docs.ts",
