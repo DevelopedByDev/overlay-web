@@ -308,7 +308,7 @@ Refactor without behavior change. After this task, the function signature accept
 **Files:**
 - Modify: `src/server/tools/composio-tools.ts`
 
-- [ ] **Step 1: Define a narrow `ComposioLike` type at top of file**
+- [x] **Step 1: Define a narrow `ComposioLike` type at top of file**
 
 ```ts
 // Minimal surface of the Composio SDK that buildBrowserUnifiedTools uses.
@@ -325,7 +325,7 @@ type ComposioLike = {
 }
 ```
 
-- [ ] **Step 2: Refactor `buildBrowserUnifiedTools` signature**
+- [x] **Step 2: Refactor `buildBrowserUnifiedTools` signature**
 
 ```ts
 async function buildBrowserUnifiedTools(args: {
@@ -351,7 +351,7 @@ async function buildBrowserUnifiedTools(args: {
 }
 ```
 
-- [ ] **Step 3: Typecheck + lint**
+- [x] **Step 3: Typecheck + lint**
 
 ```bash
 pnpm typecheck
@@ -360,12 +360,14 @@ pnpm lint src/server/tools/composio-tools.ts
 
 Expected: 0 errors. Behavior is identical for production callers (they don't pass `composio`).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/server/tools/composio-tools.ts
 git commit -m "refactor(chat-tools): add DI seam for Composio SDK"
 ```
+
+> **Execution note (2026-05-27):** Used the briefing's `ComposioLike` shape (includes both `create` and `tools.get`) rather than the plan-text's `tools` + `connectedAccounts` shape. Rationale: Task 2 keeps using `composio.create(...)`, so the type must still cover that call to keep production code compiling; Task 3 swaps to `tools.get`, which is also already on the type. The `connectedAccounts` field was tied to the YELLOW-branch fallback that Task 0 Step 7 retired (GREEN — VercelProvider auto-binds), so it's no longer needed.
 
 ---
 

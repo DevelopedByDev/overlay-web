@@ -8,6 +8,19 @@ import { projectComposioEntityId } from '@/server/tools/composio-entity'
 
 type JsonRecord = Record<string, unknown>
 
+// Minimal surface of the Composio SDK that buildBrowserUnifiedTools needs.
+// Letting tests inject a fake Composio without depending on @composio/core types.
+type ComposioLike = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  create: (userId: string, config?: any) => Promise<{
+    tools: () => Promise<ToolSet>
+  }>
+  tools: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    get: (userId: string, filters: { toolkits?: string[]; tools?: string[] }, options?: any) => Promise<ToolSet>
+  }
+}
+
 const REMOVED_COMPOSIO_TOOLS = new Set([
   'COMPOSIO_REMOTE_BASH_TOOL',
   'COMPOSIO_REMOTE_WORKBENCH',
@@ -149,14 +162,20 @@ async function buildBrowserUnifiedTools(args: {
   userId: string
   projectId: string
   accessToken?: string
+  /** Inject a Composio SDK instance (or fake) for tests. */
+  composio?: ComposioLike
 }): Promise<ToolSet> {
-  const apiKey = await getComposioApiKey(args.accessToken)
-  if (!apiKey) {
-    throw new Error('COMPOSIO_API_KEY is not configured. Set it in Convex or the server environment.')
+  let composio: ComposioLike
+  if (args.composio) {
+    composio = args.composio
+  } else {
+    const apiKey = await getComposioApiKey(args.accessToken)
+    if (!apiKey) {
+      throw new Error('COMPOSIO_API_KEY is not configured. Set it in Convex or the server environment.')
+    }
+    const { Composio, VercelProvider } = await loadComposioModules()
+    composio = new Composio({ apiKey, provider: new VercelProvider() }) as ComposioLike
   }
-
-  const { Composio, VercelProvider } = await loadComposioModules()
-  const composio = new Composio({ apiKey, provider: new VercelProvider() })
   // manageConnections: false — integrations are managed exclusively via the
   // project settings drawer in this app, never via chat. Defaulting to `true`
   // makes Composio inject `MANAGE_CONNECTIONS` / `INITIATE_CONNECTION` meta-
