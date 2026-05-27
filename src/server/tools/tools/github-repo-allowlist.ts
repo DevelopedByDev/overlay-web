@@ -9,6 +9,32 @@ export function isGithubComposioTool(name: string): boolean {
 }
 
 /**
+ * Slugs that legitimately operate without a repo coordinate (account-scoped
+ * queries against the connected user, not a specific repository). For these,
+ * a null extractor result is "this tool has no repo to validate" — delegate
+ * to the original execute. Every other GITHUB_* tool is treated as
+ * repo-required: null extractor → default-deny.
+ *
+ * After Fix 1 + Fix 2 the curated chat toolset contains NO entries from this
+ * set. The set is intentionally retained as the safe forward-compat seam:
+ * if a future tool genuinely has no repo arg (e.g. GITHUB_GET_AUTHENTICATED_USER)
+ * it must be listed here explicitly. The default is deny.
+ */
+const NON_REPO_SCOPED_GITHUB_TOOLS = new Set<string>([
+  // Currently empty by design — see comment above. Phase B additions go here.
+])
+
+/**
+ * Returns true when the tool name MUST receive a parseable repo coordinate
+ * (default-deny on extractor null). The non-repo-scoped allowlist is the
+ * inverse: if the name appears in {@link NON_REPO_SCOPED_GITHUB_TOOLS},
+ * the call is delegated to the original execute on extractor null.
+ */
+function isRepoRequiredGithubTool(name: string): boolean {
+  return isGithubComposioTool(name) && !NON_REPO_SCOPED_GITHUB_TOOLS.has(name)
+}
+
+/**
  * Extracts the owner and repo name from Composio GitHub tool arguments.
  *
  * Handles heterogeneous argument shapes by trying these precedence rules (in order):
@@ -289,9 +315,29 @@ export function applyGithubRepoAllowlistToTools<T extends Record<string, unknown
     const wrappedExecute = async (input: unknown, ctx: unknown): Promise<unknown> => {
       const sourceTarget = extractRepoFromComposioGithubArgs(input)
 
-      // No repo found — non-repo-scoped op (e.g. LIST_USER_ORGANIZATIONS); allow
+      // Null extractor result. Two cases:
+      // 1. The tool is in NON_REPO_SCOPED_GITHUB_TOOLS (account-scoped op,
+      //    e.g. GITHUB_GET_AUTHENTICATED_USER) — delegate to original.
+      // 2. The tool is repo-required and the args were not parseable into a
+      //    repo coord (e.g. percent-encoded slash that splits to length 1,
+      //    missing fields, unknown shape) — default-deny. Composio's HTTP
+      //    layer may still construct a valid request from the raw input via
+      //    URL decoding or unknown field handling, so the wrap MUST refuse
+      //    rather than delegate.
       if (sourceTarget === null) {
-        return originalExecute(input, ctx)
+        if (!isRepoRequiredGithubTool(name)) {
+          return originalExecute(input, ctx)
+        }
+        console.warn('[github-allowlist] blocked', JSON.stringify({
+          toolName: name,
+          blockedRepo: null,
+          reason: 'repo-arg-missing-or-unparseable',
+        }))
+        return buildRepoBlockedToolResult({
+          toolName: name,
+          target: { owner: '(unparseable)', name: '(unparseable)' },
+          allowed: policy.list,
+        })
       }
 
       // Check source repo

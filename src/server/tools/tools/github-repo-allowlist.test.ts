@@ -216,6 +216,35 @@ test('GITHUB_FORK_REPOSITORY blocks when target fields are missing (default-deny
   assert.equal(result.error, 'repo_not_in_allowlist')
 })
 
+// ── Fix 3: default-deny on null extractor result for repo-scoped tools ──────
+//
+// When the extractor returns null we used to delegate to the original execute
+// as "non-repo-scoped op (e.g. LIST_USER_ORGANIZATIONS) — allow". After the
+// curated list was tightened, every remaining GITHUB_* tool is repo-scoped,
+// so null means "we couldn't find the repo coords" — not "no repo coords
+// exist". Treat null as deny for repo-required tools.
+//
+// Concretely: a percent-encoded slash in `repository` returns null from the
+// extractor (Rule 5 splits on literal '/'), and Composio's HTTP layer would
+// URL-decode the path param downstream and reach `evil/corp`. Default-deny.
+test('GITHUB_GET_A_REPOSITORY blocks when repo arg is percent-encoded (extractor null path)', async () => {
+  const { applyGithubRepoAllowlistToTools, buildGithubRepoPolicy } = await import(
+    new URL('./github-repo-allowlist.ts', import.meta.url).href,
+  )
+  const policy = buildGithubRepoPolicy(['acme/web'])
+  const executeStub = mock.fn(async () => ({ ok: true }))
+  const toolSet = { GITHUB_GET_A_REPOSITORY: { execute: executeStub } }
+  const wrapped = applyGithubRepoAllowlistToTools(toolSet, policy)
+  const result = (await wrapped.GITHUB_GET_A_REPOSITORY.execute(
+    { repository: 'evil%2Fcorp' },
+    {},
+  )) as { ok: boolean; error?: string }
+  // Repo-required tool with no parseable coord must be denied — not delegated.
+  assert.equal(executeStub.mock.callCount(), 0)
+  assert.equal(result.ok, false)
+  assert.match(result.error ?? '', /repo_not_in_allowlist|repo_arg_required/)
+})
+
 // ── Task 1: green baseline for the post-swap GITHUB_* ToolSet shape ──────────
 //
 // After Task 3 swaps `composio.create()` + `session.tools()` for the static
