@@ -3,6 +3,7 @@ import { convex } from '@/server/database/convex'
 import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 type ConvexEntitlements = {
   tier: 'free' | 'pro' | 'max'
@@ -20,6 +21,9 @@ type ConvexEntitlements = {
 }
 
 export async function GET(request: NextRequest) {
+  const disabledCapabilityResponse = await requireOverlayCapability('billing')
+  if (disabledCapabilityResponse) return disabledCapabilityResponse
+
   const session = await getOverlaySession()
   if (!session || !session.user) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })

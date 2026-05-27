@@ -9,6 +9,7 @@ import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
 import { handleIdempotentMutation } from '@/server/app-api/idempotency'
 import { standardizePaginatedListResponse } from '@/server/app-api/pagination'
 import { getRequiredApiKeyScopesForRoute, isApiKeyCandidate } from '@/server/auth/api-keys'
+import { requireOverlayRouteCapability } from '@/server/capabilities'
 import { validateApiBoundary } from './boundary'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
@@ -47,6 +48,9 @@ export async function handleBffRoute(
   context: unknown,
   service: BffDomainService,
 ): Promise<Response> {
+  const disabledCapabilityResponse = await requireOverlayRouteCapability(request)
+  if (disabledCapabilityResponse) return disabledCapabilityResponse
+
   const authBody = await readJsonBodyForAuth(request).catch(() => ({}))
   const clientIp = getClientIp(request)
   const bearer = getBearerToken(request)

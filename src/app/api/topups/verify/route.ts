@@ -4,6 +4,7 @@ import { stripe } from '@/server/billing/stripe'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 async function findLatestPaidTopUpSession(userId: string) {
   const page = await stripe.checkout.sessions.list({ limit: 50 })
@@ -46,6 +47,9 @@ async function resolveCheckoutSession(sessionId: string, userId: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    const disabledCapabilityResponse = await requireOverlayCapability('billing')
+    if (disabledCapabilityResponse) return disabledCapabilityResponse
+
     const body = await request.json()
     const auth = await resolveAuthenticatedAppUser(request, body)
     const userId = auth?.userId

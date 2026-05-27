@@ -8,8 +8,12 @@
 // Do NOT register a separate Next.js webhook endpoint.
 
 import { NextResponse } from 'next/server'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 export async function POST() {
+  const disabledCapabilityResponse = await requireOverlayCapability('billing')
+  if (disabledCapabilityResponse) return disabledCapabilityResponse
+
   return NextResponse.json(
     { error: 'This webhook endpoint has been deprecated. Use the Convex HTTP handler instead.' },
     { status: 410 }

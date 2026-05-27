@@ -12,6 +12,7 @@ import { usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { SignInFullScreenModal } from '@/features/auth/components/SignInFullScreenModal'
 import { SignInCornerPopover } from '@/features/auth/components/SignInCornerPopover'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 
 export type GateReason = 'send' | 'nav' | 'history' | 'settings'
 
@@ -37,6 +38,7 @@ const FADE_MS = 200
 
 export function GuestGateProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
+  const { capabilities } = useOverlayCapabilities()
   const pathname = usePathname()
   const [modalReason, setModalReason] = useState<GateReason | null>(null)
   const [modalClosing, setModalClosing] = useState(false)
@@ -86,10 +88,15 @@ export function GuestGateProvider({ children }: { children: ReactNode }) {
           reason={modalReason ?? 'nav'}
           onClose={closeModal}
           isClosing={modalClosing}
+          ssoEnabled={capabilities.sso}
         />
       ) : null}
       {(showCorner || cornerClosing) ? (
-        <SignInCornerPopover onDismiss={dismissCorner} isClosing={cornerClosing} />
+        <SignInCornerPopover
+          onDismiss={dismissCorner}
+          isClosing={cornerClosing}
+          ssoEnabled={capabilities.sso}
+        />
       ) : null}
     </GuestGateContext.Provider>
   )

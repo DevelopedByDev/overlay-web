@@ -4,6 +4,7 @@ import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { getDynamicTopUpConfig, isRecognizedTopUpAmount } from '@/server/billing/stripe-billing'
 import { TOP_UP_MIN_AMOUNT_CENTS, derivePlanKind } from '@/shared/billing/billing-pricing'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 type BillingSettingsResponse = {
   planKind: 'free' | 'paid'
@@ -21,6 +22,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 export async function GET(request: NextRequest) {
+  const disabledCapabilityResponse = await requireOverlayCapability('billing')
+  if (disabledCapabilityResponse) return disabledCapabilityResponse
+
   const auth = await resolveAuthenticatedAppUser(request, {})
   if (!auth) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
@@ -52,6 +56,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const disabledCapabilityResponse = await requireOverlayCapability('billing')
+  if (disabledCapabilityResponse) return disabledCapabilityResponse
+
   const body = await request.json().catch(() => null)
   if (!isPlainObject(body)) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })

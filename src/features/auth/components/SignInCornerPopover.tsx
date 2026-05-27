@@ -9,9 +9,10 @@ import { SignInForm } from '@/features/auth/components/SignInForm'
 interface Props {
   onDismiss: () => void
   isClosing?: boolean
+  ssoEnabled?: boolean
 }
 
-export function SignInCornerPopover({ onDismiss, isClosing = false }: Props) {
+export function SignInCornerPopover({ onDismiss, isClosing = false, ssoEnabled = true }: Props) {
   const pathname = usePathname() ?? '/app/chat'
   const [mounted, setMounted] = useState(false)
 
@@ -47,7 +48,7 @@ export function SignInCornerPopover({ onDismiss, isClosing = false }: Props) {
         Save your chats, notes, and knowledge across sessions.
       </p>
       <div className="px-5 pb-5">
-        <SignInForm redirectTo={pathname} />
+        <SignInForm redirectTo={pathname} ssoEnabled={ssoEnabled} />
       </div>
     </div>
   )

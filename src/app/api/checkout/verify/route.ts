@@ -5,6 +5,7 @@ import { convex } from '@/server/database/convex'
 import { quantityToPlanAmountCents } from '@/shared/billing/billing-pricing'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { resolvePaidUnitPriceId } from '@/server/billing/stripe-billing'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscription) {
   const now = Date.now()
@@ -25,6 +26,9 @@ function getSubscriptionPeriodMs(subscription: import('stripe').Stripe.Subscript
 
 export async function POST(request: NextRequest) {
   try {
+    const disabledCapabilityResponse = await requireOverlayCapability('billing')
+    if (disabledCapabilityResponse) return disabledCapabilityResponse
+
     const authSession = await getOverlaySession()
 
     if (!authSession || !authSession.user) {

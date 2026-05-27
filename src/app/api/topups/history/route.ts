@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 export async function GET(request: NextRequest) {
+  const disabledCapabilityResponse = await requireOverlayCapability('billing')
+  if (disabledCapabilityResponse) return disabledCapabilityResponse
+
   const auth = await resolveAuthenticatedAppUser(request, {})
   if (!auth) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })

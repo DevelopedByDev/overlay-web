@@ -90,6 +90,7 @@ import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { FileViewerPanel } from '@/features/files/components/FileViewer'
 import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { createIdempotencyKey } from '@overlay/api-client'
@@ -182,6 +183,8 @@ export default function ChatInterface({
       ? rawEmbedProjectId
       : null
   const { settings } = useAppSettings()
+  const { capabilities } = useOverlayCapabilities()
+  const billingEnabled = capabilities.billing
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexWorkOSToken()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
@@ -726,7 +729,9 @@ export default function ChatInterface({
     }
   }, [activeChatId, activeRuntime, actChat, chatInstances, chatStreamRelayApi, liveMessages])
 
-  const isPaidSubscription = (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'paid'
+  const isPaidSubscription =
+    !billingEnabled ||
+    (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'paid'
   const budgetTotalCents = entitlements
     ? (entitlements.budgetTotalCents ?? Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100)))
     : 0
@@ -736,8 +741,8 @@ export default function ChatInterface({
   const budgetRemainingCents = entitlements
     ? (entitlements.budgetRemainingCents ?? Math.max(0, budgetTotalCents - budgetUsedCents))
     : 0
-  const isBudgetExhaustedPaid = isPaidSubscription && budgetRemainingCents <= 0
-  const isFreeTier = !isPaidSubscription || isBudgetExhaustedPaid
+  const isBudgetExhaustedPaid = billingEnabled && isPaidSubscription && budgetRemainingCents <= 0
+  const isFreeTier = billingEnabled && (!isPaidSubscription || isBudgetExhaustedPaid)
   const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && settings.onlyAllowZdrModels
   const selectableTextModels = useMemo(() => {
     const models = getModelsByIntelligence(isFreeTier)
@@ -807,6 +812,10 @@ export default function ChatInterface({
   // ── data loading ──────────────────────────────────────────────────────────
 
   const loadSubscription = useCallback(async () => {
+    if (!billingEnabled) {
+      setEntitlements(null)
+      return
+    }
     try {
       const res = await overlayAppClient.subscription.getResponse()
       if (res.ok) {
@@ -816,7 +825,7 @@ export default function ChatInterface({
         setAutoTopUpEnabledDraft(Boolean(data.autoTopUpEnabled))
       }
     } catch { /* ignore */ }
-  }, [])
+  }, [billingEnabled])
 
   const buildTopUpReturnPath = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
@@ -876,6 +885,7 @@ export default function ChatInterface({
   }, [autoTopUpEnabledDraft, loadSubscription, topUpAmountDraftCents])
 
   useEffect(() => {
+    if (!billingEnabled) return
     const topUpSuccess = searchParams?.get('topup_success') === 'true'
     const topUpSessionId = searchParams?.get('topup_session_id')
     const topUpCanceled = searchParams?.get('topup_canceled') === 'true'
@@ -922,7 +932,7 @@ export default function ChatInterface({
     return () => {
       cancelled = true
     }
-  }, [loadSubscription, pathname, router, searchParams])
+  }, [billingEnabled, loadSubscription, pathname, router, searchParams])
 
   // Snapshot pendingTitleRef before the async fetch so a concurrent PATCH completing mid-flight
   // can't clear the ref before we've applied the override to the incoming server chats.

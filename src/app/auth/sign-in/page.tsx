@@ -19,6 +19,7 @@ import {
   marketingSsoButton,
   marketingSubmitButton,
 } from "@/features/landing/lib/landingPageStyles";
+import { DEFAULT_OVERLAY_CAPABILITIES, type CapabilityCheck } from "@overlay/app-core";
 
 function SignInContent() {
   const { isLandingDark } = useLandingTheme();
@@ -33,6 +34,7 @@ function SignInContent() {
   const [pendingVerification, setPendingVerification] = useState(false);
   const [sessionCleared, setSessionCleared] = useState(false);
   const [clearingSession, setClearingSession] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState<boolean | null>(null);
 
   const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get("redirect"));
   const forceLogin = searchParams?.get("force") === "true";
@@ -48,6 +50,30 @@ function SignInContent() {
   useEffect(() => {
     persistMobilePkceChallengeFromUrl(searchParams);
   }, [searchParams]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/v1/capabilities", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return await response.json();
+      })
+      .then((payload) => {
+        if (!active) return;
+        const capabilities = {
+          ...DEFAULT_OVERLAY_CAPABILITIES,
+          ...((payload?.capabilities ?? {}) as Partial<CapabilityCheck>),
+        };
+        setSsoEnabled(capabilities.sso);
+      })
+      .catch(() => {
+        if (active) setSsoEnabled(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if ((isDesktopAuth || forceLogin) && !sessionCleared && !clearingSession) {
@@ -108,6 +134,7 @@ function SignInContent() {
   };
 
   const handleSSO = (provider: "google" | "apple" | "microsoft") => {
+    if (!ssoEnabled) return;
     setSsoLoading(provider);
     const forceParam = isDesktopAuth || forceLogin ? "&force=true" : "";
     const codeChallenge = resolveCodeChallengeForSso(searchParams);
@@ -164,6 +191,7 @@ function SignInContent() {
               </div>
             )}
 
+            {ssoEnabled ? (
             <div className="space-y-3 mb-6">
               <button
                 type="button"
@@ -219,7 +247,9 @@ function SignInContent() {
                 {ssoLoading === "microsoft" ? "Redirecting..." : "Continue with Microsoft"}
               </button>
             </div>
+            ) : null}
 
+            {ssoEnabled ? (
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
                 <div
@@ -230,6 +260,7 @@ function SignInContent() {
                 <span className={divLabel}>or continue with email</span>
               </div>
             </div>
+            ) : null}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>

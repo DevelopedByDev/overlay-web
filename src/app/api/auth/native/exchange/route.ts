@@ -8,6 +8,7 @@ import {
   isValidNativeAuthCode,
   isValidPkceVerifier,
 } from '@/server/auth/native-auth-validation'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -16,6 +17,9 @@ const NO_STORE_HEADERS = {
 
 export async function POST(request: NextRequest) {
   try {
+    const disabledCapabilityResponse = await requireOverlayCapability('sso')
+    if (disabledCapabilityResponse) return disabledCapabilityResponse
+
     const rateLimitResponse = await enforceRateLimits(request, [
       { bucket: 'auth:native-exchange:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
     ])

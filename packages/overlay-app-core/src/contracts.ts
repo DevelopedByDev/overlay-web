@@ -11,6 +11,7 @@ import type {
   BillingProvider,
   Entitlements,
 } from '@overlay/billing'
+import type { CapabilityCheck, OverlayCapability } from './capabilities'
 
 export type {
   LanguageModel,
@@ -289,6 +290,7 @@ export interface OverlayFeatureFlag {
   label: string
   enabled: boolean
   description?: string
+  requiredCapabilities?: readonly OverlayCapability[]
 }
 
 export interface OverlayBrandConfig {
@@ -309,6 +311,7 @@ export interface OverlayNavigationItem {
   componentKey?: string
   disabled?: boolean
   featureFlagId?: OverlayFeatureFlagId
+  requiredCapabilities?: readonly OverlayCapability[]
   subviews?: readonly string[]
 }
 
@@ -320,6 +323,7 @@ export interface OverlaySettingsSection {
   componentKey?: string
   disabled?: boolean
   featureFlagId?: OverlayFeatureFlagId
+  requiredCapabilities?: readonly OverlayCapability[]
 }
 
 export type OverlayFeatureModuleId =
@@ -339,6 +343,7 @@ export interface OverlayFeatureModule {
   componentKey: string
   packageName?: string
   featureFlagId?: OverlayFeatureFlagId
+  requiredCapabilities?: readonly OverlayCapability[]
   order?: number
 }
 
@@ -369,6 +374,7 @@ export interface OverlaySidebarAction {
   requiresAuth?: boolean
   primaryNavAction?: boolean
   featureFlagId?: OverlayFeatureFlagId
+  requiredCapabilities?: readonly OverlayCapability[]
   order?: number
 }
 
@@ -379,6 +385,7 @@ export interface OverlaySettingsPanel {
   componentKey: string
   description?: string
   featureFlagId?: OverlayFeatureFlagId
+  requiredCapabilities?: readonly OverlayCapability[]
   order?: number
 }
 
@@ -389,6 +396,7 @@ export interface OverlayToolRegistration {
   category?: 'browser' | 'knowledge' | 'integration' | 'automation' | 'developer' | (string & {})
   componentKey?: string
   featureFlagId?: OverlayFeatureFlagId
+  requiredCapabilities?: readonly OverlayCapability[]
   policyGateId?: string
 }
 
@@ -400,6 +408,7 @@ export interface OverlayIntegrationRegistration {
   logoSrc?: string
   componentKey?: string
   featureFlagId?: OverlayFeatureFlagId
+  requiredCapabilities?: readonly OverlayCapability[]
   policyGateId?: string
 }
 
@@ -410,6 +419,7 @@ export interface OverlayModelProviderRegistration {
   description?: string
   logoSrc?: string
   componentKey?: string
+  requiredCapabilities?: readonly OverlayCapability[]
   policyGateId?: string
 }
 
@@ -507,6 +517,7 @@ export interface OverlayAppShellRegistry {
   modelProviders: readonly OverlayModelProviderRegistration[]
   policyGates: readonly OverlayPolicyGate[]
   appFeatureFlags: AppFeatureFlags
+  capabilities: CapabilityCheck
   theme: OverlayThemeMetadata
 }
 
@@ -536,6 +547,7 @@ export interface AppBootstrapResponse {
   policyGates?: OverlayPolicyGate[]
   theme?: OverlayThemeMetadata
   featureFlags: AppFeatureFlags
+  capabilities: CapabilityCheck
   destinations: AppDestinationConfig[]
   defaults?: AppBootstrapDefaults
 }

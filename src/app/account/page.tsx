@@ -25,7 +25,13 @@ import {
   marketingPanel,
   marketingPanelLg,
 } from '@/features/landing/lib/landingPageStyles'
-import type { AccountEntitlements, BillingSettings, TopUpHistoryItem } from '@overlay/app-core'
+import {
+  DEFAULT_OVERLAY_CAPABILITIES,
+  type AccountEntitlements,
+  type BillingSettings,
+  type CapabilityCheck,
+  type TopUpHistoryItem,
+} from '@overlay/app-core'
 import { normalizeTopUpDraft } from '@overlay/app-core/settings-account'
 import {
   AccountContinueCard,
@@ -79,6 +85,9 @@ function AccountPageContent() {
   const [topUpHistory, setTopUpHistory] = useState<TopUpHistoryItem[]>([])
   const [topUpAmountDraftCents, setTopUpAmountDraftCents] = useState(800)
   const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
+  const [capabilities, setCapabilities] = useState<CapabilityCheck>(DEFAULT_OVERLAY_CAPABILITIES)
+  const [capabilitiesLoaded, setCapabilitiesLoaded] = useState(false)
+  const billingEnabled = capabilities.billing
 
   // Get userId from AuthContext (session-based)
   const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
@@ -89,6 +98,28 @@ function AccountPageContent() {
   useEffect(() => {
     persistMobilePkceChallengeFromUrl(searchParams)
   }, [searchParams])
+
+  useEffect(() => {
+    let active = true
+    void fetch('/api/v1/capabilities', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return null
+        return await response.json()
+      })
+      .then((payload) => {
+        const next = payload?.capabilities
+        if (!active || !next || typeof next !== 'object') return
+        setCapabilities({ ...DEFAULT_OVERLAY_CAPABILITIES, ...(next as Partial<CapabilityCheck>) })
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setCapabilitiesLoaded(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   // Refresh session on mount to ensure we have the latest session state
   // This fixes the race condition when redirecting from auth callback
@@ -210,6 +241,7 @@ function AccountPageContent() {
   }
 
   const refreshBillingState = useCallback(async () => {
+    if (!billingEnabled) return
     const [entitlementsResponse, settingsResponse, topUpHistoryResponse] = await Promise.all([
       overlayAppClient.account.entitlementsResponse(),
       overlayAppClient.subscription.getSettingsResponse(),
@@ -233,10 +265,11 @@ function AccountPageContent() {
       const data = await topUpHistoryResponse.json()
       setTopUpHistory(Array.isArray(data.items) ? data.items : [])
     }
-  }, [])
+  }, [billingEnabled])
 
   // Check for success/error params, verify checkout, and auto-trigger deep link
   useEffect(() => {
+    if (!billingEnabled) return
     const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
     nextParams.delete('success')
     nextParams.delete('session_id')
@@ -295,7 +328,7 @@ function AccountPageContent() {
       setMessage({ type: 'error', text: 'Checkout was canceled.' })
       router.replace(nextUrl)
     }
-  }, [canceledParam, currentUserId, refreshBillingState, router, searchParams, sessionId, successParam, topUpSessionId, topUpSuccessParam])
+  }, [billingEnabled, canceledParam, currentUserId, refreshBillingState, router, searchParams, sessionId, successParam, topUpSessionId, topUpSuccessParam])
 
   // Handler for manual "Open in App" button
   // This generates a deep link with auth tokens so the desktop app signs in with the current account
@@ -364,10 +397,19 @@ function AccountPageContent() {
   // Fetch entitlements when userId is available
   useEffect(() => {
     // Wait for auth to finish loading
-    if (authLoading) return
+    if (authLoading || !capabilitiesLoaded) return
     
     // If not authenticated, stop loading
     if (!isAuthenticated || !currentUserId) {
+      setLoading(false)
+      return
+    }
+
+    if (!billingEnabled) {
+      setEntitlements(null)
+      setEntitlementsError(null)
+      setBillingSettings(null)
+      setTopUpHistory([])
       setLoading(false)
       return
     }
@@ -418,9 +460,13 @@ function AccountPageContent() {
     }
 
     fetchEntitlements()
-  }, [currentUserId, authLoading, isAuthenticated])
+  }, [billingEnabled, capabilitiesLoaded, currentUserId, authLoading, isAuthenticated])
 
   const handleManageBilling = async () => {
+    if (!billingEnabled) {
+      setMessage({ type: 'error', text: 'Billing is disabled for this deployment.' })
+      return
+    }
     setActionLoading('billing')
     try {
       const data = await overlayAppClient.billing.portal({ sessionId })
@@ -438,6 +484,10 @@ function AccountPageContent() {
   }
 
   const handleStartTopUp = async (amountCents: number, autoTopUpEnabled: boolean) => {
+    if (!billingEnabled) {
+      setMessage({ type: 'error', text: 'Billing is disabled for this deployment.' })
+      return
+    }
     setActionLoading(`topup-${amountCents}`)
     try {
       const data = await overlayAppClient.topUps.checkout({
@@ -459,6 +509,10 @@ function AccountPageContent() {
   }
 
   const handleTopUpPreferenceSave = async () => {
+    if (!billingEnabled) {
+      setMessage({ type: 'error', text: 'Billing is disabled for this deployment.' })
+      return
+    }
     setActionLoading('topup-settings')
     try {
       const response = await overlayAppClient.subscription.updateSettingsResponse({
@@ -482,6 +536,7 @@ function AccountPageContent() {
   }
 
   const retryEntitlements = () => {
+    if (!billingEnabled) return
     setLoading(true)
     void overlayAppClient.account.entitlementsResponse()
       .then(async (res) => {
@@ -539,7 +594,7 @@ function AccountPageContent() {
 
       <h1 className={`text-3xl font-serif md:text-4xl mb-8 ${t.title}`}>Account</h1>
 
-      {loading || authLoading || !sessionCheckComplete ? (
+      {loading || authLoading || !sessionCheckComplete || !capabilitiesLoaded ? (
         <AccountLoadingState mutedClass={t.muted} dark={isLandingDark} />
       ) : !isAuthenticated ? (
         <AccountSignInPrompt
@@ -633,7 +688,16 @@ function AccountPageContent() {
             }
           />
 
-          {entitlements ? (
+          {!billingEnabled ? (
+            <section className={panel}>
+              <h2 className={`text-xl font-serif ${t.h}`}>Billing unavailable</h2>
+              <p className={`mt-2 text-sm ${t.muted}`}>
+                This deployment does not use Overlay-managed billing. Your workspace access is controlled by the deployment administrator.
+              </p>
+            </section>
+          ) : null}
+
+          {billingEnabled && entitlements ? (
             <>
               <AccountSubscriptionCard
                 panelClass={panel}

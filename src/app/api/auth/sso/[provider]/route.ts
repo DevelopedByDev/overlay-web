@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthorizationUrl, normalizeAuthRedirect, normalizeCodeChallenge } from '@/server/auth/actions'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 type SSOProvider = 'google' | 'apple' | 'microsoft'
 
@@ -13,6 +14,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ provider: string }> }
 ) {
+  const disabledCapabilityResponse = await requireOverlayCapability('sso')
+  if (disabledCapabilityResponse) return disabledCapabilityResponse
+
   const { provider } = await params
   const { searchParams } = new URL(request.url)
   const redirectUri = searchParams.get('redirect') || undefined

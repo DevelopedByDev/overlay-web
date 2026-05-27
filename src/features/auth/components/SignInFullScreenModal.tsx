@@ -16,9 +16,10 @@ interface Props {
   reason: GateReason
   onClose: () => void
   isClosing?: boolean
+  ssoEnabled?: boolean
 }
 
-export function SignInFullScreenModal({ reason, onClose, isClosing = false }: Props) {
+export function SignInFullScreenModal({ reason, onClose, isClosing = false, ssoEnabled = true }: Props) {
   const pathname = usePathname() ?? '/app/chat'
   const redirectTo = pathname.replace(/[?#].*$/, '')
   const [mounted, setMounted] = useState(false)
@@ -67,7 +68,7 @@ export function SignInFullScreenModal({ reason, onClose, isClosing = false }: Pr
           </p>
         </div>
 
-        <SignInForm redirectTo={redirectTo} onClose={onClose} />
+        <SignInForm redirectTo={redirectTo} onClose={onClose} ssoEnabled={ssoEnabled} />
       </div>
     </div>
   )

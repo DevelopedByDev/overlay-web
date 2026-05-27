@@ -2,7 +2,21 @@ import { Suspense } from 'react'
 import { getOverlaySession } from '@/server/auth/session'
 import ChatInterface from '@/features/chat/components/ChatInterface'
 import { getInitialChatHistory } from '@/server/app/route-data'
+import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
+
+function DisabledAutomationsRoute() {
+  return (
+    <div className="flex min-h-full items-center justify-center bg-[var(--background)] px-6">
+      <div className="max-w-md text-center">
+        <h1 className="text-xl font-semibold text-[var(--foreground)]">Automations unavailable</h1>
+        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          Automations are disabled for this deployment.
+        </p>
+      </div>
+    </div>
+  )
+}
 
 async function AutomationsRouteContent({
   userId,
@@ -23,6 +37,9 @@ async function AutomationsRouteContent({
 }
 
 export default async function AutomationsPage() {
+  const capabilities = getOverlayCapabilitiesSync()
+  if (!capabilities.automations) return <DisabledAutomationsRoute />
+
   const session = await getOverlaySession()
   return (
     <Suspense fallback={<ChatRouteSkeleton mode="automate" />}>

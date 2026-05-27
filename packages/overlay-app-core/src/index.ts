@@ -1,5 +1,6 @@
 export * from './contracts'
 export * from './app-shell'
+export * from './capabilities'
 export * from './modules'
 export * from './theme'
 export * from './knowledge'

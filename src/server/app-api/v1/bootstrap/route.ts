@@ -29,6 +29,7 @@ import {
   getRedactedOverlayRuntimeConfigSummary,
 } from '@/server/config'
 import { isRuntimeConfigSummaryVisible } from '@/shared/config'
+import { getOverlayCapabilities } from '@/server/capabilities'
 
 export async function GET(request: NextRequest) {
   const boundaryError = await validateApiBoundary(request)
@@ -110,7 +111,8 @@ export async function GET(request: NextRequest) {
       ...(overlayAppConfig.modelPolicy?.filterVideoModels?.(VIDEO_MODELS, modelPolicyContext) ??
         VIDEO_MODELS),
     ]
-    const appShell = resolveOverlayAppShellConfig(overlayAppConfig)
+    const capabilities = await getOverlayCapabilities()
+    const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
 
     const response: AppBootstrapResponse & {
       system?: ReturnType<typeof getRedactedOverlayRuntimeConfigSummary>
@@ -134,6 +136,7 @@ export async function GET(request: NextRequest) {
       policyGates: [...appShell.policyGates],
       theme: appShell.theme,
       featureFlags: appShell.appFeatureFlags,
+      capabilities,
       destinations: overlayNavigationToDestinations(appShell.navigation, appShell.settingsSections),
       defaults: {
         chatModelId:

@@ -12,6 +12,7 @@ import {
   Workflow, Palette, ShieldCheck, Play, PanelsLeftRight, Mail,
 } from 'lucide-react'
 import {
+  resolveOverlayAppShellConfig,
   resolveFeatureModuleForPath,
   resolveSidebarActionForPath,
   type AutomationSummary,
@@ -37,7 +38,8 @@ import { AutomationsInlinePanel } from '@/features/automations/components/Automa
 import ProjectsSidebar from '@/features/projects/components/ProjectsSidebar'
 import ToolsSidebar from '@/features/tools/components/ToolsSidebar'
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
-import { overlayAppShell } from '@/overlay.config'
+import overlayAppConfig from '@/overlay.config'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
@@ -66,19 +68,11 @@ const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
   workflow: Workflow,
 }
 
-const NAV_ITEMS = overlayAppShell.navigation.map((item) => ({
-  ...item,
-  icon: ICON_COMPONENTS[item.icon] ?? MessageSquare,
-}))
-
 const PROFILE_APP_LINKS = [
   { label: 'Desktop App', icon: Monitor },
   { label: 'Mobile App', icon: Smartphone },
   { label: 'Chrome Extension', icon: Chrome },
 ] as const
-
-const SETTINGS_SECTIONS = overlayAppShell.settingsSections
-const BRAND_CONFIG = overlayAppShell.brand
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'overlay:app-sidebar-collapsed'
 const SIDEBAR_COLLAPSED_EVENT = 'overlay:sidebar-collapsed-change'
@@ -236,8 +230,23 @@ export default function AppSidebar({
   const router = useRouter()
   const currentSearchParams = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search)
   const { settings } = useAppSettings()
+  const { capabilities } = useOverlayCapabilities()
   const { requireAuth } = useGuestGate()
   const { user: authUser, isLoading: authLoading } = useAuth()
+  const appShell = useMemo(
+    () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
+    [capabilities],
+  )
+  const navItems = useMemo(
+    () => appShell.navigation.map((item) => ({
+      ...item,
+      icon: ICON_COMPONENTS[item.icon] ?? MessageSquare,
+    })),
+    [appShell.navigation],
+  )
+  const settingsSections = appShell.settingsSections
+  const brandConfig = appShell.brand
+  const billingEnabled = capabilities.billing
   // Prefer server-resolved user; fall back to client auth. Never gate while loading.
   const user = serverUser ?? authUser
   const isGuestConfirmed = !authLoading && !user
@@ -258,8 +267,8 @@ export default function AppSidebar({
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
-  const sidebarActions = overlayAppShell.sidebarActions
-  const activeFeatureModule = resolveFeatureModuleForPath(pathname, overlayAppShell.featureModules)
+  const sidebarActions = appShell.sidebarActions
+  const activeFeatureModule = resolveFeatureModuleForPath(pathname, appShell.featureModules)
   const primaryNavActionByItemId = useMemo(() => {
     const entries = sidebarActions
       .filter((action) => action.primaryNavAction && action.navigationItemId)
@@ -295,6 +304,7 @@ export default function AppSidebar({
   const filesSectionOpen = filesOpen || notesOpen
   const chatOpen = pathname.startsWith('/app/chat')
   const automationsOpen = pathname.startsWith('/app/automations')
+  const automationsSectionOpen = automationsOpen && capabilities.automations
   const settingsPathActive = pathname.startsWith('/app/settings')
   const settingsSection = currentSearchParams.get('section') ?? 'general'
   const inlineSecondaryDisabled = !settings.useSecondarySidebar
@@ -307,13 +317,17 @@ export default function AppSidebar({
     return 'connectors'
   })()
   const loadEntitlements = useCallback(async () => {
+    if (!billingEnabled) {
+      setEntitlements(null)
+      return
+    }
     try {
       const res = await overlayAppClient.subscription.getResponse()
       if (res.ok) setEntitlements(await res.json())
     } catch {
       // ignore
     }
-  }, [setEntitlements])
+  }, [billingEnabled, setEntitlements])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -359,7 +373,7 @@ export default function AppSidebar({
       const m = /^Digit([1-6])$/.exec(e.code)
       if (!m) return
       const idx = parseInt(m[1]!, 10) - 1
-      const item = NAV_ITEMS[idx]
+      const item = navItems[idx]
       if (!item || item.disabled || !item.href) return
       e.preventDefault()
       if (pathname.startsWith(item.href)) return
@@ -369,7 +383,7 @@ export default function AppSidebar({
     }
     window.addEventListener('keydown', onNavShortcut, true)
     return () => window.removeEventListener('keydown', onNavShortcut, true)
-  }, [pathname, router, user, isGuestConfirmed, requireAuth])
+  }, [pathname, router, navItems, isGuestConfirmed, requireAuth])
 
   /** Sub-items only while the settings route is open (avoids orphan dropdown state off-route). */
   const settingsNavExpanded = settingsPathActive
@@ -412,16 +426,16 @@ export default function AppSidebar({
 
   const brandLink = (
     <Link
-      href={BRAND_CONFIG.homeHref}
+      href={brandConfig.homeHref}
       className="flex min-w-0 items-center gap-2"
       onClick={() => setMobileMenuOpen(false)}
     >
-      <Image src={BRAND_CONFIG.logoSrc} alt={BRAND_CONFIG.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
       <span
         className="truncate text-xl font-medium tracking-tight"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
-        {BRAND_CONFIG.shortName ?? BRAND_CONFIG.name}
+        {brandConfig.shortName ?? brandConfig.name}
       </span>
     </Link>
   )
@@ -434,7 +448,7 @@ export default function AppSidebar({
       aria-label="Expand sidebar"
       title="Expand sidebar"
     >
-      <Image src={BRAND_CONFIG.logoSrc} alt={BRAND_CONFIG.logoAlt ?? ''} width={10} height={10} className="shrink-0 group-hover:hidden" />
+      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0 group-hover:hidden" />
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
   ) : (
@@ -444,16 +458,16 @@ export default function AppSidebar({
   /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
   const mobileBrandLink = (
     <Link
-      href={BRAND_CONFIG.homeHref}
+      href={brandConfig.homeHref}
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
       onClick={() => setMobileMenuOpen(false)}
     >
-      <Image src={BRAND_CONFIG.logoSrc} alt={BRAND_CONFIG.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
       <span
         className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
-        {BRAND_CONFIG.shortName ?? BRAND_CONFIG.name}
+        {brandConfig.shortName ?? brandConfig.name}
       </span>
     </Link>
   )
@@ -481,7 +495,7 @@ export default function AppSidebar({
   }, [])
 
   /** Hide until loaded so paid users never see a flash of the upgrade CTA. */
-  const showUpgradeCta = entitlements !== null && entitlements.tier === 'free'
+  const showUpgradeCta = billingEnabled && entitlements !== null && entitlements.tier === 'free'
   const contextualAction = inlineSecondaryDisabled
     ? resolveSidebarActionForPath(pathname, sidebarActions)
     : null
@@ -515,7 +529,7 @@ export default function AppSidebar({
 
       <div className="flex min-h-0 flex-1 flex-col">
         <nav className="shrink-0 space-y-0.5 px-2 py-3">
-          {NAV_ITEMS.map((item, navIdx) => {
+          {navItems.map((item, navIdx) => {
             const { href, label, icon: Icon, disabled } = item
             const active =
               href &&
@@ -697,7 +711,7 @@ export default function AppSidebar({
             </button>
             {!sidebarCollapsed && settingsNavExpanded ? (
               <div className="mt-1 space-y-0.5 pl-7">
-                {SETTINGS_SECTIONS.map(({ id, label, href: sectionHref }) => {
+                {settingsSections.map(({ id, label, href: sectionHref }) => {
                   const active = settingsPathActive && settingsSection === id
                   return (
                     <Link
@@ -719,7 +733,7 @@ export default function AppSidebar({
           </div>
         </nav>
 
-        {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || filesSectionOpen || projectsOpen || automationsOpen) ? (
+        {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || filesSectionOpen || projectsOpen || automationsSectionOpen) ? (
           <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
             {contextualAction && contextualSearchCategory ? (
               <div className="mb-3 flex items-center gap-1.5">
@@ -770,7 +784,7 @@ export default function AppSidebar({
                     onNavigate={() => setMobileMenuOpen(false)}
                   />
                 ) : null}
-                {automationsOpen ? (
+                {automationsSectionOpen ? (
                   <AutomationsInlinePanel
                     initialAutomations={initialAutomations}
                     onNavigate={() => setMobileMenuOpen(false)}
@@ -803,14 +817,18 @@ export default function AppSidebar({
               }`}
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <div className="px-3 py-2">
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
-                <UsageBar entitlements={entitlements} />
-              </div>
-              <div className="border-t border-[var(--border)] px-3 py-2">
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Storage</p>
-                <StorageBar entitlements={entitlements} />
-              </div>
+              {billingEnabled ? (
+                <>
+                  <div className="px-3 py-2">
+                    <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
+                    <UsageBar entitlements={entitlements} />
+                  </div>
+                  <div className="border-t border-[var(--border)] px-3 py-2">
+                    <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Storage</p>
+                    <StorageBar entitlements={entitlements} />
+                  </div>
+                </>
+              ) : null}
               <div className="border-t border-[var(--border)]">
                 <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
                 {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (
@@ -930,14 +948,18 @@ export default function AppSidebar({
                 className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
                 onMouseDown={(event) => event.stopPropagation()}
               >
-                <div className="px-3 py-2">
-                  <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
-                  <UsageBar entitlements={entitlements} />
-                </div>
-                <div className="border-t border-[var(--border)] px-3 py-2">
-                  <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Storage</p>
-                  <StorageBar entitlements={entitlements} />
-                </div>
+                {billingEnabled ? (
+                  <>
+                    <div className="px-3 py-2">
+                      <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
+                      <UsageBar entitlements={entitlements} />
+                    </div>
+                    <div className="border-t border-[var(--border)] px-3 py-2">
+                      <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Storage</p>
+                      <StorageBar entitlements={entitlements} />
+                    </div>
+                  </>
+                ) : null}
                 <div className="border-t border-[var(--border)]">
                   <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
                   {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (

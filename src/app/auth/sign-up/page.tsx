@@ -18,6 +18,7 @@ import {
   marketingSsoButton,
   marketingSubmitButton,
 } from '@/features/landing/lib/landingPageStyles'
+import { DEFAULT_OVERLAY_CAPABILITIES, type CapabilityCheck } from '@overlay/app-core'
 
 function SignUpContent() {
   const { isLandingDark } = useLandingTheme()
@@ -44,6 +45,7 @@ function SignUpContent() {
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
   const [verified, setVerified] = useState(false)
+  const [ssoEnabled, setSsoEnabled] = useState<boolean | null>(null)
 
   // Get redirect URL from params (for desktop app auth)
   const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get('redirect'))
@@ -51,6 +53,30 @@ function SignUpContent() {
   useEffect(() => {
     persistMobilePkceChallengeFromUrl(searchParams)
   }, [searchParams])
+
+  useEffect(() => {
+    let active = true
+    void fetch('/api/v1/capabilities', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return null
+        return await response.json()
+      })
+      .then((payload) => {
+        if (!active) return
+        const capabilities = {
+          ...DEFAULT_OVERLAY_CAPABILITIES,
+          ...((payload?.capabilities ?? {}) as Partial<CapabilityCheck>),
+        }
+        setSsoEnabled(capabilities.sso)
+      })
+      .catch(() => {
+        if (active) setSsoEnabled(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -156,6 +182,7 @@ function SignUpContent() {
   }
 
   const handleSSO = (provider: 'google' | 'apple' | 'microsoft') => {
+    if (!ssoEnabled) return
     setSsoLoading(provider)
     const codeChallenge = resolveCodeChallengeForSso(searchParams)
     const pkceParam = codeChallenge
@@ -316,6 +343,7 @@ function SignUpContent() {
             )}
 
             {/* SSO Buttons */}
+            {ssoEnabled ? (
             <div className="space-y-3 mb-6">
               <button
                 type="button"
@@ -371,8 +399,10 @@ function SignUpContent() {
                 {ssoLoading === 'microsoft' ? 'Redirecting...' : 'Continue with Microsoft'}
               </button>
             </div>
+            ) : null}
 
             {/* Divider */}
+            {ssoEnabled ? (
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
                 <div
@@ -383,6 +413,7 @@ function SignUpContent() {
                 <span className={divLabel}>or create with email</span>
               </div>
             </div>
+            ) : null}
 
             {/* Email/Password Form */}
             <form onSubmit={handleSubmit} className="space-y-4">

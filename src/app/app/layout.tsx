@@ -6,7 +6,9 @@ import BackgroundPollManager from '@/components/providers/BackgroundPollManager'
 import { NavigationProgressProvider, NavigationProgressBar } from '@/components/providers/navigation-progress'
 import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
 import { OnboardingProvider } from '@/components/providers/OnboardingProvider'
+import { CapabilitiesProvider } from '@/components/providers/CapabilitiesProvider'
 import { getInitialAutomationsList, getInitialProjectList } from '@/server/app/route-data'
+import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 
 function AppMainFallback() {
   return (
@@ -22,10 +24,11 @@ function AppMainFallback() {
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getOverlaySession()
   const user = session?.user ?? null
+  const capabilities = getOverlayCapabilitiesSync()
   const [initialProjects, initialAutomations] = user
     ? await Promise.all([
         getInitialProjectList(),
-        getInitialAutomationsList(),
+        capabilities.automations ? getInitialAutomationsList() : Promise.resolve(undefined),
       ])
     : [undefined, undefined]
 
@@ -35,18 +38,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <NavigationProgressProvider>
           <NavigationProgressBar />
           {user && <BackgroundPollManager />}
-          <GuestGateProvider>
-            <OnboardingProvider>
-              <AppSidebar
-                user={user}
-                initialProjects={initialProjects}
-                initialAutomations={initialAutomations}
-              />
-              <main className="flex-1 overflow-auto pt-14 md:pt-0">
-                <Suspense fallback={<AppMainFallback />}>{children}</Suspense>
-              </main>
-            </OnboardingProvider>
-          </GuestGateProvider>
+          <CapabilitiesProvider initialCapabilities={capabilities}>
+            <GuestGateProvider>
+              <OnboardingProvider>
+                <AppSidebar
+                  user={user}
+                  initialProjects={initialProjects}
+                  initialAutomations={initialAutomations}
+                />
+                <main className="flex-1 overflow-auto pt-14 md:pt-0">
+                  <Suspense fallback={<AppMainFallback />}>{children}</Suspense>
+                </main>
+              </OnboardingProvider>
+            </GuestGateProvider>
+          </CapabilitiesProvider>
         </NavigationProgressProvider>
       </AsyncSessionsProvider>
     </div>

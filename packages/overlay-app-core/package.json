@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./app-shell": "./src/app-shell.ts",
     "./automations": "./src/automations.ts",
+    "./capabilities": "./src/capabilities.ts",
     "./contracts": "./src/contracts.ts",
     "./knowledge": "./src/knowledge.ts",
     "./extensions": "./src/extensions.ts",

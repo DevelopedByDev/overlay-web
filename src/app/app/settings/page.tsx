@@ -9,11 +9,13 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Mail, Moon, PanelsLeftRight, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { SettingsSectionSkeleton } from '@overlay/ui/feedback'
 import { LIGHT_PRESETS, DARK_PRESETS } from '@/shared/app/themes'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { overlayAppShell } from '@/overlay.config'
+import overlayAppConfig from '@/overlay.config'
 import type { BillingSettings } from '@overlay/app-core'
+import { resolveOverlayAppShellConfig } from '@overlay/app-core'
 import { normalizeTopUpDraft, resolveSettingsPanel } from '@overlay/app-core/settings-account'
 import {
   SettingRow,
@@ -27,11 +29,6 @@ import dynamic from 'next/dynamic'
 
 const MemoriesView = dynamic(() => import('@/features/knowledge/components/MemoriesView'))
 
-const SECTIONS = overlayAppShell.settingsSections
-const SETTINGS_PANELS = overlayAppShell.settingsPanels
-
-const DEFAULT_SECTION_ID = SECTIONS[0]?.id ?? 'general'
-const SECTION_IDS = new Set<string>(SECTIONS.map((s) => s.id))
 const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'general',
   'account',
@@ -44,8 +41,17 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
 export default function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const rawSection = searchParams?.get('section') ?? DEFAULT_SECTION_ID
-  const section = SECTION_IDS.has(rawSection) ? rawSection : DEFAULT_SECTION_ID
+  const { capabilities } = useOverlayCapabilities()
+  const appShell = useMemo(
+    () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
+    [capabilities],
+  )
+  const sections = appShell.settingsSections
+  const settingsPanels = appShell.settingsPanels
+  const defaultSectionId = sections[0]?.id ?? 'general'
+  const sectionIds = useMemo(() => new Set<string>(sections.map((s) => s.id)), [sections])
+  const rawSection = searchParams?.get('section') ?? defaultSectionId
+  const section = sectionIds.has(rawSection) ? rawSection : defaultSectionId
 
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   useEffect(() => {
@@ -66,21 +72,22 @@ export default function SettingsPage() {
   const busy = isLoading || isSaving
 
   const sectionLabel = useMemo(
-    () => SECTIONS.find((s) => s.id === section)?.label ?? 'General',
-    [section],
+    () => sections.find((s) => s.id === section)?.label ?? 'General',
+    [section, sections],
   )
   const registeredPanel = useMemo(
-    () => resolveSettingsPanel(SETTINGS_PANELS, section),
-    [section],
+    () => resolveSettingsPanel(settingsPanels, section),
+    [section, settingsPanels],
   )
 
   useEffect(() => {
-    if (!SECTION_IDS.has(rawSection)) {
+    if (!sectionIds.has(rawSection)) {
       router.replace(`/app/settings?section=${section}`)
     }
-  }, [rawSection, section, router])
+  }, [rawSection, section, router, sectionIds])
 
   useEffect(() => {
+    if (!capabilities.billing) return
     if (section !== 'account' && section !== 'general') return
     let active = true
     void overlayAppClient.subscription.getSettingsResponse()
@@ -101,13 +108,14 @@ export default function SettingsPage() {
     return () => {
       active = false
     }
-  }, [section])
+  }, [capabilities.billing, section])
 
   async function updateBillingSettings(next: {
     autoTopUpEnabled: boolean
     topUpAmountCents: number
     grantOffSessionConsent?: boolean
   }) {
+    if (!capabilities.billing) return
     setBillingBusy(true)
     try {
       const response = await overlayAppClient.subscription.updateSettingsResponse(next)
@@ -148,18 +156,20 @@ export default function SettingsPage() {
                 disabled={busy}
                 onChange={() => void updateSettings({ autoContinue: !settings.autoContinue })}
               />
-              <SettingRow
-                icon={<ShieldCheck size={18} strokeWidth={1.8} />}
-                title="Only allow ZDR models"
-                description={
-                  billingSettings?.planKind === 'free'
-                    ? 'Free models do not support zero data retention, so this is available on paid plans only.'
-                    : 'Hide non-ZDR text models from the chat model picker and block stale requests that use them.'
-                }
-                checked={billingSettings?.planKind === 'free' ? false : settings.onlyAllowZdrModels}
-                disabled={busy || billingSettings?.planKind === 'free'}
-                onChange={() => void updateSettings({ onlyAllowZdrModels: !settings.onlyAllowZdrModels })}
-              />
+              {capabilities.billing ? (
+                <SettingRow
+                  icon={<ShieldCheck size={18} strokeWidth={1.8} />}
+                  title="Only allow ZDR models"
+                  description={
+                    billingSettings?.planKind === 'free'
+                      ? 'Free models do not support zero data retention, so this is available on paid plans only.'
+                      : 'Hide non-ZDR text models from the chat model picker and block stale requests that use them.'
+                  }
+                  checked={billingSettings?.planKind === 'free' ? false : settings.onlyAllowZdrModels}
+                  disabled={busy || billingSettings?.planKind === 'free'}
+                  onChange={() => void updateSettings({ onlyAllowZdrModels: !settings.onlyAllowZdrModels })}
+                />
+              ) : null}
               <SettingsActionRow
                 icon={<Play size={18} strokeWidth={1.8} />}
                 title="Onboarding tour"
@@ -179,21 +189,29 @@ export default function SettingsPage() {
 
           {!isLoading && section === 'account' && (
             <>
-              <SettingsCard title="Billing">
-                <p>
-                  {billingSettings?.planKind === 'paid'
-                    ? 'Paid plans unlock premium models, Daytona sandboxes, browser tasks, and generation tools. Adjust your recurring amount in billing, and use auto top-up here for off-session recharges.'
-                    : 'You are currently on the free plan. Upgrade from the pricing page to unlock premium features and budget controls.'}
-                </p>
-                <Link
-                  href="/account"
-                  className="mt-4 inline-flex text-sm font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
-                >
-                  Open account →
-                </Link>
-              </SettingsCard>
+              {!capabilities.billing ? (
+                <SettingsCard title="Account">
+                  <p>This deployment does not use Overlay-managed billing.</p>
+                </SettingsCard>
+              ) : null}
 
-              {billingSettings?.planKind === 'paid' ? (
+              {capabilities.billing ? (
+                <SettingsCard title="Billing">
+                  <p>
+                    {billingSettings?.planKind === 'paid'
+                      ? 'Paid plans unlock premium models, Daytona sandboxes, browser tasks, and generation tools. Adjust your recurring amount in billing, and use auto top-up here for off-session recharges.'
+                      : 'You are currently on the free plan. Upgrade from the pricing page to unlock premium features and budget controls.'}
+                  </p>
+                  <Link
+                    href="/account"
+                    className="mt-4 inline-flex text-sm font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
+                  >
+                    Open account →
+                  </Link>
+                </SettingsCard>
+              ) : null}
+
+              {capabilities.billing && billingSettings?.planKind === 'paid' ? (
                 <SettingsTopUpCard>
                   <TopUpPreferenceControl
                     variant="app"
@@ -287,10 +305,10 @@ export default function SettingsPage() {
                 <span>
                   Questions or feedback? Email the founder:{' '}
                   <a
-                    href={`mailto:${overlayAppShell.brand.supportEmail ?? 'divyansh@layernorm.co'}`}
+                    href={`mailto:${appShell.brand.supportEmail ?? 'divyansh@layernorm.co'}`}
                     className="font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
                   >
-                    {overlayAppShell.brand.supportEmail ?? 'divyansh@layernorm.co'}
+                    {appShell.brand.supportEmail ?? 'divyansh@layernorm.co'}
                   </a>
                   .
                 </span>

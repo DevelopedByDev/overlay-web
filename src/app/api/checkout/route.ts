@@ -8,9 +8,13 @@ import {
   formatDollarAmount,
 } from '@/shared/billing/billing-pricing'
 import { getPlanQuantityForCheckout, isRecognizedTopUpAmount, resolvePaidUnitPriceId } from '@/server/billing/stripe-billing'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 export async function POST(request: NextRequest) {
   try {
+    const disabledCapabilityResponse = await requireOverlayCapability('billing')
+    if (disabledCapabilityResponse) return disabledCapabilityResponse
+
     const session = await getOverlaySession()
 
     if (!session || !session.user) {

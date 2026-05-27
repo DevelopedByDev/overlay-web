@@ -18,6 +18,12 @@ import type {
   OverlayToolRegistration,
   ThemePresetId,
 } from './contracts'
+import {
+  areOverlayCapabilitiesEnabled,
+  deriveOverlayCapabilities,
+  type CapabilityCheck,
+  type OverlayCapability,
+} from './capabilities'
 import { LIGHT_PRESETS, DARK_PRESETS, PRESET_CSS_VAR_KEYS, PRESETS } from './theme'
 
 export const DEFAULT_OVERLAY_BRAND_CONFIG: OverlayBrandConfig = {
@@ -50,6 +56,7 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     id: 'automations',
     label: 'Automations',
     enabled: true,
+    requiredCapabilities: ['automations'],
   },
   {
     id: 'extensions',
@@ -82,6 +89,7 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
     label: 'Automations',
     icon: 'workflow',
     featureFlagId: 'automations',
+    requiredCapabilities: ['automations'],
   },
 ] as const
 
@@ -89,7 +97,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'general', label: 'General' },
   { id: 'account', label: 'Account' },
   { id: 'customization', label: 'Customization' },
-  { id: 'memories', label: 'Memories', featureFlagId: 'knowledge' },
+  { id: 'memories', label: 'Memories', featureFlagId: 'knowledge', requiredCapabilities: ['vectorSearch'] },
   { id: 'models', label: 'Models' },
   { id: 'contact', label: 'Contact' },
 ] as const
@@ -193,6 +201,7 @@ export const DEFAULT_OVERLAY_SIDEBAR_ACTIONS: readonly OverlaySidebarAction[] = 
     requiresAuth: true,
     primaryNavAction: true,
     featureFlagId: 'automations',
+    requiredCapabilities: ['automations'],
     order: 40,
   },
 ] as const
@@ -201,7 +210,7 @@ export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = 
   { id: 'general', sectionId: 'general', label: 'General', componentKey: 'overlay.settings.general', order: 10 },
   { id: 'account', sectionId: 'account', label: 'Account', componentKey: 'overlay.settings.account', order: 20 },
   { id: 'customization', sectionId: 'customization', label: 'Customization', componentKey: 'overlay.settings.customization', order: 30 },
-  { id: 'memories', sectionId: 'memories', label: 'Memories', componentKey: 'overlay.settings.memories', featureFlagId: 'knowledge', order: 40 },
+  { id: 'memories', sectionId: 'memories', label: 'Memories', componentKey: 'overlay.settings.memories', featureFlagId: 'knowledge', requiredCapabilities: ['vectorSearch'], order: 40 },
   { id: 'models', sectionId: 'models', label: 'Models', componentKey: 'overlay.settings.models', order: 50 },
   { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 60 },
 ] as const
@@ -222,6 +231,7 @@ export const DEFAULT_OVERLAY_TOOL_REGISTRY: readonly OverlayToolRegistration[] =
     category: 'knowledge',
     componentKey: 'overlay.tools.knowledgeSearch',
     featureFlagId: 'knowledge',
+    requiredCapabilities: ['vectorSearch'],
   },
   {
     id: 'automation-runner',
@@ -230,6 +240,7 @@ export const DEFAULT_OVERLAY_TOOL_REGISTRY: readonly OverlayToolRegistration[] =
     category: 'automation',
     componentKey: 'overlay.tools.automationRunner',
     featureFlagId: 'automations',
+    requiredCapabilities: ['automations'],
   },
 ] as const
 
@@ -325,9 +336,12 @@ export function overlayFeatureFlagsToAppFeatureFlags(
 export function isOverlayFeatureEnabled(
   featureFlagId: OverlayFeatureFlagId | undefined,
   flags: readonly OverlayFeatureFlag[],
+  capabilities: CapabilityCheck = deriveOverlayCapabilities(),
 ): boolean {
   if (!featureFlagId) return true
-  return flags.find((flag) => flag.id === featureFlagId)?.enabled ?? true
+  const flag = flags.find((item) => item.id === featureFlagId)
+  if (!flag) return true
+  return flag.enabled && areOverlayCapabilitiesEnabled(capabilities, flag.requiredCapabilities)
 }
 
 function mergeRegistryById<T extends { id: string }>(
@@ -348,16 +362,29 @@ function mergeRegistryById<T extends { id: string }>(
   return order.map((id) => byId.get(id)!).filter(Boolean)
 }
 
-function filterFeatureRegistry<T extends { featureFlagId?: OverlayFeatureFlagId }>(
+function filterFeatureRegistry<T extends {
+  featureFlagId?: OverlayFeatureFlagId
+  requiredCapabilities?: readonly OverlayCapability[]
+}>(
   registry: readonly T[],
   featureFlags: readonly OverlayFeatureFlag[],
+  capabilities: CapabilityCheck,
 ): readonly T[] {
-  return registry.filter((item) => isOverlayFeatureEnabled(item.featureFlagId, featureFlags))
+  return registry.filter((item) =>
+    isOverlayFeatureEnabled(item.featureFlagId, featureFlags, capabilities) &&
+    areOverlayCapabilitiesEnabled(capabilities, item.requiredCapabilities),
+  )
+}
+
+export interface ResolveOverlayAppShellOptions {
+  capabilities?: Partial<CapabilityCheck>
 }
 
 export function resolveOverlayAppShellConfig(
   config: OverlayAppConfig = DEFAULT_OVERLAY_APP_CONFIG,
+  options: ResolveOverlayAppShellOptions = {},
 ): OverlayAppShellRegistry {
+  const capabilities = deriveOverlayCapabilities(options.capabilities)
   const featureFlags = mergeRegistryById(DEFAULT_OVERLAY_FEATURE_FLAGS, config.featureFlags)
   const brand = {
     ...DEFAULT_OVERLAY_BRAND_CONFIG,
@@ -372,30 +399,37 @@ export function resolveOverlayAppShellConfig(
   const navigation = filterFeatureRegistry(
     mergeRegistryById(DEFAULT_OVERLAY_NAVIGATION, config.navigation),
     featureFlags,
+    capabilities,
   )
   const settingsSections = filterFeatureRegistry(
     mergeRegistryById(DEFAULT_OVERLAY_SETTINGS_SECTIONS, config.settingsSections),
     featureFlags,
+    capabilities,
   )
   const featureModules = filterFeatureRegistry(
     mergeRegistryById(DEFAULT_OVERLAY_FEATURE_MODULES, config.featureModules),
     featureFlags,
+    capabilities,
   )
   const sidebarActions = filterFeatureRegistry(
     mergeRegistryById(DEFAULT_OVERLAY_SIDEBAR_ACTIONS, config.sidebarActions),
     featureFlags,
+    capabilities,
   )
   const settingsPanels = filterFeatureRegistry(
     mergeRegistryById(DEFAULT_OVERLAY_SETTINGS_PANELS, config.settingsPanels),
     featureFlags,
+    capabilities,
   )
   const tools = filterFeatureRegistry(
     mergeRegistryById(DEFAULT_OVERLAY_TOOL_REGISTRY, config.tools),
     featureFlags,
+    capabilities,
   )
   const integrations = filterFeatureRegistry(
     mergeRegistryById(DEFAULT_OVERLAY_INTEGRATION_REGISTRY, config.integrations),
     featureFlags,
+    capabilities,
   )
   const modelProviders = mergeRegistryById(
     DEFAULT_OVERLAY_MODEL_PROVIDER_REGISTRY,
@@ -415,7 +449,13 @@ export function resolveOverlayAppShellConfig(
     integrations,
     modelProviders,
     policyGates,
-    appFeatureFlags: overlayFeatureFlagsToAppFeatureFlags(featureFlags),
+    appFeatureFlags: overlayFeatureFlagsToAppFeatureFlags(
+      featureFlags.map((flag) => ({
+        ...flag,
+        enabled: flag.enabled && areOverlayCapabilitiesEnabled(capabilities, flag.requiredCapabilities),
+      })),
+    ),
+    capabilities,
     theme,
   }
 }

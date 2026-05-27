@@ -1,0 +1,65 @@
+import 'server-only'
+
+import type { NextRequest, NextResponse } from 'next/server'
+import { NextResponse as NextJsonResponse } from 'next/server'
+import {
+  deriveOverlayCapabilities,
+  type CapabilityCheck,
+  type OverlayCapability,
+} from '@overlay/app-core'
+import {
+  formatOverlayConfigError,
+  getOverlayRuntimeConfig,
+  getOverlayRuntimeConfigSync,
+} from '@/server/config'
+import {
+  getCapabilityDisabledError,
+  getRequiredCapabilityForRoute,
+} from './capabilities-core'
+
+export { getRequiredCapabilityForRoute } from './capabilities-core'
+
+export function getOverlayCapabilitiesSync(): CapabilityCheck {
+  return deriveOverlayCapabilities(getOverlayRuntimeConfigSync())
+}
+
+export async function getOverlayCapabilities(): Promise<CapabilityCheck> {
+  return deriveOverlayCapabilities(await getOverlayRuntimeConfig())
+}
+
+export function capabilityDisabledResponse(capability: OverlayCapability): NextResponse {
+  return NextJsonResponse.json(
+    getCapabilityDisabledError(capability),
+    { status: 403 },
+  )
+}
+
+export function runtimeConfigErrorResponse(error: unknown): NextResponse {
+  const formatted = formatOverlayConfigError(error)
+  return NextJsonResponse.json(
+    {
+      error: 'Runtime configuration is invalid',
+      code: 'runtime_config_invalid',
+      issues: formatted.issues,
+    },
+    { status: 500 },
+  )
+}
+
+export async function requireOverlayCapability(
+  capability: OverlayCapability,
+): Promise<NextResponse | null> {
+  try {
+    const capabilities = await getOverlayCapabilities()
+    return capabilities[capability] ? null : capabilityDisabledResponse(capability)
+  } catch (error) {
+    return runtimeConfigErrorResponse(error)
+  }
+}
+
+export async function requireOverlayRouteCapability(
+  request: NextRequest,
+): Promise<NextResponse | null> {
+  const capability = getRequiredCapabilityForRoute(request.method, request.nextUrl.pathname)
+  return capability ? requireOverlayCapability(capability) : null
+}

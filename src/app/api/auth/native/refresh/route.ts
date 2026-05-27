@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { refreshSessionFromRefreshToken } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { getNativeRefreshTokenBucketKey } from '@/server/auth/native-refresh-rate-limit'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -10,6 +11,9 @@ const NO_STORE_HEADERS = {
 
 export async function POST(request: NextRequest) {
   try {
+    const disabledCapabilityResponse = await requireOverlayCapability('sso')
+    if (disabledCapabilityResponse) return disabledCapabilityResponse
+
     const body = await request.json()
     const refreshToken = typeof body?.refreshToken === 'string' ? body.refreshToken : ''
     const expectedUserId =

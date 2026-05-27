@@ -8,6 +8,7 @@ import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { sameOriginPathUrl } from '@/shared/security/safe-url'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 function resolveReturnUrl(baseUrl: string, returnPath: unknown, state: 'success' | 'canceled') {
   const url = new URL(sameOriginPathUrl(baseUrl, returnPath, '/account'))
@@ -24,6 +25,9 @@ function resolveReturnUrl(baseUrl: string, returnPath: unknown, state: 'success'
 
 export async function POST(request: NextRequest) {
   try {
+    const disabledCapabilityResponse = await requireOverlayCapability('billing')
+    if (disabledCapabilityResponse) return disabledCapabilityResponse
+
     const body = await request.json()
     const session = await getOverlaySession()
     const auth = await resolveAuthenticatedAppUser(request, body)

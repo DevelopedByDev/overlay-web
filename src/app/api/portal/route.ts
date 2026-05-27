@@ -6,6 +6,7 @@ import { convex } from '@/server/database/convex'
 import { resolvePortalConfigurationId } from '@/server/billing/stripe-billing'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { requireOverlayCapability } from '@/server/capabilities'
 
 interface Subscription {
   userId: string
@@ -81,6 +82,9 @@ async function resolveVerifiedCustomerIdFromCheckoutSession(
 
 export async function POST(request: NextRequest) {
   try {
+    const disabledCapabilityResponse = await requireOverlayCapability('billing')
+    if (disabledCapabilityResponse) return disabledCapabilityResponse
+
     const body = await request.json().catch(() => ({}))
     const authSession = await getOverlaySession()
     const auth = await resolveAuthenticatedAppUser(request, body)
