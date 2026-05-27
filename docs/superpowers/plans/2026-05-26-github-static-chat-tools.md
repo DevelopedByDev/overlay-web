@@ -525,7 +525,7 @@ The static `tools.get` path returns zero `COMPOSIO_*` meta-tools. The wrappers a
 **Files:**
 - Modify: `src/server/tools/composio-tools.ts`
 
-- [ ] **Step 1: Verify no external consumers of about-to-delete symbols**
+- [x] **Step 1: Verify no external consumers of about-to-delete symbols**
 
 ```bash
 grep -rn "withConsistentComposioSession\|resolveComposioSessionIdFactory\|REMOVED_COMPOSIO_TOOLS" src/
@@ -533,7 +533,7 @@ grep -rn "withConsistentComposioSession\|resolveComposioSessionIdFactory\|REMOVE
 
 Expected: matches only inside `src/server/tools/composio-tools.ts`. If anywhere else, stop and reconcile first. (Pre-verified at plan-write time: only `composio-tools.ts` references these. Specifically confirmed `src/app/api/app/conversations/act/route.ts:17` imports only `createBrowserUnifiedTools`/`prewarmBrowserUnifiedTools`.)
 
-- [ ] **Step 2: Delete**
+- [x] **Step 2: Delete**
 
 Remove:
 - `REMOVED_COMPOSIO_TOOLS` `Set` constant
@@ -541,7 +541,7 @@ Remove:
 - `withConsistentComposioSession` function
 - Any imports of `JsonRecord` if only those functions used it
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 ```bash
 pnpm typecheck
@@ -549,7 +549,7 @@ pnpm typecheck
 
 Expected: 0 errors.
 
-- [ ] **Step 4: Run all unit tests**
+- [x] **Step 4: Run all unit tests**
 
 ```bash
 node --test --import tsx 'src/**/*.test.ts'
@@ -557,12 +557,14 @@ node --test --import tsx 'src/**/*.test.ts'
 
 Expected: all green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/server/tools/composio-tools.ts
 git commit -m "refactor(chat-tools): remove dead tool-router-session wrappers"
 ```
+
+> **Execution note (2026-05-27):** All four dead symbols were deletable (`REMOVED_COMPOSIO_TOOLS`, `resolveComposioSessionIdFactory`, `withConsistentComposioSession`, **plus** the `JsonRecord` type alias — it was only referenced by the two deleted session functions). Combined with Task 5 into a single atomic commit `0d0b574` because both tasks touch only this one file and are mechanical. Verified post-delete: `pnpm typecheck` clean, `pnpm lint` clean (just the pre-existing accepted `no-restricted-imports` warning), composio-tools test 1/1 green, github-repo-allowlist test 18/18 green.
 
 ---
 
@@ -573,7 +575,7 @@ The `composioCache` (10-minute TTL, module-scope `Map`) may survive Next dev HMR
 **Files:**
 - Modify: `src/server/tools/composio-tools.ts`
 
-- [ ] **Step 1: Add a dev-environment cache reset at module load**
+- [x] **Step 1: Add a dev-environment cache reset at module load**
 
 At the bottom of the `composioCache` declaration block:
 
@@ -587,7 +589,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 ```bash
 pnpm typecheck
@@ -595,12 +597,14 @@ pnpm typecheck
 
 Expected: 0 errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/server/tools/composio-tools.ts
 git commit -m "chore(chat-tools): clear composioCache at module load in dev"
 ```
+
+> **Execution note (2026-05-27):** Folded into the Task 4 commit (`0d0b574 refactor(chat-tools): remove dead router wrappers + add dev cache flush`) since both tasks touch only `composio-tools.ts` and are mechanical. Block placed directly after the `composioCache` / `composioInFlight` / `COMPOSIO_CACHE_TTL_MS` declarations so both Maps are defined when the dev-only guard runs.
 
 ---
 

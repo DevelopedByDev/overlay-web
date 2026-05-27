@@ -6,8 +6,6 @@ import type { ToolSet } from 'ai'
 import { getServerProviderKey } from '@/server/ai/provider-keys'
 import { projectComposioEntityId } from '@/server/tools/composio-entity'
 
-type JsonRecord = Record<string, unknown>
-
 // Minimal surface of the Composio SDK that buildBrowserUnifiedTools needs.
 // Letting tests inject a fake Composio without depending on @composio/core types.
 type ComposioLike = {
@@ -20,11 +18,6 @@ type ComposioLike = {
     get: (userId: string, filters: { toolkits?: string[]; tools?: string[] }, options?: any) => Promise<ToolSet>
   }
 }
-
-const REMOVED_COMPOSIO_TOOLS = new Set([
-  'COMPOSIO_REMOTE_BASH_TOOL',
-  'COMPOSIO_REMOTE_WORKBENCH',
-])
 
 /**
  * Curated read-only GitHub tool slugs surfaced to the chat AI.
@@ -65,75 +58,6 @@ async function getComposioApiKey(accessToken?: string): Promise<string | null> {
 
   const serverKey = await getServerProviderKey('composio')
   return serverKey ?? process.env.COMPOSIO_API_KEY ?? null
-}
-
-function resolveComposioSessionIdFactory() {
-  let composioSessionId: string | null = null
-
-  function getProvidedSessionId(toolName: string, args: JsonRecord): string | undefined {
-    if (toolName === 'COMPOSIO_SEARCH_TOOLS') {
-      const session = args.session
-      if (session && typeof session === 'object' && !Array.isArray(session)) {
-        const id = (session as JsonRecord).id
-        if (typeof id === 'string' && id.trim()) {
-          return id.trim()
-        }
-      }
-      return undefined
-    }
-
-    const sessionId = args.session_id
-    return typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined
-  }
-
-  function resolve(toolName: string, args: JsonRecord): string {
-    const provided = getProvidedSessionId(toolName, args)
-    const fallbackSessionId = `overlay-web-${Date.now()}`
-
-    if (!composioSessionId) {
-      composioSessionId = provided || fallbackSessionId
-    } else if (provided && provided !== composioSessionId) {
-      console.warn(
-        `[Composio] Overriding mismatched session_id for ${toolName}: ${provided} -> ${composioSessionId}`
-      )
-    }
-
-    return composioSessionId
-  }
-
-  return { resolve }
-}
-
-function withConsistentComposioSession(
-  toolName: string,
-  args: JsonRecord,
-  resolver: (toolName: string, args: JsonRecord) => string,
-): JsonRecord {
-  const sessionId = resolver(toolName, args)
-  const normalized: JsonRecord = { ...args }
-
-  if (toolName === 'COMPOSIO_SEARCH_TOOLS') {
-    const existingSession =
-      normalized.session &&
-      typeof normalized.session === 'object' &&
-      !Array.isArray(normalized.session)
-        ? (normalized.session as JsonRecord)
-        : {}
-
-    normalized.session = {
-      ...existingSession,
-      id: sessionId,
-    }
-
-    if (normalized.session && typeof normalized.session === 'object') {
-      delete (normalized.session as JsonRecord).generate_id
-    }
-
-    return normalized
-  }
-
-  normalized.session_id = sessionId
-  return normalized
 }
 
 async function loadComposioModules(): Promise<{
@@ -189,6 +113,14 @@ type ComposioCacheEntry = {
 const composioCache = new Map<string, ComposioCacheEntry>()
 const composioInFlight = new Map<string, Promise<ToolSet>>()
 const COMPOSIO_CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+if (process.env.NODE_ENV !== 'production') {
+  // Dev: clear any cached ToolSet at module load so changes here take
+  // effect on the next chat turn without needing a hard restart. In prod,
+  // the cache persists across requests as before.
+  composioCache.clear()
+  composioInFlight.clear()
+}
 
 async function buildBrowserUnifiedTools(args: {
   userId: string
