@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
+import { isHardDeniedGithubTool } from '@/server/tools/github-tools-hard-deny'
 import { normalizeGithubRepoAllowlist } from '../../../../../convex/lib/github_repo_allowlist_normalize'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+
+const GITHUB_TOOL_SLUG_REGEX = /^GITHUB_[A-Z][A-Z0-9_]*$/
+const GITHUB_TOOLS_ENABLED_INPUT_MAX = 500
 
 type ProjectDoc = {
   _id: string
@@ -13,6 +17,7 @@ type ProjectDoc = {
   instructions?: string
   parentId?: string | null
   githubRepoAllowlist?: string[]
+  githubToolsEnabled?: string[]
   createdAt: number
   updatedAt: number
   deletedAt?: number
@@ -100,13 +105,14 @@ export async function PATCH(request: NextRequest) {
       instructions?: string
       parentId?: string | null
       githubRepoAllowlist?: string[]
+      githubToolsEnabled?: string[]
       accessToken?: string
       userId?: string
     }
     const auth = await resolveAuthenticatedAppUser(request, body)
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const serverSecret = getInternalApiSecret()
-    const { projectId, name, instructions, parentId, githubRepoAllowlist } = body
+    const { projectId, name, instructions, parentId, githubRepoAllowlist, githubToolsEnabled } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
 
     // Defense in depth: validate allowlist locally before dispatching to Convex.
@@ -136,6 +142,43 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Validate githubToolsEnabled at the user-facing boundary with strict 400s.
+    // The Convex normalizer silently drops invalid/hard-denied entries as a
+    // defense-in-depth measure; this route layer rejects so the picker UI can
+    // surface specific errors to the user.
+    if (githubToolsEnabled !== undefined) {
+      if (!Array.isArray(githubToolsEnabled)) {
+        return NextResponse.json(
+          { error: 'invalid_github_tools_enabled' },
+          { status: 400 },
+        )
+      }
+      if (githubToolsEnabled.length > GITHUB_TOOLS_ENABLED_INPUT_MAX) {
+        return NextResponse.json(
+          { error: 'github_tools_enabled_too_long', limit: GITHUB_TOOLS_ENABLED_INPUT_MAX },
+          { status: 400 },
+        )
+      }
+      for (const slug of githubToolsEnabled) {
+        if (typeof slug !== 'string' || !GITHUB_TOOL_SLUG_REGEX.test(slug)) {
+          return NextResponse.json(
+            { error: 'invalid_github_tool_slug', invalid: slug },
+            { status: 400 },
+          )
+        }
+        if (isHardDeniedGithubTool(slug)) {
+          return NextResponse.json(
+            {
+              error: 'github_tool_hard_denied',
+              slug,
+              note: 'This GitHub tool is blocked by policy and cannot be enabled.',
+            },
+            { status: 400 },
+          )
+        }
+      }
+    }
+
     // Apply regular update if there are non-allowlist fields.
     // throwOnError so a failing mutation surfaces as a 500 to the client
     // instead of being silently swallowed (which would let the stale GET
@@ -158,6 +201,16 @@ export async function PATCH(request: NextRequest) {
         userId: auth.userId,
         serverSecret,
         repos: githubRepoAllowlist,
+      }, { throwOnError: true })
+    }
+
+    // Apply tools-enabled update if present.
+    if (githubToolsEnabled !== undefined) {
+      await convex.mutation('projects/projects:setGithubToolsEnabled', {
+        projectId: projectId as Id<'projects'>,
+        userId: auth.userId,
+        serverSecret,
+        slugs: githubToolsEnabled,
       }, { throwOnError: true })
     }
 
