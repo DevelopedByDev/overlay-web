@@ -4,7 +4,7 @@
 // typed transport lives in @overlay/api-client, and reusable presentation lives in @overlay/modules-react.
 import { useState, useEffect, useRef, useCallback, useMemo, type MouseEvent, type ReactNode } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { BookOpen, ExternalLink, FileText, Folder, Loader2, MessageSquare, Plug, Plus, Search, Sparkles, Wrench } from 'lucide-react'
+import { BookOpen, ExternalLink, FileText, Folder, GitBranch, Loader2, MessageSquare, Plug, Plus, Search, Sparkles, Wrench } from 'lucide-react'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
@@ -48,6 +48,7 @@ import {
   type ConnectedIntegrationsResponse,
   type ConnectorCatalogItem,
   type GithubRepositoryOption,
+  type GithubToolInfo,
   type IntegrationSearchResponse,
   type McpServerFormValues,
   type McpServerSummary,
@@ -67,6 +68,7 @@ import {
 import { IntegrationLogo, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
 import { ProjectSettingsDrawer, type ProjectSettingsSection } from '@overlay/modules-react/project-settings-drawer'
 import { GithubRepoAllowlistPicker } from '@overlay/modules-react/github-repo-picker'
+import { GithubToolsPicker } from '@overlay/modules-react/github-tools-picker'
 import { FileViewerSkeleton } from '@overlay/ui/feedback'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@/features/files/components/FileViewer'
@@ -88,6 +90,7 @@ const PROJECT_SETTINGS_SECTION_IDS = [
   'files',
   'instructions',
   'integrations',
+  'github-tools',
   'skills',
 ] as const satisfies readonly ProjectSettingsSectionId[]
 
@@ -966,6 +969,18 @@ function ProjectHubBody({
   const [repoLoading, setRepoLoading] = useState(false)
   const [repoError, setRepoError] =
     useState<'github_not_connected' | 'fetch_failed' | 'rate_limited' | null>(null)
+  // GitHub tools picker — preserves "field absent → use server defaults"
+  // semantic by leaving `draftToolsEnabled` undefined until the server returns
+  // a concrete list (either an explicit override on the project, or [] for
+  // "user opted everything out").
+  const [draftToolsEnabled, setDraftToolsEnabled] = useState<readonly string[] | undefined>(undefined)
+  const [toolOptions, setToolOptions] = useState<readonly GithubToolInfo[]>([])
+  const [toolDefaultEnabled, setToolDefaultEnabled] = useState<readonly string[]>([])
+  const [toolHardDenied, setToolHardDenied] = useState<readonly string[]>([])
+  const [toolsLoading, setToolsLoading] = useState(false)
+  const [toolsError, setToolsError] =
+    useState<'github_not_connected' | 'fetch_failed' | 'rate_limited' | null>(null)
+  const [saveToolsError, setSaveToolsError] = useState(false)
 
   useEffect(() => {
     const storedOpen = localStorageGet('overlay.project-settings-drawer.open')
@@ -1011,11 +1026,20 @@ function ProjectHubBody({
   useEffect(() => {
     let cancelled = false
     setInstructionsLoaded(false)
-    overlayAppClient.projects.get<{ instructions?: string; githubRepoAllowlist?: string[] } | null>({ projectId })
+    overlayAppClient.projects.get<{
+      instructions?: string
+      githubRepoAllowlist?: string[]
+      githubToolsEnabled?: string[]
+    } | null>({ projectId })
       .then((data) => {
         if (cancelled) return
         setInstructions((data?.instructions ?? '') as string)
         setDraftAllowlist(data?.githubRepoAllowlist ?? [])
+        // Leave `draftToolsEnabled` undefined when the project doc has no
+        // explicit override so the picker displays server defaults. An empty
+        // array `[]` is a meaningful user choice ("disable everything") and is
+        // preserved as-is.
+        setDraftToolsEnabled(data?.githubToolsEnabled)
         setInstructionsLoaded(true)
       })
       .catch(() => {
@@ -1062,6 +1086,49 @@ function ProjectHubBody({
 
   const dismissSaveAllowlistError = useCallback(() => {
     setSaveAllowlistError(false)
+  }, [])
+
+  const saveToolsEnabled = useCallback(async (next: readonly string[]) => {
+    // Optimistic update so the picker reflects the user's click immediately;
+    // the server response below either reconciles or reverts via the error banner.
+    setDraftToolsEnabled(next)
+    setSaveToolsError(false)
+    try {
+      // Mirror `saveAllowlist`: use `updateResponse` so HTTP-level failures
+      // (e.g. a 500 from a failing Convex mutation) are distinguishable from a
+      // real success. `update()` parses JSON regardless of status, which would
+      // let a silent server failure pass for a save.
+      const response = await overlayAppClient.projects.updateResponse({
+        projectId,
+        githubToolsEnabled: [...next],
+      })
+      if (!response.ok) {
+        console.error('[ProjectsView:saveToolsEnabled] non-2xx response', {
+          status: response.status,
+        })
+        setSaveToolsError(true)
+        return
+      }
+      const parsed = (await response.json()) as
+        | { success?: boolean; project?: { githubToolsEnabled?: string[] } | null; error?: string }
+        | null
+      if (!parsed?.project) {
+        console.error('[ProjectsView:saveToolsEnabled] missing project in response', { parsed })
+        setSaveToolsError(true)
+        return
+      }
+      // Reconcile with server-canonical list. `undefined` is preserved (means
+      // the project has no explicit override and the picker falls back to
+      // server defaults via `draftToolsEnabled ?? toolDefaultEnabled`).
+      setDraftToolsEnabled(parsed.project.githubToolsEnabled)
+    } catch (error) {
+      console.error('[ProjectsView:saveToolsEnabled] network/parse failure', error)
+      setSaveToolsError(true)
+    }
+  }, [projectId])
+
+  const dismissSaveToolsError = useCallback(() => {
+    setSaveToolsError(false)
   }, [])
 
   const rememberIntegrationLogos = useCallback((items: readonly ConnectorCatalogItem[]) => {
@@ -1113,6 +1180,7 @@ function ProjectHubBody({
     // (showList === false) until the next click into the drawer.
     if (isGithubConnected) {
       setRepoError((prev) => (prev === 'github_not_connected' ? null : prev))
+      setToolsError((prev) => (prev === 'github_not_connected' ? null : prev))
     }
     if (pendingSlug && baseSlugs.includes(pendingSlug)) {
       pendingConnectRedirectRef.current = null
@@ -1227,6 +1295,48 @@ function ProjectHubBody({
     repoLoading,
     repoError,
     fetchRepoList,
+  ])
+
+  const fetchToolList = useCallback(async () => {
+    if (!githubConnected) {
+      setToolsError('github_not_connected')
+      return
+    }
+    setToolsLoading(true)
+    setToolsError(null)
+    try {
+      const response = await overlayAppClient.integrations.github.listTools({ projectId })
+      if (response.error) {
+        setToolsError(response.error)
+        return
+      }
+      setToolOptions(response.items)
+      setToolDefaultEnabled(response.defaultEnabled)
+      setToolHardDenied(response.hardDenied)
+    } catch {
+      setToolsError('fetch_failed')
+    } finally {
+      setToolsLoading(false)
+    }
+  }, [githubConnected, projectId])
+
+  useEffect(() => {
+    if (!settingsDrawerOpen || activeSettingsSectionId !== 'github-tools') return
+    if (!githubConnected) {
+      setToolsError('github_not_connected')
+      return
+    }
+    if (toolOptions.length === 0 && !toolsLoading && toolsError === null) {
+      void fetchToolList()
+    }
+  }, [
+    settingsDrawerOpen,
+    activeSettingsSectionId,
+    githubConnected,
+    toolOptions.length,
+    toolsLoading,
+    toolsError,
+    fetchToolList,
   ])
 
   const loadHubItems = useCallback(async () => {
@@ -1678,6 +1788,28 @@ function ProjectHubBody({
           ),
         },
         {
+          id: 'github-tools',
+          label: 'GitHub Tools',
+          icon: <GitBranch size={14} />,
+          render: () => (
+            <GithubToolsPicker
+              // When the project has no explicit override (draftToolsEnabled is
+              // undefined), fall back to server defaults so the picker still
+              // renders an intelligible "what is on" state.
+              value={draftToolsEnabled ?? toolDefaultEnabled}
+              options={toolOptions}
+              defaultEnabled={toolDefaultEnabled}
+              hardDenied={toolHardDenied}
+              loading={toolsLoading}
+              error={toolsError}
+              saveError={saveToolsError}
+              onChange={(next) => { void saveToolsEnabled(next) }}
+              onRetryLoad={() => { void fetchToolList() }}
+              onDismissSaveError={dismissSaveToolsError}
+            />
+          ),
+        },
+        {
           id: 'skills',
           label: 'Skills',
           icon: <Sparkles size={14} />,
@@ -1695,8 +1827,11 @@ function ProjectHubBody({
       connectedIntegrationsVisible,
       connectingIntegrationSlug,
       dismissSaveAllowlistError,
+      dismissSaveToolsError,
       draftAllowlist,
+      draftToolsEnabled,
       fetchRepoList,
+      fetchToolList,
       filteredAvailableIntegrationRows,
       filteredConnectedIntegrationRows,
       handleProjectIntegrationToggle,
@@ -1720,9 +1855,16 @@ function ProjectHubBody({
       repoOptions,
       saveAllowlist,
       saveAllowlistError,
+      saveToolsEnabled,
+      saveToolsError,
       savingInstructions,
       sortedChats,
       sortedFiles,
+      toolDefaultEnabled,
+      toolHardDenied,
+      toolOptions,
+      toolsError,
+      toolsLoading,
       userId,
     ],
   )

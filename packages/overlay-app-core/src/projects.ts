@@ -13,6 +13,7 @@ export type ProjectSettingsSectionId =
   | 'files'
   | 'instructions'
   | 'integrations'
+  | 'github-tools'
   | 'mcps'
   | 'skills'
   | 'tools'
