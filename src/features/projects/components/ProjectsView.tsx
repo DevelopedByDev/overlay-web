@@ -2103,6 +2103,16 @@ export default function ProjectsView({
   }
 
   if (view === 'chat' && id) {
+    if (projectId?.trim()) {
+      return (
+        <ProjectHubBody
+          projectId={projectId.trim()}
+          projectName={projectName?.trim() || 'Project'}
+          userId={authenticatedUserId}
+          firstName={firstName}
+        />
+      )
+    }
     return (
       <ChatInterface userId={authenticatedUserId} firstName={firstName} hideSidebar projectName={projectName} />
     )
