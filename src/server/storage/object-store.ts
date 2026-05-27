@@ -4,10 +4,22 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   getMaxPresignedUploadBytes,
   getR2PresignTtlSeconds,
-  headObject,
-  uploadBuffer,
+  headObject as headR2Object,
+  uploadBuffer as uploadR2Buffer,
 } from '@/server/storage/r2'
 export { keyForFile, keyForOutput } from '@/server/storage/storage-keys'
+
+type HeadableObjectStore = {
+  headObject(key: string): Promise<{ sizeBytes: number; contentType: string | undefined } | null>
+}
+
+type WritableObjectStore = {
+  uploadBuffer(
+    key: string,
+    body: Buffer | Uint8Array | string,
+    mimeType: string,
+  ): Promise<void>
+}
 
 export async function generatePresignedUploadUrl(
   key: string,
@@ -38,9 +50,37 @@ export async function deleteObjects(keys: string[]): Promise<void> {
   }
 }
 
+export async function headObject(
+  key: string,
+): Promise<{ sizeBytes: number; contentType: string | undefined } | null> {
+  const objectStore = getOverlayServerContext().objectStore
+  if (isHeadableObjectStore(objectStore)) {
+    return objectStore.headObject(key)
+  }
+  return headR2Object(key)
+}
+
+export async function uploadBuffer(
+  key: string,
+  body: Buffer | Uint8Array | string,
+  mimeType: string,
+): Promise<void> {
+  const objectStore = getOverlayServerContext().objectStore
+  if (isWritableObjectStore(objectStore)) {
+    return objectStore.uploadBuffer(key, body, mimeType)
+  }
+  return uploadR2Buffer(key, body, mimeType)
+}
+
+function isHeadableObjectStore(value: unknown): value is HeadableObjectStore {
+  return Boolean(value && typeof (value as HeadableObjectStore).headObject === 'function')
+}
+
+function isWritableObjectStore(value: unknown): value is WritableObjectStore {
+  return Boolean(value && typeof (value as WritableObjectStore).uploadBuffer === 'function')
+}
+
 export {
   getMaxPresignedUploadBytes,
   getR2PresignTtlSeconds,
-  headObject,
-  uploadBuffer,
 }

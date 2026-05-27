@@ -1,5 +1,6 @@
 import 'server-only'
 
+import Stripe from 'stripe'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { stripe, getBaseUrl } from '@/server/billing/stripe'
@@ -22,6 +23,15 @@ import {
   type StripeBillingClient,
   type UsageArgs,
 } from '@overlay/billing'
+
+export interface StripeBillingProviderConfig {
+  mode?: 'test' | 'live' | 'unknown'
+  secretKey?: string
+  paidUnitPriceId?: string
+  topupUnitPriceId?: string
+  portalConfigurationId?: string
+  baseUrl?: string
+}
 
 type SubscriptionBillingState = {
   email?: string
@@ -62,13 +72,26 @@ async function recordUsage(args: UsageArgs): Promise<void> {
 }
 
 export class StripeBillingProvider extends CoreStripeBillingProvider {
-  constructor() {
+  readonly providerConfigSummary: {
+    provider: 'stripe'
+    mode: 'test' | 'live' | 'unknown'
+    hasSecretKey: boolean
+    hasPaidUnitPriceId: boolean
+    hasTopupUnitPriceId: boolean
+    hasPortalConfigurationId: boolean
+  }
+
+  constructor(config: StripeBillingProviderConfig = {}) {
+    const configuredStripe = config.secretKey
+      ? new Stripe(config.secretKey)
+      : stripe
+
     super({
-      stripe: stripe as unknown as StripeBillingClient,
-      baseUrl: getBaseUrl,
-      paidPlanPriceId: resolvePaidUnitPriceId,
-      topUpPriceId: getTopUpPriceId,
-      portalConfigurationId: resolvePortalConfigurationId,
+      stripe: configuredStripe as unknown as StripeBillingClient,
+      baseUrl: () => config.baseUrl ?? getBaseUrl(),
+      paidPlanPriceId: () => config.paidUnitPriceId ?? resolvePaidUnitPriceId(),
+      topUpPriceId: () => config.topupUnitPriceId ?? getTopUpPriceId(),
+      portalConfigurationId: () => config.portalConfigurationId ?? resolvePortalConfigurationId(),
       getEntitlements: refreshEntitlementsForUser,
       getSubscriptionState,
       recordUsage,
@@ -79,5 +102,14 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
       planQuantityForAmountCents: getPlanQuantityForCheckout,
       topUpQuantityForAmountCents: getTopUpQuantityForCheckout,
     })
+
+    this.providerConfigSummary = {
+      provider: 'stripe',
+      mode: config.mode ?? 'unknown',
+      hasSecretKey: Boolean(config.secretKey),
+      hasPaidUnitPriceId: Boolean(config.paidUnitPriceId),
+      hasTopupUnitPriceId: Boolean(config.topupUnitPriceId),
+      hasPortalConfigurationId: Boolean(config.portalConfigurationId),
+    }
   }
 }

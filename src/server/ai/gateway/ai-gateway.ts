@@ -718,7 +718,30 @@ export async function getGatewayParallelSearchTool(accessToken?: string, chatMod
   }
 }
 
+export interface OpenRouterGatewayConfig {
+  gatewayProvider?: 'openrouter' | 'ai-gateway'
+  apiKeyEnvVar?: string
+  defaultChatModelId?: string
+  modelAllowlist?: readonly string[]
+}
+
 export class OpenRouterGateway implements LLMGateway {
+  readonly providerConfigSummary: {
+    provider: 'openrouter' | 'ai-gateway'
+    apiKeyEnvVar?: string
+    defaultChatModelId?: string
+    modelAllowlist: readonly string[]
+  }
+
+  constructor(private readonly config: OpenRouterGatewayConfig = {}) {
+    this.providerConfigSummary = {
+      provider: config.gatewayProvider ?? 'openrouter',
+      ...(config.apiKeyEnvVar ? { apiKeyEnvVar: config.apiKeyEnvVar } : {}),
+      ...(config.defaultChatModelId ? { defaultChatModelId: config.defaultChatModelId } : {}),
+      modelAllowlist: config.modelAllowlist ?? [],
+    }
+  }
+
   async createLanguageModel(
     modelId: string,
     options: ModelOptions = {},
@@ -733,7 +756,10 @@ export class OpenRouterGateway implements LLMGateway {
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    return AVAILABLE_MODELS.map((model) => ({
+    const allowlist = new Set(this.config.modelAllowlist ?? [])
+    return AVAILABLE_MODELS
+      .filter((model) => allowlist.size === 0 || allowlist.has(model.id))
+      .map((model) => ({
       id: model.id,
       name: model.name,
       provider: model.provider,

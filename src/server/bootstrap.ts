@@ -1,38 +1,74 @@
 import 'server-only'
 
 import overlayAppConfig from '@/overlay.config'
-import { OpenRouterGateway } from '@/server/ai/providers'
-import { WorkOSAuthProvider } from '@/server/auth/providers'
-import { StripeBillingProvider } from '@/server/billing/providers'
-import { getOverlayRuntimeConfigSync } from '@/server/config'
+import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
+import { ApiKeyService } from '@/server/auth/api-keys'
+import {
+  KeycloakAuthProvider,
+  NoOpAuthProvider,
+  OidcAuthProvider,
+  WorkOSAuthProvider,
+} from '@/server/auth/providers'
+import { NoOpBillingProvider, StripeBillingProvider } from '@/server/billing/providers'
+import { getOverlayRuntimeConfigSync, OverlayConfigError } from '@/server/config'
 import { ConvexNoteRepository, type NoteRepository } from '@/server/notes'
-import { ConvexRateLimiter, InMemoryEventBus } from '@/server/shared/providers'
-import { ConvexVectorStore, R2ObjectStore } from '@/server/storage/providers'
+import { ConvexRateLimiter, InMemoryEventBus, InMemoryRateLimiter } from '@/server/shared/providers'
+import {
+  ConvexVectorStore,
+  InMemoryVectorStore,
+  NoOpObjectStore,
+  R2ObjectStore,
+  S3CompatibleObjectStore,
+} from '@/server/storage/providers'
+import type { OverlayRuntimeConfig } from '@/shared/config'
 import type {
+  AuthProvider,
+  BillingProvider,
+  LLMGateway,
+  ObjectStore,
   OverlayAppConfig,
   OverlayServerContext as OverlayProviderContext,
+  RateLimiter,
+  VectorStore,
 } from '@overlay/app-core'
 
 export interface OverlayServerContext extends OverlayProviderContext {
   noteRepository: NoteRepository
+  apiKeyService: typeof ApiKeyService
+}
+
+export interface CreateOverlayServerContextOptions {
+  appConfig?: OverlayAppConfig
+  runtimeConfig?: OverlayRuntimeConfig
 }
 
 export function createOverlayServerContext(
-  config: OverlayAppConfig = overlayAppConfig,
+  config?: OverlayAppConfig,
+  runtimeConfig?: OverlayRuntimeConfig,
+): OverlayServerContext
+export function createOverlayServerContext(
+  options?: CreateOverlayServerContextOptions,
+): OverlayServerContext
+export function createOverlayServerContext(
+  input: OverlayAppConfig | CreateOverlayServerContextOptions = overlayAppConfig,
+  runtimeConfigArg?: OverlayRuntimeConfig,
 ): OverlayServerContext {
-  if (process.env.NEXT_PHASE !== 'phase-production-build') {
-    getOverlayRuntimeConfigSync()
+  const { appConfig, runtimeConfig } = normalizeCreateContextInput(input, runtimeConfigArg)
+
+  if (runtimeConfig) {
+    assertSelectedProviderConfig(runtimeConfig)
   }
 
   return {
-    auth: config.authProvider ?? new WorkOSAuthProvider(),
-    billing: config.billingProvider ?? new StripeBillingProvider(),
-    objectStore: config.objectStore ?? new R2ObjectStore(),
-    vectorStore: config.vectorStore ?? new ConvexVectorStore(),
-    llmGateway: config.llmGateway ?? new OpenRouterGateway(),
-    rateLimiter: config.rateLimiter ?? new ConvexRateLimiter(),
-    eventBus: config.eventBus ?? new InMemoryEventBus(),
+    auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig),
+    billing: appConfig.billingProvider ?? createBillingProvider(runtimeConfig),
+    objectStore: appConfig.objectStore ?? createObjectStore(runtimeConfig),
+    vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
+    llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
+    rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
+    eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
     noteRepository: new ConvexNoteRepository(),
+    apiKeyService: ApiKeyService,
   }
 }
 
@@ -41,4 +77,175 @@ let defaultServerContext: OverlayServerContext | null = null
 export function getOverlayServerContext(): OverlayServerContext {
   defaultServerContext ??= createOverlayServerContext(overlayAppConfig)
   return defaultServerContext
+}
+
+function normalizeCreateContextInput(
+  input: OverlayAppConfig | CreateOverlayServerContextOptions,
+  runtimeConfigArg?: OverlayRuntimeConfig,
+): { appConfig: OverlayAppConfig; runtimeConfig: OverlayRuntimeConfig | null } {
+  const hasOptionsShape =
+    input !== null &&
+    typeof input === 'object' &&
+    ('appConfig' in input || 'runtimeConfig' in input)
+  const appConfig = hasOptionsShape
+    ? (input as CreateOverlayServerContextOptions).appConfig ?? overlayAppConfig
+    : input as OverlayAppConfig
+  const explicitRuntimeConfig = hasOptionsShape
+    ? (input as CreateOverlayServerContextOptions).runtimeConfig
+    : runtimeConfigArg
+
+  if (explicitRuntimeConfig) {
+    return { appConfig, runtimeConfig: explicitRuntimeConfig }
+  }
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return { appConfig, runtimeConfig: null }
+  }
+  return { appConfig, runtimeConfig: getOverlayRuntimeConfigSync() }
+}
+
+function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
+  if (!config) return new WorkOSAuthProvider()
+
+  switch (config.auth.provider) {
+    case 'workos':
+      return new WorkOSAuthProvider({
+        ...config.auth.workos,
+        allowDevFallbacks: config.auth.allowDevFallbacks,
+      })
+    case 'oidc':
+      return new OidcAuthProvider(config.auth.oidc)
+    case 'keycloak':
+      return new KeycloakAuthProvider(config.auth.keycloak)
+    case 'none':
+      return new NoOpAuthProvider()
+  }
+}
+
+function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProvider {
+  if (!config) return new StripeBillingProvider()
+
+  switch (config.billing.provider) {
+    case 'stripe':
+      return new StripeBillingProvider({
+        ...config.billing.stripe,
+        baseUrl: config.app.baseUrl,
+      })
+    case 'none':
+      return new NoOpBillingProvider()
+  }
+}
+
+function createObjectStore(config: OverlayRuntimeConfig | null): ObjectStore {
+  if (!config) return new R2ObjectStore()
+
+  switch (config.storage.provider) {
+    case 'r2':
+      return new R2ObjectStore(config.storage.r2)
+    case 's3':
+    case 'minio':
+      return new S3CompatibleObjectStore({
+        provider: config.storage.provider,
+        bucketName: config.storage.s3.bucketName ?? '',
+        region: config.storage.s3.region ?? 'us-east-1',
+        endpointUrl: config.storage.s3.endpointUrl,
+        accessKeyId: config.storage.s3.accessKeyId ?? '',
+        secretAccessKey: config.storage.s3.secretAccessKey ?? '',
+        forcePathStyle: config.storage.s3.forcePathStyle,
+      })
+    case 'none':
+      return new NoOpObjectStore()
+  }
+}
+
+function createVectorStore(config: OverlayRuntimeConfig | null): VectorStore {
+  if (config && !config.capabilities.vectorSearch) {
+    return new InMemoryVectorStore()
+  }
+  return new ConvexVectorStore()
+}
+
+function createLlmGateway(config: OverlayRuntimeConfig | null): LLMGateway {
+  if (!config) return new OpenRouterGateway()
+
+  switch (config.llm.gatewayProvider) {
+    case 'openrouter':
+    case 'ai-gateway':
+      return new OpenRouterGateway({
+        gatewayProvider: config.llm.gatewayProvider,
+        apiKeyEnvVar: config.llm.apiKeyEnvVar,
+        defaultChatModelId: config.llm.defaultChatModelId,
+        modelAllowlist: config.llm.modelAllowlist,
+      })
+    case 'openai':
+      return new OpenAILLMGateway({
+        apiKeyEnvVar: config.llm.apiKeyEnvVar,
+        defaultChatModelId: config.llm.defaultChatModelId,
+        modelAllowlist: config.llm.modelAllowlist,
+      })
+    case 'anthropic':
+    case 'groq':
+    case 'none':
+      return new NoOpLLMGateway()
+  }
+}
+
+function createRateLimiter(config: OverlayRuntimeConfig | null): RateLimiter {
+  if (config?.app.deploymentEnvironment === 'onprem') {
+    return new InMemoryRateLimiter()
+  }
+  return new ConvexRateLimiter()
+}
+
+function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
+  const issues: string[] = []
+
+  if (config.auth.provider === 'workos') {
+    const clientId = config.auth.workos.clientId ??
+      (config.auth.allowDevFallbacks ? config.auth.workos.devClientId : undefined)
+    const apiKey = config.auth.workos.apiKey ??
+      (config.auth.allowDevFallbacks ? config.auth.workos.devApiKey : undefined)
+    if (!clientId) issues.push('auth.workos.clientId is required when auth.provider is workos')
+    if (!apiKey) issues.push('auth.workos.apiKey is required when auth.provider is workos')
+  }
+  if (config.auth.provider === 'oidc') {
+    if (!config.auth.oidc.issuerUrl) issues.push('auth.oidc.issuerUrl is required when auth.provider is oidc')
+    if (!config.auth.oidc.clientId) issues.push('auth.oidc.clientId is required when auth.provider is oidc')
+  }
+  if (config.auth.provider === 'keycloak') {
+    if (!config.auth.keycloak.issuerUrl) {
+      issues.push('auth.keycloak.issuerUrl is required when auth.provider is keycloak')
+    }
+    if (!config.auth.keycloak.clientId) {
+      issues.push('auth.keycloak.clientId is required when auth.provider is keycloak')
+    }
+  }
+  if (config.billing.provider === 'stripe' && !config.billing.stripe.secretKey) {
+    issues.push('billing.stripe.secretKey is required when billing.provider is stripe')
+  }
+  if (config.storage.provider === 'r2') {
+    const r2 = config.storage.r2
+    if (!r2.bucketName) issues.push('storage.r2.bucketName is required when storage.provider is r2')
+    if (!r2.accessKeyId) issues.push('storage.r2.accessKeyId is required when storage.provider is r2')
+    if (!r2.secretAccessKey) issues.push('storage.r2.secretAccessKey is required when storage.provider is r2')
+    if (!r2.endpointUrl && !r2.accountId) {
+      issues.push('storage.r2.accountId or storage.r2.endpointUrl is required when storage.provider is r2')
+    }
+  }
+  if (config.storage.provider === 's3' || config.storage.provider === 'minio') {
+    const s3 = config.storage.s3
+    if (!s3.bucketName) issues.push('storage.s3.bucketName is required when storage.provider is s3/minio')
+    if (!s3.region) issues.push('storage.s3.region is required when storage.provider is s3/minio')
+    if (!s3.accessKeyId) issues.push('storage.s3.accessKeyId is required when storage.provider is s3/minio')
+    if (!s3.secretAccessKey) issues.push('storage.s3.secretAccessKey is required when storage.provider is s3/minio')
+    if (config.storage.provider === 'minio' && !s3.endpointUrl) {
+      issues.push('storage.s3.endpointUrl is required when storage.provider is minio')
+    }
+  }
+  if (config.llm.gatewayProvider !== 'none' && config.llm.keySource === 'config') {
+    issues.push('llm.keySource=config is reserved until encrypted runtime config secrets are implemented')
+  }
+
+  if (issues.length > 0) {
+    throw new OverlayConfigError('Overlay provider configuration is invalid', issues)
+  }
 }

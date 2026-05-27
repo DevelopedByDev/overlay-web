@@ -13,6 +13,15 @@ import { GetObjectCommand } from '@aws-sdk/client-s3'
 import type { ObjectStore, ObjectSummary } from '@overlay/app-core'
 export { keyForFile, keyForOutput } from '@/server/storage/storage-keys'
 
+export interface R2ObjectStoreConfig {
+  accountId?: string
+  bucketName?: string
+  accessKeyId?: string
+  secretAccessKey?: string
+  endpointUrl?: string
+  presignTtlSeconds?: number
+}
+
 function requireR2Env(name: string): string {
   const value = process.env[name]?.trim()
   if (!value) throw new Error(`[R2] Missing required env var: ${name}`)
@@ -70,6 +79,37 @@ let _client: S3Client | null = null
 export function getR2Client(): S3Client {
   if (!_client) _client = createR2Client()
   return _client
+}
+
+function getConfiguredR2Endpoint(config: R2ObjectStoreConfig): string {
+  if (config.endpointUrl) {
+    try {
+      return new URL(config.endpointUrl).origin
+    } catch {
+      return config.endpointUrl
+    }
+  }
+  if (!config.accountId) {
+    throw new Error('[R2] Missing required provider config: accountId')
+  }
+  return `https://${config.accountId}.r2.cloudflarestorage.com`
+}
+
+function createConfiguredR2Client(config: R2ObjectStoreConfig): S3Client {
+  if (!config.accessKeyId) {
+    throw new Error('[R2] Missing required provider config: accessKeyId')
+  }
+  if (!config.secretAccessKey) {
+    throw new Error('[R2] Missing required provider config: secretAccessKey')
+  }
+  return new S3Client({
+    region: 'auto',
+    endpoint: getConfiguredR2Endpoint(config),
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+    },
+  })
 }
 
 // ── Presigned upload URL ─────────────────────────────────────────────────────
@@ -208,29 +248,91 @@ export async function headObject(key: string): Promise<{ sizeBytes: number; cont
 }
 
 export class R2ObjectStore implements ObjectStore {
+  private readonly configuredClient: S3Client | null
+  private readonly configuredBucketName: string | null
+  private readonly configuredPresignTtlSeconds: number | null
+  readonly providerConfigSummary: {
+    provider: 'r2'
+    bucketName?: string
+    endpointUrl?: string
+    hasAccessKeyId: boolean
+    hasSecretAccessKey: boolean
+    presignTtlSeconds?: number
+  }
+
+  constructor(config: R2ObjectStoreConfig = {}) {
+    const hasExplicitConfig = Object.values(config).some((value) => value !== undefined)
+    this.configuredClient = hasExplicitConfig ? createConfiguredR2Client(config) : null
+    this.configuredBucketName = config.bucketName ?? null
+    this.configuredPresignTtlSeconds = config.presignTtlSeconds ?? null
+    this.providerConfigSummary = {
+      provider: 'r2',
+      ...(config.bucketName ? { bucketName: config.bucketName } : {}),
+      ...(config.endpointUrl ? { endpointUrl: config.endpointUrl } : {}),
+      hasAccessKeyId: Boolean(config.accessKeyId),
+      hasSecretAccessKey: Boolean(config.secretAccessKey),
+      ...(config.presignTtlSeconds ? { presignTtlSeconds: config.presignTtlSeconds } : {}),
+    }
+  }
+
   async getUploadUrl(
     key: string,
     contentType: string,
   ): Promise<{ url: string; fields?: Record<string, string> }> {
     return {
       url: await getSignedUrl(
-        getR2Client(),
+        this.client(),
         new PutObjectCommand({
-          Bucket: getR2BucketName(),
+          Bucket: this.bucketName(),
           Key: key,
           ContentType: contentType,
         }),
-        { expiresIn: getR2PresignTtl() },
+        { expiresIn: this.presignTtlSeconds() },
       ),
     }
   }
 
   async getDownloadUrl(key: string): Promise<string> {
-    return generatePresignedDownloadUrl(key)
+    return getSignedUrl(
+      this.client(),
+      new GetObjectCommand({ Bucket: this.bucketName(), Key: key }),
+      { expiresIn: this.presignTtlSeconds() },
+    )
   }
 
   async deleteObject(key: string): Promise<void> {
-    await deleteObject(key)
+    await this.client().send(new DeleteObjectCommand({ Bucket: this.bucketName(), Key: key }))
+  }
+
+  async uploadBuffer(
+    key: string,
+    body: Buffer | Uint8Array | string,
+    mimeType: string,
+  ): Promise<void> {
+    const sizeBytes = typeof body === 'string' ? Buffer.byteLength(body) : body.byteLength
+    await this.client().send(
+      new PutObjectCommand({
+        Bucket: this.bucketName(),
+        Key: key,
+        Body: body,
+        ContentType: mimeType,
+        ContentLength: sizeBytes,
+      }),
+    )
+  }
+
+  async headObject(key: string): Promise<{ sizeBytes: number; contentType: string | undefined } | null> {
+    try {
+      const res = await this.client().send(new HeadObjectCommand({ Bucket: this.bucketName(), Key: key }))
+      return {
+        sizeBytes: res.ContentLength ?? 0,
+        contentType: res.ContentType,
+      }
+    } catch (err: unknown) {
+      const code = (err as { name?: string })?.name
+      if (code === 'NotFound' || code === 'NoSuchKey') return null
+      throw err
+    }
   }
 
   async listObjects(prefix: string): Promise<ObjectSummary[]> {
@@ -238,9 +340,9 @@ export class R2ObjectStore implements ObjectStore {
     let ContinuationToken: string | undefined
 
     do {
-      const page = await getR2Client().send(
+      const page = await this.client().send(
         new ListObjectsV2Command({
-          Bucket: getR2BucketName(),
+          Bucket: this.bucketName(),
           Prefix: prefix,
           ContinuationToken,
         }),
@@ -260,5 +362,17 @@ export class R2ObjectStore implements ObjectStore {
     } while (ContinuationToken)
 
     return out
+  }
+
+  private client(): S3Client {
+    return this.configuredClient ?? getR2Client()
+  }
+
+  private bucketName(): string {
+    return this.configuredBucketName ?? getR2BucketName()
+  }
+
+  private presignTtlSeconds(): number {
+    return this.configuredPresignTtlSeconds ?? getR2PresignTtl()
   }
 }
