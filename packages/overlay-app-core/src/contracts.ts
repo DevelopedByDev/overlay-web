@@ -1057,6 +1057,28 @@ export interface GithubRepositoryListResponse {
   error?: 'github_not_connected' | 'fetch_failed' | 'rate_limited'
 }
 
+export interface GithubToolListQuery {
+  projectId?: string
+}
+
+export interface GithubToolInfo {
+  /** Composio tool slug, e.g. `GITHUB_GET_AN_ISSUE`. */
+  slug: string
+  /** Humanized name from Composio, e.g. "Get an issue". */
+  name: string
+  /** One-line description from Composio. May be empty. */
+  description: string
+  /** Heuristic category, derived server-side via categorizeGithubToolSlug. */
+  category: string
+}
+
+export interface GithubToolListResponse {
+  items: GithubToolInfo[]
+  defaultEnabled: string[]
+  hardDenied: string[]
+  error?: 'github_not_connected' | 'fetch_failed' | 'rate_limited'
+}
+
 export interface SkillSummary {
   _id: string
   name: string
@@ -1144,6 +1166,7 @@ export interface UpdateProjectRequest {
   instructions?: string
   parentId?: string | null
   githubRepoAllowlist?: string[]
+  githubToolsEnabled?: string[]
   accessToken?: string
   userId?: string
 }

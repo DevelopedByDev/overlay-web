@@ -12,3 +12,7 @@ export interface GithubRepositoryListQuery {
   limit?: number
   projectId?: string
 }
+
+export interface GithubToolListQuery {
+  projectId?: string
+}

@@ -1,6 +1,7 @@
 import type {
   ConnectedIntegrationsResponse,
   GithubRepositoryListResponse,
+  GithubToolListResponse,
   IntegrationConnectionRequest,
   IntegrationConnectionResponse,
   IntegrationSearchResponse,
@@ -8,7 +9,7 @@ import type {
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
 import type { QueryParams } from '../shared/types'
-import type { GithubRepositoryListQuery, IntegrationQuery } from './types'
+import type { GithubRepositoryListQuery, GithubToolListQuery, IntegrationQuery } from './types'
 
 export class IntegrationsClient {
   constructor(private readonly http: HttpContext) {}
@@ -24,11 +25,22 @@ export class IntegrationsClient {
     )
   }
 
+  private githubToolsPath(query?: GithubToolListQuery): string {
+    return this.http.appendQuery(
+      '/api/app/integrations/github/tools',
+      query as QueryParams | undefined,
+    )
+  }
+
   readonly github = {
     listRepositories: (query?: GithubRepositoryListQuery, init?: RequestInit) =>
       this.http.json<GithubRepositoryListResponse>(this.githubRepositoriesPath(query), init),
     listRepositoriesResponse: (query?: GithubRepositoryListQuery, init?: RequestInit) =>
       this.http.request(this.githubRepositoriesPath(query), init),
+    listTools: (query?: GithubToolListQuery, init?: RequestInit) =>
+      this.http.json<GithubToolListResponse>(this.githubToolsPath(query), init),
+    listToolsResponse: (query?: GithubToolListQuery, init?: RequestInit) =>
+      this.http.request(this.githubToolsPath(query), init),
   }
 
   get<T = ConnectedIntegrationsResponse | IntegrationSearchResponse | IntegrationSummary[]>(
