@@ -38,6 +38,7 @@ type CommonMessageProps = {
 
 type TextChatMessageProps = CommonMessageProps & {
   kind: 'text'
+  activeChatId: string | null
   primaryMessages: UIMessage[]
   latestExchangeIndex: number
   actChat: ChatInstance
@@ -162,6 +163,8 @@ function TextChatMessage(props: TextChatMessageProps) {
       isStreaming={isStreaming}
       isTextStreaming={isTextStreaming}
       errorMessage={errLabelForTurn}
+      conversationId={props.activeChatId}
+      assistantMessageId={responseMsg?.id ?? null}
       exchModelList={modelList}
       selectedTab={selectedTab}
       onTabSelect={(tabIndex) => props.onTabSelect(exchangeIndex, tabIndex)}

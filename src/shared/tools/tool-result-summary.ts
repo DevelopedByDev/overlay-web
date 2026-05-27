@@ -25,6 +25,7 @@ export function summarizeToolResultForTranscript(params: {
   state?: string
 }): string | null {
   const toolName = params.toolName?.trim() || 'tool'
+  if (toolName === 'render_ui') return null
   const output = asRecord(params.toolOutput)
   const input = asRecord(params.toolInput)
   if (output?._overlayGatedFeature === true) {

@@ -1,5 +1,13 @@
 import { after, NextRequest, NextResponse } from 'next/server'
-import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from '@/server/ai/sdk'
+import {
+  convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  stepCountIs,
+  ToolLoopAgent,
+  type ToolSet,
+  type UIMessage,
+} from '@/server/ai/sdk'
 import type { LanguageModelV3 } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { convex } from '@/server/database/convex'
@@ -62,6 +70,11 @@ import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
 } from '@/server/chat/chat-message-persistence'
+import {
+  JSON_RENDER_DATA_TYPE,
+  type ActAgentExperimentalContext,
+  type JsonRenderDataPartForPersistence,
+} from '@/server/tools/tools/render-ui-context'
 import {
   summarizeErrorForLog,
   summarizeToolInputForLog,
@@ -212,6 +225,13 @@ type UiStreamPersistenceEvent =
       state: 'output-available' | 'output-error' | 'output-denied'
       errorText?: string
     }
+  | {
+      kind: 'data-part'
+      id: string
+      dataType: string
+      data: unknown
+      transient?: boolean
+    }
 
 function extractUiStreamPersistenceEvents(chunkText: string): UiStreamPersistenceEvent[] {
   const events: UiStreamPersistenceEvent[] = []
@@ -231,6 +251,9 @@ function extractUiStreamPersistenceEvents(chunkText: string): UiStreamPersistenc
         input?: unknown
         output?: unknown
         errorText?: unknown
+        id?: unknown
+        data?: unknown
+        transient?: unknown
       }
       if (
         (evt.type === 'text-delta' || evt.type === 'text') &&
@@ -274,6 +297,20 @@ function extractUiStreamPersistenceEvents(chunkText: string): UiStreamPersistenc
                 : 'output-available',
           errorText: typeof evt.errorText === 'string' ? evt.errorText : undefined,
         })
+      } else if (typeof evt.type === 'string' && evt.type.startsWith('data-')) {
+        const dataType = evt.type.slice('data-'.length)
+        if (dataType) {
+          events.push({
+            kind: 'data-part',
+            id:
+              typeof evt.id === 'string' && evt.id.trim()
+                ? evt.id
+                : `data-${dataType}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+            dataType,
+            data: evt.data,
+            transient: evt.transient === true,
+          })
+        }
       }
     } catch {
       // Ignore partial chunks and non-JSON protocol frames.
@@ -344,6 +381,13 @@ function createGeneratingPersistenceTransform(params: {
                 : event.output,
             },
           })
+        } else if (event.kind === 'data-part' && !event.transient) {
+          newParts.push({
+            type: 'data',
+            id: event.id,
+            dataType: event.dataType,
+            data: event.data,
+          })
         }
       }
       if (newParts.length > 0 && params.messageId) {
@@ -394,6 +438,13 @@ function createGeneratingPersistenceTransform(params: {
                   : event.output,
               },
             })
+          } else if (event.kind === 'data-part' && !event.transient) {
+            newParts.push({
+              type: 'data',
+              id: event.id,
+              dataType: event.dataType,
+              data: event.data,
+            })
           }
         }
         if (newParts.length > 0 && params.messageId) {
@@ -416,6 +467,46 @@ function createGeneratingPersistenceTransform(params: {
       await flushText(true)
     },
   })
+}
+
+function mergeJsonRenderDataPartsIntoPersistence(
+  parts: Array<Record<string, unknown>>,
+  dataParts: JsonRenderDataPartForPersistence[] | undefined,
+): Array<Record<string, unknown>> {
+  const jsonRenderParts = (dataParts ?? []).filter(
+    (part) => part.dataType === JSON_RENDER_DATA_TYPE && part.id && part.data,
+  )
+  if (jsonRenderParts.length === 0) return parts
+
+  const byToolCallId = new Map(jsonRenderParts.map((part) => [part.id, part] as const))
+  const inserted = new Set<string>()
+  const next: Array<Record<string, unknown>> = []
+
+  for (const part of parts) {
+    const invocation =
+      part.type === 'tool-invocation' && part.toolInvocation && typeof part.toolInvocation === 'object'
+        ? (part.toolInvocation as { toolCallId?: unknown; toolName?: unknown; state?: unknown })
+        : null
+    if (invocation?.toolName === 'render_ui') {
+      const toolCallId = typeof invocation.toolCallId === 'string' ? invocation.toolCallId : ''
+      const dataPart = byToolCallId.get(toolCallId)
+      if (dataPart) {
+        next.push(dataPart)
+        inserted.add(dataPart.id)
+        continue
+      }
+      if (invocation.state !== 'output-error' && invocation.state !== 'output-denied') {
+        continue
+      }
+    }
+    next.push(part)
+  }
+
+  for (const part of jsonRenderParts) {
+    if (!inserted.has(part.id)) next.push(part)
+  }
+
+  return next
 }
 
 async function drainReadableStream(stream: ReadableStream<Uint8Array<ArrayBufferLike>>) {
@@ -1235,9 +1326,11 @@ export async function POST(request: NextRequest) {
     }) => {
     const attemptModelId = params.modelId
     const attemptModelSupportsZdr = modelSupportsZeroDataRetention(attemptModelId)
+    const uiStreamContext: ActAgentExperimentalContext = { dataParts: [] }
     const agent = new ToolLoopAgent({
       model: params.languageModel,
       tools,
+      experimental_context: uiStreamContext,
       ...(attemptModelSupportsZdr
         ? { providerOptions: { gateway: { zeroDataRetention: true } } }
         : {}),
@@ -1485,6 +1578,10 @@ export async function POST(request: NextRequest) {
             }
             return part
           })
+          normalizedPersistParts = mergeJsonRenderDataPartsIntoPersistence(
+            normalizedPersistParts,
+            uiStreamContext.dataParts,
+          )
           if (params.fallbackNotice) {
             normalizedPersistParts = [
               { type: 'text', text: `${params.fallbackNotice}\n\n` },
@@ -1552,25 +1649,39 @@ export async function POST(request: NextRequest) {
     clearTimeout(hardTimeout)
 
     const hasCitations = Object.keys(sourceCitationMap).length > 0
+    const responseMessageId =
+      generatingMessageId ?? `act-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`
 
-    const _uiResp = result.toUIMessageStreamResponse({
+    const uiMessageStream = createUIMessageStream({
       originalMessages: messages,
+      generateId: () => responseMessageId,
       onError: (error: unknown) => userFacingOpenRouterError(error),
-      messageMetadata: ({ part }) => {
-        const metadata: Record<string, unknown> = {}
-        if (hasCitations && (part.type === 'start' || part.type === 'finish')) {
-          // Send early so the client can linkify **Sources:** while the reply streams.
-          metadata.sourceCitations = sourceCitationMap
-        }
-        if (
-          attemptModelId === FREE_TIER_AUTO_MODEL_ID &&
-          part.type === 'finish' &&
-          streamedRoutedModelId
-        ) {
-          metadata.routedModelId = streamedRoutedModelId
-        }
-        return Object.keys(metadata).length > 0 ? metadata : undefined
+      execute: ({ writer }) => {
+        uiStreamContext.writer = writer
+        writer.merge(result.toUIMessageStream({
+          originalMessages: messages,
+          generateMessageId: () => responseMessageId,
+          onError: (error: unknown) => userFacingOpenRouterError(error),
+          messageMetadata: ({ part }) => {
+            const metadata: Record<string, unknown> = {}
+            if (hasCitations && (part.type === 'start' || part.type === 'finish')) {
+              // Send early so the client can linkify **Sources:** while the reply streams.
+              metadata.sourceCitations = sourceCitationMap
+            }
+            if (
+              attemptModelId === FREE_TIER_AUTO_MODEL_ID &&
+              part.type === 'finish' &&
+              streamedRoutedModelId
+            ) {
+              metadata.routedModelId = streamedRoutedModelId
+            }
+            return Object.keys(metadata).length > 0 ? metadata : undefined
+          },
+        }))
       },
+    })
+    const _uiResp = createUIMessageStreamResponse({
+      stream: uiMessageStream,
     })
     let responseBody: ReadableStream<Uint8Array<ArrayBufferLike>> | null =
       prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)

@@ -13,6 +13,7 @@ type ChatMessageListProps = {
   messagesScrollRef: RefObject<HTMLDivElement | null>
   messagesEndRef: RefObject<HTMLDivElement | null>
   showLoadingState: boolean
+  activeChatId: string | null
   primaryMessages: UIMessage[]
   latestExchangeIndex: number
   generationResults: Map<number, GenerationResult[]>
@@ -48,6 +49,7 @@ export function ChatMessageList({
   messagesScrollRef,
   messagesEndRef,
   showLoadingState,
+  activeChatId,
   primaryMessages,
   latestExchangeIndex,
   generationResults,
@@ -89,6 +91,7 @@ export function ChatMessageList({
         ) : (
           <ChatMessages
             primaryMessages={primaryMessages}
+            activeChatId={activeChatId}
             latestExchangeIndex={latestExchangeIndex}
             generationResults={generationResults}
             exchangeGenTypes={exchangeGenTypes}
@@ -161,6 +164,7 @@ function ChatMessages(props: Omit<ChatMessageListProps, 'messagesScrollRef' | 'm
         message={message}
         exchangeIndex={currentExchangeIndex}
         primaryMessages={props.primaryMessages}
+        activeChatId={props.activeChatId}
         latestExchangeIndex={props.latestExchangeIndex}
         actChat={props.actChat}
         chatInstances={props.chatInstances}

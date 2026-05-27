@@ -17,6 +17,7 @@ import {
   WebSearchToolBlock,
 } from './tools'
 import { MarkdownMessage } from './MarkdownMessage'
+import { JsonRenderPart, RENDER_UI_TOOL_NAME } from './data-parts'
 
 interface MessageListProps {
   messages: ConversationMessage[]
@@ -91,6 +92,14 @@ function isWebSearchTool(p: MessageToolPart): boolean {
   return p.toolName === 'perplexity_search'
 }
 
+function isRenderUiTool(p: MessageToolPart): boolean {
+  return p.toolName === RENDER_UI_TOOL_NAME
+}
+
+function isCustomRenderedTool(p: MessageToolPart): boolean {
+  return isWebSearchTool(p) || isBrowserTool(p) || isRenderUiTool(p)
+}
+
 function renderToolParts(parts: MessageToolPart[]): ReactNode[] {
   const out: ReactNode[] = []
   let i = 0
@@ -106,8 +115,17 @@ function renderToolParts(parts: MessageToolPart[]): ReactNode[] {
       i += 1
       continue
     }
+    if (isRenderUiTool(p)) {
+      if (p.state === 'output-available') {
+        out.push(<JsonRenderPart key={p.id} part={p} />)
+      } else {
+        out.push(<SingleToolCallRow key={p.id} part={p} connectTop={false} connectBottom={false} />)
+      }
+      i += 1
+      continue
+    }
     const group: MessageToolPart[] = []
-    while (i < parts.length && !isWebSearchTool(parts[i]!) && !isBrowserTool(parts[i]!)) {
+    while (i < parts.length && !isCustomRenderedTool(parts[i]!)) {
       group.push(parts[i]!)
       i += 1
     }

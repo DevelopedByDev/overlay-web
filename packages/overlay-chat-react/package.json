@@ -20,6 +20,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@json-render/core": "^0.19.0",
+    "@json-render/react": "^0.19.0",
     "@overlay/chat-core": "file:../overlay-chat-core",
     "katex": "^0.16.11",
     "lucide-react": "^0.575.0",

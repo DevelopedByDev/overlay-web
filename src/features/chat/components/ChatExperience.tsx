@@ -4042,6 +4042,7 @@ export default function ChatInterface({
             messagesScrollRef={messagesScrollRef}
             messagesEndRef={messagesEndRef}
             showLoadingState={showChatLoadingState}
+            activeChatId={activeChatId}
             primaryMessages={primaryMessages}
             latestExchangeIndex={latestExchIdx}
             generationResults={generationResults}

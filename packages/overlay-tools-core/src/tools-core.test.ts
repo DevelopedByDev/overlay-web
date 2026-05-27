@@ -27,8 +27,21 @@ describe('@overlay/tools-core', () => {
 
   it('authorizes only globally registered and exposed tools', () => {
     assert.doesNotThrow(() => assertOverlayToolAllowed('search_knowledge', ['search_knowledge']))
+    assert.doesNotThrow(() => assertOverlayToolAllowed('render_ui', ['render_ui']))
     assert.throws(() => assertOverlayToolAllowed('search_knowledge', ['list_notes']), /not exposed/)
     assert.throws(() => assertOverlayToolAllowed('unknown_tool'), /not allowed/)
+  })
+
+  it('exposes render_ui for explicit email compose/send prompts only', () => {
+    const emailTools = allowedOverlayToolIdsForTurn({
+      latestUserText: 'Draft an email to sam@example.com about the launch and let me send it',
+    })
+    assert.equal(emailTools.includes('render_ui'), true)
+
+    const defaultTools = allowedOverlayToolIdsForTurn({
+      latestUserText: 'Summarize what is in my notes about the launch',
+    })
+    assert.equal(defaultTools.includes('render_ui'), false)
   })
 
   it('converts JSON schema objects into zod validators', () => {

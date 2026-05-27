@@ -25,6 +25,8 @@ export function messageHasVisibleAssistantActivity(msg: {
     if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
     if (part.type === 'tool-invocation') return Boolean(part.toolInvocation)
     if (part.type === 'file') return Boolean(part.url)
+    if (part.type === 'data-json-render') return true
+    if (part.type === 'data' && (part as { dataType?: string }).dataType === 'json-render') return true
     return part.type.startsWith('tool-')
   })
 }
@@ -100,6 +102,11 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
     }
     if (block.kind === 'file') {
       out.push({ kind: 'file', block, originIndex: i })
+      i++
+      continue
+    }
+    if (block.kind === 'render-ui') {
+      out.push({ kind: 'render-ui', block, originIndex: i })
       i++
       continue
     }
@@ -297,6 +304,22 @@ export function mergeLiveStreamingParts(
             continue
           }
         }
+      }
+    }
+    if (part.type === 'data' && typeof part.id === 'string' && part.id) {
+      const existingIdx = nextParts.findIndex(
+        (candidate) =>
+          candidate.type === 'data' &&
+          candidate.id === part.id &&
+          candidate.dataType === part.dataType,
+      )
+      if (existingIdx >= 0) {
+        nextParts = [
+          ...nextParts.slice(0, existingIdx),
+          part,
+          ...nextParts.slice(existingIdx + 1),
+        ]
+        continue
       }
     }
 

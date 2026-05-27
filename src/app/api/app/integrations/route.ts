@@ -1,75 +1,20 @@
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { NextRequest, NextResponse } from 'next/server'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { convex } from '@/server/database/convex'
-import { getServerProviderKey } from '@/server/ai/provider-keys'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
-import { projectComposioEntityId } from '@/server/tools/composio-entity'
 import { getBaseUrl } from '@/server/web/app-url'
-import type { Id } from '../../../../../convex/_generated/dataModel'
-
-type ComposioAppRecord = {
-  key?: string
-  slug?: string
-  name?: string
-  displayName?: string
-  display_name?: string
-  appName?: string
-  app_name?: string
-  description?: string
-  logo?: string
-  logoUrl?: string
-}
-
-type ConnectedAccountRecord = {
-  id?: string
-  /** v1 shape (deprecated/gone — endpoint returns 410). */
-  appName?: string
-  /** v3 shape — slug now lives under `toolkit.slug`. */
-  toolkit?: { slug?: string } | null
-}
+import {
+  connectedAccountSlug,
+  firstNonEmptyString,
+  getComposioApiKey,
+  listConnectedAccounts,
+  loadComposioSDK,
+  normalizeComposioSlug,
+  requireProjectComposioEntity,
+  type ComposioAppRecord,
+} from '@/server/tools/composio-server'
 
 type ComposioErrorKind = 'configuration' | 'provider'
 
-type ProjectAccessResult =
-  | { ok: true; entityId: string }
-  | { ok: false; response: NextResponse }
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function loadComposioSDK(apiKey: string): Promise<any> {
-  let ComposioModule: { Composio: new (args: { apiKey: string }) => unknown }
-
-  try {
-    ComposioModule = await import('@composio/core')
-  } catch {
-    const coreUrl = pathToFileURL(
-      path.resolve(process.cwd(), '../overlay-desktop/node_modules/@composio/core/dist/index.mjs')
-    ).href
-    ComposioModule = await import(/* webpackIgnore: true */ coreUrl)
-  }
-
-  const { Composio } = ComposioModule
-  return new Composio({ apiKey })
-}
-
-async function getComposioApiKey(accessToken: string): Promise<string | null> {
-  const serverKey = accessToken ? await getServerProviderKey('composio') : null
-  return serverKey ?? process.env.COMPOSIO_API_KEY ?? null
-}
-
-function firstNonEmptyString(...values: Array<unknown>): string | null {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
-    }
-  }
-  return null
-}
-
-function normalizeSlug(value: string): string {
-  return value.trim().toLowerCase()
-}
+const normalizeSlug = normalizeComposioSlug
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -110,43 +55,6 @@ function composioFailureResponse(error: unknown, context: string): NextResponse 
 
 function integrationConnectionErrorResponse(error: string): NextResponse {
   return NextResponse.json({ success: false, error })
-}
-
-async function requireProjectComposioEntity(
-  projectId: string | null | undefined,
-  userId: string,
-): Promise<ProjectAccessResult> {
-  const trimmedProjectId = projectId?.trim()
-  if (!trimmedProjectId) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: 'projectId required' }, { status: 400 }),
-    }
-  }
-
-  try {
-    const project = await convex.query<{ _id: string } | null>('projects/projects:get', {
-      projectId: trimmedProjectId as Id<'projects'>,
-      userId,
-      serverSecret: getInternalApiSecret(),
-    })
-    if (!project) {
-      return {
-        ok: false,
-        response: NextResponse.json({ error: 'Project not found' }, { status: 404 }),
-      }
-    }
-  } catch {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: 'Project not found' }, { status: 404 }),
-    }
-  }
-
-  return {
-    ok: true,
-    entityId: projectComposioEntityId(userId, trimmedProjectId),
-  }
 }
 
 function fallbackDisplayName(slug: string): string {
@@ -196,29 +104,6 @@ async function fetchAppRecord(composio: any, slug: string) {
   } catch {
     return null
   }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function listConnectedAccounts(composio: any, entityId: string): Promise<ConnectedAccountRecord[]> {
-  // Composio's v1 `connectedAccounts` endpoint started returning 410 ("Gone");
-  // use the v3 SDK surface (the same one the disconnect path already uses).
-  try {
-    const response = await composio.connectedAccounts.list({ userIds: [entityId] })
-    return Array.isArray(response?.items) ? response.items : []
-  } catch (err) {
-    console.warn(
-      `[Integrations] listConnectedAccounts SDK call failed for entity ${entityId.slice(-8)}:`,
-      err instanceof Error ? err.message : String(err),
-    )
-    return []
-  }
-}
-
-/** Reads the toolkit slug from either v1 or v3 shape (v3 stores it at `toolkit.slug`). */
-function connectedAccountSlug(acc: ConnectedAccountRecord): string | undefined {
-  if (typeof acc.toolkit?.slug === 'string' && acc.toolkit.slug.trim()) return acc.toolkit.slug
-  if (typeof acc.appName === 'string' && acc.appName.trim()) return acc.appName
-  return undefined
 }
 
 function getAllowedAppOrigins(): string[] {

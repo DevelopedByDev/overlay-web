@@ -498,6 +498,13 @@ export default defineSchema({
             }),
           }),
           v.object({
+            type: v.literal('data'),
+            id: v.optional(v.string()),
+            dataType: v.string(),
+            data: v.any(),
+            transient: v.optional(v.boolean()),
+          }),
+          v.object({
             type: v.string(),
             text: v.optional(v.string()),
             url: v.optional(v.string()),
@@ -548,6 +555,13 @@ export default defineSchema({
             }),
           }),
           v.object({
+            type: v.literal('data'),
+            id: v.optional(v.string()),
+            dataType: v.string(),
+            data: v.any(),
+            transient: v.optional(v.boolean()),
+          }),
+          v.object({
             type: v.string(),
             text: v.optional(v.string()),
             url: v.optional(v.string()),
@@ -562,6 +576,27 @@ export default defineSchema({
   }).index('by_conversationId', ['conversationId'])
     .index('by_messageId', ['messageId'])
     .index('by_createdAt', ['createdAt']),
+
+  chatActionExecutions: defineTable({
+    userId: v.string(),
+    conversationId: v.id('conversations'),
+    assistantMessageId: v.id('conversationMessages'),
+    dataPartId: v.string(),
+    actionId: v.string(),
+    actionKind: v.literal('gmail.sendEmail'),
+    idempotencyKey: v.string(),
+    inputHash: v.string(),
+    status: v.union(v.literal('running'), v.literal('succeeded'), v.literal('failed')),
+    resultSummary: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index('by_userId_idempotencyKey', ['userId', 'idempotencyKey'])
+    .index('by_conversationId', ['conversationId'])
+    .index('by_message', ['assistantMessageId'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
 
   conversationContextSummaries: defineTable({
     conversationId: v.id('conversations'),

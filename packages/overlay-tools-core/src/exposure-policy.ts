@@ -21,6 +21,7 @@ const VIDEO_TOOL_IDS = [
 const BROWSER_TOOL_IDS = ['interactive_browser_session'] as const
 const DAYTONA_TOOL_IDS = ['run_daytona_sandbox'] as const
 const SKILL_DRAFT_TOOL_IDS = ['draft_skill_from_chat'] as const
+const RENDER_UI_TOOL_IDS = ['render_ui'] as const
 const AUTOMATION_TOOL_IDS = [
   'list_automations',
   'draft_automation_from_chat',
@@ -77,6 +78,14 @@ function isExplicitAutomationRequest(text: string): boolean {
   ])
 }
 
+function isExplicitEmailComposeRequest(text: string): boolean {
+  return matchesAny(text, [
+    /\b(draft|compose|write|prepare|create|send)\b.{0,80}\b(email|e-mail|mail|gmail message)\b/i,
+    /\b(email|e-mail|mail|gmail message)\b.{0,80}\b(draft|compose|write|prepare|create|send)\b/i,
+    /\b(send|draft|compose)\b.{0,80}\b(to|cc|bcc|subject)\b/i,
+  ])
+}
+
 function addAll(target: Set<string>, toolIds: readonly string[]): void {
   for (const toolId of toolIds) {
     target.add(toolId)
@@ -123,6 +132,9 @@ export function allowedOverlayToolIdsForTurn(params: {
   }
   if (isExplicitSkillDraftRequest(text)) {
     addAll(allowed, SKILL_DRAFT_TOOL_IDS)
+  }
+  if (isExplicitEmailComposeRequest(text)) {
+    addAll(allowed, RENDER_UI_TOOL_IDS)
   }
   if (!params.automationExecution && (params.automationMode || isExplicitAutomationRequest(text))) {
     addAll(allowed, AUTOMATION_TOOL_IDS)

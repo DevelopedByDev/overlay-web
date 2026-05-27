@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "convex:push:prod": "CONVEX_DEPLOYMENT=prod:colorful-chickadee-419 convex deploy -y",
-    "convex:push:dev": "convex deploy --env-file .env.development.local -y",
+    "convex:push:dev": "convex dev --once --env-file .env.development.local",
     "convex:push:all": "npm run convex:push:prod && npm run convex:push:dev",
     "convex:deploy": "npm run convex:push:prod",
     "convex:deploy:dev": "npm run convex:push:dev",

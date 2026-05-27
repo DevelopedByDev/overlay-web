@@ -31,6 +31,13 @@ import {
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
+import {
+  JSON_RENDER_SCHEMA_VERSION,
+  JSON_RENDER_DATA_TYPE,
+  appendJsonRenderDataPart,
+  extractUIStreamWriter,
+  type JsonRenderDataPayload,
+} from './render-ui-context'
 import type { OverlayToolsOptions } from './types'
 
 /**
@@ -592,6 +599,92 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('edit_video')
         return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl })
+      },
+    })
+  }
+
+  if (shouldExposeTool('render_ui')) {
+    const renderUiElementSchema = z.object({
+      type: z.string().describe('Component type from the json-render registry (e.g. Card, Field, Input, Textarea, Button, ButtonRow, Text).'),
+      props: z.record(z.string(), z.any()).optional().describe('Static props for this element.'),
+      children: z.array(z.string()).optional().describe('IDs of child elements (flat tree references).'),
+    })
+    const gmailSendFieldMapSchema = z.object({
+      recipientEmail: z.string().min(1).default('recipientEmail'),
+      subject: z.string().min(1).default('subject'),
+      body: z.string().min(1).default('body'),
+      cc: z.string().min(1).optional(),
+      bcc: z.string().min(1).optional(),
+    })
+    tools.render_ui = tool({
+      description:
+        'Render an editable Gmail send form inline in the chat. ' +
+        'Use this only when the user explicitly asks to draft, compose, prepare, or send an email/message through Gmail and they need an editable send form instead of plain text. ' +
+        'This tool creates a user-approved Gmail send action; the model must not call Gmail send directly. The user clicking Send on the rendered card is the approval. ' +
+        'For v1, support plaintext email only: recipientEmail, optional cc/bcc, subject, and body. No attachments, no HTML, no replies/threading. ' +
+        'Available component types: Card (props: title, description), Field (props: label, hint), Input (props: name, placeholder, type), Textarea (props: name, placeholder, rows), Button (props: label, action, variant), ButtonRow (no props), Text (props: text, tone). ' +
+        'Field-bound components (Input, Textarea) read/write values keyed by their `name` prop; pre-fill via `initialValues`. ' +
+        'Button `action` should be "send-email" for the Gmail send button and "cancel" for cancel. ' +
+        'Recommended field names are recipientEmail, subject, body, cc, and bcc. If you use different names, provide fieldMap so the stored Gmail action can map fields correctly. ' +
+        'Example for drafting an email: spec.root="card", elements = { card: { type: "Card", props: { title: "Draft email" }, children: ["to","cc","bcc","subject","body","actions"] }, to: { type: "Field", props: { label: "To" }, children: ["to-in"] }, "to-in": { type: "Input", props: { name: "recipientEmail" } }, cc: { type: "Field", props: { label: "Cc" }, children: ["cc-in"] }, "cc-in": { type: "Input", props: { name: "cc" } }, bcc: { type: "Field", props: { label: "Bcc" }, children: ["bcc-in"] }, "bcc-in": { type: "Input", props: { name: "bcc" } }, subject: { type: "Field", props: { label: "Subject" }, children: ["subject-in"] }, "subject-in": { type: "Input", props: { name: "subject" } }, body: { type: "Field", props: { label: "Body" }, children: ["body-in"] }, "body-in": { type: "Textarea", props: { name: "body", rows: 6 } }, actions: { type: "ButtonRow", children: ["cancel","send"] }, cancel: { type: "Button", props: { label: "Cancel", action: "cancel", variant: "secondary" } }, send: { type: "Button", props: { label: "Send", action: "send-email", variant: "primary" } } } — pair with initialValues: { recipientEmail: "...", subject: "...", body: "..." }.',
+      inputSchema: z.object({
+        spec: z
+          .object({
+            root: z.string().describe('Key of the root element.'),
+            elements: z
+              .record(z.string(), renderUiElementSchema)
+              .describe('Flat map of element key -> element definition.'),
+          })
+          .describe('json-render Spec — flat element tree.'),
+        initialValues: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('Initial values for named fields, keyed by the Input/Textarea `name` prop.'),
+        fieldMap: gmailSendFieldMapSchema
+          .optional()
+          .describe('Optional field map if the form uses field names other than recipientEmail, subject, body, cc, bcc.'),
+      }),
+      execute: async (input, opts) => {
+        assertToolAllowed('render_ui')
+        const writer = extractUIStreamWriter(opts.experimental_context)
+        const actionId = 'send-email'
+        const fieldMap = input.fieldMap ?? {
+          recipientEmail: 'recipientEmail',
+          subject: 'subject',
+          body: 'body',
+          cc: 'cc',
+          bcc: 'bcc',
+        }
+        const payload: JsonRenderDataPayload = {
+          schemaVersion: JSON_RENDER_SCHEMA_VERSION,
+          spec: input.spec,
+          ...(input.initialValues ? { initialValues: input.initialValues } : {}),
+          actions: [
+            {
+              id: actionId,
+              kind: 'gmail.sendEmail',
+              fieldMap,
+            },
+          ],
+          actionResults: {
+            [actionId]: { status: 'idle' },
+          },
+        }
+        const partId = opts.toolCallId || `json-render-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`
+        appendJsonRenderDataPart(opts.experimental_context, {
+          type: 'data',
+          id: partId,
+          dataType: JSON_RENDER_DATA_TYPE,
+          data: payload,
+        })
+        if (writer) {
+          writer.write({
+            type: `data-${JSON_RENDER_DATA_TYPE}`,
+            id: partId,
+            data: payload,
+          })
+        }
+        return { rendered: true, action: 'gmail.sendEmail' }
       },
     })
   }

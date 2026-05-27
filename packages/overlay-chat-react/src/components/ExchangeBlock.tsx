@@ -21,6 +21,7 @@ import { webSourceDisplayKey, type WebSourceItem } from '../lib/web-sources'
 import { getDescriptiveToolLabel, pickFirstStringFromInput } from '../lib/tool-labels'
 import { MarkdownMessage } from './MarkdownMessage'
 import { FlashCopyIconButton } from './DraftReviewModal'
+import { JsonRenderPart } from './data-parts'
 
 function ToolLineLogo() {
   return (
@@ -760,6 +761,8 @@ export interface ExchangeBlockProps {
   onTabSelect: (tabIdx: number) => void
   isLoadingTabs: boolean
   responseInProgress: boolean
+  conversationId?: string | null
+  assistantMessageId?: string | null
   sourceCitations?: SourceCitationMap
   turnIdForActions: string | null
   modelLabel: string
@@ -787,7 +790,7 @@ export interface ExchangeBlockProps {
 
 export function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
-  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
+  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, conversationId, assistantMessageId, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, userMentions, onContinue, getModelDisplayName,
 }: ExchangeBlockProps) {
@@ -1022,6 +1025,19 @@ export function ExchangeBlock({
               </div>
             )
           }
+          if (seg.kind === 'render-ui') {
+            return (
+              <div key={`${exchIdx}-seq-${seg.originIndex}-${seg.block.key}`} className="w-full px-1 py-1">
+                <JsonRenderPart
+                  payload={seg.block.payload}
+                  dataPartId={seg.block.dataPartId}
+                  conversationId={conversationId}
+                  assistantMessageId={assistantMessageId}
+                  responseInProgress={responseInProgress}
+                />
+              </div>
+            )
+          }
           const block = seg.block
           const isLastText = seg.originIndex === lastTextBlockIndex
           return (
@@ -1167,4 +1183,3 @@ export function ExchangeBlock({
       </div>
     )
 }
-

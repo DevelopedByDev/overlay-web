@@ -65,6 +65,34 @@ export interface Entitlements {
   dailyLimits: { ask: number; write: number; agent: number }
 }
 
+export type JsonRenderActionResult = {
+  status: 'idle' | 'running' | 'succeeded' | 'failed'
+  message?: string
+  error?: string
+  executionId?: string
+  updatedAt?: number
+}
+
+export type JsonRenderGmailSendActionDescriptor = {
+  id: string
+  kind: 'gmail.sendEmail'
+  fieldMap: {
+    recipientEmail: string
+    subject: string
+    body: string
+    cc?: string
+    bcc?: string
+  }
+}
+
+export type JsonRenderDataPayload = {
+  schemaVersion: 1
+  spec: { root: string; elements: Record<string, unknown> }
+  initialValues?: Record<string, string>
+  actions: JsonRenderGmailSendActionDescriptor[]
+  actionResults?: Record<string, JsonRenderActionResult>
+}
+
 export type AssistantVisualBlock =
   | {
       kind: 'tool'
@@ -77,15 +105,18 @@ export type AssistantVisualBlock =
   | { kind: 'text'; text: string }
   | { kind: 'file'; url: string; mediaType?: string }
   | { kind: 'reasoning'; key: string; text: string; state?: string }
+  | { kind: 'render-ui'; key: string; dataPartId: string; payload: JsonRenderDataPayload }
 
 export type ToolVisualBlock = Extract<AssistantVisualBlock, { kind: 'tool' }>
 export type ReasoningVisualBlock = Extract<AssistantVisualBlock, { kind: 'reasoning' }>
+export type RenderUiVisualBlock = Extract<AssistantVisualBlock, { kind: 'render-ui' }>
 export type ToolGroupItem = ToolVisualBlock | ReasoningVisualBlock
 
 export type AssistantVisualSegment =
   | { kind: 'reasoning'; block: ReasoningVisualBlock; originIndex: number }
   | { kind: 'text'; block: Extract<AssistantVisualBlock, { kind: 'text' }>; originIndex: number }
   | { kind: 'file'; block: Extract<AssistantVisualBlock, { kind: 'file' }>; originIndex: number }
+  | { kind: 'render-ui'; block: RenderUiVisualBlock; originIndex: number }
   | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
   | { kind: 'tools'; items: ToolGroupItem[]; originIndex: number }
 
@@ -163,6 +194,10 @@ export type ServerConversationMessage = {
     mediaType?: string
     fileName?: string
     state?: string
+    id?: string
+    dataType?: string
+    data?: unknown
+    transient?: boolean
   }>
   model?: string
   metadata?: ChatMessageMetadata

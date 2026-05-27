@@ -79,6 +79,22 @@ test('media tools require structured media intent instead of keyword matching', 
   }
 })
 
+test('render_ui is exposed only for explicit email compose/send requests', async () => {
+  const { allowedOverlayToolIdsForTurn } = await import(
+    new URL('./exposure-policy.ts', import.meta.url).href,
+  )
+
+  const emailTools = allowedOverlayToolIdsForTurn({
+    latestUserText: 'Compose a Gmail email to jane@example.com with subject Follow up',
+  })
+  assert.equal(emailTools.includes('render_ui'), true)
+
+  const ordinaryTools = allowedOverlayToolIdsForTurn({
+    latestUserText: 'Find notes about Gmail deliverability',
+  })
+  assert.equal(ordinaryTools.includes('render_ui'), false)
+})
+
 test('automation execution hides automation management tools even for automation-shaped prompts', async () => {
   const { allowedOverlayToolIdsForTurn } = await import(
     new URL('./exposure-policy.ts', import.meta.url).href,

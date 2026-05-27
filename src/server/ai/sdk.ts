@@ -2,6 +2,8 @@ import 'server-only'
 
 export {
   convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
   experimental_generateVideo,
   generateImage,
   generateObject,
@@ -14,4 +16,5 @@ export {
 export type {
   ToolSet,
   UIMessage,
+  UIMessageStreamWriter,
 } from 'ai'

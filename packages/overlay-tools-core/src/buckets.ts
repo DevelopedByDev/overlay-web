@@ -22,6 +22,7 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'update_automation',
   'pause_automation',
   'delete_automation',
+  'render_ui',
 ])
 
 /** Maps tool name -> usage/cost bucket. */

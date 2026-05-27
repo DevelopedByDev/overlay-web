@@ -24,6 +24,38 @@ import type {
   ToolVisualBlock,
 } from './types'
 
+function isJsonRenderPayload(value: unknown): value is Extract<AssistantVisualBlock, { kind: 'render-ui' }>['payload'] {
+  if (!value || typeof value !== 'object') return false
+  const payload = value as {
+    schemaVersion?: unknown
+    spec?: { root?: unknown; elements?: unknown }
+    actions?: unknown
+  }
+  return (
+    payload.schemaVersion === 1 &&
+    typeof payload.spec?.root === 'string' &&
+    payload.spec.elements !== null &&
+    typeof payload.spec.elements === 'object' &&
+    Array.isArray(payload.actions)
+  )
+}
+
+function jsonRenderBlockFromPart(part: Record<string, unknown>, index: number): Extract<AssistantVisualBlock, { kind: 'render-ui' }> | null {
+  if (part.type === 'data-json-render') {
+    const payload = part.data
+    if (!isJsonRenderPayload(payload)) return null
+    const id = typeof part.id === 'string' && part.id.trim() ? part.id : `json-render-${index}`
+    return { kind: 'render-ui', key: id, dataPartId: id, payload }
+  }
+  if (part.type === 'data' && part.dataType === 'json-render') {
+    const payload = part.data
+    if (!isJsonRenderPayload(payload)) return null
+    const id = typeof part.id === 'string' && part.id.trim() ? part.id : `json-render-${index}`
+    return { kind: 'render-ui', key: id, dataPartId: id, payload }
+  }
+  return null
+}
+
 export function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> }): string {
   if (!msg.parts) return ''
   return msg.parts.filter((p) => p.type === 'text').map((p) => p.text || '').join('')
@@ -34,6 +66,8 @@ export function messageHasVisibleAssistantActivity(msg: { parts?: Array<{ type: 
     if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
     if (part.type === 'tool-invocation') return Boolean(part.toolInvocation)
     if (part.type === 'file') return Boolean(part.url)
+    if (part.type === 'data-json-render') return true
+    if (part.type === 'data' && (part as { dataType?: string }).dataType === 'json-render') return true
     return part.type.startsWith('tool-')
   })
 }
@@ -53,6 +87,11 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
   if (!parts?.length) return []
   const out: AssistantVisualBlock[] = []
   for (const p of parts) {
+    const dataBlock = jsonRenderBlockFromPart(p as Record<string, unknown>, out.length)
+    if (dataBlock) {
+      out.push(dataBlock)
+      continue
+    }
     const legacy = p as {
       type?: string
       toolInvocation?: {
@@ -65,6 +104,7 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
     }
     if (legacy?.type === 'tool-invocation' && legacy.toolInvocation?.toolName) {
       const inv = legacy.toolInvocation
+      if (inv.toolName === 'render_ui') continue
       out.push({
         kind: 'tool',
         key: (inv.toolCallId && inv.toolCallId.trim()) || `legacy-inv-${out.length}`,
@@ -82,10 +122,12 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
         input?: Record<string, unknown>
         output?: unknown
       }
+      const toolName = getToolName(p as never)
+      if (toolName === 'render_ui') continue
       out.push({
         kind: 'tool',
         key: (part.toolCallId && part.toolCallId.trim()) || `sdk-tool-${out.length}`,
-        name: getToolName(p as never),
+        name: toolName,
         state: part.state,
         toolInput: part.input,
         toolOutput: part.output,
@@ -399,6 +441,11 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
       i++
       continue
     }
+    if (b.kind === 'render-ui') {
+      out.push({ kind: 'render-ui', block: b, originIndex: i })
+      i++
+      continue
+    }
     if (b.kind === 'text') {
       out.push({ kind: 'text', block: b, originIndex: i })
       i++
@@ -594,6 +641,22 @@ export function mergeLiveStreamingParts(
             continue
           }
         }
+      }
+    }
+    if (part.type === 'data' && typeof part.id === 'string' && part.id) {
+      const existingIdx = nextParts.findIndex(
+        (candidate) =>
+          candidate.type === 'data' &&
+          candidate.id === part.id &&
+          candidate.dataType === part.dataType,
+      )
+      if (existingIdx >= 0) {
+        nextParts = [
+          ...nextParts.slice(0, existingIdx),
+          part,
+          ...nextParts.slice(existingIdx + 1),
+        ]
+        continue
       }
     }
 

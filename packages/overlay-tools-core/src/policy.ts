@@ -33,6 +33,7 @@ export const OVERLAY_TOOL_IDS = [
   'update_automation',
   'pause_automation',
   'delete_automation',
+  'render_ui',
   ...GENERATION_TOOL_IDS,
 ] as const
 

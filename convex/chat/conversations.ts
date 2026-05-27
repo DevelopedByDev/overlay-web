@@ -20,6 +20,13 @@ const messagePart = v.union(
     }),
   }),
   v.object({
+    type: v.literal('data'),
+    id: v.optional(v.string()),
+    dataType: v.string(),
+    data: v.any(),
+    transient: v.optional(v.boolean()),
+  }),
+  v.object({
     type: v.string(),
     text: v.optional(v.string()),
     url: v.optional(v.string()),
@@ -85,6 +92,18 @@ function isToolInvocationPart(
   candidate: MessagePart,
 ): candidate is Extract<MessagePart, { toolInvocation: unknown }> {
   return 'toolInvocation' in candidate
+}
+
+type DataMessagePart = MessagePart & {
+  type: 'data'
+  id?: string
+  dataType: string
+  data: unknown
+  transient?: boolean
+}
+
+function isDataMessagePart(candidate: MessagePart): candidate is DataMessagePart {
+  return candidate.type === 'data' && 'dataType' in candidate && 'data' in candidate
 }
 
 function stringifyForHistory(value: unknown): string {
@@ -180,6 +199,22 @@ function mergeStreamingParts(existingParts: MessageParts, newParts: MessageParts
         }
       }
     }
+    if (isDataMessagePart(part) && typeof part.id === 'string' && part.id) {
+      const existingIdx = nextParts.findIndex(
+        (candidate) =>
+          isDataMessagePart(candidate) &&
+          candidate.id === part.id &&
+          candidate.dataType === part.dataType,
+      )
+      if (existingIdx >= 0) {
+        nextParts = [
+          ...nextParts.slice(0, existingIdx),
+          part,
+          ...nextParts.slice(existingIdx + 1),
+        ]
+        continue
+      }
+    }
     nextParts = [...nextParts, part]
   }
   return nextParts
@@ -207,6 +242,85 @@ function applyStreamingDeltas(message: MessageDoc, deltas: MessageDeltaDoc[]): M
     }
   }
   return { ...message, content, parts }
+}
+
+const JSON_RENDER_DATA_TYPE = 'json-render'
+
+type JsonRenderActionResult = {
+  status: 'idle' | 'running' | 'succeeded' | 'failed'
+  message?: string
+  error?: string
+  executionId?: string
+  updatedAt?: number
+}
+
+type GmailSendActionDescriptor = {
+  id: string
+  kind: 'gmail.sendEmail'
+  fieldMap: {
+    recipientEmail: string
+    subject: string
+    body: string
+    cc?: string
+    bcc?: string
+  }
+}
+
+type JsonRenderPayload = {
+  schemaVersion?: number
+  spec?: unknown
+  initialValues?: Record<string, string>
+  actions?: GmailSendActionDescriptor[]
+  actionResults?: Record<string, JsonRenderActionResult>
+}
+
+function getJsonRenderPayload(part: MessagePart): JsonRenderPayload | null {
+  if (!isDataMessagePart(part) || part.dataType !== JSON_RENDER_DATA_TYPE) return null
+  const data = part.data
+  return data && typeof data === 'object' ? data as JsonRenderPayload : null
+}
+
+function findJsonRenderAction(
+  message: MessageDoc,
+  dataPartId: string,
+  actionId: string,
+): { part: MessagePart; payload: JsonRenderPayload; action: GmailSendActionDescriptor } | null {
+  const parts = Array.isArray(message.parts) ? message.parts : []
+  for (const part of parts) {
+    if (!isDataMessagePart(part) || part.id !== dataPartId) continue
+    const payload = getJsonRenderPayload(part)
+    const action = payload?.actions?.find(
+      (candidate) => candidate?.id === actionId && candidate.kind === 'gmail.sendEmail',
+    )
+    if (payload && action) return { part, payload, action }
+  }
+  return null
+}
+
+function patchJsonRenderActionResult(
+  parts: MessageParts,
+  dataPartId: string,
+  actionId: string,
+  result: JsonRenderActionResult,
+): MessageParts {
+  return parts.map((part) => {
+    if (!isDataMessagePart(part) || part.id !== dataPartId) return part
+    const payload = getJsonRenderPayload(part)
+    if (!payload) return part
+    return {
+      type: 'data' as const,
+      id: dataPartId,
+      dataType: JSON_RENDER_DATA_TYPE,
+      data: {
+        ...payload,
+        actionResults: {
+          ...(payload.actionResults ?? {}),
+          [actionId]: result,
+        },
+      },
+      ...('transient' in part && part.transient === true ? { transient: true } : {}),
+    }
+  }) as MessageParts
 }
 
 async function getMessageDeltas(
@@ -870,6 +984,215 @@ export const finalizeGeneratingMessage = mutation({
     })
     await deleteMessageDeltas(ctx, args.messageId)
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
+  },
+})
+
+export const getChatActionContext = query({
+  args: {
+    conversationId: v.id('conversations'),
+    assistantMessageId: v.id('conversationMessages'),
+    dataPartId: v.string(),
+    actionId: v.string(),
+    userId: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+    if (!conversation.projectId?.trim()) {
+      throw new Error('Project-scoped conversation required')
+    }
+    const message = await ctx.db.get(args.assistantMessageId)
+    if (
+      !message ||
+      message.userId !== args.userId ||
+      message.conversationId !== args.conversationId ||
+      message.role !== 'assistant'
+    ) {
+      throw new Error('Assistant message not found')
+    }
+    const actionContext = findJsonRenderAction(message, args.dataPartId, args.actionId)
+    if (!actionContext) {
+      throw new Error('Chat action not found')
+    }
+    return {
+      projectId: conversation.projectId,
+      action: actionContext.action,
+      actionResult: actionContext.payload.actionResults?.[args.actionId] ?? null,
+    }
+  },
+})
+
+export const startChatActionExecution = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    assistantMessageId: v.id('conversationMessages'),
+    dataPartId: v.string(),
+    actionId: v.string(),
+    idempotencyKey: v.string(),
+    inputHash: v.string(),
+    userId: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+    if (!conversation.projectId?.trim()) {
+      throw new Error('Project-scoped conversation required')
+    }
+    const message = await ctx.db.get(args.assistantMessageId)
+    if (
+      !message ||
+      message.userId !== args.userId ||
+      message.conversationId !== args.conversationId ||
+      message.role !== 'assistant'
+    ) {
+      throw new Error('Assistant message not found')
+    }
+
+    const actionContext = findJsonRenderAction(message, args.dataPartId, args.actionId)
+    if (!actionContext) {
+      throw new Error('Chat action not found')
+    }
+    const storedResult = actionContext.payload.actionResults?.[args.actionId]
+    const now = Date.now()
+    const existing = await ctx.db
+      .query('chatActionExecutions')
+      .withIndex('by_userId_idempotencyKey', (q) =>
+        q.eq('userId', args.userId).eq('idempotencyKey', args.idempotencyKey),
+      )
+      .first()
+
+    if (storedResult?.status === 'succeeded') {
+      return {
+        status: 'duplicate' as const,
+        projectId: conversation.projectId,
+        action: actionContext.action,
+        executionId: existing?._id,
+        resultSummary: storedResult.message ?? existing?.resultSummary,
+      }
+    }
+
+    if (existing?.status === 'succeeded') {
+      const parts = Array.isArray(message.parts) ? message.parts : []
+      await ctx.db.patch(args.assistantMessageId, {
+        parts: patchJsonRenderActionResult(parts, args.dataPartId, args.actionId, {
+          status: 'succeeded',
+          message: existing.resultSummary ?? 'Sent',
+          executionId: existing._id,
+          updatedAt: existing.completedAt ?? existing.updatedAt,
+        }),
+        updatedAt: now,
+      })
+      return {
+        status: 'duplicate' as const,
+        projectId: conversation.projectId,
+        action: actionContext.action,
+        executionId: existing._id,
+        resultSummary: existing.resultSummary,
+      }
+    }
+
+    if (existing?.status === 'running') {
+      return {
+        status: 'running' as const,
+        projectId: conversation.projectId,
+        action: actionContext.action,
+        executionId: existing?._id,
+      }
+    }
+
+    const executionPayload = {
+      userId: args.userId,
+      conversationId: args.conversationId,
+      assistantMessageId: args.assistantMessageId,
+      dataPartId: args.dataPartId,
+      actionId: args.actionId,
+      actionKind: 'gmail.sendEmail' as const,
+      idempotencyKey: args.idempotencyKey,
+      inputHash: args.inputHash,
+      status: 'running' as const,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+    const executionId = existing
+      ? (
+          await ctx.db.patch(existing._id, {
+            ...executionPayload,
+            resultSummary: undefined,
+            errorMessage: undefined,
+            completedAt: undefined,
+          }),
+          existing._id
+        )
+      : await ctx.db.insert('chatActionExecutions', executionPayload)
+
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    await ctx.db.patch(args.assistantMessageId, {
+      parts: patchJsonRenderActionResult(parts, args.dataPartId, args.actionId, {
+        status: 'running',
+        executionId,
+        updatedAt: now,
+      }),
+      updatedAt: now,
+    })
+    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+
+    return {
+      status: 'started' as const,
+      projectId: conversation.projectId,
+      action: actionContext.action,
+      executionId,
+    }
+  },
+})
+
+export const finishChatActionExecution = mutation({
+  args: {
+    executionId: v.id('chatActionExecutions'),
+    userId: v.string(),
+    status: v.union(v.literal('succeeded'), v.literal('failed')),
+    resultSummary: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const execution = await ctx.db.get(args.executionId)
+    if (!execution || execution.userId !== args.userId) {
+      throw new Error('Chat action execution not found')
+    }
+    const message = await ctx.db.get(execution.assistantMessageId)
+    if (!message || message.userId !== args.userId) {
+      throw new Error('Assistant message not found')
+    }
+    const now = Date.now()
+    await ctx.db.patch(args.executionId, {
+      status: args.status,
+      resultSummary: args.status === 'succeeded' ? (args.resultSummary ?? 'Sent') : undefined,
+      errorMessage: args.status === 'failed' ? (args.errorMessage ?? 'Send failed') : undefined,
+      updatedAt: now,
+      completedAt: now,
+    })
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    await ctx.db.patch(execution.assistantMessageId, {
+      parts: patchJsonRenderActionResult(parts, execution.dataPartId, execution.actionId, {
+        status: args.status,
+        message: args.status === 'succeeded' ? (args.resultSummary ?? 'Sent') : undefined,
+        error: args.status === 'failed' ? (args.errorMessage ?? 'Send failed') : undefined,
+        executionId: args.executionId,
+        updatedAt: now,
+      }),
+      updatedAt: now,
+    })
+    await ctx.db.patch(execution.conversationId, { lastModified: now, updatedAt: now })
+    return { ok: true }
   },
 })
 
