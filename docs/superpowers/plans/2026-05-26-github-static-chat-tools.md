@@ -203,6 +203,31 @@ git add scripts/composio-tools-smoke.ts docs/superpowers/plans/2026-05-26-github
 git commit -m "chore(chat-tools): add Composio tools.get smoke + record SDK signature"
 ```
 
+- [x] **Step 7: Follow-up smoke with `limit: 500` (run after Step 4 surfaced 20-tool default cap)**
+
+Re-ran the smoke with `{ toolkits: ['github'], limit: 500 }`. Results:
+
+- Returned **500 tools** (Composio honors the limit).
+- 187 `GITHUB_GET_*` tools, 58 `GITHUB_LIST_*` tools.
+- `GITHUB_GET_A_REPOSITORY` executes against `composiohq/composio` and returns real repo JSON.
+- VercelProvider auto-binds `connectedAccountId` (no explicit lookup needed in Task 3).
+
+**Critical product finding:** `{ toolkits: ['github'], limit: 500 }` exposes destructive operations (`GITHUB_DELETE_*`, `GITHUB_ADD_REPOSITORY_COLLABORATOR`, `GITHUB_ABORT_REPOSITORY_MIGRATION`, `GITHUB_ADD_EMAIL_ADDRESS_FOR_AUTHENTICATED_USER`, etc.). The existing `applyGithubRepoAllowlistToTools` wrap only enforces *repo-scope* (refuses non-allowlisted repos) — it does NOT distinguish read vs write/admin ops. Exposing 500 tools also means a huge prompt overhead.
+
+**Decision (user-approved):** Phase A of this PR uses a **curated read-only tool list** (~10-15 tools) instead of the open `{ toolkits, limit }` config. Phase B (separate follow-up PR) adds a per-project opt-in flag for full toolkit access.
+
+---
+
+## Phase A vs Phase B scope
+
+### Phase A — this PR
+
+Pass an explicit `tools: [...]` array of READ-only GitHub tools to `composio.tools.get(entityId, { tools: [...] })`. Tight security (no write/admin ops reachable from chat), small prompt (~10-15 tools), matches the original product intent of "chat can answer questions about an allowlisted repo." The allowlist wrap still operates per-repo as the second layer of defense.
+
+### Phase B — follow-up PR (NOT in this plan's execution scope)
+
+Add a per-project `allowGithubWrites: boolean` field (defaults false). When true, the chat loads the broader `{ toolkits: ['github'], limit: 500 }` toolset; when false, the curated read-only list. UI: a single checkbox in the project settings drawer next to the github integration row. Requires Convex schema change, mutation, Convex deploy, route plumbing, and UI work. Track separately. Document Phase B in its own design doc when scheduled.
+
 ---
 
 ## Task 1: Verify allowlist wrap still passes against a realistic `GITHUB_*` ToolSet (green baseline)
@@ -398,47 +423,74 @@ Expected: FAIL because the current implementation still calls `composio.create(.
 
 (If `createBrowserUnifiedTools` isn't exported, also export it now — the existing `prewarmBrowserUnifiedTools` and `getBrowserUnifiedTools` wrap it but the test goes direct.)
 
-- [ ] **Step 3: Implement the swap**
+- [ ] **Step 3: Define the curated READ-only tool list**
+
+In `src/server/tools/composio-tools.ts`, near the top of the file (after imports), declare a frozen constant:
+
+```ts
+/**
+ * Curated read-only GitHub tool slugs surfaced to the chat AI.
+ *
+ * Selected to cover "ask questions about an allowlisted repo" use cases —
+ * NO write/admin/destructive operations. Composio's `{ toolkits: ['github'] }`
+ * filter exposes ~500 tools including DELETE/ADD_COLLABORATOR/etc.; this list
+ * narrows the surface to the minimum set the chat needs.
+ *
+ * If user opts in to writes (Phase B follow-up: per-project `allowGithubWrites`
+ * flag), the chat loads `{ toolkits: ['github'], limit: 500 }` instead.
+ */
+const CHAT_GITHUB_READONLY_TOOL_SLUGS = [
+  // Repo metadata
+  'GITHUB_GET_A_REPOSITORY',
+  'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER',
+  // File/directory content
+  'GITHUB_GET_REPOSITORY_CONTENT',
+  'GITHUB_GET_THE_README',
+  // Commits
+  'GITHUB_LIST_COMMITS',
+  'GITHUB_GET_A_COMMIT',
+  // Issues
+  'GITHUB_LIST_REPOSITORY_ISSUES',
+  'GITHUB_GET_AN_ISSUE',
+  // Pull requests
+  'GITHUB_LIST_PULL_REQUESTS',
+  'GITHUB_GET_A_PULL_REQUEST',
+  // Search
+  'GITHUB_SEARCH_CODE',
+] as const
+```
+
+**Important — slug-verification step before committing:** Composio tool slugs are case-sensitive and not all of the above necessarily exist in this SDK version. Verify each slug exists by running the smoke script with `{ tools: [<slug>] }` (one round-trip per slug, or batch them in a single call). If any slug isn't recognized, find Composio's actual name from the smoke's full keys list and substitute. Record the final verified list in this Task 3 Step 3 by editing the plan file.
+
+- [ ] **Step 4: Implement the swap**
 
 Replace the block from `const session = await composio.create(...)` through the wrap-loop with:
 
 ```ts
 const entityId = projectComposioEntityId(args.userId, args.projectId)
 
-// Static toolkit-scoped tools instead of the v3 tool-router session.
-// Tool names (GITHUB_GET_REPO, etc.) are what applyGithubRepoAllowlistToTools
-// matches; the tool-router session returns only meta-tools and is useless
-// for name-based allowlists.
+// Static, curated read-only GitHub tools instead of the v3 tool-router
+// session. Tool names (GITHUB_GET_REPO, etc.) are what
+// applyGithubRepoAllowlistToTools matches at the route layer; the
+// tool-router session returned only meta-tools and was useless for
+// name-based allowlists.
+//
+// Curated list (not `{ toolkits: ['github'], limit: 500 }`) to avoid
+// exposing 500 tools including destructive ops. Phase B follow-up will
+// add per-project opt-in for the full toolkit.
 const rawTools = (await composio.tools.get(entityId, {
-  toolkits: ['github'],
+  tools: [...CHAT_GITHUB_READONLY_TOOL_SLUGS],
 })) as ToolSet
 
-console.log('[composio-tools] static github toolset keys:', Object.keys(rawTools))
+console.log(
+  '[composio-tools] static github toolset keys:',
+  Object.keys(rawTools),
+)
 
 return rawTools
 ```
 
-> **If Task 0 result is YELLOW** (connectedAccountId binding required), insert above `tools.get`:
->
-> ```ts
-> if (!composio.connectedAccounts) {
->   throw new Error('composio.connectedAccounts is required for github tool binding')
-> }
-> const ghAccountsResp = await composio.connectedAccounts.list({
->   userIds: [entityId],
->   toolkitSlugs: ['github'],
-> })
-> const githubCaId = ghAccountsResp?.items?.[0]?.id
-> ```
->
-> Then in `tools.get(...)`, add the binding field with the exact name recorded in Task 0 Step 1 — for example:
->
-> ```ts
-> const rawTools = (await composio.tools.get(entityId, {
->   toolkits: ['github'],
->   ...(githubCaId ? { connectedAccountIds: { github: githubCaId } } : {}),
-> })) as ToolSet
-> ```
+VercelProvider auto-binds `connectedAccountId` (verified GREEN in Task 0 Step 7). No connectedAccounts lookup needed.
 
 - [ ] **Step 4: Run test, verify GREEN**
 
