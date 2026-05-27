@@ -10,7 +10,7 @@ import {
   type DeploymentTarget,
 } from './convex-admin-utils.ts'
 
-const TITLE_MODEL = 'nvidia/nemotron-nano-9b-v2'
+const DEFAULT_TITLE_MODEL = 'openai/gpt-4o-mini'
 const FALLBACK_TITLE = 'New Chat'
 
 const titleSchema = z.object({
@@ -89,15 +89,20 @@ async function processTarget(target: DeploymentTarget, args: {
   maxCount: number
   apiKey: string
   gatewayUrl: string
+  modelId: string
 }) {
-  const { serverSecret, userId, dryRun, maxCount, apiKey, gatewayUrl } = args
+  const { serverSecret, userId, dryRun, maxCount, apiKey, gatewayUrl, modelId } = args
 
   const gateway = createOpenAICompatible({
-    name: 'gateway',
+    name: 'openrouter',
     apiKey,
     baseURL: gatewayUrl,
+    headers: {
+      'HTTP-Referer': 'https://getoverlay.io',
+      'X-Title': 'Overlay backfill-chat-titles',
+    },
   })
-  const model = gateway(TITLE_MODEL)
+  const model = gateway(modelId)
 
   console.log(`\n[${target.toUpperCase()}] backfill${dryRun ? ' (dry run)' : ''}`)
 
@@ -146,14 +151,27 @@ async function processTarget(target: DeploymentTarget, args: {
         model,
         schema: titleSchema,
         system:
-          'You write short, precise chat titles. Capture the actual topic, not the first words.',
+          'You write short, precise chat titles. Capture the actual topic, not the first words. Respond as JSON.',
         temperature: 0.2,
         maxOutputTokens: 80,
         prompt: `Generate a concise title for a conversation that starts with this message:\n\n${text.slice(0, 1200)}`,
       })
       generatedTitle = sanitizeTitle(result.object.title || '')
     } catch (error) {
-      console.error(`  FAIL ${conversation._id} — title generation: ${error instanceof Error ? error.message : String(error)}`)
+      const err = error as Error & {
+        responseBody?: string
+        statusCode?: number
+        url?: string
+        cause?: unknown
+        data?: unknown
+      }
+      console.error(`  FAIL ${conversation._id} — title generation:`)
+      console.error(`    message: ${err.message}`)
+      if (err.statusCode) console.error(`    status:  ${err.statusCode}`)
+      if (err.url) console.error(`    url:     ${err.url}`)
+      if (err.responseBody) console.error(`    body:    ${err.responseBody}`)
+      if (err.data) console.error(`    data:    ${JSON.stringify(err.data)}`)
+      if (err.cause) console.error(`    cause:   ${JSON.stringify(err.cause)}`)
       failed++
       continue
     }
@@ -219,17 +237,19 @@ async function main() {
   const maxCount = limitArg ? Math.max(1, Number(limitArg)) : Number.POSITIVE_INFINITY
   const envArg = readArg('env', 'prod')
   const targets = resolveTargets(envArg)
+  const modelId = readArg('model', DEFAULT_TITLE_MODEL) || DEFAULT_TITLE_MODEL
 
-  const apiKey = process.env.AI_GATEWAY_API_KEY?.trim()
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim()
   if (!apiKey) {
-    throw new Error('Missing AI_GATEWAY_API_KEY in env')
+    throw new Error('Missing OPENROUTER_API_KEY in env (.env.local). Run `vercel env pull .env.local` to fetch it.')
   }
-  const gatewayUrl =
-    process.env.AI_GATEWAY_URL?.trim() || 'https://ai-gateway.vercel.sh/v1/chat/completions'
+  const gatewayUrl = 'https://openrouter.ai/api/v1'
+
+  console.log(`Using model: ${modelId} via OpenRouter`)
 
   for (const target of targets) {
     const userId = await resolveUserId(target, serverSecret, explicitUserId)
-    await processTarget(target, { serverSecret, userId, dryRun, maxCount, apiKey, gatewayUrl })
+    await processTarget(target, { serverSecret, userId, dryRun, maxCount, apiKey, gatewayUrl, modelId })
   }
 
   if (dryRun) {
