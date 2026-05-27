@@ -3,6 +3,7 @@ import { mutation, query } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { normalizeGithubRepoAllowlist } from '../lib/github_repo_allowlist_normalize'
+import { normalizeGithubToolsEnabled } from '../lib/github_tools_enabled_normalize'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -159,6 +160,43 @@ export const setGithubRepoAllowlist = mutation({
     const normalized = normalizeGithubRepoAllowlist(repos)
     await ctx.db.patch(projectId, {
       githubRepoAllowlist: normalized,
+      updatedAt: Date.now(),
+    })
+    return normalized
+  },
+})
+
+/**
+ * Sets the enabled GitHub tool slugs for a project.
+ * Normalizes and validates the slug list using the shared normalizer.
+ * Returns the normalized list for immediate client sync.
+ *
+ * Semantics:
+ *  - Field absent on the doc: "use defaults" (chat route falls back to
+ *    DEFAULT_GITHUB_TOOL_SLUGS).
+ *  - Empty array []: explicit "user disabled all GitHub tools".
+ *  - Non-empty array: explicit enabled slugs.
+ *
+ * The mutation trusts + normalizes; the route layer (T6) performs explicit
+ * 400 rejection at the user-facing boundary.
+ */
+export const setGithubToolsEnabled = mutation({
+  args: {
+    projectId: v.id('projects'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    slugs: v.array(v.string()),
+  },
+  handler: async (ctx, { projectId, userId, accessToken, serverSecret, slugs }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    const project = await ctx.db.get(projectId)
+    if (!project || project.userId !== userId) {
+      throw new Error('Unauthorized')
+    }
+    const normalized = normalizeGithubToolsEnabled(slugs)
+    await ctx.db.patch(projectId, {
+      githubToolsEnabled: normalized,
       updatedAt: Date.now(),
     })
     return normalized

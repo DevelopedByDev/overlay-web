@@ -300,6 +300,7 @@ export default defineSchema({
     // DB validator accepts existing documents that already carry the field.
     enabledIntegrationSlugs: v.optional(v.array(v.string())),
     githubRepoAllowlist: v.optional(v.array(v.string())),
+    githubToolsEnabled: v.optional(v.array(v.string())),
     parentId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
