@@ -315,6 +315,21 @@ export const list = query({
   },
 })
 
+export const listAllForUserAdmin = query({
+  args: { userId: v.string(), serverSecret: v.string() },
+  handler: async (ctx, { userId, serverSecret }) => {
+    await authorizeUserAccess({ userId, serverSecret })
+    const all = await ctx.db
+      .query('conversations')
+      .withIndex('by_userId_lastModified', (q) => q.eq('userId', userId))
+      .order('desc')
+      .take(1000)
+    return all
+      .filter((c) => !c.deletedAt)
+      .map(normalizeConversationDoc)
+  },
+})
+
 export const listByProject = query({
   args: {
     projectId: v.string(),

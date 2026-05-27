@@ -264,6 +264,16 @@ export const getUserProfile = query({
   },
 })
 
+/** Server-only: list all subscription userIds + email (for admin scripts / one-off backfills). */
+export const listSubscriptionUserIdsAdmin = query({
+  args: { serverSecret: v.string() },
+  handler: async (ctx, { serverSecret }) => {
+    requireServerSecret(serverSecret)
+    const subs = await ctx.db.query('subscriptions').collect()
+    return subs.map((sub) => ({ userId: sub.userId, email: sub.email }))
+  },
+})
+
 /** Server-only: read persisted personalized chat starters (see chatStarterDay for daily refresh). */
 export const getChatStartersByServer = query({
   args: { serverSecret: v.string(), userId: v.string() },
