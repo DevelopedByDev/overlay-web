@@ -6,6 +6,54 @@ import type { MouseEvent } from 'react'
 export type ChatHistoryItem = {
   _id: string
   title: string
+  lastModified: number
+  updatedAt?: number
+}
+
+const ABSOLUTE_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+})
+
+const SHORT_DATE_WITH_YEAR_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+})
+
+function formatChatTimestamp(ms: number): { short: string; full: string } {
+  if (!Number.isFinite(ms) || ms <= 0) return { short: '', full: '' }
+  const date = new Date(ms)
+  const now = Date.now()
+  const diffMs = now - ms
+  const full = ABSOLUTE_TIMESTAMP_FORMATTER.format(date)
+
+  if (diffMs < 60_000) return { short: 'now', full }
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 60) return { short: `${minutes}m`, full }
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return { short: `${hours}h`, full }
+
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const startOfDate = new Date(date)
+  startOfDate.setHours(0, 0, 0, 0)
+  const dayDiff = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000)
+  if (dayDiff === 1) return { short: 'Yesterday', full }
+  if (dayDiff < 7) return { short: `${dayDiff}d`, full }
+
+  if (date.getFullYear() === new Date().getFullYear()) {
+    return { short: SHORT_DATE_FORMATTER.format(date), full }
+  }
+  return { short: SHORT_DATE_WITH_YEAR_FORMATTER.format(date), full }
 }
 
 type ChatHistorySidebarProps = {
@@ -58,6 +106,7 @@ function ChatHistoryRow({
   onCancelRename: () => void
   onRequestDelete: (event: MouseEvent<HTMLButtonElement>) => void
 }) {
+  const timestamp = formatChatTimestamp(chat.lastModified)
   return (
     <div
       onClick={() => {
@@ -102,6 +151,15 @@ function ChatHistoryRow({
           {unread}
         </span>
       )}
+      {!isEditing && timestamp.short ? (
+        <time
+          dateTime={new Date(chat.lastModified).toISOString()}
+          title={timestamp.full}
+          className="ml-2 shrink-0 text-[10px] tabular-nums text-[var(--muted)] transition-opacity group-hover:opacity-0"
+        >
+          {timestamp.short}
+        </time>
+      ) : null}
       {!isEditing ? (
         <>
           <button
