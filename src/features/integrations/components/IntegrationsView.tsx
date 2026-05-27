@@ -3,7 +3,7 @@
 // Compatibility wrapper: canonical integration contracts/controllers live in
 // @overlay/app-core, typed transport in @overlay/api-client, and reusable
 // presentation in @overlay/modules-react.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import posthog from 'posthog-js'
 import {
@@ -92,6 +92,9 @@ export default function IntegrationsView({
   const [availableVisible, setAvailableVisible] = useState(LIST_PAGE_SIZE)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [isSearching, setIsSearching] = useState(false)
+  const searchSeqRef = useRef(0)
   const { refreshSession } = useAuth()
   const { requireAuth } = useGuestGate()
 
@@ -172,6 +175,32 @@ export default function IntegrationsView({
     }
   }, [projectId, rememberLogos])
 
+  const loadSearch = useCallback(async (q: string) => {
+    if (!q) return
+    const reqId = ++searchSeqRef.current
+    setIsSearching(true)
+    try {
+      const data = await overlayAppClient.integrations.get<IntegrationSearchResponse>({
+        action: 'search',
+        q,
+        limit: 50,
+        projectId: projectId || undefined,
+      })
+      if (reqId !== searchSeqRef.current) return
+      const items = (Array.isArray(data.items) ? data.items : []).map((item) =>
+        connectorFromIntegrationSummary(item),
+      )
+      if (items.length > 0) {
+        setCatalogItems((prev) => mergeConnectorCatalogEntries(prev, items))
+        rememberLogos(items)
+      }
+    } catch {
+      // non-fatal; client-side filter still applies
+    } finally {
+      if (reqId === searchSeqRef.current) setIsSearching(false)
+    }
+  }, [projectId, rememberLogos])
+
   useEffect(() => {
     if (projectId) return
     let cancelled = false
@@ -198,6 +227,19 @@ export default function IntegrationsView({
     void loadConnected()
     void loadCatalog()
   }, [hasInitialData, loadCatalog, loadConnected, loadRegistry])
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
+    if (!debouncedQuery) {
+      setIsSearching(false)
+      return
+    }
+    void loadSearch(debouncedQuery)
+  }, [debouncedQuery, loadSearch])
 
   useEffect(() => {
     const onFocus = () => {
@@ -422,6 +464,25 @@ export default function IntegrationsView({
         onSearchOpenChange={setSearchOpen}
         onSearchQueryChange={setSearchQuery}
       />
+
+      {searchQuery ? (
+        <div className="mx-auto w-full max-w-2xl px-6 pt-3 text-xs text-[var(--muted)]">
+          {isSearching ? (
+            <span>Searching the full catalog…</span>
+          ) : filteredAvailableList.length === 0 && filteredConnectedRows.length === 0 ? (
+            <span>
+              No matches for &ldquo;{searchQuery}&rdquo;.{' '}
+              <button
+                type="button"
+                onClick={() => setIsDialogOpen(true)}
+                className="underline transition-colors hover:text-[var(--foreground)]"
+              >
+                Browse full catalog →
+              </button>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       <IntegrationsPanel
         loading={isLoading}
