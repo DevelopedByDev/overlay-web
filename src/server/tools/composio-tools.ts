@@ -157,8 +157,33 @@ async function buildBrowserUnifiedTools(args: {
 
   const { Composio, VercelProvider } = await loadComposioModules()
   const composio = new Composio({ apiKey, provider: new VercelProvider() })
-  const session = await composio.create(projectComposioEntityId(args.userId, args.projectId))
+  // manageConnections: false — integrations are managed exclusively via the
+  // project settings drawer in this app, never via chat. Defaulting to `true`
+  // makes Composio inject `MANAGE_CONNECTIONS` / `INITIATE_CONNECTION` meta-
+  // tools and have SEARCH_TOOLS surface them, which causes the model to
+  // present a "Connect this integration" card even when the toolkit is
+  // already connected for the entity. Tools fall back to the entity's
+  // existing connected accounts when called directly.
+  // Diagnostic Fix A: explicitly scope toolkits. v3 tool-router defaults to a
+  // small meta-tool set (SEARCH_TOOLS, MULTI_EXECUTE_TOOL, etc.) and never
+  // pre-loads individual toolkit tools — which breaks the GITHUB_*-name-based
+  // allowlist wrap below. Passing `toolkits` may (a) cause Composio to expose
+  // individual toolkit tools directly, or (b) just narrow what SEARCH_TOOLS
+  // surfaces. The next `[composio-tools] session toolset keys:` log line
+  // tells us which.
+  const session = await composio.create(
+    projectComposioEntityId(args.userId, args.projectId),
+    {
+      toolkits: ['github', 'gmail', 'googledrive', 'googlecalendar', 'googlesheets', 'slack', 'notion', 'linear', 'outlook', 'cal_com'],
+      manageConnections: false,
+    },
+  )
   const rawTools = (await session.tools()) as ToolSet
+  // Diagnostic: confirms what Composio puts in the toolset for this session.
+  // Specifically: do GITHUB_* tools exist? Is COMPOSIO_MANAGE_CONNECTIONS still
+  // here despite `manageConnections: false`? Remove once the chat→github path
+  // is stable.
+  console.log('[composio-tools] session toolset keys:', Object.keys(rawTools))
   const wrappedTools = {} as ToolSet
   const { resolve } = resolveComposioSessionIdFactory()
 

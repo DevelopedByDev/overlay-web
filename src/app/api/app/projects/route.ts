@@ -136,7 +136,10 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    // Apply regular update if there are non-allowlist fields
+    // Apply regular update if there are non-allowlist fields.
+    // throwOnError so a failing mutation surfaces as a 500 to the client
+    // instead of being silently swallowed (which would let the stale GET
+    // below masquerade as a successful save).
     if (name !== undefined || instructions !== undefined || parentId !== undefined) {
       await convex.mutation('projects/projects:update', {
         projectId: projectId as Id<'projects'>,
@@ -145,17 +148,17 @@ export async function PATCH(request: NextRequest) {
         name,
         instructions,
         parentId: parentId ?? undefined,
-      })
+      }, { throwOnError: true })
     }
 
-    // Apply allowlist update if present
+    // Apply allowlist update if present (same rationale as above).
     if (githubRepoAllowlist !== undefined) {
       await convex.mutation('projects/projects:setGithubRepoAllowlist', {
         projectId: projectId as Id<'projects'>,
         userId: auth.userId,
         serverSecret,
         repos: githubRepoAllowlist,
-      })
+      }, { throwOnError: true })
     }
 
     const project = await convex.query<ProjectDoc | null>('projects/projects:get', {
@@ -164,8 +167,10 @@ export async function PATCH(request: NextRequest) {
       serverSecret,
     })
     return NextResponse.json({ success: true, project })
-  } catch {
-    return NextResponse.json({ error: 'Failed to update project' }, { status: 500 })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update project'
+    console.error('[api/app/projects PATCH] update failed', { error: message })
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 

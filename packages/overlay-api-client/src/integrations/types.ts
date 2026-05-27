@@ -10,4 +10,5 @@ export interface IntegrationQuery {
 export interface GithubRepositoryListQuery {
   cursor?: string
   limit?: number
+  projectId?: string
 }

@@ -3,7 +3,26 @@ import { pathToFileURL } from 'node:url'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getServerProviderKey } from '@/server/ai/provider-keys'
-import type { GithubRepositoryListResponse, GithubRepositoryListItem } from '@overlay/app-core'
+import { convex } from '@/server/database/convex'
+import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { projectComposioEntityId } from '@/server/tools/composio-entity'
+import {
+  buildGithubRepositoryListResponse,
+  classifyGithubRepositoryProxyFailure,
+  findGithubConnectedAccountId,
+  isGithubRepositoryToolSuccess,
+  parseGithubRepositoryLimit,
+  parseGithubRepositoryPage,
+} from '@/server/integrations/github-repositories'
+import type { GithubRepositoryListResponse } from '@overlay/app-core'
+import type { Id } from '../../../../../../../convex/_generated/dataModel'
+
+type ConnectedAccountRecord = {
+  id?: string
+  appName?: string
+  status?: string
+  isDisabled?: boolean
+}
 
 /**
  * Loads the Composio SDK using dynamic import with fallback to overlay-desktop node_modules.
@@ -34,65 +53,88 @@ async function getComposioApiKey(accessToken: string): Promise<string | null> {
   return serverKey ?? process.env.COMPOSIO_API_KEY ?? null
 }
 
-/**
- * Extracts repository full name from a Composio repository object.
- * Tries multiple possible field names since Composio's response shape may vary.
- *
- * Returns only values that contain a literal `/` separator — bare repository
- * names without an owner prefix would render in the picker but fail validation
- * on save (the normalizer regex requires `owner/name`), producing confusing
- * 400 errors. Skip them at the extractor instead.
- */
-function extractRepositoryFullName(item: unknown): string | null {
-  if (!item || typeof item !== 'object') return null
+function repositoryListErrorResponse(
+  error: GithubRepositoryListResponse['error'],
+  status = 200,
+): NextResponse {
+  return NextResponse.json(
+    { items: [], nextCursor: null, error } as GithubRepositoryListResponse,
+    { status },
+  )
+}
 
-  const record = item as Record<string, unknown>
-
-  // Try common field names for repository full name
-  const fullName =
-    record.full_name ||
-    record.fullName ||
-    record.name ||
-    (typeof record.repository === 'object' && record.repository !== null
-      ? (record.repository as Record<string, unknown>).full_name
-      : null)
-
-  if (typeof fullName !== 'string') return null
-  const trimmed = fullName.trim()
+async function requireProjectEntityId(projectId: string | null, userId: string): Promise<string | null> {
+  const trimmed = projectId?.trim()
   if (!trimmed) return null
-  // Must contain exactly one '/' producing two non-empty segments.
-  const parts = trimmed.split('/')
-  if (parts.length !== 2 || !parts[0] || !parts[1]) return null
-  return trimmed
+
+  try {
+    const project = await convex.query<{ _id: string } | null>('projects/projects:get', {
+      projectId: trimmed as Id<'projects'>,
+      userId,
+      serverSecret: getInternalApiSecret(),
+    })
+    if (!project) return null
+  } catch {
+    return null
+  }
+
+  return projectComposioEntityId(userId, trimmed)
 }
 
 /**
- * Extracts boolean flags from a repository object.
+ * Surfaces Composio API error envelope fields (status, errorId, body) in logs.
+ * Default util.inspect collapses these to `[Object]` and hides the API message.
+ *
+ * Also traverses `.cause` chain (up to 3 levels). `ComposioToolExecutionError`
+ * wraps the underlying `APIError` from `@composio/client` as its `cause`, so
+ * the actual HTTP status and response body live there, not on the outer error.
  */
-function extractRepositoryFlags(item: unknown): { private?: boolean; archived?: boolean } {
-  if (!item || typeof item !== 'object') return {}
-
-  const record = item as Record<string, unknown>
-  const flags: { private?: boolean; archived?: boolean } = {}
-
-  if (typeof record.private === 'boolean') {
-    flags.private = record.private
+function describeComposioError(err: unknown, depth = 0): Record<string, unknown> {
+  if (!err || typeof err !== 'object') return { message: String(err) }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyErr = err as any
+  const out: Record<string, unknown> = {
+    name: anyErr.constructor?.name,
+    code: anyErr.code,
+    status: anyErr.status,
+    errorId: anyErr.errorId,
+    error: anyErr.error,
+    message: err instanceof Error ? err.message : String(err),
   }
-  if (typeof record.archived === 'boolean') {
-    flags.archived = record.archived
+  if (anyErr.possibleFixes) out.possibleFixes = anyErr.possibleFixes
+  if (depth < 3 && anyErr.cause) {
+    out.cause = describeComposioError(anyErr.cause, depth + 1)
   }
+  return out
+}
 
-  return flags
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function listConnectedAccounts(composio: any, entityId: string): Promise<ConnectedAccountRecord[]> {
+  // Composio's v1 `connectedAccounts` endpoint started returning 410 ("Gone");
+  // use the v3 SDK surface. `findGithubConnectedAccountId` already reads from
+  // either `appName` (v1) or `toolkit.slug` (v3), so this swap is downstream-
+  // transparent.
+  try {
+    const response = await composio.connectedAccounts.list({ userIds: [entityId] })
+    return Array.isArray(response?.items) ? response.items : []
+  } catch (err) {
+    console.warn(
+      `[GitHub Repositories] listConnectedAccounts SDK call failed for entity ${entityId.slice(-8)}:`,
+      err instanceof Error ? err.message : String(err),
+    )
+    return []
+  }
 }
 
 /**
  * GET /api/app/integrations/github/repositories
  *
- * Returns the authenticated user's GitHub repositories as seen by their connected
- * Composio account. Used by the project-settings drawer for repository selection.
+ * Returns GitHub repositories visible to the connected account for this project.
+ * Used by the project-settings drawer for repository selection.
  *
  * Query params:
- *   - cursor?: string   — pagination cursor (passed through to Composio opaquely)
+ *   - projectId: string  — project whose connected GitHub account should be used
+ *   - cursor?: string   — GitHub REST page number as an opaque client cursor
  *   - limit?: number    — max items per page (default 100, capped at 200)
  *
  * Response shape: GithubRepositoryListResponse
@@ -114,126 +156,78 @@ export async function GET(request: NextRequest) {
     // Get Composio API key
     const apiKey = await getComposioApiKey(auth.accessToken)
     if (!apiKey) {
-      return NextResponse.json({
-        items: [],
-        nextCursor: null,
-        error: 'github_not_connected',
-      } as GithubRepositoryListResponse)
+      return repositoryListErrorResponse('github_not_connected')
     }
 
     // Parse query parameters
     const { searchParams } = new URL(request.url)
-
-    // cursor: opaque string forwarded to Composio. Validated against a permissive
-    // alphanumeric/base64-ish character set before forwarding to avoid forwarding
-    // attacker-controlled values into the SDK's URL construction (defense in depth).
-    const rawCursor = searchParams.get('cursor')
-    const cursor = rawCursor && /^[A-Za-z0-9+/=_.\-]{1,512}$/.test(rawCursor) ? rawCursor : undefined
-
-    // limit: clamp to [1, 200] with default 100. parseInt may return NaN for
-    // non-numeric input; Number.isFinite guards against propagating NaN into
-    // Math.min (which would yield NaN and be forwarded to the SDK).
-    const limitParam = searchParams.get('limit')
-    const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
-    const limit = Math.min(
-      Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 100,
-      200,
-    )
-
-    // Load Composio SDK and create a per-user session. The session binds the
-    // outbound tool calls to the user's connected GitHub account.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let session: any
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const composio: any = await loadComposioSDK(apiKey)
-      session = await composio.create(auth.userId)
-    } catch (err) {
-      console.error('[GitHub Repositories] Failed to load Composio SDK or create session:', err)
-      return NextResponse.json(
-        {
-          items: [],
-          nextCursor: null,
-          error: 'fetch_failed',
-        } as GithubRepositoryListResponse
-      )
+    const entityId = await requireProjectEntityId(searchParams.get('projectId'), auth.userId)
+    if (!entityId) {
+      return repositoryListErrorResponse('github_not_connected', 400)
     }
 
-    // Execute the GITHUB_LIST_REPOS tool via the session. This matches the
-    // documented Composio SDK API (session.execute(toolSlug, args)) — the
-    // earlier draft used a non-existent composio.getAction() method.
+    // Load the SDK once — used for both connectedAccounts.list (discovery) and
+    // tools.execute (the actual proxy call below).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let composio: any
+    try {
+      composio = await loadComposioSDK(apiKey)
+    } catch (err) {
+      console.error('[GitHub Repositories] Failed to load Composio SDK:', describeComposioError(err))
+      return repositoryListErrorResponse('fetch_failed')
+    }
+
+    const connectedAccounts = await listConnectedAccounts(composio, entityId)
+    const githubConnectedAccountId = findGithubConnectedAccountId(connectedAccounts)
+    if (!githubConnectedAccountId) {
+      return repositoryListErrorResponse('github_not_connected')
+    }
+
+    const page = parseGithubRepositoryPage(searchParams.get('cursor'))
+    const limit = parseGithubRepositoryLimit(searchParams.get('limit'))
+
+    // Use Composio's pre-built GITHUB tool slug rather than the generic
+    // external-proxy surface. The proxy is gated behind an org entitlement
+    // (`ExternalProxy_OrgNotAllowed`) this org doesn't have; the toolkit
+    // tool path is part of the core product.
+    const composioArguments: Record<string, string | number> = {
+      visibility: 'all',
+      affiliation: 'owner,collaborator,organization_member',
+      sort: 'updated',
+      direction: 'desc',
+      per_page: limit,
+      page,
+    }
+
     let result: unknown
     try {
-      const args: Record<string, unknown> = { per_page: limit }
-      if (cursor) {
-        args.cursor = cursor
+      result = await composio.tools.execute(
+        'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER',
+        {
+          // Composio requires BOTH userId (entity_id) AND connectedAccountId
+          // for tools.execute against authenticated toolkits. Passing only the
+          // connectedAccountId returns 400 `ActionExecute_ConnectedAccountEntityIdRequired`.
+          userId: entityId,
+          connectedAccountId: githubConnectedAccountId,
+          arguments: composioArguments,
+          // Tying this server route to a dated toolkit version would be more
+          // fragile than this flag, and matches how the chat flow uses these
+          // tools (no version pinning).
+          dangerouslySkipVersionCheck: true,
+        },
+      )
+      if (!isGithubRepositoryToolSuccess(result)) {
+        const error = classifyGithubRepositoryProxyFailure(result)
+        console.error('[GitHub Repositories] GitHub tool execute failed:', result)
+        return repositoryListErrorResponse(error)
       }
-      result = await session.execute('GITHUB_LIST_REPOS', args)
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err)
-      const isRateLimit =
-        errorMsg.toLowerCase().includes('rate') ||
-        errorMsg.toLowerCase().includes('429')
-
-      if (isRateLimit) {
-        return NextResponse.json({
-          items: [],
-          nextCursor: null,
-          error: 'rate_limited',
-        } as GithubRepositoryListResponse)
-      }
-
-      console.error('[GitHub Repositories] Composio action failed:', err)
-      return NextResponse.json({
-        items: [],
-        nextCursor: null,
-        error: 'fetch_failed',
-      } as GithubRepositoryListResponse)
+      const error = classifyGithubRepositoryProxyFailure(err)
+      console.error('[GitHub Repositories] Composio GitHub tool execute threw:', describeComposioError(err))
+      return repositoryListErrorResponse(error)
     }
 
-    // Extract repositories from result
-    let rawRepos: unknown[] = []
-    let nextCursor: string | null = null
-
-    if (result && typeof result === 'object') {
-      const record = result as Record<string, unknown>
-
-      // Try to extract items array from various possible shapes
-      if (Array.isArray(record.items)) {
-        rawRepos = record.items
-      } else if (Array.isArray(record.data)) {
-        rawRepos = record.data
-      } else if (Array.isArray(record.repositories)) {
-        rawRepos = record.repositories
-      } else if (Array.isArray(result)) {
-        rawRepos = result as unknown[]
-      }
-
-      // Extract pagination cursor if present
-      if (typeof record.nextCursor === 'string') {
-        nextCursor = record.nextCursor
-      } else if (typeof record.cursor === 'string') {
-        nextCursor = record.cursor
-      }
-    }
-
-    // Map repositories to the response DTO
-    const items: GithubRepositoryListItem[] = []
-    for (const repo of rawRepos) {
-      const fullName = extractRepositoryFullName(repo)
-      if (!fullName) continue
-
-      const flags = extractRepositoryFlags(repo)
-      items.push({
-        fullName: fullName.toLowerCase(),
-        ...flags,
-      })
-    }
-
-    return NextResponse.json({
-      items,
-      nextCursor,
-    } as GithubRepositoryListResponse)
+    return NextResponse.json(buildGithubRepositoryListResponse(result, { limit, page }))
   } catch (err) {
     console.error('[GitHub Repositories] Unexpected error:', err)
     // Return HTTP 500 for true server errors, not in the typed error field

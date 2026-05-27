@@ -158,7 +158,7 @@ export const setGithubRepoAllowlist = mutation({
     }
     const normalized = normalizeGithubRepoAllowlist(repos)
     await ctx.db.patch(projectId, {
-      githubRepoAllowlist: normalized.length > 0 ? normalized : undefined,
+      githubRepoAllowlist: normalized,
       updatedAt: Date.now(),
     })
     return normalized

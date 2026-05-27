@@ -24,7 +24,10 @@ type ComposioAppRecord = {
 
 type ConnectedAccountRecord = {
   id?: string
+  /** v1 shape (deprecated/gone — endpoint returns 410). */
   appName?: string
+  /** v3 shape — slug now lives under `toolkit.slug`. */
+  toolkit?: { slug?: string } | null
 }
 
 type ComposioErrorKind = 'configuration' | 'provider'
@@ -165,24 +168,57 @@ function mapAppRecord(app: ComposioAppRecord) {
   }
 }
 
-async function fetchAppRecord(apiKey: string, slug: string) {
-  const res = await fetch(`https://backend.composio.dev/api/v1/apps/${encodeURIComponent(slug)}`, {
-    headers: { 'x-api-key': apiKey },
-  })
-  if (!res.ok) return null
-  const data = await res.json() as ComposioAppRecord
-  const item = mapAppRecord(data)
-  return item.slug ? item : null
+type ToolkitGetResponse = {
+  slug?: string
+  name?: string
+  meta?: {
+    description?: string
+    logo?: string
+  } | null
 }
 
-async function listConnectedAccounts(apiKey: string, entityId: string): Promise<ConnectedAccountRecord[]> {
-  const res = await fetch(
-    `https://backend.composio.dev/api/v1/connectedAccounts?entityId=${encodeURIComponent(entityId)}&page=1&pageSize=100`,
-    { headers: { 'x-api-key': apiKey } },
-  )
-  if (!res.ok) return []
-  const data = await res.json() as { items?: ConnectedAccountRecord[] }
-  return data.items ?? []
+// Composio's v1 `/api/v1/apps/<slug>` endpoint is being retired alongside the
+// v1 `connectedAccounts` surface (see comment in listConnectedAccounts). Fetch
+// toolkit metadata through the v3 SDK so connected toolkits surface reliably
+// in callers like the @-mention picker.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAppRecord(composio: any, slug: string) {
+  try {
+    const result = (await composio.toolkits.get(slug)) as ToolkitGetResponse
+    const resolvedSlug = normalizeSlug(firstNonEmptyString(result.slug, slug) ?? '')
+    if (!resolvedSlug) return null
+    return {
+      slug: resolvedSlug,
+      name: firstNonEmptyString(result.name) ?? fallbackDisplayName(resolvedSlug),
+      description: firstNonEmptyString(result.meta?.description) ?? '',
+      logoUrl: firstNonEmptyString(result.meta?.logo),
+    }
+  } catch {
+    return null
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function listConnectedAccounts(composio: any, entityId: string): Promise<ConnectedAccountRecord[]> {
+  // Composio's v1 `connectedAccounts` endpoint started returning 410 ("Gone");
+  // use the v3 SDK surface (the same one the disconnect path already uses).
+  try {
+    const response = await composio.connectedAccounts.list({ userIds: [entityId] })
+    return Array.isArray(response?.items) ? response.items : []
+  } catch (err) {
+    console.warn(
+      `[Integrations] listConnectedAccounts SDK call failed for entity ${entityId.slice(-8)}:`,
+      err instanceof Error ? err.message : String(err),
+    )
+    return []
+  }
+}
+
+/** Reads the toolkit slug from either v1 or v3 shape (v3 stores it at `toolkit.slug`). */
+function connectedAccountSlug(acc: ConnectedAccountRecord): string | undefined {
+  if (typeof acc.toolkit?.slug === 'string' && acc.toolkit.slug.trim()) return acc.toolkit.slug
+  if (typeof acc.appName === 'string' && acc.appName.trim()) return acc.appName
+  return undefined
 }
 
 function getAllowedAppOrigins(): string[] {
@@ -249,8 +285,10 @@ export async function GET(request: NextRequest) {
       if (projectId) {
         const projectAccess = await requireProjectComposioEntity(projectId, auth.userId)
         if (!projectAccess.ok) return projectAccess.response
-        for (const acc of await listConnectedAccounts(apiKey, projectAccess.entityId)) {
-          if (acc.appName && acc.id) connectedMap.set(normalizeSlug(acc.appName), acc.id)
+        const composio = await loadComposioSDK(apiKey)
+        for (const acc of await listConnectedAccounts(composio, projectAccess.entityId)) {
+          const slug = connectedAccountSlug(acc)
+          if (slug && acc.id) connectedMap.set(normalizeSlug(slug), acc.id)
         }
       }
 
@@ -300,13 +338,25 @@ export async function GET(request: NextRequest) {
     const projectAccess = await requireProjectComposioEntity(projectId, auth.userId)
     if (!projectAccess.ok) return projectAccess.response
 
-    const accounts = await listConnectedAccounts(apiKey, projectAccess.entityId)
+    const composio = await loadComposioSDK(apiKey)
+    const accounts = await listConnectedAccounts(composio, projectAccess.entityId)
+    // Diagnostic: distinguishes "Composio reports no connections" (eventual
+    // consistency) from "Composio reports the connection but our normalization
+    // drops it." Helps debug "Connect succeeded but UI didn't flip from Connect
+    // to Disconnect" symptoms.
+    console.log(
+      `[Integrations] GET listed accounts for ${projectAccess.entityId.slice(-8)}:`,
+      {
+        rawCount: accounts.length,
+        rawSlugs: accounts.map((item) => connectedAccountSlug(item) ?? '(missing)'),
+      },
+    )
     const connected: string[] = [
       ...new Set(accounts
-        .map((item) => normalizeSlug(item.appName || ''))
+        .map((item) => normalizeSlug(connectedAccountSlug(item) || ''))
         .filter(Boolean)),
     ]
-    const items = (await Promise.all(connected.map((slug) => fetchAppRecord(apiKey, slug).catch(() => null))))
+    const items = (await Promise.all(connected.map((slug) => fetchAppRecord(composio, slug).catch(() => null))))
       .filter((item): item is NonNullable<Awaited<ReturnType<typeof fetchAppRecord>>> => item !== null)
       .map((item) => ({
         slug: item.slug,
@@ -404,6 +454,28 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       return composioFailureResponse(error, `connect link for ${toolkitSlug}`)
     }
+
+    // Diagnostic: capture what Composio's link API returns so we can tell why
+    // a connect attempt produces no OAuth redirect. Logs the full shape because
+    // util.inspect collapses nested fields otherwise.
+    console.log(
+      `[Integrations] connect link result for ${toolkitSlug}:`,
+      JSON.stringify(
+        {
+          authConfigId,
+          entityIdSuffix: projectAccess.entityId.slice(-8),
+          id: connectionRequest.id,
+          connectionId: connectionRequest.connectionId,
+          status: connectionRequest.status,
+          hasRedirectUrl: typeof connectionRequest.redirectUrl === 'string' && connectionRequest.redirectUrl.length > 0,
+          redirectUrlSample: typeof connectionRequest.redirectUrl === 'string'
+            ? `${connectionRequest.redirectUrl.slice(0, 80)}${connectionRequest.redirectUrl.length > 80 ? '…' : ''}`
+            : connectionRequest.redirectUrl,
+        },
+        null,
+        2,
+      ),
+    )
 
     const redirectUrl =
       typeof connectionRequest.redirectUrl === 'string' &&

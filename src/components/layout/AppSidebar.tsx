@@ -69,6 +69,7 @@ const NAV_ITEMS = overlayAppShell.navigation.map((item) => ({
   ...item,
   icon: ICON_COMPONENTS[item.icon] ?? MessageSquare,
 }))
+const PRIMARY_NAV_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'projects')
 
 const PROFILE_APP_LINKS = [
   { label: 'Desktop App', icon: Monitor },
@@ -354,7 +355,7 @@ export default function AppSidebar({
       const m = /^Digit([1-6])$/.exec(e.code)
       if (!m) return
       const idx = parseInt(m[1]!, 10) - 1
-      const item = NAV_ITEMS[idx]
+      const item = PRIMARY_NAV_ITEMS[idx]
       if (!item || item.disabled || !item.href) return
       e.preventDefault()
       if (pathname.startsWith(item.href)) return
@@ -506,157 +507,159 @@ export default function AppSidebar({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <nav className="shrink-0 space-y-0.5 px-2 py-3">
-          {NAV_ITEMS.map((item, navIdx) => {
-            const { href, label, icon: Icon, disabled } = item
-            const active =
-              href &&
-              (effectivePendingHref
-                ? effectivePendingHref === href
-                : href === '/app/files'
-                  ? filesSectionOpen
-                  : pathname.startsWith(href))
-            const isPending = href && effectivePendingHref === href
-            const unreadCount = href === '/app/chat' ? totalUnread : 0
-            const shortcut = navIdx < 9 ? navIdx + 1 : null
-            const showShortcut = Boolean(shortcut) && !active
-            const showChevron = hasInlineChildren(href)
-            const commonClass = `group flex h-9 w-full items-center rounded-md px-3 text-sm transition-colors ${
-              disabled
-                ? 'cursor-not-allowed text-[var(--muted-light)]'
-                : active
-                  ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-            } ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`
-            if (disabled) {
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  disabled
-                  title="Coming soon"
-                  aria-label={`${label} (coming soon)`}
-                  className={commonClass}
-                >
-                  <Icon size={15} />
-                  {!sidebarCollapsed ? <div className="min-w-0 flex-1 text-left">{label}</div> : null}
-                </button>
-              )
-            }
-            return (
-              <div key={href}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!href) return
-                    if (isGuestConfirmed && href !== BRAND_CONFIG.homeHref) {
-                      requireAuth('nav')
-                      return
-                    }
-                    const primaryNavAction = primaryNavActionByItemId.get(item.id)
-                    if (primaryNavAction) {
-                      void runSidebarAction(primaryNavAction)
-                      return
-                    }
-                    if (pathname.startsWith(href)) return
-                    setMobileMenuOpen(false)
-                    setPendingNav({ href, fromPath: pathname })
-                    router.push(href)
-                  }}
-                  title={shortcut ? `${label} · ⌥${shortcut}` : label}
-                  aria-label={label}
-                  data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/files' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : undefined}
-                  className={commonClass}
-                >
-                  {sidebarCollapsed && isPending ? (
-                    <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
-                  ) : (
+        {PRIMARY_NAV_ITEMS.length > 0 ? (
+          <nav className="shrink-0 space-y-0.5 px-2 py-3">
+            {PRIMARY_NAV_ITEMS.map((item, navIdx) => {
+              const { href, label, icon: Icon, disabled } = item
+              const active =
+                href &&
+                (effectivePendingHref
+                  ? effectivePendingHref === href
+                  : href === '/app/files'
+                    ? filesSectionOpen
+                    : pathname.startsWith(href))
+              const isPending = href && effectivePendingHref === href
+              const unreadCount = href === '/app/chat' ? totalUnread : 0
+              const shortcut = navIdx < 9 ? navIdx + 1 : null
+              const showShortcut = Boolean(shortcut) && !active
+              const showChevron = hasInlineChildren(href)
+              const commonClass = `group flex h-9 w-full items-center rounded-md px-3 text-sm transition-colors ${
+                disabled
+                  ? 'cursor-not-allowed text-[var(--muted-light)]'
+                  : active
+                    ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                    : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+              } ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`
+              if (disabled) {
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled
+                    title="Coming soon"
+                    aria-label={`${label} (coming soon)`}
+                    className={commonClass}
+                  >
                     <Icon size={15} />
-                  )}
-                  {!sidebarCollapsed ? (
-                    <div className="min-w-0 flex-1 text-left">
-                      <div>{label}</div>
+                    {!sidebarCollapsed ? <div className="min-w-0 flex-1 text-left">{label}</div> : null}
+                  </button>
+                )
+              }
+              return (
+                <div key={href}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!href) return
+                      if (isGuestConfirmed && href !== BRAND_CONFIG.homeHref) {
+                        requireAuth('nav')
+                        return
+                      }
+                      const primaryNavAction = primaryNavActionByItemId.get(item.id)
+                      if (primaryNavAction) {
+                        void runSidebarAction(primaryNavAction)
+                        return
+                      }
+                      if (pathname.startsWith(href)) return
+                      setMobileMenuOpen(false)
+                      setPendingNav({ href, fromPath: pathname })
+                      router.push(href)
+                    }}
+                    title={shortcut ? `${label} · ⌥${shortcut}` : label}
+                    aria-label={label}
+                    data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/files' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : undefined}
+                    className={commonClass}
+                  >
+                    {sidebarCollapsed && isPending ? (
+                      <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
+                    ) : (
+                      <Icon size={15} />
+                    )}
+                    {!sidebarCollapsed ? (
+                      <div className="min-w-0 flex-1 text-left">
+                        <div>{label}</div>
+                      </div>
+                    ) : null}
+                    {!sidebarCollapsed && showShortcut ? (
+                      <span
+                        className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
+                          active
+                            ? 'text-[var(--muted)] opacity-100'
+                            : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100'
+                        }`}
+                        aria-hidden
+                      >
+                        ⌥{shortcut}
+                      </span>
+                    ) : null}
+                    {!sidebarCollapsed && showChevron ? (
+                      <span
+                        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-opacity ${
+                          active
+                            ? 'text-[var(--muted)] opacity-100'
+                            : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                        }`}
+                        aria-hidden
+                      >
+                        <ChevronDown
+                          size={13}
+                          className={`transition-transform ${active ? '' : '-rotate-90'}`}
+                        />
+                      </span>
+                    ) : null}
+                    {!sidebarCollapsed && isPending ? (
+                      <Loader2
+                        size={14}
+                        className="shrink-0 animate-spin text-[var(--muted)]"
+                        aria-hidden
+                      />
+                    ) : !sidebarCollapsed && unreadCount > 0 ? (
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium text-[var(--foreground)]">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    ) : null}
+                  </button>
+                  {!sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
+                    <InlineNavChildren
+                      items={toolsInlineItems}
+                      activeId={toolsView}
+                      onSelect={(next) => {
+                        setMobileMenuOpen(false)
+                        router.push(`/app/tools?view=${next}`)
+                      }}
+                    />
+                  ) : null}
+                  {sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
+                    <div className="mx-2 mt-1 flex flex-col overflow-hidden rounded-md border border-[var(--border)]">
+                      {([{ id: 'connectors', Icon: Plug, label: 'Connectors', locked: false }, { id: 'skills', Icon: Sparkles, label: 'Skills', locked: false }, { id: 'mcps', Icon: Server, label: 'MCPs', locked: false }, { id: 'apps', Icon: Package, label: 'Apps', locked: true }] as const).map((sub) => (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          title={sub.locked ? `${sub.label} · Soon` : sub.label}
+                          aria-label={sub.label}
+                          disabled={sub.locked}
+                          onClick={() => {
+                            if (sub.locked) return
+                            router.push(`/app/tools?view=${sub.id}`)
+                          }}
+                          className={`flex h-8 items-center justify-center transition-colors ${
+                            sub.locked
+                              ? 'cursor-default text-[var(--muted-light)]'
+                              : toolsView === sub.id
+                                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                          }`}
+                        >
+                          <sub.Icon size={13} />
+                        </button>
+                      ))}
                     </div>
                   ) : null}
-                  {!sidebarCollapsed && showShortcut ? (
-                    <span
-                      className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
-                        active
-                          ? 'text-[var(--muted)] opacity-100'
-                          : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100'
-                      }`}
-                      aria-hidden
-                    >
-                      ⌥{shortcut}
-                    </span>
-                  ) : null}
-                  {!sidebarCollapsed && showChevron ? (
-                    <span
-                      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-opacity ${
-                        active
-                          ? 'text-[var(--muted)] opacity-100'
-                          : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-                      }`}
-                      aria-hidden
-                    >
-                      <ChevronDown
-                        size={13}
-                        className={`transition-transform ${active ? '' : '-rotate-90'}`}
-                      />
-                    </span>
-                  ) : null}
-                  {!sidebarCollapsed && isPending ? (
-                    <Loader2
-                      size={14}
-                      className="shrink-0 animate-spin text-[var(--muted)]"
-                      aria-hidden
-                    />
-                  ) : !sidebarCollapsed && unreadCount > 0 ? (
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium text-[var(--foreground)]">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  ) : null}
-                </button>
-                {!sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
-                  <InlineNavChildren
-                    items={toolsInlineItems}
-                    activeId={toolsView}
-                    onSelect={(next) => {
-                      setMobileMenuOpen(false)
-                      router.push(`/app/tools?view=${next}`)
-                    }}
-                  />
-                ) : null}
-                {sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
-                  <div className="mx-2 mt-1 flex flex-col overflow-hidden rounded-md border border-[var(--border)]">
-                    {([{ id: 'connectors', Icon: Plug, label: 'Connectors', locked: false }, { id: 'skills', Icon: Sparkles, label: 'Skills', locked: false }, { id: 'mcps', Icon: Server, label: 'MCPs', locked: false }, { id: 'apps', Icon: Package, label: 'Apps', locked: true }] as const).map((sub) => (
-                      <button
-                        key={sub.id}
-                        type="button"
-                        title={sub.locked ? `${sub.label} · Soon` : sub.label}
-                        aria-label={sub.label}
-                        disabled={sub.locked}
-                        onClick={() => {
-                          if (sub.locked) return
-                          router.push(`/app/tools?view=${sub.id}`)
-                        }}
-                        className={`flex h-8 items-center justify-center transition-colors ${
-                          sub.locked
-                            ? 'cursor-default text-[var(--muted-light)]'
-                            : toolsView === sub.id
-                              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                              : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        <sub.Icon size={13} />
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            )
-          })}
-        </nav>
+                </div>
+              )
+            })}
+          </nav>
+        ) : null}
 
         {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || filesSectionOpen || projectsOpen || automationsOpen) ? (
           <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">

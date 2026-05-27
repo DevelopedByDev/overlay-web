@@ -861,10 +861,10 @@ export async function POST(request: NextRequest) {
         })
         return {
           instructions: project?.instructions?.trim() || '',
-          githubRepoAllowlist: project?.githubRepoAllowlist,
+          githubRepoAllowlist: project?.githubRepoAllowlist ?? [],
         }
       } catch {
-        return { instructions: '', githubRepoAllowlist: undefined }
+        return { instructions: '', githubRepoAllowlist: [] }
       }
     })()
 

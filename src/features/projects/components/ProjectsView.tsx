@@ -387,6 +387,7 @@ function ProjectIntegrationsSettingsPanel({
   lastIntegrationsError,
   connectError,
   connectingSlug,
+  pendingConnectRedirect,
   logoUrls,
   connectedVisible,
   availableVisible,
@@ -394,6 +395,7 @@ function ProjectIntegrationsSettingsPanel({
   onActiveTabChange,
   onSearchQueryChange,
   onClearConnectError,
+  onDismissPendingConnectRedirect,
   onConnectToggle,
   onShowMoreConnected,
   onShowMoreAvailable,
@@ -408,6 +410,7 @@ function ProjectIntegrationsSettingsPanel({
   lastIntegrationsError?: string | null
   connectError?: string | null
   connectingSlug?: string | null
+  pendingConnectRedirect?: { url: string; name: string; slug: string } | null
   logoUrls: Readonly<Record<string, string | null>>
   connectedVisible: number
   availableVisible: number
@@ -415,6 +418,7 @@ function ProjectIntegrationsSettingsPanel({
   onActiveTabChange: (tab: ProjectIntegrationsTabId) => void
   onSearchQueryChange: (query: string) => void
   onClearConnectError: () => void
+  onDismissPendingConnectRedirect: () => void
   onConnectToggle: (integration: ConnectorCatalogItem) => void
   onShowMoreConnected: () => void
   onShowMoreAvailable: () => void
@@ -484,6 +488,29 @@ function ProjectIntegrationsSettingsPanel({
                 type="button"
                 onClick={onClearConnectError}
                 className="shrink-0 rounded px-1.5 py-0.5 text-[var(--foreground)] hover:bg-red-500/10"
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : null}
+          {pendingConnectRedirect ? (
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-xs text-[var(--foreground)]">
+              <span className="min-w-0 flex-1">
+                If the {pendingConnectRedirect.name} window did not open, click below to finish connecting.
+              </span>
+              <a
+                href={pendingConnectRedirect.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1 font-medium text-[var(--foreground)] hover:bg-[var(--border)]"
+              >
+                Open OAuth window
+                <ExternalLink size={11} />
+              </a>
+              <button
+                type="button"
+                onClick={onDismissPendingConnectRedirect}
+                className="shrink-0 rounded px-1.5 py-0.5 text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]"
               >
                 Dismiss
               </button>
@@ -906,6 +933,20 @@ function ProjectHubBody({
   const [lastIntegrationsError, setLastIntegrationsError] = useState<string | null>(null)
   const [connectingIntegrationSlug, setConnectingIntegrationSlug] = useState<string | null>(null)
   const [integrationConnectError, setIntegrationConnectError] = useState<string | null>(null)
+  // OAuth fallback: if the pre-opened popup is blocked, invisible, or gets
+  // closed by the Composio bouncer, surface the redirectUrl as a direct
+  // anchor click so the user can complete OAuth via a fresh user gesture.
+  const [pendingConnectRedirect, setPendingConnectRedirect] = useState<{
+    url: string
+    name: string
+    /** Toolkit slug we just attempted to connect; used to optimistically merge
+     * into `connectedIntegrationSlugs` until Composio's v1 list endpoint
+     * catches up to the new connection. */
+    slug: string
+  } | null>(null)
+  // Mirror of the above for reads inside async callbacks that close over
+  // earlier state (notably `loadProjectIntegrations`).
+  const pendingConnectRedirectRef = useRef<{ url: string; name: string; slug: string } | null>(null)
   const [integrationSearchQuery, setIntegrationSearchQuery] = useState('')
   const [activeIntegrationsTab, setActiveIntegrationsTab] = useState<ProjectIntegrationsTabId>('apps')
   const [projectToolRegistry, setProjectToolRegistry] = useState<OverlayToolRegistration[]>([])
@@ -925,7 +966,6 @@ function ProjectHubBody({
   const [repoLoading, setRepoLoading] = useState(false)
   const [repoError, setRepoError] =
     useState<'github_not_connected' | 'fetch_failed' | 'rate_limited' | null>(null)
-  const [manualEntry, setManualEntry] = useState('')
 
   useEffect(() => {
     const storedOpen = localStorageGet('overlay.project-settings-drawer.open')
@@ -988,15 +1028,34 @@ function ProjectHubBody({
 
   const saveAllowlist = useCallback(async (next: readonly string[]) => {
     try {
-      const response = await overlayAppClient.projects.update({
+      // Use updateResponse so we can distinguish HTTP-level failures (e.g.
+      // a 500 from a failing Convex mutation) from a real success. The
+      // `update()` helper parses JSON regardless of status, which would
+      // let a silent server failure pass for a save while the picker
+      // visually reverted to the still-stale persisted value.
+      const response = await overlayAppClient.projects.updateResponse({
         projectId,
         githubRepoAllowlist: [...next],
       })
-      if (response?.project) {
-        setDraftAllowlist(response.project.githubRepoAllowlist ?? [])
+      if (!response.ok) {
+        console.error('[ProjectsView:saveAllowlist] non-2xx response', {
+          status: response.status,
+        })
+        setSaveAllowlistError(true)
+        return
       }
+      const parsed = (await response.json()) as
+        | { success?: boolean; project?: { githubRepoAllowlist?: string[] } | null; error?: string }
+        | null
+      if (!parsed?.project) {
+        console.error('[ProjectsView:saveAllowlist] missing project in response', { parsed })
+        setSaveAllowlistError(true)
+        return
+      }
+      setDraftAllowlist(parsed.project.githubRepoAllowlist ?? [])
       setSaveAllowlistError(false)
-    } catch {
+    } catch (error) {
+      console.error('[ProjectsView:saveAllowlist] network/parse failure', error)
       setSaveAllowlistError(true)
     }
   }, [projectId])
@@ -1035,9 +1094,30 @@ function ProjectHubBody({
       return
     }
 
-    const connectedSlugs = new Set(Array.isArray(connectedData?.connected) ? connectedData.connected : [])
+    const baseSlugs = Array.isArray(connectedData?.connected) ? connectedData.connected : []
+    // Optimistic merge: if a Connect→OAuth round-trip just landed but
+    // Composio's v1 list endpoint hasn't caught up yet, surface the just-
+    // attempted toolkit as connected anyway. The next refresh that returns
+    // the slug from Composio clears the pending state.
+    const pendingSlug = pendingConnectRedirectRef.current?.slug
+    const mergedSlugs = pendingSlug && !baseSlugs.includes(pendingSlug)
+      ? [...baseSlugs, pendingSlug]
+      : baseSlugs
+    const connectedSlugs = new Set(mergedSlugs)
     setConnectedIntegrationSlugs(connectedSlugs)
-    setGithubConnected(connectedSlugs.has('github'))
+    const isGithubConnected = connectedSlugs.has('github')
+    setGithubConnected(isGithubConnected)
+    // When github becomes (re)connected — including via the optimistic merge —
+    // drop the stale `github_not_connected` sentinel so the picker's load
+    // effect can fire fetchRepoList. Without this, the picker stays hidden
+    // (showList === false) until the next click into the drawer.
+    if (isGithubConnected) {
+      setRepoError((prev) => (prev === 'github_not_connected' ? null : prev))
+    }
+    if (pendingSlug && baseSlugs.includes(pendingSlug)) {
+      pendingConnectRedirectRef.current = null
+      setPendingConnectRedirect(null)
+    }
 
     let catalogItems: ConnectorCatalogItem[] = []
     const bootstrapData = bootstrap as AppBootstrapResponse | null
@@ -1076,6 +1156,12 @@ function ProjectHubBody({
   useEffect(() => {
     if (!shouldRefreshProjectIntegrations) return
     const onIntegrationsChanged = () => {
+      // OAuth callback fires this on success — clear the visible "Open OAuth
+      // window" banner immediately since the user has already returned. We
+      // intentionally leave `pendingConnectRedirectRef.current` alone so the
+      // optimistic-merge inside `loadProjectIntegrations` still surfaces the
+      // just-connected toolkit until Composio's v1 list endpoint catches up.
+      setPendingConnectRedirect(null)
       void loadProjectIntegrations()
     }
     const onFocus = () => {
@@ -1105,7 +1191,7 @@ function ProjectHubBody({
     setRepoLoading(true)
     setRepoError(null)
     try {
-      const response = await overlayAppClient.integrations.github.listRepositories()
+      const response = await overlayAppClient.integrations.github.listRepositories({ projectId })
       if (response.error) {
         setRepoError(response.error)
       } else {
@@ -1122,7 +1208,7 @@ function ProjectHubBody({
     } finally {
       setRepoLoading(false)
     }
-  }, [githubConnected])
+  }, [githubConnected, projectId])
 
   useEffect(() => {
     if (!settingsDrawerOpen || activeSettingsSectionId !== 'integrations') return
@@ -1384,11 +1470,23 @@ function ProjectHubBody({
       connectedIntegrationSlugs.has(integrationKey) ||
       connectedIntegrationSlugs.has(integration.slug)
     setIntegrationConnectError(null)
+    pendingConnectRedirectRef.current = null
+    setPendingConnectRedirect(null)
     setConnectingIntegrationSlug(integrationKey)
+
+    // Diagnostic trace for the popup flow ("click Connect, nothing happens"
+    // class of issues). Logs land in browser DevTools console.
+    console.log('[Integrations:click] start', {
+      integrationKey,
+      slug: integration.slug,
+      composioId: integration.composioId,
+      isConnected,
+    })
 
     let oauthTab: Window | null = null
     if (!isConnected) {
       oauthTab = window.open('about:blank', '_blank')
+      console.log('[Integrations:click] pre-opened tab:', oauthTab ? 'OPENED' : 'BLOCKED')
     }
 
     try {
@@ -1443,9 +1541,37 @@ function ProjectHubBody({
         setIntegrationConnectError(data.error || 'Failed to connect')
         return
       }
+      console.log('[Integrations:click] received response', {
+        status: response.status,
+        hasRedirectUrl: typeof data.redirectUrl === 'string' && data.redirectUrl.length > 0,
+        redirectUrlSample: data.redirectUrl ? `${data.redirectUrl.slice(0, 60)}…` : data.redirectUrl,
+        connectionId: data.connectionId,
+        successFlag: data.success,
+        oauthTabClosed: oauthTab?.closed ?? 'no-tab',
+      })
       if (data.redirectUrl) {
-        if (oauthTab) oauthTab.location.href = data.redirectUrl
-        else window.open(data.redirectUrl, '_blank')
+        // Always surface the URL as a click-to-open fallback. If the
+        // pre-opened popup worked, this is harmless confirmation; if it
+        // was blocked / invisible / closed by Composio's bouncer, the
+        // user has a direct-anchor escape hatch.
+        const nextPending = {
+          url: data.redirectUrl,
+          name: integration.name,
+          slug: integrationKey,
+        }
+        pendingConnectRedirectRef.current = nextPending
+        setPendingConnectRedirect(nextPending)
+        if (oauthTab) {
+          try {
+            oauthTab.location.href = data.redirectUrl
+            console.log('[Integrations:click] nav assignment ok, oauthTab.closed =', oauthTab.closed)
+          } catch (err) {
+            console.error('[Integrations:click] nav assignment threw', err)
+          }
+        } else {
+          const fallback = window.open(data.redirectUrl, '_blank')
+          console.log('[Integrations:click] fallback popup:', fallback ? 'OPENED' : 'BLOCKED')
+        }
         return
       }
       oauthTab?.close()
@@ -1481,19 +1607,10 @@ function ProjectHubBody({
           loading={repoLoading}
           error={repoError}
           saveError={saveAllowlistError}
-          manualEntry={manualEntry}
           onChange={(next) => {
             setDraftAllowlist(next)
             void saveAllowlist(next)
           }}
-          onAddManual={(entry) => {
-            if (draftAllowlist.includes(entry)) return
-            const next = [...draftAllowlist, entry]
-            setDraftAllowlist(next)
-            setManualEntry('')
-            void saveAllowlist(next)
-          }}
-          onManualEntryChange={setManualEntry}
           onRetryLoad={() => void fetchRepoList()}
           onDismissSaveError={dismissSaveAllowlistError}
         />
@@ -1542,6 +1659,7 @@ function ProjectHubBody({
               lastIntegrationsError={lastIntegrationsError}
               connectError={integrationConnectError}
               connectingSlug={connectingIntegrationSlug}
+              pendingConnectRedirect={pendingConnectRedirect}
               logoUrls={integrationLogoUrls}
               connectedVisible={connectedIntegrationsVisible}
               availableVisible={availableIntegrationsVisible}
@@ -1549,6 +1667,10 @@ function ProjectHubBody({
               onActiveTabChange={setActiveIntegrationsTab}
               onSearchQueryChange={setIntegrationSearchQuery}
               onClearConnectError={() => setIntegrationConnectError(null)}
+              onDismissPendingConnectRedirect={() => {
+                pendingConnectRedirectRef.current = null
+                setPendingConnectRedirect(null)
+              }}
               onConnectToggle={handleProjectIntegrationToggle}
               onShowMoreConnected={() => setConnectedIntegrationsVisible((value) => value + PROJECT_INTEGRATION_LIST_PAGE_SIZE)}
               onShowMoreAvailable={() => setAvailableIntegrationsVisible((value) => value + PROJECT_INTEGRATION_LIST_PAGE_SIZE)}
@@ -1587,7 +1709,7 @@ function ProjectHubBody({
       integrationsLoading,
       lastIntegrationsError,
       listsLoading,
-      manualEntry,
+      pendingConnectRedirect,
       onInstructionsChange,
       openChat,
       openFile,

@@ -1048,6 +1048,7 @@ export interface GithubRepositoryListItem {
 export interface GithubRepositoryListQuery {
   cursor?: string
   limit?: number
+  projectId?: string
 }
 
 export interface GithubRepositoryListResponse {

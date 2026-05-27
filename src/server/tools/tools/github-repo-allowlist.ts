@@ -129,14 +129,16 @@ function extractForkTargetFromComposioGithubArgs(
 /**
  * A per-project GitHub repository access policy.
  *
- * `enabled` is true iff the list is non-empty. When disabled, all repos are
- * allowed unconditionally (the feature is simply off).
+ * `enabled` is true when a project-scoped repository list is available,
+ * including an empty list. An empty list means no repositories are linked.
+ * When disabled, all repos are allowed unconditionally (used only for
+ * non-project/unavailable policy paths).
  *
  * `allows` performs a case-insensitive lookup: both the target and the list
  * entries are compared in lowercased "owner/name" form.
  */
 export type GithubRepoPolicy = {
-  /** Whether the allowlist feature is active. True iff list is non-empty. */
+  /** Whether the repository policy is active. True when a list was provided. */
   readonly enabled: boolean
   /** The raw allowlist entries as supplied by the project owner. */
   readonly list: readonly string[]
@@ -151,7 +153,7 @@ export type GithubRepoPolicy = {
 /**
  * Builds a {@link GithubRepoPolicy} from a project's allowlist configuration.
  *
- * @param list - An array of "owner/repo" strings, or undefined (feature off)
+ * @param list - An array of "owner/repo" strings, or undefined (policy off)
  * @returns A policy object with an `allows` method for fast case-insensitive lookup
  */
 export function buildGithubRepoPolicy(list: readonly string[] | undefined): GithubRepoPolicy {
@@ -162,6 +164,7 @@ export function buildGithubRepoPolicy(list: readonly string[] | undefined): Gith
   // a "owner/name" lookup — converting an intended-allowed repo into an
   // effective deny. Filter to exactly "owner/name" shape here so the
   // chokepoint never surprises the operator.
+  const enabled = list !== undefined
   const safeList: readonly string[] = (list ?? []).filter((entry) => {
     if (typeof entry !== 'string') return false
     const slashes = entry.match(/\//g)?.length ?? 0
@@ -169,7 +172,6 @@ export function buildGithubRepoPolicy(list: readonly string[] | undefined): Gith
     const [owner, name] = entry.split('/')
     return Boolean(owner && name)
   })
-  const enabled = safeList.length > 0
 
   // Pre-compute a lowercased set for O(1) lookup
   const lowercasedSet = new Set(safeList.map((entry) => entry.toLowerCase()))
