@@ -1,0 +1,64 @@
+{
+  "app": {
+    "baseUrl": "https://overlay.internal.example.com",
+    "deploymentEnvironment": "onprem",
+    "cspConnectSrc": [
+      "https://minio.internal.example.com"
+    ],
+    "publicEnv": {}
+  },
+  "auth": {
+    "provider": "oidc",
+    "allowDevFallbacks": false,
+    "workos": {},
+    "oidc": {
+      "issuerUrl": "https://idp.internal.example.com/realms/overlay",
+      "clientId": "overlay-web",
+      "clientSecret": "oidc_fixture_secret",
+      "audience": "overlay"
+    },
+    "keycloak": {}
+  },
+  "billing": {
+    "provider": "none",
+    "stripe": {}
+  },
+  "storage": {
+    "provider": "s3",
+    "publicUrlPolicy": "presigned",
+    "r2": {},
+    "s3": {
+      "bucketName": "overlay",
+      "region": "us-east-1",
+      "endpointUrl": "https://minio.internal.example.com",
+      "accessKeyId": "minio_fixture_access",
+      "secretAccessKey": "minio_fixture_secret",
+      "forcePathStyle": true
+    }
+  },
+  "llm": {
+    "gatewayProvider": "openai",
+    "keySource": "env",
+    "defaultChatModelId": "gpt-4.1",
+    "modelAllowlist": [
+      "gpt-4.1"
+    ],
+    "apiKeyEnvVar": "OPENAI_API_KEY"
+  },
+  "database": {
+    "provider": "convex",
+    "convexUrl": "https://overlay-onprem.convex.cloud",
+    "deployment": "dev:overlay-onprem",
+    "internalApiSecret": "internal_onprem_fixture_secret",
+    "internalServiceAuthSecret": "service_onprem_fixture_secret"
+  },
+  "capabilities": {
+    "billing": false,
+    "sso": true,
+    "apiKeys": false,
+    "webhooks": false,
+    "vectorSearch": true,
+    "automations": true,
+    "multiTenant": false
+  }
+}

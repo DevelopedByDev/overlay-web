@@ -1,0 +1,74 @@
+{
+  "app": {
+    "baseUrl": "https://staging.getoverlay.io",
+    "deploymentEnvironment": "staging",
+    "cspConnectSrc": [
+      "https://different-caiman-77.convex.cloud"
+    ],
+    "publicEnv": {
+      "NEXT_PUBLIC_APP_URL": "https://staging.getoverlay.io",
+      "NEXT_PUBLIC_CONVEX_URL": "https://different-caiman-77.convex.cloud"
+    }
+  },
+  "auth": {
+    "provider": "workos",
+    "allowDevFallbacks": false,
+    "workos": {
+      "clientId": "client_staging_fixture",
+      "apiKey": "workos_staging_fixture_secret"
+    },
+    "oidc": {},
+    "keycloak": {}
+  },
+  "billing": {
+    "provider": "stripe",
+    "stripe": {
+      "mode": "test",
+      "secretKey": "stripe_test_fixture_secret",
+      "webhookSecret": "stripe_webhook_fixture_secret",
+      "paidUnitPriceId": "price_paid_fixture",
+      "topupUnitPriceId": "price_topup_fixture",
+      "portalConfigurationId": "bpc_fixture"
+    }
+  },
+  "storage": {
+    "provider": "r2",
+    "publicUrlPolicy": "presigned",
+    "r2": {
+      "accountId": "r2_fixture_account",
+      "bucketName": "overlay-staging",
+      "accessKeyId": "r2_fixture_access",
+      "secretAccessKey": "r2_fixture_secret",
+      "endpointUrl": "https://r2.fixture.example.com",
+      "globalBudgetBytes": 1000000,
+      "presignTtlSeconds": 300
+    },
+    "s3": {}
+  },
+  "llm": {
+    "gatewayProvider": "openrouter",
+    "keySource": "env",
+    "defaultChatModelId": "openrouter/free",
+    "modelAllowlist": [
+      "openrouter/free"
+    ],
+    "apiKeyEnvVar": "OPENROUTER_API_KEY"
+  },
+  "database": {
+    "provider": "convex",
+    "convexUrl": "https://different-caiman-77.convex.cloud",
+    "deployment": "dev:different-caiman-77",
+    "internalApiSecret": "internal_fixture_secret",
+    "internalServiceAuthSecret": "service_fixture_secret",
+    "apiKeyHashSecret": "api_key_hash_fixture_secret"
+  },
+  "capabilities": {
+    "billing": true,
+    "sso": true,
+    "apiKeys": true,
+    "webhooks": false,
+    "vectorSearch": true,
+    "automations": true,
+    "multiTenant": false
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "app": {
+    "baseUrl": "https://overlay.enterprise.example.com",
+    "deploymentEnvironment": "onprem",
+    "cspConnectSrc": [
+      "https://s3.enterprise.example.com",
+      "https://idp.enterprise.example.com"
+    ],
+    "publicEnv": {
+      "NEXT_PUBLIC_APP_URL": "https://overlay.enterprise.example.com"
+    }
+  },
+  "auth": {
+    "provider": "oidc",
+    "allowDevFallbacks": false,
+    "workos": {},
+    "oidc": {
+      "issuerUrl": "https://idp.enterprise.example.com",
+      "clientId": "overlay",
+      "clientSecret": "enterprise_oidc_fixture_secret",
+      "audience": "overlay-api"
+    },
+    "keycloak": {}
+  },
+  "billing": {
+    "provider": "none",
+    "stripe": {}
+  },
+  "storage": {
+    "provider": "s3",
+    "publicUrlPolicy": "presigned",
+    "r2": {},
+    "s3": {
+      "bucketName": "overlay-enterprise",
+      "region": "us-east-1",
+      "endpointUrl": "https://s3.enterprise.example.com",
+      "accessKeyId": "enterprise_s3_access",
+      "secretAccessKey": "enterprise_s3_fixture_secret",
+      "forcePathStyle": true
+    }
+  },
+  "llm": {
+    "gatewayProvider": "openai",
+    "keySource": "env",
+    "defaultChatModelId": "gpt-4.1",
+    "modelAllowlist": [
+      "gpt-4.1",
+      "gpt-4.1-mini"
+    ],
+    "apiKeyEnvVar": "OPENAI_API_KEY"
+  },
+  "database": {
+    "provider": "convex",
+    "convexUrl": "https://overlay-enterprise.convex.cloud",
+    "deployment": "dev:overlay-enterprise",
+    "internalApiSecret": "enterprise_internal_fixture_secret",
+    "internalServiceAuthSecret": "enterprise_service_fixture_secret"
+  },
+  "capabilities": {
+    "billing": false,
+    "sso": true,
+    "apiKeys": false,
+    "webhooks": false,
+    "vectorSearch": true,
+    "automations": false,
+    "multiTenant": false
+  }
+}

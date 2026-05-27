@@ -33,6 +33,7 @@
     "modules-react:typecheck": "npm --prefix packages/overlay-modules-react run typecheck",
     "check:module-boundaries": "node scripts/ensure-module-presentational-boundaries.mjs",
     "check:shared-isomorphic": "node scripts/enforce-shared-isomorphic.mjs",
+    "check:config": "NODE_OPTIONS=--conditions=react-server tsx --test src/shared/config/overlayConfigSchema.test.ts src/server/config/loadOverlayConfig.test.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/check-overlay-config.ts",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "video:studio": "npx remotion studio src/remotion/index.ts",
     "video:render:launch": "mkdir -p renders && npx remotion render src/remotion/index.ts overlay-launch-video renders/overlay-launch-video.mp4",

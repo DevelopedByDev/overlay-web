@@ -14,6 +14,7 @@ import {
   defineOverlayAppConfig,
   resolveOverlayAppShellConfig,
 } from '@overlay/app-core'
+import { DEFAULT_OVERLAY_RUNTIME_CONFIG } from './shared/config/defaultOverlayRuntimeConfig'
 
 export const overlayAppConfig = defineOverlayAppConfig({
   brand: {
@@ -40,5 +41,7 @@ export const overlayAppConfig = defineOverlayAppConfig({
 })
 
 export const overlayAppShell = resolveOverlayAppShellConfig(overlayAppConfig)
+
+export const overlayRuntimeConfigDefaults = DEFAULT_OVERLAY_RUNTIME_CONFIG
 
 export default overlayAppConfig

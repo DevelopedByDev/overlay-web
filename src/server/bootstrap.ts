@@ -4,6 +4,7 @@ import overlayAppConfig from '@/overlay.config'
 import { OpenRouterGateway } from '@/server/ai/providers'
 import { WorkOSAuthProvider } from '@/server/auth/providers'
 import { StripeBillingProvider } from '@/server/billing/providers'
+import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { ConvexNoteRepository, type NoteRepository } from '@/server/notes'
 import { ConvexRateLimiter, InMemoryEventBus } from '@/server/shared/providers'
 import { ConvexVectorStore, R2ObjectStore } from '@/server/storage/providers'
@@ -19,6 +20,10 @@ export interface OverlayServerContext extends OverlayProviderContext {
 export function createOverlayServerContext(
   config: OverlayAppConfig = overlayAppConfig,
 ): OverlayServerContext {
+  if (process.env.NEXT_PHASE !== 'phase-production-build') {
+    getOverlayRuntimeConfigSync()
+  }
+
   return {
     auth: config.authProvider ?? new WorkOSAuthProvider(),
     billing: config.billingProvider ?? new StripeBillingProvider(),

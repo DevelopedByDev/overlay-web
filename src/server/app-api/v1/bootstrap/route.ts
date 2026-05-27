@@ -23,10 +23,30 @@ import {
   IMAGE_MODELS,
   VIDEO_MODELS,
 } from '@/shared/ai/gateway/model-data'
+import {
+  formatOverlayConfigError,
+  getOverlayRuntimeConfig,
+  getRedactedOverlayRuntimeConfigSummary,
+} from '@/server/config'
+import { isRuntimeConfigSummaryVisible } from '@/shared/config'
 
 export async function GET(request: NextRequest) {
   const boundaryError = await validateApiBoundary(request)
   if (boundaryError) return boundaryError
+  let runtimeConfig
+  try {
+    runtimeConfig = await getOverlayRuntimeConfig()
+  } catch (error) {
+    const formatted = formatOverlayConfigError(error)
+    return NextResponse.json(
+      {
+        error: 'Runtime configuration is invalid',
+        issues: formatted.issues,
+      },
+      { status: 500 },
+    )
+  }
+
   try {
     const auth = await resolveAuthenticatedAppUser(request, {})
     if (!auth) {
@@ -92,7 +112,9 @@ export async function GET(request: NextRequest) {
     ]
     const appShell = resolveOverlayAppShellConfig(overlayAppConfig)
 
-    const response: AppBootstrapResponse = {
+    const response: AppBootstrapResponse & {
+      system?: ReturnType<typeof getRedactedOverlayRuntimeConfigSummary>
+    } = {
       user,
       entitlements,
       uiSettings: uiSettings ?? DEFAULT_APP_SETTINGS,
@@ -124,6 +146,10 @@ export async function GET(request: NextRequest) {
           overlayAppConfig.modelPolicy?.getDefaultVideoModelId?.(videoModels, modelPolicyContext) ??
           DEFAULT_VIDEO_MODEL_ID,
       },
+    }
+
+    if (isRuntimeConfigSummaryVisible(runtimeConfig)) {
+      response.system = getRedactedOverlayRuntimeConfigSummary(runtimeConfig)
     }
 
     return NextResponse.json(response)
