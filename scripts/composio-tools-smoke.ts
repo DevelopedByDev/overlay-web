@@ -41,10 +41,9 @@ async function main() {
   console.log('GITHUB_LIST_* count:', listKeys.length, 'examples:', listKeys.slice(0, 5))
 
   // Verify execute() against a public repo.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const namedSet = (await composio.tools.get(COMPOSIO_SMOKE_ENTITY_ID, {
     tools: ['GITHUB_GET_A_REPOSITORY'],
-  })) as any
+  })) as Record<string, { execute?: (input: { owner: string; repo: string }) => Promise<unknown> }>
   const namedKeys = Object.keys(namedSet)
   console.log('Named-fetch keys:', namedKeys)
   const repoTool = namedSet['GITHUB_GET_A_REPOSITORY']
