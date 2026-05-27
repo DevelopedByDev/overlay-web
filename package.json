@@ -36,6 +36,7 @@
     "check:vendor-boundaries": "node scripts/check-no-vendor-imports-in-routes.mjs",
     "check:providers": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud NODE_OPTIONS=--conditions=react-server tsx --test src/server/bootstrap.test.ts && npm run check:vendor-boundaries",
     "check:config": "NODE_OPTIONS=--conditions=react-server tsx --test src/shared/config/overlayConfigSchema.test.ts src/server/config/loadOverlayConfig.test.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/check-overlay-config.ts",
+    "docs:check:self-hosting": "NODE_OPTIONS=--conditions=react-server tsx scripts/check-self-hosting-docs.ts",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "video:studio": "npx remotion studio src/remotion/index.ts",
     "video:render:launch": "mkdir -p renders && npx remotion render src/remotion/index.ts overlay-launch-video renders/overlay-launch-video.mp4",

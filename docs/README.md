@@ -6,6 +6,7 @@ Keep docs short and current. Prefer updating these files over adding new one-off
 
 - [Architecture](./architecture.md) - backend boundaries, auth, billing, storage, and client parity.
 - [Development](./development.md) - local setup, required env vars, scripts, and verification.
+- [Self Hosting](./SELF_HOSTING.md) - runtime config, provider swaps, deployment profiles, and secret placement.
 - [Design](./design.md) - durable product and UI principles.
 - [Security](./security.md) - release gates and security-sensitive workflow notes.
 

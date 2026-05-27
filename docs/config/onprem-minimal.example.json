@@ -1,0 +1,57 @@
+{
+  "app": {
+    "baseUrl": "http://localhost:3000",
+    "deploymentEnvironment": "onprem",
+    "cspConnectSrc": [
+      "http://localhost:9000"
+    ],
+    "publicEnv": {
+      "NEXT_PUBLIC_APP_URL": "http://localhost:3000"
+    }
+  },
+  "auth": {
+    "provider": "none",
+    "allowDevFallbacks": false,
+    "workos": {},
+    "oidc": {},
+    "keycloak": {}
+  },
+  "billing": {
+    "provider": "none",
+    "stripe": {}
+  },
+  "storage": {
+    "provider": "minio",
+    "publicUrlPolicy": "presigned",
+    "r2": {},
+    "s3": {
+      "bucketName": "overlay-local",
+      "region": "us-east-1",
+      "endpointUrl": "http://localhost:9000",
+      "accessKeyId": "minio_access_key_placeholder",
+      "secretAccessKey": "minio_secret_key_placeholder",
+      "forcePathStyle": true
+    }
+  },
+  "llm": {
+    "gatewayProvider": "none",
+    "keySource": "none",
+    "modelAllowlist": []
+  },
+  "database": {
+    "provider": "convex",
+    "convexUrl": "https://convex-local.example.com",
+    "deployment": "dev:overlay-local",
+    "internalApiSecret": "replace_with_local_internal_api_secret",
+    "internalServiceAuthSecret": "replace_with_local_service_auth_secret"
+  },
+  "capabilities": {
+    "billing": false,
+    "sso": false,
+    "apiKeys": false,
+    "webhooks": false,
+    "vectorSearch": false,
+    "automations": false,
+    "multiTenant": false
+  }
+}

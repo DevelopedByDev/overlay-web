@@ -1,0 +1,75 @@
+{
+  "app": {
+    "baseUrl": "https://staging.example.com",
+    "deploymentEnvironment": "staging",
+    "cspConnectSrc": [
+      "https://convex-staging.example.com",
+      "https://r2-staging.example.com"
+    ],
+    "publicEnv": {
+      "NEXT_PUBLIC_APP_URL": "https://staging.example.com",
+      "NEXT_PUBLIC_CONVEX_URL": "https://convex-staging.example.com"
+    }
+  },
+  "auth": {
+    "provider": "workos",
+    "allowDevFallbacks": false,
+    "workos": {
+      "clientId": "workos_staging_client_id_placeholder",
+      "apiKey": "workos_staging_api_key_placeholder"
+    },
+    "oidc": {},
+    "keycloak": {}
+  },
+  "billing": {
+    "provider": "stripe",
+    "stripe": {
+      "mode": "test",
+      "secretKey": "stripe_test_secret_key_placeholder",
+      "webhookSecret": "stripe_webhook_secret_placeholder",
+      "paidUnitPriceId": "stripe_paid_price_placeholder",
+      "topupUnitPriceId": "stripe_topup_price_placeholder",
+      "portalConfigurationId": "stripe_portal_config_placeholder"
+    }
+  },
+  "storage": {
+    "provider": "r2",
+    "publicUrlPolicy": "presigned",
+    "r2": {
+      "accountId": "r2_account_id_placeholder",
+      "bucketName": "overlay-staging",
+      "accessKeyId": "r2_access_key_id_placeholder",
+      "secretAccessKey": "r2_secret_access_key_placeholder",
+      "endpointUrl": "https://r2-staging.example.com",
+      "globalBudgetBytes": 1000000000,
+      "presignTtlSeconds": 300
+    },
+    "s3": {}
+  },
+  "llm": {
+    "gatewayProvider": "openrouter",
+    "keySource": "env",
+    "defaultChatModelId": "openrouter/free",
+    "modelAllowlist": [
+      "openrouter/free"
+    ],
+    "apiKeyEnvVar": "OPENROUTER_API_KEY"
+  },
+  "database": {
+    "provider": "convex",
+    "convexUrl": "https://convex-staging.example.com",
+    "deployment": "dev:overlay-staging",
+    "internalApiSecret": "replace_with_staging_internal_api_secret",
+    "internalServiceAuthSecret": "replace_with_staging_service_auth_secret",
+    "apiKeyHashSecret": "replace_with_staging_api_key_hash_secret"
+  },
+  "capabilities": {
+    "billing": true,
+    "sso": true,
+    "apiKeys": true,
+    "webhooks": false,
+    "vectorSearch": true,
+    "automations": true,
+    "multiTenant": false
+  }
+}
