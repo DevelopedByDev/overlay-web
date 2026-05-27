@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { ToolSet } from 'ai'
 
-test('createBrowserUnifiedTools requests the curated GITHUB_* tools via tools.get', async () => {
+test('createBrowserUnifiedTools requests the DEFAULT GITHUB_* tools via tools.get when enabledGithubToolSlugs is undefined', async () => {
   const { createBrowserUnifiedTools } = await import(
     new URL('./composio-tools.ts', import.meta.url).href,
   )
@@ -77,8 +77,8 @@ test('createBrowserUnifiedTools requests the curated GITHUB_* tools via tools.ge
 // the extractor returns null and the call passes through. Discovery of
 // allowlist-eligible repos already flows through the project-scoped
 // /api/app/integrations/github/repositories endpoint.
-test('curated GitHub toolset excludes allowlist-bypassing slugs', async () => {
-  const { createBrowserUnifiedTools } = await import(
+test('default GitHub toolset excludes allowlist-bypassing slugs', async () => {
+  const { createBrowserUnifiedTools, DEFAULT_GITHUB_TOOL_SLUGS } = await import(
     new URL('./composio-tools.ts', import.meta.url).href,
   )
 
@@ -113,10 +113,126 @@ test('curated GitHub toolset excludes allowlist-bypassing slugs', async () => {
     !requested.includes('GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER'),
     'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER must be removed — it enumerates non-allowlisted repos',
   )
-  // After Fix 1 + Fix 2 the curated list is exactly 9 slugs.
+  // After Fix 1 + Fix 2 the default list is exactly 9 slugs — also pin against
+  // the exported constant so the test and impl can't drift independently.
   assert.equal(
     requested.length,
     9,
-    `expected exactly 9 curated read-only GitHub slugs after security pruning, got ${requested.length}: ${requested.join(', ')}`,
+    `expected exactly 9 default read-only GitHub slugs after security pruning, got ${requested.length}: ${requested.join(', ')}`,
+  )
+  assert.equal(
+    (DEFAULT_GITHUB_TOOL_SLUGS as readonly string[]).length,
+    9,
+    'DEFAULT_GITHUB_TOOL_SLUGS itself must contain exactly 9 slugs',
+  )
+})
+
+test('createBrowserUnifiedTools with an explicit single-slug enabled list passes only that slug to tools.get', async () => {
+  const { createBrowserUnifiedTools } = await import(
+    new URL('./composio-tools.ts', import.meta.url).href,
+  )
+
+  let receivedFilters: { tools?: string[]; toolkits?: string[] } | undefined
+  const stubComposio = {
+    create: async () => {
+      throw new Error('should not be called')
+    },
+    tools: {
+      get: async (
+        _entityId: string,
+        filters: { tools?: string[]; toolkits?: string[] },
+      ) => {
+        receivedFilters = filters
+        return {} as ToolSet
+      },
+    },
+  }
+
+  await createBrowserUnifiedTools({
+    userId: 'test-user',
+    projectId: 'test-project',
+    composio: stubComposio,
+    enabledGithubToolSlugs: ['GITHUB_GET_AN_ISSUE'],
+  })
+
+  assert.deepEqual(
+    receivedFilters?.tools,
+    ['GITHUB_GET_AN_ISSUE'],
+    'expected tools.get to receive exactly the explicit slug list — no defaults inserted',
+  )
+})
+
+test('createBrowserUnifiedTools with an empty enabled list short-circuits and does not call tools.get', async () => {
+  const { createBrowserUnifiedTools } = await import(
+    new URL('./composio-tools.ts', import.meta.url).href,
+  )
+
+  let toolsGetCalled = false
+  const stubComposio = {
+    create: async () => {
+      throw new Error('should not be called')
+    },
+    tools: {
+      get: async () => {
+        toolsGetCalled = true
+        return {} as ToolSet
+      },
+    },
+  }
+
+  const result = await createBrowserUnifiedTools({
+    userId: 'test-user',
+    projectId: 'test-project',
+    composio: stubComposio,
+    enabledGithubToolSlugs: [],
+  })
+
+  assert.equal(
+    toolsGetCalled,
+    false,
+    'composio.tools.get must NOT be called when the enabled list is empty',
+  )
+  assert.deepEqual(
+    result,
+    {},
+    'expected an empty ToolSet when no github tools are enabled',
+  )
+})
+
+test('createBrowserUnifiedTools filters hard-denied slugs from an explicit enabled list', async () => {
+  const { createBrowserUnifiedTools } = await import(
+    new URL('./composio-tools.ts', import.meta.url).href,
+  )
+
+  let receivedFilters: { tools?: string[]; toolkits?: string[] } | undefined
+  const stubComposio = {
+    create: async () => {
+      throw new Error('should not be called')
+    },
+    tools: {
+      get: async (
+        _entityId: string,
+        filters: { tools?: string[]; toolkits?: string[] },
+      ) => {
+        receivedFilters = filters
+        return {} as ToolSet
+      },
+    },
+  }
+
+  await createBrowserUnifiedTools({
+    userId: 'test-user',
+    projectId: 'test-project',
+    composio: stubComposio,
+    enabledGithubToolSlugs: [
+      'GITHUB_DELETE_A_REPOSITORY',
+      'GITHUB_GET_AN_ISSUE',
+    ],
+  })
+
+  assert.deepEqual(
+    receivedFilters?.tools,
+    ['GITHUB_GET_AN_ISSUE'],
+    'expected hard-denied slug GITHUB_DELETE_A_REPOSITORY to be filtered out before tools.get',
   )
 })

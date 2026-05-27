@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import type { ToolSet } from 'ai'
 import { getServerProviderKey } from '@/server/ai/provider-keys'
 import { projectComposioEntityId } from '@/server/tools/composio-entity'
+import { isHardDeniedGithubTool } from '@/server/tools/github-tools-hard-deny'
 
 // Minimal surface of the Composio SDK that buildBrowserUnifiedTools needs.
 // Letting tests inject a fake Composio without depending on @composio/core types.
@@ -20,7 +21,8 @@ type ComposioLike = {
 }
 
 /**
- * Curated read-only GitHub tool slugs surfaced to the chat AI.
+ * Default read-only GitHub tool slugs surfaced to the chat AI when a project
+ * has not explicitly configured `githubToolsEnabled`.
  *
  * Selected to cover "ask questions about an allowlisted repo" use cases —
  * NO write/admin/destructive operations. Composio's
@@ -28,10 +30,11 @@ type ComposioLike = {
  * DELETE/ADD_COLLABORATOR/etc.; this list narrows the surface to the
  * minimum set the chat needs.
  *
- * Phase B follow-up (separate PR): per-project `allowGithubWrites: boolean`
- * flag that swaps in the full toolkit instead of this curated list.
+ * For projects with an explicit `githubToolsEnabled` array, the chat route
+ * passes that list through as `enabledGithubToolSlugs` and this default is
+ * not used.
  */
-const CHAT_GITHUB_READONLY_TOOL_SLUGS = [
+export const DEFAULT_GITHUB_TOOL_SLUGS = [
   // Repo metadata
   'GITHUB_GET_A_REPOSITORY',
   // NOTE: GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER removed (security/P1).
@@ -56,6 +59,23 @@ const CHAT_GITHUB_READONLY_TOOL_SLUGS = [
   // cannot parse `repo:` modifiers out of a query string. Phase B can reintroduce
   // it behind a `q`-aware wrap.
 ] as const
+
+/**
+ * Resolves the slugs to request from Composio's `tools.get`.
+ *
+ * - `undefined` → defaults to the read-only baseline (DEFAULT_GITHUB_TOOL_SLUGS).
+ * - explicit empty array → returns empty (user has actively disabled all GitHub tools).
+ * - non-empty array → strips hard-deny entries as defense-in-depth (the Convex mutation
+ *   should already reject these on write, but never trust upstream).
+ *
+ * Returned array is a new array; safe to spread into `tools: [...]`.
+ */
+export function getEnabledGithubToolSlugs(
+  enabled: readonly string[] | undefined,
+): string[] {
+  if (enabled === undefined) return [...DEFAULT_GITHUB_TOOL_SLUGS]
+  return enabled.filter((slug) => !isHardDeniedGithubTool(slug))
+}
 
 async function getComposioApiKey(accessToken?: string): Promise<string | null> {
   if (!accessToken) {
@@ -134,7 +154,15 @@ async function buildBrowserUnifiedTools(args: {
   accessToken?: string
   /** Inject a Composio SDK instance (or fake) for tests. */
   composio?: ComposioLike
+  /** Explicit slug list to request. When undefined, falls back to DEFAULT_GITHUB_TOOL_SLUGS via getEnabledGithubToolSlugs. */
+  enabledGithubToolSlugs?: readonly string[]
 }): Promise<ToolSet> {
+  const slugs = getEnabledGithubToolSlugs(args.enabledGithubToolSlugs)
+  if (slugs.length === 0) {
+    console.log('[composio-tools] no github tools enabled — returning empty toolset')
+    return {} as ToolSet
+  }
+
   let composio: ComposioLike
   if (args.composio) {
     composio = args.composio
@@ -155,7 +183,7 @@ async function buildBrowserUnifiedTools(args: {
   // GITHUB_* slug — which is exactly what applyGithubRepoAllowlistToTools
   // matches at the route layer.
   const rawTools = (await composio.tools.get(entityId, {
-    tools: [...CHAT_GITHUB_READONLY_TOOL_SLUGS],
+    tools: slugs,
   })) as ToolSet
 
   console.log(
@@ -172,16 +200,25 @@ export async function createBrowserUnifiedTools(args: {
   accessToken?: string
   /** Inject a Composio SDK instance (or fake) for tests. */
   composio?: ComposioLike
+  /** Explicit slug list to request. When undefined, falls back to DEFAULT_GITHUB_TOOL_SLUGS via getEnabledGithubToolSlugs. */
+  enabledGithubToolSlugs?: readonly string[]
 }): Promise<ToolSet> {
   // When a fake Composio is injected we bypass the cache so each test gets a
-  // fresh build path. The cache is keyed on the entity id only, so reusing it
-  // across tests would yield stale results from the first run.
+  // fresh build path. The cache is keyed on the entity id + slug fingerprint,
+  // so reusing it across tests would yield stale results from the first run.
   if (args.composio) {
     return buildBrowserUnifiedTools(args)
   }
 
   const now = Date.now()
-  const cacheKey = projectComposioEntityId(args.userId, args.projectId)
+  const entityId = projectComposioEntityId(args.userId, args.projectId)
+  // Fingerprint includes the resolved (post-hard-deny-filter) slug set so two
+  // chat turns with different enabled lists never share the wrong cache entry.
+  // Sort yields a deterministic key across input orderings.
+  const slugFingerprint = getEnabledGithubToolSlugs(args.enabledGithubToolSlugs)
+    .sort()
+    .join(',')
+  const cacheKey = `${entityId}|${slugFingerprint}`
   const cached = composioCache.get(cacheKey)
   if (cached && now - cached.createdAt < COMPOSIO_CACHE_TTL_MS) {
     return cached.tools
@@ -208,8 +245,13 @@ export function prewarmBrowserUnifiedTools(args: {
   userId: string
   projectId: string
   accessToken?: string
+  enabledGithubToolSlugs?: readonly string[]
 }): void {
-  const cacheKey = projectComposioEntityId(args.userId, args.projectId)
+  const entityId = projectComposioEntityId(args.userId, args.projectId)
+  const slugFingerprint = getEnabledGithubToolSlugs(args.enabledGithubToolSlugs)
+    .sort()
+    .join(',')
+  const cacheKey = `${entityId}|${slugFingerprint}`
   const cached = composioCache.get(cacheKey)
   if (cached && Date.now() - cached.createdAt < COMPOSIO_CACHE_TTL_MS) return
   if (composioInFlight.has(cacheKey)) return
