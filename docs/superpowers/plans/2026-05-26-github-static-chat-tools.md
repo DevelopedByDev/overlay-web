@@ -237,7 +237,7 @@ We test the unchanged wrap BEFORE making any change to `composio-tools.ts`, so a
 **Files:**
 - Modify: `src/server/tools/tools/github-repo-allowlist.test.ts` (append new tests)
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```ts
 test('applyGithubRepoAllowlistToTools wraps GITHUB_* tools with execute callables (post-swap shape)', async () => {
@@ -283,12 +283,16 @@ test('applyGithubRepoAllowlistToTools wraps GITHUB_* tools with execute callable
 })
 ```
 
-- [ ] **Step 2: Run, verify GREEN before any source changes**
+> **Execution note (2026-05-27):** the literal policy `{ enabled: true, allowedRepos: ['acme/web'] }` shown above does not satisfy the real `GithubRepoPolicy` type (`github-repo-allowlist.ts:140-151` — requires `enabled`, `list`, and an `allows()` method). Adapted at implementation time to use `buildGithubRepoPolicy(['acme/web'])`, which is the documented constructor and the convention every other wrap test in the file uses. Test intent (verify allowed-passes-through + disallowed-blocks against a realistic `{ description, execute }` toolset shape) is preserved. See `github-repo-allowlist.test.ts:219-280`.
+
+- [x] **Step 2: Run, verify GREEN before any source changes**
 
 Run: `node --test --import tsx src/server/tools/tools/github-repo-allowlist.test.ts`
 Expected: PASS — this is verifying existing behavior. If it FAILS, the wrap's contract diverges from the spec assumption and the whole plan needs revision.
 
-- [ ] **Step 3: Commit**
+Result (2026-05-27): `# tests 18 # pass 18 # fail 0` — new test landed as #18.
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/server/tools/tools/github-repo-allowlist.test.ts

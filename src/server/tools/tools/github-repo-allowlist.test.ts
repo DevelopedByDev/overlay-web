@@ -80,6 +80,22 @@ test('applyGithubRepoAllowlistToTools is identity when policy is disabled', asyn
   assert.equal(wrapped.GITHUB_GET_REPO, toolSet.GITHUB_GET_REPO)
 })
 
+test('empty project repo list blocks repo-targeted GitHub tools', async () => {
+  const { applyGithubRepoAllowlistToTools, buildGithubRepoPolicy } = await import(
+    new URL('./github-repo-allowlist.ts', import.meta.url).href,
+  )
+  const policy = buildGithubRepoPolicy([])
+  const executeStub = mock.fn(async () => ({ ok: true }))
+  const toolSet = { GITHUB_GET_REPO: { execute: executeStub } }
+  const wrapped = applyGithubRepoAllowlistToTools(toolSet, policy)
+  const result = await wrapped.GITHUB_GET_REPO.execute({ full_name: 'acme/web' }, {})
+  assert.equal(policy.enabled, true)
+  assert.equal(executeStub.mock.callCount(), 0)
+  assert.equal(result.ok, false)
+  assert.equal(result.error, 'repo_not_in_allowlist')
+  assert.deepEqual(result.allowedRepos, [])
+})
+
 test('applyGithubRepoAllowlistToTools does not wrap non-GITHUB_ tools', async () => {
   const { applyGithubRepoAllowlistToTools, buildGithubRepoPolicy } = await import(
     new URL('./github-repo-allowlist.ts', import.meta.url).href,
@@ -198,4 +214,60 @@ test('GITHUB_FORK_REPOSITORY blocks when target fields are missing (default-deny
   assert.equal(executeStub.mock.callCount(), 0)
   assert.equal(result.ok, false)
   assert.equal(result.error, 'repo_not_in_allowlist')
+})
+
+// ── Task 1: green baseline for the post-swap GITHUB_* ToolSet shape ──────────
+//
+// After Task 3 swaps `composio.create()` + `session.tools()` for the static
+// `composio.tools.get(entityId, { tools: [...] })`, individual GITHUB_* tools
+// land in the chat's ToolSet as `{ description, execute }` objects. This test
+// pins the wrap's behavior against that realistic post-swap shape so any later
+// regression points to the connection layer, not the wrap itself.
+//
+// Contract adaptation note: the briefing's literal policy
+// `{ enabled: true, allowedRepos: ['acme/web'] }` does not match the real
+// `GithubRepoPolicy` (which requires `list` and an `allows()` method — see
+// github-repo-allowlist.ts:140-151). The test below uses the documented
+// constructor `buildGithubRepoPolicy(['acme/web'])`, which is the same
+// convention every other wrap test in this file uses. The intent — verify
+// allowed-passes-through + disallowed-blocks against a realistic toolset
+// shape that includes `description` alongside `execute` — is preserved.
+test('applyGithubRepoAllowlistToTools wraps GITHUB_* tools with execute callables (post-swap shape)', async () => {
+  const { applyGithubRepoAllowlistToTools, buildGithubRepoPolicy } = await import(
+    new URL('./github-repo-allowlist.ts', import.meta.url).href,
+  )
+
+  let composioCalled = false
+  const fakeToolSet = {
+    GITHUB_GET_REPO: {
+      description: 'Get a github repo',
+      execute: async (input: { owner: string; repo: string }) => {
+        composioCalled = true
+        return { ok: true, name: input.repo }
+      },
+    },
+  }
+
+  const policy = buildGithubRepoPolicy(['acme/web'])
+  const wrapped = applyGithubRepoAllowlistToTools(fakeToolSet, policy)
+
+  composioCalled = false
+  const allowed = await wrapped.GITHUB_GET_REPO.execute(
+    { owner: 'acme', repo: 'web' },
+    {},
+  )
+  assert.equal(composioCalled, true, 'composio should be called for allowed repo')
+  assert.equal((allowed as { ok: boolean }).ok, true)
+
+  composioCalled = false
+  const blocked = await wrapped.GITHUB_GET_REPO.execute(
+    { owner: 'evil', repo: 'corp' },
+    {},
+  )
+  assert.equal(composioCalled, false, 'composio must NOT be called for disallowed repo')
+  assert.equal((blocked as { ok: boolean }).ok, false)
+  assert.match(
+    (blocked as { error: string }).error,
+    /repo_not_in_allowlist|not.*allowed/i,
+  )
 })
