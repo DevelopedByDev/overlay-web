@@ -47,8 +47,10 @@ const CHAT_GITHUB_READONLY_TOOL_SLUGS = [
   // Pull requests
   'GITHUB_LIST_PULL_REQUESTS',
   'GITHUB_GET_A_PULL_REQUEST',
-  // Search
-  'GITHUB_SEARCH_CODE',
+  // NOTE: GITHUB_SEARCH_CODE removed (security/P0). Its freeform `q` parameter
+  // (e.g. `q='secret repo:victim/private'`) bypasses the allowlist wrap, which
+  // cannot parse `repo:` modifiers out of a query string. Phase B can reintroduce
+  // it behind a `q`-aware wrap.
 ] as const
 
 async function getComposioApiKey(accessToken?: string): Promise<string | null> {
