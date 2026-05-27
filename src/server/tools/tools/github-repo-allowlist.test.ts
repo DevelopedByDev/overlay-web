@@ -245,6 +245,59 @@ test('GITHUB_GET_A_REPOSITORY blocks when repo arg is percent-encoded (extractor
   assert.match(result.error ?? '', /repo_not_in_allowlist|repo_arg_required/)
 })
 
+// ── Fix 4: detect repo-field disagreement, reject ────────────────────────────
+//
+// Bypass: model passes { full_name: 'acme/web', owner: 'evil', repo: 'corp' }.
+// Old extractor stopped at the first matching rule (full_name → acme/web) and
+// returned 'acme/web' (allowed). The wrap delegated to Composio, which
+// validates the JSON-schema using owner+repo and forwards to evil/corp.
+// Wrap and Composio disagreed on which field was authoritative.
+//
+// New behavior: when multiple repo-shaped fields are present and disagree on
+// owner+name, deny the call without consulting the policy. If all present
+// fields agree, use that repo. If none present, return null (Fix 3 handles
+// the repo-required default-deny path).
+test('extractor flags conflict when full_name and owner+repo disagree', async () => {
+  const { extractRepoFromComposioGithubArgs } = await import(
+    new URL('./github-repo-allowlist.ts', import.meta.url).href,
+  )
+  const result = extractRepoFromComposioGithubArgs({
+    full_name: 'acme/web',
+    owner: 'evil',
+    repo: 'corp',
+  })
+  assert.deepEqual(result, { conflict: true })
+})
+
+test('extractor accepts when full_name and owner+repo agree', async () => {
+  const { extractRepoFromComposioGithubArgs } = await import(
+    new URL('./github-repo-allowlist.ts', import.meta.url).href,
+  )
+  const result = extractRepoFromComposioGithubArgs({
+    full_name: 'acme/web',
+    owner: 'acme',
+    repo: 'web',
+  })
+  assert.deepEqual(result, { owner: 'acme', name: 'web' })
+})
+
+test('wrap blocks when full_name and owner+repo disagree', async () => {
+  const { applyGithubRepoAllowlistToTools, buildGithubRepoPolicy } = await import(
+    new URL('./github-repo-allowlist.ts', import.meta.url).href,
+  )
+  const policy = buildGithubRepoPolicy(['acme/web'])
+  const executeStub = mock.fn(async () => ({ ok: true }))
+  const toolSet = { GITHUB_GET_A_REPOSITORY: { execute: executeStub } }
+  const wrapped = applyGithubRepoAllowlistToTools(toolSet, policy)
+  const result = (await wrapped.GITHUB_GET_A_REPOSITORY.execute(
+    { full_name: 'acme/web', owner: 'evil', repo: 'corp' },
+    {},
+  )) as { ok: boolean; error?: string }
+  assert.equal(executeStub.mock.callCount(), 0)
+  assert.equal(result.ok, false)
+  assert.match(result.error ?? '', /repo_not_in_allowlist|repo_arg_required/)
+})
+
 // ── Task 1: green baseline for the post-swap GITHUB_* ToolSet shape ──────────
 //
 // After Task 3 swaps `composio.create()` + `session.tools()` for the static

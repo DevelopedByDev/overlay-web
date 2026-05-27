@@ -35,42 +35,61 @@ function isRepoRequiredGithubTool(name: string): boolean {
 }
 
 /**
+ * Sentinel returned by {@link extractRepoFromComposioGithubArgs} when multiple
+ * repo-shaped fields are present in the input but resolve to different
+ * owner/repo pairs. The wrap MUST refuse to delegate when it sees this — the
+ * downstream Composio HTTP layer may route the call using a different field
+ * than the one the wrap validated against (e.g. full_name='allowed/repo' but
+ * owner+repo='evil/corp').
+ */
+export type RepoExtractConflict = { conflict: true }
+
+/**
  * Extracts the owner and repo name from Composio GitHub tool arguments.
  *
- * Handles heterogeneous argument shapes by trying these precedence rules (in order):
+ * Collects ALL repo-shaped fields present in the input and verifies they
+ * resolve to the same owner/repo pair (case-insensitive). The supported
+ * field shapes are:
+ *
  * 1. input.full_name (string, split on "/")
  * 2. input.repo_full_name (string, split on "/")
  * 3. input.owner (string) + input.repo (string)
  * 4. input.owner (string) + input.name (string)
  * 5. input.repository (string, split on "/")
  *
- * Both owner and name are trimmed and lowercased before returning.
- * Returns null if the input is not an object or no valid repo arguments are found.
+ * Owner and name are trimmed and lowercased before comparison and return.
+ *
+ * Returns:
+ * - `{ owner, name }` when at least one field parses AND all present fields
+ *   agree on the same repo.
+ * - `{ conflict: true }` when two or more present fields disagree.
+ * - `null` when the input is not an object or no field parses successfully.
  *
  * Fork/transfer destination detection lives at the call site in
  * applyGithubRepoAllowlistToTools (it dispatches on the tool name).
  *
  * @param input - The tool arguments (treated defensively as unknown)
- * @returns An object with { owner: string; name: string } or null
+ * @returns A repo, a conflict marker, or null.
  */
 export function extractRepoFromComposioGithubArgs(
   input: unknown,
-): { owner: string; name: string } | null {
+): { owner: string; name: string } | RepoExtractConflict | null {
   // Defensive: only proceed if input is an object
   if (input === null || typeof input !== 'object') {
     return null
   }
 
   const obj = input as Record<string, unknown>
+  const candidates: Array<{ owner: string; name: string }> = []
 
   // Rule 1: full_name (e.g., "octocat/Hello")
   if (typeof obj.full_name === 'string') {
     const parts = obj.full_name.split('/')
     if (parts.length === 2 && parts[0] && parts[1]) {
-      return {
+      candidates.push({
         owner: parts[0].trim().toLowerCase(),
         name: parts[1].trim().toLowerCase(),
-      }
+      })
     }
   }
 
@@ -78,46 +97,67 @@ export function extractRepoFromComposioGithubArgs(
   if (typeof obj.repo_full_name === 'string') {
     const parts = obj.repo_full_name.split('/')
     if (parts.length === 2 && parts[0] && parts[1]) {
-      return {
+      candidates.push({
         owner: parts[0].trim().toLowerCase(),
         name: parts[1].trim().toLowerCase(),
-      }
+      })
     }
   }
 
   // Rule 3: owner + repo
-  if (typeof obj.owner === 'string' && typeof obj.repo === 'string') {
-    if (obj.owner && obj.repo) {
-      return {
-        owner: obj.owner.trim().toLowerCase(),
-        name: obj.repo.trim().toLowerCase(),
-      }
-    }
+  if (typeof obj.owner === 'string' && typeof obj.repo === 'string' && obj.owner && obj.repo) {
+    candidates.push({
+      owner: obj.owner.trim().toLowerCase(),
+      name: obj.repo.trim().toLowerCase(),
+    })
   }
 
-  // Rule 4: owner + name
-  if (typeof obj.owner === 'string' && typeof obj.name === 'string') {
-    if (obj.owner && obj.name) {
-      return {
-        owner: obj.owner.trim().toLowerCase(),
-        name: obj.name.trim().toLowerCase(),
-      }
-    }
+  // Rule 4: owner + name (only fires when 'name' is present AND distinct from
+  // any 'repo' already consumed by Rule 3; otherwise Rules 3 and 4 would emit
+  // a spurious "conflict" pair for `{ owner, repo, name }`).
+  if (
+    typeof obj.owner === 'string' &&
+    typeof obj.name === 'string' &&
+    obj.owner &&
+    obj.name &&
+    // If Rule 3 already consumed obj.repo and the name matches, skip — they
+    // are the same coordinate. Only push if 'name' differs from 'repo' (i.e.
+    // a real second candidate) or 'repo' is absent.
+    (typeof obj.repo !== 'string' || obj.repo.trim().toLowerCase() !== obj.name.trim().toLowerCase())
+  ) {
+    candidates.push({
+      owner: obj.owner.trim().toLowerCase(),
+      name: obj.name.trim().toLowerCase(),
+    })
   }
 
   // Rule 5: repository (e.g., "octocat/Hello")
   if (typeof obj.repository === 'string') {
     const parts = obj.repository.split('/')
     if (parts.length === 2 && parts[0] && parts[1]) {
-      return {
+      candidates.push({
         owner: parts[0].trim().toLowerCase(),
         name: parts[1].trim().toLowerCase(),
-      }
+      })
     }
   }
 
-  // No matching rule found
-  return null
+  if (candidates.length === 0) return null
+
+  const [first, ...rest] = candidates
+  for (const c of rest) {
+    if (c.owner !== first.owner || c.name !== first.name) {
+      return { conflict: true }
+    }
+  }
+  return first
+}
+
+/** Type guard for the conflict sentinel returned by the extractor. */
+function isRepoExtractConflict(
+  value: { owner: string; name: string } | RepoExtractConflict | null,
+): value is RepoExtractConflict {
+  return value !== null && typeof value === 'object' && 'conflict' in value && value.conflict === true
 }
 
 /**
@@ -313,7 +353,25 @@ export function applyGithubRepoAllowlistToTools<T extends Record<string, unknown
     const isForkOrTransfer = name.includes('_FORK_') || name.includes('_TRANSFER_')
 
     const wrappedExecute = async (input: unknown, ctx: unknown): Promise<unknown> => {
-      const sourceTarget = extractRepoFromComposioGithubArgs(input)
+      const extracted = extractRepoFromComposioGithubArgs(input)
+
+      // Conflict: multiple repo-shaped fields disagree on owner/name. The
+      // wrap and Composio's downstream HTTP layer could route to different
+      // repos. Refuse without consulting the policy.
+      if (isRepoExtractConflict(extracted)) {
+        console.warn('[github-allowlist] blocked', JSON.stringify({
+          toolName: name,
+          blockedRepo: null,
+          reason: 'repo-fields-disagree',
+        }))
+        return buildRepoBlockedToolResult({
+          toolName: name,
+          target: { owner: '(conflict)', name: '(conflict)' },
+          allowed: policy.list,
+        })
+      }
+
+      const sourceTarget = extracted
 
       // Null extractor result. Two cases:
       // 1. The tool is in NON_REPO_SCOPED_GITHUB_TOOLS (account-scoped op,
