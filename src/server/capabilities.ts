@@ -20,10 +20,16 @@ import {
 export { getRequiredCapabilityForRoute } from './capabilities-core'
 
 export function getOverlayCapabilitiesSync(): CapabilityCheck {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return deriveOverlayCapabilities()
+  }
   return deriveOverlayCapabilities(getOverlayRuntimeConfigSync())
 }
 
 export async function getOverlayCapabilities(): Promise<CapabilityCheck> {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return deriveOverlayCapabilities()
+  }
   return deriveOverlayCapabilities(await getOverlayRuntimeConfig())
 }
 

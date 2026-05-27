@@ -85,6 +85,14 @@ OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
 npm run docs:check:self-hosting
 ```
 
+Before an on-prem release, run the complete Phase 6 gate:
+
+```bash
+npm run check:phase6
+```
+
+The manual UI checklist is in [Phase 6 Release Gates](./PHASE6_RELEASE_GATES.md).
+
 ## Deployment Profiles
 
 Validated examples live under `docs/config`:

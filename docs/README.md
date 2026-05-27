@@ -7,6 +7,7 @@ Keep docs short and current. Prefer updating these files over adding new one-off
 - [Architecture](./architecture.md) - backend boundaries, auth, billing, storage, and client parity.
 - [Development](./development.md) - local setup, required env vars, scripts, and verification.
 - [Self Hosting](./SELF_HOSTING.md) - runtime config, provider swaps, deployment profiles, and secret placement.
+- [Phase 6 Release Gates](./PHASE6_RELEASE_GATES.md) - programmatic gate and manual UI QA for on-prem releases.
 - [Tenancy](./TENANCY.md) - single-customer deployment boundary, role model, and Phase 6b shared-tenant checklist.
 - [Licensing](./LICENSING.md) - AGPL core, Apache ecosystem packages, commercial license path, and trademark boundaries.
 - [Legal Self Hosting Notes](./LEGAL_SELF_HOSTING_NOTES.md) - release checklist for enterprise distributions.
