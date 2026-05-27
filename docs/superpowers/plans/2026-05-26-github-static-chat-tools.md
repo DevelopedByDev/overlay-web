@@ -376,7 +376,7 @@ git commit -m "refactor(chat-tools): add DI seam for Composio SDK"
 **Files:**
 - Modify: `src/server/tools/composio-tools.ts` (inside `buildBrowserUnifiedTools`)
 
-- [ ] **Step 1: Write the failing unit test FIRST**
+- [x] **Step 1: Write the failing unit test FIRST**
 
 In `src/server/tools/composio-tools.test.ts`:
 
@@ -422,14 +422,16 @@ test('buildBrowserUnifiedTools returns GITHUB_* tools using injected Composio st
 })
 ```
 
-- [ ] **Step 2: Run test, verify it fails meaningfully**
+- [x] **Step 2: Run test, verify it fails meaningfully**
 
 Run: `node --test --import tsx src/server/tools/composio-tools.test.ts`
 Expected: FAIL because the current implementation still calls `composio.create(...).tools()` (which doesn't exist on the stub). The error should mention `tools()` or `create` being undefined.
 
 (If `createBrowserUnifiedTools` isn't exported, also export it now — the existing `prewarmBrowserUnifiedTools` and `getBrowserUnifiedTools` wrap it but the test goes direct.)
 
-- [ ] **Step 3: Define the curated READ-only tool list**
+> **Execution note (2026-05-27):** Test runner needs `NODE_OPTIONS=--conditions=react-server` because `composio-tools.ts` imports `'server-only'`, which throws on the default condition. Same convention as the other server-only tests in this repo (e.g. `src/server/tools/tools/exposure-policy.test.ts`). Also: extended the exported `createBrowserUnifiedTools` signature to accept the optional `composio` arg and bypass the 10-min cache when an injected fake is present — otherwise the wrapper drops `args.composio` on the floor (TS rejects it) and the cache would yield stale results across tests.
+
+- [x] **Step 3: Define the curated READ-only tool list**
 
 In `src/server/tools/composio-tools.ts`, near the top of the file (after imports), declare a frozen constant:
 
@@ -468,7 +470,9 @@ const CHAT_GITHUB_READONLY_TOOL_SLUGS = [
 
 **Important — slug-verification step before committing:** Composio tool slugs are case-sensitive and not all of the above necessarily exist in this SDK version. Verify each slug exists by running the smoke script with `{ tools: [<slug>] }` (one round-trip per slug, or batch them in a single call). If any slug isn't recognized, find Composio's actual name from the smoke's full keys list and substitute. Record the final verified list in this Task 3 Step 3 by editing the plan file.
 
-- [ ] **Step 4: Implement the swap**
+> **Verification result (2026-05-27):** Probed all 11 draft slugs via `composio.tools.get(entityId, { tools: [...] })` against entity `overlay_project_user_01K75Z8N3FK5TD9CD116HHP87A_mh715nq1eaep590qkzhn4drm3x871s9a`. 10/11 resolved. One substitution: `GITHUB_GET_THE_README` is not in the catalog → replaced with `GITHUB_GET_A_REPOSITORY_README` (verified present in the same call). Final list of 11 used as-is in `CHAT_GITHUB_READONLY_TOOL_SLUGS`. Temp script `scripts/composio-slug-verify.ts` written, run, and deleted (not committed).
+
+- [x] **Step 4: Implement the swap**
 
 Replace the block from `const session = await composio.create(...)` through the wrap-loop with:
 
@@ -498,12 +502,14 @@ return rawTools
 
 VercelProvider auto-binds `connectedAccountId` (verified GREEN in Task 0 Step 7). No connectedAccounts lookup needed.
 
-- [ ] **Step 4: Run test, verify GREEN**
+- [x] **Step 4: Run test, verify GREEN**
 
 Run: `node --test --import tsx src/server/tools/composio-tools.test.ts`
 Expected: PASS — stub returned `GITHUB_*` keys; the assertion is satisfied.
 
-- [ ] **Step 5: Commit**
+Result (2026-05-27): `# tests 1 # pass 1 # fail 0`. Allowlist test still `# pass 18`. `pnpm typecheck` clean. `pnpm lint` 0 errors (3 expected `no-unused-vars` warnings on Task 4 dead-code symbols + 1 pre-existing `no-restricted-imports` warning).
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/server/tools/composio-tools.ts src/server/tools/composio-tools.test.ts
