@@ -58,7 +58,13 @@ export async function GET(request: NextRequest) {
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
     return NextResponse.json(projects || [])
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const lower = message.toLowerCase()
+    if (lower.includes('unauthorized') || lower.includes('access token')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    console.error('[api/app/projects GET] failed', { error: message })
     return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 })
   }
 }

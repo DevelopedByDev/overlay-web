@@ -25,11 +25,7 @@ export const list = query({
     includeDeleted: v.optional(v.boolean()),
   },
   handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
-    try {
-      await authorizeUserAccess({ userId, accessToken, serverSecret })
-    } catch {
-      return []
-    }
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const projects = await ctx.db
       .query('projects')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -44,11 +40,7 @@ export const list = query({
 export const get = query({
   args: { projectId: v.id('projects'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
   handler: async (ctx, { projectId, userId, accessToken, serverSecret }) => {
-    try {
-      await authorizeUserAccess({ userId, accessToken, serverSecret })
-    } catch {
-      return null
-    }
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
     const project = await ctx.db.get(projectId)
     return project?.userId === userId && !project.deletedAt ? project : null
   },
