@@ -16,6 +16,7 @@ import { refreshEntitlementsForUser } from '@/server/billing/billing-runtime'
 import {
   clampPaidPlanAmountCents,
   clampTopUpAmountCents,
+  quantityToPlanAmountCents,
 } from '@/shared/billing/billing-pricing'
 import {
   createFreeEntitlements,
@@ -35,8 +36,12 @@ export interface StripeBillingProviderConfig {
 
 type SubscriptionBillingState = {
   email?: string
+  planAmountCents?: number
+  planKind?: 'free' | 'paid'
+  status?: 'active' | 'canceled' | 'past_due' | 'trialing'
   stripeCustomerId?: string
   stripeSubscriptionId?: string
+  tier?: 'free' | 'pro' | 'max'
 }
 
 async function getSubscriptionState(userId: string): Promise<SubscriptionBillingState | null> {
@@ -71,6 +76,23 @@ async function recordUsage(args: UsageArgs): Promise<void> {
   )
 }
 
+async function syncSubscriptionCustomer(args: SubscriptionBillingState & {
+  userId: string
+  stripeCustomerId: string
+}): Promise<void> {
+  await convex.mutation('billing/subscriptions:upsertSubscription', {
+    serverSecret: getInternalApiSecret(),
+    userId: args.userId,
+    email: args.email,
+    stripeCustomerId: args.stripeCustomerId,
+    stripeSubscriptionId: args.stripeSubscriptionId,
+    tier: args.tier,
+    planKind: args.planKind,
+    planAmountCents: args.planAmountCents,
+    status: args.status,
+  })
+}
+
 export class StripeBillingProvider extends CoreStripeBillingProvider {
   readonly providerConfigSummary: {
     provider: 'stripe'
@@ -100,7 +122,9 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
       normalizeTopUpAmountCents: clampTopUpAmountCents,
       isRecognizedTopUpAmount,
       planQuantityForAmountCents: getPlanQuantityForCheckout,
+      planAmountCentsForQuantity: quantityToPlanAmountCents,
       topUpQuantityForAmountCents: getTopUpQuantityForCheckout,
+      syncSubscriptionCustomer,
     })
 
     this.providerConfigSummary = {

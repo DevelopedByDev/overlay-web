@@ -36,8 +36,8 @@ Provider-specific variables:
 | --- | --- | --- |
 | `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` | `auth.provider="workos"` | Use production WorkOS values only with production app and Convex deployments. |
 | `DEV_WORKOS_CLIENT_ID`, `DEV_WORKOS_API_KEY` | Local or staging WorkOS fallback | Only use when `auth.allowDevFallbacks=true` in non-production. |
-| `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE` | `auth.provider="oidc"` | The Phase 6.2 OIDC provider is a foundation adapter. Confirm sign-in/callback behavior before production use. |
-| `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_REALM` | `auth.provider="keycloak"` | Keycloak uses the OIDC skeleton adapter. |
+| `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE` | `auth.provider="oidc"` | Verifies RS256 bearer/access tokens against OIDC discovery JWKS and maps standard profile claims. Browser sign-in/callback wiring is still deployment-specific. |
+| `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_REALM` | `auth.provider="keycloak"` | Keycloak uses the same OIDC token verification path. Browser sign-in/callback wiring is still deployment-specific. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `billing.provider="stripe"` | Required only when billing is enabled. |
 | `DEV_STRIPE_SECRET_KEY`, `DEV_STRIPE_WEBHOOK_SECRET` | Staging Stripe | Preferred for non-production. |
 | `STRIPE_PAID_UNIT_PRICE_ID`, `STRIPE_TOPUP_UNIT_PRICE_ID`, `STRIPE_PORTAL_CONFIGURATION_ID` | Stripe billing UI | Use matching test or live mode IDs for the selected environment. |
@@ -46,6 +46,7 @@ Provider-specific variables:
 | `OPENROUTER_API_KEY` | `llm.gatewayProvider="openrouter"` | Default SaaS-style model gateway. |
 | `AI_GATEWAY_API_KEY` | `llm.gatewayProvider="ai-gateway"` | Vercel AI Gateway compatible path. |
 | `OPENAI_API_KEY` | `llm.gatewayProvider="openai"` | Used by the active OpenAI provider adapter. |
+| `ANTHROPIC_API_KEY`, `GROQ_API_KEY` | `llm.gatewayProvider="anthropic"` or `"groq"` | Used by the direct Anthropic and Groq provider adapters unless `LLM_API_KEY_ENV_VAR` points at a different secret name. |
 
 Optional observability/integration variables:
 
@@ -112,8 +113,8 @@ Auth providers:
 | Provider | Config | Current status |
 | --- | --- | --- |
 | `workos` | `auth.workos` | Default SaaS path. Production-ready path for current hosted app. |
-| `oidc` | `auth.oidc` | Runtime-config foundation. Verify sign-in, callback, token verification, and user mapping for your IdP before production. |
-| `keycloak` | `auth.keycloak` | Keycloak-shaped OIDC foundation. Verify the same auth flows as OIDC. |
+| `oidc` | `auth.oidc` | Runtime-config OIDC bearer/access-token verification. Verify browser sign-in/callback wiring for your IdP before production. |
+| `keycloak` | `auth.keycloak` | Keycloak-shaped OIDC bearer/access-token verification. Verify browser sign-in/callback wiring for your realm before production. |
 | `none` | none | Local/on-prem no-op auth. Pair with `capabilities.sso=false`. |
 
 Billing providers:
@@ -139,7 +140,7 @@ LLM providers:
 | `openrouter` | `llm.gatewayProvider`, `OPENROUTER_API_KEY` | Default SaaS gateway path. |
 | `ai-gateway` | `llm.gatewayProvider`, `AI_GATEWAY_API_KEY` | Vercel AI Gateway compatible path. |
 | `openai` | `llm.gatewayProvider`, `OPENAI_API_KEY` | Active OpenAI adapter. |
-| `anthropic`, `groq` | provider name only | Config shape exists, but the current server context selects the no-op adapter until those provider adapters are implemented. |
+| `anthropic`, `groq` | provider name plus provider API key env | Active direct provider adapters. Use `ANTHROPIC_API_KEY` or `GROQ_API_KEY`, or set `LLM_API_KEY_ENV_VAR` to your runtime secret name. |
 | `none` | none | No-op LLM provider for shell/config QA. |
 
 Capabilities:

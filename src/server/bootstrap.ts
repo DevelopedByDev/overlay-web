@@ -21,6 +21,9 @@ import {
   S3CompatibleObjectStore,
 } from '@/server/storage/providers'
 import type { OverlayRuntimeConfig } from '@/shared/config'
+import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
+import { GroqGateway } from '@overlay/llm-gateway/groq'
+import { BUILT_IN_MODELS } from '@overlay/llm-gateway/models'
 import type {
   AuthProvider,
   BillingProvider,
@@ -183,10 +186,28 @@ function createLlmGateway(config: OverlayRuntimeConfig | null): LLMGateway {
         modelAllowlist: config.llm.modelAllowlist,
       })
     case 'anthropic':
+      return new AnthropicGateway({
+        getApiKey: () => resolveConfiguredEnvSecret(config.llm.apiKeyEnvVar ?? 'ANTHROPIC_API_KEY'),
+        models: filterRuntimeModels(config.llm.modelAllowlist),
+      })
     case 'groq':
+      return new GroqGateway({
+        getApiKey: () => resolveConfiguredEnvSecret(config.llm.apiKeyEnvVar ?? 'GROQ_API_KEY'),
+        models: filterRuntimeModels(config.llm.modelAllowlist),
+      })
     case 'none':
       return new NoOpLLMGateway()
   }
+}
+
+function resolveConfiguredEnvSecret(envVarName: string): string | null {
+  return process.env[envVarName]?.trim() || null
+}
+
+function filterRuntimeModels(modelAllowlist: readonly string[] | undefined) {
+  if (!modelAllowlist?.length) return BUILT_IN_MODELS
+  const allowed = new Set(modelAllowlist)
+  return BUILT_IN_MODELS.filter((model) => allowed.has(model.id))
 }
 
 function createRateLimiter(config: OverlayRuntimeConfig | null): RateLimiter {

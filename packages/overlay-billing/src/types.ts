@@ -49,6 +49,41 @@ export interface PortalResult {
   providerSessionId?: string
 }
 
+export interface PortalSessionArgs {
+  userId: string
+  sessionId?: string
+  email?: string
+  returnUrl?: string
+}
+
+export interface CheckoutSessionVerificationArgs {
+  sessionId: string
+  userId: string
+  kind: 'paid_plan' | 'budget_topup'
+  allowLatestCompletedFallback?: boolean
+}
+
+export interface CheckoutSessionVerificationResult {
+  providerSessionId: string
+  providerCustomerId?: string
+  providerSubscriptionId?: string
+  providerPriceId?: string
+  providerQuantity?: number
+  status?: string
+  mode?: string
+  paymentStatus?: string
+  planAmountCents?: number
+  topUpAmountCents?: number
+  autoTopUpEnabled?: boolean
+  offSessionConsentAt?: number
+  currentPeriodStart?: number
+  currentPeriodEnd?: number
+  amountTotalCents?: number
+  currency?: string
+  paymentIntentId?: string
+  metadata?: Record<string, string>
+}
+
 export type UsageKind =
   | 'ask'
   | 'write'
@@ -74,6 +109,8 @@ export interface BillingProvider {
   getEntitlements(userId: string): Promise<Entitlements>
   createCheckoutSession(args: CheckoutArgs): Promise<CheckoutResult>
   createPortalSession(userId: string): Promise<PortalResult>
+  createCustomerPortalSession?(args: PortalSessionArgs): Promise<PortalResult>
+  verifyCheckoutSession?(args: CheckoutSessionVerificationArgs): Promise<CheckoutSessionVerificationResult>
   recordUsage(args: UsageArgs): Promise<void>
   cancelSubscription?(subscriptionId: string): Promise<void>
 }

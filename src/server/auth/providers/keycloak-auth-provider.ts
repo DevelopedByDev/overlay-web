@@ -12,6 +12,7 @@ export class KeycloakAuthProvider extends OidcAuthProvider {
     issuerUrl?: string
     clientId?: string
     hasClientSecret: boolean
+    audience?: string
     realm?: string
   }
 
@@ -22,6 +23,7 @@ export class KeycloakAuthProvider extends OidcAuthProvider {
       ...(config.issuerUrl ? { issuerUrl: config.issuerUrl } : {}),
       ...(config.clientId ? { clientId: config.clientId } : {}),
       hasClientSecret: Boolean(config.clientSecret),
+      ...(config.audience ? { audience: config.audience } : {}),
       ...(config.realm ? { realm: config.realm } : {}),
     }
   }

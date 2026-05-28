@@ -59,6 +59,8 @@ OIDC_AUDIENCE=overlay-api
 
 The same shape is captured in [`config/onprem-s3-oidc-openai.example.json`](./config/onprem-s3-oidc-openai.example.json). Keep secrets in the runtime secret manager; use JSON config for non-secret provider shape.
 
+OIDC and Keycloak provider adapters verify RS256 bearer/access tokens using the issuer discovery document and JWKS endpoint. Browser sign-in and callback routing remain deployment-specific; verify that flow against the selected IdP before customer handoff.
+
 ## Disabled State Expectations
 
 When a capability is disabled, the UI must hide or disable the feature and the server route must return `capability_disabled` with HTTP 403.

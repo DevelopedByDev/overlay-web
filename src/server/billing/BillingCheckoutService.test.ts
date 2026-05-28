@@ -3,6 +3,12 @@ import test from 'node:test'
 import { BillingCheckoutService } from './BillingCheckoutService'
 import { BillingServiceError } from './BillingCustomerService'
 import type { BillingRepository } from './BillingRepository'
+import type {
+  BillingProvider,
+  CheckoutArgs,
+  CheckoutSessionVerificationArgs,
+  UsageArgs,
+} from '@overlay/app-core'
 
 function createRepository(overrides: Partial<BillingRepository> = {}): BillingRepository {
   return {
@@ -43,11 +49,61 @@ function createRepository(overrides: Partial<BillingRepository> = {}): BillingRe
   }
 }
 
-function createService(repository = createRepository()) {
+function createBillingProvider(overrides: Partial<BillingProvider> = {}): BillingProvider {
+  return {
+    async getEntitlements() {
+      return {
+        tier: 'pro',
+        planKind: 'paid',
+        creditsUsed: 0,
+        creditsTotal: 20,
+        budgetUsedCents: 0,
+        budgetTotalCents: 2000,
+        budgetRemainingCents: 2000,
+        dailyUsage: { ask: 0, write: 0, agent: 0 },
+      }
+    },
+    async createCheckoutSession(args: CheckoutArgs) {
+      return { url: `https://billing.example/${args.kind ?? 'paid_plan'}` }
+    },
+    async createPortalSession() {
+      return { url: 'https://billing.example/portal' }
+    },
+    async verifyCheckoutSession(args: CheckoutSessionVerificationArgs) {
+      if (args.kind === 'budget_topup') {
+        return {
+          providerSessionId: args.sessionId,
+          amountTotalCents: 1000,
+          autoTopUpEnabled: true,
+        }
+      }
+      return {
+        providerSessionId: args.sessionId,
+        providerCustomerId: 'cus_1',
+        providerSubscriptionId: 'sub_1',
+        providerPriceId: 'price_1',
+        providerQuantity: 20,
+        status: 'active',
+        planAmountCents: 2000,
+        topUpAmountCents: 1000,
+        autoTopUpEnabled: true,
+        offSessionConsentAt: 1234,
+        currentPeriodStart: 100,
+        currentPeriodEnd: 200,
+      }
+    },
+    async recordUsage(args: UsageArgs) {
+      void args
+    },
+    ...overrides,
+  }
+}
+
+function createService(repository = createRepository(), billingProvider = createBillingProvider()) {
   return new BillingCheckoutService({
     repository,
     baseUrl: () => 'https://overlay.test',
-    stripeClient: {} as never,
+    billingProvider,
   })
 }
 
@@ -64,6 +120,32 @@ test('BillingCheckoutService.createSubscriptionCheckout preserves unsupported to
       error.statusCode === 400 &&
       error.payload.error === 'Unsupported top-up amount.',
   )
+})
+
+test('BillingCheckoutService.createSubscriptionCheckout routes through billing provider', async () => {
+  const calls: CheckoutArgs[] = []
+  const service = createService(createRepository(), createBillingProvider({
+    async createCheckoutSession(args) {
+      calls.push(args)
+      return { url: 'https://billing.example/checkout' }
+    },
+  }))
+
+  const result = await service.createSubscriptionCheckout({
+    user: { id: 'user_1', email: 'user@example.com' },
+    body: {
+      planAmountCents: 2000,
+      topUpAmountCents: 1000,
+      autoTopUpEnabled: true,
+    },
+  })
+
+  assert.deepEqual(result, { url: 'https://billing.example/checkout' })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]?.kind, 'paid_plan')
+  assert.equal(calls[0]?.userId, 'user_1')
+  assert.equal(calls[0]?.planAmountCents, 2000)
+  assert.equal(calls[0]?.topUpAmountCents, 1000)
 })
 
 test('BillingCheckoutService.createTopUpCheckout requires paid plan', async () => {
@@ -121,4 +203,53 @@ test('BillingCheckoutService.verifyTopUp preserves session validation errors', a
       error.statusCode === 400 &&
       error.payload.error === 'Invalid session ID',
   )
+})
+
+test('BillingCheckoutService.verifySubscriptionCheckout writes provider verification result', async () => {
+  const upserts: Array<Record<string, unknown>> = []
+  const service = createService(createRepository({
+    async upsertSubscription(args) {
+      upserts.push(args)
+      return null
+    },
+  }))
+
+  const result = await service.verifySubscriptionCheckout({
+    userId: 'user_1',
+    sessionId: 'cs_test_123',
+  })
+
+  assert.deepEqual(result, {
+    success: true,
+    planKind: 'paid',
+    planAmountCents: 2000,
+    message: 'Subscription activated successfully',
+  })
+  assert.equal(upserts.length, 1)
+  assert.equal(upserts[0]?.stripeSubscriptionId, 'sub_1')
+  assert.equal(upserts[0]?.stripePriceId, 'price_1')
+})
+
+test('BillingCheckoutService.verifyTopUp records provider verification result', async () => {
+  const topUps: Array<Record<string, unknown>> = []
+  const preferenceUpdates: Array<Record<string, unknown>> = []
+  const service = createService(createRepository({
+    async recordBudgetTopUp(args) {
+      topUps.push(args)
+      return null
+    },
+    async updateBillingPreferences(args) {
+      preferenceUpdates.push(args)
+      return { success: true }
+    },
+  }))
+
+  const result = await service.verifyTopUp({
+    userId: 'user_1',
+    body: { sessionId: 'cs_test_123' },
+  })
+
+  assert.deepEqual(result, { success: true, amountCents: 1000 })
+  assert.equal(topUps[0]?.stripeCheckoutSessionId, 'cs_test_123')
+  assert.equal(preferenceUpdates[0]?.autoTopUpEnabled, true)
 })

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
+import { GroqGateway } from '@overlay/llm-gateway/groq'
 import { createOverlayServerContext } from './bootstrap'
 import { OpenAILLMGateway, OpenRouterGateway } from './ai/providers'
 import { ApiKeyService } from './auth/api-keys'
@@ -84,4 +86,32 @@ test('configured adapters receive runtime values instead of unrelated production
       process.env.STRIPE_SECRET_KEY = previousStripeSecretKey
     }
   }
+})
+
+test('configured Anthropic and Groq gateways use real provider adapters instead of no-op placeholders', () => {
+  const base = fixture('onprem-s3-oidc-openai.json')
+
+  const anthropic = parseOverlayRuntimeConfig({
+    ...base,
+    llm: {
+      ...base.llm,
+      gatewayProvider: 'anthropic',
+      defaultChatModelId: 'claude-sonnet-4-6',
+      modelAllowlist: ['claude-sonnet-4-6'],
+      apiKeyEnvVar: 'ANTHROPIC_API_KEY',
+    },
+  })
+  const groq = parseOverlayRuntimeConfig({
+    ...base,
+    llm: {
+      ...base.llm,
+      gatewayProvider: 'groq',
+      defaultChatModelId: 'openai/gpt-oss-120b',
+      modelAllowlist: ['openai/gpt-oss-120b'],
+      apiKeyEnvVar: 'GROQ_API_KEY',
+    },
+  })
+
+  assert.equal(createOverlayServerContext({ appConfig: {}, runtimeConfig: anthropic }).llmGateway instanceof AnthropicGateway, true)
+  assert.equal(createOverlayServerContext({ appConfig: {}, runtimeConfig: groq }).llmGateway instanceof GroqGateway, true)
 })

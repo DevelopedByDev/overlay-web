@@ -32,6 +32,14 @@ describe('@overlay/billing', () => {
 
     assert.deepEqual(entitlements, createFreeEntitlements())
     assert.equal(canUsePaidBudgetFeatures(entitlements), false)
+    await assert.rejects(
+      () => provider.createCheckoutSession({ userId: 'user_1' }),
+      /Billing provider is disabled; checkout sessions are unavailable\./,
+    )
+    await assert.rejects(
+      () => provider.createPortalSession('user_1'),
+      /Billing provider is disabled; customer portal sessions are unavailable\./,
+    )
   })
 
   it('records usage through UsageMeter with a timestamp', async () => {

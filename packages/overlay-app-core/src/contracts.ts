@@ -51,8 +51,11 @@ export type {
   BillingProvider,
   CheckoutArgs,
   CheckoutResult,
+  CheckoutSessionVerificationArgs,
+  CheckoutSessionVerificationResult,
   Entitlements,
   PortalResult,
+  PortalSessionArgs,
   UsageArgs,
   UsageKind,
 } from '@overlay/billing'
