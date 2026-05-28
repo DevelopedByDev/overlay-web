@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import Image from 'next/image'
+import { AuthLoadingScreen, SimpleAuthPageChrome } from '../_components/AuthPageChrome'
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams()
@@ -61,79 +61,48 @@ function ResetPasswordContent() {
 
   if (success) {
     return (
-      <div className="min-h-screen gradient-bg flex flex-col">
-        <div className="liquid-glass" />
-
-        <header className="relative z-10 py-6 px-8">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <Image
-              src="/assets/overlay-logo.png"
-              alt="Overlay"
-              width={32}
-              height={32}
-            />
-            <span className="text-xl font-serif">overlay</span>
-          </Link>
-        </header>
-
-        <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
-          <div className="w-full max-w-md">
-            <div className="glass-dark rounded-2xl p-8 text-center">
-              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg
-                  className="w-8 h-8 text-emerald-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-              <h1 className="text-2xl font-serif mb-2">Password reset!</h1>
-              <p className="text-[var(--muted)] mb-6">
-                Your password has been successfully reset. You can now sign in with your new password.
-              </p>
-              <Link
-                href="/auth/sign-in"
-                className="inline-block px-6 py-3 bg-[var(--foreground)] text-[var(--background)] rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+      <SimpleAuthPageChrome footer={false}>
+        <div className="w-full max-w-md">
+          <div className="glass-dark rounded-2xl p-8 text-center">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg
+                className="w-8 h-8 text-emerald-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
               >
-                Sign in
-              </Link>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
             </div>
+            <h1 className="text-2xl font-serif mb-2">Password reset!</h1>
+            <p className="text-[var(--muted)] mb-6">
+              Your password has been successfully reset. You can now sign in with your new password.
+            </p>
+            <Link
+              href="/auth/sign-in"
+              className="inline-block px-6 py-3 bg-[var(--foreground)] text-[var(--background)] rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              Sign in
+            </Link>
           </div>
-        </main>
-      </div>
+        </div>
+      </SimpleAuthPageChrome>
     )
   }
 
   return (
-    <div className="min-h-screen gradient-bg flex flex-col">
-      <div className="liquid-glass" />
-
-      <header className="relative z-10 py-6 px-8">
-        <Link href="/" className="inline-flex items-center gap-2">
-          <Image
-            src="/assets/overlay-logo.png"
-            alt="Overlay"
-            width={32}
-            height={32}
-          />
-          <span className="text-xl font-serif">overlay</span>
-        </Link>
-      </header>
-
-      <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-md">
-          <div className="glass-dark rounded-2xl p-8">
-            <h1 className="text-2xl font-serif text-center mb-2">Reset your password</h1>
-            <p className="text-sm text-[var(--muted)] text-center mb-8">
-              Enter your new password below
-            </p>
+    <SimpleAuthPageChrome>
+      <div className="w-full max-w-md">
+        <div className="glass-dark rounded-2xl p-8">
+          <h1 className="text-2xl font-serif text-center mb-2">Reset your password</h1>
+          <p className="text-sm text-[var(--muted)] text-center mb-8">
+            Enter your new password below
+          </p>
 
             {error && (
               <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm">
@@ -204,30 +173,15 @@ function ResetPasswordContent() {
                 Sign in
               </Link>
             </p>
-          </div>
         </div>
-      </main>
-
-      <footer className="relative z-10 py-6 px-8 text-center text-sm text-[var(--muted)]">
-        <p>© 2026 overlay</p>
-      </footer>
-    </div>
+      </div>
+    </SimpleAuthPageChrome>
   )
 }
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen gradient-bg flex items-center justify-center">
-          <div className="liquid-glass" />
-          <div className="relative z-10 text-center">
-            <div className="w-8 h-8 border-2 border-[var(--foreground)] border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="mt-4 text-[var(--muted)]">Loading...</p>
-          </div>
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoadingScreen tone="simple" />}>
       <ResetPasswordContent />
     </Suspense>
   )

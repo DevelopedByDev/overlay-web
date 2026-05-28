@@ -1,5 +1,1 @@
-import { IntegrationsRouteSkeleton } from '../_components/AppRouteSkeletons'
-
-export default function Loading() {
-  return <IntegrationsRouteSkeleton />
-}
+export { ToolsLoadingRouteSkeleton as default } from '../_components/AppRouteSkeletons'

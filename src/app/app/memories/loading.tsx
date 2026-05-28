@@ -1,5 +1,1 @@
-import { KnowledgeRouteSkeleton } from '../_components/AppRouteSkeletons'
-
-export default function Loading() {
-  return <KnowledgeRouteSkeleton />
-}
+export { MemoriesLoadingRouteSkeleton as default } from '../_components/AppRouteSkeletons'

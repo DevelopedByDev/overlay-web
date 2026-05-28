@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, Suspense, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { PageNavbar } from '@/components/layout/PageNavbar'
-import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
+import { useLandingTheme } from '@/contexts/LandingThemeContext'
+import { LandingAuthBoundary, LandingAuthPageChrome } from '../_components/AuthPageChrome'
 import { sanitizeClientAuthRedirect } from '@/shared/auth/auth-redirect'
 import {
   persistMobilePkceChallengeFromUrl,
@@ -196,12 +196,9 @@ function SignUpContent() {
     // Show verified success screen
     if (verified) {
       return (
-        <div className="flex min-h-screen w-full flex-col gradient-bg">
-          <div className="liquid-glass" />
-          <PageNavbar />
-          <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
-            <div className="w-full max-w-md">
-              <div className={`${card} text-center`}>
+        <LandingAuthPageChrome footer={false}>
+          <div className="w-full max-w-md">
+            <div className={`${card} text-center`}>
                 <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
                   <svg
                     className="w-8 h-8 text-emerald-600"
@@ -231,21 +228,17 @@ function SignUpContent() {
                 >
                   Sign in
                 </Link>
-              </div>
             </div>
-          </main>
-        </div>
+          </div>
+        </LandingAuthPageChrome>
       )
     }
 
     // Show verification code input
     return (
-      <div className="flex min-h-screen w-full flex-col gradient-bg">
-        <div className="liquid-glass" />
-        <PageNavbar />
-        <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
-          <div className="w-full max-w-md">
-            <div className={`${card} text-center`}>
+      <LandingAuthPageChrome footer={false}>
+        <div className="w-full max-w-md">
+          <div className={`${card} text-center`}>
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <svg
                   className="w-8 h-8 text-blue-600"
@@ -313,23 +306,19 @@ function SignUpContent() {
                 </Link>
               </div>
             </div>
-          </div>
-        </main>
-      </div>
+        </div>
+      </LandingAuthPageChrome>
     )
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col gradient-bg">
-      <div className="liquid-glass" />
-
-      {/* Header */}
-      <PageNavbar />
-
-      {/* Main Content */}
-      <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-md">
-          <div className={card}>
+    <LandingAuthPageChrome
+      footerClassName={`relative z-10 mt-auto flex justify-center border-t px-8 py-6 text-sm sm:justify-start ${
+        isLandingDark ? 'border-zinc-800 text-zinc-500' : 'border-zinc-200 text-zinc-500'
+      }`}
+    >
+      <div className="w-full max-w-md">
+        <div className={card}>
             <h1 className={`text-2xl font-serif text-center mb-2 ${labelText}`}>Create your account</h1>
             <p className={`text-sm text-center mb-8 ${muted}`}>
               Start your journey with overlay
@@ -521,38 +510,16 @@ function SignUpContent() {
                 Sign in
               </Link>
             </p>
-          </div>
         </div>
-      </main>
-
-      {/* Footer */}
-      <footer
-        className={`relative z-10 mt-auto flex justify-center border-t px-8 py-6 text-sm sm:justify-start ${
-          isLandingDark ? 'border-zinc-800 text-zinc-500' : 'border-zinc-200 text-zinc-500'
-        }`}
-      >
-        <p>© 2026 overlay</p>
-      </footer>
-    </div>
+      </div>
+    </LandingAuthPageChrome>
   )
 }
 
 export default function SignUpPage() {
   return (
-    <LandingThemeProvider>
-      <Suspense
-        fallback={
-          <div className="flex min-h-screen items-center justify-center gradient-bg">
-            <div className="liquid-glass" />
-            <div className="relative z-10 text-center">
-              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent" />
-              <p className="mt-4 text-zinc-500">Loading...</p>
-            </div>
-          </div>
-        }
-      >
-        <SignUpContent />
-      </Suspense>
-    </LandingThemeProvider>
+    <LandingAuthBoundary>
+      <SignUpContent />
+    </LandingAuthBoundary>
   )
 }

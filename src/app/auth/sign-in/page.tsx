@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { PageNavbar } from "@/components/layout/PageNavbar";
-import { LandingThemeProvider, useLandingTheme } from "@/contexts/LandingThemeContext";
+import { useLandingTheme } from "@/contexts/LandingThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { LandingAuthBoundary, LandingAuthPageChrome } from "../_components/AuthPageChrome";
 import { sanitizeClientAuthRedirect } from "@/shared/auth/auth-redirect";
 import {
   persistMobilePkceChallengeFromUrl,
@@ -156,14 +156,14 @@ function SignInContent() {
   const createLink = isLandingDark ? "text-zinc-100 hover:underline font-medium" : "text-zinc-900 hover:underline font-medium";
 
   return (
-    <div className="flex min-h-screen w-full flex-col gradient-bg">
-      <div className="liquid-glass" />
-
-      <PageNavbar />
-
-      <main className="relative z-10 flex flex-1 items-center justify-center px-4 pb-10 pt-28 md:px-6 md:pb-14 md:pt-32">
-        <div className="w-full max-w-md">
-          <div className={card}>
+    <LandingAuthPageChrome
+      mainClassName="relative z-10 flex flex-1 items-center justify-center px-4 pb-10 pt-28 md:px-6 md:pb-14 md:pt-32"
+      footerClassName={`relative z-10 mt-auto flex justify-center px-8 py-6 text-sm sm:justify-start ${
+        isLandingDark ? "border-t border-zinc-800 text-zinc-500" : "border-t border-zinc-200/80 text-zinc-500"
+      }`}
+    >
+      <div className="w-full max-w-md">
+        <div className={card}>
             <h1 className={`text-2xl font-serif text-center mb-2 ${labelText}`}>Welcome back</h1>
             <p className={`text-sm text-center mb-8 ${muted}`}>Sign in to your overlay account</p>
 
@@ -312,37 +312,16 @@ function SignInContent() {
                 Create one
               </Link>
             </p>
-          </div>
         </div>
-      </main>
-
-      <footer
-        className={`relative z-10 mt-auto flex justify-center px-8 py-6 text-sm sm:justify-start ${
-          isLandingDark ? "border-t border-zinc-800 text-zinc-500" : "border-t border-zinc-200/80 text-zinc-500"
-        }`}
-      >
-        <p>© 2026 overlay</p>
-      </footer>
-    </div>
+      </div>
+    </LandingAuthPageChrome>
   );
 }
 
 export default function SignInPage() {
   return (
-    <LandingThemeProvider>
-      <Suspense
-        fallback={
-          <div className="flex min-h-screen flex-col items-center justify-center gradient-bg">
-            <div className="liquid-glass" />
-            <div className="relative z-10 text-center">
-              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent" />
-              <p className="mt-4 text-zinc-500">Loading...</p>
-            </div>
-          </div>
-        }
-      >
-        <SignInContent />
-      </Suspense>
-    </LandingThemeProvider>
+    <LandingAuthBoundary>
+      <SignInContent />
+    </LandingAuthBoundary>
   );
 }

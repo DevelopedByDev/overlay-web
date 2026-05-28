@@ -33,6 +33,8 @@
     "chat-react:typecheck": "npm --prefix packages/overlay-chat-react run typecheck",
     "modules-react:typecheck": "npm --prefix packages/overlay-modules-react run typecheck",
     "check:module-boundaries": "node scripts/ensure-module-presentational-boundaries.mjs",
+    "report:web-complexity": "node scripts/report-web-complexity.mjs",
+    "check:web-complexity": "node scripts/report-web-complexity.mjs --check --no-html",
     "check:shared-isomorphic": "node scripts/enforce-shared-isomorphic.mjs",
     "check:vendor-boundaries": "node scripts/check-no-vendor-imports-in-routes.mjs",
     "check:files-route-boundary": "node scripts/check-files-route-boundary.mjs",

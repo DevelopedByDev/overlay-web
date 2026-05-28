@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
+import { SimpleAuthPageChrome } from '../_components/AuthPageChrome'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -38,80 +38,49 @@ export default function ForgotPasswordPage() {
 
   if (sent) {
     return (
-      <div className="min-h-screen gradient-bg flex flex-col">
-        <div className="liquid-glass" />
-
-        <header className="relative z-10 py-6 px-8">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <Image
-              src="/assets/overlay-logo.png"
-              alt="Overlay"
-              width={32}
-              height={32}
-            />
-            <span className="text-xl font-serif">overlay</span>
-          </Link>
-        </header>
-
-        <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
-          <div className="w-full max-w-md">
-            <div className="glass-dark rounded-2xl p-8 text-center">
-              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg
-                  className="w-8 h-8 text-emerald-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                  />
-                </svg>
-              </div>
-              <h1 className="text-2xl font-serif mb-2">Check your email</h1>
-              <p className="text-[var(--muted)] mb-6">
-                If an account exists for <strong className="text-[var(--foreground)]">{email}</strong>, 
-                you&apos;ll receive a password reset link shortly.
-              </p>
-              <Link
-                href="/auth/sign-in"
-                className="inline-block px-6 py-3 bg-[var(--foreground)] text-[var(--background)] rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+      <SimpleAuthPageChrome footer={false}>
+        <div className="w-full max-w-md">
+          <div className="glass-dark rounded-2xl p-8 text-center">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg
+                className="w-8 h-8 text-emerald-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
               >
-                Back to sign in
-              </Link>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                />
+              </svg>
             </div>
+            <h1 className="text-2xl font-serif mb-2">Check your email</h1>
+            <p className="text-[var(--muted)] mb-6">
+              If an account exists for <strong className="text-[var(--foreground)]">{email}</strong>,
+              you&apos;ll receive a password reset link shortly.
+            </p>
+            <Link
+              href="/auth/sign-in"
+              className="inline-block px-6 py-3 bg-[var(--foreground)] text-[var(--background)] rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              Back to sign in
+            </Link>
           </div>
-        </main>
-      </div>
+        </div>
+      </SimpleAuthPageChrome>
     )
   }
 
   return (
-    <div className="min-h-screen gradient-bg flex flex-col">
-      <div className="liquid-glass" />
-
-      <header className="relative z-10 py-6 px-8">
-        <Link href="/" className="inline-flex items-center gap-2">
-          <Image
-            src="/assets/overlay-logo.png"
-            alt="Overlay"
-            width={32}
-            height={32}
-          />
-          <span className="text-xl font-serif">overlay</span>
-        </Link>
-      </header>
-
-      <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-md">
-          <div className="glass-dark rounded-2xl p-8">
-            <h1 className="text-2xl font-serif text-center mb-2">Forgot password?</h1>
-            <p className="text-sm text-[var(--muted)] text-center mb-8">
-              Enter your email and we&apos;ll send you a reset link
-            </p>
+    <SimpleAuthPageChrome>
+      <div className="w-full max-w-md">
+        <div className="glass-dark rounded-2xl p-8">
+          <h1 className="text-2xl font-serif text-center mb-2">Forgot password?</h1>
+          <p className="text-sm text-[var(--muted)] text-center mb-8">
+            Enter your email and we&apos;ll send you a reset link
+          </p>
 
             {error && (
               <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm">
@@ -153,13 +122,8 @@ export default function ForgotPasswordPage() {
                 Sign in
               </Link>
             </p>
-          </div>
         </div>
-      </main>
-
-      <footer className="relative z-10 py-6 px-8 text-center text-sm text-[var(--muted)]">
-        <p>© 2026 overlay</p>
-      </footer>
-    </div>
+      </div>
+    </SimpleAuthPageChrome>
   )
 }

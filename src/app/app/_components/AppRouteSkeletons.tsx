@@ -160,6 +160,22 @@ export function KnowledgeRouteSkeleton() {
   )
 }
 
+export function KnowledgeLoadingRouteSkeleton() {
+  return <KnowledgeRouteSkeleton />
+}
+
+export function MemoriesLoadingRouteSkeleton() {
+  return <KnowledgeRouteSkeleton />
+}
+
+export function NotesLoadingRouteSkeleton() {
+  return <KnowledgeRouteSkeleton />
+}
+
+export function OutputsLoadingRouteSkeleton() {
+  return <KnowledgeRouteSkeleton />
+}
+
 export function ProjectsRouteSkeleton() {
   return (
     <div className="flex h-full flex-col bg-[var(--background)]">
@@ -211,4 +227,12 @@ export function IntegrationsRouteSkeleton() {
       </div>
     </div>
   )
+}
+
+export function IntegrationsLoadingRouteSkeleton() {
+  return <IntegrationsRouteSkeleton />
+}
+
+export function ToolsLoadingRouteSkeleton() {
+  return <IntegrationsRouteSkeleton />
 }
