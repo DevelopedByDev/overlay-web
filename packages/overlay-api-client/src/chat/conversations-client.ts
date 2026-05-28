@@ -3,11 +3,14 @@ import type { HttpContext } from '../shared/http'
 import type { MutationRequestInit } from '../shared/mutation'
 import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type {
+  ActConversationRequest,
   ConversationGetResponse,
   ConversationMessageRequest,
   ConversationQuery,
   CreateConversationRequest,
   CreateConversationResponse,
+  StreamAuthRequest,
+  StreamAuthResponse,
   UpdateConversationRequest,
 } from './types'
 
@@ -65,6 +68,31 @@ export class ConversationsClient {
 
   addMessageResponse(body: ConversationMessageRequest, init?: MutationRequestInit) {
     return this.http.request('/api/v1/conversations/message', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+  }
+
+  actResponse(body: ActConversationRequest, init?: MutationRequestInit) {
+    return this.http.request('/api/v1/conversations/act', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+  }
+
+  extensionPlanResponse(body: ActConversationRequest, init?: MutationRequestInit) {
+    return this.http.request(
+      '/api/v1/conversations/act/extension-plan',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  streamAuth<T = StreamAuthResponse>(body: StreamAuthRequest, init?: MutationRequestInit) {
+    return this.http.json<T>(
+      '/api/v1/conversations/stream-auth',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  streamAuthResponse(body: StreamAuthRequest, init?: MutationRequestInit) {
+    return this.http.request(
+      '/api/v1/conversations/stream-auth',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
   }
 
   deleteMessageResponse(

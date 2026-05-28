@@ -1,4 +1,5 @@
 export {
+  API_KEY_LENGTH,
   API_KEY_PREFIX,
   generateApiKey,
   hashApiKey,

@@ -125,7 +125,7 @@ async function authorizeStream(
   cookie: string,
   metadata: Omit<StreamMetadata, 'userId'>,
 ): Promise<AuthorizedStream | Response> {
-  const response = await fetch(new URL('/api/app/conversations/stream-auth', env.OVERLAY_NEXT_ORIGIN), {
+  const response = await fetch(new URL('/api/v1/conversations/stream-auth', env.OVERLAY_NEXT_ORIGIN), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -401,7 +401,7 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
 
     this.stopped = true
     this.upstreamAbortController?.abort()
-    const stopResponse = await fetch(new URL('/api/app/conversations/stop', input.nextOrigin), {
+    const stopResponse = await fetch(new URL('/api/v1/conversations/stop', input.nextOrigin), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -452,7 +452,7 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
       upstreamHeaders['Idempotency-Key'] = idempotencyKey
     }
 
-    const response = await fetch(new URL('/api/app/conversations/act', input.nextOrigin), {
+    const response = await fetch(new URL('/api/v1/conversations/act', input.nextOrigin), {
       method: 'POST',
       headers: upstreamHeaders,
       body: JSON.stringify(body),

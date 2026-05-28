@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "check:no-legacy-app-api": "node ./scripts/ensure-no-legacy-app-api.cjs",
+    "typecheck": "npm run check:no-legacy-app-api && tsc --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260511.1",

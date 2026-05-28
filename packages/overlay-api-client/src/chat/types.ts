@@ -64,3 +64,20 @@ export interface ConversationMessageRequest {
   accessToken?: string
   userId?: string
 }
+
+export type ActConversationRequest = Record<string, unknown>
+
+export interface StreamAuthRequest {
+  conversationId?: string
+  accessToken?: string
+  userId?: string
+  [key: string]: unknown
+}
+
+export interface StreamAuthResponse {
+  token?: string
+  streamToken?: string
+  expiresAt?: number
+  expiresIn?: number
+  [key: string]: unknown
+}
