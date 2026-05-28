@@ -1,0 +1,587 @@
+import 'server-only'
+
+import { runActTurnForScheduledAutomation, type ScheduledAutomationTurn } from '@/server/agent/run-act-turn'
+import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/webhooks'
+import type {
+  AutomationForUpdateNote,
+  AutomationRepository,
+  AutomationSchedule,
+} from './AutomationRepository'
+import type { Id } from '../../../convex/_generated/dataModel'
+
+const MIN_INTERVAL_MINUTES = 15
+const MAX_ENABLED_AUTOMATIONS = 25
+
+export class AutomationServiceError extends Error {
+  constructor(
+    readonly payload: Record<string, unknown>,
+    readonly statusCode: number,
+    message?: string,
+  ) {
+    super(message ?? String(payload.error ?? 'Automation service error'))
+    this.name = 'AutomationServiceError'
+  }
+}
+
+type AutomationServiceClock = {
+  now(): number
+}
+
+type AutomationServiceEvents = {
+  finished(params: {
+    automationId: string
+    conversationId: string
+    runId: string
+    userId: string
+  }): void
+  failed(params: {
+    automationId: string
+    error: string
+    runId: string
+    userId: string
+  }): void
+}
+
+export type AutomationExecutor = (input: ScheduledAutomationTurn) => Promise<{
+  conversationId: Id<'conversations'>
+}>
+
+export type AutomationServiceDeps = {
+  clock?: AutomationServiceClock
+  events?: AutomationServiceEvents
+  executor?: AutomationExecutor
+  repository: AutomationRepository
+}
+
+type CreateAutomationBody = {
+  accessToken?: string
+  userId?: string
+  name?: string
+  description?: string
+  instructions?: string
+  enabled?: boolean
+  schedule?: AutomationSchedule
+  timezone?: string
+  projectId?: string
+  modelId?: string
+  graphSource?: string
+  sourceConversationId?: string
+  concurrencyPolicy?: 'skip' | 'queue'
+}
+
+type UpdateAutomationBody = {
+  accessToken?: string
+  userId?: string
+  automationId?: string
+  action?: 'pause' | 'resume'
+  name?: string
+  description?: string
+  instructions?: string
+  enabled?: boolean
+  schedule?: AutomationSchedule
+  timezone?: string
+  projectId?: string
+  modelId?: string
+  graphSource?: string
+  concurrencyPolicy?: 'skip' | 'queue'
+}
+
+function serviceError(payload: Record<string, unknown>, statusCode: number): never {
+  throw new AutomationServiceError(payload, statusCode)
+}
+
+function summarizeError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return 'Unknown automation error'
+  }
+}
+
+function scheduleTooFrequent(schedule: AutomationSchedule | undefined): boolean {
+  return schedule?.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES
+}
+
+function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
+  if (!schedule) return ''
+  if (schedule.kind === 'interval') return `interval:${schedule.intervalMinutes ?? ''}`
+  if (schedule.kind === 'daily') return `daily:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
+  if (schedule.kind === 'weekly') return `weekly:${schedule.dayOfWeekUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
+  return `monthly:${schedule.dayOfMonthUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
+}
+
+function formatLocalTime(date: Date, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date)
+  } catch {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date)
+  }
+}
+
+function weekdayName(date: Date, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'long',
+    }).format(date)
+  } catch {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      weekday: 'long',
+    }).format(date)
+  }
+}
+
+function dateForUtcSchedule(hourUTC = 9, minuteUTC = 0, dayOffset = 0): Date {
+  const now = new Date()
+  return new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + dayOffset,
+    hourUTC,
+    minuteUTC,
+  ))
+}
+
+function formatSchedule(schedule: AutomationSchedule | undefined, timezone: string | undefined): string {
+  if (!schedule) return 'unscheduled'
+  const zone = timezone?.trim() || 'UTC'
+  if (schedule.kind === 'interval') {
+    const minutes = schedule.intervalMinutes ?? 60
+    if (minutes % 1440 === 0) return `every ${minutes / 1440} day${minutes === 1440 ? '' : 's'}`
+    if (minutes % 60 === 0) return `every ${minutes / 60} hour${minutes === 60 ? '' : 's'}`
+    return `every ${minutes} minutes`
+  }
+  if (schedule.kind === 'daily') {
+    return `daily at ${formatLocalTime(dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC), zone)} ${zone}`
+  }
+  if (schedule.kind === 'weekly') {
+    const today = new Date().getUTCDay()
+    const target = schedule.dayOfWeekUTC ?? 1
+    const dayOffset = (target - today + 7) % 7
+    const date = dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC, dayOffset)
+    return `weekly on ${weekdayName(date, zone)} at ${formatLocalTime(date, zone)} ${zone}`
+  }
+  const day = schedule.dayOfMonthUTC ?? 1
+  return `monthly on day ${day} at ${formatLocalTime(dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC), zone)} ${zone}`
+}
+
+export function buildAutomationUpdateNote(
+  before: AutomationForUpdateNote,
+  after: {
+    name?: string
+    description?: string
+    instructions?: string
+    enabled?: boolean
+    schedule?: AutomationSchedule
+    timezone?: string
+    modelId?: string
+  },
+): string | null {
+  const changes: string[] = []
+  const beforeName = (before.name || before.title || 'Untitled automation').trim()
+  const afterName = after.name !== undefined ? after.name.trim() : beforeName
+  if (after.name !== undefined && afterName !== beforeName) changes.push(`name changed to "${afterName || beforeName}"`)
+
+  if (after.description !== undefined && after.description.trim() !== (before.description || '').trim()) {
+    changes.push('description updated')
+  }
+  if (after.instructions !== undefined && after.instructions.trim() !== (before.instructions || '').trim()) {
+    changes.push('instructions updated')
+  }
+  const nextTimezone = after.timezone !== undefined ? after.timezone.trim() || 'UTC' : before.timezone
+  if (after.schedule !== undefined && stableScheduleKey(after.schedule) !== stableScheduleKey(before.schedule)) {
+    changes.push(`schedule changed to ${formatSchedule(after.schedule, nextTimezone)}`)
+  } else if (after.timezone !== undefined && nextTimezone !== (before.timezone || 'UTC')) {
+    changes.push(`timezone changed to ${nextTimezone}`)
+  }
+  if (after.enabled !== undefined && after.enabled !== (before.enabled ?? true)) {
+    changes.push(after.enabled ? 'enabled' : 'paused')
+  }
+  if (after.modelId !== undefined && (after.modelId.trim() || '') !== (before.modelId || '')) {
+    changes.push(`model changed to ${after.modelId.trim() || 'default'}`)
+  }
+
+  if (changes.length === 0) return null
+  return `Automation updated: ${changes.join('; ')}.`
+}
+
+const defaultEvents: AutomationServiceEvents = {
+  finished: emitAutomationFinished,
+  failed: emitAutomationFailed,
+}
+
+export class AutomationService {
+  private readonly clock: AutomationServiceClock
+  private readonly events: AutomationServiceEvents
+  private readonly executor: AutomationExecutor
+
+  constructor(private readonly deps: AutomationServiceDeps) {
+    this.clock = deps.clock ?? { now: () => Date.now() }
+    this.events = deps.events ?? defaultEvents
+    this.executor = deps.executor ?? runActTurnForScheduledAutomation
+  }
+
+  async getAutomations(args: {
+    automationId?: string | null
+    includeDeleted?: boolean
+    includeRuns?: boolean
+    projectId?: string
+    userId: string
+  }): Promise<unknown> {
+    if (args.automationId && args.includeRuns) {
+      return await this.deps.repository.listRuns({
+        automationId: args.automationId as Id<'automations'>,
+        userId: args.userId,
+      })
+    }
+    if (args.automationId) {
+      const automation = await this.deps.repository.getAutomation({
+        automationId: args.automationId as Id<'automations'>,
+        userId: args.userId,
+      })
+      if (!automation) serviceError({ error: 'Not found' }, 404)
+      return automation
+    }
+    return await this.deps.repository.listAutomations({
+      userId: args.userId,
+      includeDeleted: args.includeDeleted,
+      projectId: args.projectId,
+    })
+  }
+
+  async createAutomation(args: {
+    body: CreateAutomationBody
+    userId: string
+  }): Promise<{ success: true; id: unknown }> {
+    const { body } = args
+    if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {
+      serviceError({ error: 'name, description, instructions, and schedule are required' }, 400)
+    }
+    this.assertScheduleAllowed(body.schedule)
+    if (body.enabled !== false) {
+      await this.assertPaidPlan(args.userId)
+      await this.assertEnabledAutomationCap(args.userId)
+    }
+
+    const id = await this.deps.repository.createAutomation({
+      userId: args.userId,
+      name: body.name,
+      description: body.description,
+      instructions: body.instructions,
+      enabled: body.enabled,
+      schedule: body.schedule,
+      timezone: body.timezone,
+      projectId: body.projectId,
+      modelId: body.modelId,
+      graphSource: body.graphSource,
+      sourceConversationId: body.sourceConversationId as Id<'conversations'> | undefined,
+      concurrencyPolicy: body.concurrencyPolicy,
+    })
+    if (!id) throw new Error('Automation create returned no id')
+    return { success: true, id }
+  }
+
+  async updateAutomation(args: {
+    body: UpdateAutomationBody
+    userId: string
+  }): Promise<{ success: true }> {
+    const { body } = args
+    if (!body.automationId) {
+      serviceError({ error: 'automationId required' }, 400)
+    }
+    this.assertScheduleAllowed(body.schedule)
+    if (body.action === 'resume' || body.enabled === true) {
+      await this.assertPaidPlan(args.userId)
+    }
+
+    const automationId = body.automationId as Id<'automations'>
+    const idArgs = { automationId, userId: args.userId }
+    if (body.action === 'pause') {
+      await this.deps.repository.pauseAutomation(idArgs)
+    } else if (body.action === 'resume') {
+      await this.deps.repository.resumeAutomation(idArgs)
+    } else {
+      const before = await this.deps.repository.getAutomation(idArgs)
+      await this.deps.repository.updateAutomation({
+        ...idArgs,
+        name: body.name,
+        description: body.description,
+        instructions: body.instructions,
+        enabled: body.enabled,
+        schedule: body.schedule,
+        timezone: body.timezone,
+        projectId: body.projectId,
+        modelId: body.modelId,
+        graphSource: body.graphSource,
+        concurrencyPolicy: body.concurrencyPolicy,
+      })
+      if (before) {
+        await this.appendUpdateNoteBestEffort(before, {
+          name: body.name,
+          description: body.description,
+          instructions: body.instructions,
+          enabled: body.enabled,
+          schedule: body.schedule,
+          timezone: body.timezone,
+          modelId: body.modelId,
+        }, args.userId)
+      }
+    }
+    return { success: true }
+  }
+
+  async deleteAutomation(args: {
+    automationId?: string | null
+    userId: string
+  }): Promise<{ success: true; linkedConversationIds: Id<'conversations'>[] }> {
+    if (!args.automationId) {
+      serviceError({ error: 'automationId required' }, 400)
+    }
+    const automationId = args.automationId as Id<'automations'>
+    const automation = await this.deps.repository.getAutomation({
+      automationId,
+      userId: args.userId,
+    })
+    const isDraftPlaceholder =
+      automation?.enabled === false &&
+      automation?.name === 'New automation' &&
+      automation?.description === 'Draft automation. Add a description before enabling it.' &&
+      automation?.instructions === 'Describe what this automation should do.'
+    const linkedConversationIds = [
+      automation?.conversationId,
+      isDraftPlaceholder ? automation?.sourceConversationId : undefined,
+    ].filter((id, index, ids): id is Id<'conversations'> => Boolean(id && ids.indexOf(id) === index))
+
+    await this.deps.repository.removeAutomation({
+      automationId,
+      userId: args.userId,
+    })
+
+    for (const conversationId of linkedConversationIds) {
+      await this.deps.repository.removeConversation({
+        conversationId,
+        userId: args.userId,
+      }).catch((error) => {
+        console.warn('[automations DELETE] Failed to delete linked conversation', error)
+      })
+    }
+
+    return { success: true, linkedConversationIds }
+  }
+
+  async testAutomation(args: {
+    automationId?: string
+    userId: string
+  }): Promise<{ success: true; runId: Id<'automationRuns'>; conversationId: Id<'conversations'> }> {
+    let runId: Id<'automationRuns'> | null = null
+    let automationId: Id<'automations'> | null = null
+    try {
+      if (!args.automationId) {
+        serviceError({ error: 'automationId required' }, 400)
+      }
+      automationId = args.automationId as Id<'automations'>
+      const automation = await this.deps.repository.getAutomationRunTarget({
+        automationId,
+        userId: args.userId,
+      })
+      if (!automation) serviceError({ error: 'Automation not found' }, 404)
+
+      const name = (automation.name || automation.title || 'Untitled automation').trim()
+      const instructions = (automation.instructions || automation.instructionsMarkdown || '').trim()
+      if (!instructions) {
+        serviceError({ error: 'Automation has no instructions to test' }, 400)
+      }
+
+      const scheduledFor = this.clock.now()
+      const turnId = `automation-test-${automationId}-${scheduledFor}`
+      const conversationId = automation.sourceConversationId || automation.conversationId
+
+      runId = await this.deps.repository.createManualRun({
+        automationId,
+        userId: args.userId,
+        scheduledFor,
+      })
+      if (!runId) {
+        throw new Error('Automation manual run create returned no id')
+      }
+
+      await this.deps.repository.markManualRunStarted({
+        runId,
+        userId: args.userId,
+        conversationId,
+        turnId,
+        now: this.clock.now(),
+      })
+
+      const result = await this.executor({
+        automationId,
+        runId,
+        userId: args.userId,
+        name,
+        description: automation.description || '',
+        instructions,
+        projectId: automation.projectId,
+        modelId: automation.modelId,
+        conversationId,
+        turnId,
+        scheduledFor,
+      })
+
+      await this.deps.repository.markManualRunCompleted({
+        runId,
+        userId: args.userId,
+        conversationId: result.conversationId,
+        now: this.clock.now(),
+      })
+
+      this.events.finished({
+        userId: args.userId,
+        automationId,
+        runId,
+        conversationId: result.conversationId,
+      })
+
+      return { success: true, runId, conversationId: result.conversationId }
+    } catch (error) {
+      await this.failManualRunBestEffort({
+        error,
+        runId,
+        userId: args.userId,
+        automationId,
+      })
+      throw error
+    }
+  }
+
+  async runAutomation(args: {
+    runId?: string
+    serviceUserId: string
+  }): Promise<{ success: true; conversationId: Id<'conversations'> }> {
+    let automationId: string | undefined
+    let userId: string | undefined
+    try {
+      if (!args.runId) serviceError({ error: 'runId required' }, 400)
+      const payload = await this.deps.repository.getRunForExecution({
+        runId: args.runId as Id<'automationRuns'>,
+      })
+      if (!payload || payload.run.status !== 'running') {
+        serviceError({ error: 'Automation run is not executable' }, 409)
+      }
+      const { run, automation } = payload
+      automationId = automation._id
+      userId = automation.userId
+      if (automation.userId !== args.serviceUserId) {
+        serviceError({ error: 'Unauthorized' }, 401)
+      }
+      const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
+      const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
+
+      const result = await this.executor({
+        automationId: automation._id,
+        runId: args.runId,
+        userId: automation.userId,
+        name: automation.name || automation.title || 'Untitled automation',
+        description: automation.description || '',
+        instructions: automation.instructions || automation.instructionsMarkdown || '',
+        projectId: automation.projectId,
+        modelId: automation.modelId,
+        conversationId,
+        turnId,
+        scheduledFor: run.scheduledFor,
+      })
+
+      this.events.finished({
+        userId: automation.userId,
+        automationId: automation._id,
+        runId: args.runId,
+        conversationId: result.conversationId,
+      })
+
+      return { success: true, conversationId: result.conversationId }
+    } catch (error) {
+      if (args.runId && automationId && userId) {
+        this.events.failed({
+          userId,
+          automationId,
+          runId: args.runId,
+          error: summarizeError(error).slice(0, 1000),
+        })
+      }
+      throw error
+    }
+  }
+
+  private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {
+    if (scheduleTooFrequent(schedule)) {
+      serviceError({ error: `Interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.` }, 400)
+    }
+  }
+
+  private async assertPaidPlan(userId: string): Promise<void> {
+    const entitlements = await this.deps.repository.getEntitlements({ userId })
+    if (entitlements?.planKind !== 'paid') {
+      serviceError({ error: 'Enabled automations require a paid plan.' }, 403)
+    }
+  }
+
+  private async assertEnabledAutomationCap(userId: string): Promise<void> {
+    const existing = await this.deps.repository.listAutomations({ userId })
+    if ((existing as Array<{ enabled?: boolean }>).filter((item) => item.enabled !== false).length >= MAX_ENABLED_AUTOMATIONS) {
+      serviceError({ error: `You can enable up to ${MAX_ENABLED_AUTOMATIONS} automations.` }, 403)
+    }
+  }
+
+  private async appendUpdateNoteBestEffort(
+    automation: AutomationForUpdateNote,
+    after: Parameters<typeof buildAutomationUpdateNote>[1],
+    userId: string,
+  ): Promise<void> {
+    const updateNote = buildAutomationUpdateNote(automation, after)
+    const conversationId = automation.sourceConversationId || automation.conversationId
+    if (!updateNote || !conversationId) return
+    await this.deps.repository.appendAutomationUpdateNote({
+      automationId: automation._id,
+      userId,
+      conversationId,
+      content: updateNote,
+    }).catch((error) => {
+      console.warn('[automations PATCH] Failed to append automation update note', error)
+    })
+  }
+
+  private async failManualRunBestEffort(args: {
+    automationId: Id<'automations'> | null
+    error: unknown
+    runId: Id<'automationRuns'> | null
+    userId: string
+  }): Promise<void> {
+    const message = summarizeError(args.error).slice(0, 1000)
+    if (args.runId) {
+      await this.deps.repository.markManualRunFailed({
+        runId: args.runId,
+        userId: args.userId,
+        error: message,
+        now: this.clock.now(),
+      }).catch(() => null)
+    }
+    if (args.runId && args.automationId) {
+      this.events.failed({
+        userId: args.userId,
+        automationId: args.automationId,
+        runId: args.runId,
+        error: message,
+      })
+    }
+  }
+}

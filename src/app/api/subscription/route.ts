@@ -1,24 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { convex } from '@/server/database/convex'
-import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
 import { requireOverlayCapability } from '@/server/capabilities'
-
-type ConvexEntitlements = {
-  tier: 'free' | 'pro' | 'max'
-  planKind: 'free' | 'paid'
-  planAmountCents: number
-  budgetUsedCents: number
-  budgetTotalCents: number
-  budgetRemainingCents: number
-  autoTopUpEnabled: boolean
-  autoTopUpAmountCents: number
-  autoTopUpConsentGranted: boolean
-  creditsUsed: number
-  creditsTotal: number
-  billingPeriodEnd: string
-}
+import { billingCustomerService, billingErrorResponse } from '@/server/billing/http'
 
 export async function GET(request: NextRequest) {
   const disabledCapabilityResponse = await requireOverlayCapability('billing')
@@ -40,41 +23,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const fetchConvexEntitlements = async (nextUserId: string) =>
-    await convex.query<ConvexEntitlements>(
-      'platform/usage:getEntitlementsByServer',
-      {
-        userId: nextUserId,
-        serverSecret: getInternalApiSecret(),
-      },
-      { throwOnError: true },
-    )
-
   try {
-    const entitlements = await fetchConvexEntitlements(userId)
-
-    if (!entitlements) {
-      return NextResponse.json({ error: 'Failed to load subscription' }, { status: 502 })
-    }
-
-    return NextResponse.json({
-      tier: entitlements.tier,
-      planKind: entitlements.planKind,
-      planAmountCents: entitlements.planAmountCents,
-      status: 'active' as const,
-      ...getTopUpPreferenceSnapshot(entitlements),
-      creditsUsed: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
-      creditsTotal: entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100,
-      budgetUsedCents: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
-      budgetTotalCents: entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100,
-      budgetRemainingCents:
-        entitlements.budgetRemainingCents ??
-        Math.max(0, (entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100) - (entitlements.budgetUsedCents ?? entitlements.creditsUsed)),
-      autoTopUpEnabled: entitlements.autoTopUpEnabled,
-      autoTopUpConsentGranted: entitlements.autoTopUpConsentGranted,
-      billingPeriodEnd: entitlements.billingPeriodEnd || null,
-    })
+    const response = await billingCustomerService.getLandingSubscription({ userId })
+    return NextResponse.json(response)
   } catch (error) {
+    if (error instanceof Error && error.name === 'BillingServiceError') {
+      return billingErrorResponse(error, 'Failed to fetch subscription')
+    }
     console.error('[Subscription API] Error fetching subscription:', error)
     return NextResponse.json({ error: 'Failed to fetch subscription' }, { status: 500 })
   }

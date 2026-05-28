@@ -1,84 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe, getBaseUrl } from '@/server/billing/stripe'
 import { getOverlaySession } from '@/server/auth/session'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
-import { convex } from '@/server/database/convex'
-import { resolvePortalConfigurationId } from '@/server/billing/stripe-billing'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { requireOverlayCapability } from '@/server/capabilities'
-
-interface Subscription {
-  userId: string
-  email?: string
-  stripeCustomerId?: string
-  stripeSubscriptionId?: string
-  tier: 'free' | 'pro' | 'max'
-  planKind?: 'free' | 'paid'
-  planAmountCents?: number
-  status: 'active' | 'canceled' | 'past_due' | 'trialing'
-}
-
-async function findCustomerIdByEmail(email?: string): Promise<string | undefined> {
-  if (!email) return undefined
-
-  const customers = await stripe.customers.list({
-    email,
-    limit: 10,
-  })
-
-  if (customers.data.length === 0) return undefined
-
-  const customersWithActiveSubscriptions = await Promise.all(
-    customers.data.map(async (customer) => {
-      const subscriptions = await stripe.subscriptions.list({
-        customer: customer.id,
-        status: 'all',
-        limit: 10,
-      })
-
-      const activeSubscription = subscriptions.data.find((subscription) =>
-        ['active', 'trialing', 'past_due'].includes(subscription.status),
-      )
-
-      return {
-        customerId: customer.id,
-        activeSubscription,
-        created: customer.created ?? 0,
-      }
-    }),
-  )
-
-  const preferred =
-    customersWithActiveSubscriptions.find((candidate) => candidate.activeSubscription)?.customerId ??
-    customersWithActiveSubscriptions.sort((a, b) => b.created - a.created)[0]?.customerId
-
-  return preferred
-}
-
-async function resolveExistingCustomerId(customerId?: string): Promise<string | undefined> {
-  if (!customerId) return undefined
-
-  try {
-    const customer = await stripe.customers.retrieve(customerId)
-    if (typeof customer === 'string') return customer
-    if ('deleted' in customer && customer.deleted) return undefined
-    return customer.id
-  } catch {
-    return undefined
-  }
-}
-
-async function resolveVerifiedCustomerIdFromCheckoutSession(
-  sessionId: string,
-  userId: string,
-): Promise<string | undefined> {
-  const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId)
-  if (checkoutSession.metadata?.userId !== userId) {
-    return undefined
-  }
-  return await resolveExistingCustomerId(checkoutSession.customer as string)
-}
+import { billingCheckoutService, billingErrorResponse } from '@/server/billing/http'
 
 export async function POST(request: NextRequest) {
   try {
@@ -100,104 +25,21 @@ export async function POST(request: NextRequest) {
     ])
     if (rateLimitResponse) return rateLimitResponse
 
-    const { sessionId } = body
-
-    let customerId: string | undefined
-    let subscriptionId: string | undefined
-
-    // If we have a checkout session ID, get customer from there
-    if (sessionId) {
-      customerId = await resolveVerifiedCustomerIdFromCheckoutSession(sessionId, userId)
-      if (!customerId) {
-        return NextResponse.json(
-          { error: 'Checkout session does not belong to the authenticated user.' },
-          { status: 403 }
-        )
-      }
-    }
-
-    // Otherwise, look up customer from our database
-    if (!customerId) {
-      const subscription = await convex.query<Subscription>('billing/subscriptions:getByUserId', {
-        accessToken: auth?.accessToken ?? authSession?.accessToken ?? '',
-        userId,
-      })
-      customerId = await resolveExistingCustomerId(subscription?.stripeCustomerId || undefined)
-      subscriptionId = subscription?.stripeSubscriptionId || undefined
-
-      if (!customerId && subscriptionId) {
-        const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId)
-        customerId = await resolveExistingCustomerId(
-          typeof stripeSubscription.customer === 'string'
-            ? stripeSubscription.customer
-            : stripeSubscription.customer?.id,
-        )
-      }
-
-      if (!customerId) {
-        customerId = await findCustomerIdByEmail(browserUser?.email || subscription?.email)
-      }
-
-      if (customerId && !subscription?.stripeCustomerId) {
-        await convex.mutation('billing/subscriptions:upsertSubscription', {
-          serverSecret: getInternalApiSecret(),
-          userId,
-          email: browserUser?.email || subscription?.email,
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: subscriptionId,
-          tier: subscription?.tier,
-          planKind: subscription?.planKind,
-          planAmountCents: subscription?.planAmountCents,
-          status: subscription?.status,
-        })
-      }
-    }
-
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'No customer found. Please subscribe first.' },
-        { status: 400 }
-      )
-    }
-
-    const baseUrl = getBaseUrl()
-
-    // Create billing portal session
-    const portalConfigurationId = resolvePortalConfigurationId()
-
-    let portalSession
-    try {
-      portalSession = await stripe.billingPortal.sessions.create({
-        customer: customerId,
-        return_url: `${baseUrl}/account`,
-        ...(portalConfigurationId ? { configuration: portalConfigurationId } : {}),
-      })
-    } catch (error) {
-      const stripeError = error as { code?: string; message?: string; type?: string }
-      const invalidConfiguration =
-        stripeError?.code === 'resource_missing' ||
-        (stripeError?.type === 'StripeInvalidRequestError' &&
-          stripeError?.message?.toLowerCase().includes('configuration'))
-
-      if (!portalConfigurationId || !invalidConfiguration) {
-        throw error
-      }
-
-      console.warn(
-        `[portal] Falling back to default portal configuration because ${portalConfigurationId} is invalid.`,
-      )
-      portalSession = await stripe.billingPortal.sessions.create({
-        customer: customerId,
-        return_url: `${baseUrl}/account`,
-      })
-    }
-
-    return NextResponse.json({ url: portalSession.url })
+    const result = await billingCheckoutService.createPortalSession({
+      userId,
+      userEmail: browserUser?.email,
+      accessToken: auth?.accessToken ?? authSession?.accessToken ?? '',
+      body,
+    })
+    return NextResponse.json(result)
   } catch (error) {
+    if (error instanceof Error && error.name === 'BillingServiceError') {
+      return billingErrorResponse(error, 'Failed to create portal session')
+    }
     console.error('Portal error:', error)
     return NextResponse.json(
       { error: 'Failed to create portal session' },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

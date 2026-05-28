@@ -1,49 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
-import { stripe } from '@/server/billing/stripe'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { requireOverlayCapability } from '@/server/capabilities'
-
-async function findLatestPaidTopUpSession(userId: string) {
-  const page = await stripe.checkout.sessions.list({ limit: 50 })
-  return (
-    page.data
-      .filter((session) =>
-        session.metadata?.kind === 'budget_topup' &&
-        session.metadata?.userId === userId &&
-        session.payment_status === 'paid' &&
-        session.status === 'complete',
-      )
-      .sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] ?? null
-  )
-}
-
-async function resolveCheckoutSession(sessionId: string, userId: string) {
-  const normalizedSessionId = sessionId.trim()
-  const looksLikePlaceholder =
-    !normalizedSessionId ||
-    normalizedSessionId === '{CHECKOUT_SESSION_ID}' ||
-    normalizedSessionId.includes('CHECKOUT_SESSION_ID')
-
-  if (!looksLikePlaceholder) {
-    try {
-      return await stripe.checkout.sessions.retrieve(normalizedSessionId)
-    } catch (error) {
-      const stripeError = error as { code?: string }
-      if (stripeError?.code !== 'resource_missing') {
-        throw error
-      }
-    }
-  }
-
-  const fallbackSession = await findLatestPaidTopUpSession(userId)
-  if (!fallbackSession) {
-    throw new Error('No completed top-up checkout session found for this user')
-  }
-  return fallbackSession
-}
+import { billingCheckoutService, billingErrorResponse } from '@/server/billing/http'
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,54 +22,15 @@ export async function POST(request: NextRequest) {
     ])
     if (rateLimitResponse) return rateLimitResponse
 
-    const sessionId = String(body.sessionId ?? '').trim()
-    if (!sessionId) {
-      return NextResponse.json({ error: 'Session ID required' }, { status: 400 })
-    }
-    if (
-      sessionId !== '{CHECKOUT_SESSION_ID}' &&
-      !sessionId.includes('CHECKOUT_SESSION_ID') &&
-      !/^cs_(test|live)_[A-Za-z0-9]+$/.test(sessionId)
-    ) {
-      return NextResponse.json({ error: 'Invalid session ID' }, { status: 400 })
-    }
-
-    const checkoutSession = await resolveCheckoutSession(sessionId, userId)
-    if (checkoutSession.metadata?.userId !== userId) {
-      return NextResponse.json({ error: 'Session mismatch' }, { status: 403 })
-    }
-    if (checkoutSession.metadata?.kind !== 'budget_topup') {
-      return NextResponse.json({ error: 'Invalid top-up session' }, { status: 400 })
-    }
-    if (checkoutSession.payment_status !== 'paid') {
-      return NextResponse.json({ error: 'Payment not completed' }, { status: 400 })
-    }
-    if (checkoutSession.status !== 'complete' || checkoutSession.currency !== 'usd' || !checkoutSession.amount_total) {
-      return NextResponse.json({ error: 'Invalid completed top-up session' }, { status: 400 })
-    }
-
-    const amountCents = checkoutSession.amount_total
-    const autoTopUpEnabled = checkoutSession.metadata?.autoTopUpEnabled === 'true'
-    await convex.mutation('billing/subscriptions:recordBudgetTopUpByServer', {
-      serverSecret: getInternalApiSecret(),
+    const result = await billingCheckoutService.verifyTopUp({
       userId,
-      amountCents,
-      source: 'manual',
-      stripeCustomerId: typeof checkoutSession.customer === 'string' ? checkoutSession.customer : undefined,
-      stripeCheckoutSessionId: checkoutSession.id,
-      stripePaymentIntentId: typeof checkoutSession.payment_intent === 'string' ? checkoutSession.payment_intent : undefined,
-      status: 'succeeded',
+      body,
     })
-    await convex.mutation('billing/subscriptions:updateBillingPreferencesByServer', {
-      serverSecret: getInternalApiSecret(),
-      userId,
-      autoTopUpEnabled,
-      topUpAmountCents: amountCents,
-      grantOffSessionConsent: autoTopUpEnabled,
-    })
-
-    return NextResponse.json({ success: true, amountCents })
+    return NextResponse.json(result)
   } catch (error) {
+    if (error instanceof Error && error.name === 'BillingServiceError') {
+      return billingErrorResponse(error, 'Failed to verify top-up')
+    }
     console.error('[TopUp Verify] Error:', error)
     return NextResponse.json({ error: 'Failed to verify top-up' }, { status: 500 })
   }
