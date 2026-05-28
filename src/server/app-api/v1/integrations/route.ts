@@ -1,9 +1,8 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getServerProviderKey } from '@/server/ai/provider-keys'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getBaseUrl } from '@/server/web/app-url'
 
 type ComposioAppRecord = {
@@ -125,12 +124,9 @@ function resolveComposioCallbackOrigin(request: NextRequest): string {
 }
 
 // GET - list connected integrations, or search toolkits
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
     const apiKey = await getComposioApiKey(auth.accessToken)
     if (!apiKey) return NextResponse.json({ connected: [] })
@@ -236,13 +232,10 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - initiate connection (returns redirect URL) or disconnect
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json()
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
     const { action, toolkit } = body as { action?: string; toolkit?: string }
     if (!toolkit) return NextResponse.json({ error: 'toolkit required' }, { status: 400 })

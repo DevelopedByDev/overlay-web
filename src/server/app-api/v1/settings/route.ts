@@ -1,9 +1,8 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { AppSettings, ChatModePreference, ThemePresetId } from '@overlay/app-core'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { isThemePresetId } from '@/shared/app/themes'
 
 const MAX_MODEL_ID_LENGTH = 160
@@ -28,12 +27,9 @@ function isSafeAspectRatio(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 5 && ASPECT_RATIO_PATTERN.test(value)
 }
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
     const settings = await convex.query<AppSettings>(
       'platform/uiSettings:getByServer',
@@ -50,9 +46,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const rawBody = await request.json().catch(() => null)
     if (!isPlainObject(rawBody)) {
@@ -160,8 +154,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid chatStreamingMode' }, { status: 400 })
     }
 
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
     const mutationArgs: {
       userId: string

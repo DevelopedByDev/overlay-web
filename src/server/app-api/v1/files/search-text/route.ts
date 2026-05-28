@@ -1,5 +1,5 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convex } from '@/server/database/convex'
 import {
   DEFAULT_CONTEXT_CHARS,
@@ -10,10 +10,8 @@ import {
   dedupeFileIdsPreserveOrder,
   findSubstringMatchesInText,
 } from '@/shared/storage/file-text-search'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 60
 
@@ -37,9 +35,7 @@ type ConvexFileGetResult = {
   userId: string
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = (await request.json()) as {
       fileIds?: string[]
@@ -51,17 +47,12 @@ export async function POST(request: NextRequest) {
       userId?: string
     }
 
-    const auth = await resolveAuthenticatedAppUser(request, body)
+    const { auth } = context
     const userId = auth?.userId ?? null
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'files/files:search-text:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
-      { bucket: 'files/files:search-text:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
 
     const rawIds = Array.isArray(body.fileIds) ? body.fileIds : []
     const fileIds = dedupeFileIdsPreserveOrder(rawIds.map((id) => String(id)))

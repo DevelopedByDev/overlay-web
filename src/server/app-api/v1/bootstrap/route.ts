@@ -1,5 +1,5 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import {
   DEFAULT_APP_SETTINGS,
   overlayNavigationToDestinations,
@@ -12,7 +12,6 @@ import overlayAppConfig from '@/overlay.config'
 import { getOverlaySession } from '@/server/auth/session'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import {
   DEFAULT_MODEL_ID,
   DEFAULT_IMAGE_MODEL_ID,
@@ -31,9 +30,7 @@ import {
 import { isRuntimeConfigSummaryVisible } from '@/shared/config'
 import { getOverlayCapabilities } from '@/server/capabilities'
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   let runtimeConfig
   try {
     runtimeConfig = await getOverlayRuntimeConfig()
@@ -49,10 +46,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { auth } = context
 
     const serverSecret = getInternalApiSecret()
     const browserSession = await getOverlaySession()

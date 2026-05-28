@@ -1,31 +1,19 @@
-import { validateApiBoundary } from '../../../_utils/boundary'
 import { NextRequest } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { generatePresignedDownloadUrl } from '@/server/storage/object-store'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/server/storage/storage-keys'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const runtime = 'nodejs'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ fileId: string }> },
+  context: AppApiRouteContext,
 ) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
-  const auth = await resolveAuthenticatedAppUser(request, {})
-  if (!auth) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-  const rateLimitResponse = await enforceRateLimits(request, [
-    { bucket: 'r2-download:file:ip', key: getClientIp(request), limit: 600, windowMs: 10 * 60_000 },
-    { bucket: 'r2-download:file:user', key: auth.userId, limit: 300, windowMs: 10 * 60_000 },
-  ])
-  if (rateLimitResponse) return rateLimitResponse
+  const { auth } = context
 
-  const { fileId } = await params
+  const { fileId } = await context.params as { fileId: string }
   const serverSecret = getInternalApiSecret()
   const proxyTarget = await convex.query<{ r2Key?: string; url?: string; name: string; sizeBytes: number } | null>(
     'files/files:getStorageUrlForProxy',

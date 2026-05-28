@@ -1,5 +1,5 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { after, NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from '@/server/ai/sdk'
 import type { LanguageModelV3 } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
@@ -68,7 +68,6 @@ import {
   createNvidiaNimChatLanguageModel,
   resolveNvidiaApiKey,
 } from '@/server/ai/model-runtime'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { emitChatCompleted, emitChatFailed } from '@/server/shared/webhooks'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -84,7 +83,6 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import {
   classifyMediaToolIntentForTurn,
   normalizeStructuredMediaToolIntent,
@@ -480,9 +478,7 @@ function prefixFallbackNoticeAfterStart(
   })) as ReadableStream<Uint8Array<ArrayBufferLike>>
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
   let pendingServerSecret: string | undefined
   let budgetReservationId: string | null = null
@@ -518,8 +514,6 @@ export async function POST(request: NextRequest) {
       attachmentNames,
       replyContextForModel,
       historyBaseModelId,
-      accessToken,
-      userId: requestedUserId,
       mode,
       automationMode,
       automationExecution,
@@ -541,8 +535,6 @@ export async function POST(request: NextRequest) {
       attachmentNames?: string[]
       replyContextForModel?: string
       historyBaseModelId?: string
-      accessToken?: string
-      userId?: string
       mode?: 'chat' | 'automate'
       automationMode?: boolean
       automationExecution?: boolean
@@ -554,13 +546,7 @@ export async function POST(request: NextRequest) {
       multiModelTotal?: number
     } = await request.json()
     actWebhookSkip = automationExecution === true
-    const auth = await resolveAuthenticatedAppUser(request, {
-      accessToken,
-      userId: requestedUserId,
-    })
-	    if (!auth) {
-	      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-	    }
+    const { auth } = context
 	    const userId = auth.userId
 	    currentUserId = userId
     const useCloudflareStreamRelay =
@@ -584,11 +570,6 @@ export async function POST(request: NextRequest) {
       turnId,
       variantIndex: rawMultiModelSlotIndex,
     })
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'chat/conversations:act:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
-      { bucket: 'chat/conversations:act:user', key: userId, limit: 60, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
     const requestedModelId: string = modelId || 'claude-sonnet-4-6'
     const effectiveModelId: string = isLegacyFreeTierDefaultModelId(requestedModelId)
       ? FREE_TIER_DEFAULT_MODEL_ID

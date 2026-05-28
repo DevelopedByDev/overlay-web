@@ -1,14 +1,11 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
 import { convex } from '@/server/database/convex'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     if (!isVerifiedChatStreamRelayRequest(request)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -31,10 +28,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { auth } = context
 
     const serverSecret = getInternalApiSecret()
     const conversation = await convex.query<{ _id: string } | null>('chat/conversations:get', {

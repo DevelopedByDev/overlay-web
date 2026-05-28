@@ -1,7 +1,6 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
@@ -12,9 +11,7 @@ function buildShareUrl(request: NextRequest, token: string): string {
   return `${origin.replace(/\/$/, '')}/share/f/${token}`
 }
 
-export async function PATCH(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = (await request.json().catch(() => ({}))) as {
       fileId?: string
@@ -22,8 +19,7 @@ export async function PATCH(request: NextRequest) {
       accessToken?: string
       userId?: string
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     if (!body.fileId) {
       return NextResponse.json({ error: 'fileId required' }, { status: 400 })
     }

@@ -1,13 +1,11 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { randomBytes } from 'node:crypto'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import { generatePresignedUploadUrl, getMaxPresignedUploadBytes, getR2PresignTtlSeconds, keyForFile } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
 import { formatBytes } from '@/shared/storage/storage-limits'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { cleanupExpiredR2UploadIntents } from '@/server/storage/r2-upload-intents'
 
 interface Entitlements {
@@ -15,24 +13,14 @@ interface Entitlements {
   overlayStorageBytesLimit: number
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { sizeBytes, name, mimeType, accessToken, userId: requestUserId } = await request.json().catch(() => ({})) as {
+    const { sizeBytes, name, mimeType } = await request.json().catch(() => ({})) as {
       sizeBytes?: number
       name?: string
       mimeType?: string
-      accessToken?: string
-      userId?: string
     }
-    const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId: requestUserId })
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'files/files:upload-url:ip', key: getClientIp(request), limit: 60, windowMs: 60 * 60_000 },
-      { bucket: 'files/files:upload-url:user', key: auth.userId, limit: 30, windowMs: 60 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
+    const { auth } = context
 
     const normalizedSizeBytes =
       typeof sizeBytes === 'number' && Number.isFinite(sizeBytes) && sizeBytes > 0

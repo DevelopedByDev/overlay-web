@@ -1,4 +1,3 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
 import { runActTurnForScheduledAutomation } from '@/server/agent/run-act-turn'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
@@ -11,8 +10,6 @@ import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/we
 export const maxDuration = 800
 
 export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
   let runId: string | undefined
   let automationId: string | undefined
   let userId: string | undefined

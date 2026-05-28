@@ -1,12 +1,10 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { randomBytes } from 'node:crypto'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { generatePresignedUploadUrl, getMaxPresignedUploadBytes, getR2PresignTtlSeconds, keyForFile } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { formatBytes } from '@/shared/storage/storage-limits'
 import { cleanupExpiredR2UploadIntents } from '@/server/storage/r2-upload-intents'
 
@@ -15,17 +13,9 @@ interface Entitlements {
   overlayStorageBytesLimit: number
 }
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'files/files:presign:ip', key: getClientIp(request), limit: 60, windowMs: 60 * 60_000 },
-      { bucket: 'files/files:presign:user', key: auth.userId, limit: 30, windowMs: 60 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
+    const { auth } = context
 
     const { searchParams } = request.nextUrl
     const name = searchParams.get('name')

@@ -1,5 +1,5 @@
-import { validateApiBoundary } from '../../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
@@ -11,7 +11,6 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/pricing'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
@@ -25,7 +24,6 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 120
 
@@ -290,9 +288,7 @@ function stringifyJson(value: unknown): string {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const {
       messages,
@@ -300,31 +296,16 @@ export async function POST(request: NextRequest) {
       pageContext,
       windowTabs,
       windows,
-      accessToken,
-      userId: requestedUserId,
     }: {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>
       modelId?: string
       pageContext?: unknown
       windowTabs?: unknown[]
       windows?: unknown[]
-      accessToken?: string
-      userId?: string
     } = await request.json()
 
-    const auth = await resolveAuthenticatedAppUser(request, {
-      accessToken,
-      userId: requestedUserId,
-    })
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { auth } = context
 
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'extension-plan:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
-      { bucket: 'extension-plan:user', key: auth.userId, limit: 60, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
 
     const requestedModelId: string = modelId || 'claude-sonnet-4-6'
     const effectiveModelId: string = isLegacyFreeTierDefaultModelId(requestedModelId)

@@ -1,18 +1,14 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
 } from '@/server/chat/chat-message-persistence'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as {
       conversationId?: string
@@ -31,14 +27,8 @@ export async function POST(request: NextRequest) {
       accessToken?: string
       userId?: string
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'conversation-message:ip', key: getClientIp(request), limit: 240, windowMs: 10 * 60_000 },
-      { bucket: 'conversation-message:user', key: auth.userId, limit: 120, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
 
     const normalizedParts = sanitizeMessagePartsForPersistence(body.parts, {
       attachmentNames: body.attachmentNames,
@@ -89,9 +79,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as {
       conversationId?: string
@@ -99,8 +87,7 @@ export async function DELETE(request: NextRequest) {
       accessToken?: string
       userId?: string
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const conversationId = body.conversationId?.trim()
     const turnId = body.turnId?.trim()
     if (!conversationId || !turnId) {

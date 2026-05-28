@@ -1,11 +1,10 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { partedFileName, splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import { deleteObjects, headObject } from '@/server/storage/object-store'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/server/storage/storage-keys'
 import { checkGlobalR2Budget } from '@/server/storage/r2-budget'
 import { expireR2UploadIntent, type R2UploadIntent } from '@/server/storage/r2-upload-intents'
@@ -19,12 +18,9 @@ function storageErrorResponse(error: unknown, fallback = 'Failed to save file') 
   return NextResponse.json({ error: fallback }, { status: 500 })
 }
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const { searchParams } = request.nextUrl
     const fileId = searchParams.get('fileId')
@@ -60,14 +56,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const formDataContentType = request.headers.get('content-type') || ''
     const body = formDataContentType.includes('application/json') ? await request.json() : {}
-    const auth = await resolveAuthenticatedAppUser(request, body as { accessToken?: string; userId?: string })
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const {
       name,
@@ -239,13 +232,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json()
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const { fileId, name, content, textContent, parentId, projectId } = body as Record<string, unknown>
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
@@ -271,9 +261,7 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
     let body: { accessToken?: string; userId?: string; fileId?: string } = {}
     const contentType = request.headers.get('content-type') || ''
@@ -284,8 +272,7 @@ export async function DELETE(request: NextRequest) {
         body = {}
       }
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const fileId = request.nextUrl.searchParams.get('fileId') || body.fileId
     if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })

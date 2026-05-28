@@ -1,7 +1,6 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { runActTurnForScheduledAutomation } from '@/server/agent/run-act-turn'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
@@ -33,9 +32,7 @@ function summarizeError(error: unknown): string {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let runId: Id<'automationRuns'> | null = null
   let userId: string | null = null
   let automationId: Id<'automations'> | null = null
@@ -46,8 +43,7 @@ export async function POST(request: NextRequest) {
       userId?: string
       automationId?: string
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     userId = auth.userId
 
     if (!body.automationId) {

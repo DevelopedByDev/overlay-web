@@ -1,21 +1,15 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { cookies } from 'next/headers'
 import { NextRequest } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   const session = await getOverlaySession()
-  const auth = await resolveAuthenticatedAppUser(request, {})
-  if (!auth) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-  }
+  const { auth } = context
   const userId = auth.userId
 
   const cookieStore = await cookies()

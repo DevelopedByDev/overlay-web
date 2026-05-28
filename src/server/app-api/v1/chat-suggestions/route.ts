@@ -1,5 +1,4 @@
-import { validateApiBoundary } from '../_utils/boundary'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { generateText } from '@/server/ai/sdk'
 import { convex } from '@/server/database/convex'
@@ -8,7 +7,6 @@ import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)
@@ -152,9 +150,7 @@ function scheduleRefreshForNewDay(args: {
   })
 }
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET() {
   try {
     const session = await getOverlaySession()
     if (!session) {
@@ -162,11 +158,6 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = session.user.id
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'helper:chat-suggestions:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
-      { bucket: 'helper:chat-suggestions:user', key: userId, limit: 30, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
 
     const serverSecret = getInternalApiSecret()
     const today = utcDateKey()

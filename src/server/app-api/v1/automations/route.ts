@@ -1,10 +1,8 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import type { Id } from '../../../../../convex/_generated/dataModel'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 type AutomationSchedule =
   | { kind: 'interval'; intervalMinutes?: number }
@@ -181,12 +179,9 @@ async function appendAutomationUpdateNote(params: {
   }, { throwOnError: true })
 }
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const automationId = request.nextUrl.searchParams.get('automationId')
     const projectId = request.nextUrl.searchParams.get('projectId') || undefined
@@ -225,9 +220,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as {
       accessToken?: string
@@ -244,13 +237,7 @@ export async function POST(request: NextRequest) {
       sourceConversationId?: string
       concurrencyPolicy?: 'skip' | 'queue'
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'automations/automations:write:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
-      { bucket: 'automations/automations:write:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
+    const { auth } = context
     if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {
       return NextResponse.json({ error: 'name, description, instructions, and schedule are required' }, { status: 400 })
     }
@@ -299,9 +286,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as {
       accessToken?: string
@@ -319,13 +304,7 @@ export async function PATCH(request: NextRequest) {
       graphSource?: string
       concurrencyPolicy?: 'skip' | 'queue'
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'automations/automations:update:ip', key: getClientIp(request), limit: 60, windowMs: 10 * 60_000 },
-      { bucket: 'automations/automations:update:user', key: auth.userId, limit: 30, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
+    const { auth } = context
     if (!body.automationId) {
       return NextResponse.json({ error: 'automationId required' }, { status: 400 })
     }
@@ -399,17 +378,14 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
     let body: { accessToken?: string; userId?: string; automationId?: string } = {}
     const contentType = request.headers.get('content-type') || ''
     if (contentType.includes('application/json')) {
       body = await request.json().catch(() => ({}))
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const automationId = body.automationId || request.nextUrl.searchParams.get('automationId') || ''
     if (!automationId) {
       return NextResponse.json({ error: 'automationId required' }, { status: 400 })

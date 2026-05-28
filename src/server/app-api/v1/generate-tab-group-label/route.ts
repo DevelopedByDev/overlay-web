@@ -1,8 +1,7 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
@@ -16,7 +15,6 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 const TAB_GROUP_MODEL = 'openai/gpt-oss-20b'
 const tabGroupLabelSchema = z.object({
@@ -34,33 +32,20 @@ function fallbackLabel(text: string): string {
   return words.map((w) => w.replace(/^./, (c) => c.toUpperCase())).join(' ') || 'Overlay chat'
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = (await request.json().catch(() => ({}))) as {
       text?: string
-      accessToken?: string
-      userId?: string
     }
-    const { text, accessToken, userId: requestedUserId } = body
+    const { text } = body
     if (!text || typeof text !== 'string') {
       return NextResponse.json({ error: 'text required' }, { status: 400 })
     }
 
-    const auth = await resolveAuthenticatedAppUser(request, {
-      accessToken,
-      userId: requestedUserId,
-    })
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
     const fallback = fallbackLabel(text)
 
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'helper:tab-label:ip', key: getClientIp(request), limit: 120, windowMs: 10 * 60_000 },
-      { bucket: 'helper:tab-label:user', key: auth.userId, limit: 60, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
 
     const serverSecret = getInternalApiSecret()
     const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {

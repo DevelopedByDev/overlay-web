@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { CapabilityCheck } from '@overlay/app-core'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import {
   enforceRateLimits,
@@ -9,8 +11,13 @@ import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
 import { handleIdempotentMutation } from '@/server/app-api/idempotency'
 import { standardizePaginatedListResponse } from '@/server/app-api/pagination'
 import { getRequiredApiKeyScopesForRoute, isApiKeyCandidate } from '@/server/auth/api-keys'
-import { requireOverlayRouteCapability } from '@/server/capabilities'
-import { validateApiBoundary } from './boundary'
+import {
+  capabilityDisabledResponse,
+  getOverlayCapabilities,
+  getRequiredCapabilityForRoute,
+  runtimeConfigErrorResponse,
+} from '@/server/capabilities'
+import { parseApiBoundaryInput } from '@/server/app-api/boundary'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -29,29 +36,27 @@ export type BffRouteContext = {
 
 export type BffDomainService = (
   request: NextRequest,
-  context: unknown,
+  context: AppApiRouteContext,
 ) => Response | Promise<Response>
-
-async function readJsonBodyForAuth(request: NextRequest): Promise<Record<string, unknown>> {
-  const contentType = request.headers.get('content-type') ?? ''
-  if (!contentType.includes('application/json')) return {}
-  const text = await request.clone().text().catch(() => '')
-  if (!text.trim()) return {}
-  const parsed = JSON.parse(text) as unknown
-  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
-    : {}
-}
 
 export async function handleBffRoute(
   request: NextRequest,
   context: unknown,
   service: BffDomainService,
 ): Promise<Response> {
-  const disabledCapabilityResponse = await requireOverlayRouteCapability(request)
-  if (disabledCapabilityResponse) return disabledCapabilityResponse
+  let capabilities: CapabilityCheck
+  try {
+    capabilities = await getOverlayCapabilities()
+  } catch (error) {
+    return runtimeConfigErrorResponse(error)
+  }
+  const requiredCapability = getRequiredCapabilityForRoute(request.method, request.nextUrl.pathname)
+  if (requiredCapability && !capabilities[requiredCapability]) {
+    return capabilityDisabledResponse(requiredCapability)
+  }
 
-  const authBody = await readJsonBodyForAuth(request).catch(() => ({}))
+  const parsedInput = await parseApiBoundaryInput(request)
+  if (parsedInput.error) return parsedInput.error
   const clientIp = getClientIp(request)
   const bearer = getBearerToken(request)
   if (isApiKeyCandidate(bearer)) {
@@ -62,7 +67,7 @@ export async function handleBffRoute(
     if (apiKeyCandidateLimit) return apiKeyCandidateLimit
   }
 
-  const auth = await resolveAuthenticatedAppUser(request, authBody, {
+  const auth = await resolveAuthenticatedAppUser(request, parsedInput.parsedJson, {
     clientIp,
     requiredApiKeyScopes: getRequiredApiKeyScopesForRoute(
       request.method,
@@ -70,9 +75,6 @@ export async function handleBffRoute(
     ),
   })
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
 
   const rateLimits = getEndpointRateLimitSpecs({
     ip: clientIp,
@@ -89,7 +91,17 @@ export async function handleBffRoute(
     markRateLimitsSatisfied(request)
   }
 
-  const response = await handleIdempotentMutation(request, auth.userId, async () => service(request, context))
+  const serviceContext = {
+    params: Promise.resolve({}),
+    ...(context && typeof context === 'object' ? context as object : {}),
+    auth,
+    parsedQuery: parsedInput.parsedQuery,
+    parsedJson: parsedInput.parsedJson,
+    parsedFormData: parsedInput.parsedFormData,
+    capabilities,
+  } as AppApiRouteContext
+
+  const response = await handleIdempotentMutation(request, auth.userId, async () => service(request, serviceContext))
   return standardizePaginatedListResponse(request, response)
 }
 

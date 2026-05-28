@@ -1,9 +1,8 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { isKnownOutputType } from '@/shared/tools/output-types'
 import { deleteObject } from '@/server/storage/object-store'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { isOwnedOutputR2Key } from '@/server/storage/storage-keys'
 import { convex } from '@/server/database/convex'
 
@@ -68,12 +67,9 @@ async function getCanonicalOutput(args: {
   return migrated?.kind === 'output' ? migrated : null
 }
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const { searchParams } = new URL(request.url)
     const rawType = searchParams.get('type')
@@ -98,21 +94,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
-    let body: { accessToken?: string; userId?: string } = {}
-    const contentType = request.headers.get('content-type') || ''
-    if (contentType.includes('application/json')) {
-      try {
-        body = await request.json()
-      } catch {
-        body = {}
-      }
-    }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const outputId = request.nextUrl.searchParams.get('outputId')
     if (!outputId) return NextResponse.json({ error: 'outputId required' }, { status: 400 })

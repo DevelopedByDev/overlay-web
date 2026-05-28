@@ -1,15 +1,13 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import mammoth from 'mammoth'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import { partedFileName, splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import { deleteObject, keyForFile, uploadBuffer } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { formatBytes } from '@/shared/storage/storage-limits'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
@@ -115,19 +113,11 @@ async function extractTextFromBuffer(buf: Buffer, file: File, ext: string): Prom
   return buf.toString('utf-8').trim()
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let uploadedR2Key: string | null = null
   let uploadedR2RetainedByFileRecord = false
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'files/files:ingest-document:ip', key: getClientIp(request), limit: 40, windowMs: 60 * 60_000 },
-      { bucket: 'files/files:ingest-document:user', key: auth.userId, limit: 20, windowMs: 60 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
+    const { auth } = context
 
     let form: FormData
     try {

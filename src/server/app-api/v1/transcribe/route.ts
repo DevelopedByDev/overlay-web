@@ -1,28 +1,16 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import type { Entitlements } from '@/shared/app/app-contracts'
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 const ESTIMATED_TRANSCRIPTION_SECONDS = 60
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { auth } = context
 
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'transcribe:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
-      { bucket: 'transcribe:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
 
     const serverSecret = getInternalApiSecret()
     const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {

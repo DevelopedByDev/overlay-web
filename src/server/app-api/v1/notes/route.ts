@@ -1,6 +1,5 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { NoteService, NoteServiceError } from '@/server/notes'
 import type { CreateNoteRequest, UpdateNoteRequest } from '@overlay/app-core'
@@ -35,12 +34,9 @@ function toErrorResponse(error: unknown, fallbackMessage: string) {
   return NextResponse.json({ error: fallbackMessage }, { status: 500 })
 }
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
     const noteId = request.nextUrl.searchParams.get('noteId')
     if (noteId) {
@@ -62,13 +58,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await readJsonBody<CreateNoteRequest>(request, {})
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
     const result = await noteService.createNote({
       title: body.title,
@@ -82,13 +75,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await readJsonBody<Partial<UpdateNoteRequest>>(request, {})
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
     const result = await noteService.updateNote({
       noteId: body.noteId ?? '',
@@ -103,13 +93,9 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await readJsonBody<{ accessToken?: string; userId?: string }>(request, {})
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
 
     const result = await noteService.deleteNote({
       noteId: request.nextUrl.searchParams.get('noteId'),

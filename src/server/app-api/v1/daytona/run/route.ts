@@ -1,7 +1,7 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { posix as pathPosix } from 'node:path'
 import type { Sandbox } from '@daytonaio/sdk'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convex } from '@/server/database/convex'
 import {
   accrueWorkspaceSpend,
@@ -18,8 +18,6 @@ import {
 import { computeDaytonaRuntimeCost, getDaytonaResourceProfile } from '@/server/ai/sandbox/daytona-pricing'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { classifyOutputType } from '@/shared/tools/output-types'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { getOverlaySession } from '@/server/auth/session'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
@@ -194,9 +192,7 @@ async function waitForSandboxFile(
   return null
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const session = await getOverlaySession()
 
   const {
@@ -208,8 +204,6 @@ export async function POST(request: NextRequest) {
     expectedOutputs,
     conversationId,
     turnId,
-    userId: requestedUserId,
-    accessToken,
   }: {
     task?: string
     runtime?: DaytonaRuntime
@@ -219,8 +213,6 @@ export async function POST(request: NextRequest) {
     expectedOutputs?: string[]
     conversationId?: string
     turnId?: string
-    userId?: string
-    accessToken?: string
   } = await request.json()
 
   if (!task?.trim()) {
@@ -249,23 +241,13 @@ export async function POST(request: NextRequest) {
 
   let userId: string | null = session?.user.id ?? null
   if (!userId) {
-    const auth = await resolveAuthenticatedAppUser(request, {
-      accessToken,
-      userId: requestedUserId,
-    })
+    const { auth } = context
     userId = auth?.userId ?? null
   }
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const rateLimitResponse = await enforceRateLimits(request, [
-    { bucket: 'sandbox:daytona:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
-    { bucket: 'sandbox:daytona:user', key: userId, limit: 10, windowMs: 10 * 60_000 },
-  ])
-  if (rateLimitResponse) {
-    return rateLimitResponse
-  }
 
   const serverSecret = getInternalApiSecret()
   const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {

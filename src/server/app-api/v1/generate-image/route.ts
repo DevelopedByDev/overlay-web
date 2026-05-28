@@ -1,5 +1,5 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { generateImage } from '@/server/ai/sdk'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { convex } from '@/server/database/convex'
@@ -9,7 +9,6 @@ import { calculateImageCostOrNull } from '@/server/ai/pricing'
 import { uploadBuffer, keyForOutput } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
 import { deleteObject } from '@/server/storage/object-store'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
@@ -20,35 +19,22 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 120
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl, accessToken, userId }: {
+    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl }: {
       prompt: string
       modelId?: string
       aspectRatio?: string
       conversationId?: string
       turnId?: string
       imageUrl?: string
-      accessToken?: string
-      userId?: string
     } = await request.json()
 
-    const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId })
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { auth } = context
 
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'generation:image:ip', key: getClientIp(request), limit: 30, windowMs: 10 * 60_000 },
-      { bucket: 'generation:image:user', key: auth.userId, limit: 15, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })

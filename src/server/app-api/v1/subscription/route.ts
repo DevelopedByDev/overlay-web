@@ -1,8 +1,7 @@
-import { validateApiBoundary } from '../_utils/boundary'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
 import type { NextRequest } from 'next/server'
 
@@ -19,13 +18,8 @@ type AppSubscriptionResponse = {
   autoTopUpAmountCents?: number
 }
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
-  const auth = await resolveAuthenticatedAppUser(request, {})
-  if (!auth) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
+  const { auth } = context
 
   try {
     const entitlements = await convex.query<AppSubscriptionResponse | null>(

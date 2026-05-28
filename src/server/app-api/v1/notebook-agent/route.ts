@@ -1,11 +1,10 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
@@ -31,7 +30,6 @@ import type { NotebookEdit, NotebookAgentStreamEvent } from '@overlay/app-core'
 import { NOTEBOOK_AGENT_PROMPT } from '@/server/agent/notebook-agent-prompts'
 import { resolveMentionsContext } from '@/server/knowledge/mention-resolver'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 120
 
@@ -169,9 +167,7 @@ function createNotebookTools(params: {
   return tools
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let bodyRaw: unknown
   try {
     bodyRaw = await request.json()
@@ -192,23 +188,9 @@ export async function POST(request: NextRequest) {
 
   const { noteContent: rawNoteContent, noteTitle, message, modelId, projectId, mentions: rawMentions } = parsed.data
 
-  const auth = await resolveAuthenticatedAppUser(request, {
-    accessToken: parsed.data.accessToken,
-    userId: parsed.data.userId,
-  })
-  if (!auth) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
+  const { auth } = context
 
   const userId = auth.userId
-  const rateLimitResponse = await enforceRateLimits(request, [
-    { bucket: 'notebook-agent:ip', key: getClientIp(request), limit: 60, windowMs: 10 * 60_000 },
-    { bucket: 'notebook-agent:user', key: userId, limit: 30, windowMs: 10 * 60_000 },
-  ])
-  if (rateLimitResponse) return rateLimitResponse
   const serverSecret = getInternalApiSecret()
 
   const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {

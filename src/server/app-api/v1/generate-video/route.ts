@@ -1,5 +1,5 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { experimental_generateVideo as generateVideo } from '@/server/ai/sdk'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { convex } from '@/server/database/convex'
@@ -9,7 +9,6 @@ import { getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import { calculateVideoCostOrNull } from '@/server/ai/pricing'
 import { uploadBuffer, keyForOutput, deleteObject } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
@@ -20,7 +19,6 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 300
 
@@ -28,10 +26,8 @@ function sseChunk(data: Record<string, unknown>): string {
   return `data: ${JSON.stringify(data)}\n\n`
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
-  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, accessToken, userId }: {
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
+  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl }: {
     prompt: string
     modelId?: string
     aspectRatio?: string
@@ -40,20 +36,10 @@ export async function POST(request: NextRequest) {
     turnId?: string
     videoSubMode?: VideoSubMode
     imageUrl?: string | null
-    accessToken?: string
-    userId?: string
   } = await request.json()
 
-  const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId })
-  if (!auth) {
-    return new Response('Unauthorized', { status: 401 })
-  }
+  const { auth } = context
 
-  const rateLimitResponse = await enforceRateLimits(request, [
-    { bucket: 'generation:video:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
-    { bucket: 'generation:video:user', key: auth.userId, limit: 10, windowMs: 10 * 60_000 },
-  ])
-  if (rateLimitResponse) return rateLimitResponse
 
   if (!prompt?.trim()) {
     return new Response('Prompt is required', { status: 400 })

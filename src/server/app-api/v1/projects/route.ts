@@ -1,7 +1,6 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { convex } from '@/server/database/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
@@ -24,12 +23,9 @@ function readBooleanParam(value: string | null): boolean | undefined {
   return undefined
 }
 
-export async function GET(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const auth = await resolveAuthenticatedAppUser(request, {})
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const projectId = request.nextUrl.searchParams.get('projectId')
 
@@ -59,9 +55,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as {
       name?: string
@@ -71,8 +65,7 @@ export async function POST(request: NextRequest) {
       accessToken?: string
       userId?: string
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const { name, parentId, instructions, clientId } = body
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
@@ -95,9 +88,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as {
       projectId?: string
@@ -107,8 +98,7 @@ export async function PATCH(request: NextRequest) {
       accessToken?: string
       userId?: string
     }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const { projectId, name, instructions, parentId } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
@@ -131,21 +121,9 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
-    let body: { accessToken?: string; userId?: string } = {}
-    const contentType = request.headers.get('content-type') || ''
-    if (contentType.includes('application/json')) {
-      try {
-        body = await request.json()
-      } catch {
-        body = {}
-      }
-    }
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { auth } = context
     const serverSecret = getInternalApiSecret()
     const projectId = request.nextUrl.searchParams.get('projectId')
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })

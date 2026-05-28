@@ -1,15 +1,9 @@
-import { validateApiBoundary } from '../../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 
 export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
   try {
     const body = await request.json()
-    const auth = await resolveAuthenticatedAppUser(request, body)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { url, transport, authType, authConfig } = body as Record<string, unknown>
     if (!url || typeof url !== 'string') {

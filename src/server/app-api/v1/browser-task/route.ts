@@ -1,11 +1,10 @@
-import { validateApiBoundary } from '../_utils/boundary'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { BrowserUse } from 'browser-use-sdk/v3'
 import type { ProxyCountryCode } from 'browser-use-sdk/v3'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
 import { BROWSER_USE_TASK_INIT_USD, calculateBrowserUseV3TokenCost } from '@/server/ai/pricing'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   buildInsufficientCreditsPayload,
@@ -18,7 +17,6 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
-import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 
 export const maxDuration = 300
 
@@ -33,30 +31,18 @@ function parseUsd(value: string | number | null | undefined): number {
   return 0
 }
 
-export async function POST(request: NextRequest) {
-  const boundaryError = await validateApiBoundary(request)
-  if (boundaryError) return boundaryError
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { task, sessionId, keepAlive, model, proxyCountryCode, accessToken, userId }: {
+    const { task, sessionId, keepAlive, model, proxyCountryCode }: {
       task?: string
       sessionId?: string
       keepAlive?: boolean
       model?: 'bu-mini' | 'bu-max'
       proxyCountryCode?: string
-      accessToken?: string
-      userId?: string
     } = await request.json()
 
-    const auth = await resolveAuthenticatedAppUser(request, { accessToken, userId })
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { auth } = context
 
-    const rateLimitResponse = await enforceRateLimits(request, [
-      { bucket: 'browser-task:ip', key: getClientIp(request), limit: 20, windowMs: 10 * 60_000 },
-      { bucket: 'browser-task:user', key: auth.userId, limit: 10, windowMs: 10 * 60_000 },
-    ])
-    if (rateLimitResponse) return rateLimitResponse
     const requestedSessionId = sessionId?.trim()
     if (requestedSessionId) {
       console.warn('[Browser Task API] Ignoring requested session reuse during security hardening', {
