@@ -1,0 +1,256 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import type { UIMessage } from '@/server/ai/sdk'
+import { ActContextService } from './ActContextService'
+import type { ActConversationRepository } from './ActConversationRepository'
+import { ActConversationServiceError, ActEntitlementService } from './ActEntitlementService'
+import { ActGeneratingMessageService } from './ActGeneratingMessageService'
+import { ActMessagePersistenceService, type ActAssistantFinishEvent } from './ActMessagePersistenceService'
+import { ActUsageBudgetService } from './ActUsageBudgetService'
+import type { Id } from '../../../convex/_generated/dataModel'
+
+const freeEntitlements = {
+  tier: 'free',
+  planKind: 'free',
+  creditsUsed: 0,
+  creditsTotal: 0,
+  budgetUsedCents: 0,
+  budgetTotalCents: 0,
+  budgetRemainingCents: 0,
+  dailyUsage: { ask: 0, write: 0, agent: 0 },
+} as const
+
+function unexpected(name: string): never {
+  throw new Error(`Unexpected repository call: ${name}`)
+}
+
+function repository(overrides: Partial<ActConversationRepository> = {}): ActConversationRepository {
+  return {
+    getEntitlements: () => unexpected('getEntitlements'),
+    getAppSettings: () => unexpected('getAppSettings'),
+    getMessages: () => unexpected('getMessages'),
+    addMessage: () => unexpected('addMessage'),
+    listMemories: () => unexpected('listMemories'),
+    listSkills: () => unexpected('listSkills'),
+    getConversation: () => unexpected('getConversation'),
+    getProject: () => unexpected('getProject'),
+    getContextSummary: () => unexpected('getContextSummary'),
+    upsertContextSummary: () => unexpected('upsertContextSummary'),
+    startGeneratingMessage: () => unexpected('startGeneratingMessage'),
+    appendGeneratingMessageDelta: () => unexpected('appendGeneratingMessageDelta'),
+    finalizeGeneratingMessage: () => unexpected('finalizeGeneratingMessage'),
+    failGeneratingMessage: () => unexpected('failGeneratingMessage'),
+    recordUsageBatch: () => unexpected('recordUsageBatch'),
+    ...overrides,
+  }
+}
+
+test('act entitlement service preserves premium-model free-tier gate shape', async () => {
+  const service = new ActEntitlementService({
+    repository: repository({
+      getEntitlements: async () => freeEntitlements,
+      getAppSettings: async () => null,
+    }),
+  })
+
+  await assert.rejects(
+    () => service.gateModelAccess({
+      effectiveModelId: 'claude-sonnet-4-6',
+      userId: 'user_1',
+    }),
+    (error) => {
+      assert.equal(error instanceof ActConversationServiceError, true)
+      assert.equal((error as ActConversationServiceError).statusCode, 403)
+      assert.deepEqual((error as ActConversationServiceError).payload, {
+        error: 'premium_model_not_allowed',
+        message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
+      })
+      return true
+    },
+  )
+})
+
+test('act context service builds model history without current turn or other assistant model variants', async () => {
+  const service = new ActContextService({
+    repository: repository({
+      getMessages: async () => [
+        {
+          _id: 'old_user',
+          turnId: 'turn_old',
+          role: 'user',
+          modelId: 'claude-sonnet-4-6',
+          content: 'old prompt',
+        },
+        {
+          _id: 'old_assistant_same_model',
+          turnId: 'turn_old',
+          role: 'assistant',
+          modelId: 'claude-sonnet-4-6',
+          content: 'old answer',
+        },
+        {
+          _id: 'old_assistant_other_model',
+          turnId: 'turn_old',
+          role: 'assistant',
+          modelId: 'gpt-5',
+          content: 'other answer',
+        },
+        {
+          _id: 'current_user_persisted',
+          turnId: 'turn_current',
+          role: 'user',
+          modelId: 'claude-sonnet-4-6',
+          content: 'current persisted',
+        },
+      ],
+    }),
+  })
+  const latestUserMessage: UIMessage = {
+    id: 'latest',
+    role: 'user',
+    parts: [{ type: 'text', text: 'current prompt' }],
+  }
+
+  const messages = await service.buildMessagesForModel({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    historyBaseModelId: 'claude-sonnet-4-6',
+    latestTurnId: 'turn_current',
+    latestUserMessage,
+    requestMessages: [latestUserMessage],
+    targetModelId: 'claude-sonnet-4-6',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(messages.map((message) => message.id), [
+    'old_user',
+    'old_assistant_same_model',
+    'latest',
+  ])
+})
+
+test('act message persistence swallows user-message persistence failures', async () => {
+  let addMessageCalls = 0
+  const generatingMessages = new ActGeneratingMessageService({
+    repository: repository(),
+  })
+  const service = new ActMessagePersistenceService({
+    generatingMessages,
+    repository: repository({
+      addMessage: async () => {
+        addMessageCalls += 1
+        throw new Error('write failed')
+      },
+    }),
+  })
+
+  await service.persistUserMessage({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    latestUserContent: 'hello',
+    latestUserParts: [{ type: 'text', text: 'hello' }],
+    latestUserText: 'hello',
+    modelId: 'openrouter/free',
+    skip: false,
+    turnId: 'turn_1',
+    userId: 'user_1',
+  })
+
+  assert.equal(addMessageCalls, 1)
+})
+
+test('act assistant persistence finalizes generating messages and emits completion', async () => {
+  const completions: Array<{ conversationId: string; modelId: string; turnId: string; userId: string }> = []
+  let finalized: { content: string; parts: Array<Record<string, unknown>> } | undefined
+  const generatingMessages = new ActGeneratingMessageService({
+    repository: repository({
+      finalizeGeneratingMessage: async (args) => {
+        finalized = { content: args.content, parts: args.parts }
+      },
+    }),
+  })
+  const service = new ActMessagePersistenceService({
+    events: {
+      completed: (event) => completions.push(event),
+    },
+    generatingMessages,
+    repository: repository(),
+  })
+
+  await service.persistAssistantFinish({
+    attemptModelId: 'claude-sonnet-4-6',
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    emitWebhook: true,
+    event: {
+      steps: [],
+      text: 'done',
+      totalUsage: { inputTokens: 3, outputTokens: 4 },
+    } as ActAssistantFinishEvent,
+    finishedToolCallIds: new Set(),
+    generatingMessageId: 'message_1' as Id<'conversationMessages'>,
+    multiModelSlotIndex: 0,
+    multiModelTotal: 1,
+    timedOut: false,
+    timeoutMs: 30_000,
+    toolFailuresByCallId: new Map(),
+    turnId: 'turn_1',
+    userId: 'user_1',
+  })
+
+  assert.equal(finalized?.content, 'done')
+  assert.deepEqual(finalized?.parts, [{ type: 'text', text: 'done' }])
+  assert.deepEqual(completions, [{
+    conversationId: 'conversation_1',
+    modelId: 'claude-sonnet-4-6',
+    turnId: 'turn_1',
+    userId: 'user_1',
+  }])
+})
+
+test('act generating-message transform persists streamed text deltas', async () => {
+  const deltas: string[] = []
+  const service = new ActGeneratingMessageService({
+    repository: repository({
+      appendGeneratingMessageDelta: async (args) => {
+        if (args.textDelta) deltas.push(args.textDelta)
+      },
+    }),
+  })
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder()
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"type":"text-delta","delta":"hello"}\n\n'))
+      controller.close()
+    },
+  })
+
+  const transformed = source.pipeThrough(service.createPersistenceTransform({
+    messageId: 'message_1' as Id<'conversationMessages'>,
+  }))
+  const reader = transformed.getReader()
+  let body = ''
+  while (true) {
+    const next = await reader.read()
+    if (next.done) break
+    body += decoder.decode(next.value)
+  }
+
+  assert.equal(body, 'data: {"type":"text-delta","delta":"hello"}\n\n')
+  assert.deepEqual(deltas, ['hello'])
+})
+
+test('act usage budget service skips reservations for unpaid/free-model attempts', async () => {
+  const service = new ActUsageBudgetService({
+    repository: repository(),
+  })
+
+  const result = await service.reserveForAttempt({
+    entitlements: freeEntitlements,
+    estimatedInputTokens: 1000,
+    maxOutputTokens: 1000,
+    modelId: 'openrouter/free',
+    paid: false,
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(result, { ok: true, reservationId: null })
+})

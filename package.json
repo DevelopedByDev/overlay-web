@@ -39,7 +39,7 @@
     "check:domain-service-boundaries": "node scripts/check-domain-service-boundaries.mjs",
     "check:tenant-boundaries": "tsx scripts/check-tenant-boundaries.ts",
     "license:check": "tsx scripts/check-licensing.ts",
-    "test:route-characterization": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud INTERNAL_API_SECRET=test-internal-secret NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/server/files/FileService.test.ts src/server/automations/AutomationService.test.ts src/server/billing/BillingCustomerService.test.ts src/server/billing/BillingCheckoutService.test.ts src/server/app-api/v1/route-characterization.test.ts",
+    "test:route-characterization": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud INTERNAL_API_SECRET=test-internal-secret NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/server/files/FileService.test.ts src/server/automations/AutomationService.test.ts src/server/billing/BillingCustomerService.test.ts src/server/billing/BillingCheckoutService.test.ts src/server/conversations/ActConversationService.test.ts src/server/app-api/v1/route-characterization.test.ts",
     "check:providers": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud NODE_OPTIONS=--conditions=react-server tsx --test src/server/bootstrap.test.ts && npm run check:vendor-boundaries",
     "test:phase6-routes": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud NODE_OPTIONS=--conditions=react-server tsx --test src/server/phase6-release-gates.test.ts",
     "check:phase6": "tsx scripts/check-phase6-release-gates.ts",

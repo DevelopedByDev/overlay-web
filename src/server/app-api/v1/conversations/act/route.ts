@@ -2,10 +2,7 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type ToolSet, type UIMessage } from '@/server/ai/sdk'
 import type { LanguageModelV3 } from '@/server/ai/provider-types'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { convex } from '@/server/database/convex'
-import { resolveMentionsContext } from '@/server/knowledge/mention-resolver'
-import { listMemories } from '@/shared/app/app-store'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   getLanguageModel,
   getGatewayParallelSearchTool,
@@ -30,35 +27,14 @@ import {
   allowedOverlayToolIdsForTurn,
   HIGH_RISK_TOOL_AUTHORIZATION_NOTE,
 } from '@/server/tools/tools/exposure-policy'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/pricing'
-import { buildAutoRetrievalBundle } from '@/server/knowledge/ask-knowledge-context'
-import { buildDocumentContextBundle } from '@/server/agent/document-context-builder'
-import { parseIndexedAttachmentsFromRequest } from '@/shared/knowledge/knowledge-agent-types'
 import {
   filterComposioToolSet,
   filterComposioToolSetForPaidOnlyFeatures,
 } from '@/server/tools/tools/composio-filter'
 import { fireAndForgetRecordToolInvocation } from '@/server/tools/tools/record-tool-invocation'
 import { createFreeTierGatedStubTools } from '@/server/tools/tools/free-tier-gated-stub-tools'
-import { mergeReplyContextIntoMessagesForModel } from '@/shared/chat/reply-context-for-model'
-import {
-  buildAssistantPersistenceFromSteps,
-  compactAssistantPersistenceForConvex,
-} from '@/shared/chat/persist-assistant-turn'
-import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
-import { maybeRepairFreeTierLeakedPerplexityText } from '@/shared/chat/leaked-perplexity-tool-repair'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
-import { sanitizeUiMessagesForModelApi } from '@/shared/chat/sanitize-ui-messages-for-model'
-import {
-  compactMessagesForContext,
-  contextSummaryScope,
-  type ContextSummarySnapshot,
-} from '@/server/chat/context-compaction'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
-import {
-  buildPersistedMessageContent,
-  sanitizeMessagePartsForPersistence,
-} from '@/server/chat/chat-message-persistence'
 import {
   summarizeErrorForLog,
   summarizeToolInputForLog,
@@ -68,21 +44,15 @@ import {
   createNvidiaNimChatLanguageModel,
   resolveNvidiaApiKey,
 } from '@/server/ai/model-runtime'
-import { emitChatCompleted, emitChatFailed } from '@/server/shared/webhooks'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
-import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
 import {
-  buildInsufficientCreditsPayload,
-  billableBudgetCentsFromProviderUsd,
-  canUsePaidBudgetFeatures,
-  ensureBudgetAvailable,
-  finalizeProviderBudgetReservation,
-  getBudgetTotals,
-  isPaidPlan,
-  markProviderBudgetReconcile,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
-} from '@/server/billing/billing-runtime'
+  actContextService,
+  actConversationErrorResponse,
+  actEntitlementService,
+  actGeneratingMessageService,
+  actMessagePersistenceService,
+  actUsageBudgetService,
+} from '@/server/conversations/http'
 import {
   classifyMediaToolIntentForTurn,
   normalizeStructuredMediaToolIntent,
@@ -121,23 +91,6 @@ function resolveActAbortTimeoutMs(params: {
   )
 }
 
-function toUiMessageFromPersisted(message: {
-  _id: string
-  role: 'user' | 'assistant'
-  parts?: UIMessage['parts']
-  content?: string
-  routedModelId?: string
-}): UIMessage {
-  return {
-    id: message._id,
-    role: message.role,
-    parts: message.parts?.length
-      ? message.parts
-      : [{ type: 'text' as const, text: message.content ?? '' }],
-    ...(message.routedModelId ? { metadata: { routedModelId: message.routedModelId } } : {}),
-  }
-}
-
 function messagesRequireVision(messages: UIMessage[]): boolean {
   return messages.some((message) =>
     (message.parts ?? []).some((part) => {
@@ -146,272 +99,6 @@ function messagesRequireVision(messages: UIMessage[]): boolean {
       return typeof mediaType === 'string' && mediaType.startsWith('image/')
     }),
   )
-}
-
-async function buildMessagesForModel(params: {
-  requestMessages: UIMessage[]
-  latestUserMessage?: UIMessage
-  latestTurnId?: string
-  conversationId?: Id<'conversations'>
-  userId: string
-  serverSecret: string
-  targetModelId?: string
-  historyBaseModelId?: string
-}): Promise<UIMessage[]> {
-  if (!params.conversationId) return params.requestMessages
-
-  const persisted = await convex.query<Array<{
-    _id: string
-    turnId: string
-    role: 'user' | 'assistant'
-    modelId?: string
-    content: string
-    parts?: UIMessage['parts']
-    routedModelId?: string
-  }>>('chat/conversations:getMessages', {
-    conversationId: params.conversationId,
-    userId: params.userId,
-    serverSecret: params.serverSecret,
-  }, { throwOnError: true })
-
-  const historyRows = params.latestTurnId
-    ? (persisted ?? []).filter((message) => message.turnId !== params.latestTurnId)
-    : (persisted ?? [])
-  const threadModelId = params.historyBaseModelId?.trim() || params.targetModelId?.trim()
-  const history = threadModelId
-    ? historyRows
-        .filter((message) => message.role === 'user' || message.modelId === threadModelId)
-        .map(toUiMessageFromPersisted)
-    : historyRows.map(toUiMessageFromPersisted)
-  const latest = params.latestUserMessage
-  if (!latest) return history.length > 0 ? history : params.requestMessages
-
-  const latestAlreadyPersisted = history.some((message) => message.id === latest.id)
-  return latestAlreadyPersisted ? history : [...history, latest]
-}
-
-type UiStreamPersistenceEvent =
-  | { kind: 'text-delta'; text: string }
-  | { kind: 'reasoning-delta'; text: string }
-  | {
-      kind: 'tool-input'
-      toolCallId: string
-      toolName: string
-      input: unknown
-      state: 'input-available' | 'output-error'
-      errorText?: string
-    }
-  | {
-      kind: 'tool-output'
-      toolCallId: string
-      output: unknown
-      state: 'output-available' | 'output-error' | 'output-denied'
-      errorText?: string
-    }
-
-function extractUiStreamPersistenceEvents(chunkText: string): UiStreamPersistenceEvent[] {
-  const events: UiStreamPersistenceEvent[] = []
-  const lines = chunkText.split(/\r?\n/)
-  for (const rawLine of lines) {
-    const line = rawLine.trim()
-    if (!line) continue
-    const payload = line.startsWith('data:') ? line.slice(5).trim() : line
-    if (!payload || payload === '[DONE]') continue
-    try {
-      const evt = JSON.parse(payload) as {
-        type?: string
-        delta?: unknown
-        text?: unknown
-        toolCallId?: unknown
-        toolName?: unknown
-        input?: unknown
-        output?: unknown
-        errorText?: unknown
-      }
-      if (
-        (evt.type === 'text-delta' || evt.type === 'text') &&
-        typeof evt.delta === 'string'
-      ) {
-        events.push({ kind: 'text-delta', text: evt.delta })
-      } else if (evt.type === 'text-delta' && typeof evt.text === 'string') {
-        events.push({ kind: 'text-delta', text: evt.text })
-      } else if (evt.type === 'reasoning-delta' && typeof evt.delta === 'string') {
-        events.push({ kind: 'reasoning-delta', text: evt.delta })
-      } else if (evt.type === 'reasoning-delta' && typeof evt.text === 'string') {
-        events.push({ kind: 'reasoning-delta', text: evt.text })
-      } else if (
-        (evt.type === 'tool-input-available' || evt.type === 'tool-input-error') &&
-        typeof evt.toolCallId === 'string' &&
-        typeof evt.toolName === 'string'
-      ) {
-        events.push({
-          kind: 'tool-input',
-          toolCallId: evt.toolCallId,
-          toolName: evt.toolName,
-          input: evt.input,
-          state: evt.type === 'tool-input-error' ? 'output-error' : 'input-available',
-          errorText: typeof evt.errorText === 'string' ? evt.errorText : undefined,
-        })
-      } else if (
-        (evt.type === 'tool-output-available' ||
-          evt.type === 'tool-output-error' ||
-          evt.type === 'tool-output-denied') &&
-        typeof evt.toolCallId === 'string'
-      ) {
-        events.push({
-          kind: 'tool-output',
-          toolCallId: evt.toolCallId,
-          output: evt.output,
-          state:
-            evt.type === 'tool-output-error'
-              ? 'output-error'
-              : evt.type === 'tool-output-denied'
-                ? 'output-denied'
-                : 'output-available',
-          errorText: typeof evt.errorText === 'string' ? evt.errorText : undefined,
-        })
-      }
-    } catch {
-      // Ignore partial chunks and non-JSON protocol frames.
-    }
-  }
-  return events
-}
-
-function createGeneratingPersistenceTransform(params: {
-  messageId?: Id<'conversationMessages'>
-  serverSecret: string
-}) {
-  const decoder = new TextDecoder()
-  let textBuffer = ''
-  let pendingText = ''
-  let lastFlushAt = Date.now()
-
-  async function flushText(force = false) {
-    if (!params.messageId || !pendingText) return
-    if (!force && pendingText.length < 600 && Date.now() - lastFlushAt < 1500) return
-    const textDelta = pendingText
-    pendingText = ''
-    lastFlushAt = Date.now()
-    try {
-      await convex.mutation('chat/conversations:appendGeneratingMessageDelta', {
-        messageId: params.messageId,
-        textDelta,
-        serverSecret: params.serverSecret,
-      })
-    } catch (err) {
-      console.error('[conversations/act] Failed to append generating text:', summarizeErrorForLog(err))
-    }
-  }
-
-  return new TransformStream<Uint8Array, Uint8Array>({
-    async transform(chunk, controller) {
-      controller.enqueue(chunk)
-      if (!params.messageId) return
-      textBuffer += decoder.decode(chunk, { stream: true })
-      const split = textBuffer.split(/\r?\n/)
-      textBuffer = split.pop() ?? ''
-      const newParts: Array<Record<string, unknown>> = []
-      for (const event of extractUiStreamPersistenceEvents(split.join('\n'))) {
-        if (event.kind === 'text-delta') {
-          pendingText += event.text
-        } else if (event.kind === 'reasoning-delta') {
-          newParts.push({ type: 'reasoning', text: event.text, state: 'streaming' })
-        } else if (event.kind === 'tool-input') {
-          newParts.push({
-            type: 'tool-invocation',
-            toolInvocation: {
-              toolCallId: event.toolCallId,
-              toolName: event.toolName,
-              state: event.state,
-              toolInput: event.input,
-              ...(event.errorText ? { toolOutput: { error: event.errorText } } : {}),
-            },
-          })
-        } else if (event.kind === 'tool-output') {
-          newParts.push({
-            type: 'tool-invocation',
-            toolInvocation: {
-              toolCallId: event.toolCallId,
-              toolName: 'unknown_tool',
-              state: event.state,
-              toolOutput: event.state === 'output-error'
-                ? { error: event.errorText ?? 'Tool call failed.' }
-                : event.output,
-            },
-          })
-        }
-      }
-      if (newParts.length > 0 && params.messageId) {
-        try {
-          const compactedParts = compactAssistantPersistenceForConvex({
-            content: '',
-            parts: newParts,
-          }).parts
-          await convex.mutation('chat/conversations:appendGeneratingMessageDelta', {
-            messageId: params.messageId,
-            newParts: compactedParts as never,
-            serverSecret: params.serverSecret,
-          })
-        } catch (err) {
-          console.error('[conversations/act] Failed to append generating parts:', summarizeErrorForLog(err))
-        }
-      }
-      await flushText(false)
-    },
-    async flush() {
-      if (textBuffer) {
-        const newParts: Array<Record<string, unknown>> = []
-        for (const event of extractUiStreamPersistenceEvents(textBuffer)) {
-          if (event.kind === 'text-delta') {
-            pendingText += event.text
-          } else if (event.kind === 'reasoning-delta') {
-            newParts.push({ type: 'reasoning', text: event.text, state: 'streaming' })
-          } else if (event.kind === 'tool-input') {
-            newParts.push({
-              type: 'tool-invocation',
-              toolInvocation: {
-                toolCallId: event.toolCallId,
-                toolName: event.toolName,
-                state: event.state,
-                toolInput: event.input,
-                ...(event.errorText ? { toolOutput: { error: event.errorText } } : {}),
-              },
-            })
-          } else if (event.kind === 'tool-output') {
-            newParts.push({
-              type: 'tool-invocation',
-              toolInvocation: {
-                toolCallId: event.toolCallId,
-                toolName: 'unknown_tool',
-                state: event.state,
-                toolOutput: event.state === 'output-error'
-                  ? { error: event.errorText ?? 'Tool call failed.' }
-                  : event.output,
-              },
-            })
-          }
-        }
-        if (newParts.length > 0 && params.messageId) {
-          try {
-            const compactedParts = compactAssistantPersistenceForConvex({
-              content: '',
-              parts: newParts,
-            }).parts
-            await convex.mutation('chat/conversations:appendGeneratingMessageDelta', {
-              messageId: params.messageId,
-              newParts: compactedParts as never,
-              serverSecret: params.serverSecret,
-            })
-          } catch (err) {
-            console.error('[conversations/act] Failed to flush generating parts:', summarizeErrorForLog(err))
-          }
-        }
-        textBuffer = ''
-      }
-      await flushText(true)
-    },
-  })
 }
 
 async function drainReadableStream(stream: ReadableStream<Uint8Array<ArrayBufferLike>>) {
@@ -480,7 +167,6 @@ function prefixFallbackNoticeAfterStart(
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
-  let pendingServerSecret: string | undefined
   let budgetReservationId: string | null = null
   let budgetReservationFinalized = false
   let currentUserId: string | undefined
@@ -575,112 +261,26 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ? FREE_TIER_DEFAULT_MODEL_ID
       : requestedModelId
     const serverSecret = getInternalApiSecret()
-    pendingServerSecret = serverSecret
 
-    const [entitlements, appSettings] = await Promise.all([
-      convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-        serverSecret,
-        userId,
-      }),
-      convex.query<AppSettings>('platform/uiSettings:getByServer', {
-        userId,
-        serverSecret,
-      }),
-    ])
-
-    if (!entitlements) {
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'Could not verify subscription. Try signing out and back in.' },
-        { status: 401 },
-      )
-    }
-
-    let runtimeEntitlements = entitlements
-    const budget = getBudgetTotals(runtimeEntitlements)
-    const effectiveModelSupportsZdr = modelSupportsZeroDataRetention(effectiveModelId)
-
-    if (isPaidPlan(runtimeEntitlements) && budget.remainingCents <= 0) {
-      const autoTopUp = await ensureBudgetAvailable({
-        userId,
-        entitlements: runtimeEntitlements,
-        minimumRequiredCents: 1,
-      })
-      runtimeEntitlements = autoTopUp.entitlements
-    }
-
-    let paid = canUsePaidBudgetFeatures(runtimeEntitlements)
-    if (!paid) {
-      if (!isFreeTierChatModelId(effectiveModelId)) {
-        if (isPaidPlan(runtimeEntitlements)) {
-          return NextResponse.json(
-            buildInsufficientCreditsPayload(runtimeEntitlements, 'No budget remaining. Switch to a free model or top up your account.'),
-            { status: 402 },
-          )
-        }
-        return NextResponse.json(
-          { error: 'premium_model_not_allowed', message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.' },
-          { status: 403 },
-        )
-      }
-    } else {
-      if (appSettings?.onlyAllowZdrModels && !effectiveModelSupportsZdr) {
-        return NextResponse.json(
-          { error: 'zdr_model_required', message: 'Your settings only allow zero data retention models. Choose a ZDR-supported model to continue.' },
-          { status: 400 },
-        )
-      }
-    }
-
-    const refreshedEntitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-      serverSecret,
+    const {
+      appSettings,
+      paid,
+      runtimeEntitlements,
+    } = await actEntitlementService.gateModelAccess({
+      effectiveModelId,
       userId,
     })
-
-    if (!refreshedEntitlements) {
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'Could not refresh subscription state.' },
-        { status: 401 },
-      )
-    }
-
-    runtimeEntitlements = refreshedEntitlements
-    paid = canUsePaidBudgetFeatures(runtimeEntitlements)
-
-    if (!paid && !isFreeTierChatModelId(effectiveModelId)) {
-      if (isPaidPlan(runtimeEntitlements)) {
-        return NextResponse.json(
-          buildInsufficientCreditsPayload(runtimeEntitlements, 'No budget remaining. Switch to a free model or top up your account.'),
-          { status: 402 },
-        )
-      }
-      return NextResponse.json(
-        { error: 'premium_model_not_allowed', message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.' },
-        { status: 403 },
-      )
-    }
     if (_ttftDebug) _tAuth = performance.now()
 
-    const latestUserMessage = [...messages].reverse().find((m) => m.role === 'user')
-    const latestUserText = latestUserMessage?.parts
-      ?.filter((p) => p.type === 'text')
-      .map((p) => (p as { type: string; text?: string }).text || '')
-      .join('')
-      .trim()
-    const latestUserParts = latestUserMessage?.parts
-      ?.filter((p) => p.type === 'text' || p.type === 'file')
-      .map((part) => {
-        if (part.type === 'text') {
-          return { type: 'text' as const, text: 'text' in part ? part.text || '' : '' }
-        }
-        return {
-          type: 'file' as const,
-          url: 'url' in part ? part.url : undefined,
-          mediaType: 'mediaType' in part ? part.mediaType : undefined,
-        }
-      })
-    const latestUserContent = buildPersistedMessageContent(undefined, latestUserParts, {
+    const {
+      latestUserContent,
+      latestUserMessage,
+      latestUserParts,
+      latestUserText,
+    } = actMessagePersistenceService.getLatestUserPersistence({
+      messages,
       attachmentNames,
-    }) || latestUserText
+    })
 
     const cid = conversationId as Id<'conversations'> | undefined
     const tid = (turnId?.trim() || `act-${Date.now()}`)
@@ -718,184 +318,41 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       console.warn('[conversations/act] MCP tool preload failed:', summarizeErrorForLog(error))
     })
 
-    // P3.2 Wave 1: user-message save + memories + skills + conversation fetch (for projectId).
-    // These are all independent of each other; previously each was an await in sequence.
-    const saveUserMessageTask: Promise<void> = isMultiModelFollowUpSlot
-      ? Promise.resolve()
-      : (async () => {
-          if (!cid || !latestUserContent) return
-          try {
-            await convex.mutation('chat/conversations:addMessage', {
-              conversationId: cid,
-              userId,
-              serverSecret,
-              turnId: tid,
-              role: 'user',
-              mode: 'act',
-              content: latestUserText || latestUserContent,
-              contentType: 'text',
-              parts: sanitizeMessagePartsForPersistence(latestUserParts, {
-                attachmentNames,
-              }),
-              modelId: effectiveModelId,
-            })
-          } catch (err) {
-            console.error('[conversations/act] Failed to save user message:', summarizeErrorForLog(err))
-          }
-        })()
-
-    const memoriesTask: Promise<
-      Array<{
-        content: string
-        importance?: number
-        updatedAt?: number
-      }>
-    > = (async () => {
-      try {
-        const memories = await convex.query<
-          Array<{
-            content: string
-            importance?: number
-            updatedAt?: number
-          }>
-        >('knowledge/memories:list', {
-          userId,
-          serverSecret,
-        })
-        return memories || listMemories(userId)
-      } catch {
-        return []
-      }
-    })()
-
-    type SkillRow = { name: string; instructions: string; enabled?: boolean }
-    const skillsTask: Promise<SkillRow[]> = (async () => {
-      try {
-        const allSkills = await convex.query<SkillRow[]>('integrations/skills:list', {
-          serverSecret,
-          userId,
-        })
-        return (allSkills ?? []).filter((s) => s.enabled !== false && s.instructions?.trim())
-      } catch {
-        return []
-      }
-    })()
-
-    const conversationTask: Promise<{ projectId?: string } | null> = (async () => {
-      if (!cid) return null
-      try {
-        return await convex.query<{ projectId?: string } | null>('chat/conversations:get', {
-          conversationId: cid,
-          userId,
-          serverSecret,
-        })
-      } catch {
-        return null
-      }
-    })()
-
-    const [, effectiveMemories, enabledSkills, conv] = await Promise.all([
-      saveUserMessageTask,
-      memoriesTask,
-      skillsTask,
-      conversationTask,
-    ])
-
-    let memoryContext = ''
-    if (effectiveMemories.length > 0) {
-      const topMemories = effectiveMemories
-        .sort((a, b) => {
-          const impA = a.importance ?? 3
-          const impB = b.importance ?? 3
-          if (impB !== impA) return impB - impA
-          const ageA = a.updatedAt ?? 0
-          const ageB = b.updatedAt ?? 0
-          return ageB - ageA
-        })
-        .slice(0, 10)
-
-      memoryContext =
-        '\n\nUser context:\n' +
-        topMemories.map((m) => `- ${m.content}`).join('\n')
-    }
-
-    let skillsContext = ''
-    if (enabledSkills.length > 0) {
-      skillsContext =
-        '\n\nIMPORTANT — User-configured skills below. Before acting, check whether any skill applies to this task and follow its instructions. You can also call list_skills to search them at runtime.\n<skills>\n' +
-        enabledSkills.map((s) => `## ${s.name}\n${s.instructions.trim()}`).join('\n\n') +
-        '\n</skills>'
-    }
-
-    // Resolve @mention context from the request (lightweight metadata per entity).
-    // Kicked off in parallel with the wave-2 project + auto-retrieval fetches below.
-    const mentionsContextTask = resolveMentionsContext(rawMentions, {
+    // P3.2 Wave 1: user-message save + context fetches stay parallel.
+    const saveUserMessageTask = actMessagePersistenceService.persistUserMessage({
+      conversationId: cid,
       userId,
-      serverSecret,
-      enabledSkills,
+      turnId: tid,
+      modelId: effectiveModelId,
+      latestUserContent,
+      latestUserText,
+      latestUserParts,
+      attachmentNames,
+      skip: isMultiModelFollowUpSlot,
     })
-
-    // Wave 2: project fetch + auto-retrieval. Both depend on the projectId resolved above.
-    const conversationProjectId: string | undefined = conv?.projectId
-    const projectTask: Promise<string> = (async () => {
-      if (!conversationProjectId) return ''
-      try {
-        const project = await convex.query<{ instructions?: string } | null>('projects/projects:get', {
-          projectId: conversationProjectId as Id<'projects'>,
-          userId,
-          serverSecret,
-        })
-        return project?.instructions?.trim() || ''
-      } catch {
-        return ''
-      }
-    })()
-
-    type AutoRetrievalResult = {
-      extension: string
-      citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
-    }
-    const autoRetrievalTask: Promise<AutoRetrievalResult> = (async () => {
-      if (!auth.accessToken) return { extension: '', citations: {} }
-      try {
-        const bundle = await buildAutoRetrievalBundle({
-          userMessage: latestUserText ?? '',
-          userId,
-          accessToken: auth.accessToken,
-          projectId: conversationProjectId,
-        })
-        return { extension: bundle.extension, citations: bundle.citations }
-      } catch {
-        return { extension: '', citations: {} }
-      }
-    })()
-
-    const [projectInstructions, autoRetrievalBundle, mentionsContext] = await Promise.all([
-      projectTask,
-      autoRetrievalTask,
-      mentionsContextTask,
-    ])
-    const autoRetrieval: string = autoRetrievalBundle.extension
-    const sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }> =
-      autoRetrievalBundle.citations
-
-    const indexedAttachmentList = parseIndexedAttachmentsFromRequest({
+    const turnContextTask = actContextService.loadTurnContext({
+      accessToken: auth.accessToken || undefined,
+      conversationId: cid,
       indexedAttachments: rawIndexedAttachments,
       indexedFileNames,
+      latestUserText,
+      mentions: rawMentions,
+      serverSecret,
+      userId,
     })
-
-    // Pre-fetch attached document content server-side so the model doesn't need
-    // to loop through search_in_files / search_knowledge for its own uploads.
-    const docContextBundle =
-      indexedAttachmentList.length > 0
-        ? await buildDocumentContextBundle({
-            attachments: indexedAttachmentList,
-            userId,
-            accessToken: auth.accessToken || undefined,
-            userQuery: latestUserText ?? undefined,
-          })
-        : { contextText: '', hasContent: false, totalChars: 0 }
-    const hasPreloadedDocContext = docContextBundle.hasContent && docContextBundle.totalChars > 0
+    const [, turnContext] = await Promise.all([saveUserMessageTask, turnContextTask])
+    const {
+      autoRetrieval,
+      conversationProjectId,
+      docContextBundle,
+      hasPreloadedDocContext,
+      indexedAttachmentList,
+      memoryContext,
+      mentionsContext,
+      projectInstructions,
+      skillsContext,
+      sourceCitationMap,
+    } = turnContext
 
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
     const resolvedMediaToolIntent = isMultiModelFollowUpSlot
@@ -922,88 +379,25 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const indexedNote = hasPreloadedDocContext
       ? indexedFilesSystemNotePreloaded(indexedAttachmentList)
       : indexedFilesSystemNote(indexedAttachmentList)
-    let messagesForModel = await buildMessagesForModel({
+    let messagesForModel = await actContextService.buildMessagesForModel({
       requestMessages: messages,
       latestUserMessage,
       latestTurnId: tid,
       conversationId: cid,
       userId,
-      serverSecret,
       targetModelId: effectiveModelId,
       historyBaseModelId,
     })
     messagesForModel = cloneMessagesWithIndexedFileHint(messagesForModel, indexedAttachmentList, hasPreloadedDocContext)
-    messagesForModel = mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel)
-    messagesForModel = sanitizeUiMessagesForModelApi(messagesForModel)
-    const summaryScope = contextSummaryScope({
-      targetModelId: effectiveModelId,
-      historyBaseModelId,
-    })
-    const previousContextSummary = cid
-      ? await convex.query<ContextSummarySnapshot | null>('chat/conversations:getContextSummary', {
-          conversationId: cid,
-          userId,
-          serverSecret,
-          scope: summaryScope,
-        }).catch((error) => {
-          console.warn('[conversations/act] Failed to load context summary', {
-            conversationId: cid,
-            scope: summaryScope,
-            error: summarizeErrorForLog(error),
-          })
-          return null
-        })
-      : null
-    const compaction = await compactMessagesForContext({
-      messages: messagesForModel,
-      targetModelId: effectiveModelId,
+    messagesForModel = await actContextService.prepareExistingMessagesForModel({
       accessToken: auth.accessToken || undefined,
-      previousSummary: previousContextSummary,
+      conversationId: cid,
+      historyBaseModelId,
+      messages: messagesForModel,
+      replyContextForModel,
+      targetModelId: effectiveModelId,
+      userId,
     })
-    messagesForModel = compaction.messages
-    if (compaction.didCompact || compaction.usedFallbackTrim) {
-      console.info('[conversations/act] context-compaction', {
-        targetModelId: effectiveModelId,
-        scope: summaryScope,
-        contextWindow: compaction.contextWindow,
-        originalEstimatedTokens: compaction.originalEstimatedTokens,
-        finalEstimatedTokens: compaction.finalEstimatedTokens,
-        triggerTokens: compaction.triggerTokens,
-        targetTokens: compaction.targetTokens,
-        ratioBefore: Number((compaction.originalEstimatedTokens / compaction.contextWindow).toFixed(4)),
-        ratioAfter: Number((compaction.finalEstimatedTokens / compaction.contextWindow).toFixed(4)),
-        didCompact: compaction.didCompact,
-        usedFallbackTrim: compaction.usedFallbackTrim,
-      })
-    }
-    if (cid && compaction.summaryToPersist) {
-      const summary = compaction.summaryToPersist
-      await convex.mutation('chat/conversations:upsertContextSummary', {
-        conversationId: cid,
-        userId,
-        serverSecret,
-        scope: summaryScope,
-        summary: summary.summary,
-        ...(summary.summarizedThroughMessageId
-          ? { summarizedThroughMessageId: summary.summarizedThroughMessageId }
-          : {}),
-        ...(summary.summarizedThroughCreatedAt
-          ? { summarizedThroughCreatedAt: summary.summarizedThroughCreatedAt }
-          : {}),
-        sourceMessageCount: summary.sourceMessageCount,
-        sourceEstimatedTokens: summary.sourceEstimatedTokens,
-        summaryEstimatedTokens: summary.summaryEstimatedTokens,
-        contextWindow: summary.contextWindow,
-        targetModelId: summary.targetModelId,
-        summarizerModelId: summary.summarizerModelId,
-      }).catch((error) => {
-        console.warn('[conversations/act] Failed to persist context summary', {
-          conversationId: cid,
-          scope: summaryScope,
-          error: summarizeErrorForLog(error),
-        })
-      })
-    }
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
     const projectInstructionsExtension = projectInstructions
       ? `\n\nProject instructions:\n${projectInstructions}`
@@ -1012,26 +406,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	    const modelMessages = await convertToModelMessages(messagesForModel)
 	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
 	    let streamedRoutedModelId: string | undefined
-	    let generatingMessageId: Id<'conversationMessages'> | undefined
-    if (cid) {
-      try {
-        generatingMessageId = await convex.mutation<Id<'conversationMessages'>>(
-          'chat/conversations:startGeneratingMessage',
-          {
-            conversationId: cid,
-            userId,
-            serverSecret,
-            turnId: tid,
-            mode: 'act',
-            modelId: effectiveModelId,
-            variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
-          },
-        ) ?? undefined
-        pendingGeneratingMessageId = generatingMessageId
-      } catch (err) {
-        console.error('[conversations/act] Failed to start generating assistant message:', summarizeErrorForLog(err))
-      }
-    }
+	    const generatingMessageId = await actGeneratingMessageService.start({
+      conversationId: cid,
+      userId,
+      turnId: tid,
+      modelId: effectiveModelId,
+      multiModelTotal,
+      multiModelSlotIndex,
+    })
+    pendingGeneratingMessageId = generatingMessageId
 	    if (_ttftDebug) _tPrep = performance.now()
     const [composioRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
       composioToolsTask,
@@ -1276,206 +659,35 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           const rid = event.steps.at(-1)?.response.modelId
           if (typeof rid === 'string' && rid) streamedRoutedModelId = rid
         }
-        const providerCostUsd = calculateTokenCostOrNull(attemptModelId, totalInputTokens, 0, totalOutputTokens)
-        if (providerCostUsd === null) {
-          console.error('[conversations/act] Missing pricing for completed provider call', { modelId: attemptModelId })
-          if (budgetReservationId) {
-            await markProviderBudgetReconcile({
-              userId,
-              reservationId: budgetReservationId,
-              errorMessage: `pricing_missing:${attemptModelId}`,
-            }).catch((err) => console.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(err)))
-            budgetReservationId = null
-          }
-        } else {
-          const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
+        const usageResult = await actUsageBudgetService.recordFinishedUsage({
+          userId,
+          modelId: attemptModelId,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          forceFreeTierLimits: !paid,
+          reservationId: budgetReservationId,
+        })
+        budgetReservationId = usageResult.reservationId
+        budgetReservationFinalized = usageResult.finalized
 
-          if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
-            try {
-              const events = [{
-                type: 'agent' as const,
-                modelId: attemptModelId,
-                inputTokens: totalInputTokens,
-                outputTokens: totalOutputTokens,
-                cachedTokens: 0,
-                cost: costCents,
-                timestamp: Date.now(),
-              }]
-              if (budgetReservationId) {
-                await finalizeProviderBudgetReservation({
-                  userId,
-                  reservationId: budgetReservationId,
-                  actualProviderCostUsd: providerCostUsd,
-                  events,
-                })
-                budgetReservationFinalized = true
-                budgetReservationId = null
-              } else {
-                await convex.mutation('platform/usage:recordBatch', {
-                  serverSecret,
-                  userId,
-                  forceFreeTierLimits: !paid,
-                  events,
-                })
-              }
-            } catch (err) {
-              console.error('[conversations/act] Failed to record usage:', summarizeErrorForLog(err))
-              if (budgetReservationId) {
-                await markProviderBudgetReconcile({
-                  userId,
-                  reservationId: budgetReservationId,
-                  errorMessage: summarizeErrorForLog(err),
-                }).catch((reconcileErr) => console.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(reconcileErr)))
-                budgetReservationId = null
-              }
-            }
-          }
-        }
-
-        try {
-          let persistOverride:
-            | { content: string; parts: Array<Record<string, unknown>> }
-            | undefined
-          if (attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
-            const repaired = await maybeRepairFreeTierLeakedPerplexityText({
-              modelId: attemptModelId,
-              steps: event.steps,
-              text: event.text,
-              accessToken: auth.accessToken,
-            })
-            if (repaired) {
-              const cleaned = normalizeAgentAssistantText(repaired)
-              persistOverride = {
-                content: cleaned,
-                parts: [{ type: 'text', text: cleaned }],
-              }
-            }
-          }
-          const { content: rawPersistContent, parts: persistParts } = persistOverride
-            ? persistOverride
-            : buildAssistantPersistenceFromSteps(event.steps, event.text)
-          let persistContent = params.fallbackNotice
-            ? `${params.fallbackNotice}\n\n${rawPersistContent}`
-            : rawPersistContent
-          let normalizedPersistParts = persistParts.map((part) => {
-            if (part.type !== 'tool-invocation') return part
-            const invocation = part.toolInvocation as
-              | {
-                  toolCallId?: string
-                  toolName?: string
-                  state?: string
-                  toolInput?: unknown
-                  toolOutput?: unknown
-                }
-              | undefined
-            const failure = invocation?.toolCallId
-              ? toolFailuresByCallId.get(invocation.toolCallId)
-              : undefined
-            if (!failure) return part
-            return {
-              ...part,
-              toolInvocation: {
-                ...invocation,
-                toolName: invocation?.toolName ?? failure.toolName,
-                state: 'output-error',
-                toolOutput: {
-                  error: failure.error,
-                },
-              },
-            }
-          }).map((part) => {
-            if (part.type !== 'tool-invocation') return part
-            const invocation = part.toolInvocation as
-              | {
-                  toolCallId?: string
-                  toolName?: string
-                  state?: string
-                  toolInput?: unknown
-                  toolOutput?: unknown
-                }
-              | undefined
-            if (
-              invocation?.toolCallId &&
-              finishedToolCallIds.has(invocation.toolCallId) &&
-              invocation.state !== 'output-available' &&
-              invocation.state !== 'output-error' &&
-              invocation.state !== 'output-denied'
-            ) {
-              return {
-                ...part,
-                toolInvocation: {
-                  ...invocation,
-                  state: 'output-available',
-                },
-              }
-            }
-            return part
-          })
-          if (params.fallbackNotice) {
-            normalizedPersistParts = [
-              { type: 'text', text: `${params.fallbackNotice}\n\n` },
-              ...normalizedPersistParts,
-            ]
-          }
-
-          if (wasAbortedByTimeout) {
-            const timedOutAfterSeconds = Math.round(actAbortTimeoutMsResolved / 1000)
-            const sentinel = `\n\n[Request timed out after ${timedOutAfterSeconds}s. Continue?]`
-            persistContent = persistContent.trimEnd() + sentinel
-            normalizedPersistParts = [...normalizedPersistParts, { type: 'text', text: sentinel }]
-          }
-
-          const compactedPersistence = compactAssistantPersistenceForConvex({
-            content: persistContent,
-            parts: normalizedPersistParts,
-          })
-          persistContent = compactedPersistence.content
-          normalizedPersistParts = compactedPersistence.parts
-
-          if (cid) {
-            const routedModelId =
-              attemptModelId === FREE_TIER_AUTO_MODEL_ID
-                ? (streamedRoutedModelId || event.steps.at(-1)?.response.modelId)
-                : undefined
-            const finalParts = (normalizedPersistParts.length > 0 ? normalizedPersistParts : [{ type: 'text', text: persistContent }]) as never
-            if (generatingMessageId) {
-              await convex.mutation('chat/conversations:finalizeGeneratingMessage', {
-                messageId: generatingMessageId,
-                content: persistContent,
-                parts: finalParts,
-                routedModelId,
-                tokens: { input: totalInputTokens, output: totalOutputTokens },
-                serverSecret,
-              })
-            } else {
-              await convex.mutation('chat/conversations:addMessage', {
-                conversationId: cid,
-                userId,
-                serverSecret,
-                turnId: tid,
-                role: 'assistant',
-                mode: 'act',
-                content: persistContent,
-                contentType: 'text',
-                parts: finalParts,
-                modelId: attemptModelId,
-                routedModelId,
-                tokens: { input: totalInputTokens, output: totalOutputTokens },
-                variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
-              })
-            }
-            if (!actWebhookSkip && cid) {
-              emitChatCompleted({
-                userId,
-                conversationId: cid,
-                turnId: tid,
-                modelId: attemptModelId,
-              })
-            }
-          }
-        } catch (err) {
-          console.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
-        }
+        await actMessagePersistenceService.persistAssistantFinish({
+          accessToken: auth.accessToken || undefined,
+          attemptModelId,
+          conversationId: cid,
+          emitWebhook: !actWebhookSkip,
+          event,
+          fallbackNotice: params.fallbackNotice,
+          finishedToolCallIds,
+          generatingMessageId,
+          multiModelSlotIndex,
+          multiModelTotal,
+          routedModelId: streamedRoutedModelId,
+          timedOut: wasAbortedByTimeout,
+          timeoutMs: actAbortTimeoutMsResolved,
+          toolFailuresByCallId,
+          turnId: tid,
+          userId,
+        })
       },
       })
     } catch (err) {
@@ -1517,9 +729,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (responseBody) {
       if (resolvedStreamPersistenceMode === 'convex-deltas') {
         responseBody = responseBody.pipeThrough(
-          createGeneratingPersistenceTransform({
+          actGeneratingMessageService.createPersistenceTransform({
             messageId: generatingMessageId,
-            serverSecret,
           }),
         ) as ReadableStream<Uint8Array<ArrayBufferLike>>
         const [clientBody, backgroundBody] = responseBody.tee()
@@ -1530,32 +741,21 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           } catch (err) {
             console.error('[conversations/act] Background stream drain failed:', summarizeErrorForLog(err))
             if (budgetReservationId && !budgetReservationFinalized) {
-              await releaseProviderBudgetReservation({
+              await actUsageBudgetService.releaseReservation({
                 userId,
                 reservationId: budgetReservationId,
                 reason: summarizeErrorForLog(err),
               }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
               budgetReservationId = null
             }
-            if (generatingMessageId) {
-              try {
-                await convex.mutation('chat/conversations:failGeneratingMessage', {
-                  messageId: generatingMessageId,
-                  errorText: userFacingOpenRouterError(err),
-                  serverSecret,
-                })
-                if (!actWebhookSkip) {
-                  emitChatFailed({
-                    userId,
-                    conversationId: actWebhookConversationId,
-                    turnId: actWebhookTurnId,
-                    error: userFacingOpenRouterError(err),
-                  })
-                }
-              } catch (failErr) {
-                console.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(failErr))
-              }
-            }
+            await actGeneratingMessageService.fail({
+              conversationId: actWebhookConversationId,
+              emitWebhook: !actWebhookSkip,
+              error: err,
+              messageId: generatingMessageId,
+              turnId: actWebhookTurnId,
+              userId,
+            })
           }
         })
       }
@@ -1616,23 +816,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const estimatedInputTokens = Math.ceil(JSON.stringify(modelMessages).length / 4) + 2_000
     const maxOutputTokens = 8_192
     const reserveBudgetForAttempt = async (attemptModelId: string): Promise<NextResponse | null> => {
-      if (!paid || !isPremiumModel(attemptModelId)) return null
-      const estimatedProviderCostUsd = calculateTokenCostOrNull(attemptModelId, estimatedInputTokens, 0, maxOutputTokens)
-      if (estimatedProviderCostUsd === null) {
-        return NextResponse.json(
-          { error: 'pricing_missing', message: `Model ${attemptModelId} is not priced for production use.` },
-          { status: 400 },
-        )
-      }
-      const reservation = await reserveProviderBudget({
+      const reservation = await actUsageBudgetService.reserveForAttempt({
         userId,
         entitlements: runtimeEntitlements,
-        providerCostUsd: estimatedProviderCostUsd,
-        kind: 'agent',
         modelId: attemptModelId,
+        paid,
+        estimatedInputTokens,
+        maxOutputTokens,
       })
       if (!reservation.ok) {
-        return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
+        return NextResponse.json(reservation.failure.payload, { status: reservation.failure.statusCode })
       }
       budgetReservationId = reservation.reservationId
       budgetReservationFinalized = false
@@ -1702,7 +895,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           error: summarizeErrorForLog(error),
         })
         if (budgetReservationId && !budgetReservationFinalized) {
-          await releaseProviderBudgetReservation({
+          await actUsageBudgetService.releaseReservation({
             userId,
             reservationId: budgetReservationId,
             reason: summarizeErrorForLog(error),
@@ -1715,34 +908,25 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (lastAttemptResponse) return lastAttemptResponse
     throw lastAttemptError ?? new Error('All model attempts failed')
 	  } catch (error) {
+    const serviceResponse = actConversationErrorResponse(error)
+    if (serviceResponse) return serviceResponse
 	    console.error('[conversations/act] Error:', summarizeErrorForLog(error))
 	    if (budgetReservationId && !budgetReservationFinalized) {
-	      await releaseProviderBudgetReservation({
+	      await actUsageBudgetService.releaseReservation({
 	        userId: currentUserId ?? 'unknown',
 	        reservationId: budgetReservationId,
 	        reason: summarizeErrorForLog(error),
 	      }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
 	      budgetReservationId = null
 	    }
-	    if (pendingGeneratingMessageId && pendingServerSecret) {
-      try {
-        await convex.mutation('chat/conversations:failGeneratingMessage', {
-          messageId: pendingGeneratingMessageId,
-          errorText: userFacingOpenRouterError(error),
-          serverSecret: pendingServerSecret,
-        })
-        if (!actWebhookSkip && currentUserId) {
-          emitChatFailed({
-            userId: currentUserId,
-            conversationId: actWebhookConversationId,
-            turnId: actWebhookTurnId,
-            error: userFacingOpenRouterError(error),
-          })
-        }
-      } catch (err) {
-        console.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(err))
-      }
-    }
+	    await actGeneratingMessageService.fail({
+      conversationId: actWebhookConversationId,
+      emitWebhook: !actWebhookSkip,
+      error,
+      messageId: pendingGeneratingMessageId,
+      turnId: actWebhookTurnId,
+      userId: currentUserId,
+    })
     return NextResponse.json(
       { error: userFacingOpenRouterError(error) },
       { status: 500 },

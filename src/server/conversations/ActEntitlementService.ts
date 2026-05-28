@@ -1,0 +1,137 @@
+import 'server-only'
+
+import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import {
+  buildInsufficientCreditsPayload,
+  canUsePaidBudgetFeatures,
+  ensureBudgetAvailable,
+  getBudgetTotals,
+  isPaidPlan,
+} from '@/server/billing/billing-runtime'
+import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
+import type { ActConversationRepository } from './ActConversationRepository'
+
+export class ActConversationServiceError extends Error {
+  constructor(
+    readonly payload: Record<string, unknown>,
+    readonly statusCode: number,
+    message?: string,
+  ) {
+    super(message ?? String(payload.error ?? 'Act conversation service error'))
+    this.name = 'ActConversationServiceError'
+  }
+}
+
+function serviceError(payload: Record<string, unknown>, statusCode: number): never {
+  throw new ActConversationServiceError(payload, statusCode)
+}
+
+export type ActModelGateResult = {
+  appSettings: AppSettings | null
+  paid: boolean
+  runtimeEntitlements: Entitlements
+}
+
+export class ActEntitlementService {
+  constructor(private readonly deps: {
+    repository: ActConversationRepository
+  }) {}
+
+  async gateModelAccess(args: {
+    effectiveModelId: string
+    userId: string
+  }): Promise<ActModelGateResult> {
+    const [entitlements, appSettings] = await Promise.all([
+      this.deps.repository.getEntitlements({ userId: args.userId }),
+      this.deps.repository.getAppSettings({ userId: args.userId }),
+    ])
+
+    if (!entitlements) {
+      serviceError(
+        { error: 'Unauthorized', message: 'Could not verify subscription. Try signing out and back in.' },
+        401,
+      )
+    }
+
+    let runtimeEntitlements = entitlements
+    const budget = getBudgetTotals(runtimeEntitlements)
+    const effectiveModelSupportsZdr = modelSupportsZeroDataRetention(args.effectiveModelId)
+
+    if (isPaidPlan(runtimeEntitlements) && budget.remainingCents <= 0) {
+      const autoTopUp = await ensureBudgetAvailable({
+        userId: args.userId,
+        entitlements: runtimeEntitlements,
+        minimumRequiredCents: 1,
+      })
+      runtimeEntitlements = autoTopUp.entitlements
+    }
+
+    let paid = canUsePaidBudgetFeatures(runtimeEntitlements)
+    if (!paid) {
+      if (!isFreeTierChatModelId(args.effectiveModelId)) {
+        if (isPaidPlan(runtimeEntitlements)) {
+          serviceError(
+            buildInsufficientCreditsPayload(
+              runtimeEntitlements,
+              'No budget remaining. Switch to a free model or top up your account.',
+            ),
+            402,
+          )
+        }
+        serviceError(
+          {
+            error: 'premium_model_not_allowed',
+            message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
+          },
+          403,
+        )
+      }
+    } else if (appSettings?.onlyAllowZdrModels && !effectiveModelSupportsZdr) {
+      serviceError(
+        {
+          error: 'zdr_model_required',
+          message: 'Your settings only allow zero data retention models. Choose a ZDR-supported model to continue.',
+        },
+        400,
+      )
+    }
+
+    const refreshedEntitlements = await this.deps.repository.getEntitlements({ userId: args.userId })
+
+    if (!refreshedEntitlements) {
+      serviceError(
+        { error: 'Unauthorized', message: 'Could not refresh subscription state.' },
+        401,
+      )
+    }
+
+    runtimeEntitlements = refreshedEntitlements
+    paid = canUsePaidBudgetFeatures(runtimeEntitlements)
+
+    if (!paid && !isFreeTierChatModelId(args.effectiveModelId)) {
+      if (isPaidPlan(runtimeEntitlements)) {
+        serviceError(
+          buildInsufficientCreditsPayload(
+            runtimeEntitlements,
+            'No budget remaining. Switch to a free model or top up your account.',
+          ),
+          402,
+        )
+      }
+      serviceError(
+        {
+          error: 'premium_model_not_allowed',
+          message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
+        },
+        403,
+      )
+    }
+
+    return {
+      appSettings,
+      paid,
+      runtimeEntitlements,
+    }
+  }
+}

@@ -49,6 +49,31 @@ const checks = [
       /\bstripe\.(checkout|billingPortal|customers|subscriptions|paymentIntents)\b/,
     ],
   },
+  {
+    name: 'conversations act route',
+    files: ['src/server/app-api/v1/conversations/act/route.ts'],
+    forbidden: [
+      /@\/server\/database\/convex/,
+      /\bconvex\.(query|mutation|action)\b/,
+      /['"]chat\/conversations:/,
+      /['"]knowledge\/memories:/,
+      /['"]integrations\/skills:/,
+      /['"]projects\/projects:/,
+      /['"]platform\/usage:/,
+      /buildAssistantPersistenceFromSteps/,
+      /compactAssistantPersistenceForConvex/,
+      /buildPersistedMessageContent/,
+      /sanitizeMessagePartsForPersistence/,
+      /buildAutoRetrievalBundle/,
+      /buildDocumentContextBundle/,
+      /resolveMentionsContext/,
+      /emitChat(Completed|Failed)/,
+      /reserveProviderBudget/,
+      /finalizeProviderBudgetReservation/,
+      /releaseProviderBudgetReservation/,
+      /markProviderBudgetReconcile/,
+    ],
+  },
 ]
 
 const violations = []
@@ -69,4 +94,4 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-console.log('OK: automations and billing customer routes delegate domain work to services.')
+console.log('OK: automations, billing customer, and conversations act routes delegate domain work to services.')
