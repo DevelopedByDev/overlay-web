@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-28T07:19:23.783Z",
+  "generatedAt": "2026-05-28T08:00:46.734Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -26,7 +26,6 @@
     "packages/overlay-modules-react/src/notes.tsx",
     "packages/overlay-modules-react/src/projects.tsx",
     "packages/overlay-modules-react/src/settings.tsx",
-    "src/app/account/page.tsx",
     "src/app/globals.css",
     "src/app/pricing/PricingClient.tsx",
     "src/components/layout/AppSidebar.tsx",
@@ -52,7 +51,6 @@
     "src/features/chat/components/ChatExperience.tsx#ChatInterface": 1,
     "src/server/app-api/v1/conversations/act/route.ts#POST": 1,
     "src/components/layout/AppSidebar.tsx#AppSidebar": 1,
-    "src/features/knowledge/components/KnowledgeView.tsx#KnowledgeView": 1,
     "src/features/chat/components/ChatExperience.tsx#handleSend": 1,
     "src/features/chat/components/ChatExperience.tsx#loadChat": 1,
     "src/features/chat/components/ChatMessage.tsx#TextChatMessage": 1,
@@ -64,7 +62,6 @@
     "src/server/app-api/v1/generate-video/route.ts#start": 1,
     "src/server/app-api/v1/generate-image/route.ts#POST": 1,
     "packages/overlay-chat-core/src/agent-assistant-text.ts#isNimLeakedNarrationLine": 1,
-    "src/app/account/page.tsx#AccountPageContent": 1,
     "src/components/layout/AppSidebar.tsx#callback": 1,
     "src/features/notebook/components/InlineDiffExtension.ts#parseMarkdownLine": 1,
     "src/shared/tools/tool-result-summary.ts#summarizeToolResultForTranscript": 1,
@@ -75,6 +72,7 @@
     "src/features/files/lib/export/markdown.ts#walk": 1,
     "src/shared/config/overlayConfigSchema.ts#callback": 1,
     "src/server/files/FileService.ts#createFile": 1,
+    "src/features/knowledge/components/KnowledgeView.tsx#KnowledgeView": 1,
     "src/server/bootstrap.ts#assertSelectedProviderConfig": 1,
     "src/server/config/loadOverlayConfig.ts#authConfigFromEnv": 1,
     "src/server/app-api/v1/daytona/run/route.ts#guessMimeType": 1,
@@ -113,11 +111,11 @@
     "src/server/app-api/v1/notebook-agent/route.ts"
   ],
   "totals": {
-    "files": 757,
-    "code": 93159,
-    "total": 103894,
-    "productionFiles": 695,
-    "productionCode": 87843,
+    "files": 770,
+    "code": 93895,
+    "total": 104677,
+    "productionFiles": 708,
+    "productionCode": 88579,
     "testFiles": 62,
     "testCode": 5316
   }

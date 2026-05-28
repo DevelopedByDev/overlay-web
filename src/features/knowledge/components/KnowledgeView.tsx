@@ -4,19 +4,13 @@
 // typed transport lives in @overlay/api-client, and reusable presentation lives in @overlay/modules-react.
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import {
-  BookOpen, Trash2, Plus, FilePlus, FolderPlus, FolderInput,
-  ChevronRight, ChevronDown, FolderOpen, Search,
-  LayoutList, LayoutGrid, RefreshCw, SquareMousePointer,
-  ArrowLeft, Upload,
-} from 'lucide-react'
 import posthog from 'posthog-js'
 import { FileViewer, getFileType, isEditableType } from '@/features/files/components/FileViewer'
+import { KnowledgeViewHeader } from '@/features/knowledge/components/KnowledgeViewHeader'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   FILES_CHANGED_EVENT,
   IMPORT_MEMORY_PROMPT,
-  OUTPUT_FILTER_LABELS,
   canMoveKnowledgeFile,
   createManualMemoryRequest,
   filterKnowledgeFileNodes,
@@ -45,14 +39,6 @@ import {
   KnowledgePendingNotice,
   MemoryDetailDialog,
 } from '@overlay/modules-react/knowledge'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-const TOOLBAR_ICON_BUTTON_CLASS =
-  'flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-
-const TOOLBAR_FILLED_BUTTON_CLASS =
-  'flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
 
 // ─── Main KnowledgeView ───────────────────────────────────────────────────────
 
@@ -673,349 +659,57 @@ export default function KnowledgeView({
         />
       )}
 
-      {/* ── Header ── */}
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
-        {selectedFile ? (
-          <>
-            <button
-              type="button"
-              onClick={closeFileDialog}
-              title="Back to files"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-            >
-              <ArrowLeft size={17} />
-            </button>
-            <input
-              type="text"
-              value={fileTitle}
-              onChange={(e) => handleFileTitleChange(e.target.value)}
-              placeholder="File title..."
-              className="min-w-0 flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
-              style={{ fontFamily: 'var(--font-serif)' }}
-            />
-            {isSavingFile ? (
-              <span className="shrink-0 text-[11px] text-[var(--muted-light)]">Saving...</span>
-            ) : null}
-          </>
-        ) : (
-          <>
-            {activeTab === 'files' && activeFolder ? (
-              <div className="flex min-w-0 shrink flex-1 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigateToFolder(activeFolder.parentId)}
-                  onDragOver={(e) => {
-                    if (!e.dataTransfer.types.includes('application/x-overlay-file-id')) return
-                    e.preventDefault()
-                    e.dataTransfer.dropEffect = 'move'
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    const fileId = e.dataTransfer.getData('application/x-overlay-file-id')
-                    if (!fileId || fileId === activeFolder._id) return
-                    void moveFileToParent(fileId, activeFolder.parentId)
-                  }}
-                  title={activeFolder.parentId ? 'Back to parent folder' : 'Back to all files'}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <ArrowLeft size={17} />
-                </button>
-                <FolderOpen size={18} className="shrink-0 text-[var(--muted-light)]" />
-                <div className="flex min-w-0 items-center gap-1 truncate text-sm">
-                  <button
-                    type="button"
-                    onClick={() => navigateToFolder(null)}
-                    className="shrink-0 text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
-                  >
-                    Files
-                  </button>
-                  {folderBreadcrumb.map((node, i) => (
-                    <span key={node._id} className="flex min-w-0 items-center gap-1">
-                      <ChevronRight size={12} className="shrink-0 text-[var(--muted-light)]" />
-                      {i === folderBreadcrumb.length - 1 ? (
-                        <span className="truncate font-medium text-[var(--foreground)]">{node.name}</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => navigateToFolder(node._id)}
-                          className="truncate text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
-                        >
-                          {node.name}
-                        </button>
-                      )}
-                    </span>
-                  ))}
-                </div>
-                {!memorySearchOpen && (
-                  <span className="shrink-0 text-xs text-[var(--muted-light)]">{rootNodes.length} items</span>
-                )}
-              </div>
-            ) : (
-              <div className="flex min-w-0 shrink-0 items-center gap-3">
-                <h1 className="text-sm font-medium text-[var(--foreground)]">
-                  {mode === 'files' ? 'Files' : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
-                </h1>
-                {activeTab !== 'outputs' && !memorySearchOpen && (
-                  <span className="text-xs text-[var(--muted-light)]">
-                    {activeTab === 'memories' ? memoriesFiltered.length : filesFiltered.length} items
-                  </span>
-                )}
-              </div>
-            )}
-            {activeTab === 'memories' && memorySearchOpen ? (
-          <input
-            value={memorySearchQuery}
-            onChange={(e) => setMemorySearchQuery(e.target.value)}
-            placeholder="Search memories…"
-            autoFocus
-            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-          />
-            ) : (
-              <div className="flex-1" />
-            )}
-            <div className="flex shrink-0 items-center gap-2">
-          {(activeTab === 'memories' || activeTab === 'files' || activeTab === 'outputs') &&
-            (selectMode ? (
-              <>
-                <button type="button" onClick={exitSelectMode} className={TOOLBAR_FILLED_BUTTON_CLASS}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    bulkDeleting ||
-                    (activeTab === 'memories'
-                      ? selectedMemoryIds.size === 0
-                      : activeTab === 'files'
-                        ? selectedFileIds.size === 0
-                        : selectedOutputIds.size === 0)
-                  }
-                  onClick={() => {
-                    if (activeTab === 'memories') void bulkDeleteMemories()
-                    else if (activeTab === 'files') void bulkDeleteFiles()
-                    else void bulkDeleteOutputs()
-                  }}
-                  className="flex items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs text-red-600 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Trash2 size={13} />
-                  {bulkDeleting
-                    ? 'Deleting…'
-                    : `Delete (${
-                        activeTab === 'memories'
-                          ? selectedMemoryIds.size
-                          : activeTab === 'files'
-                            ? selectedFileIds.size
-                            : selectedOutputIds.size
-                      })`}
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                title="Select items"
-                onClick={() => setSelectMode(true)}
-                className={TOOLBAR_ICON_BUTTON_CLASS}
-              >
-                <SquareMousePointer size={14} />
-              </button>
-            ))}
-          {activeTab === 'outputs' && (
-            <div ref={outputFilterRef} className="relative w-fit max-w-[13rem]">
-              <button
-                type="button"
-                onClick={() => setOutputFilterOpen((o) => !o)}
-                aria-expanded={outputFilterOpen}
-                aria-haspopup="listbox"
-                className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs text-[var(--foreground)] md:py-1 ${
-                  outputFilterOpen ? 'bg-[var(--border)]' : 'hover:bg-[var(--border)]'
-                }`}
-              >
-                <span className="min-w-0 truncate">{OUTPUT_FILTER_LABELS[outputFilter]}</span>
-                <ChevronDown size={11} className="shrink-0" />
-              </button>
-              {outputFilterOpen && (
-                <div
-                  className="absolute left-0 top-full z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-                  role="listbox"
-                >
-                  {(['all', 'image', 'video', 'files'] as const).map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="option"
-                      aria-selected={outputFilter === id}
-                      onClick={() => commitOutputFilter(id)}
-                      className={`w-full whitespace-nowrap px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[var(--surface-muted)] ${
-                        outputFilter === id ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
-                      }`}
-                    >
-                      {OUTPUT_FILTER_LABELS[id]}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {(activeTab === 'memories' || activeTab === 'files' || activeTab === 'outputs') && (
-            <div className="flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5">
-              <button
-                type="button"
-                title="List"
-                onClick={() => updateQuery({ layout: 'list' })}
-                className={`rounded px-2 py-1 transition-colors ${
-                  layout === 'list'
-                    ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-                    : 'text-[var(--muted-light)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                <LayoutList size={14} strokeWidth={1.75} />
-              </button>
-              <button
-                type="button"
-                title="Cards"
-                onClick={() => updateQuery({ layout: 'cards' })}
-                className={`rounded px-2 py-1 transition-colors ${
-                  layout === 'cards'
-                    ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-                    : 'text-[var(--muted-light)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                <LayoutGrid size={14} strokeWidth={1.75} />
-              </button>
-            </div>
-          )}
-          {activeTab === 'outputs' && (
-            <button
-              type="button"
-              title="Refresh"
-              onClick={() => setOutputsRefreshKey((k) => k + 1)}
-              className={TOOLBAR_ICON_BUTTON_CLASS}
-            >
-              <RefreshCw size={14} strokeWidth={1.75} />
-            </button>
-          )}
-          {activeTab === 'memories' ? (
-            <>
-              <button
-                type="button"
-                title="Search memories"
-                onClick={() => setMemorySearchOpen((v) => !v)}
-                className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                  memorySearchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
-                }`}
-              >
-                <Search size={14} strokeWidth={1.75} />
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowImportMemory(true); setImportMemoryError(null) }}
-                className={TOOLBAR_FILLED_BUTTON_CLASS}
-              >
-                <FolderInput size={13} />
-                Import
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowAddMemory(true); setMemorySaveError(null) }}
-                className={TOOLBAR_FILLED_BUTTON_CLASS}
-              >
-                <Plus size={13} />
-                New Memory
-              </button>
-            </>
-          ) : activeTab === 'files' ? (
-            <>
-              {mode === 'files' ? (
-                <div ref={createMenuRef} className="relative">
-                  <button
-                    type="button"
-                    title="Create"
-                    onClick={() => {
-                      setCreateMenuOpen((v) => !v)
-                      setUploadMenuOpen(false)
-                    }}
-                    className={TOOLBAR_ICON_BUTTON_CLASS}
-                    aria-expanded={createMenuOpen}
-                    aria-haspopup="menu"
-                  >
-                    <Plus size={15} />
-                  </button>
-                  {createMenuOpen ? (
-                    <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCreateMenuOpen(false)
-                          void handleCreateNoteFile()
-                        }}
-                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-                      >
-                        <BookOpen size={13} />
-                        New File
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCreateMenuOpen(false)
-                          setDialog({ type: 'folder', parentId: activeFolder?._id ?? null })
-                          setDialogName('')
-                        }}
-                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-                      >
-                        <FolderPlus size={13} />
-                        New Folder
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              <div ref={uploadMenuRef} className="relative">
-                <button
-                  type="button"
-                  title="Upload"
-                  onClick={() => {
-                    setUploadMenuOpen((v) => !v)
-                    setCreateMenuOpen(false)
-                  }}
-                  className={TOOLBAR_ICON_BUTTON_CLASS}
-                  aria-expanded={uploadMenuOpen}
-                  aria-haspopup="menu"
-                >
-                  <Upload size={15} />
-                </button>
-                {uploadMenuOpen ? (
-                  <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUploadMenuOpen(false)
-                        fileUploadRef.current?.click()
-                      }}
-                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-                    >
-                      <FilePlus size={13} />
-                      Upload File
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUploadMenuOpen(false)
-                        folderUploadRef.current?.click()
-                      }}
-                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-                    >
-                      <FolderInput size={13} />
-                      Upload Folder
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-            </div>
-          </>
-        )}
-      </div>
+      <KnowledgeViewHeader
+        activeFolder={activeFolder}
+        activeTab={activeTab}
+        bulkDeleting={bulkDeleting}
+        createMenuOpen={createMenuOpen}
+        createMenuRef={createMenuRef}
+        fileCount={filesFiltered.length}
+        fileTitle={fileTitle}
+        fileUploadRef={fileUploadRef}
+        folderBreadcrumb={folderBreadcrumb}
+        folderUploadRef={folderUploadRef}
+        isSavingFile={isSavingFile}
+        layout={layout}
+        memoryCount={memoriesFiltered.length}
+        memorySearchOpen={memorySearchOpen}
+        memorySearchQuery={memorySearchQuery}
+        mode={mode}
+        moveFileToParent={(fileId, parentId) => void moveFileToParent(fileId, parentId)}
+        navigateToFolder={navigateToFolder}
+        onBulkDeleteFiles={() => void bulkDeleteFiles()}
+        onBulkDeleteMemories={() => void bulkDeleteMemories()}
+        onBulkDeleteOutputs={() => void bulkDeleteOutputs()}
+        onCloseFile={closeFileDialog}
+        onCommitOutputFilter={commitOutputFilter}
+        onCreateNoteFile={() => void handleCreateNoteFile()}
+        onExitSelectMode={exitSelectMode}
+        onFileTitleChange={handleFileTitleChange}
+        onImportMemory={() => { setShowImportMemory(true); setImportMemoryError(null) }}
+        onNewMemory={() => { setShowAddMemory(true); setMemorySaveError(null) }}
+        onRefreshOutputs={() => setOutputsRefreshKey((k) => k + 1)}
+        onSetMemorySearchOpen={setMemorySearchOpen}
+        onSetMemorySearchQuery={setMemorySearchQuery}
+        onSetSelectMode={setSelectMode}
+        onUpdateQuery={updateQuery}
+        outputFilter={outputFilter}
+        outputFilterOpen={outputFilterOpen}
+        outputFilterRef={outputFilterRef}
+        rootItemCount={rootNodes.length}
+        selectedFile={selectedFile}
+        selectedFileCount={selectedFileIds.size}
+        selectedMemoryCount={selectedMemoryIds.size}
+        selectedOutputCount={selectedOutputIds.size}
+        selectMode={selectMode}
+        setCreateMenuOpen={setCreateMenuOpen}
+        setDialog={setDialog}
+        setDialogName={setDialogName}
+        setOutputFilterOpen={setOutputFilterOpen}
+        setUploadMenuOpen={setUploadMenuOpen}
+        uploadMenuOpen={uploadMenuOpen}
+        uploadMenuRef={uploadMenuRef}
+      />
 
       {/* ── Main content ── */}
       <div

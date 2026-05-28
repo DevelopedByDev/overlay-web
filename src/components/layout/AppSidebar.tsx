@@ -4,20 +4,16 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
-import type { LucideIcon } from 'lucide-react'
 import {
-  MessageSquare, FileText, LogOut, User,
-  Puzzle, Monitor, Smartphone, Chrome, ChevronUp, AlertCircle, Plug, Sparkles, Server, Package,
-  FolderOpen, Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
-  Workflow, Palette, ShieldCheck, Play, PanelsLeftRight, Mail,
+  MessageSquare, User,
+  ChevronUp, Plug, Sparkles, Server, Package,
+  Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
   resolveFeatureModuleForPath,
   resolveSidebarActionForPath,
   type AutomationSummary,
-  type OverlayIconName,
-  type OverlaySidebarSearchCategory,
   type ProjectSummary,
 } from '@overlay/app-core'
 import type { AuthUser } from '@/shared/auth/session-types'
@@ -25,7 +21,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { formatBytes } from '@/shared/storage/storage-limits'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   FilesInlinePanel,
@@ -44,178 +39,14 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/shared/knowledge/mention-types'
-
-const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
-  'arrow-up': ArrowUp,
-  chrome: Chrome,
-  'file-text': FileText,
-  'folder-open': FolderOpen,
-  mail: Mail,
-  'message-square': MessageSquare,
-  monitor: Monitor,
-  package: Package,
-  palette: Palette,
-  'panels-left-right': PanelsLeftRight,
-  play: Play,
-  plug: Plug,
-  puzzle: Puzzle,
-  server: Server,
-  settings: Settings,
-  'shield-check': ShieldCheck,
-  smartphone: Smartphone,
-  sparkles: Sparkles,
-  user: User,
-  workflow: Workflow,
-}
-
-const PROFILE_APP_LINKS = [
-  { label: 'Desktop App', icon: Monitor },
-  { label: 'Mobile App', icon: Smartphone },
-  { label: 'Chrome Extension', icon: Chrome },
-] as const
-
-const SIDEBAR_COLLAPSED_STORAGE_KEY = 'overlay:app-sidebar-collapsed'
-const SIDEBAR_COLLAPSED_EVENT = 'overlay:sidebar-collapsed-change'
-
-function getSidebarCollapsedSnapshot(): boolean {
-  if (typeof window === 'undefined') return false
-  try {
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true'
-  } catch {
-    return false
-  }
-}
-
-function subscribeToSidebarCollapsed(onStoreChange: () => void): () => void {
-  if (typeof window === 'undefined') return () => {}
-
-  const onStorage = (event: StorageEvent) => {
-    if (event.key === SIDEBAR_COLLAPSED_STORAGE_KEY) onStoreChange()
-  }
-  const onLocalChange = () => onStoreChange()
-
-  window.addEventListener('storage', onStorage)
-  window.addEventListener(SIDEBAR_COLLAPSED_EVENT, onLocalChange)
-  return () => {
-    window.removeEventListener('storage', onStorage)
-    window.removeEventListener(SIDEBAR_COLLAPSED_EVENT, onLocalChange)
-  }
-}
-
-function setStoredSidebarCollapsed(next: boolean) {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, next ? 'true' : 'false')
-    window.dispatchEvent(new Event(SIDEBAR_COLLAPSED_EVENT))
-  } catch {
-    // ignore
-  }
-}
-
-function toMentionCategory(category: OverlaySidebarSearchCategory | undefined): MentionType | null {
-  switch (category) {
-    case 'file':
-      return 'file'
-    case 'connector':
-      return 'connector'
-    case 'automation':
-      return 'automation'
-    case 'skill':
-      return 'skill'
-    case 'mcp':
-      return 'mcp'
-    case 'chat':
-      return 'chat'
-    default:
-      return null
-  }
-}
-
-interface Entitlements {
-  tier: 'free' | 'pro' | 'max'
-  planKind?: 'free' | 'paid'
-  creditsUsed: number
-  creditsTotal: number
-  budgetUsedCents?: number
-  budgetTotalCents?: number
-  budgetRemainingCents?: number
-  dailyUsage: { ask: number; write: number; agent: number }
-  overlayStorageBytesUsed: number
-  overlayStorageBytesLimit: number
-}
-
-function UsageBar({ entitlements }: { entitlements: Entitlements | null }) {
-  if (!entitlements) {
-    return <p className="text-[11px] text-[var(--muted-light)]">Loading...</p>
-  }
-
-  const { tier } = entitlements
-  const planKind = entitlements.planKind ?? (tier === 'free' ? 'free' : 'paid')
-  const budgetUsedCents = entitlements.budgetUsedCents ?? entitlements.creditsUsed ?? 0
-  const budgetTotalCents =
-    entitlements.budgetTotalCents ??
-    (typeof entitlements.creditsTotal === 'number' ? Math.max(0, entitlements.creditsTotal * 100) : 0)
-
-  if (planKind === 'free') {
-    return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Upgrade to a paid plan to use premium models and budgeted tools.</p>
-  }
-
-  if (budgetTotalCents <= 0) return <p className="text-[11px] text-[#aaa]">No budget limit set</p>
-  const usedPctRaw = Math.min(100, (budgetUsedCents / budgetTotalCents) * 100)
-  const remainingPctRaw = Math.max(0, 100 - usedPctRaw)
-  const exhausted = remainingPctRaw <= 0
-  const warning = usedPctRaw >= 80
-
-  return (
-    <div className={`flex flex-col gap-1 text-xs ${exhausted ? 'text-red-500' : warning ? 'text-amber-500' : 'text-[var(--muted-light)]'}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="tabular-nums">
-          {remainingPctRaw.toFixed(1)}% remaining
-          <span className="text-[10px] opacity-70">
-            {' '}· ${ (budgetUsedCents / 100).toFixed(2)} / ${(budgetTotalCents / 100).toFixed(2)}
-          </span>
-        </span>
-        {exhausted && <AlertCircle size={11} />}
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
-        <div
-          className={`h-full rounded-full transition-all ${exhausted ? 'bg-red-400' : warning ? 'bg-amber-400' : 'bg-[var(--foreground)]'}`}
-          style={{ width: `${remainingPctRaw}%` }}
-        />
-      </div>
-    </div>
-  )
-}
-
-function StorageBar({ entitlements }: { entitlements: Entitlements | null }) {
-  if (!entitlements) {
-    return <p className="text-[11px] text-[var(--muted-light)]">Loading...</p>
-  }
-
-  const usedBytes = Math.max(0, entitlements.overlayStorageBytesUsed)
-  const limitBytes = Math.max(0, entitlements.overlayStorageBytesLimit)
-  const remainingBytes = Math.max(0, limitBytes - usedBytes)
-  const usedPct = limitBytes > 0 ? Math.min(100, (usedBytes / limitBytes) * 100) : 0
-  const warning = usedPct >= 80
-  const exhausted = limitBytes > 0 && remainingBytes <= 0
-
-  return (
-    <div className={`flex flex-col gap-1 text-xs ${exhausted ? 'text-red-500' : warning ? 'text-amber-500' : 'text-[var(--muted-light)]'}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="tabular-nums">{formatBytes(remainingBytes)} available</span>
-        <span className="shrink-0 text-[10px] opacity-70 tabular-nums">
-          {formatBytes(usedBytes)} / {formatBytes(limitBytes)}
-        </span>
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
-        <div
-          className={`h-full rounded-full transition-all ${exhausted ? 'bg-red-400' : warning ? 'bg-amber-400' : 'bg-[var(--foreground)]'}`}
-          style={{ width: `${usedPct}%` }}
-        />
-      </div>
-    </div>
-  )
-}
+import {
+  getSidebarCollapsedSnapshot,
+  setStoredSidebarCollapsed,
+  subscribeToSidebarCollapsed,
+} from './sidebar/sidebarCollapsedStore'
+import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
+import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
+import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
 
 export default function AppSidebar({
   user: serverUser,
@@ -256,7 +87,7 @@ export default function AppSidebar({
   const [pendingNav, setPendingNav] = useState<{ href: string; fromPath: string } | null>(null)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  const [entitlements, setEntitlements] = useState<SidebarEntitlements | null>(null)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const sidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapsed,
@@ -817,75 +648,23 @@ export default function AppSidebar({
               }`}
               onMouseDown={(event) => event.stopPropagation()}
             >
-              {billingEnabled ? (
-                <>
-                  <div className="px-3 py-2">
-                    <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
-                    <UsageBar entitlements={entitlements} />
-                  </div>
-                  <div className="border-t border-[var(--border)] px-3 py-2">
-                    <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Storage</p>
-                    <StorageBar entitlements={entitlements} />
-                  </div>
-                </>
-              ) : null}
-              <div className="border-t border-[var(--border)]">
-                <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
-                {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    disabled
-                    title={`${label} · Coming soon`}
-                    className="flex w-full cursor-not-allowed items-center justify-between gap-2 px-3 py-2 text-xs text-[var(--muted-light)]"
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                      <Icon size={13} className="shrink-0" />
-                      <span className="min-w-0 flex-1 truncate">{label}</span>
-                    </span>
-                    <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[var(--muted-light)]">Soon</span>
-                  </button>
-                ))}
-              </div>
-              <div className="border-t border-[var(--border)]">
-                <Link
-                  href="/account"
-                  onClick={() => {
-                    setAccountMenuOpen(false)
-                    setMobileMenuOpen(false)
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <User size={13} />
-                  Account
-                </Link>
-                {showUpgradeCta && (
-                  <Link
-                    href="/pricing"
-                    onClick={() => {
-                      setAccountMenuOpen(false)
-                      setMobileMenuOpen(false)
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]"
-                  >
-                    <ArrowUp size={13} className="shrink-0" />
-                    Upgrade
-                  </Link>
-                )}
-              </div>
-              <div className="border-t border-[var(--border)]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAccountMenuOpen(false)
-                    void handleSignOut()
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <LogOut size={13} />
-                  Sign out
-                </button>
-              </div>
+              <SidebarAccountMenu
+                billingEnabled={billingEnabled}
+                entitlements={entitlements}
+                onAccountClick={() => {
+                  setAccountMenuOpen(false)
+                  setMobileMenuOpen(false)
+                }}
+                onSignOut={() => {
+                  setAccountMenuOpen(false)
+                  void handleSignOut()
+                }}
+                onUpgradeClick={() => {
+                  setAccountMenuOpen(false)
+                  setMobileMenuOpen(false)
+                }}
+                showUpgradeCta={showUpgradeCta}
+              />
             </div>
           )}
 
@@ -948,69 +727,18 @@ export default function AppSidebar({
                 className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
                 onMouseDown={(event) => event.stopPropagation()}
               >
-                {billingEnabled ? (
-                  <>
-                    <div className="px-3 py-2">
-                      <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
-                      <UsageBar entitlements={entitlements} />
-                    </div>
-                    <div className="border-t border-[var(--border)] px-3 py-2">
-                      <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Storage</p>
-                      <StorageBar entitlements={entitlements} />
-                    </div>
-                  </>
-                ) : null}
-                <div className="border-t border-[var(--border)]">
-                  <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
-                  {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      disabled
-                      title={`${label} · Coming soon`}
-                      className="flex w-full cursor-not-allowed items-center justify-between gap-2 px-3 py-2.5 text-xs text-[var(--muted-light)]"
-                    >
-                      <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                        <Icon size={13} className="shrink-0" />
-                        <span className="min-w-0 flex-1 truncate">{label}</span>
-                      </span>
-                      <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[var(--muted-light)]">Soon</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="border-t border-[var(--border)]">
-                  <Link
-                    href="/account"
-                    onClick={() => setMobileAccountOpen(false)}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <User size={13} />
-                    Account
-                  </Link>
-                  {showUpgradeCta && (
-                    <Link
-                      href="/pricing"
-                      onClick={() => setMobileAccountOpen(false)}
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]"
-                    >
-                      <ArrowUp size={13} className="shrink-0" />
-                      Upgrade
-                    </Link>
-                  )}
-                </div>
-                <div className="border-t border-[var(--border)]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileAccountOpen(false)
-                      void handleSignOut()
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <LogOut size={13} />
-                    Sign out
-                  </button>
-                </div>
+                <SidebarAccountMenu
+                  billingEnabled={billingEnabled}
+                  entitlements={entitlements}
+                  itemPaddingClass="py-2.5"
+                  onAccountClick={() => setMobileAccountOpen(false)}
+                  onSignOut={() => {
+                    setMobileAccountOpen(false)
+                    void handleSignOut()
+                  }}
+                  onUpgradeClick={() => setMobileAccountOpen(false)}
+                  showUpgradeCta={showUpgradeCta}
+                />
               </div>
             )}
           </div>

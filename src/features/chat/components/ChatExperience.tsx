@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import posthog from 'posthog-js'
 import {
   ChevronDown,
@@ -30,9 +30,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
 import {
   DEFAULT_MODEL_ID,
-  FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
-  isLegacyFreeTierDefaultModelId,
   type GenerationMode,
   type VideoSubMode,
 } from '@/shared/ai/gateway/model-types'
@@ -41,9 +39,7 @@ import {
   VIDEO_MODELS,
   getChatModelDisplayName,
   getModel,
-  getModelsByIntelligence,
   getVideoModelsBySubMode,
-  modelSupportsZeroDataRetention,
 } from '@/shared/ai/gateway/model-data'
 import {
   ACT_MODEL_KEY,
@@ -51,7 +47,6 @@ import {
   readStoredActModelId,
   readStoredAskModelIds,
 } from '@/shared/chat/chat-model-prefs'
-import type { WebSourceItem } from '@/shared/web/web-sources'
 import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
 import { ChatHistoryMobileBar, ChatHistorySidebar } from './ChatHistorySidebar'
 import { ChatComposer } from './ChatComposer'
@@ -70,8 +65,13 @@ import {
 } from './useChatTransport'
 import { useChatListEventSync } from './chat/useChatListEventSync'
 import { useChatAttachments } from './useChatAttachments'
+import { useChatBillingControls } from './chat/useChatBillingControls'
+import { useDraftReviewActions } from './chat/useDraftReviewActions'
+import { useEmptyChatStarters } from './chat/useEmptyChatStarters'
 import { useChatPreferences } from './chat/useChatPreferences'
+import { useChatPanels } from './chat/useChatPanels'
 import { useChatRuntimes } from './chat/useChatRuntimes'
+import { useComposerTextState } from './chat/useComposerTextState'
 import {
   dispatchChatCreated,
   dispatchChatDeleted,
@@ -100,9 +100,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/providers/ConvexProviderWithWorkOS'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
-import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
-import type { SkillDraftSummary } from '@/features/automations/lib/skill-drafts'
-import type { AutomationDraftSummary } from '@/features/automations/lib/automation-drafts'
 import { warmIntegrationLogoCache } from '@/features/integrations/lib/integration-logo-cache'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import {
@@ -126,7 +123,6 @@ import {
   getMessageText,
   getUserTurnId,
   groupOutputsIntoExchanges,
-  sanitizeEmptyChatStarters,
   scrollToExchangeTurn,
   stripAssistantAfterUserTurn,
   buildAssistantVisualSequence,
@@ -138,8 +134,6 @@ import type {
   Conversation,
   ConversationRuntime,
   ConversationUiState,
-  DraftModalState,
-  Entitlements,
   GenerationResult,
   LiveConversationMessage,
   LiveMessageDelta,
@@ -225,40 +219,20 @@ export default function ChatInterface({
   } = useChatRuntimes(activeChatId)
   const [, forceLiveSyncRender] = useState(0)
   const [runtimeHydrationVersion, setRuntimeHydrationVersion] = useState(0)
-  /** Lifted sources-panel state so the sidebar sits beside the chat area and shrinks it,
-   *  matching the AppSidebar width-transition pattern instead of overlaying the composer. */
-  const [sourcesPanel, setSourcesPanel] = useState<{ turnId: string; sources: WebSourceItem[] } | null>(null)
-  const openSourcesPanel = useCallback((turnId: string, sources: WebSourceItem[]) => {
-    setSourcesPanel((prev) => (prev && prev.turnId === turnId ? null : { turnId, sources }))
-  }, [])
-  const closeSourcesPanel = useCallback(() => setSourcesPanel(null), [])
-  /** File preview dialog state. */
-  const [filePreview, setFilePreview] = useState<{ name: string; fileId: string } | null>(null)
+  const {
+    closeFilePreview,
+    closeSourcesPanel,
+    filePreview,
+    filePreviewContent,
+    openFilePreview,
+    openSourcesPanel,
+    setSourcesPanel,
+    sourcesPanel,
+  } = useChatPanels()
 
   useEffect(() => {
     if (initialChats) primeChatList(initialChats)
   }, [initialChats])
-  const [filePreviewContent, setFilePreviewContent] = useState('')
-  const openFilePreview = useCallback(async (name: string, fileIds: string[]) => {
-    const fileId = fileIds[0]
-    if (!fileId) return
-    setFilePreview({ name, fileId })
-    try {
-      const res = await overlayAppClient.files.contentResponse(fileId)
-      if (res.ok) {
-        const text = await res.text()
-        setFilePreviewContent(text)
-      } else {
-        setFilePreviewContent('')
-      }
-    } catch {
-      setFilePreviewContent('')
-    }
-  }, [])
-  const closeFilePreview = useCallback(() => {
-    setFilePreview(null)
-    setFilePreviewContent('')
-  }, [])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   const {
@@ -313,22 +287,14 @@ export default function ChatInterface({
   const [isDragging, setIsDragging] = useState(false)
   const lastStreamChunkAtRef = useRef<number>(Date.now())
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
-  const [input, setInputState] = useState('')
-  const [inputRevision, setInputRevision] = useState(0)
-  const [hasComposerText, setHasComposerText] = useState(false)
-  const inputRef = useRef(input)
-  const setInput = useCallback((next: string | ((previous: string) => string)) => {
-    const resolved = typeof next === 'function' ? next(inputRef.current) : next
-    inputRef.current = resolved
-    setInputState(resolved)
-    setHasComposerText(resolved.trim().length > 0)
-    setInputRevision((value) => value + 1)
-  }, [])
-  const handleComposerInputChange = useCallback((text: string) => {
-    inputRef.current = text
-    const hasText = text.trim().length > 0
-    setHasComposerText((previous) => (previous === hasText ? previous : hasText))
-  }, [])
+  const {
+    handleComposerInputChange,
+    hasComposerText,
+    input,
+    inputRef,
+    inputRevision,
+    setInput,
+  } = useComposerTextState()
 
   // Restore guest draft after hydration so server/client initial renders match
   useEffect(() => {
@@ -361,63 +327,7 @@ export default function ChatInterface({
     addImages,
     handlePaste,
   } = useChatAttachments({ embedProjectId, setComposerNotice })
-  const [topUpAmountDraftCents, setTopUpAmountDraftCents] = useState(800)
-  const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
-  const [billingActionLoading, setBillingActionLoading] = useState<'checkout' | 'save' | null>(null)
-  /**
-   * Empty-chat suggestion chips: defaults show immediately; API merges Convex-persisted / freshly generated prompts.
-   */
-  const DEFAULT_AUTOMATE_SUGGESTIONS = [
-    'Email me a daily digest of my top priorities',
-    'Monitor a website and alert me when it changes',
-    'Summarize my unread Slack messages every morning',
-    'Run a weekly report and send it to my team',
-  ]
-  const [emptyChatStarters, setEmptyChatStarters] = useState<string[]>(() =>
-    mode === 'automate'
-      ? DEFAULT_AUTOMATE_SUGGESTIONS
-      : sanitizeEmptyChatStarters([...DEFAULT_CHAT_SUGGESTIONS], firstName)
-  )
-
-  useEffect(() => {
-    let cancelled = false
-    let refetchTimer: number | undefined
-
-    const apply = (data: { prompts?: string[]; stale?: boolean }) => {
-      if (cancelled) return
-      if (Array.isArray(data.prompts) && data.prompts.length === 4) {
-        setEmptyChatStarters(sanitizeEmptyChatStarters(data.prompts, firstName))
-      }
-      if (data.stale) {
-        refetchTimer = window.setTimeout(() => {
-          if (cancelled) return
-          void overlayAppClient.chat.suggestionsResponse({ credentials: 'same-origin' })
-            .then((r) => r.json())
-            .then((d: { prompts?: string[] }) => {
-              if (cancelled) return
-              if (Array.isArray(d.prompts) && d.prompts.length === 4) {
-                setEmptyChatStarters(sanitizeEmptyChatStarters(d.prompts, firstName))
-              }
-            })
-            .catch(() => {
-              /* keep current */
-            })
-        }, 4500)
-      }
-    }
-
-    overlayAppClient.chat.suggestionsResponse({ credentials: 'same-origin' })
-      .then((r) => r.json())
-      .then(apply)
-      .catch(() => {
-        /* keep defaults */
-      })
-
-    return () => {
-      cancelled = true
-      if (refetchTimer !== undefined) window.clearTimeout(refetchTimer)
-    }
-  }, [userId, firstName])
+  const emptyChatStarters = useEmptyChatStarters({ firstName, mode, userId })
 
   const [replyContext, setReplyContext] = useState<{
     snippet: string
@@ -430,7 +340,35 @@ export default function ChatInterface({
     setAttachmentError(null)
     setComposerNotice(null)
   }, [setAttachmentError, setPendingChatDocuments])
-  const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  const {
+    autoTopUpEnabledDraft,
+    billingActionLoading,
+    entitlements,
+    handleSaveTopUpPreference,
+    handleStartTopUp,
+    isBudgetExhaustedPaid,
+    isFreeTier,
+    isSendBlocked,
+    loadSubscription,
+    selectableTextModels,
+    setAutoTopUpEnabledDraft,
+    setTopUpAmountDraftCents,
+    topUpAmountDraftCents,
+  } = useChatBillingControls({
+    activeChatId,
+    billingEnabled,
+    chatPrefsHydrated,
+    onlyAllowZdrModels: settings.onlyAllowZdrModels,
+    pathname,
+    router,
+    searchParams,
+    selectedActModel,
+    selectedModels,
+    setAskModelSelectionMode,
+    setComposerNotice,
+    setSelectedActModel,
+    setSelectedModels,
+  })
   /** User turn ids currently playing the delete (fade-out) animation */
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
@@ -442,8 +380,17 @@ export default function ChatInterface({
   const [confirmDeleteChat, setConfirmDeleteChat] = useState<{ id: string; title: string } | null>(null)
   const [selectedAutomation, setSelectedAutomation] = useState<AutomationDetail | null>(null)
   const [selectedAutomationLoading, setSelectedAutomationLoading] = useState(false)
-  const [draftModalState, setDraftModalState] = useState<DraftModalState | null>(null)
-  const [isDraftSaving, setIsDraftSaving] = useState(false)
+  const {
+    draftModalState,
+    isDraftSaving,
+    saveAutomationDraft,
+    saveSkillDraft,
+    setDraftModalState,
+  } = useDraftReviewActions({
+    activeChatId,
+    embedProjectId,
+    setComposerNotice,
+  })
 
   useEffect(() => {
     setExitingTurnIds([])
@@ -597,6 +544,7 @@ export default function ChatInterface({
     router,
     runtimesRef,
     setActiveViewer,
+    setSourcesPanel,
   ])
 
   useChatListEventSync({
@@ -729,210 +677,11 @@ export default function ChatInterface({
     }
   }, [activeChatId, activeRuntime, actChat, chatInstances, chatStreamRelayApi, liveMessages])
 
-  const isPaidSubscription =
-    !billingEnabled ||
-    (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'paid'
-  const budgetTotalCents = entitlements
-    ? (entitlements.budgetTotalCents ?? Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100)))
-    : 0
-  const budgetUsedCents = entitlements
-    ? (entitlements.budgetUsedCents ?? Math.max(0, Math.round(entitlements.creditsUsed ?? 0)))
-    : 0
-  const budgetRemainingCents = entitlements
-    ? (entitlements.budgetRemainingCents ?? Math.max(0, budgetTotalCents - budgetUsedCents))
-    : 0
-  const isBudgetExhaustedPaid = billingEnabled && isPaidSubscription && budgetRemainingCents <= 0
-  const isFreeTier = billingEnabled && (!isPaidSubscription || isBudgetExhaustedPaid)
-  const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && settings.onlyAllowZdrModels
-  const selectableTextModels = useMemo(() => {
-    const models = getModelsByIntelligence(isFreeTier)
-      .filter((m) => m.id !== 'nvidia/nemotron-nano-9b-v2')
-    return effectiveOnlyAllowZdrModels
-      ? models.filter((m) => m.supportsZeroDataRetention)
-      : models
-  }, [effectiveOnlyAllowZdrModels, isFreeTier])
-  const premiumModelBlocked =
-    isFreeTier && !isFreeTierChatModelId(selectedActModel)
-  const isSendBlocked = premiumModelBlocked
-
   useEffect(() => {
     persistActiveRuntimeUiState()
   }, [persistActiveRuntimeUiState])
 
-  useEffect(() => {
-    if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
-    if (isFreeTierChatModelId(selectedActModel) && !isLegacyFreeTierDefaultModelId(selectedActModel)) return
-
-    setSelectedModels([FREE_TIER_DEFAULT_MODEL_ID])
-    setAskModelSelectionMode('single')
-    setSelectedActModel(FREE_TIER_DEFAULT_MODEL_ID)
-    localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_DEFAULT_MODEL_ID]))
-    localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_DEFAULT_MODEL_ID)
-  }, [
-    activeChatId,
-    chatPrefsHydrated,
-    isFreeTier,
-    selectedActModel,
-    setAskModelSelectionMode,
-    setSelectedActModel,
-    setSelectedModels,
-  ])
-
-  useEffect(() => {
-    if (!chatPrefsHydrated || !effectiveOnlyAllowZdrModels) return
-    const fallback = selectableTextModels[0]?.id
-    if (!fallback) return
-    const nextSelected = selectedModels.filter((id) => modelSupportsZeroDataRetention(id)).slice(0, 4)
-    const resolvedSelected = nextSelected.length > 0 ? nextSelected : [fallback]
-    const nextActModel = modelSupportsZeroDataRetention(selectedActModel) ? selectedActModel : resolvedSelected[0]!
-    const changed =
-      resolvedSelected.length !== selectedModels.length ||
-      resolvedSelected.some((id, index) => id !== selectedModels[index]) ||
-      nextActModel !== selectedActModel
-    if (!changed) return
-    setSelectedModels(resolvedSelected)
-    setSelectedActModel(nextActModel)
-    if (resolvedSelected.length === 1) setAskModelSelectionMode('single')
-    if (!activeChatId) {
-      try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(resolvedSelected)) } catch { /* ignore */ }
-      try { localStorage.setItem(ACT_MODEL_KEY, nextActModel) } catch { /* ignore */ }
-    }
-  }, [
-    activeChatId,
-    chatPrefsHydrated,
-    effectiveOnlyAllowZdrModels,
-    selectableTextModels,
-    selectedActModel,
-    selectedModels,
-    setAskModelSelectionMode,
-    setSelectedActModel,
-    setSelectedModels,
-  ])
-
   // ── data loading ──────────────────────────────────────────────────────────
-
-  const loadSubscription = useCallback(async () => {
-    if (!billingEnabled) {
-      setEntitlements(null)
-      return
-    }
-    try {
-      const res = await overlayAppClient.subscription.getResponse()
-      if (res.ok) {
-        const data = await res.json()
-        setEntitlements(data)
-        setTopUpAmountDraftCents(data.topUpAmountCents ?? data.autoTopUpAmountCents ?? 800)
-        setAutoTopUpEnabledDraft(Boolean(data.autoTopUpEnabled))
-      }
-    } catch { /* ignore */ }
-  }, [billingEnabled])
-
-  const buildTopUpReturnPath = useCallback(() => {
-    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
-    nextParams.delete('topup_success')
-    nextParams.delete('topup_session_id')
-    nextParams.delete('topup_canceled')
-    const query = nextParams.toString()
-    return `${pathname}${query ? `?${query}` : ''}`
-  }, [pathname, searchParams])
-
-  const handleStartTopUp = useCallback(async () => {
-    setBillingActionLoading('checkout')
-    try {
-      const response = await fetch('/api/topups/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amountCents: topUpAmountDraftCents,
-          autoTopUpEnabled: autoTopUpEnabledDraft,
-          returnPath: buildTopUpReturnPath(),
-        }),
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok || !data.url) {
-        setComposerNotice(data.error || 'Failed to start top-up checkout.')
-        return
-      }
-      window.location.href = data.url
-    } catch {
-      setComposerNotice('Failed to start top-up checkout.')
-    } finally {
-      setBillingActionLoading(null)
-    }
-  }, [autoTopUpEnabledDraft, buildTopUpReturnPath, topUpAmountDraftCents])
-
-  const handleSaveTopUpPreference = useCallback(async () => {
-    setBillingActionLoading('save')
-    try {
-      const response = await overlayAppClient.subscription.updateSettingsResponse({
-        autoTopUpEnabled: autoTopUpEnabledDraft,
-        topUpAmountCents: topUpAmountDraftCents,
-        grantOffSessionConsent: autoTopUpEnabledDraft,
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        setComposerNotice(data.error || 'Failed to save top-up preference.')
-        return
-      }
-      await loadSubscription()
-      setComposerNotice('Top-up preference updated.')
-      window.setTimeout(() => setComposerNotice((current) => current === 'Top-up preference updated.' ? null : current), 5000)
-    } catch {
-      setComposerNotice('Failed to save top-up preference.')
-    } finally {
-      setBillingActionLoading(null)
-    }
-  }, [autoTopUpEnabledDraft, loadSubscription, topUpAmountDraftCents])
-
-  useEffect(() => {
-    if (!billingEnabled) return
-    const topUpSuccess = searchParams?.get('topup_success') === 'true'
-    const topUpSessionId = searchParams?.get('topup_session_id')
-    const topUpCanceled = searchParams?.get('topup_canceled') === 'true'
-
-    if (!topUpSuccess && !topUpCanceled) return
-
-    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
-    nextParams.delete('topup_success')
-    nextParams.delete('topup_session_id')
-    nextParams.delete('topup_canceled')
-    const nextUrl = `${pathname}${nextParams.toString() ? `?${nextParams.toString()}` : ''}`
-
-    if (topUpCanceled) {
-      setComposerNotice('Top-up checkout canceled.')
-      router.replace(nextUrl)
-      return
-    }
-
-    if (!topUpSessionId) return
-
-    let cancelled = false
-    void fetch('/api/topups/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: topUpSessionId }),
-    })
-      .then(async (response) => {
-        const data = await response.json().catch(() => ({}))
-        if (cancelled) return
-        if (response.ok) {
-          setComposerNotice(`Top-up applied: $${(Number(data.amountCents ?? 0) / 100).toFixed(2)}.`)
-          await loadSubscription()
-        } else {
-          setComposerNotice(data.error || 'We could not verify your top-up.')
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setComposerNotice('We could not verify your top-up.')
-      })
-      .finally(() => {
-        if (!cancelled) router.replace(nextUrl)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [billingEnabled, loadSubscription, pathname, router, searchParams])
 
   // Snapshot pendingTitleRef before the async fetch so a concurrent PATCH completing mid-flight
   // can't clear the ref before we've applied the override to the incoming server chats.
@@ -1458,6 +1207,7 @@ export default function ChatInterface({
     persistActiveRuntimeUiState,
     clearTransientComposerState,
     setActiveViewer,
+    setSourcesPanel,
   ])
 
   // Skip reloading the same chat we just created/switched to locally; otherwise the
@@ -1828,61 +1578,6 @@ export default function ChatInterface({
   const jumpToReplyTarget = useCallback((turnId: string) => {
     scrollToExchangeTurn(turnId)
   }, [])
-
-  const saveSkillDraft = useCallback(async (draft: SkillDraftSummary) => {
-    setIsDraftSaving(true)
-    try {
-      const res = await overlayAppClient.skills.createResponse({
-        name: draft.name,
-        description: draft.description,
-        instructions: draft.instructions,
-        enabled: true,
-        ...(embedProjectId ? { projectId: embedProjectId } : {}),
-      })
-      const payload = (await res.json().catch(() => ({}))) as { error?: string }
-      if (!res.ok) {
-        throw new Error(payload.error || 'Failed to save skill draft')
-      }
-      setDraftModalState(null)
-      setComposerNotice('Skill saved. It will now be available in chat.')
-      window.setTimeout(() => setComposerNotice(null), 5000)
-    } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Failed to save skill.')
-      window.setTimeout(() => setComposerNotice(null), 6000)
-    } finally {
-      setIsDraftSaving(false)
-    }
-  }, [embedProjectId])
-
-  const saveAutomationDraft = useCallback(async (draft: AutomationDraftSummary) => {
-    setIsDraftSaving(true)
-    try {
-      const res = await overlayAppClient.automations.createResponse({
-        name: draft.name,
-        description: draft.description,
-        instructions: draft.instructions,
-        schedule: draft.schedule,
-        timezone: draft.timezone,
-        graphSource: draft.graphSource,
-        enabled: true,
-        ...(activeChatId ? { sourceConversationId: activeChatId } : {}),
-        ...(embedProjectId ? { projectId: embedProjectId } : {}),
-      })
-      const payload = (await res.json().catch(() => ({}))) as { error?: string }
-      if (!res.ok) {
-        throw new Error(payload.error || 'Failed to create automation')
-      }
-      setDraftModalState(null)
-      window.dispatchEvent(new Event('overlay:automations-updated'))
-      setComposerNotice('Automation created. It will run on its saved schedule.')
-      window.setTimeout(() => setComposerNotice(null), 5000)
-    } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Failed to create automation.')
-      window.setTimeout(() => setComposerNotice(null), 6000)
-    } finally {
-      setIsDraftSaving(false)
-    }
-  }, [activeChatId, embedProjectId])
 
   const handleImageModelSelectionModeChange = useCallback(
     (next: AskModelSelectionMode) => {
