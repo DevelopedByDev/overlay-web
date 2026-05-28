@@ -12,6 +12,7 @@
     ".": "./src/index.ts",
     "./draft-review-modal": "./src/components/DraftReviewModal.tsx",
     "./exchange-block": "./src/components/ExchangeBlock.tsx",
+    "./lazy-syntax-highlighter": "./src/components/LazySyntaxHighlighter.tsx",
     "./media-slot-output": "./src/components/MediaSlotOutput.tsx",
     "./model-indicators": "./src/components/ModelIndicators.tsx",
     "./sources-panel": "./src/components/SourcesPanel.tsx",

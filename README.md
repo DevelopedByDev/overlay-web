@@ -152,8 +152,11 @@ An AI workspace that thinks, remembers, creates, and acts — all in one place. 
 .
 ├── convex/                  # Backend schema, queries, mutations, actions, HTTP routes
 ├── src/app/                 # Next.js pages, layouts, and API route handlers
-├── src/components/          # Marketing and app UI components
-├── src/lib/                 # Shared auth, model, tools, Stripe, and helper code
+├── src/features/            # Web feature containers and feature-local helpers
+├── src/components/          # Shared UI primitives, layout, and providers
+├── src/server/              # Server-only auth, billing, storage, AI, and route services
+├── src/shared/              # Isomorphic contracts and client-safe helpers
+├── packages/                # Cross-surface packages and typed API clients
 ├── scripts/                 # Sanity scripts and one-off checks
 ├── docs/                    # Product, setup, testing, marketing, and implementation docs
 ├── AGENTS.md                # Local agent workspace notes

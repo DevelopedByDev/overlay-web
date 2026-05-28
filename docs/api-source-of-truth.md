@@ -1,6 +1,6 @@
 # Web API Routes As Source Of Truth
 
-The web app owns backend route contracts for every surface. Desktop, mobile, Chrome, and future surfaces should call the same `/api/app/*` endpoints through `@overlay/api-client` rather than copying route-specific fetch logic.
+The web app owns backend route contracts for every surface. Desktop, mobile, Chrome, and future surfaces should call the same `/api/v1/*` endpoints through `@overlay/api-client` rather than copying route-specific fetch logic.
 
 ## Rules
 
@@ -12,7 +12,7 @@ The web app owns backend route contracts for every surface. Desktop, mobile, Chr
 
 ## Bootstrap
 
-`/api/app/bootstrap` returns the canonical serializable frontend registry:
+`/api/v1/bootstrap` returns the canonical serializable frontend registry:
 
 - brand config
 - navigation

@@ -2,9 +2,9 @@
 
 Feature screens now live under `src/features/<domain>/components/` (Phase 1.1). They remain the web containers for routing, auth, uploads, browser APIs, billing, and local persistence. Shared primitives stay in `src/components/{ui,layout,providers}/`. Canonical shared APIs live in packages.
 
-## Phase 1.2 — `src/lib/` split
+## Phase 1.2 — server/shared/features split
 
-`src/lib/` is removed. Imports use:
+The legacy helper tree is removed. Imports use:
 
 | Area | Path | Role |
 | --- | --- | --- |
@@ -12,9 +12,9 @@ Feature screens now live under `src/features/<domain>/components/` (Phase 1.1). 
 | Isomorphic shared code | `src/shared/{chat,markdown,security,web,storage,knowledge,app,tools,auth,database,billing,ai}/` | Client-safe modules only; must not import `@/server/*` |
 | Feature-local helpers | `src/features/<domain>/lib/` | Landing, integrations, auth cookie, share URLs, notebook blocks, automations drafts, file export |
 
-Convex functions that imported `../src/lib/*` now import the matching `../src/server/*` or `../src/shared/*` paths.
+Convex functions now import matching `../src/shared/*` paths for client-safe helpers and keep server-only code out of Convex bundles.
 
-Scripts: `scripts/phase-1.2-restructure-lib.sh`, `scripts/phase-1.2-update-imports.mjs`.
+The historical one-shot phase 1.2 migration scripts were removed from the active tree after the migration completed.
 
 ## Phase 1.3 — `server-only` boundaries
 
@@ -35,7 +35,7 @@ Every file under `src/server/**/*.ts` starts with `import 'server-only'`. Import
 - `web/web-tools.ts`
 - `chat/context-compaction.ts`
 
-Scripts: `scripts/phase-1.3-restructure-server-shared.sh`, `scripts/phase-1.3-update-imports.mjs`, `scripts/phase-1.3-add-server-only.mjs`.
+The historical one-shot phase 1.3 migration scripts were removed from the active tree after the migration completed.
 
 ## Phase 1.4 — isomorphic `src/shared/`
 
@@ -73,7 +73,7 @@ Rules live in `scripts/eslint-boundary-rules.mjs` and are wired from `eslint.con
 | `src/features/<domain>/**/components/**` | Also error on `@/server/*` |
 | `src/components/**` | Error on `@/features/*`, `@/server/*` |
 | `src/shared/**` | Error on non-`@/shared` layers (plus isomorphic rules in `eslint.config.mjs`) |
-| `src/lib/**` | Same as shared-only (legacy; folder mostly removed) |
+| Legacy shared helpers | Removed from the active tree; use `src/server/**` or `src/shared/**` based on runtime requirements. |
 | `src/server/<domain>/**` | **Warn** on `@/server/<other>/*` (sibling domains; burn down over time) |
 
 **Known violations:** 38 legacy component / feature-boundary violations are allowlisted as warnings in `scripts/eslint-boundary-rules.mjs` so production builds can pass while the debt is burned down. New files outside that baseline still fail as errors. Server cross-domain imports surface as warnings only.
@@ -117,14 +117,14 @@ Convex modules now live under `convex/<domain>/` with paths like `chat/conversat
 
 **Barrels:** Per-domain `index.ts` barrels were not kept — re-exporting multiple modules (`files` + `notes`, `skills` + `mcpServers`) collides on shared export names in TypeScript and can pull `"use node"` modules into the default bundle. Each `.ts` file is its own Convex module.
 
-**Script:** `scripts/phase-1.7-restructure-convex.mjs` (moves + path remap).
+The historical one-shot phase 1.7 migration script was removed from the active tree after the migration completed.
 
 **Verify:** `npx convex codegen` (with dev deployment env), `npm run typecheck`, targeted ESLint on `convex/`, then `npm run convex:push:dev` (and prod when ready).
 
 ## Canonical Packages
 
 - `@overlay/app-core`: app shell registries, contracts, and pure module controllers.
-- `@overlay/api-client`: typed transport for `/api/app/*`.
+- `@overlay/api-client`: typed transport for `/api/v1/*`.
 - `@overlay/ui`: UI primitives and shared styling.
 - `@overlay/chat-core`: shared chat behavior.
 - `@overlay/chat-react`: React DOM chat components.

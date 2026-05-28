@@ -71,6 +71,9 @@
       "@overlay/chat-react/draft-review-modal": [
         "./packages/overlay-chat-react/src/components/DraftReviewModal.tsx"
       ],
+      "@overlay/chat-react/lazy-syntax-highlighter": [
+        "./packages/overlay-chat-react/src/components/LazySyntaxHighlighter.tsx"
+      ],
       "@overlay/chat-react/sources-panel": [
         "./packages/overlay-chat-react/src/components/SourcesPanel.tsx"
       ],

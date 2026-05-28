@@ -7,6 +7,3 @@
 [submodule "overlay-chrome"]
 	path = overlay-chrome
 	url = ./overlay-chrome
-[submodule "overlay-api"]
-	path = overlay-api
-	url = ./overlay-api

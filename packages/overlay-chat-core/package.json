@@ -8,10 +8,13 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./agent-assistant-text": "./src/agent-assistant-text.ts",
     "./constants": "./src/constants.ts",
     "./gating": "./src/gating.ts",
+    "./markdown-table-fix": "./src/markdown-table-fix.ts",
     "./messages": "./src/messages.ts",
     "./paste": "./src/paste.ts",
+    "./shim-incomplete-markdown": "./src/shim-incomplete-markdown.ts",
     "./sources": "./src/sources.ts",
     "./state": "./src/state.ts",
     "./tool-labels": "./src/tool-labels.ts",

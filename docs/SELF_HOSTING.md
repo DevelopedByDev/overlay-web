@@ -325,7 +325,7 @@ Do not pass `.env.local` to production `convex deploy`; that file usually points
 
 ## Phase 5 API Route Cleanup Migration Notes
 
-The `/api/app/*` compatibility surface has been removed. Clients must call `/api/v1/*`.
+The legacy app API compatibility surface has been removed. Clients must call `/api/v1/*`.
 
 Required client changes:
 

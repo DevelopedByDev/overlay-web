@@ -21,7 +21,7 @@ Theme presets currently control:
 - accent, skill, success, warning, and danger colors
 - button, input, chat badge, alert, media error, and tool-row colors
 
-Preset definitions live in `src/lib/themes.ts`. Runtime application happens in `src/components/providers/AppSettingsProvider.tsx`.
+Preset definitions live in `src/shared/app/themes.ts`. Runtime application happens in `src/components/providers/AppSettingsProvider.tsx`.
 
 ## App Typography
 

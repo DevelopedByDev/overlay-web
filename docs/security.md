@@ -22,7 +22,7 @@ Before production or enterprise-facing releases:
 - Native session transfer must validate PKCE and state.
 - Internal API calls should use short-lived service auth, not a static root secret over the wire.
 - R2 object keys must be validated against the authenticated owner.
-- Sensitive `/api/app/*` routes must use route-level credential validation and must not rely on browser-detection headers.
+- Sensitive `/api/v1/*` routes must use centralized route boundary validation and must not rely on browser-detection headers.
 
 ## Convex Security Workflow
 

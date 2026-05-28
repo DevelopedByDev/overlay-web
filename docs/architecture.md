@@ -4,26 +4,29 @@ Overlay is a Next.js app backed by Convex, WorkOS, Stripe, R2, and server-mediat
 
 ## Source Of Truth
 
-- `src/app/api/**` is the public backend surface for web, mobile, desktop, and extension clients.
-- `src/lib/**` holds shared server helpers, auth, billing, model, storage, and tool logic.
-- `src/lib/app-contracts.ts` is the shared DTO/type contract for app bootstrap and product data.
+- `src/app/api/v1/**` is the public backend surface for web, mobile, desktop, and extension clients.
+- `src/server/app-api/v1/**` holds the route orchestration behind those Next route wrappers.
+- `src/server/**` holds server-only auth, billing, storage, AI, tools, route services, and provider adapters.
+- `src/shared/**` holds isomorphic contracts and client-safe helpers.
+- `src/features/**` holds web feature containers and feature-local helpers.
 - `convex/**` owns durable app state, domain mutations, scheduled work, and Stripe webhook handling.
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
+- `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
 
 Clients should not call model providers, Stripe, WorkOS admin APIs, R2, or Convex directly unless a route explicitly exists for that surface.
 
 ## Auth
 
 - Browser auth uses the signed httpOnly `overlay_session` cookie.
-- Native/mobile/desktop auth uses WorkOS bearer access tokens against the same `/api/app/*` backend.
-- Internal server-to-server calls use short-lived service auth from `src/lib/service-auth.ts`.
-- Shared route authentication flows through `resolveAuthenticatedAppUser()` in `src/lib/app-api-auth.ts`.
+- Native/mobile/desktop auth uses WorkOS bearer access tokens against the same `/api/v1/*` backend.
+- Internal server-to-server calls use short-lived service auth from `src/server/auth/service-auth.ts`.
+- Shared route authentication flows through the API boundary helpers in `src/server/auth/app-api-auth.ts`.
 
-Every sensitive `/api/app/*` route should reject requests that lack a valid browser session, mobile bearer token, or service auth token.
+Every sensitive `/api/v1/*` route should reject requests that lack a valid browser session, mobile bearer token, or service auth token.
 
 ## App Bootstrap
 
-`GET /api/app/bootstrap` is the canonical signed-in startup call. It returns user info, entitlements, UI settings, model catalogs, feature flags, navigation destinations, and defaults.
+`GET /api/v1/bootstrap` is the canonical signed-in startup call. It returns user info, entitlements, UI settings, model catalogs, feature flags, navigation destinations, and defaults.
 
 New clients should start from this route and reuse existing API contracts before adding client-specific endpoints.
 
@@ -33,13 +36,16 @@ Stripe is used for subscriptions, top-ups, auto top-up preferences, customer por
 
 Important code:
 
-- `src/lib/billing-pricing.ts`
-- `src/lib/billing-runtime.ts`
-- `src/lib/stripe-billing.ts`
-- `convex/subscriptions.ts`
-- `convex/usage.ts`
-- `convex/stripe.ts`
-- `convex/stripeSync.ts`
+- `src/shared/billing/billing-pricing.ts`
+- `src/server/billing/billing-runtime.ts`
+- `src/server/billing/stripe-billing.ts`
+- `src/server/billing/BillingCustomerService.ts`
+- `src/server/billing/BillingCheckoutService.ts`
+- `src/server/billing/providers/stripe-billing-provider.ts`
+- `convex/billing/subscriptions.ts`
+- `convex/platform/usage.ts`
+- `convex/billing/stripe.ts`
+- `convex/billing/stripeSync.ts`
 
 ## Storage
 

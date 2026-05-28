@@ -5,17 +5,18 @@ Feature modules should keep behavior reusable without coupling presentational UI
 ## Package Boundaries
 
 - `@overlay/app-core`: shared contracts, app shell registries, and renderless controller helpers.
-- `@overlay/api-client`: typed transport wrappers for the web `/api/app/*` routes.
+- `@overlay/api-client`: typed transport wrappers for the web `/api/v1/*` routes.
 - `@overlay/ui`: low-level primitives and design tokens.
 - `@overlay/modules-react`: React DOM presentational components for feature modules.
-- `src/components/app/*`: web containers and compatibility wrappers that bind routing, auth, Convex, uploads, billing, and local browser APIs.
+- `src/features/<domain>/*`: web containers and feature-local helpers that bind routing, auth, Convex-backed APIs, uploads, billing, and local browser APIs.
+- `src/components/{ui,layout,providers}/*`: shared UI primitives, app chrome, and runtime providers.
 
 Presentational components must accept data and callbacks only. They must not import `fetch`, `next/navigation`, auth contexts, Convex, or `overlayAppClient`. Run `npm run check:module-boundaries` before committing module package changes.
 
 ## Module Checklist
 
 1. Add cross-surface contracts to `@overlay/app-core`.
-2. Add typed methods to `@overlay/api-client` that call existing `/api/app/*` routes without changing endpoint behavior.
+2. Add typed methods to `@overlay/api-client` that call existing `/api/v1/*` routes without changing endpoint behavior.
 3. Put pure selection, filtering, sorting, dirty-state, and tree-building logic in `@overlay/app-core/modules`.
 4. Put React DOM presentation in `@overlay/modules-react`, built from `@overlay/ui`.
 5. Keep the web screen as a container that wires router, auth, upload flows, billing, local storage, and client methods into the shared module.
