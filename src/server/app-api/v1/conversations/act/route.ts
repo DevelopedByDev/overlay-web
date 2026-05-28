@@ -704,12 +704,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId,
       accessToken: auth.accessToken || undefined,
     })
+    void composioToolsTask.catch((error) => {
+      console.warn('[conversations/act] Composio tool preload failed:', summarizeErrorForLog(error))
+    })
 
     // MCP servers are discovered at request time; 60s cache per user.
     const mcpToolsTask: Promise<ToolSet> = createMcpToolSet({
       userId,
       accessToken: auth.accessToken || undefined,
       serverSecret,
+    })
+    void mcpToolsTask.catch((error) => {
+      console.warn('[conversations/act] MCP tool preload failed:', summarizeErrorForLog(error))
     })
 
     // P3.2 Wave 1: user-message save + memories + skills + conversation fetch (for projectId).

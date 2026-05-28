@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { convex } from '@/server/database/convex'
-import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { fileErrorResponse, fileService } from '@/server/files/http'
 
-function buildShareUrl(request: NextRequest, token: string): string {
-  const origin =
-    request.headers.get('origin') ||
-    `${request.nextUrl.protocol}//${request.nextUrl.host}`
-  return `${origin.replace(/\/$/, '')}/share/f/${token}`
+function originForShareUrl(request: NextRequest): string {
+  return request.headers.get('origin') || `${request.nextUrl.protocol}//${request.nextUrl.host}`
 }
 
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
@@ -20,31 +15,17 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
     }
     const { auth } = context
-    if (!body.fileId) {
-      return NextResponse.json({ error: 'fileId required' }, { status: 400 })
-    }
-    if (body.visibility !== 'private' && body.visibility !== 'public') {
-      return NextResponse.json({ error: 'visibility must be "private" or "public"' }, { status: 400 })
-    }
-    const serverSecret = getInternalApiSecret()
-    const result = await convex.mutation<{ token: string | null; visibility: 'private' | 'public' }>(
-      'files/files:setShare',
-      {
-        fileId: body.fileId as Id<'files'>,
-        userId: auth.userId,
-        serverSecret,
-        visibility: body.visibility,
-      },
-    )
-    if (!result) {
-      return NextResponse.json({ error: 'Failed to update share visibility' }, { status: 500 })
-    }
-    return NextResponse.json({
-      visibility: result.visibility,
-      token: result.token,
-      url: result.token ? buildShareUrl(request, result.token) : null,
+    const result = await fileService.setShare({
+      fileId: body.fileId,
+      visibility: body.visibility,
+      userId: auth.userId,
+      origin: originForShareUrl(request),
     })
+    return NextResponse.json(result)
   } catch (error) {
+    if (error instanceof Error && error.name === 'FileServiceError') {
+      return fileErrorResponse(error, 'Failed to update share visibility')
+    }
     console.error('[files/share PATCH]', error)
     return NextResponse.json({ error: 'Failed to update share visibility' }, { status: 500 })
   }

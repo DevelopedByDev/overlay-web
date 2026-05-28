@@ -1,17 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { randomBytes } from 'node:crypto'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
-import { convex } from '@/server/database/convex'
-import { generatePresignedUploadUrl, getMaxPresignedUploadBytes, getR2PresignTtlSeconds, keyForFile } from '@/server/storage/object-store'
-import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
-import { formatBytes } from '@/shared/storage/storage-limits'
-import { cleanupExpiredR2UploadIntents } from '@/server/storage/r2-upload-intents'
-
-interface Entitlements {
-  overlayStorageBytesUsed: number
-  overlayStorageBytesLimit: number
-}
+import { fileService, fileUploadUrlErrorResponse } from '@/server/files/http'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -21,78 +10,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       mimeType?: string
     }
     const { auth } = context
-
-    const normalizedSizeBytes =
-      typeof sizeBytes === 'number' && Number.isFinite(sizeBytes) && sizeBytes > 0
-        ? Math.round(sizeBytes)
-        : 0
-    if (normalizedSizeBytes <= 0) {
-      return NextResponse.json({ error: 'sizeBytes is required' }, { status: 400 })
-    }
-    const maxPresignedUploadBytes = getMaxPresignedUploadBytes()
-    if (normalizedSizeBytes > maxPresignedUploadBytes) {
-      return NextResponse.json({
-        error: 'File is too large for direct upload.',
-        message: `Direct uploads are limited to ${formatBytes(maxPresignedUploadBytes)} per file.`,
-      }, { status: 413 })
-    }
-
-    const userId = auth.userId
-    const serverSecret = getInternalApiSecret()
-
-    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-      serverSecret,
-      userId,
+    const result = await fileService.createUploadUrl({
+      userId: auth.userId,
+      sizeBytes,
+      name,
+      mimeType,
     })
-    if (!entitlements) return NextResponse.json({ error: 'Could not verify subscription.' }, { status: 401 })
-    if (entitlements.overlayStorageBytesUsed + normalizedSizeBytes > entitlements.overlayStorageBytesLimit) {
-      const remainingBytes = Math.max(0, entitlements.overlayStorageBytesLimit - entitlements.overlayStorageBytesUsed)
-      return NextResponse.json({
-        error: 'Overlay storage limit reached.',
-        message: `Not enough Overlay storage remaining. ${formatBytes(remainingBytes)} available, ${formatBytes(normalizedSizeBytes)} needed.`,
-      }, { status: 403 })
-    }
-
-    await checkGlobalR2Budget(normalizedSizeBytes)
-    await cleanupExpiredR2UploadIntents({ userId, serverSecret }).catch((error) => {
-      console.warn('[FilesUploadUrl] Failed to clean expired upload intents', error)
-    })
-
-    const resolvedMime = (mimeType ?? 'application/octet-stream').toLowerCase().split(';')[0]!.trim()
-    const BLOCKED_MIME_TYPES = new Set([
-      'image/svg+xml',
-      'text/html',
-      'application/xhtml+xml',
-      'application/javascript',
-      'text/javascript',
-    ])
-    if (BLOCKED_MIME_TYPES.has(resolvedMime)) {
-      return NextResponse.json({ error: `File type not allowed: ${resolvedMime}` }, { status: 415 })
-    }
-
-    const fileName = name ?? `upload-${Date.now()}`
-    const fileIdPlaceholder = `tmp-${Date.now()}-${randomBytes(9).toString('base64url')}`
-    const r2Key = keyForFile(userId, fileIdPlaceholder, fileName)
-    const expiresIn = getR2PresignTtlSeconds()
-    await convex.mutation('files/files:createUploadIntentByServer', {
-      userId,
-      serverSecret,
-      r2Key,
-      declaredSizeBytes: normalizedSizeBytes,
-      mimeType: resolvedMime,
-      expiresAt: Date.now() + expiresIn * 1000,
-    }, { throwOnError: true })
-    const uploadUrl = await generatePresignedUploadUrl(r2Key, resolvedMime, normalizedSizeBytes, expiresIn)
-
-    return NextResponse.json({ uploadUrl, r2Key, expiresIn, maxSizeBytes: normalizedSizeBytes })
+    return NextResponse.json(result)
   } catch (error) {
-    if (error instanceof R2GlobalBudgetError) {
-      return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
-    }
-    const message = error instanceof Error ? error.message : 'Failed to generate upload URL'
-    if (message.includes('storage_limit_exceeded')) {
-      return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
-    }
-    return NextResponse.json({ error: message }, { status: 500 })
+    return fileUploadUrlErrorResponse(error)
   }
 }
