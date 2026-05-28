@@ -1,0 +1,21 @@
+{
+  "maxProductionFileLoc": 500,
+  "maxFunctionComplexity": 25,
+  "maxRouteHandlerLoc": 250,
+  "allowedExactDuplicateGroups": [
+    [
+      "src/sentry.edge.config.ts",
+      "src/sentry.server.config.ts"
+    ]
+  ],
+  "zeroFanInOverrides": {
+    "packages/overlay-ui/postcss.config.cjs": {
+      "classification": "keep",
+      "reason": "Package-local build config consumed by package tooling."
+    },
+    "packages/overlay-ui/tailwind.config.cjs": {
+      "classification": "keep",
+      "reason": "Package-local Tailwind config consumed by package tooling."
+    }
+  }
+}

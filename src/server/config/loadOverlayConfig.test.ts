@@ -243,3 +243,66 @@ test('configOverridesFromEnv rejects secret-looking NEXT_PUBLIC values during pa
     NEXT_PUBLIC_APP_URL: 'https://env.getoverlay.io',
   })
 })
+
+test('configOverridesFromEnv preserves auth provider selection shape', () => {
+  assert.deepEqual(configOverridesFromEnv({
+    KEYCLOAK_ISSUER_URL: 'https://keycloak.example.com/realms/overlay',
+    KEYCLOAK_CLIENT_ID: 'overlay-web',
+    KEYCLOAK_CLIENT_SECRET: 'keycloak_secret',
+    KEYCLOAK_REALM: 'overlay',
+  }).auth, {
+    provider: 'oidc',
+    allowDevFallbacks: false,
+    workos: {},
+    oidc: {
+      issuerUrl: 'https://keycloak.example.com/realms/overlay',
+      clientId: 'overlay-web',
+    },
+    keycloak: {
+      issuerUrl: 'https://keycloak.example.com/realms/overlay',
+      clientId: 'overlay-web',
+      clientSecret: 'keycloak_secret',
+      realm: 'overlay',
+    },
+  })
+
+  assert.deepEqual(configOverridesFromEnv({
+    OVERLAY_DEPLOYMENT_ENV: 'development',
+    DEV_WORKOS_CLIENT_ID: 'dev_client',
+    DEV_WORKOS_API_KEY: 'dev_secret',
+  }).auth, {
+    provider: 'workos',
+    allowDevFallbacks: true,
+    workos: {
+      devClientId: 'dev_client',
+      devApiKey: 'dev_secret',
+    },
+    oidc: {},
+    keycloak: {},
+  })
+})
+
+test('configOverridesFromEnv preserves deployment-specific billing and database env precedence', () => {
+  const config = configOverridesFromEnv({
+    OVERLAY_DEPLOYMENT_ENV: 'development',
+    STRIPE_SECRET_KEY: 'sk_live_prod',
+    DEV_STRIPE_SECRET_KEY: 'sk_test_dev',
+    STRIPE_PAID_UNIT_PRICE_ID: 'price_prod',
+    DEV_STRIPE_PAID_UNIT_PRICE_ID: 'price_dev',
+    NEXT_PUBLIC_CONVEX_URL: 'https://prod.convex.cloud',
+    DEV_NEXT_PUBLIC_CONVEX_URL: 'https://dev.convex.cloud',
+  })
+
+  assert.deepEqual(config.billing, {
+    provider: 'stripe',
+    stripe: {
+      mode: 'test',
+      secretKey: 'sk_test_dev',
+      paidUnitPriceId: 'price_dev',
+    },
+  })
+  assert.deepEqual(config.database, {
+    provider: 'convex',
+    convexUrl: 'https://dev.convex.cloud',
+  })
+})

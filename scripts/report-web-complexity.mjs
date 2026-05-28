@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url)
 const ROOT = path.resolve(path.dirname(__filename), '..')
 const REPORT_PATH = path.join(ROOT, 'docs/reports/web-app-complexity-report.html')
 const BASELINE_PATH = path.join(ROOT, 'docs/reports/web-app-complexity-baseline.json')
+const BUDGET_CONFIG_PATH = path.join(ROOT, 'docs/reports/web-complexity-budgets.json')
 
 const args = new Set(process.argv.slice(2))
 const shouldCheck = args.has('--check')
@@ -30,7 +31,7 @@ const EXCLUDED_DIRS = new Set([
 const CODE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.css', '.scss'])
 const SCRIPT_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'])
 
-const BUDGETS = {
+const DEFAULT_BUDGETS = {
   maxProductionFileLoc: 500,
   maxFunctionComplexity: 25,
   maxRouteHandlerLoc: 250,
@@ -40,6 +41,22 @@ const BUDGETS = {
       'src/sentry.server.config.ts',
     ],
   ],
+  zeroFanInOverrides: {},
+}
+
+const BUDGETS = loadBudgetConfig()
+
+function loadBudgetConfig() {
+  if (!fs.existsSync(BUDGET_CONFIG_PATH)) return DEFAULT_BUDGETS
+  const parsed = JSON.parse(fs.readFileSync(BUDGET_CONFIG_PATH, 'utf8'))
+  return {
+    ...DEFAULT_BUDGETS,
+    ...parsed,
+    allowedExactDuplicateGroups:
+      parsed.allowedExactDuplicateGroups || DEFAULT_BUDGETS.allowedExactDuplicateGroups,
+    zeroFanInOverrides:
+      parsed.zeroFanInOverrides || DEFAULT_BUDGETS.zeroFanInOverrides,
+  }
 }
 
 function relativePath(filePath) {
@@ -210,6 +227,110 @@ function isRouteHandler(file) {
   )
 }
 
+function isNextEntrypoint(file) {
+  return (
+    file.startsWith('src/app/') &&
+    /(^|\/)(page|layout|loading|route|template|error|global-error|not-found|default|opengraph-image|twitter-image|icon)\.[cm]?[tj]sx?$/.test(file)
+  )
+}
+
+function isOtherFrameworkEntrypoint(file) {
+  return /^src\/(middleware|instrumentation|instrumentation-client|proxy)\.[cm]?[tj]sx?$/.test(file)
+}
+
+function isPackagePublicEntrypoint(file) {
+  return /^packages\/[^/]+\/src\/index\.[cm]?[tj]sx?$/.test(file)
+}
+
+function zeroFanInOverride(file) {
+  return BUDGETS.zeroFanInOverrides?.[file] || null
+}
+
+function classifyZeroFanInFile(file) {
+  const override = zeroFanInOverride(file)
+  if (override) return override
+  if (isNextEntrypoint(file) || isOtherFrameworkEntrypoint(file)) {
+    return {
+      classification: 'keep',
+      reason: 'Framework entrypoint discovered by file-system routing or runtime hooks.',
+    }
+  }
+  if (isPackagePublicEntrypoint(file)) {
+    return {
+      classification: 'keep',
+      reason: 'Package public API barrel; consumers may import it through package exports.',
+    }
+  }
+  if (/\/(postcss|tailwind|eslint|vite|next)\.config\.[cm]?js$/.test(file)) {
+    return {
+      classification: 'keep',
+      reason: 'Tooling config loaded outside the application import graph.',
+    }
+  }
+  return {
+    classification: 'review',
+    reason: 'No static fan-in found. Classify as keep, merge, or delete before changing.',
+  }
+}
+
+function importResolver(files) {
+  const fileSet = new Set(files)
+  const byNoExtension = new Map()
+  const byDirectoryIndex = new Map()
+
+  for (const file of files) {
+    const noExtension = file.replace(/\.[^.]+$/, '')
+    byNoExtension.set(noExtension, file)
+    if (/\/index\.[^.]+$/.test(file)) {
+      byDirectoryIndex.set(file.replace(/\/index\.[^.]+$/, ''), file)
+    }
+  }
+
+  function resolveBase(base) {
+    if (fileSet.has(base)) return base
+    return byNoExtension.get(base) || byDirectoryIndex.get(base) || null
+  }
+
+  return function resolveImport(specifier, fromFile) {
+    let base
+    if (specifier.startsWith('.')) {
+      base = path.posix.normalize(path.posix.join(path.posix.dirname(fromFile), specifier))
+    } else if (specifier.startsWith('@/')) {
+      base = `src/${specifier.slice(2)}`
+    } else if (specifier.startsWith('@overlay/')) {
+      const [packageName, ...subpath] = specifier.slice('@overlay/'.length).split('/')
+      base = `packages/overlay-${packageName}/src${subpath.length ? `/${subpath.join('/')}` : ''}`
+    } else {
+      return null
+    }
+    return resolveBase(base)
+  }
+}
+
+function importedSpecifiers(sourceFile) {
+  const specifiers = []
+  function visit(node) {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      specifiers.push(node.moduleSpecifier.text)
+    }
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments[0] &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      specifiers.push(node.arguments[0].text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return specifiers
+}
+
 function canonicalGroup(files) {
   return files.slice().sort().join('|')
 }
@@ -227,6 +348,11 @@ function collectMetrics() {
   const files = []
   const functions = []
   const duplicateMap = new Map()
+  const scriptFiles = allFiles
+    .map(relativePath)
+    .filter((file) => SCRIPT_EXTENSIONS.has(path.extname(file)) && !file.endsWith('.d.ts'))
+  const resolveImport = importResolver(scriptFiles)
+  const inboundByFile = new Map(scriptFiles.map((file) => [file, new Set()]))
 
   for (const filePath of allFiles) {
     const file = relativePath(filePath)
@@ -257,6 +383,11 @@ function collectMetrics() {
       const sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true, scriptKind)
       let fileComplexity = 1
       let functionCount = 0
+
+      for (const specifier of importedSpecifiers(sourceFile)) {
+        const target = resolveImport(specifier, file)
+        if (target && target !== file) inboundByFile.get(target)?.add(file)
+      }
 
       function visit(node) {
         fileComplexity += decisionCost(node)
@@ -312,6 +443,23 @@ function collectMetrics() {
     .map((file) => file.file)
     .sort()
 
+  const zeroFanInFiles = productionFiles
+    .filter((file) =>
+      SCRIPT_EXTENSIONS.has(file.extension) &&
+      !file.file.endsWith('.d.ts') &&
+      (inboundByFile.get(file.file)?.size ?? 0) === 0
+    )
+    .map((file) => ({
+      file: file.file,
+      layer: file.layer,
+      loc: file.loc.code,
+      ...classifyZeroFanInFile(file.file),
+    }))
+    .sort((a, b) =>
+      a.classification.localeCompare(b.classification) ||
+      a.file.localeCompare(b.file),
+    )
+
   const totals = files.reduce(
     (acc, file) => {
       acc.files += 1
@@ -347,6 +495,7 @@ function collectMetrics() {
     largeProductionFiles,
     complexFunctions,
     routeHandlersOverBudget,
+    zeroFanInFiles,
   }
 }
 
@@ -362,6 +511,7 @@ function buildBaseline(metrics) {
     largeProductionFiles: metrics.largeProductionFiles,
     complexFunctionCounts: functionCounts,
     routeHandlersOverBudget: metrics.routeHandlersOverBudget,
+    zeroFanInFiles: metrics.zeroFanInFiles,
     totals: metrics.totals,
   }
 }
@@ -436,6 +586,9 @@ function generateHtml(metrics, checkErrors) {
     .sort((a, b) => b.complexity - a.complexity)
     .slice(0, 40)
   const highestComplexityFunctions = metrics.complexFunctions.slice(0, 60)
+  const zeroFanInCandidates = metrics.zeroFanInFiles
+    .filter((file) => file.classification !== 'keep')
+    .slice(0, 120)
 
   return `<!doctype html>
 <html lang="en">
@@ -453,7 +606,7 @@ function generateHtml(metrics, checkErrors) {
 <section class="hero">
 <h1>Overlay Web App Complexity Report</h1>
 <p class="note">Repeatable static complexity analysis for <code>src/**</code> and <code>packages/**</code>. This report is a ratchet baseline: existing known complexity is tracked, and <code>npm run check:web-complexity</code> blocks new exact duplicates, new over-large files, new over-complex functions, and new over-large route handlers.</p>
-<div><span class="chip">Generated ${htmlEscape(metrics.generatedAt)}</span><span class="chip">Budget baseline ${htmlEscape(path.relative(ROOT, BASELINE_PATH))}</span></div>
+<div><span class="chip">Generated ${htmlEscape(metrics.generatedAt)}</span><span class="chip">Budget baseline ${htmlEscape(path.relative(ROOT, BASELINE_PATH))}</span><span class="chip">Budget config ${htmlEscape(path.relative(ROOT, BUDGET_CONFIG_PATH))}</span></div>
 </section>
 
 <section>
@@ -464,6 +617,7 @@ ${checkErrors.length ? `<div class="callout bad"><strong>${fmt(checkErrors.lengt
 <div class="card metric"><div class="num">${fmt(metrics.totals.productionCode)}</div><div class="label">production LOC</div><div class="hint">${fmt(metrics.totals.testCode)} test/story LOC</div></div>
 <div class="card metric"><div class="num">${fmt(metrics.duplicateGroups.length)}</div><div class="label">exact duplicate groups</div><div class="hint">intentional mirrors are allowlisted</div></div>
 <div class="card metric"><div class="num">${fmt(metrics.complexFunctions.length)}</div><div class="label">complex functions</div><div class="hint">complexity &gt; ${BUDGETS.maxFunctionComplexity}</div></div>
+<div class="card metric"><div class="num">${fmt(zeroFanInCandidates.length)}</div><div class="label">zero-fan-in candidates</div><div class="hint">excluding framework and package entrypoints</div></div>
 </div>
 </section>
 
@@ -503,6 +657,13 @@ ${metrics.duplicateGroups.length ? table(['Group', 'Files'], metrics.duplicateGr
 </section>
 
 <section>
+<h2>Zero-Fan-In Audit</h2>
+<div class="card">
+${zeroFanInCandidates.length ? table(['File', 'Layer', 'LOC', 'Class', 'Reason'], zeroFanInCandidates, (file) => `<tr><td class="path">${htmlEscape(file.file)}</td><td>${htmlEscape(file.layer)}</td><td class="num">${fmt(file.loc)}</td><td>${htmlEscape(file.classification)}</td><td>${htmlEscape(file.reason)}</td></tr>`) : '<p class="note">No non-entrypoint zero-fan-in production candidates remain. Framework entrypoints, package public barrels, and configured tooling surfaces are classified as keep.</p>'}
+</div>
+</section>
+
+<section>
 <h2>Baseline Debt</h2>
 <div class="two">
 <div class="card"><h3>Files Over ${BUDGETS.maxProductionFileLoc} LOC</h3>${table(['File'], metrics.largeProductionFiles.map((file) => [file]), (row) => `<tr><td class="path">${htmlEscape(row[0])}</td></tr>`)}</div>
@@ -536,6 +697,7 @@ if (shouldPrintJson) {
   console.log(`Production LOC: ${fmt(metrics.totals.productionCode)}`)
   console.log(`Exact duplicate groups: ${fmt(metrics.duplicateGroups.length)}`)
   console.log(`Complex functions over ${BUDGETS.maxFunctionComplexity}: ${fmt(metrics.complexFunctions.length)}`)
+  console.log(`Zero-fan-in review candidates: ${fmt(metrics.zeroFanInFiles.filter((file) => file.classification !== 'keep').length)}`)
 }
 
 if (shouldCheck && checkErrors.length > 0) {

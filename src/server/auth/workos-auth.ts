@@ -22,14 +22,13 @@ import {
 } from '@/shared/auth/auth-constants'
 import { getBaseUrl } from '@/server/web/app-url'
 import type { AuthUser, AuthSession } from '@/shared/auth/session-types'
-import type {
-  AuthProvider,
-  Session,
-  TokenClaims,
-  UserProfile,
-} from '@overlay/app-core'
+import {
+  COOKIE_REFRESH_WITHIN_MS,
+  shouldRefreshAccessToken,
+} from './workos-token-claims'
 
 export type { AuthUser, AuthSession } from '@/shared/auth/session-types'
+export { WorkOSAuthProvider } from './providers/workos-auth-provider'
 
 const isDev = process.env.NODE_ENV === 'development'
 const workosApiKey = isDev 
@@ -636,33 +635,6 @@ export async function createSession(session: AuthSession): Promise<void> {
   })
 }
 
-/** WorkOS access tokens are short-lived; refresh before Convex JWT verification fails. */
-const ACCESS_TOKEN_REFRESH_LEEWAY_MS = 120_000
-const COOKIE_REFRESH_WITHIN_MS = 24 * 60 * 60 * 1000
-
-function decodeJwtExpMs(accessToken: string): number | null {
-  try {
-    const parts = accessToken.trim().split('.')
-    if (parts.length !== 3) return null
-    const segment = parts[1]!
-    const normalized = segment.replace(/-/g, '+').replace(/_/g, '/')
-    const pad = normalized.length % 4
-    const padded = pad === 0 ? normalized : normalized + '='.repeat(4 - pad)
-    const json = Buffer.from(padded, 'base64').toString('utf-8')
-    const payload = JSON.parse(json) as { exp?: number }
-    if (typeof payload.exp !== 'number') return null
-    return payload.exp * 1000
-  } catch {
-    return null
-  }
-}
-
-function shouldRefreshAccessToken(accessToken: string): boolean {
-  const expMs = decodeJwtExpMs(accessToken)
-  if (expMs === null) return true
-  return expMs <= Date.now() + ACCESS_TOKEN_REFRESH_LEEWAY_MS
-}
-
 const refreshInFlightByUserId = new Map<string, Promise<AuthSession | null>>()
 
 async function rotateAccessTokenWithWorkOs(session: AuthSession): Promise<AuthSession | null> {
@@ -905,74 +877,5 @@ export async function refreshSessionFromRefreshToken(
       error: error instanceof Error ? error.message : String(error),
     })
     return null
-  }
-}
-
-function toProviderSession(session: AuthSession): Session {
-  return {
-    accessToken: session.accessToken,
-    refreshToken: session.refreshToken,
-    user: session.user,
-    expiresAt: session.expiresAt,
-  }
-}
-
-function toTokenClaims(claims: Record<string, unknown>): TokenClaims | null {
-  if (
-    typeof claims.iss !== 'string' ||
-    typeof claims.sub !== 'string' ||
-    typeof claims.exp !== 'number'
-  ) {
-    return null
-  }
-
-  return {
-    ...claims,
-    iss: claims.iss,
-    sub: claims.sub,
-    aud:
-      typeof claims.aud === 'string' || Array.isArray(claims.aud)
-        ? claims.aud
-        : undefined,
-    exp: claims.exp,
-    iat: typeof claims.iat === 'number' ? claims.iat : undefined,
-  }
-}
-
-function toUserProfile(claims: TokenClaims): UserProfile {
-  return {
-    id: claims.sub,
-    email: typeof claims.email === 'string' ? claims.email : undefined,
-    firstName: typeof claims.firstName === 'string' ? claims.firstName : undefined,
-    lastName: typeof claims.lastName === 'string' ? claims.lastName : undefined,
-    profilePictureUrl:
-      typeof claims.profilePictureUrl === 'string'
-        ? claims.profilePictureUrl
-        : undefined,
-    emailVerified:
-      typeof claims.emailVerified === 'boolean' ? claims.emailVerified : undefined,
-  }
-}
-
-export class WorkOSAuthProvider implements AuthProvider {
-  async getSession(req: Request): Promise<Session | null> {
-    void req
-    const session = await getSession()
-    return session ? toProviderSession(session) : null
-  }
-
-  async verifyAccessToken(token: string): Promise<TokenClaims | null> {
-    const claims = await getVerifiedAccessTokenClaims(token)
-    return claims ? toTokenClaims(claims) : null
-  }
-
-  async getUserProfile(token: string): Promise<UserProfile | null> {
-    const claims = await this.verifyAccessToken(token)
-    return claims ? toUserProfile(claims) : null
-  }
-
-  async deleteUser(userId: string): Promise<void> {
-    const workos = getWorkOS(true)
-    await workos.userManagement.deleteUser(userId)
   }
 }

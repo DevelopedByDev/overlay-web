@@ -1,0 +1,340 @@
+import {
+  inferStripeMode,
+  type OverlayDeploymentEnvironment,
+  type OverlayRuntimeConfigInput,
+} from '../../shared/config'
+
+type EnvSource = Record<string, string | undefined>
+type OverlayRuntimeConfigLayer = Record<string, unknown>
+
+interface AuthEnvValues {
+  devWorkosApiKey?: string
+  devWorkosClientId?: string
+  oidcClientId?: string
+  oidcIssuerUrl?: string
+  provider?: string
+  workosApiKey?: string
+  workosClientId?: string
+}
+
+export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
+  const deploymentEnvironment = resolveDeploymentEnvironment(env)
+  const appBaseUrl = resolveAppBaseUrl(env)
+  const publicEnv = collectPublicEnv(env)
+  const auth = authConfigFromEnv(env, deploymentEnvironment)
+  const billing = billingConfigFromEnv(env, deploymentEnvironment)
+  const storage = storageConfigFromEnv(env)
+  const llm = llmConfigFromEnv(env)
+  const database = databaseConfigFromEnv(env, deploymentEnvironment)
+  const capabilities = capabilitiesFromEnv(env)
+
+  const config: OverlayRuntimeConfigLayer = {}
+  const cspConnectSrc = readEnv(env, 'OVERLAY_CSP_CONNECT_SRC')
+  if (appBaseUrl || deploymentEnvironment || Object.keys(publicEnv).length > 0 || cspConnectSrc) {
+    config.app = {
+      ...(appBaseUrl ? { baseUrl: appBaseUrl } : {}),
+      ...(deploymentEnvironment ? { deploymentEnvironment } : {}),
+      ...(cspConnectSrc ? { cspConnectSrc: splitCsv(cspConnectSrc) } : {}),
+      ...(Object.keys(publicEnv).length > 0 ? { publicEnv } : {}),
+    }
+  }
+  if (auth) config.auth = auth
+  if (billing) config.billing = billing
+  if (storage) config.storage = storage
+  if (llm) config.llm = llm
+  if (database) config.database = database
+  if (Object.keys(capabilities).length > 0) config.capabilities = capabilities
+  return config
+}
+
+function authConfigFromEnv(
+  env: EnvSource,
+  deploymentEnvironment?: OverlayDeploymentEnvironment,
+): OverlayRuntimeConfigLayer | null {
+  const values = readAuthEnv(env)
+  const provider = values.provider ?? inferAuthProvider(values)
+  if (!hasAnyAuthConfig(values, provider)) return null
+
+  return {
+    ...(provider ? { provider: provider as OverlayRuntimeConfigInput['auth']['provider'] } : {}),
+    allowDevFallbacks: readBool(env, 'ALLOW_DEV_AUTH_FALLBACKS') ??
+      (deploymentEnvironment === 'development' || deploymentEnvironment === 'test'),
+    workos: compactObject({
+      clientId: values.workosClientId,
+      apiKey: values.workosApiKey,
+      devClientId: values.devWorkosClientId,
+      devApiKey: values.devWorkosApiKey,
+      jwksBaseUrl: readEnv(env, 'WORKOS_JWKS_BASE_URL'),
+    }),
+    oidc: compactObject({
+      issuerUrl: values.oidcIssuerUrl,
+      clientId: values.oidcClientId,
+      clientSecret: readEnv(env, 'OIDC_CLIENT_SECRET'),
+      audience: readEnv(env, 'OIDC_AUDIENCE'),
+    }),
+    keycloak: compactObject({
+      issuerUrl: readEnv(env, 'KEYCLOAK_ISSUER_URL'),
+      clientId: readEnv(env, 'KEYCLOAK_CLIENT_ID'),
+      clientSecret: readEnv(env, 'KEYCLOAK_CLIENT_SECRET'),
+      realm: readEnv(env, 'KEYCLOAK_REALM'),
+    }),
+  }
+}
+
+function billingConfigFromEnv(
+  env: EnvSource,
+  deploymentEnvironment?: OverlayDeploymentEnvironment,
+): OverlayRuntimeConfigLayer | null {
+  const secretKey = deploymentEnvironment === 'production'
+    ? readEnv(env, 'STRIPE_SECRET_KEY')
+    : readEnv(env, 'DEV_STRIPE_SECRET_KEY') ?? readEnv(env, 'STRIPE_SECRET_KEY')
+  const webhookSecret = deploymentEnvironment === 'production'
+    ? readEnv(env, 'STRIPE_WEBHOOK_SECRET')
+    : readEnv(env, 'DEV_STRIPE_WEBHOOK_SECRET') ?? readEnv(env, 'STRIPE_WEBHOOK_SECRET')
+  const provider = readEnv(env, 'BILLING_PROVIDER') ?? (secretKey ? 'stripe' : undefined)
+
+  if (!provider && !secretKey && !webhookSecret) return null
+
+  return {
+    ...(provider ? { provider: provider as OverlayRuntimeConfigInput['billing']['provider'] } : {}),
+    stripe: compactObject({
+      mode: inferStripeMode(secretKey),
+      secretKey,
+      webhookSecret,
+      paidUnitPriceId: resolveStripePriceEnv(
+        env,
+        deploymentEnvironment,
+        'STRIPE_PAID_UNIT_PRICE_ID',
+        'DEV_STRIPE_PAID_UNIT_PRICE_ID',
+      ),
+      topupUnitPriceId: resolveStripePriceEnv(
+        env,
+        deploymentEnvironment,
+        'STRIPE_TOPUP_UNIT_PRICE_ID',
+        'DEV_STRIPE_TOPUP_UNIT_PRICE_ID',
+      ),
+      portalConfigurationId: resolveStripePriceEnv(
+        env,
+        deploymentEnvironment,
+        'STRIPE_PORTAL_CONFIGURATION_ID',
+        'DEV_STRIPE_PORTAL_CONFIGURATION_ID',
+      ),
+    }),
+  }
+}
+
+function storageConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
+  const provider =
+    readEnv(env, 'STORAGE_PROVIDER') ??
+    (readEnv(env, 'R2_BUCKET_NAME') || readEnv(env, 'R2_ACCOUNT_ID') ? 'r2' : undefined)
+  if (!provider && !readEnv(env, 'R2_BUCKET_NAME')) return null
+
+  return {
+    ...(provider ? { provider: provider as OverlayRuntimeConfigInput['storage']['provider'] } : {}),
+    ...(readEnv(env, 'STORAGE_PUBLIC_URL_POLICY')
+      ? {
+          publicUrlPolicy: readEnv(env, 'STORAGE_PUBLIC_URL_POLICY') as OverlayRuntimeConfigInput['storage']['publicUrlPolicy'],
+        }
+      : {}),
+    r2: compactObject({
+      accountId: readEnv(env, 'R2_ACCOUNT_ID'),
+      bucketName: readEnv(env, 'R2_BUCKET_NAME'),
+      accessKeyId: readEnv(env, 'R2_ACCESS_KEY_ID'),
+      secretAccessKey: readEnv(env, 'R2_SECRET_ACCESS_KEY'),
+      endpointUrl: readEnv(env, 'S3_API'),
+      globalBudgetBytes: readNumber(env, 'R2_GLOBAL_BUDGET_BYTES'),
+      presignTtlSeconds: readNumber(env, 'R2_PRESIGN_TTL_SECONDS'),
+    }),
+    s3: compactObject({
+      bucketName: readEnv(env, 'S3_BUCKET_NAME'),
+      region: readEnv(env, 'S3_REGION'),
+      endpointUrl: readEnv(env, 'S3_ENDPOINT_URL'),
+      accessKeyId: readEnv(env, 'S3_ACCESS_KEY_ID'),
+      secretAccessKey: readEnv(env, 'S3_SECRET_ACCESS_KEY'),
+      forcePathStyle: readBool(env, 'S3_FORCE_PATH_STYLE'),
+    }),
+  }
+}
+
+function llmConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
+  const gatewayProvider =
+    readEnv(env, 'LLM_GATEWAY') ??
+    (readEnv(env, 'AI_GATEWAY_API_KEY')
+      ? 'ai-gateway'
+      : readEnv(env, 'OPENROUTER_API_KEY')
+        ? 'openrouter'
+        : readEnv(env, 'OPENAI_API_KEY')
+          ? 'openai'
+          : undefined)
+  if (!gatewayProvider && !readEnv(env, 'DEFAULT_CHAT_MODEL_ID') && !readEnv(env, 'LLM_MODEL_ALLOWLIST')) {
+    return null
+  }
+
+  return compactObject({
+    gatewayProvider: gatewayProvider as OverlayRuntimeConfigInput['llm']['gatewayProvider'] | undefined,
+    keySource: readEnv(env, 'LLM_KEY_SOURCE') as OverlayRuntimeConfigInput['llm']['keySource'] | undefined,
+    defaultChatModelId: readEnv(env, 'DEFAULT_CHAT_MODEL_ID'),
+    modelAllowlist: readEnv(env, 'LLM_MODEL_ALLOWLIST') ? splitCsv(readEnv(env, 'LLM_MODEL_ALLOWLIST')) : undefined,
+    apiKeyEnvVar: readEnv(env, 'LLM_API_KEY_ENV_VAR'),
+  })
+}
+
+function databaseConfigFromEnv(
+  env: EnvSource,
+  deploymentEnvironment?: OverlayDeploymentEnvironment,
+): OverlayRuntimeConfigLayer | null {
+  const convexUrl = deploymentEnvironment === 'development'
+    ? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
+    : readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
+
+  if (
+    !convexUrl &&
+    !readEnv(env, 'CONVEX_DEPLOYMENT') &&
+    !readEnv(env, 'INTERNAL_API_SECRET') &&
+    !readEnv(env, 'INTERNAL_SERVICE_AUTH_SECRET') &&
+    !readEnv(env, 'API_KEY_HASH_SECRET')
+  ) {
+    return null
+  }
+
+  return compactObject({
+    provider: 'convex',
+    convexUrl,
+    deployment: readEnv(env, 'CONVEX_DEPLOYMENT'),
+    internalApiSecret: readEnv(env, 'INTERNAL_API_SECRET'),
+    internalServiceAuthSecret: readEnv(env, 'INTERNAL_SERVICE_AUTH_SECRET'),
+    apiKeyHashSecret: readEnv(env, 'API_KEY_HASH_SECRET'),
+  })
+}
+
+function capabilitiesFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
+  return compactObject({
+    billing: readBool(env, 'OVERLAY_CAPABILITY_BILLING') ?? readBool(env, 'BILLING_ENABLED'),
+    sso: readBool(env, 'OVERLAY_CAPABILITY_SSO'),
+    apiKeys: readBool(env, 'API_KEYS_ENABLED'),
+    webhooks: readBool(env, 'WEBHOOKS_ENABLED'),
+    vectorSearch: readBool(env, 'VECTOR_SEARCH_ENABLED'),
+    automations: readBool(env, 'AUTOMATIONS_ENABLED'),
+    multiTenant: readBool(env, 'MULTI_TENANT_ENABLED'),
+  })
+}
+
+function readAuthEnv(env: EnvSource): AuthEnvValues {
+  const oidcIssuerUrl = readEnv(env, 'OIDC_ISSUER_URL') ?? readEnv(env, 'KEYCLOAK_ISSUER_URL')
+  const oidcClientId = readEnv(env, 'OIDC_CLIENT_ID') ?? readEnv(env, 'KEYCLOAK_CLIENT_ID')
+  return {
+    provider: readEnv(env, 'AUTH_PROVIDER'),
+    workosClientId: readEnv(env, 'WORKOS_CLIENT_ID'),
+    workosApiKey: readEnv(env, 'WORKOS_API_KEY'),
+    devWorkosClientId: readEnv(env, 'DEV_WORKOS_CLIENT_ID'),
+    devWorkosApiKey: readEnv(env, 'DEV_WORKOS_API_KEY'),
+    oidcIssuerUrl,
+    oidcClientId,
+  }
+}
+
+function inferAuthProvider(values: AuthEnvValues): string | undefined {
+  if (values.workosClientId || values.workosApiKey || values.devWorkosClientId || values.devWorkosApiKey) {
+    return 'workos'
+  }
+  return values.oidcIssuerUrl || values.oidcClientId ? 'oidc' : undefined
+}
+
+function hasAnyAuthConfig(values: AuthEnvValues, provider: string | undefined): boolean {
+  return Boolean(
+    provider ||
+      values.workosClientId ||
+      values.workosApiKey ||
+      values.devWorkosClientId ||
+      values.devWorkosApiKey ||
+      values.oidcIssuerUrl ||
+      values.oidcClientId,
+  )
+}
+
+function resolveAppBaseUrl(env: EnvSource): string | undefined {
+  const configured = readEnv(env, 'NEXT_PUBLIC_APP_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_APP_URL')
+  if (configured) return configured
+
+  const vercelUrl = readEnv(env, 'VERCEL_URL')
+  return vercelUrl ? `https://${vercelUrl}` : undefined
+}
+
+function resolveDeploymentEnvironment(env: EnvSource): OverlayDeploymentEnvironment | undefined {
+  const explicit = readEnv(env, 'OVERLAY_DEPLOYMENT_ENV')
+  if (isDeploymentEnvironment(explicit)) return explicit
+
+  const appUrl = resolveAppBaseUrl(env)
+  if (appUrl && /staging|preview|vercel\.app/i.test(appUrl)) return 'staging'
+
+  const vercelEnv = readEnv(env, 'VERCEL_ENV')
+  if (vercelEnv === 'production') return 'production'
+  if (vercelEnv === 'preview') return 'preview'
+  if (vercelEnv === 'development') return 'development'
+
+  const nodeEnv = readEnv(env, 'NODE_ENV')
+  if (nodeEnv === 'test') return 'test'
+  if (nodeEnv === 'development') return 'development'
+  if (nodeEnv === 'production') return 'production'
+  return undefined
+}
+
+function isDeploymentEnvironment(value: string | undefined): value is OverlayDeploymentEnvironment {
+  return Boolean(
+    value &&
+      ['development', 'test', 'preview', 'staging', 'production', 'onprem'].includes(value),
+  )
+}
+
+function resolveStripePriceEnv(
+  env: EnvSource,
+  deploymentEnvironment: OverlayDeploymentEnvironment | undefined,
+  primary: string,
+  dev: string,
+): string | undefined {
+  return deploymentEnvironment === 'production'
+    ? readEnv(env, primary)
+    : readEnv(env, dev) ?? readEnv(env, primary)
+}
+
+function collectPublicEnv(env: EnvSource): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, rawValue] of Object.entries(env)) {
+    const value = rawValue?.trim()
+    if (key.startsWith('NEXT_PUBLIC_') && value) out[key] = value
+  }
+  return out
+}
+
+function readEnv(env: EnvSource, name: string): string | undefined {
+  const value = env[name]?.trim()
+  return value ? value : undefined
+}
+
+function readBool(env: EnvSource, name: string): boolean | undefined {
+  const value = readEnv(env, name)?.toLowerCase()
+  if (value === undefined) return undefined
+  if (['1', 'true', 'yes', 'on'].includes(value)) return true
+  if (['0', 'false', 'no', 'off'].includes(value)) return false
+  return undefined
+}
+
+function readNumber(env: EnvSource, name: string): number | undefined {
+  const value = readEnv(env, name)
+  if (!value) return undefined
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
+function splitCsv(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+function compactObject(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined && value !== null),
+  )
+}

@@ -2,16 +2,8 @@ import 'server-only'
 
 import { randomBytes, randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
-import { partedFileName, splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
-import {
-  DEFAULT_CONTEXT_CHARS,
-  DEFAULT_MAX_MATCHES_PER_FILE,
-  DEFAULT_MAX_TOTAL_SNIPPET_CHARS,
-  MAX_FILE_IDS_PER_REQUEST,
-  MAX_QUERY_CHARS,
-  dedupeFileIdsPreserveOrder,
-  findSubstringMatchesInText,
-} from '@/shared/storage/file-text-search'
+import { splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
+import { findSubstringMatchesInText } from '@/shared/storage/file-text-search'
 import { formatBytes } from '@/shared/storage/storage-limits'
 import {
   deleteObject,
@@ -25,59 +17,34 @@ import {
   uploadBuffer,
 } from '@/server/storage/object-store'
 import { checkGlobalR2Budget } from '@/server/storage/r2-budget'
-import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/server/storage/storage-keys'
-import { hashTextContent } from '@/server/storage/text-content-hash'
 import type { FileRepository, FileUploadIntentRecord } from './FileRepository'
-
-const BLOCKED_MIME_TYPES = new Set([
-  'image/svg+xml',
-  'text/html',
-  'application/xhtml+xml',
-  'application/javascript',
-  'text/javascript',
-])
+import {
+  assertAllowedMimeType,
+  assignTextContent,
+  buildFileListArgs,
+  buildTextFilePartWrites,
+  buildUpdateFileArgs,
+  extOf,
+  isBinaryProxyContent,
+  isDocx,
+  isPdf,
+  isTextLike,
+  isOwnedStorageKey,
+  isOwnedStorageKeyForKind,
+  normalizeMimeType,
+  normalizedPositiveBytes,
+  ownedStorageKeysForSubtree,
+  parseCreateFileRequest,
+  parseSearchTextRequest,
+  sanitizeConvexIdParam,
+  shouldSplitTextFile,
+  utf8ByteLength,
+} from './FileServicePayloads'
+import { serviceError } from './FileServiceErrors'
 
 const MAX_INGEST_BYTES = 12 * 1024 * 1024
-const utf8Encoder = new TextEncoder()
 
-const TEXT_EXTENSIONS = new Set([
-  'txt',
-  'md',
-  'markdown',
-  'csv',
-  'json',
-  'html',
-  'htm',
-  'xml',
-  'log',
-  'ts',
-  'tsx',
-  'js',
-  'jsx',
-  'css',
-  'yaml',
-  'yml',
-  'toml',
-  'sh',
-  'py',
-  'go',
-  'rs',
-  'java',
-  'c',
-  'cpp',
-  'h',
-])
-
-export class FileServiceError extends Error {
-  constructor(
-    readonly payload: Record<string, unknown>,
-    readonly statusCode: number,
-    message?: string,
-  ) {
-    super(message ?? String(payload.error ?? 'File service error'))
-    this.name = 'FileServiceError'
-  }
-}
+export { FileServiceError } from './FileServiceErrors'
 
 export type FileServiceStorage = {
   checkGlobalR2Budget(sizeBytes: number): Promise<void>
@@ -142,71 +109,6 @@ const defaultClock: FileServiceClock = {
   randomUUID,
 }
 
-function serviceError(payload: Record<string, unknown>, statusCode: number): never {
-  throw new FileServiceError(payload, statusCode)
-}
-
-function normalizeMimeType(value: string | null | undefined): string {
-  return (value ?? 'application/octet-stream').toLowerCase().split(';')[0]!.trim()
-}
-
-function assertAllowedMimeType(mimeType: string): void {
-  if (BLOCKED_MIME_TYPES.has(mimeType)) {
-    serviceError({ error: `File type not allowed: ${mimeType}` }, 415)
-  }
-}
-
-function normalizedPositiveBytes(value: unknown, messages: {
-  missing: string
-  nonPositive?: string
-}): number {
-  const sizeBytes =
-    typeof value === 'number' && Number.isFinite(value)
-      ? Math.round(value)
-      : typeof value === 'string' && value.trim() && Number.isFinite(Number(value))
-        ? Math.round(Number(value))
-        : 0
-  if (sizeBytes <= 0) {
-    serviceError({ error: messages.nonPositive ?? messages.missing }, 400)
-  }
-  return sizeBytes
-}
-
-function extOf(name: string): string {
-  const i = name.lastIndexOf('.')
-  return i >= 0 ? name.slice(i + 1).toLowerCase() : ''
-}
-
-function utf8ByteLength(value: string): number {
-  return utf8Encoder.encode(value).length
-}
-
-function sanitizeConvexIdParam(value: string | undefined): string | undefined {
-  if (!value?.trim()) return undefined
-  const s = value.trim()
-  if (!/^[a-z0-9]+$/i.test(s) || s.length < 16 || s.length > 64) return undefined
-  return s
-}
-
-function isPdf(file: File, ext: string): boolean {
-  return ext === 'pdf' || file.type === 'application/pdf'
-}
-
-function isDocx(file: File, ext: string): boolean {
-  return (
-    ext === 'docx' ||
-    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  )
-}
-
-function isTextLike(file: File, ext: string): boolean {
-  return TEXT_EXTENSIONS.has(ext) || (!!file.type && file.type.startsWith('text/'))
-}
-
-function isBinaryProxyContent(content: string): boolean {
-  return content.startsWith('/api/v1/files/')
-}
-
 async function parsePdfBuffer(buf: Buffer): Promise<string> {
   const mod = await import('pdf-parse/lib/pdf-parse.js')
   const parsePdf = mod.default
@@ -257,102 +159,30 @@ export class FileService {
       return file
     }
 
-    const listArgs: Record<string, unknown> & { userId: string } = {
-      userId: args.userId,
-    }
-    if (args.projectId !== null && args.projectId !== undefined) listArgs.projectId = args.projectId
-    if (args.parentId !== null && args.parentId !== undefined) {
-      listArgs.parentId = args.parentId === 'null' ? null : args.parentId
-    }
-    if (args.conversationId !== null && args.conversationId !== undefined) {
-      listArgs.conversationId = args.conversationId
-    }
-    if (args.outputType !== null && args.outputType !== undefined) listArgs.outputType = args.outputType
-    if (args.kind === 'folder' || args.kind === 'note' || args.kind === 'upload' || args.kind === 'output') {
-      listArgs.kind = args.kind
-    }
-    return await this.deps.repository.listFiles(listArgs)
+    return await this.deps.repository.listFiles(buildFileListArgs(args))
   }
 
   async createFile(args: {
     body: Record<string, unknown>
     userId: string
   }): Promise<{ id: unknown; ids?: string[]; parts?: number }> {
-    const {
-      name,
-      type,
-      kind,
-      parentId,
-      content,
-      textContent,
-      storageId,
-      r2Key,
-      sizeBytes,
-      projectId,
-      mimeType,
-      extension,
-      conversationId,
-      turnId,
-      modelId,
-      prompt,
-      outputType,
-      legacyOutputId,
-    } = args.body
-    if (typeof name !== 'string') {
-      serviceError({ error: 'name required' }, 400)
-    }
-    if (storageId) {
-      serviceError(
-        { error: 'Convex file storage is no longer supported. Upload to R2 and pass r2Key from the upload-url flow.' },
-        400,
-      )
-    }
-
-    const fileArgs: Record<string, unknown> & { userId: string; name: string } = {
-      userId: args.userId,
-      name,
-    }
-    if (typeof type === 'string') fileArgs.type = type
-    if (kind === 'folder' || kind === 'note' || kind === 'upload' || kind === 'output') fileArgs.kind = kind
-    if (parentId) fileArgs.parentId = parentId
-    if (projectId) fileArgs.projectId = projectId
-    if (typeof mimeType === 'string') fileArgs.mimeType = mimeType
-    if (typeof extension === 'string') fileArgs.extension = extension
-    if (typeof conversationId === 'string') fileArgs.conversationId = conversationId
-    if (typeof turnId === 'string') fileArgs.turnId = turnId
-    if (typeof modelId === 'string') fileArgs.modelId = modelId
-    if (typeof prompt === 'string') fileArgs.prompt = prompt
-    if (typeof outputType === 'string') fileArgs.outputType = outputType
-    if (typeof legacyOutputId === 'string') fileArgs.legacyOutputId = legacyOutputId
-
+    const createRequest = parseCreateFileRequest(args.body, args.userId)
     let id: unknown
     const ids: string[] = []
 
-    if (r2Key) {
+    if (createRequest.r2Key) {
       id = await this.createFileFromR2Object({
-        declaredSizeBytes: sizeBytes,
-        fileArgs,
-        kind,
-        r2Key,
+        declaredSizeBytes: createRequest.sizeBytes,
+        fileArgs: createRequest.fileArgs,
+        kind: createRequest.kind,
+        r2Key: createRequest.r2Key,
         userId: args.userId,
       })
-    } else if (
-      kind !== 'note' &&
-      type === 'file' &&
-      typeof (textContent ?? content) === 'string' &&
-      String(textContent ?? content).length > 0
-    ) {
-      const fullText = String(textContent ?? content)
-      const parts = splitTextForConvexDocuments(fullText)
-      const total = parts.length
-      for (let p = 0; p < parts.length; p++) {
-        const part = parts[p]!
-        const partName = partedFileName(name, p + 1, total)
+    } else if (shouldSplitTextFile(createRequest)) {
+      for (const part of buildTextFilePartWrites(createRequest.fileArgs.name, createRequest.textValue ?? '')) {
         const partId = await this.deps.repository.createFile({
-          ...fileArgs,
-          name: partName,
-          content: part,
-          contentHash: hashTextContent(part),
+          ...createRequest.fileArgs,
+          ...part,
         })
         if (!partId) {
           serviceError({ error: 'Failed to create file part' }, 500)
@@ -361,12 +191,8 @@ export class FileService {
       }
       id = ids[0]
     } else {
-      if (typeof (textContent ?? content) === 'string' && String(textContent ?? content).length > 0) {
-        const fullText = String(textContent ?? content)
-        fileArgs.content = fullText
-        fileArgs.contentHash = hashTextContent(fullText)
-      }
-      id = await this.deps.repository.createFile(fileArgs)
+      assignTextContent(createRequest.fileArgs, createRequest.textValue)
+      id = await this.deps.repository.createFile(createRequest.fileArgs)
     }
 
     return {
@@ -380,23 +206,7 @@ export class FileService {
     body: Record<string, unknown>
     userId: string
   }): Promise<{ success: true }> {
-    const { fileId, name, content, textContent, parentId, projectId } = args.body
-    if (!fileId) serviceError({ error: 'fileId required' }, 400)
-    const updateArgs: Record<string, unknown> & { fileId: string; userId: string } = {
-      fileId: String(fileId),
-      userId: args.userId,
-    }
-    if (name !== undefined) updateArgs.name = name
-    if (parentId !== undefined) updateArgs.parentId = parentId || null
-    if (projectId !== undefined) updateArgs.projectId = projectId || null
-    if (typeof (textContent ?? content) === 'string') {
-      const fullText = String(textContent ?? content)
-      updateArgs.content = fullText
-      updateArgs.contentHash = hashTextContent(fullText)
-    } else if ((textContent ?? content) !== undefined) {
-      updateArgs.content = textContent ?? content
-    }
-    await this.deps.repository.updateFile(updateArgs)
+    await this.deps.repository.updateFile(buildUpdateFileArgs(args.body, args.userId))
     return { success: true }
   }
 
@@ -409,15 +219,7 @@ export class FileService {
       fileId: args.fileId,
       userId: args.userId,
     })
-    const r2Keys = (r2Entries ?? []).flatMap((entry) => {
-      if (
-        !entry.r2Key ||
-        (!isOwnedFileR2Key(args.userId, entry.r2Key) && !isOwnedOutputR2Key(args.userId, entry.r2Key))
-      ) {
-        return []
-      }
-      return [entry.r2Key]
-    })
+    const r2Keys = ownedStorageKeysForSubtree(args.userId, r2Entries)
     if (r2Keys.length > 0) {
       await this.storage.deleteObjects(r2Keys)
     }
@@ -524,10 +326,7 @@ export class FileService {
     }
 
     if (proxyTarget.r2Key) {
-      if (
-        !isOwnedFileR2Key(args.userId, proxyTarget.r2Key) &&
-        !isOwnedOutputR2Key(args.userId, proxyTarget.r2Key)
-      ) {
+      if (!isOwnedStorageKey(args.userId, proxyTarget.r2Key)) {
         return { kind: 'json', payload: { error: 'Not found' }, status: 404 }
       }
       await this.deps.repository.recordFileBandwidth({
@@ -550,47 +349,12 @@ export class FileService {
     body: Record<string, unknown>
     userId: string
   }): Promise<{ success: true; matches: SearchTextMatchRow[]; truncated: boolean }> {
-    const rawIds = Array.isArray(args.body.fileIds) ? args.body.fileIds : []
-    const fileIds = dedupeFileIdsPreserveOrder(rawIds.map((id) => String(id)))
-    if (fileIds.length === 0) {
-      serviceError({ error: 'fileIds is required' }, 400)
-    }
-    if (fileIds.length > MAX_FILE_IDS_PER_REQUEST) {
-      serviceError({ error: `At most ${MAX_FILE_IDS_PER_REQUEST} file ids per request` }, 400)
-    }
-
-    const query = typeof args.body.query === 'string' ? args.body.query.trim() : ''
-    if (!query) {
-      serviceError({ error: 'query is required' }, 400)
-    }
-    if (query.length > MAX_QUERY_CHARS) {
-      serviceError({ error: `query too long (max ${MAX_QUERY_CHARS} characters)` }, 400)
-    }
-
-    const contextChars =
-      typeof args.body.contextChars === 'number' &&
-      args.body.contextChars >= 0 &&
-      args.body.contextChars <= 2000
-        ? Math.floor(args.body.contextChars)
-        : DEFAULT_CONTEXT_CHARS
-    const maxMatchesPerFile =
-      typeof args.body.maxMatchesPerFile === 'number' &&
-      args.body.maxMatchesPerFile >= 1 &&
-      args.body.maxMatchesPerFile <= 200
-        ? Math.floor(args.body.maxMatchesPerFile)
-        : DEFAULT_MAX_MATCHES_PER_FILE
-    const maxTotalSnippetChars =
-      typeof args.body.maxTotalSnippetChars === 'number' &&
-      args.body.maxTotalSnippetChars >= 1000 &&
-      args.body.maxTotalSnippetChars <= 500_000
-        ? Math.floor(args.body.maxTotalSnippetChars)
-        : DEFAULT_MAX_TOTAL_SNIPPET_CHARS
-
+    const searchRequest = parseSearchTextRequest(args.body)
     const matches: SearchTextMatchRow[] = []
     let truncated = false
-    let remainingSnippetBudget = maxTotalSnippetChars
+    let remainingSnippetBudget = searchRequest.maxTotalSnippetChars
 
-    for (const fileId of fileIds) {
+    for (const fileId of searchRequest.fileIds) {
       if (remainingSnippetBudget <= 0) {
         truncated = true
         break
@@ -612,9 +376,9 @@ export class FileService {
 
       const { matches: found, truncated: fileTrunc, snippetCharsUsed } = findSubstringMatchesInText({
         fullText: content,
-        query,
-        contextChars,
-        maxMatches: maxMatchesPerFile,
+        query: searchRequest.query,
+        contextChars: searchRequest.contextChars,
+        maxMatches: searchRequest.maxMatchesPerFile,
         maxTotalSnippetChars: remainingSnippetBudget,
       })
 
@@ -742,16 +506,17 @@ export class FileService {
       await this.storage.uploadBuffer(r2Key, buf, mimeType)
 
       const ids: string[] = []
-      const total = parts.length
-      for (let p = 0; p < parts.length; p++) {
-        const partName = partedFileName(safeName, p + 1, total)
+      const partWrites = buildTextFilePartWrites(safeName, text)
+      const total = partWrites.length
+      for (let p = 0; p < partWrites.length; p++) {
+        const part = partWrites[p]!
         try {
           const created = await this.deps.repository.createFile({
             userId: args.userId,
-            name: partName,
+            name: part.name,
             type: 'file',
-            content: parts[p],
-            contentHash: hashTextContent(parts[p]!),
+            content: part.content,
+            contentHash: part.contentHash,
             projectId: sanitizeConvexIdParam(args.projectId),
             parentId: sanitizeConvexIdParam(args.parentId),
             ...(p === 0
@@ -792,9 +557,7 @@ export class FileService {
     const r2Key = args.r2Key
     if (
       typeof r2Key !== 'string' ||
-      (args.kind === 'output'
-        ? !isOwnedOutputR2Key(args.userId, r2Key)
-        : !isOwnedFileR2Key(args.userId, r2Key))
+      !isOwnedStorageKeyForKind(args.userId, r2Key, args.kind)
     ) {
       serviceError({ error: 'Invalid storage key' }, 400)
     }
