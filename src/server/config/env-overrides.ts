@@ -54,16 +54,20 @@ function authConfigFromEnv(
   const values = readAuthEnv(env)
   const provider = values.provider ?? inferAuthProvider(values)
   if (!hasAnyAuthConfig(values, provider)) return null
+  const isProduction = deploymentEnvironment === 'production'
+  const allowDevFallbacks = isProduction
+    ? false
+    : readBool(env, 'ALLOW_DEV_AUTH_FALLBACKS') ??
+      (deploymentEnvironment === 'development' || deploymentEnvironment === 'test')
 
   return {
     ...(provider ? { provider: provider as OverlayRuntimeConfigInput['auth']['provider'] } : {}),
-    allowDevFallbacks: readBool(env, 'ALLOW_DEV_AUTH_FALLBACKS') ??
-      (deploymentEnvironment === 'development' || deploymentEnvironment === 'test'),
+    allowDevFallbacks,
     workos: compactObject({
       clientId: values.workosClientId,
       apiKey: values.workosApiKey,
-      devClientId: values.devWorkosClientId,
-      devApiKey: values.devWorkosApiKey,
+      devClientId: isProduction ? undefined : values.devWorkosClientId,
+      devApiKey: isProduction ? undefined : values.devWorkosApiKey,
       jwksBaseUrl: readEnv(env, 'WORKOS_JWKS_BASE_URL'),
     }),
     oidc: compactObject({

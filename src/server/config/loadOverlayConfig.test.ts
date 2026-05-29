@@ -121,6 +121,37 @@ test('loadOverlayConfig loads env-only config', async () => {
   assert.equal(config.capabilities.apiKeys, true)
 })
 
+test('production env ignores dev WorkOS fallback variables', async () => {
+  const config = await load({
+    env: {
+      OVERLAY_DEPLOYMENT_ENV: 'production',
+      NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io',
+      NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
+      CONVEX_DEPLOYMENT: 'prod:colorful-chickadee-419',
+      WORKOS_CLIENT_ID: 'client_prod',
+      WORKOS_API_KEY: 'workos_prod_secret',
+      DEV_WORKOS_CLIENT_ID: 'client_dev_should_be_ignored',
+      DEV_WORKOS_API_KEY: 'workos_dev_secret_should_be_ignored',
+      ALLOW_DEV_AUTH_FALLBACKS: 'true',
+      STRIPE_SECRET_KEY: 'sk_live_prod',
+      STRIPE_WEBHOOK_SECRET: 'whsec_prod',
+      STRIPE_PAID_UNIT_PRICE_ID: 'price_paid_prod',
+      STRIPE_TOPUP_UNIT_PRICE_ID: 'price_topup_prod',
+      STRIPE_PORTAL_CONFIGURATION_ID: 'bpc_prod',
+      INTERNAL_API_SECRET: 'internal_prod',
+      INTERNAL_SERVICE_AUTH_SECRET: 'service_prod',
+      API_KEY_HASH_SECRET: 'api_key_hash_prod',
+    },
+  })
+
+  assert.equal(config.app.deploymentEnvironment, 'production')
+  assert.equal(config.auth.allowDevFallbacks, false)
+  assert.equal(config.auth.workos.clientId, 'client_prod')
+  assert.equal(config.auth.workos.apiKey, 'workos_prod_secret')
+  assert.equal(config.auth.workos.devClientId, undefined)
+  assert.equal(config.auth.workos.devApiKey, undefined)
+})
+
 test('loadOverlayConfig loads JSON override config', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'overlay-config-'))
   try {
