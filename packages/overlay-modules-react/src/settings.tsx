@@ -92,16 +92,28 @@ export function SettingsSectionRenderer({
 export interface SettingsPageShellProps {
   title?: string
   activeLabel: string
+  activeDetail?: ReactNode
+  actions?: ReactNode
   children: ReactNode
 }
 
-export function SettingsPageShell({ title = 'Settings', activeLabel, children }: SettingsPageShellProps) {
+export function SettingsPageShell({
+  title = 'Settings',
+  activeLabel,
+  activeDetail,
+  actions,
+  children,
+}: SettingsPageShellProps) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
-      <div className="flex h-16 shrink-0 items-center border-b border-[var(--border)] px-6">
-        <h1 className="text-sm font-medium text-[var(--foreground)]">{title}</h1>
-        <span className="mx-2 text-[var(--muted-light)]">·</span>
-        <span className="text-sm text-[var(--muted)]">{activeLabel}</span>
+      <div className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] px-6">
+        <div className="flex min-w-0 items-center">
+          <h1 className="text-sm font-medium text-[var(--foreground)]">{title}</h1>
+          <span className="mx-2 text-[var(--muted-light)]">·</span>
+          <span className="truncate text-sm text-[var(--muted)]">{activeLabel}</span>
+          {activeDetail ? <span className="ml-2 shrink-0">{activeDetail}</span> : null}
+        </div>
+        {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">{children}</div>

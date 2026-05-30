@@ -2,7 +2,7 @@
 
 // Compatibility wrapper: canonical settings registry metadata lives in @overlay/app-core,
 // with reusable panel rendering primitives in @overlay/modules-react.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -28,6 +28,11 @@ import {
 import dynamic from 'next/dynamic'
 
 const MemoriesView = dynamic(() => import('@/features/knowledge/components/MemoriesView'))
+
+interface MemoriesHeaderState {
+  count: number
+  actions: ReactNode
+}
 
 const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'general',
@@ -68,6 +73,7 @@ export default function SettingsPage() {
   const [billingBusy, setBillingBusy] = useState(false)
   const [topUpDraftCents, setTopUpDraftCents] = useState(800)
   const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
+  const [memoriesHeaderState, setMemoriesHeaderState] = useState<MemoriesHeaderState | null>(null)
 
   const busy = isLoading || isSaving
 
@@ -134,7 +140,15 @@ export default function SettingsPage() {
   }
 
   return (
-    <SettingsPageShell activeLabel={sectionLabel}>
+    <SettingsPageShell
+      activeLabel={sectionLabel}
+      activeDetail={
+        section === 'memories' && memoriesHeaderState && memoriesHeaderState.count > 0 ? (
+          <span className="text-xs text-[var(--muted-light)]">{memoriesHeaderState.count}</span>
+        ) : null
+      }
+      actions={section === 'memories' ? memoriesHeaderState?.actions : null}
+    >
           {isLoading ? (
             <SettingsSectionSkeleton rows={section === 'general' ? 2 : 1} />
           ) : null}
@@ -279,7 +293,7 @@ export default function SettingsPage() {
 
           {!isLoading && section === 'memories' && (
             <div className="-mx-6 -my-6 h-[calc(100vh-4rem)]">
-              <MemoriesView userId="" />
+              <MemoriesView userId="" onHeaderStateChange={setMemoriesHeaderState} />
             </div>
           )}
 

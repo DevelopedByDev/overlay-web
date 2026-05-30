@@ -2,7 +2,7 @@
 
 // Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
 // with typed transport in @overlay/api-client.
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'lucide-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -86,7 +86,17 @@ function getBadgeTone(kind: string): string {
   return 'border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]'
 }
 
-export default function MemoriesView({ userId: _userId }: { userId: string }) {
+interface MemoriesHeaderState {
+  count: number
+  actions: ReactNode
+}
+
+interface MemoriesViewProps {
+  userId: string
+  onHeaderStateChange?: (state: MemoriesHeaderState | null) => void
+}
+
+export default function MemoriesView({ userId: _userId, onHeaderStateChange }: MemoriesViewProps) {
   void _userId
   const [memories, setMemories] = useState<Memory[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -165,14 +175,14 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
     })
   }
 
-  async function handleBulkDelete() {
+  const handleBulkDelete = useCallback(async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
     await Promise.all(ids.map((id) => overlayAppClient.memory.deleteResponse({ memoryId: id })))
     setMemories((prev) => prev.filter((memory) => !selectedIds.has(memory.memoryId)))
     setSelectedIds(new Set())
     setSelectionMode(false)
-  }
+  }, [selectedIds])
 
   async function handleCopy(memory: Memory) {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return
@@ -188,6 +198,47 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
     })
   }
 
+  const headerActions = useMemo(() => (
+    <>
+      <button
+        onClick={() => {
+          setSelectionMode((value) => !value)
+          setSelectedIds(new Set())
+        }}
+        className={`flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs transition-colors ${
+          selectionMode
+            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+            : 'bg-[var(--surface-elevated)] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+        }`}
+      >
+        <CheckSquare size={12} />
+        {selectionMode ? 'Done' : 'Select'}
+      </button>
+      {selectionMode && selectedIds.size > 0 && (
+        <button
+          onClick={() => void handleBulkDelete()}
+          className="flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/15"
+        >
+          <Trash2 size={12} />
+          Delete {selectedIds.size}
+        </button>
+      )}
+      <button
+        onClick={() => { setShowAdd(true); setSaveError(null) }}
+        className={actionButtonClass}
+      >
+        <Plus size={12} />
+        Add memory
+      </button>
+    </>
+  ), [actionButtonClass, handleBulkDelete, selectedIds.size, selectionMode])
+
+  useEffect(() => {
+    if (!onHeaderStateChange) return
+    onHeaderStateChange({ count: memories.length, actions: headerActions })
+    return () => onHeaderStateChange(null)
+  }, [headerActions, memories.length, onHeaderStateChange])
+
   const groups: Record<string, Memory[]> = {}
   for (const memory of memories) {
     const label = getDateLabel(memory.createdAt)
@@ -197,46 +248,17 @@ export default function MemoriesView({ userId: _userId }: { userId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-6">
-        <h2 className="text-sm font-medium text-[var(--foreground)]">
-          Memories
-          {memories.length > 0 && (
-            <span className="ml-2 text-xs font-normal text-[var(--muted-light)]">{memories.length}</span>
-          )}
-        </h2>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setSelectionMode((value) => !value)
-              setSelectedIds(new Set())
-            }}
-            className={`flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs transition-colors ${
-              selectionMode
-                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                : 'bg-[var(--surface-elevated)] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-            }`}
-          >
-            <CheckSquare size={12} />
-            {selectionMode ? 'Done' : 'Select'}
-          </button>
-          {selectionMode && selectedIds.size > 0 && (
-            <button
-              onClick={() => void handleBulkDelete()}
-              className="flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/15"
-            >
-              <Trash2 size={12} />
-              Delete {selectedIds.size}
-            </button>
-          )}
-          <button
-            onClick={() => { setShowAdd(true); setSaveError(null) }}
-            className={actionButtonClass}
-          >
-            <Plus size={12} />
-            Add memory
-          </button>
+      {!onHeaderStateChange ? (
+        <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-6">
+          <h2 className="text-sm font-medium text-[var(--foreground)]">
+            Memories
+            {memories.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-[var(--muted-light)]">{memories.length}</span>
+            )}
+          </h2>
+          <div className="flex items-center gap-2">{headerActions}</div>
         </div>
-      </div>
+      ) : null}
 
       {showAdd && (
         <div
