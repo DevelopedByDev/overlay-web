@@ -17,6 +17,7 @@ import {
   WebSearchToolBlock,
 } from './tools'
 import { MarkdownMessage } from './MarkdownMessage'
+import { UserMessageBubble } from './UserMessageBubble'
 
 interface MessageListProps {
   messages: ConversationMessage[]
@@ -234,14 +235,12 @@ export function MessageList({ messages, activeRun, appBaseUrl }: MessageListProp
         return (
           <div key={message.id} className={`flex ${user ? 'justify-end' : 'justify-start'}`}>
             {user ? (
-              <div className="message-appear chat-user-bubble ml-auto min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:max-w-[75%] sm:px-4">
-                <span className="whitespace-pre-wrap">
-                  {message.parts
-                    .filter((part): part is MessageTextPart => part.type === 'text')
-                    .map((part) => part.text)
-                    .join('')}
-                </span>
-              </div>
+              <UserMessageBubble className="message-appear ml-auto max-w-[min(92%,36rem)] sm:max-w-[75%]">
+                {message.parts
+                  .filter((part): part is MessageTextPart => part.type === 'text')
+                  .map((part) => part.text)
+                  .join('')}
+              </UserMessageBubble>
             ) : (
               <AssistantMessageBody message={message} activeRun={rowActiveRun} appBaseUrl={appBaseUrl} />
             )}

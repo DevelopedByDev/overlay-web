@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { Reply, Trash2 } from 'lucide-react'
-import { MediaSlotOutput } from '@overlay/chat-react'
+import { MediaSlotOutput, UserMessageBubble } from '@overlay/chat-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
@@ -129,7 +129,7 @@ function UserPromptBubble({ message, text }: { message: UIMessage; text: string 
   const images = getMessageImages(message)
   return (
     <div className="flex justify-end">
-      <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:max-w-[75%] sm:px-4">
+      <UserMessageBubble className="max-w-[min(92%,36rem)] sm:max-w-[75%]">
         {images.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {images.map((imgUrl, imgIdx) => (
@@ -137,8 +137,8 @@ function UserPromptBubble({ message, text }: { message: UIMessage; text: string 
             ))}
           </div>
         )}
-        <span className="whitespace-pre-wrap">{text}</span>
-      </div>
+        {text}
+      </UserMessageBubble>
     </div>
   )
 }
