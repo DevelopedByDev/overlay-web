@@ -13,6 +13,7 @@ import type { SourceCitationMap } from '../lib/source-citations'
 import type { WebSourceItem } from '../lib/web-sources'
 import { MarkdownMessage } from './MarkdownMessage'
 import { FlashCopyIconButton } from './DraftReviewModal'
+import { UserMessageBubble } from './UserMessageBubble'
 import {
   BrowserToolBlock,
   DraftSuggestionCard,
@@ -153,9 +154,9 @@ export function ExchangeBlock({
               </div>
             )}
             {showTextBubble && (
-              <div className="chat-user-bubble ml-auto min-w-0 max-w-full break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:px-4">
-                <span className="whitespace-pre-wrap">{renderInlineMentions(userBodyText, userMentions)}</span>
-              </div>
+              <UserMessageBubble className="ml-auto max-w-full">
+                {renderInlineMentions(userBodyText, userMentions)}
+              </UserMessageBubble>
             )}
           </div>
         </div>

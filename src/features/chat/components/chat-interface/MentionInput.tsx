@@ -39,6 +39,32 @@ interface MentionInputProps {
 const MENTION_ATTR = 'data-mention'
 const MENTION_TYPE_ATTR = 'data-mention-type'
 const MENTION_ID_ATTR = 'data-mention-id'
+const MIN_EDITOR_HEIGHT = 44
+const MAX_EDITOR_HEIGHT = 160
+
+function resizeEditorElement(el: HTMLDivElement) {
+  const savedScrollTop = el.scrollTop
+  el.style.height = 'auto'
+  const nextHeight = Math.min(Math.max(el.scrollHeight, MIN_EDITOR_HEIGHT), MAX_EDITOR_HEIGHT)
+  el.style.height = `${nextHeight}px`
+  el.style.overflowY = el.scrollHeight > MAX_EDITOR_HEIGHT ? 'auto' : 'hidden'
+
+  if (el.scrollHeight <= MAX_EDITOR_HEIGHT) return
+
+  el.scrollTop = savedScrollTop
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || !el.contains(sel.anchorNode)) return
+
+  const caretRect = sel.getRangeAt(0).getBoundingClientRect()
+  if (caretRect.width === 0 && caretRect.height === 0) return
+
+  const elRect = el.getBoundingClientRect()
+  if (caretRect.bottom > elRect.bottom) {
+    el.scrollTop += caretRect.bottom - elRect.bottom + 4
+  } else if (caretRect.top < elRect.top) {
+    el.scrollTop -= elRect.top - caretRect.top
+  }
+}
 
 function createMentionChip(item: MentionItem): HTMLSpanElement {
   const chip = document.createElement('span')
@@ -200,6 +226,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
         el.textContent = value
       }
       lastValueRef.current = value
+      resizeEditorElement(el)
     }, [value, valueRevision, onMentionsChange])
 
     useImperativeHandle(ref, () => ({
@@ -207,6 +234,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       clear: () => {
         if (editorRef.current) {
           editorRef.current.innerHTML = ''
+          resizeEditorElement(editorRef.current)
           onChange('')
           onMentionsChange([])
         }
@@ -222,6 +250,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       setPlainText: (text: string) => {
         if (editorRef.current) {
           editorRef.current.textContent = text
+          resizeEditorElement(editorRef.current)
           onChange(text)
         }
       },
@@ -267,6 +296,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
 
       const text = extractPlainTextFromElement(el)
       lastValueRef.current = text
+      resizeEditorElement(el)
       onChange(text)
       onMentionsChange(extractMentionsFromElement(el))
 
@@ -332,6 +362,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
         // Update state
         const text = extractPlainTextFromElement(el)
         lastValueRef.current = text
+        resizeEditorElement(el)
         onChange(text)
         onMentionsChange(extractMentionsFromElement(el))
       },
@@ -409,6 +440,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
             removeMentionQueryText(el, triggerOffsetRef.current)
             const text = extractPlainTextFromElement(el)
             lastValueRef.current = text
+            resizeEditorElement(el)
             onChange(text)
             onMentionsChange(extractMentionsFromElement(el))
           } catch {
@@ -417,35 +449,6 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
         }
       }
     }, [onChange, onMentionsChange])
-
-    // Auto-resize
-    useEffect(() => {
-      const el = editorRef.current
-      if (!el) return
-      const maxHeight = 160
-      const savedScrollTop = el.scrollTop
-      el.style.height = 'auto'
-      el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
-      el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
-
-      // Prevent scroll from jumping to top when resizing; keep caret visible
-      if (el.scrollHeight > maxHeight) {
-        el.scrollTop = savedScrollTop
-        const sel = window.getSelection()
-        if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
-          const caretRect = sel.getRangeAt(0).getBoundingClientRect()
-          // Collapsed ranges after a <br> or inside an empty <div> can return
-          // an empty rect — skip adjustment so we don't scroll to the top.
-          if (caretRect.width === 0 && caretRect.height === 0) return
-          const elRect = el.getBoundingClientRect()
-          if (caretRect.bottom > elRect.bottom) {
-            el.scrollTop += caretRect.bottom - elRect.bottom + 4
-          } else if (caretRect.top < elRect.top) {
-            el.scrollTop -= elRect.top - caretRect.top
-          }
-        }
-      }
-    }, [value])
 
     return (
       <div className="relative w-full">
@@ -462,7 +465,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
             handleInput()
           }}
           data-placeholder={placeholder}
-          className={`w-full min-h-11 resize-none border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--muted-light)] focus:ring-0 empty:before:content-[attr(data-placeholder)] empty:before:text-[var(--muted-light)] empty:before:pointer-events-none ${className || ''}`}
+          className={`w-full min-h-11 max-h-40 resize-none overflow-hidden overscroll-contain whitespace-pre-wrap break-words border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--muted-light)] focus:ring-0 empty:before:content-[attr(data-placeholder)] empty:before:text-[var(--muted-light)] empty:before:pointer-events-none ${className || ''}`}
           role="textbox"
           aria-multiline="true"
           aria-placeholder={placeholder}
