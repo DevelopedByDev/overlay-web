@@ -38,9 +38,14 @@ function streamLogFields(body: ChatBody): Record<string, unknown> {
   }
 }
 
+function shouldUseDirectStream(body: ChatBody): boolean {
+  const record = body as Record<string, unknown> | undefined
+  return record?.temporaryChat === true || record?.streamPersistenceMode === 'direct'
+}
+
 function logStreamCompletion(
   stream: ReadableStream<UIMessageChunk>,
-  path: 'cloudflare' | 'convex-fallback',
+  path: 'cloudflare' | 'convex-fallback' | 'direct',
   body: ChatBody,
 ): ReadableStream<UIMessageChunk> {
   return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
@@ -109,6 +114,16 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
   async sendMessages(
     options: Parameters<ChatTransport<UI_MESSAGE>['sendMessages']>[0],
   ): Promise<ReadableStream<UIMessageChunk>> {
+    if (shouldUseDirectStream(options.body)) {
+      console.info('[chat-stream] path=direct start', streamLogFields(options.body))
+      const body = {
+        ...(options.body ?? {}),
+        streamPersistenceMode: 'direct',
+      }
+      const stream = await this.fallbackTransport.sendMessages({ ...options, body })
+      return logStreamCompletion(stream, 'direct', body)
+    }
+
     console.info('[chat-stream] path=cloudflare start', streamLogFields(options.body))
     try {
       const stream = await this.relayTransport.sendMessages(options)

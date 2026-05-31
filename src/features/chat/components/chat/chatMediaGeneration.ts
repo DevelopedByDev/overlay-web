@@ -14,6 +14,7 @@ type UpdateRuntimeUiState = (
 
 interface MediaGenerationBaseParams {
   chatId: string
+  temporaryChat?: boolean
   turnId: string
   exchIdx: number
   promptForModel: string
@@ -85,6 +86,7 @@ function appendMediaSummary(
   params: Pick<
     MediaGenerationBaseParams,
     | 'chatId'
+    | 'temporaryChat'
     | 'turnId'
     | 'userPromptText'
     | 'activeModels'
@@ -116,20 +118,22 @@ function appendMediaSummary(
       assistantMessage as never,
     ]
   })
-  void overlayAppClient.conversations.addMessageResponse(
-    {
-      conversationId: params.chatId,
-      turnId: params.turnId,
-      mode: 'act',
-      role: 'assistant',
-      content: summary,
-      contentType: 'text',
-      parts: [{ type: 'text', text: summary }],
-    },
-    { idempotencyKey: `${params.turnId}:assistant` },
-  )
+  if (!params.temporaryChat) {
+    void overlayAppClient.conversations.addMessageResponse(
+      {
+        conversationId: params.chatId,
+        turnId: params.turnId,
+        mode: 'act',
+        role: 'assistant',
+        content: summary,
+        contentType: 'text',
+        parts: [{ type: 'text', text: summary }],
+      },
+      { idempotencyKey: `${params.turnId}:assistant` },
+    )
+  }
   params.completeSession(params.chatId, params.isChatActive(params.chatId))
-  void params.loadChats()
+  if (!params.temporaryChat) void params.loadChats()
   void params.loadSubscription()
 }
 
@@ -159,7 +163,7 @@ export function runImageGenerationBatch(params: RunImageGenerationBatchParams) {
     overlayAppClient.chat.generateImageResponse({
       prompt: params.promptForModel,
       modelId,
-      conversationId: params.chatId,
+      ...(params.temporaryChat ? { temporaryChat: true } : { conversationId: params.chatId }),
       turnId: params.turnId,
       imageUrl: params.imageUrl,
     })
@@ -217,7 +221,7 @@ export function runVideoGenerationBatch(params: RunVideoGenerationBatchParams) {
     overlayAppClient.chat.generateVideoResponse({
       prompt: params.promptForModel,
       modelId,
-      conversationId: params.chatId,
+      ...(params.temporaryChat ? { temporaryChat: true } : { conversationId: params.chatId }),
       turnId: params.turnId,
       videoSubMode: params.videoSubMode,
       imageUrl: params.imageUrl,

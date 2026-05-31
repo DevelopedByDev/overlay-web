@@ -27,7 +27,7 @@ function sseChunk(data: Record<string, unknown>): string {
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
-  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl }: {
+  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, temporaryChat }: {
     prompt: string
     modelId?: string
     aspectRatio?: string
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     turnId?: string
     videoSubMode?: VideoSubMode
     imageUrl?: string | null
+    temporaryChat?: boolean
   } = await request.json()
 
   const { auth } = context
@@ -171,42 +172,45 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         reservationId = reservation.reservationId
         currentEntitlements = reservation.entitlements
 
-        // ── Create pending output record ────────────────────────────────────
-        try {
-          outputId = await convex.mutation<string>(
-            'outputs/outputs:create',
-            {
-              userId: auth.userId,
-              serverSecret,
-              type: 'video',
-              source: 'video_generation',
-              status: 'pending',
-              prompt: prompt.trim(),
-              modelId: selectedModelId,
-              fileName: `overlay-video-${Date.now()}.mp4`,
-              mimeType: 'video/mp4',
-              ...(conversationId ? { conversationId } : {}),
-              ...(turnId ? { turnId } : {}),
-            },
-            { throwOnError: true },
-          )
-        } catch (err) {
-          console.error('[GenerateVideo] Failed to create output record:', err)
-          await releaseReservedBudget(err instanceof Error ? err.message : 'output_create_failed')
-          controller.enqueue(encode(sseChunk({ type: 'error', error: 'save_failed', message: 'Could not create the output record.' })))
-          controller.close()
-          return
-        }
-        if (!outputId) {
-          await releaseReservedBudget('output_create_empty')
-          controller.enqueue(encode(sseChunk({ type: 'error', error: 'save_failed', message: 'Could not create the output record.' })))
-          controller.close()
-          return
-        }
-        const persistedOutputId = outputId
+        if (temporaryChat === true) {
+          controller.enqueue(encode(sseChunk({ type: 'started', outputId: null, temporary: true })))
+        } else {
+          // ── Create pending output record ────────────────────────────────────
+          try {
+            outputId = await convex.mutation<string>(
+              'outputs/outputs:create',
+              {
+                userId: auth.userId,
+                serverSecret,
+                type: 'video',
+                source: 'video_generation',
+                status: 'pending',
+                prompt: prompt.trim(),
+                modelId: selectedModelId,
+                fileName: `overlay-video-${Date.now()}.mp4`,
+                mimeType: 'video/mp4',
+                ...(conversationId ? { conversationId } : {}),
+                ...(turnId ? { turnId } : {}),
+              },
+              { throwOnError: true },
+            )
+          } catch (err) {
+            console.error('[GenerateVideo] Failed to create output record:', err)
+            await releaseReservedBudget(err instanceof Error ? err.message : 'output_create_failed')
+            controller.enqueue(encode(sseChunk({ type: 'error', error: 'save_failed', message: 'Could not create the output record.' })))
+            controller.close()
+            return
+          }
+          if (!outputId) {
+            await releaseReservedBudget('output_create_empty')
+            controller.enqueue(encode(sseChunk({ type: 'error', error: 'save_failed', message: 'Could not create the output record.' })))
+            controller.close()
+            return
+          }
 
-        // ── Signal to client that we started ─────────────────────────────────
-        controller.enqueue(encode(sseChunk({ type: 'started', outputId: persistedOutputId })))
+          // ── Signal to client that we started ─────────────────────────────────
+          controller.enqueue(encode(sseChunk({ type: 'started', outputId })))
+        }
 
         let lastError: Error | null = null
         let usedModelId: string | null = null
@@ -285,71 +289,75 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         const dataUrl = `data:video/mp4;base64,${videoBase64}`
         const videoBuffer = Buffer.from(videoBase64!, 'base64')
 
-        // ── Check per-user storage quota ────────────────────────────────────────
-        if ((currentEntitlements.overlayStorageBytesUsed ?? 0) + videoBuffer.length > (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
-          await markOutputFailed('Not enough Overlay storage remaining for this video.')
-          await releaseReservedBudget('storage_limit_exceeded_after_generation')
-          controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
-          controller.close()
-          return
-        }
+        if (temporaryChat !== true) {
+          const persistedOutputId = outputId
 
-        // ── Upload to R2 ─────────────────────────────────────────────────────────
-        let r2Key: string | null = null
-        try {
-          const fileName = `overlay-video-${Date.now()}.mp4`
-          const key = keyForOutput(auth.userId, persistedOutputId, fileName)
-          await checkGlobalR2Budget(videoBuffer.length)
-          await uploadBuffer(key, videoBuffer, 'video/mp4')
-          r2Key = key
-          uploadedR2Key = key
-          console.log(`[GenerateVideo] ✅ Uploaded ${videoBuffer.length}B to R2 key=${key}`)
-        } catch (err) {
-          console.error('[GenerateVideo] Failed to upload to R2:', err)
-          await markOutputFailed(err instanceof Error ? err.message : 'Failed to upload video')
-          if (err instanceof R2GlobalBudgetError) {
-            await releaseReservedBudget('global_r2_budget_after_generation')
-            controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Global R2 storage cap reached. Contact support.' })))
-            controller.close()
-            return
-          }
-          await releaseReservedBudget(err instanceof Error ? err.message : 'r2_upload_failed')
-          controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'Failed to save generated video.' })))
-          controller.close()
-          return
-        }
-
-        // ── Update Convex record to completed ───────────────────────────────────────
-        try {
-          await convex.mutation(
-            'outputs/outputs:update',
-            {
-              outputId: persistedOutputId,
-              userId: auth.userId,
-              serverSecret,
-              status: 'completed',
-              modelId: usedModelId,
-              sizeBytes: videoBuffer.length,
-              ...(r2Key ? { r2Key } : {}),
-            },
-            { throwOnError: true },
-          )
-        } catch (err) {
-          console.error('[GenerateVideo] Failed to update output:', err)
-          if (uploadedR2Key) {
-            await deleteObject(uploadedR2Key).catch(() => {})
-          }
-          await markOutputFailed(err instanceof Error ? err.message : 'Failed to finalize output record')
-          if (err instanceof Error && err.message.includes('storage_limit_exceeded')) {
+          // ── Check per-user storage quota ────────────────────────────────────────
+          if ((currentEntitlements.overlayStorageBytesUsed ?? 0) + videoBuffer.length > (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
+            await markOutputFailed('Not enough Overlay storage remaining for this video.')
             await releaseReservedBudget('storage_limit_exceeded_after_generation')
             controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
             controller.close()
             return
           }
-          await releaseReservedBudget(err instanceof Error ? err.message : 'output_update_failed')
-          controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'Failed to save generated video.' })))
-          controller.close()
-          return
+
+          // ── Upload to R2 ─────────────────────────────────────────────────────────
+          let r2Key: string | null = null
+          try {
+            const fileName = `overlay-video-${Date.now()}.mp4`
+            const key = keyForOutput(auth.userId, persistedOutputId!, fileName)
+            await checkGlobalR2Budget(videoBuffer.length)
+            await uploadBuffer(key, videoBuffer, 'video/mp4')
+            r2Key = key
+            uploadedR2Key = key
+            console.log(`[GenerateVideo] ✅ Uploaded ${videoBuffer.length}B to R2 key=${key}`)
+          } catch (err) {
+            console.error('[GenerateVideo] Failed to upload to R2:', err)
+            await markOutputFailed(err instanceof Error ? err.message : 'Failed to upload video')
+            if (err instanceof R2GlobalBudgetError) {
+              await releaseReservedBudget('global_r2_budget_after_generation')
+              controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Global R2 storage cap reached. Contact support.' })))
+              controller.close()
+              return
+            }
+            await releaseReservedBudget(err instanceof Error ? err.message : 'r2_upload_failed')
+            controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'Failed to save generated video.' })))
+            controller.close()
+            return
+          }
+
+          // ── Update Convex record to completed ───────────────────────────────────────
+          try {
+            await convex.mutation(
+              'outputs/outputs:update',
+              {
+                outputId: persistedOutputId!,
+                userId: auth.userId,
+                serverSecret,
+                status: 'completed',
+                modelId: usedModelId,
+                sizeBytes: videoBuffer.length,
+                ...(r2Key ? { r2Key } : {}),
+              },
+              { throwOnError: true },
+            )
+          } catch (err) {
+            console.error('[GenerateVideo] Failed to update output:', err)
+            if (uploadedR2Key) {
+              await deleteObject(uploadedR2Key).catch(() => {})
+            }
+            await markOutputFailed(err instanceof Error ? err.message : 'Failed to finalize output record')
+            if (err instanceof Error && err.message.includes('storage_limit_exceeded')) {
+              await releaseReservedBudget('storage_limit_exceeded_after_generation')
+              controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this video.' })))
+              controller.close()
+              return
+            }
+            await releaseReservedBudget(err instanceof Error ? err.message : 'output_update_failed')
+            controller.enqueue(encode(sseChunk({ type: 'failed', outputId, error: 'Failed to save generated video.' })))
+            controller.close()
+            return
+          }
         }
 
         // ── Usage tracking ────────────────────────────────────────────────────────
@@ -391,7 +399,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         }
         console.log(`[GenerateVideo] 💰 Cost: model=${usedModelId} | duration=${usedDuration}s | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
 
-        controller.enqueue(encode(sseChunk({ type: 'completed', outputId, url: dataUrl, modelUsed: usedModelId })))
+        controller.enqueue(encode(sseChunk({ type: 'completed', outputId, url: dataUrl, modelUsed: usedModelId, temporary: temporaryChat === true })))
         controller.close()
       } catch (error) {
         console.error('[GenerateVideo] Unexpected error:', error)
