@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import type { NoteDoc, NotebookAgentUiItem, NotebookNote } from '@overlay/app-core'
 import { Button, EmptyState, Input, Textarea, cn } from '@overlay/ui'
+import { AppScreenBody, AppScreenHeader, AppScreenShell, AppScreenSidePanel } from './shell'
 
 export interface NotesEditorShellProps {
   notes: readonly NoteDoc[]
@@ -69,19 +70,24 @@ export function NotesEditorShell({
   const selectedNote = notes.find((note) => note._id === selectedNoteId) ?? null
 
   return (
-    <section className="flex h-full min-h-0 bg-[var(--background)] text-[var(--foreground)]">
-      <aside className="flex w-72 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
-        <div className="flex min-h-14 items-center justify-between gap-2 border-b border-[var(--border)] px-3">
-          <h1 className="text-sm font-semibold">Notes</h1>
-          <div className="flex items-center gap-1">
-            {sidebarActions}
-            {onCreateNote ? (
-              <Button size="sm" variant="ghost" onClick={onCreateNote}>
-                New
-              </Button>
-            ) : null}
-          </div>
-        </div>
+    <AppScreenShell
+      sidebarBehavior="always"
+      sidebarClassName="w-72"
+      sidebar={
+        <>
+          <AppScreenHeader className="min-h-14 px-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h1 className="text-sm font-semibold">Notes</h1>
+              <div className="flex items-center gap-1">
+                {sidebarActions}
+                {onCreateNote ? (
+                  <Button size="sm" variant="ghost" onClick={onCreateNote}>
+                    New
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </AppScreenHeader>
         <div className="min-h-0 flex-1 overflow-auto py-2">
           {loading ? (
             <div className="px-3 py-2 text-xs text-[var(--muted)]">Loading notes...</div>
@@ -130,27 +136,35 @@ export function NotesEditorShell({
             ))
           )}
         </div>
-      </aside>
-
-      <main className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-[var(--border)] px-4">
-          <Input
-            value={title}
-            disabled={!selectedNote}
-            onChange={(event) => onTitleChange?.(event.target.value)}
-            className="border-transparent bg-transparent px-0 text-base font-semibold focus:ring-0"
-            placeholder="Untitled"
-          />
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            {dirty ? <span className="text-xs text-[var(--muted)]">Unsaved</span> : null}
-            {editorActions}
-            {onSave ? (
-              <Button size="sm" disabled={!dirty || saving || !selectedNote} onClick={onSave}>
-                {saving ? 'Saving' : 'Save'}
-              </Button>
-            ) : null}
+        </>
+      }
+      header={
+        <AppScreenHeader className="min-h-14 px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Input
+              value={title}
+              disabled={!selectedNote}
+              onChange={(event) => onTitleChange?.(event.target.value)}
+              className="border-transparent bg-transparent px-0 text-base font-semibold focus:ring-0"
+              placeholder="Untitled"
+            />
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {dirty ? <span className="text-xs text-[var(--muted)]">Unsaved</span> : null}
+              {editorActions}
+              {onSave ? (
+                <Button size="sm" disabled={!dirty || saving || !selectedNote} onClick={onSave}>
+                  {saving ? 'Saving' : 'Save'}
+                </Button>
+              ) : null}
+            </div>
           </div>
-        </div>
+        </AppScreenHeader>
+      }
+      rightPanel={agentPanel}
+      rightPanelOpen={Boolean(agentPanel)}
+      rightPanelWidth="sm"
+    >
+      <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full flex-col">
         {selectedNote ? (
           <Textarea
             value={content}
@@ -161,14 +175,8 @@ export function NotesEditorShell({
         ) : (
           <EmptyState className="h-full" title="Select a note" />
         )}
-      </main>
-
-      {agentPanel ? (
-        <aside className="hidden w-80 shrink-0 border-l border-[var(--border)] bg-[var(--surface-elevated)] lg:block">
-          {agentPanel}
-        </aside>
-      ) : null}
-    </section>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }
 
@@ -205,24 +213,24 @@ export function NotebookHeader({
 }: NotebookHeaderProps) {
   if (!activeNote) {
     return (
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
-        <div className="shrink-0">
-          <h2 className="text-sm font-medium text-[var(--foreground)]">Notes</h2>
-        </div>
-        <div className="flex-1" />
-        <button
-          onClick={onCreateNote}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
-        >
-          <Plus size={14} />
-          New note
-        </button>
-      </div>
+      <AppScreenHeader
+        title="Notes"
+        className="px-6"
+        actions={
+          <button
+            onClick={onCreateNote}
+            className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+          >
+            <Plus size={14} />
+            New note
+          </button>
+        }
+      />
     )
   }
 
   return (
-    <div className="flex h-16 shrink-0 border-b border-[var(--border)]">
+    <AppScreenHeader className="px-0 py-0">
       <div className="flex flex-1 items-center justify-between gap-3 px-6">
         <button
           type="button"
@@ -265,7 +273,7 @@ export function NotebookHeader({
         </div>
       </div>
       {agentPanelOpen ? assistantHeader : null}
-    </div>
+    </AppScreenHeader>
   )
 }
 
@@ -283,7 +291,7 @@ export function NotebookAgentHeader({
   onRejectAllDiffs,
 }: NotebookAgentHeaderProps) {
   return (
-    <div className="flex w-[min(400px,92vw)] shrink-0 items-center justify-between gap-3 border-l border-[var(--border)] px-4">
+    <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
       <span className="text-xs font-medium text-[var(--foreground)]">Assistant</span>
       <div className="flex items-center gap-2">
         {pendingDiffCount > 0 && (
@@ -388,6 +396,7 @@ export function NotebookEmptyState({ onCreateNote }: NotebookEmptyStateProps) {
 export interface NotebookAgentPanelProps {
   items: readonly NotebookAgentUiItem[]
   running?: boolean
+  header?: ReactNode
   logo?: ReactNode
   composer: ReactNode
   renderMarkdownMessage: (text: string, isStreaming: boolean) => ReactNode
@@ -396,15 +405,18 @@ export interface NotebookAgentPanelProps {
 export function NotebookAgentPanel({
   items,
   running,
+  header,
   logo,
   composer,
   renderMarkdownMessage,
 }: NotebookAgentPanelProps) {
   return (
-    <aside
-      className="flex w-[min(400px,92vw)] shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--surface)]"
+    <AppScreenSidePanel
+      className="bg-[var(--surface)]"
+      bodyClassName="flex min-h-0 flex-col overflow-hidden"
       aria-label="Note assistant"
     >
+      {header}
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
         {items.length === 0 && (
           <div className="text-center py-8">
@@ -468,7 +480,7 @@ export function NotebookAgentPanel({
         })}
       </div>
       <div className="shrink-0 p-3">{composer}</div>
-    </aside>
+    </AppScreenSidePanel>
   )
 }
 

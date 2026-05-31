@@ -9,6 +9,7 @@ Plus,
 Search
 } from 'lucide-react'
 import { useState,type ReactNode } from 'react'
+import { AppScreenBody, AppScreenHeader } from '../shell'
 
 export interface ExtensionPageHeaderProps {
   title: string
@@ -32,38 +33,40 @@ export function ExtensionPageHeader({
   onSearchQueryChange,
 }: ExtensionPageHeaderProps) {
   return (
-    <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
-      <div className="shrink-0">
-        <h2 className="text-sm font-medium text-[var(--foreground)]">{title}</h2>
+    <AppScreenHeader className="px-6">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="shrink-0">
+          <h1 className="text-sm font-medium text-[var(--foreground)]">{title}</h1>
+        </div>
+        {searchOpen ? (
+          <input
+            value={searchQuery}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+            placeholder={searchPlaceholder}
+            autoFocus
+            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+          />
+        ) : (
+          <div className="flex-1" />
+        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            title={searchTitle}
+            onClick={() => {
+              onSearchOpenChange(!searchOpen)
+              if (searchOpen) onSearchQueryChange('')
+            }}
+            className={`flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+              searchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
+            }`}
+          >
+            <Search size={14} strokeWidth={1.75} />
+          </button>
+          {action}
+        </div>
       </div>
-      {searchOpen ? (
-        <input
-          value={searchQuery}
-          onChange={(event) => onSearchQueryChange(event.target.value)}
-          placeholder={searchPlaceholder}
-          autoFocus
-          className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-        />
-      ) : (
-        <div className="flex-1" />
-      )}
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          title={searchTitle}
-          onClick={() => {
-            onSearchOpenChange(!searchOpen)
-            if (searchOpen) onSearchQueryChange('')
-          }}
-          className={`flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-            searchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
-          }`}
-        >
-          <Search size={14} strokeWidth={1.75} />
-        </button>
-        {action}
-      </div>
-    </div>
+    </AppScreenHeader>
   )
 }
 
@@ -135,7 +138,7 @@ export function IntegrationsPanel({
   const availableShown = availableRows.slice(0, availableVisible)
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <AppScreenBody padding="none" maxWidth="none" className="h-full">
       {loading ? (
         loadingFallback
       ) : (
@@ -199,7 +202,7 @@ export function IntegrationsPanel({
           </div>
         </div>
       )}
-    </div>
+    </AppScreenBody>
   )
 }
 

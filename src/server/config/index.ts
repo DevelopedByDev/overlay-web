@@ -6,6 +6,7 @@ export {
   getOverlayRuntimeConfig,
   getOverlayRuntimeConfigSync,
   getRedactedOverlayRuntimeConfigSummary,
+  isOverlayConfigError,
   loadOverlayConfig,
   loadOverlayConfigSync,
   type LoadOverlayConfigOptions,

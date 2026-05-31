@@ -23,6 +23,7 @@ import {
 } from '@overlay/app-core'
 import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/projects'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { SidebarResourceList } from './sidebar/SidebarResourceSection'
 
 type Project = ProjectSummary
 type ProjectChat = ProjectChatSummary
@@ -107,7 +108,7 @@ export function FilesInlinePanel({
   const filteredFiles = useMemo(() => filterProjectFilesForSearch(files, q), [files, q])
 
   return (
-    <div className="space-y-0.5">
+    <SidebarResourceList>
       <FilesInlineTree
         files={filteredFiles}
         loading={loading}
@@ -119,7 +120,7 @@ export function FilesInlinePanel({
         onOpen={openFile}
         onMove={moveFile}
       />
-    </div>
+    </SidebarResourceList>
   )
 }
 
@@ -253,7 +254,7 @@ export function ProjectsInlinePanel({
   const rootProjects = useMemo(() => getRootProjects(projects), [projects])
 
   return (
-    <div className="space-y-0.5">
+    <SidebarResourceList>
       <ProjectsInlineTree
         projects={projects}
         rootProjects={rootProjects}
@@ -270,7 +271,7 @@ export function ProjectsInlinePanel({
         onDeleteItem={deleteItem}
         onRenameProject={renameProject}
       />
-    </div>
+    </SidebarResourceList>
   )
 }
 

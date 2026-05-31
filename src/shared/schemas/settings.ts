@@ -10,7 +10,6 @@ export const UpdateSettingsRequest = z.object({
   theme: z.enum(['light', 'dark']).optional(),
   lightThemePreset: z.string().optional(),
   darkThemePreset: z.string().optional(),
-  useSecondarySidebar: z.boolean().optional(),
   autoContinue: z.boolean().optional(),
   defaultChatMode: z.enum(['ask', 'act']).optional(),
   defaultAskModelIds: z.array(z.string()).optional(),

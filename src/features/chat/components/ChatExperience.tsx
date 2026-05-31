@@ -51,7 +51,6 @@ import {
   readStoredAskModelIds,
 } from '@/shared/chat/chat-model-prefs'
 import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
-import { ChatHistoryMobileBar, ChatHistorySidebar } from './ChatHistorySidebar'
 import { ChatComposer } from './ChatComposer'
 import { ChatMessageList } from './ChatMessageList'
 import { ChatSourcesPanel } from './ChatSourcesPanel'
@@ -75,9 +74,9 @@ import { useChatPreferences } from './chat/useChatPreferences'
 import { useChatPanels, type AttachmentPreview, type AttachmentPreviewMode } from './chat/useChatPanels'
 import { useChatRuntimes } from './chat/useChatRuntimes'
 import { useComposerTextState } from './chat/useComposerTextState'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import {
   dispatchChatCreated,
-  dispatchChatDeleted,
   dispatchChatModified,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
@@ -104,7 +103,6 @@ import { useConvexWorkOSToken } from '@/components/providers/ConvexProviderWithW
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { warmIntegrationLogoCache } from '@/features/integrations/lib/integration-logo-cache'
-import { ConfirmDialog } from '@overlay/ui/overlays'
 import {
   CHAT_GEN_MODE_KEY,
   DEFAULT_CHAT_TITLE,
@@ -184,7 +182,7 @@ export default function ChatInterface({
   const billingEnabled = capabilities.billing
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexWorkOSToken()
-  const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
+  const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const loadChatRequestRef = useRef(0)
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
@@ -376,13 +374,10 @@ export default function ChatInterface({
   })
   /** User turn ids currently playing the delete (fade-out) animation */
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
-  const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
+  const [, setDeletingChatIds] = useState<string[]>([])
   const [activeChatDeleting, setActiveChatDeleting] = useState(false)
-  /** Mobile: chat history opens from bottom sheet (primary sidebar is desktop-only). */
-  const [mobileChatListOpen, setMobileChatListOpen] = useState(false)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingChatTitle, setEditingChatTitle] = useState('')
-  const [confirmDeleteChat, setConfirmDeleteChat] = useState<{ id: string; title: string } | null>(null)
   const [selectedAutomation, setSelectedAutomation] = useState<AutomationDetail | null>(null)
   const [selectedAutomationLoading, setSelectedAutomationLoading] = useState(false)
   const {
@@ -408,15 +403,6 @@ export default function ChatInterface({
       pendingScrollChatIdRef.current = null
     }
   }, [activeChatId])
-
-  useEffect(() => {
-    if (!mobileChatListOpen) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [mobileChatListOpen])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
@@ -529,7 +515,6 @@ export default function ChatInterface({
     setActiveChatTitle(null)
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
-    setMobileChatListOpen(false)
     const storedAsk = readStoredAskModelIds()
     const storedAct = readStoredActModelId()
     applyUiStateToView(createConversationUiState({
@@ -1047,12 +1032,6 @@ export default function ChatInterface({
     dispatchChatModified({ chat })
   }, [activeChatTitle, chats])
 
-  const beginChatRename = useCallback((chatId: string, title: string, event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation()
-    setEditingChatId(chatId)
-    setEditingChatTitle(title)
-  }, [])
-
   const headerTitleInputRef = useRef<HTMLInputElement>(null)
 
   const beginHeaderChatRename = useCallback(() => {
@@ -1137,7 +1116,6 @@ export default function ChatInterface({
   }, [selectedModels, selectedActModel, activeChatId])
 
   // Auto-load a specific chat when embedded in project view (`id` = conversation)
-  const showOwnSidebar = !hideSidebar && settings.useSecondarySidebar
   const idParam = searchParams?.get('id') ?? null
   const automationIdParam = mode === 'automate' ? searchParams?.get('automationId') ?? null : null
   const automationDetailTab = normalizeAutomationDetailTab(searchParams?.get('tab'))
@@ -1188,7 +1166,6 @@ export default function ChatInterface({
     setActiveChatTitle(null)
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
-    setMobileChatListOpen(false)
     setActiveViewer(null)
     // Restore the user's saved new-chat defaults from localStorage rather than the last
     // viewed chat's models (which live in the view state after a chat switch).
@@ -2444,20 +2421,6 @@ export default function ChatInterface({
     ],
   )
 
-  function requestDeleteChat(chat: { _id: string; title: string }, e: React.MouseEvent) {
-    e.stopPropagation()
-    setConfirmDeleteChat({ id: chat._id, title: chat.title })
-  }
-
-  async function performDeleteChat() {
-    const target = confirmDeleteChat
-    if (!target) return
-    setConfirmDeleteChat(null)
-    dispatchChatDeleted({ chatId: target.id })
-    await overlayAppClient.conversations.deleteResponse({ conversationId: target.id })
-    await loadChats()
-  }
-
   const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
 
   const { requireAuth } = useGuestGate()
@@ -3188,31 +3151,39 @@ export default function ChatInterface({
     }
   }, [selectedAutomation])
 
+  const shellRightPanel = attachmentPreview && attachmentPreviewMode === 'panel' ? (
+    <AttachmentPreviewPanel
+      preview={attachmentPreview}
+      mode="panel"
+      onClose={closeAttachmentPreview}
+      onModeChange={setAttachmentPreviewMode}
+    />
+  ) : sourcesPanel ? (
+    <ChatSourcesPanel
+      variant="shell"
+      open
+      onClose={closeSourcesPanel}
+      sources={sourcesPanel.sources}
+    />
+  ) : null
+  const shellRightPanelClose = attachmentPreview && attachmentPreviewMode === 'panel'
+    ? closeAttachmentPreview
+    : sourcesPanel
+      ? closeSourcesPanel
+      : undefined
+  const shellRightPanelWidth = attachmentPreview && attachmentPreviewMode === 'panel' ? 440 : 380
+
   // ── render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full min-w-0 overflow-x-hidden">
-      {/* Sidebar — hidden when embedded in a project */}
-      {showOwnSidebar && (
-        <ChatHistorySidebar
-          chats={chats}
-          activeChatId={activeChatId}
-          sessions={sessions}
-          getUnread={getUnread}
-          editingChatId={editingChatId}
-          editingChatTitle={editingChatTitle}
-          deletingChatIds={deletingChatIds}
-          mobileOpen={mobileChatListOpen}
-          onMobileOpenChange={setMobileChatListOpen}
-          onCreateChat={createNewChat}
-          onSelectChat={(chatId) => loadChat(chatId, { replaceUrl: false })}
-          onBeginRename={beginChatRename}
-          onEditingTitleChange={setEditingChatTitle}
-          onCommitRename={commitChatRename}
-          onCancelRename={cancelChatRename}
-          onRequestDelete={requestDeleteChat}
-        />
-      )}
-
+    <>
+    <AppScreenShell
+      className="min-w-0 overflow-x-hidden"
+      contentClassName="flex min-h-0"
+      rightPanel={shellRightPanel}
+      rightPanelOpen={Boolean(shellRightPanel)}
+      rightPanelWidth={shellRightPanelWidth}
+      onRightPanelClose={shellRightPanelClose}
+    >
       {/* Main area */}
       <div
         className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden transition-opacity duration-200 ${
@@ -3266,7 +3237,7 @@ export default function ChatInterface({
           </div>
         )}
         {/* Sticky header — md: h-16 aligns with AppSidebar brand row border; mobile: no title; model left + mode menu right */}
-        <div className={`flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:py-0 md:px-4 ${hideHeader ? 'hidden' : ''}`}>
+        <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
             <div
               className={`group/header-title min-w-0 items-center gap-2 ${
                 activeChatId && editingChatId === activeChatId
@@ -3750,8 +3721,9 @@ export default function ChatInterface({
               />
             )}
           </div>
-        </div>
+        </AppScreenHeader>
 
+        <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex min-h-0 flex-1 flex-col">
         {hasAutomationContext && !selectedAutomationLoading && !selectedAutomation && !showAutomationChatTab && (
           <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
             <p className="text-sm text-[var(--muted)]">Automation not found.</p>
@@ -3922,6 +3894,7 @@ export default function ChatInterface({
             onStarterSelect={setInput}
           />
         )}
+        </AppScreenBody>
 
         <DraftReviewModal
           state={draftModalState}
@@ -3933,24 +3906,8 @@ export default function ChatInterface({
           onSaveAutomation={saveAutomationDraft}
         />
 
-        {showOwnSidebar && (
-          <ChatHistoryMobileBar onOpen={() => setMobileChatListOpen(true)} />
-        )}
       </div>
-      <ChatSourcesPanel
-        open={!!sourcesPanel}
-        onClose={closeSourcesPanel}
-        sources={sourcesPanel?.sources ?? []}
-      />
-
-      {attachmentPreview && attachmentPreviewMode === 'panel' && (
-        <AttachmentPreviewPanel
-          preview={attachmentPreview}
-          mode="panel"
-          onClose={closeAttachmentPreview}
-          onModeChange={setAttachmentPreviewMode}
-        />
-      )}
+    </AppScreenShell>
 
       {attachmentPreview && attachmentPreviewMode === 'dialog' && (
         <AttachmentPreviewDialog
@@ -3960,15 +3917,7 @@ export default function ChatInterface({
         />
       )}
 
-      <ConfirmDialog
-        isOpen={confirmDeleteChat !== null}
-        title="Delete chat?"
-        description={confirmDeleteChat ? `“${confirmDeleteChat.title || 'Untitled chat'}” will be permanently deleted. This can’t be undone.` : undefined}
-        confirmLabel="Delete"
-        onConfirm={() => void performDeleteChat()}
-        onCancel={() => setConfirmDeleteChat(null)}
-      />
-    </div>
+    </>
   )
 }
 
@@ -4019,23 +3968,18 @@ function AttachmentPreviewPanel({
   onModeChange: (mode: AttachmentPreviewMode) => void
 }) {
   return (
-    <aside
-      aria-label="Attachment preview"
-      className="fixed inset-y-0 right-0 z-40 flex w-[min(100vw,440px)] shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-18px_0_45px_rgba(0,0,0,0.12)] md:relative md:inset-auto md:z-auto md:h-full md:w-[min(42vw,440px)] md:shadow-none"
-    >
-      <FileViewerPanel
-        name={preview.name}
-        content={preview.content}
-        url={preview.url}
-        headerRight={
-          <AttachmentPreviewHeaderActions
-            mode={mode}
-            onClose={onClose}
-            onModeChange={onModeChange}
-          />
-        }
-      />
-    </aside>
+    <FileViewerPanel
+      name={preview.name}
+      content={preview.content}
+      url={preview.url}
+      headerRight={
+        <AttachmentPreviewHeaderActions
+          mode={mode}
+          onClose={onClose}
+          onModeChange={onModeChange}
+        />
+      }
+    />
   )
 }
 

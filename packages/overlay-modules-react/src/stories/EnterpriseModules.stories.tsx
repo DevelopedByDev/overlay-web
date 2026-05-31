@@ -20,6 +20,8 @@ import {
   OutputGallery,
   ProjectDetail,
   ProjectTree,
+  SettingsCard,
+  SettingsPageShell,
   SettingsSectionRenderer,
 } from '..'
 
@@ -74,9 +76,11 @@ const settingsPanels: OverlaySettingsPanel[] = [
   { id: 'policy', sectionId: 'security', label: 'Policy Gates', componentKey: 'enterprise.settings.policy' },
 ]
 
-export default {
+const meta = {
   title: 'Enterprise Modules',
 }
+
+export default meta
 
 export function KnowledgeFileTreeStory() {
   return <KnowledgeFileTree nodes={buildTree(files)} selectedId="file-1" />
@@ -150,6 +154,31 @@ export function SettingsRendererStory() {
           </div>
         )}
       />
+    </div>
+  )
+}
+
+export function SettingsPageShellStory() {
+  return (
+    <div className="h-[520px]">
+      <SettingsPageShell
+        activeLabel="Customization"
+        actions={
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)]"
+          >
+            Save
+          </button>
+        }
+      >
+        <SettingsCard title="Appearance">
+          Theme controls and other setting rows inherit the shared app screen header and body layout.
+        </SettingsCard>
+        <SettingsCard title="Models">
+          Settings subpages keep their current panel contents while sharing the shell frame.
+        </SettingsCard>
+      </SettingsPageShell>
     </div>
   )
 }

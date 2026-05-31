@@ -61,7 +61,6 @@ import {
 } from 'lucide-react'
 import { common, createLowlight } from 'lowlight'
 import SlashMenu, { type SlashMenuItem } from './SlashMenu'
-import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -80,7 +79,6 @@ import {
   normalizeNotebookContent,
   normalizeNotebookTitle,
   parseNotebookAgentStreamLine,
-  removeNotebookNote,
   upsertNotebookNote,
   type CanonicalNoteFile,
   type NotebookAgentUiItem,
@@ -93,8 +91,8 @@ import {
   NotebookEmptyState,
   NotebookFloatingFormatToolbar,
   NotebookHeader,
-  NotebookNotesSidebar,
 } from '@overlay/modules-react/notes'
+import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 import {
   InlineDiffExtension,
   INLINE_DIFF_CSS,
@@ -134,8 +132,6 @@ export default function NotebookEditor({
   void _userId
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { settings } = useAppSettings()
-  const showOwnSidebar = !hideSidebar && settings.useSecondarySidebar
   const [notes, setNotes] = useState<NotebookNote[]>([])
   const [activeNote, setActiveNote] = useState<NotebookNote | null>(null)
   const [title, setTitle] = useState('')
@@ -882,24 +878,6 @@ export default function NotebookEditor({
     }
   }
 
-  async function deleteNote(noteId: string, event: React.MouseEvent) {
-    event.stopPropagation()
-    await overlayAppClient.files.deleteResponse({ fileId: noteId })
-    if (activeNote?._id === noteId) {
-      setActiveNote(null)
-      setTitle('')
-      editor?.commands.clearContent()
-      if (!hideSidebar) {
-        router.replace('/app/notes')
-      }
-    }
-    setNotes((prev) => removeNotebookNote(prev, noteId))
-    window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
-    if (showOwnSidebar) {
-      await loadNotes()
-    }
-  }
-
   function handleTitleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const newTitle = event.target.value
     setTitle(newTitle)
@@ -1037,70 +1015,64 @@ export default function NotebookEditor({
   )
 
   return (
-    <div className="flex h-full flex-col">
-      <NotebookHeader
-        activeNote={activeNote}
-        title={title}
-        projectName={projectName}
-        isDirty={isDirty}
-        agentPanelOpen={agentPanelOpen}
-        exportMenu={activeNote ? (
-          <ExportMenu
-            type="note"
-            title={title || 'Untitled'}
-            content={editor?.getHTML() || activeNote.content || ''}
-            metadata={{
-              createdAt: activeNote.createdAt,
-              updatedAt: activeNote.updatedAt,
-            }}
-          />
-        ) : null}
-        assistantHeader={assistantHeader}
-        onBackToFiles={() => void handleBackToFiles()}
-        onCreateNote={() => void createNote()}
-        onTitleChange={handleTitleChange}
-        onTitleBlur={() => void commitTitleChange()}
-        onTitleKeyDown={handleTitleKeyDown}
-        onToggleAgentPanel={() => void handleToggleAgentPanel()}
-      />
-
-      <div className="flex flex-1 overflow-hidden">
-        {showOwnSidebar && (
-          <NotebookNotesSidebar
-            notes={notes}
-            activeNoteId={activeNote?._id}
-            onCreateNote={() => void createNote()}
-            onOpenNote={openNote}
-            onDeleteNote={(noteId, event) => void deleteNote(noteId, event)}
-          />
-      )}
-
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <AppScreenShell
+      header={
+        <NotebookHeader
+          activeNote={activeNote}
+          title={title}
+          projectName={projectName}
+          isDirty={isDirty}
+          agentPanelOpen={agentPanelOpen}
+          exportMenu={activeNote ? (
+            <ExportMenu
+              type="note"
+              title={title || 'Untitled'}
+              content={editor?.getHTML() || activeNote.content || ''}
+              metadata={{
+                createdAt: activeNote.createdAt,
+                updatedAt: activeNote.updatedAt,
+              }}
+            />
+          ) : null}
+          onBackToFiles={() => void handleBackToFiles()}
+          onCreateNote={() => void createNote()}
+          onTitleChange={handleTitleChange}
+          onTitleBlur={() => void commitTitleChange()}
+          onTitleKeyDown={handleTitleKeyDown}
+          onToggleAgentPanel={() => void handleToggleAgentPanel()}
+        />
+      }
+      rightPanel={agentPanelOpen && activeNote ? (
+        <NotebookAgentPanel
+          header={assistantHeader}
+          items={agentItems}
+          running={agentRunning}
+          logo={overlayLogo}
+          composer={agentComposer}
+          renderMarkdownMessage={(text, isStreaming) => (
+            <MarkdownMessage text={text} isStreaming={isStreaming} />
+          )}
+        />
+      ) : null}
+      rightPanelOpen={agentPanelOpen && Boolean(activeNote)}
+      rightPanelWidth={400}
+      onRightPanelClose={() => void handleToggleAgentPanel()}
+    >
+      <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full flex-col">
         {activeNote ? (
           <>
             <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <div className="h-full overflow-y-auto px-6 py-4">
-                <EditorContent editor={editor} />
-              </div>
+              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                <div className="h-full overflow-y-auto px-6 py-4">
+                  <EditorContent editor={editor} />
+                </div>
 
-              <NotebookFloatingFormatToolbar
-                editor={editor}
-                open={showFloatingFormatToolbar}
-                onOpenChange={setShowFloatingFormatToolbar}
-              />
-            </div>
-            {agentPanelOpen && (
-              <NotebookAgentPanel
-                items={agentItems}
-                running={agentRunning}
-                logo={overlayLogo}
-                composer={agentComposer}
-                renderMarkdownMessage={(text, isStreaming) => (
-                  <MarkdownMessage text={text} isStreaming={isStreaming} />
-                )}
-              />
-            )}
+                <NotebookFloatingFormatToolbar
+                  editor={editor}
+                  open={showFloatingFormatToolbar}
+                  onOpenChange={setShowFloatingFormatToolbar}
+                />
+              </div>
             </div>
             <SlashMenu
               showSlashMenu={showSlashMenu}
@@ -1119,8 +1091,7 @@ export default function NotebookEditor({
         ) : (
           <NotebookEmptyState onCreateNote={() => void createNote()} />
         )}
-      </div>
-    </div>
-  </div>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }

@@ -8,6 +8,7 @@ ProjectHubTab
 import { projectRouteViewForFile } from '@overlay/app-core'
 import { BookOpen,ChevronDown,FileText,FolderOpen,FolderPlus,Loader2,MessageSquare,Pencil,Plus,Upload } from 'lucide-react'
 import { type ChangeEvent,type ReactNode,type RefObject } from 'react'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 
 export interface ProjectHubHeaderProps {
   projectName: string
@@ -33,46 +34,48 @@ export function ProjectHubHeader({
   onCancelRename,
 }: ProjectHubHeaderProps) {
   return (
-    <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:px-4 md:py-0">
-      <FolderOpen size={16} className="shrink-0 text-[var(--muted)]" />
-      {editingName ? (
-        <input
-          className="min-w-0 flex-1 max-w-md rounded border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
-          value={draftName}
-          disabled={savingName}
-          onChange={(event) => onDraftNameChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              onCommitRename()
-            }
-            if (event.key === 'Escape') {
-              onCancelRename()
-            }
-          }}
-          onBlur={onCommitRename}
-          autoFocus
-        />
-      ) : (
-        <div className="group/project-head flex min-w-0 items-center gap-1">
-          <h1
-            className="min-w-0 truncate text-sm font-medium text-[var(--foreground)]"
-            style={{ fontFamily: 'var(--font-serif)' }}
-          >
-            {projectName || 'Project'}
-          </h1>
-          <button
-            type="button"
-            className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-[var(--foreground)] group-hover/project-head:opacity-100 focus-visible:opacity-100"
-            aria-label="Rename project"
-            onClick={onStartRename}
-          >
-            <Pencil size={13} />
-          </button>
-        </div>
-      )}
-      {actions}
-    </div>
+    <AppScreenHeader className="px-3 py-2.5 md:px-4 md:py-0">
+      <div className="flex min-w-0 items-center gap-2">
+        <FolderOpen size={16} className="shrink-0 text-[var(--muted)]" />
+        {editingName ? (
+          <input
+            className="max-w-md min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+            value={draftName}
+            disabled={savingName}
+            onChange={(event) => onDraftNameChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                onCommitRename()
+              }
+              if (event.key === 'Escape') {
+                onCancelRename()
+              }
+            }}
+            onBlur={onCommitRename}
+            autoFocus
+          />
+        ) : (
+          <div className="group/project-head flex min-w-0 items-center gap-1">
+            <h1
+              className="min-w-0 truncate text-sm font-medium text-[var(--foreground)]"
+              style={{ fontFamily: 'var(--font-serif)' }}
+            >
+              {projectName || 'Project'}
+            </h1>
+            <button
+              type="button"
+              className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-[var(--foreground)] group-hover/project-head:opacity-100 focus-visible:opacity-100"
+              aria-label="Rename project"
+              onClick={onStartRename}
+            >
+              <Pencil size={13} />
+            </button>
+          </div>
+        )}
+        {actions}
+      </div>
+    </AppScreenHeader>
   )
 }
 
@@ -328,27 +331,28 @@ export interface ProjectsEmptyLandingProps {
 
 export function ProjectsEmptyLanding({ creating, onCreateProject }: ProjectsEmptyLandingProps) {
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:px-4 md:py-0">
-        <h1
-          className="text-lg font-medium text-[var(--foreground)]"
-          style={{ fontFamily: 'var(--font-serif)' }}
-        >
-          Projects
-        </h1>
-        <button
-          type="button"
-          onClick={onCreateProject}
-          disabled={creating}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
-        >
-          {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-          New project
-        </button>
-      </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
+    <AppScreenShell
+      header={
+        <AppScreenHeader
+          title="Projects"
+          className="px-3 py-2.5 md:px-4 md:py-0"
+          actions={
+            <button
+              type="button"
+              onClick={onCreateProject}
+              disabled={creating}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+            >
+              {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              New project
+            </button>
+          }
+        />
+      }
+    >
+      <AppScreenBody padding="none" maxWidth="none" className="flex h-full flex-col items-center justify-center gap-4 px-6">
         <p className="text-sm text-[var(--muted)]">No projects yet.</p>
-      </div>
-    </div>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }

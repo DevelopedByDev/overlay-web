@@ -27,6 +27,12 @@ function isSafeAspectRatio(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 5 && ASPECT_RATIO_PATTERN.test(value)
 }
 
+function publicSettingsPayload(settings: AppSettings & { useSecondarySidebar?: boolean }) {
+  const publicSettings = { ...settings }
+  delete publicSettings.useSecondarySidebar
+  return { ...publicSettings, chatStreamingMode: 'token' as const }
+}
+
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
@@ -39,7 +45,8 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       },
       { throwOnError: true },
     )
-    return NextResponse.json({ ...settings, chatStreamingMode: 'token' as const })
+    if (!settings) throw new Error('Missing UI settings')
+    return NextResponse.json(publicSettingsPayload(settings))
   } catch (error) {
     console.error('[app/settings] GET error:', error)
     return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 })
@@ -56,7 +63,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       theme?: 'light' | 'dark'
       lightThemePreset?: ThemePresetId
       darkThemePreset?: ThemePresetId
-      useSecondarySidebar?: boolean
       autoContinue?: boolean
       defaultChatMode?: ChatModePreference
       defaultAskModelIds?: string[]
@@ -84,9 +90,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
     if (body.darkThemePreset !== undefined && !isThemePresetId(body.darkThemePreset)) {
       return NextResponse.json({ error: 'Invalid darkThemePreset' }, { status: 400 })
-    }
-    if (body.useSecondarySidebar !== undefined && typeof body.useSecondarySidebar !== 'boolean') {
-      return NextResponse.json({ error: 'Invalid useSecondarySidebar' }, { status: 400 })
     }
     if (body.autoContinue !== undefined && typeof body.autoContinue !== 'boolean') {
       return NextResponse.json({ error: 'Invalid autoContinue' }, { status: 400 })
@@ -162,7 +165,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       theme?: 'light' | 'dark'
       lightThemePreset?: string
       darkThemePreset?: string
-      useSecondarySidebar?: boolean
       autoContinue?: boolean
       defaultChatMode?: ChatModePreference
       defaultAskModelIds?: string[]
@@ -189,9 +191,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
     if (body.darkThemePreset !== undefined) {
       mutationArgs.darkThemePreset = body.darkThemePreset
-    }
-    if (body.useSecondarySidebar !== undefined) {
-      mutationArgs.useSecondarySidebar = body.useSecondarySidebar
     }
     if (body.autoContinue !== undefined) {
       mutationArgs.autoContinue = body.autoContinue
@@ -238,7 +237,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       mutationArgs,
       { throwOnError: true },
     )
-    return NextResponse.json({ ...settings, chatStreamingMode: 'token' as const })
+    if (!settings) throw new Error('Missing saved UI settings')
+    return NextResponse.json(publicSettingsPayload(settings))
   } catch (error) {
     console.error('[app/settings] PATCH error:', error)
     return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 })

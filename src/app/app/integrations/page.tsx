@@ -16,6 +16,7 @@ async function IntegrationsRouteContent({ userId }: { userId: string }) {
 
 export default async function IntegrationsPage() {
   const session = await getOverlaySession()
+
   if (!session) redirect('/app/chat?signin=nav')
   return (
     <Suspense fallback={<IntegrationsRouteSkeleton />}>

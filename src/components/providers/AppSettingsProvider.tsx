@@ -55,7 +55,6 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   if (candidate.theme !== undefined && candidate.theme !== 'light' && candidate.theme !== 'dark') return false
   if (candidate.lightThemePreset !== undefined && !isValidPresetId(candidate.lightThemePreset)) return false
   if (candidate.darkThemePreset !== undefined && !isValidPresetId(candidate.darkThemePreset)) return false
-  if (candidate.useSecondarySidebar !== undefined && typeof candidate.useSecondarySidebar !== 'boolean') return false
   if (
     candidate.chatStreamingMode !== undefined &&
     candidate.chatStreamingMode !== 'token' &&
@@ -115,7 +114,6 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     typeof candidate.theme === 'string' ||
     typeof candidate.lightThemePreset === 'string' ||
     typeof candidate.darkThemePreset === 'string' ||
-    typeof candidate.useSecondarySidebar === 'boolean' ||
     typeof candidate.chatStreamingMode === 'string' ||
     typeof candidate.autoContinue === 'boolean' ||
     typeof candidate.defaultChatMode === 'string' ||
@@ -140,6 +138,12 @@ function coerceChatStreamingMode(settings: AppSettings): AppSettings {
   return { ...settings, chatStreamingMode: 'token' }
 }
 
+function normalizeSettingsPayload(settings: Partial<AppSettings> & { useSecondarySidebar?: unknown }): AppSettings {
+  const publicSettings = { ...settings }
+  delete publicSettings.useSecondarySidebar
+  return coerceChatStreamingMode({ ...DEFAULT_APP_SETTINGS, ...publicSettings } as AppSettings)
+}
+
 function readStoredSettings(): AppSettings | null {
   if (typeof window === 'undefined') return null
   try {
@@ -149,7 +153,7 @@ function readStoredSettings(): AppSettings | null {
     if (!isAppSettingsPayload(parsed)) return null
     // Back-fill defaults for fields added in later releases so older cached payloads
     // don't lock the user into stale settings.
-    return coerceChatStreamingMode({ ...DEFAULT_APP_SETTINGS, ...parsed })
+    return normalizeSettingsPayload(parsed)
   } catch {
     return null
   }
@@ -178,7 +182,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     try {
       const res = await overlayAppClient.settings.getResponse({ cache: 'no-store' })
       if (res.ok) {
-        const next = coerceChatStreamingMode(await res.json() as AppSettings)
+        const next = normalizeSettingsPayload(await res.json() as Partial<AppSettings> & { useSecondarySidebar?: unknown })
         setSettings(next)
         persistSettings(next)
       } else if (res.status === 401) {
@@ -227,7 +231,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   }, [settings.theme, settings.lightThemePreset, settings.darkThemePreset])
 
   const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
-    const optimistic = coerceChatStreamingMode({ ...settings, ...patch })
+    const optimistic = normalizeSettingsPayload({ ...settings, ...patch })
     setSettings(optimistic)
     persistSettings(optimistic)
     setIsSaving(true)
@@ -237,7 +241,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         console.warn('Failed to save settings to server; using local state')
         return optimistic
       }
-      const saved = coerceChatStreamingMode(await res.json() as AppSettings)
+      const saved = normalizeSettingsPayload(await res.json() as Partial<AppSettings> & { useSecondarySidebar?: unknown })
       setSettings(saved)
       persistSettings(saved)
       return saved

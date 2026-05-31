@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Mail, Moon, PanelsLeftRight, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
+import { Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -154,14 +154,6 @@ export default function SettingsPage() {
           ) : null}
           {!isLoading && section === 'general' && (
             <>
-              <SettingRow
-                icon={<PanelsLeftRight size={18} strokeWidth={1.8} />}
-                title="Secondary sidebar"
-                description="Keep route-specific secondary sidebars enabled. When off, the app will use the single-sidebar layout once that rollout is completed."
-                checked={settings.useSecondarySidebar}
-                disabled={busy}
-                onChange={() => void updateSettings({ useSecondarySidebar: !settings.useSecondarySidebar })}
-              />
               <SettingRow
                 icon={<Play size={18} strokeWidth={1.8} />}
                 title="Auto-continue"

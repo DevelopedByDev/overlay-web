@@ -7,11 +7,10 @@ import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore
 import {
   MessageSquare, User,
   ChevronUp, Plug, Sparkles, Server, Package,
-  Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight, Search,
+  Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
-  resolveFeatureModuleForPath,
   resolveSidebarActionForPath,
   type AutomationSummary,
   type ProjectSummary,
@@ -20,7 +19,6 @@ import type { AuthUser } from '@/shared/auth/session-types'
 import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
-import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   FilesInlinePanel,
@@ -30,8 +28,6 @@ import {
 } from '@/components/layout/AppSidebarInlinePanels'
 import { ChatInlinePanel } from '@/features/chat/components/ChatInlinePanel'
 import { AutomationsInlinePanel } from '@/features/automations/components/AutomationsInlinePanel'
-import ProjectsSidebar from '@/features/projects/components/ProjectsSidebar'
-import ToolsSidebar from '@/features/tools/components/ToolsSidebar'
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
 import overlayAppConfig from '@/overlay.config'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -47,6 +43,7 @@ import {
 import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
 import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
 import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
+import { SidebarResourceSection } from './sidebar/SidebarResourceSection'
 
 export default function AppSidebar({
   user: serverUser,
@@ -60,7 +57,6 @@ export default function AppSidebar({
   const pathname = usePathname() ?? ''
   const router = useRouter()
   const currentSearchParams = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search)
-  const { settings } = useAppSettings()
   const { capabilities } = useOverlayCapabilities()
   const { requireAuth } = useGuestGate()
   const { user: authUser, isLoading: authLoading } = useAuth()
@@ -99,7 +95,6 @@ export default function AppSidebar({
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
   const sidebarActions = appShell.sidebarActions
-  const activeFeatureModule = resolveFeatureModuleForPath(pathname, appShell.featureModules)
   const primaryNavActionByItemId = useMemo(() => {
     const entries = sidebarActions
       .filter((action) => action.primaryNavAction && action.navigationItemId)
@@ -138,7 +133,6 @@ export default function AppSidebar({
   const automationsSectionOpen = automationsOpen && capabilities.automations
   const settingsPathActive = pathname.startsWith('/app/settings')
   const settingsSection = currentSearchParams.get('section') ?? 'general'
-  const inlineSecondaryDisabled = !settings.useSecondarySidebar
   const toolsView = (() => {
     const current = currentSearchParams.get('view')
     if (current === 'skills') return 'skills'
@@ -327,12 +321,10 @@ export default function AppSidebar({
 
   /** Hide until loaded so paid users never see a flash of the upgrade CTA. */
   const showUpgradeCta = billingEnabled && entitlements !== null && entitlements.tier === 'free'
-  const contextualAction = inlineSecondaryDisabled
-    ? resolveSidebarActionForPath(pathname, sidebarActions)
-    : null
+  const contextualAction = resolveSidebarActionForPath(pathname, sidebarActions)
   const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
   const hasInlineChildren = (href?: string) =>
-    inlineSecondaryDisabled && href === '/app/tools'
+    href === '/app/tools'
 
   const sidebarContent = (
     <>
@@ -470,7 +462,7 @@ export default function AppSidebar({
                     </span>
                   ) : null}
                 </button>
-                {!sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
+                {!sidebarCollapsed && href === '/app/tools' && active ? (
                   <InlineNavChildren
                     items={toolsInlineItems}
                     activeId={toolsView}
@@ -480,7 +472,7 @@ export default function AppSidebar({
                     }}
                   />
                 ) : null}
-                {sidebarCollapsed && inlineSecondaryDisabled && href === '/app/tools' && active ? (
+                {sidebarCollapsed && href === '/app/tools' && active ? (
                   <div className="mx-2 mt-1 flex flex-col overflow-hidden rounded-md border border-[var(--border)]">
                     {([{ id: 'connectors', Icon: Plug, label: 'Connectors', locked: false }, { id: 'skills', Icon: Sparkles, label: 'Skills', locked: false }, { id: 'mcps', Icon: Server, label: 'MCPs', locked: false }, { id: 'apps', Icon: Package, label: 'Apps', locked: true }] as const).map((sub) => (
                       <button
@@ -564,66 +556,46 @@ export default function AppSidebar({
           </div>
         </nav>
 
-        {!sidebarCollapsed && inlineSecondaryDisabled && (chatOpen || filesSectionOpen || projectsOpen || automationsSectionOpen) ? (
-          <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
-            {contextualAction && contextualSearchCategory ? (
-              <div className="mb-3 flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => void runSidebarAction(contextualAction)}
-                  className="flex flex-1 items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <span className="min-w-0 flex-1 text-left text-xs">{contextualAction.label}</span>
-                </button>
-                <button
-                  type="button"
-                  title={contextualSearchCategory === 'chat' ? 'Search chats (\u2318K)' : 'Search files (\u2318K)'}
-                  onClick={() => openGlobalSearch(contextualSearchCategory)}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <Search size={13} strokeWidth={1.75} />
-                </button>
-              </div>
-            ) : contextualAction ? (
-              <button
-                type="button"
-                onClick={() => void runSidebarAction(contextualAction)}
-                className="mb-3 flex w-full items-center gap-2.5 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              >
-                <span className="min-w-0 flex-1 text-left">{contextualAction.label}</span>
-              </button>
-            ) : null}
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <Suspense fallback={<SidebarListSkeleton />}>
-                {chatOpen ? (
-                  <ChatInlinePanel
-                    refreshKey={chatPanelRefreshKey}
-                    searchQuery=""
-                    onNavigate={() => setMobileMenuOpen(false)}
-                  />
-                ) : null}
-                {notesOpen || filesOpen ? (
-                  <FilesInlinePanel
-                    searchQuery=""
-                    onNavigate={() => setMobileMenuOpen(false)}
-                  />
-                ) : null}
-                {projectsOpen ? (
-                  <ProjectsInlinePanel
-                    initialProjects={initialProjects}
-                    refreshKey={projectsPanelRefreshKey}
-                    onNavigate={() => setMobileMenuOpen(false)}
-                  />
-                ) : null}
-                {automationsSectionOpen ? (
-                  <AutomationsInlinePanel
-                    initialAutomations={initialAutomations}
-                    onNavigate={() => setMobileMenuOpen(false)}
-                  />
-                ) : null}
-              </Suspense>
-            </div>
-          </div>
+        {!sidebarCollapsed && (chatOpen || filesSectionOpen || projectsOpen || automationsSectionOpen) ? (
+          <SidebarResourceSection
+            action={contextualAction ? {
+              label: contextualAction.label,
+              onClick: () => void runSidebarAction(contextualAction),
+            } : null}
+            search={contextualSearchCategory ? {
+              title: contextualSearchCategory === 'chat' ? 'Search chats (\u2318K)' : 'Search files (\u2318K)',
+              onClick: () => openGlobalSearch(contextualSearchCategory),
+            } : null}
+          >
+            <Suspense fallback={<SidebarListSkeleton />}>
+              {chatOpen ? (
+                <ChatInlinePanel
+                  refreshKey={chatPanelRefreshKey}
+                  searchQuery=""
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
+              ) : null}
+              {notesOpen || filesOpen ? (
+                <FilesInlinePanel
+                  searchQuery=""
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
+              ) : null}
+              {projectsOpen ? (
+                <ProjectsInlinePanel
+                  initialProjects={initialProjects}
+                  refreshKey={projectsPanelRefreshKey}
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
+              ) : null}
+              {automationsSectionOpen ? (
+                <AutomationsInlinePanel
+                  initialAutomations={initialAutomations}
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
+              ) : null}
+            </Suspense>
+          </SidebarResourceSection>
         ) : null}
       </div>
 
@@ -778,19 +750,6 @@ export default function AppSidebar({
           </div>
           {sidebarContent}
         </aside>
-      </div>
-
-      <div className="hidden md:flex">
-        {settings.useSecondarySidebar && activeFeatureModule?.id === 'projects' ? (
-          <Suspense fallback={null}>
-            <ProjectsSidebar initialProjects={initialProjects} />
-          </Suspense>
-        ) : null}
-        {settings.useSecondarySidebar && activeFeatureModule?.id === 'tools-extensions' ? (
-          <Suspense fallback={null}>
-            <ToolsSidebar />
-          </Suspense>
-        ) : null}
       </div>
 
       <GlobalSearchDialog

@@ -19,6 +19,7 @@ import {
   usageProgressTone,
 } from '@overlay/app-core/settings-account'
 import { EmptyState, cn } from '@overlay/ui'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from './shell'
 
 export type SettingsPanelRenderer = (panel: OverlaySettingsPanel) => ReactNode
 
@@ -49,26 +50,31 @@ export function SettingsSectionRenderer({
     activePanels.find((panel) => panel.id === activePanelId) ?? activePanels[0] ?? null
 
   return (
-    <section className="flex h-full min-h-0 bg-[var(--background)] text-[var(--foreground)]">
-      <aside className="w-64 shrink-0 border-r border-[var(--border)] bg-[var(--sidebar-surface)] p-2">
-        {sections.map((section) => (
-          <button
-            key={section.id}
-            type="button"
-            disabled={section.disabled}
-            onClick={() => onSelectSection?.(section)}
-            className={cn(
-              'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors',
-              activeSection?.id === section.id
-                ? 'bg-[var(--surface-subtle)] font-medium text-[var(--foreground)]'
-                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
-            )}
-          >
-            {section.label}
-          </button>
-        ))}
-      </aside>
-      <main className="min-w-0 flex-1 overflow-auto p-6">
+    <AppScreenShell
+      sidebarBehavior="always"
+      sidebarClassName="w-64 p-2"
+      sidebar={
+        <>
+          {sections.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              disabled={section.disabled}
+              onClick={() => onSelectSection?.(section)}
+              className={cn(
+                'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                activeSection?.id === section.id
+                  ? 'bg-[var(--surface-subtle)] font-medium text-[var(--foreground)]'
+                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
+              )}
+            >
+              {section.label}
+            </button>
+          ))}
+        </>
+      }
+    >
+      <AppScreenBody padding="none" maxWidth="none" className="p-6">
         {loading ? (
           <div className="text-xs text-[var(--muted)]">Loading settings...</div>
         ) : selectedPanel ? (
@@ -84,8 +90,8 @@ export function SettingsSectionRenderer({
         ) : (
           <EmptyState className="h-full" title="No settings panel registered" />
         )}
-      </main>
-    </section>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }
 
@@ -105,20 +111,21 @@ export function SettingsPageShell({
   children,
 }: SettingsPageShellProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
-      <div className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] px-6">
-        <div className="flex min-w-0 items-center">
-          <h1 className="text-sm font-medium text-[var(--foreground)]">{title}</h1>
-          <span className="mx-2 text-[var(--muted-light)]">·</span>
-          <span className="truncate text-sm text-[var(--muted)]">{activeLabel}</span>
-          {activeDetail ? <span className="ml-2 shrink-0">{activeDetail}</span> : null}
-        </div>
-        {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
+    <AppScreenShell
+      header={
+        <AppScreenHeader
+          title={title}
+          subtitle={activeLabel}
+          metadata={activeDetail}
+          actions={actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+          className="px-6"
+        />
+      }
+    >
+      <AppScreenBody padding="none" maxWidth="none" className="px-6 py-6">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">{children}</div>
-      </div>
-    </div>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }
 

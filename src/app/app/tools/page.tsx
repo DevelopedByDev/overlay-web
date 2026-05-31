@@ -8,6 +8,7 @@ const ToolsView = dynamic(() => import('@/features/tools/components/ToolsView'),
 
 export default async function ToolsPage() {
   const session = await getOverlaySession()
+
   if (!session) {
     redirect('/app/chat?signin=nav')
   }

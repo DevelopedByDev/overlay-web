@@ -36,6 +36,7 @@ import {
   ProjectHubHeader,
   ProjectHubTabs,
 } from '@overlay/modules-react/projects'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { FileViewerSkeleton } from '@overlay/ui/feedback'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@/features/files/components/FileViewer'
@@ -411,9 +412,8 @@ function ProjectHubBody({
   )
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {projectHeaderTitle}
-      <div className="min-h-0 flex-1">
+    <AppScreenShell header={projectHeaderTitle}>
+      <AppScreenBody padding="none" maxWidth="none" scroll="hidden">
         <ChatInterface
           userId={userId}
           firstName={firstName}
@@ -422,8 +422,8 @@ function ProjectHubBody({
           projectName={projectName}
           belowEmptyComposer={tabs}
         />
-      </div>
-    </div>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }
 
@@ -456,25 +456,26 @@ function ProjectsLanding({
   }, [projects])
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-3 py-2.5 md:h-16 md:min-h-16 md:max-h-16 md:px-4 md:py-0">
-        <h1
-          className="text-lg font-medium text-[var(--foreground)]"
-          style={{ fontFamily: 'var(--font-serif)' }}
-        >
-          Projects
-        </h1>
-        <button
-          type="button"
-          onClick={onCreateProject}
-          disabled={creating}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
-        >
-          {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-          New project
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+    <AppScreenShell
+      header={
+        <AppScreenHeader
+          title="Projects"
+          className="px-3 py-2.5 md:px-4 md:py-0"
+          actions={
+            <button
+              type="button"
+              onClick={onCreateProject}
+              disabled={creating}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+            >
+              {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              New project
+            </button>
+          }
+        />
+      }
+    >
+      <AppScreenBody padding="none" maxWidth="none" className="px-5 py-5">
         {loading && projects.length === 0 ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
@@ -525,8 +526,8 @@ function ProjectsLanding({
             <p className="text-sm text-[var(--muted)]">No projects yet.</p>
           </div>
         )}
-      </div>
-    </div>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }
 

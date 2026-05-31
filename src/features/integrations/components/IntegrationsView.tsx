@@ -18,6 +18,7 @@ import {
   type ConnectorCatalogItem,
   type IntegrationSearchResponse,
 } from '@overlay/app-core'
+import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, IntegrationsPanel } from '@overlay/modules-react/extensions'
 import { IntegrationListSkeleton } from '@overlay/ui/feedback'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/features/integrations/lib/integrations-events'
@@ -292,17 +293,19 @@ export default function IntegrationsView({
   )
 
   return (
-    <div className="flex h-full flex-col">
-      <ExtensionPageHeader
-        title="Integrations"
-        searchOpen={searchOpen}
-        searchQuery={searchQuery}
-        searchPlaceholder="Search integrations…"
-        searchTitle="Search integrations"
-        onSearchOpenChange={setSearchOpen}
-        onSearchQueryChange={setSearchQuery}
-      />
-
+    <AppScreenShell
+      header={
+        <ExtensionPageHeader
+          title="Integrations"
+          searchOpen={searchOpen}
+          searchQuery={searchQuery}
+          searchPlaceholder="Search integrations…"
+          searchTitle="Search integrations"
+          onSearchOpenChange={setSearchOpen}
+          onSearchQueryChange={setSearchQuery}
+        />
+      }
+    >
       <IntegrationsPanel
         loading={isLoading}
         loadingFallback={<IntegrationListSkeleton rows={10} />}
@@ -326,6 +329,6 @@ export default function IntegrationsView({
         onConnect={dialogConnect}
         onDisconnect={dialogDisconnect}
       />
-    </div>
+    </AppScreenShell>
   )
 }

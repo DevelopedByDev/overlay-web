@@ -13,7 +13,8 @@
     "./projects": "./src/projects.tsx",
     "./extensions": "./src/extensions.tsx",
     "./settings": "./src/settings.tsx",
-    "./automations": "./src/automations.tsx"
+    "./automations": "./src/automations.tsx",
+    "./shell": "./src/shell.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

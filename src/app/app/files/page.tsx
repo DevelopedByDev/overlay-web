@@ -47,6 +47,7 @@ export default async function FilesPage({
   searchParams?: Promise<FilesSearchParams>
 }) {
   const session = await getOverlaySession()
+
   if (!session) redirect('/app/chat?signin=nav')
   const layout = resolveFilesLayout(await searchParams)
   return (

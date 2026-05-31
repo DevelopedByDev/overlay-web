@@ -19,6 +19,7 @@ import type {
   KnowledgeOutputFilter as OutputFilter,
   KnowledgeTab as Tab,
 } from '@overlay/app-core'
+import { AppScreenHeader } from '@overlay/modules-react/shell'
 import { FilesCreateUploadControls, OutputFilterMenu } from './KnowledgeToolbarMenus'
 
 const TOOLBAR_ICON_BUTTON_CLASS =
@@ -368,7 +369,8 @@ export function KnowledgeViewHeader({
   onCommitOutputFilter: (filter: OutputFilter) => void
 }) {
   return (
-    <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] px-6">
+    <AppScreenHeader className="px-6">
+      <div className="flex min-w-0 items-center gap-3">
       {selectedFile ? (
         <SelectedFileHeader
           fileTitle={fileTitle}
@@ -484,6 +486,7 @@ export function KnowledgeViewHeader({
           </div>
         </>
       )}
-    </div>
+      </div>
+    </AppScreenHeader>
   )
 }

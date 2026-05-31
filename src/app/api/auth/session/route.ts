@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { getOverlaySession } from '@/server/auth/session'
+import { formatOverlayConfigError, isOverlayConfigError } from '@/server/config'
 import { rateLimitByIp } from '@/server/security/rate-limit'
 
 export async function GET(request: NextRequest) {
@@ -18,6 +19,19 @@ export async function GET(request: NextRequest) {
       user: session.user,
     })
   } catch (error) {
+    if (isOverlayConfigError(error)) {
+      const formatted = formatOverlayConfigError(error)
+      return NextResponse.json(
+        {
+          authenticated: false,
+          error: 'Runtime configuration is invalid',
+          code: 'runtime_config_invalid',
+          issues: formatted.issues,
+        },
+        { status: 503 },
+      )
+    }
+
     logAuthDebug('/api/auth/session error', {
       error: error instanceof Error ? error.message : String(error),
     })

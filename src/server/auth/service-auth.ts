@@ -200,7 +200,6 @@ export async function verifyServiceAuthToken(
 ): Promise<{ userId: string } | null> {
   const trimmed = token?.trim()
   if (!trimmed) {
-    console.error('[service-auth] verify failed: missing token')
     return null
   }
 

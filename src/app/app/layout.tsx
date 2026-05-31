@@ -9,6 +9,7 @@ import { OnboardingProvider } from '@/components/providers/OnboardingProvider'
 import { CapabilitiesProvider } from '@/components/providers/CapabilitiesProvider'
 import { getInitialAutomationsList, getInitialProjectList } from '@/server/app/route-data'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
+import { AppConfigurationErrorState } from './_components/AppConfigurationErrorState'
 
 function AppMainFallback() {
   return (
@@ -22,9 +23,16 @@ function AppMainFallback() {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await getOverlaySession()
+  let session: Awaited<ReturnType<typeof getOverlaySession>>
+  let capabilities: ReturnType<typeof getOverlayCapabilitiesSync>
+  try {
+    session = await getOverlaySession()
+    capabilities = getOverlayCapabilitiesSync()
+  } catch (error) {
+    return <AppConfigurationErrorState error={error} />
+  }
+
   const user = session?.user ?? null
-  const capabilities = getOverlayCapabilitiesSync()
   const [initialProjects, initialAutomations] = user
     ? await Promise.all([
         getInitialProjectList(),

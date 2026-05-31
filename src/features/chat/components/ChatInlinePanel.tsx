@@ -19,6 +19,7 @@ import {
 } from '@/shared/chat/chat-title'
 import { fetchChatList, getCachedChatList, removeCachedChat, upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { SidebarResourceList } from '@/components/layout/sidebar/SidebarResourceSection'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -180,7 +181,7 @@ export function ChatInlinePanel({
     : chats
 
   return (
-    <div className="space-y-0.5">
+    <SidebarResourceList>
       {loading ? (
         <SidebarListSkeleton rows={6} />
       ) : filteredChats.length === 0 ? (
@@ -295,6 +296,6 @@ export function ChatInlinePanel({
           </div>
         )
       })}
-    </div>
+    </SidebarResourceList>
   )
 }

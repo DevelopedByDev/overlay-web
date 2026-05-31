@@ -39,6 +39,7 @@ import {
   KnowledgePendingNotice,
   MemoryDetailDialog,
 } from '@overlay/modules-react/knowledge'
+import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 
 // ─── Main KnowledgeView ───────────────────────────────────────────────────────
 
@@ -593,7 +594,7 @@ export default function KnowledgeView({
   const folderCardsSorted = sortedCurrentFolderFolders(filesFiltered, currentParentId)
 
   return (
-    <div className="flex flex-col h-full">
+    <>
       {showAddMemory && (
         <AddMemoryDialog
           value={addText}
@@ -659,64 +660,68 @@ export default function KnowledgeView({
         />
       )}
 
-      <KnowledgeViewHeader
-        activeFolder={activeFolder}
-        activeTab={activeTab}
-        bulkDeleting={bulkDeleting}
-        createMenuOpen={createMenuOpen}
-        createMenuRef={createMenuRef}
-        fileCount={filesFiltered.length}
-        fileTitle={fileTitle}
-        fileUploadRef={fileUploadRef}
-        folderBreadcrumb={folderBreadcrumb}
-        folderUploadRef={folderUploadRef}
-        isSavingFile={isSavingFile}
-        layout={layout}
-        memoryCount={memoriesFiltered.length}
-        memorySearchOpen={memorySearchOpen}
-        memorySearchQuery={memorySearchQuery}
-        mode={mode}
-        moveFileToParent={(fileId, parentId) => void moveFileToParent(fileId, parentId)}
-        navigateToFolder={navigateToFolder}
-        onBulkDeleteFiles={() => void bulkDeleteFiles()}
-        onBulkDeleteMemories={() => void bulkDeleteMemories()}
-        onBulkDeleteOutputs={() => void bulkDeleteOutputs()}
-        onCloseFile={closeFileDialog}
-        onCommitOutputFilter={commitOutputFilter}
-        onCreateNoteFile={() => void handleCreateNoteFile()}
-        onExitSelectMode={exitSelectMode}
-        onFileTitleChange={handleFileTitleChange}
-        onImportMemory={() => { setShowImportMemory(true); setImportMemoryError(null) }}
-        onNewMemory={() => { setShowAddMemory(true); setMemorySaveError(null) }}
-        onRefreshOutputs={() => setOutputsRefreshKey((k) => k + 1)}
-        onSetMemorySearchOpen={setMemorySearchOpen}
-        onSetMemorySearchQuery={setMemorySearchQuery}
-        onSetSelectMode={setSelectMode}
-        onUpdateQuery={updateQuery}
-        outputFilter={outputFilter}
-        outputFilterOpen={outputFilterOpen}
-        outputFilterRef={outputFilterRef}
-        rootItemCount={rootNodes.length}
-        selectedFile={selectedFile}
-        selectedFileCount={selectedFileIds.size}
-        selectedMemoryCount={selectedMemoryIds.size}
-        selectedOutputCount={selectedOutputIds.size}
-        selectMode={selectMode}
-        setCreateMenuOpen={setCreateMenuOpen}
-        setDialog={setDialog}
-        setDialogName={setDialogName}
-        setOutputFilterOpen={setOutputFilterOpen}
-        setUploadMenuOpen={setUploadMenuOpen}
-        uploadMenuOpen={uploadMenuOpen}
-        uploadMenuRef={uploadMenuRef}
-      />
-
-      {/* ── Main content ── */}
-      <div
-        className={`min-h-0 flex-1 px-6 py-4 ${
-          activeTab === 'outputs' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'
-        }`}
+      <AppScreenShell
+        header={
+          <KnowledgeViewHeader
+            activeFolder={activeFolder}
+            activeTab={activeTab}
+            bulkDeleting={bulkDeleting}
+            createMenuOpen={createMenuOpen}
+            createMenuRef={createMenuRef}
+            fileCount={filesFiltered.length}
+            fileTitle={fileTitle}
+            fileUploadRef={fileUploadRef}
+            folderBreadcrumb={folderBreadcrumb}
+            folderUploadRef={folderUploadRef}
+            isSavingFile={isSavingFile}
+            layout={layout}
+            memoryCount={memoriesFiltered.length}
+            memorySearchOpen={memorySearchOpen}
+            memorySearchQuery={memorySearchQuery}
+            mode={mode}
+            moveFileToParent={(fileId, parentId) => void moveFileToParent(fileId, parentId)}
+            navigateToFolder={navigateToFolder}
+            onBulkDeleteFiles={() => void bulkDeleteFiles()}
+            onBulkDeleteMemories={() => void bulkDeleteMemories()}
+            onBulkDeleteOutputs={() => void bulkDeleteOutputs()}
+            onCloseFile={closeFileDialog}
+            onCommitOutputFilter={commitOutputFilter}
+            onCreateNoteFile={() => void handleCreateNoteFile()}
+            onExitSelectMode={exitSelectMode}
+            onFileTitleChange={handleFileTitleChange}
+            onImportMemory={() => { setShowImportMemory(true); setImportMemoryError(null) }}
+            onNewMemory={() => { setShowAddMemory(true); setMemorySaveError(null) }}
+            onRefreshOutputs={() => setOutputsRefreshKey((k) => k + 1)}
+            onSetMemorySearchOpen={setMemorySearchOpen}
+            onSetMemorySearchQuery={setMemorySearchQuery}
+            onSetSelectMode={setSelectMode}
+            onUpdateQuery={updateQuery}
+            outputFilter={outputFilter}
+            outputFilterOpen={outputFilterOpen}
+            outputFilterRef={outputFilterRef}
+            rootItemCount={rootNodes.length}
+            selectedFile={selectedFile}
+            selectedFileCount={selectedFileIds.size}
+            selectedMemoryCount={selectedMemoryIds.size}
+            selectedOutputCount={selectedOutputIds.size}
+            selectMode={selectMode}
+            setCreateMenuOpen={setCreateMenuOpen}
+            setDialog={setDialog}
+            setDialogName={setDialogName}
+            setOutputFilterOpen={setOutputFilterOpen}
+            setUploadMenuOpen={setUploadMenuOpen}
+            uploadMenuOpen={uploadMenuOpen}
+            uploadMenuRef={uploadMenuRef}
+          />
+        }
       >
+        {/* ── Main content ── */}
+        <AppScreenBody
+          padding="none"
+          maxWidth="none"
+          scroll={activeTab === 'outputs' ? 'hidden' : 'auto'}
+          className={`px-6 py-4 ${activeTab === 'outputs' ? 'flex flex-col' : ''}`}
+        >
         {activeTab === 'files' && selectedFile && (
           <div className={`mx-auto flex min-h-full w-full flex-col ${isEditableType(selectedFile.name) ? 'max-w-5xl' : ''}`}>
             {isEditableType(selectedFile.name) ? (
@@ -800,7 +805,8 @@ export default function KnowledgeView({
             onMove={moveFileToParent}
           />
         )}
-      </div>
-    </div>
+        </AppScreenBody>
+      </AppScreenShell>
+    </>
   )
 }

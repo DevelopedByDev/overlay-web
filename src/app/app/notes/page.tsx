@@ -8,6 +8,7 @@ const NotebookEditor = dynamic(() => import('@/features/notebook/components/Note
 
 export default async function NotesPage() {
   const session = await getOverlaySession()
+
   if (!session) redirect('/app/chat?signin=nav')
   return <NotebookEditor userId={session.user.id} />
 }

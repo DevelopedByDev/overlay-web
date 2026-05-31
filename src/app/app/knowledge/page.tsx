@@ -30,6 +30,7 @@ export default async function KnowledgePage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
   const session = await getOverlaySession()
+
   if (!session) redirect('/app/chat?signin=nav')
   const params = await searchParams
   const rawView = params?.view

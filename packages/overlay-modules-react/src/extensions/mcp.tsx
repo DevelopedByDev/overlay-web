@@ -25,6 +25,7 @@ Zap
 import { useState,type MouseEvent } from 'react'
 
 import { Field } from './shared'
+import { AppScreenBody } from '../shell'
 
 export interface McpServerDialogProps {
   state: { mode: 'create' | 'edit'; server?: McpServerSummary }
@@ -199,7 +200,7 @@ export function McpServersPanel({ loading, servers, filteredServers, onCreate, o
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <AppScreenBody padding="none" maxWidth="none" className="h-full">
       <div className="mx-auto max-w-3xl px-6 py-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredServers.map((server) => (
@@ -207,7 +208,7 @@ export function McpServersPanel({ loading, servers, filteredServers, onCreate, o
           ))}
         </div>
       </div>
-    </div>
+    </AppScreenBody>
   )
 }
 

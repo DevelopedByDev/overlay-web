@@ -4,6 +4,7 @@ import type { KnowledgeFile,MemoryRow,OutputSummary } from '@overlay/app-core'
 import type { TreeNode } from '@overlay/app-core/modules'
 import { Badge,Button,EmptyState,TabButton,TabsList,cn } from '@overlay/ui'
 import { type ReactNode } from 'react'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 
 export interface KnowledgeModuleShellProps {
   title?: ReactNode
@@ -23,27 +24,32 @@ export function KnowledgeModuleShell({
   children,
 }: KnowledgeModuleShellProps) {
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[var(--background)] text-[var(--foreground)]">
-      <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
-        <h1 className="truncate text-sm font-semibold">{title}</h1>
-        <div className="flex shrink-0 items-center gap-2">
-          <TabsList>
-            {tabs.map((tab) => (
-              <TabButton
-                key={tab.id}
-                active={tab.id === activeTab}
-                disabled={tab.disabled}
-                onClick={() => onTabChange?.(tab.id)}
-              >
-                {tab.label}
-              </TabButton>
-            ))}
-          </TabsList>
-          {actions}
-        </div>
-      </header>
-      <div className="min-h-0 flex-1 overflow-auto">{children}</div>
-    </section>
+    <AppScreenShell
+      header={
+        <AppScreenHeader className="min-h-14 px-4">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <h1 className="truncate text-sm font-semibold">{title}</h1>
+            <div className="flex shrink-0 items-center gap-2">
+              <TabsList>
+                {tabs.map((tab) => (
+                  <TabButton
+                    key={tab.id}
+                    active={tab.id === activeTab}
+                    disabled={tab.disabled}
+                    onClick={() => onTabChange?.(tab.id)}
+                  >
+                    {tab.label}
+                  </TabButton>
+                ))}
+              </TabsList>
+              {actions}
+            </div>
+          </div>
+        </AppScreenHeader>
+      }
+    >
+      <AppScreenBody padding="none" maxWidth="none">{children}</AppScreenBody>
+    </AppScreenShell>
   )
 }
 

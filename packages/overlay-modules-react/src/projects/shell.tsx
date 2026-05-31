@@ -9,6 +9,7 @@ ProjectSummary
 import type { TreeNode } from '@overlay/app-core/modules'
 import { Badge,Button,EmptyState,cn } from '@overlay/ui'
 import { type ReactNode } from 'react'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 
 export interface ProjectsModuleShellProps {
   projects: readonly TreeNode<ProjectSummary>[]
@@ -34,19 +35,24 @@ export function ProjectsModuleShell({
   onDeleteProject,
 }: ProjectsModuleShellProps) {
   return (
-    <section className="flex h-full min-h-0 bg-[var(--background)] text-[var(--foreground)]">
-      <aside className="flex w-72 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
-        <div className="flex min-h-14 items-center justify-between gap-2 border-b border-[var(--border)] px-3">
-          <h1 className="text-sm font-semibold">Projects</h1>
-          <div className="flex items-center gap-1">
-            {sidebarActions}
-            {onCreateProject ? (
-              <Button size="sm" variant="ghost" onClick={onCreateProject}>
-                New
-              </Button>
-            ) : null}
-          </div>
-        </div>
+    <AppScreenShell
+      sidebarBehavior="always"
+      sidebarClassName="w-72"
+      sidebar={
+        <>
+          <AppScreenHeader className="min-h-14 px-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h1 className="text-sm font-semibold">Projects</h1>
+              <div className="flex items-center gap-1">
+                {sidebarActions}
+                {onCreateProject ? (
+                  <Button size="sm" variant="ghost" onClick={onCreateProject}>
+                    New
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </AppScreenHeader>
         <ProjectTree
           nodes={projects}
           selectedProjectId={selectedProjectId}
@@ -55,11 +61,13 @@ export function ProjectsModuleShell({
           onRenameProject={onRenameProject}
           onDeleteProject={onDeleteProject}
         />
-      </aside>
-      <main className="min-w-0 flex-1 overflow-auto">
+        </>
+      }
+    >
+      <AppScreenBody padding="none" maxWidth="none">
         {detail ?? <EmptyState className="h-full" title="Select a project" />}
-      </main>
-    </section>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }
 

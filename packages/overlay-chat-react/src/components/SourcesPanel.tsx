@@ -14,10 +14,12 @@ export function SourcesPanel({
   open,
   onClose,
   sources,
+  variant = 'inline',
 }: {
   open: boolean
   onClose: () => void
   sources: WebSourceItem[]
+  variant?: 'inline' | 'shell'
 }) {
   useEffect(() => {
     if (!open) return
@@ -28,15 +30,21 @@ export function SourcesPanel({
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
+  const shellPanel = variant === 'shell'
+
   return (
     <aside
       aria-label="Sources"
       aria-hidden={!open}
-      className={`hidden h-full shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--background)] transition-[width] duration-200 md:flex ${
-        open ? 'w-[min(40vw,380px)]' : 'w-0 border-l-0'
-      }`}
+      className={
+        shellPanel
+          ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--background)]'
+          : `hidden h-full shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--background)] transition-[width] duration-200 md:flex ${
+              open ? 'w-[min(40vw,380px)]' : 'w-0 border-l-0'
+            }`
+      }
     >
-      <div className="flex h-full w-[min(40vw,380px)] flex-col">
+      <div className={shellPanel ? 'flex h-full min-h-0 w-full flex-col' : 'flex h-full w-[min(40vw,380px)] flex-col'}>
         <div className="flex h-16 min-h-16 max-h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
           <h2 className="text-sm font-medium text-[var(--foreground)]">Sources</h2>
           <button

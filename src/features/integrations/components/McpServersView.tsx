@@ -22,6 +22,7 @@ import {
   type McpTestResultState,
   type TestMcpServerResponse,
 } from '@overlay/app-core'
+import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -110,26 +111,28 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <ExtensionPageHeader
-        title="MCP Servers"
-        searchOpen={searchOpen}
-        searchQuery={searchQuery}
-        searchPlaceholder="Search servers…"
-        searchTitle="Search servers"
-        action={(
-          <button
-            onClick={() => setDialog({ mode: 'create' })}
-            className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
-          >
-            <Plus size={12} />
-            Add Server
-          </button>
-        )}
-        onSearchOpenChange={setSearchOpen}
-        onSearchQueryChange={setSearchQuery}
-      />
-
+    <AppScreenShell
+      header={
+        <ExtensionPageHeader
+          title="MCP Servers"
+          searchOpen={searchOpen}
+          searchQuery={searchQuery}
+          searchPlaceholder="Search servers…"
+          searchTitle="Search servers"
+          action={(
+            <button
+              onClick={() => setDialog({ mode: 'create' })}
+              className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+            >
+              <Plus size={12} />
+              Add Server
+            </button>
+          )}
+          onSearchOpenChange={setSearchOpen}
+          onSearchQueryChange={setSearchQuery}
+        />
+      }
+    >
       <McpServersPanel
         loading={loading}
         servers={servers}
@@ -148,6 +151,6 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
           onTest={handleTestServer}
         />
       ) : null}
-    </div>
+    </AppScreenShell>
   )
 }

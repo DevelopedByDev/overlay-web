@@ -19,6 +19,7 @@ X
 import { useEffect,useRef,useState,type MouseEvent } from 'react'
 
 import { Field } from './shared'
+import { AppScreenBody } from '../shell'
 
 export interface SkillDialogProps {
   state: { mode: 'create' | 'edit'; skill?: SkillSummary }
@@ -190,7 +191,7 @@ export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit,
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <AppScreenBody padding="none" maxWidth="none" className="h-full">
       <div className="mx-auto max-w-3xl px-6 py-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredSkills.map((skill) => (
@@ -198,7 +199,7 @@ export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit,
           ))}
         </div>
       </div>
-    </div>
+    </AppScreenBody>
   )
 }
 

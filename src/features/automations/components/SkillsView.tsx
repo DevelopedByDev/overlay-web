@@ -18,6 +18,7 @@ import {
   type SkillFormValues,
   type SkillSummary,
 } from '@overlay/app-core'
+import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, SkillDialog, SkillsPanel } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -98,26 +99,28 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <ExtensionPageHeader
-        title="Skills"
-        searchOpen={searchOpen}
-        searchQuery={searchQuery}
-        searchPlaceholder="Search skills…"
-        searchTitle="Search skills"
-        action={(
-          <button
-            onClick={() => setDialog({ mode: 'create' })}
-            className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
-          >
-            <Plus size={12} />
-            New Skill
-          </button>
-        )}
-        onSearchOpenChange={setSearchOpen}
-        onSearchQueryChange={setSearchQuery}
-      />
-
+    <AppScreenShell
+      header={
+        <ExtensionPageHeader
+          title="Skills"
+          searchOpen={searchOpen}
+          searchQuery={searchQuery}
+          searchPlaceholder="Search skills…"
+          searchTitle="Search skills"
+          action={(
+            <button
+              onClick={() => setDialog({ mode: 'create' })}
+              className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+            >
+              <Plus size={12} />
+              New Skill
+            </button>
+          )}
+          onSearchOpenChange={setSearchOpen}
+          onSearchQueryChange={setSearchQuery}
+        />
+      }
+    >
       <SkillsPanel
         loading={loading}
         skills={skills}
@@ -135,6 +138,6 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
           onDelete={handleDeleteSkill}
         />
       ) : null}
-    </div>
+    </AppScreenShell>
   )
 }

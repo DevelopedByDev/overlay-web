@@ -111,6 +111,13 @@ export function formatOverlayConfigError(error: unknown): { message: string; iss
   return { message: 'Overlay runtime configuration is invalid', issues: [String(error)] }
 }
 
+export function isOverlayConfigError(error: unknown): error is OverlayConfigError {
+  if (error instanceof OverlayConfigError) return true
+  if (!(error instanceof Error) || error.name !== 'OverlayConfigError') return false
+  const candidate = error as Error & { issues?: unknown }
+  return Array.isArray(candidate.issues) && candidate.issues.every((issue) => typeof issue === 'string')
+}
+
 function parseConfigOrThrow(value: unknown): OverlayRuntimeConfig {
   try {
     return parseOverlayRuntimeConfig(value)

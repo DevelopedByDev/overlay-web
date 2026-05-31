@@ -48,7 +48,6 @@ export interface AppSettings {
   theme: ThemePreference
   lightThemePreset: ThemePresetId
   darkThemePreset: ThemePresetId
-  useSecondarySidebar: boolean
   chatStreamingMode: ChatStreamingMode
   autoContinue: boolean
   defaultChatMode: ChatModePreference
@@ -69,7 +68,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: 'light',
   lightThemePreset: 'default-light',
   darkThemePreset: 'default-dark',
-  useSecondarySidebar: false,
   chatStreamingMode: 'token',
   autoContinue: false,
   defaultChatMode: 'act',

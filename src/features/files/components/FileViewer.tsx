@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { FileText, Music, FileQuestion, Download, Loader2, FileType } from 'lucide-react'
 import { safeHttpUrl } from '@/shared/security/safe-url'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 
 // ─── Type detection ───────────────────────────────────────────────────────────
 
@@ -353,16 +354,22 @@ export function FileViewerPanel({
   const editable = isEditable && (type === 'text' || type === 'markdown') && onContentChange
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
-        <span className="truncate text-sm font-medium text-[var(--foreground)]">{name}</span>
-        <div className="flex items-center gap-2">
-          {isSaving && (
-            <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--muted-light)]">Saving...</span>
-          )}
-          {headerRight}
-        </div>
-      </div>
+    <AppScreenShell
+      header={
+        <AppScreenHeader className="px-6">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <span className="truncate text-sm font-medium text-[var(--foreground)]">{name}</span>
+            <div className="flex shrink-0 items-center gap-2">
+              {isSaving ? (
+                <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--muted-light)]">Saving...</span>
+              ) : null}
+              {headerRight}
+            </div>
+          </div>
+        </AppScreenHeader>
+      }
+    >
+      <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full flex-col">
       {editable ? (
         <>
           <textarea
@@ -381,6 +388,7 @@ export function FileViewerPanel({
       ) : (
         <FileViewer name={name} content={content} url={url} />
       )}
-    </div>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }

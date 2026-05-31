@@ -23,6 +23,7 @@ async function ChatRouteContent({
 
 export default async function ChatPage() {
   const session = await getOverlaySession()
+
   return (
     <Suspense fallback={<ChatRouteSkeleton />}>
       <ChatRouteContent

@@ -18,6 +18,7 @@ import {
   runtimeConfigErrorResponse,
 } from '@/server/capabilities'
 import { parseApiBoundaryInput } from '@/server/app-api/boundary'
+import { isOverlayConfigError } from '@/server/config'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -60,20 +61,32 @@ export async function handleBffRoute(
   const clientIp = getClientIp(request)
   const bearer = getBearerToken(request)
   if (isApiKeyCandidate(bearer)) {
-    const apiKeyCandidateLimit = await enforceRateLimits(
-      request,
-      API_KEY_CANDIDATE_RATE_LIMITS.map((rule) => ({ ...rule, key: clientIp })),
-    )
+    let apiKeyCandidateLimit: Response | null
+    try {
+      apiKeyCandidateLimit = await enforceRateLimits(
+        request,
+        API_KEY_CANDIDATE_RATE_LIMITS.map((rule) => ({ ...rule, key: clientIp })),
+      )
+    } catch (error) {
+      if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
+      throw error
+    }
     if (apiKeyCandidateLimit) return apiKeyCandidateLimit
   }
 
-  const auth = await resolveAuthenticatedAppUser(request, parsedInput.parsedJson, {
-    clientIp,
-    requiredApiKeyScopes: getRequiredApiKeyScopesForRoute(
-      request.method,
-      request.nextUrl.pathname,
-    ),
-  })
+  let auth
+  try {
+    auth = await resolveAuthenticatedAppUser(request, parsedInput.parsedJson, {
+      clientIp,
+      requiredApiKeyScopes: getRequiredApiKeyScopesForRoute(
+        request.method,
+        request.nextUrl.pathname,
+      ),
+    })
+  } catch (error) {
+    if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
+    throw error
+  }
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const rateLimits = getEndpointRateLimitSpecs({
@@ -86,7 +99,13 @@ export async function handleBffRoute(
     rateLimits.push({ ...API_KEY_REQUEST_RATE_LIMIT, key: auth.apiKeyId })
   }
   if (rateLimits.length > 0) {
-    const rateLimitResponse = await enforceRateLimits(request, rateLimits)
+    let rateLimitResponse: Response | null
+    try {
+      rateLimitResponse = await enforceRateLimits(request, rateLimits)
+    } catch (error) {
+      if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
+      throw error
+    }
     if (rateLimitResponse) return rateLimitResponse
     markRateLimitsSatisfied(request)
   }
