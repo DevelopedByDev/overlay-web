@@ -6,7 +6,7 @@ import { MediaSlotOutput, UserMessageBubble } from '@overlay/chat-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
-import { getMessageImages, getMessageText, getUserReplyThreadMeta, getUserTurnId } from './chat-interface/chatLogic'
+import { getMessageImageAttachments, getMessageText, getUserReplyThreadMeta, getUserTurnId } from './chat-interface/chatLogic'
 import type { GenerationResult } from './chat-interface/types'
 import { FlashCopyIconButton } from './chat-interface/Modals'
 
@@ -22,6 +22,7 @@ export type ChatMediaMessageProps = {
   onJumpToReply: (turnId: string) => void
   onDeleteTurn: (turnId: string) => void | Promise<void>
   onReplyToMediaPrompt: (prompt: string, kind: 'image' | 'video', turnId: string | null) => void
+  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
 }
 
 export function ChatMediaMessage({
@@ -36,6 +37,7 @@ export function ChatMediaMessage({
   onJumpToReply,
   onDeleteTurn,
   onReplyToMediaPrompt,
+  onOpenAttachmentPreview,
 }: ChatMediaMessageProps) {
   let modelList = exchangeModels
   if (modelList.length === 0) {
@@ -73,7 +75,7 @@ export function ChatMediaMessage({
       {replyMeta && (
         <ReplyAnchor snippet={replyMeta.replySnippet} onClick={() => onJumpToReply(replyMeta.replyToTurnId)} />
       )}
-      <UserPromptBubble message={message} text={promptText} />
+      <UserPromptBubble message={message} text={promptText} onOpenAttachmentPreview={onOpenAttachmentPreview} />
       <div
         className={`min-w-0 w-full ${isMulti ? 'grid grid-cols-1 gap-2 sm:grid-cols-2' : 'flex flex-col gap-1.5 items-start'} ${
           stillGenerating && !isMulti ? (kind === 'video' ? 'min-h-40' : 'min-h-52') : ''
@@ -125,15 +127,35 @@ function ReplyAnchor({ snippet, onClick }: { snippet: string; onClick: () => voi
   )
 }
 
-function UserPromptBubble({ message, text }: { message: UIMessage; text: string }) {
-  const images = getMessageImages(message)
+function UserPromptBubble({
+  message,
+  text,
+  onOpenAttachmentPreview,
+}: {
+  message: UIMessage
+  text: string
+  onOpenAttachmentPreview: ChatMediaMessageProps['onOpenAttachmentPreview']
+}) {
+  const images = getMessageImageAttachments(message)
   return (
     <div className="flex justify-end">
       <UserMessageBubble className="max-w-[min(92%,36rem)] sm:max-w-[75%]">
         {images.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
-            {images.map((imgUrl, imgIdx) => (
-              <Image key={imgIdx} src={imgUrl} alt="Reference image" width={144} height={144} unoptimized className="h-auto max-h-36 w-auto rounded-lg object-cover" />
+            {images.map((image, imgIdx) => (
+              <button
+                key={`${image.url}-${imgIdx}`}
+                type="button"
+                onClick={() => onOpenAttachmentPreview({
+                  name: image.name,
+                  content: image.url,
+                  url: image.url,
+                })}
+                className="rounded-lg outline-none transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-subtle)]"
+                title="Open attachment"
+              >
+                <Image src={image.url} alt={image.name} width={144} height={144} unoptimized className="h-auto max-h-36 w-auto rounded-lg object-cover" />
+              </button>
             ))}
           </div>
         )}

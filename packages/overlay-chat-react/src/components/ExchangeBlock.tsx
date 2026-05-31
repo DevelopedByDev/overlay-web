@@ -26,12 +26,24 @@ import {
   renderInlineMentions,
 } from './exchange'
 
+export type UserImageAttachment = {
+  url: string
+  name: string
+  mediaType?: string
+}
+
+export type AttachmentPreviewRequest = {
+  name: string
+  content: string
+  url?: string
+}
+
 export interface ExchangeBlockProps {
   userMsgId: string
   userBodyText: string
   userDocumentNames: string[]
   userIndexedAttachments?: { name: string; fileIds: string[] }[]
-  userImages: string[]
+  userImages: UserImageAttachment[]
   exchIdx: number
   /** Model id for this tab — stable key for markdown remount when picker slots change */
   responseModelId: string
@@ -65,6 +77,7 @@ export interface ExchangeBlockProps {
   onRetry?: () => void
   retryDisabled?: boolean
   onOpenFilePreview?: (name: string, fileIds: string[]) => void
+  onOpenAttachmentPreview?: (preview: AttachmentPreviewRequest) => void
   userMentions?: Array<{ type: string; id: string; name: string }>
   onContinue?: () => void
   getModelDisplayName: (modelId: string) => string
@@ -74,7 +87,7 @@ export function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, userMentions, onContinue, getModelDisplayName,
+  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -126,9 +139,24 @@ export function ExchangeBlock({
             )}
             {userImages.length > 0 && (
               <div className="flex w-full flex-wrap justify-end gap-1.5">
-                {userImages.map((src, i) => (
-                  <img key={i} src={src} alt="attached"
-                    className="max-w-[200px] max-h-[200px] rounded-xl object-cover" />
+                {userImages.map((attachment, i) => (
+                  <button
+                    key={`${attachment.url}-${i}`}
+                    type="button"
+                    onClick={() => onOpenAttachmentPreview?.({
+                      name: attachment.name,
+                      content: attachment.url,
+                      url: attachment.url,
+                    })}
+                    className="group rounded-xl outline-none transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                    title="Open attachment"
+                  >
+                    <img
+                      src={attachment.url}
+                      alt={attachment.name}
+                      className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-[var(--border)]"
+                    />
+                  </button>
                 ))}
               </div>
             )}
@@ -287,22 +315,37 @@ export function ExchangeBlock({
             const isImg = (block.mediaType?.startsWith('image/') ?? true)
             const isVideo = block.mediaType?.startsWith('video/') ?? false
             if (!isImg && !isVideo) return null
+            const previewName = isImg ? 'generated-image.png' : 'generated-video.mp4'
             return (
               <div key={`${exchIdx}-seq-${seg.originIndex}-file`} className="w-full px-1 py-1">
                 {isImg ? (
-                  <img
-                    src={block.url}
-                    alt="Generated"
-                    className="max-w-full max-h-[320px] rounded-xl border border-[var(--border)] object-contain"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })}
+                    className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                    title="Open attachment"
+                  >
+                    <img
+                      src={block.url}
+                      alt="Generated"
+                      className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
+                    />
+                  </button>
                 ) : (
-                  <video
-                    src={block.url}
-                    controls
-                    preload="metadata"
-                    playsInline
-                    className="max-w-full max-h-[320px] rounded-xl border border-[var(--border)] object-contain"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })}
+                    className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                    title="Open attachment"
+                  >
+                    <video
+                      src={block.url}
+                      controls
+                      preload="metadata"
+                      playsInline
+                      className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
+                    />
+                  </button>
                 )}
               </div>
             )

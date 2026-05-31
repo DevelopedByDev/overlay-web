@@ -10,7 +10,7 @@ export interface StartActTextStreamParams {
   textSlotCount: number
   selectedActModel: string
   turnId: string
-  partsForModel: Array<{ type: string; text?: string; url?: string; mediaType?: string }>
+  partsForModel: Array<{ type: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
   userMetadata?: ChatMessageMetadata
   commonBody: Record<string, unknown>
   isChatActive: (chatId: string) => boolean

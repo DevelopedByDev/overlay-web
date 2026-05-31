@@ -49,6 +49,8 @@ export type ChatComposerProps = {
   onPaste: ClipboardEventHandler
   onAddImages: (files: FileList | File[]) => void
   onAddDocumentsFromPicker: (files: FileList | File[] | null) => void
+  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
+  onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   supportsVision: boolean
   showAttachMenu: boolean
   setShowAttachMenu: Dispatch<SetStateAction<boolean>>

@@ -13,7 +13,7 @@ import {
   assistantBlocksToPlainText,
   buildAssistantVisualSequence,
   errorLabel,
-  getMessageImages,
+  getMessageImageAttachments,
   getMessageText,
   getRoutedModelId,
   getUserMessageDocNames,
@@ -58,6 +58,7 @@ type TextChatMessageProps = CommonMessageProps & {
   onOpenSources: Parameters<typeof ChatToolSurface>[0]['onOpenSources']
   onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, exchangeModels: string[]) => void | Promise<void>
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
+  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
   onContinue: () => void
 }
 
@@ -155,7 +156,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       userBodyText={metaDocs.length > 0 ? rawUserText.trim() : bodyText}
       userDocumentNames={metaDocs.length > 0 ? metaDocs : parsedDocNames}
       userIndexedAttachments={(message as { metadata?: { indexedAttachments?: { name: string; fileIds: string[] }[] } }).metadata?.indexedAttachments ?? []}
-      userImages={getMessageImages(message)}
+      userImages={getMessageImageAttachments(message)}
       exchIdx={exchangeIndex}
       responseModelId={selectedModelId}
       assistantVisualBlocks={assistantVisualBlocks}
@@ -184,6 +185,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       onRetry={() => props.onRetry(message, exchangeIndex, isActExchange, modelList)}
       retryDisabled={!turnId || isExiting || (isLatest && isActiveLoading) || instLoading}
       onOpenFilePreview={props.onOpenFilePreview}
+      onOpenAttachmentPreview={props.onOpenAttachmentPreview}
       userMentions={(message as { metadata?: { mentions?: Array<{ type: string; id: string; name: string }> } }).metadata?.mentions}
       onContinue={(['[Request timed out after 300s. Continue?]', '[Interrupted by user. Continue?]'] as const).some((s) => assistantPlainForReply.includes(s)) ? props.onContinue : undefined}
       getModelDisplayName={getChatModelDisplayName}

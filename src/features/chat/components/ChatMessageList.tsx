@@ -41,6 +41,7 @@ type ChatMessageListProps = {
   onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
   onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, exchangeModels: string[]) => void | Promise<void>
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
+  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
   onContinue: () => void
 }
 
@@ -76,6 +77,7 @@ export function ChatMessageList({
   onOpenSources,
   onRetry,
   onOpenFilePreview,
+  onOpenAttachmentPreview,
   onContinue,
 }: ChatMessageListProps) {
   return (
@@ -116,6 +118,7 @@ export function ChatMessageList({
             onOpenSources={onOpenSources}
             onRetry={onRetry}
             onOpenFilePreview={onOpenFilePreview}
+            onOpenAttachmentPreview={onOpenAttachmentPreview}
             onContinue={onContinue}
           />
         )}
@@ -149,6 +152,7 @@ function ChatMessages(props: Omit<ChatMessageListProps, 'messagesScrollRef' | 'm
           onJumpToReply={props.onJumpToReply}
           onDeleteTurn={props.onDeleteTurn}
           onReplyToMediaPrompt={props.onReplyToMediaPrompt}
+          onOpenAttachmentPreview={props.onOpenAttachmentPreview}
         />,
       )
       continue
@@ -182,9 +186,10 @@ function ChatMessages(props: Omit<ChatMessageListProps, 'messagesScrollRef' | 'm
         onOpenDraft={props.onOpenDraft}
         onOpenSources={(turnId: string, sources: WebSourceItem[]) => props.onOpenSources(turnId, sources)}
         onRetry={props.onRetry}
-        onOpenFilePreview={props.onOpenFilePreview}
-        onContinue={props.onContinue}
-      />,
+          onOpenFilePreview={props.onOpenFilePreview}
+          onOpenAttachmentPreview={props.onOpenAttachmentPreview}
+          onContinue={props.onContinue}
+        />,
     )
   }
 
