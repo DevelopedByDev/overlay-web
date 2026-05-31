@@ -6,6 +6,8 @@ import {
   ChevronDown,
   FileText,
   ImageIcon,
+  Maximize2,
+  PanelRightOpen,
   X,
   Check,
   FolderOpen,
@@ -70,7 +72,7 @@ import { useChatBillingControls } from './chat/useChatBillingControls'
 import { useDraftReviewActions } from './chat/useDraftReviewActions'
 import { useEmptyChatStarters } from './chat/useEmptyChatStarters'
 import { useChatPreferences } from './chat/useChatPreferences'
-import { useChatPanels } from './chat/useChatPanels'
+import { useChatPanels, type AttachmentPreview, type AttachmentPreviewMode } from './chat/useChatPanels'
 import { useChatRuntimes } from './chat/useChatRuntimes'
 import { useComposerTextState } from './chat/useComposerTextState'
 import {
@@ -221,12 +223,14 @@ export default function ChatInterface({
   const [, forceLiveSyncRender] = useState(0)
   const [runtimeHydrationVersion, setRuntimeHydrationVersion] = useState(0)
   const {
-    closeFilePreview,
+    attachmentPreview,
+    attachmentPreviewMode,
+    closeAttachmentPreview,
     closeSourcesPanel,
-    filePreview,
-    filePreviewContent,
+    openAttachmentPreview,
     openFilePreview,
     openSourcesPanel,
+    setAttachmentPreviewMode,
     setSourcesPanel,
     sourcesPanel,
   } = useChatPanels()
@@ -2415,7 +2419,7 @@ export default function ChatInterface({
         textSlotCount: retrySlots,
         selectedActModel: modelId,
         turnId,
-        partsForModel: partsForModel as Array<{ type: string; text?: string; url?: string; mediaType?: string }>,
+        partsForModel: partsForModel as Array<{ type: string; text?: string; url?: string; mediaType?: string; fileName?: string }>,
         userMetadata: meta,
         commonBody: baseBody,
         isChatActive: (id) => activeChatIdRef.current === id,
@@ -2511,10 +2515,10 @@ export default function ChatInterface({
       const mediaSessionMode = 'act'
       const mediaTurnId = crypto.randomUUID()
       const activeModels = effectiveGenType === 'image' ? selectedImageModelsSnapshot : selectedVideoModelsSnapshot
-      const mediaUserMessageParts: { type: string; text?: string; url?: string; mediaType?: string }[] = []
+      const mediaUserMessageParts: { type: string; text?: string; url?: string; mediaType?: string; fileName?: string }[] = []
       if (text) mediaUserMessageParts.push({ type: 'text', text })
       for (const img of attachedImagesSnapshot) {
-        mediaUserMessageParts.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType })
+        mediaUserMessageParts.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType, fileName: img.name })
       }
       const mediaUserMessage = {
         id: mediaTurnId,
@@ -2705,11 +2709,11 @@ export default function ChatInterface({
     const wasFirst = isFirstMessage
     const textTurnId = crypto.randomUUID()
 
-    type UiPart = { type: string; text?: string; url?: string; mediaType?: string }
+    type UiPart = { type: string; text?: string; url?: string; mediaType?: string; fileName?: string }
     const partsForModel: UiPart[] = []
     if (text.trim()) partsForModel.push({ type: 'text', text: text.trim() })
     for (const img of attachedImages) {
-      partsForModel.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType })
+      partsForModel.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType, fileName: img.name })
     }
     const partsForPersist: UiPart[] = [...partsForModel]
     if (indexedFileNames.length > 0) {
@@ -3799,6 +3803,7 @@ export default function ChatInterface({
             onOpenSources={openSourcesPanel}
             onRetry={handleRetryExchange}
             onOpenFilePreview={openFilePreview}
+            onOpenAttachmentPreview={openAttachmentPreview}
             onContinue={handleContinue}
           />
         )}
@@ -3890,6 +3895,8 @@ export default function ChatInterface({
             onPaste={handlePaste}
             onAddImages={addImages}
             onAddDocumentsFromPicker={addDocumentsFromPicker}
+            onOpenAttachmentPreview={openAttachmentPreview}
+            onOpenFilePreview={openFilePreview}
             supportsVision={supportsVision}
             showAttachMenu={showAttachMenu}
             setShowAttachMenu={setShowAttachMenu}
@@ -3932,35 +3939,21 @@ export default function ChatInterface({
         sources={sourcesPanel?.sources ?? []}
       />
 
-      {/* File preview dialog */}
-      {filePreview && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) closeFilePreview() }}
-        >
-          <div
-            className="flex max-h-[min(92vh,900px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-2">
-              <span className="truncate text-sm font-medium text-[var(--foreground)]">{filePreview.name}</span>
-              <button
-                type="button"
-                onClick={closeFilePreview}
-                className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div className="flex min-h-[min(75vh,720px)] flex-1 flex-col overflow-hidden">
-              <FileViewerPanel
-                name={filePreview.name}
-                content={filePreviewContent}
-                url={`/api/v1/files/${filePreview.fileId}/content`}
-              />
-            </div>
-          </div>
-        </div>
+      {attachmentPreview && attachmentPreviewMode === 'panel' && (
+        <AttachmentPreviewPanel
+          preview={attachmentPreview}
+          mode="panel"
+          onClose={closeAttachmentPreview}
+          onModeChange={setAttachmentPreviewMode}
+        />
+      )}
+
+      {attachmentPreview && attachmentPreviewMode === 'dialog' && (
+        <AttachmentPreviewDialog
+          preview={attachmentPreview}
+          onClose={closeAttachmentPreview}
+          onModeChange={setAttachmentPreviewMode}
+        />
       )}
 
       <ConfirmDialog
@@ -3971,6 +3964,110 @@ export default function ChatInterface({
         onConfirm={() => void performDeleteChat()}
         onCancel={() => setConfirmDeleteChat(null)}
       />
+    </div>
+  )
+}
+
+function AttachmentPreviewHeaderActions({
+  mode,
+  onClose,
+  onModeChange,
+}: {
+  mode: AttachmentPreviewMode
+  onClose: () => void
+  onModeChange: (mode: AttachmentPreviewMode) => void
+}) {
+  const nextMode = mode === 'panel' ? 'dialog' : 'panel'
+  const label = mode === 'panel' ? 'Open as floating dialog' : 'Open in side panel'
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => onModeChange(nextMode)}
+        className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        aria-label={label}
+        title={label}
+      >
+        {mode === 'panel' ? <Maximize2 size={15} strokeWidth={1.75} /> : <PanelRightOpen size={15} strokeWidth={1.75} />}
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        aria-label="Close attachment preview"
+        title="Close"
+      >
+        <X size={16} strokeWidth={1.75} />
+      </button>
+    </>
+  )
+}
+
+function AttachmentPreviewPanel({
+  preview,
+  mode,
+  onClose,
+  onModeChange,
+}: {
+  preview: AttachmentPreview
+  mode: AttachmentPreviewMode
+  onClose: () => void
+  onModeChange: (mode: AttachmentPreviewMode) => void
+}) {
+  return (
+    <aside
+      aria-label="Attachment preview"
+      className="fixed inset-y-0 right-0 z-40 flex w-[min(100vw,440px)] shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-18px_0_45px_rgba(0,0,0,0.12)] md:relative md:inset-auto md:z-auto md:h-full md:w-[min(42vw,440px)] md:shadow-none"
+    >
+      <FileViewerPanel
+        name={preview.name}
+        content={preview.content}
+        url={preview.url}
+        headerRight={
+          <AttachmentPreviewHeaderActions
+            mode={mode}
+            onClose={onClose}
+            onModeChange={onModeChange}
+          />
+        }
+      />
+    </aside>
+  )
+}
+
+function AttachmentPreviewDialog({
+  preview,
+  onClose,
+  onModeChange,
+}: {
+  preview: AttachmentPreview
+  onClose: () => void
+  onModeChange: (mode: AttachmentPreviewMode) => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
+    >
+      <div
+        role="dialog"
+        aria-label="Attachment preview"
+        className="flex max-h-[min(92vh,900px)] min-h-[min(70vh,720px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <FileViewerPanel
+          name={preview.name}
+          content={preview.content}
+          url={preview.url}
+          headerRight={
+            <AttachmentPreviewHeaderActions
+              mode="dialog"
+              onClose={onClose}
+              onModeChange={onModeChange}
+            />
+          }
+        />
+      </div>
     </div>
   )
 }

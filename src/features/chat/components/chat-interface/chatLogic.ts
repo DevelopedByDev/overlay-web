@@ -427,11 +427,34 @@ export function computeToolChainFlags(segments: AssistantVisualSegment[]): Array
       i < segments.length - 1 && isToolChainSegment(seg) && isToolChainSegment(segments[i + 1]!),
   }))
 }
-export function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; mediaType?: string }> }): string[] {
+export type MessageImageAttachment = {
+  url: string
+  name: string
+  mediaType?: string
+}
+
+function extensionFromMediaType(mediaType?: string): string {
+  if (!mediaType?.startsWith('image/')) return 'png'
+  const subtype = mediaType.split('/')[1]?.split(';')[0]?.trim().toLowerCase()
+  if (!subtype) return 'png'
+  if (subtype === 'jpeg') return 'jpg'
+  if (subtype === 'svg+xml') return 'svg'
+  return subtype
+}
+
+export function getMessageImageAttachments(msg: { parts?: Array<{ type: string; url?: string; mediaType?: string; fileName?: string; filename?: string }> }): MessageImageAttachment[] {
   if (!msg.parts) return []
   return msg.parts
     .filter((p) => p.type === 'file' && p.url && (p.mediaType?.startsWith('image/') ?? true))
-    .map((p) => p.url!)
+    .map((p, index) => ({
+      url: p.url!,
+      name: p.fileName?.trim() || p.filename?.trim() || `image-${index + 1}.${extensionFromMediaType(p.mediaType)}`,
+      ...(p.mediaType ? { mediaType: p.mediaType } : {}),
+    }))
+}
+
+export function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; mediaType?: string; fileName?: string; filename?: string }> }): string[] {
+  return getMessageImageAttachments(msg).map((attachment) => attachment.url)
 }
 
 export function getUserMessageDocNames(msg: unknown): string[] {
