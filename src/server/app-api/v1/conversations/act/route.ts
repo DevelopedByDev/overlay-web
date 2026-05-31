@@ -123,7 +123,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       automationExecution?: boolean
       mediaToolIntent?: 'image' | 'video' | null
       actAbortTimeoutMs?: number
-      streamPersistenceMode?: 'convex-deltas' | 'cloudflare-relay'
+      streamPersistenceMode?: 'convex-deltas' | 'cloudflare-relay' | 'direct'
       mentions?: Array<{ type: string; id: string; name: string; fileIds?: string[] }>
       multiModelSlotIndex?: number
       multiModelTotal?: number

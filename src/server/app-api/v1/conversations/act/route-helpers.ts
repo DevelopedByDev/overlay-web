@@ -12,7 +12,7 @@ export const MIN_ACT_ABORT_TIMEOUT_MS = 30_000
 export const MAX_ACT_ABORT_TIMEOUT_MS = 780_000
 export const MAX_ACT_MODEL_ATTEMPTS = 5
 
-export type ActStreamPersistenceMode = 'convex-deltas' | 'cloudflare-relay'
+export type ActStreamPersistenceMode = 'convex-deltas' | 'cloudflare-relay' | 'direct'
 
 export interface ActMultiModelState {
   isMultiModelFollowUpSlot: boolean
@@ -120,6 +120,14 @@ export function resolveActStreamPersistence(params: {
   mode: ActStreamPersistenceMode
   useCloudflareStreamRelay: boolean
 } {
+  if (params.requestedMode === 'direct') {
+    return {
+      mode: 'direct',
+      useCloudflareStreamRelay: false,
+      ignoredUnverifiedRelay: false,
+    }
+  }
+
   const useCloudflareStreamRelay =
     params.requestedMode === 'cloudflare-relay' && params.verifiedCloudflareRelay
   return {

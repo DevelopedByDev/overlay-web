@@ -27,7 +27,7 @@ export function GenerationModeToggle({
   const stretch = layout === 'stretch'
   return (
     <div
-      className={`flex items-center rounded-lg bg-[var(--surface-subtle)] p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
+      className={`flex h-8 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
     >
       {MODES.map(({ value, label, Icon }) => {
         const active = mode === value
@@ -41,7 +41,7 @@ export function GenerationModeToggle({
             className={`flex items-center justify-center rounded-md text-xs transition-colors ${
               stretch
                 ? 'min-w-0 flex-1 flex-col gap-0.5 px-0.5 py-1.5 sm:flex-row sm:gap-1 sm:px-2 sm:py-1'
-                : 'gap-1 px-2.5 py-1'
+                : 'h-7 gap-1 px-2.5'
             } ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${
               active
                 ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
@@ -107,7 +107,7 @@ export function CollapsibleGenerationMode({
         disabled={disabled}
         onClick={() => !disabled && setOpen((v) => !v)}
         title={`Output: ${label}`}
-        className={`inline-flex h-9 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2 text-xs text-[var(--muted)] transition-colors ${
+        className={`inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--surface-subtle)] px-2 text-xs text-[var(--muted)] transition-colors ${
           disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
         }`}
       >
@@ -152,7 +152,7 @@ interface AskActModeToggleProps {
 /** Same chrome as {@link GenerationModeToggle} — for the composer only. */
 export function AskActModeToggle({ mode, onChange, disabled, className = '' }: AskActModeToggleProps) {
   return (
-    <div className={`flex items-center bg-[var(--surface-subtle)] rounded-lg p-0.5 shrink-0 ${className}`}>
+    <div className={`flex h-8 items-center bg-[var(--surface-subtle)] rounded-lg p-0.5 shrink-0 ${className}`}>
       {ASK_ACT_MODES.map(({ value, label, Icon }) => {
         const active = mode === value
         return (
@@ -162,7 +162,7 @@ export function AskActModeToggle({ mode, onChange, disabled, className = '' }: A
             onClick={() => !disabled && onChange(value)}
             disabled={disabled}
             title={label}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors ${
+            className={`flex h-7 items-center gap-1 px-2.5 rounded-md text-xs transition-colors ${
               disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
             } ${
               active

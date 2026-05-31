@@ -48,10 +48,19 @@ export function DelayedTooltip({
       const el = anchorRef.current
       if (!el) return
       const r = el.getBoundingClientRect()
+      const estimatedWidth = Math.min(
+        window.innerWidth - 16,
+        Math.min(320, Math.max(96, label.length * 6.5)),
+      )
+      const centeredLeft = (value: number) =>
+        Math.min(
+          window.innerWidth - 8 - estimatedWidth / 2,
+          Math.max(8 + estimatedWidth / 2, value),
+        )
       if (side === 'bottom') {
         setCoords({
           top: r.bottom + GAP_PX,
-          left: r.left + r.width / 2,
+          left: centeredLeft(r.left + r.width / 2),
           transform: 'translateX(-50%)',
         })
         return
@@ -66,7 +75,7 @@ export function DelayedTooltip({
       }
       setCoords({
         top: r.top - GAP_PX,
-        left: r.left + r.width / 2,
+        left: centeredLeft(r.left + r.width / 2),
         transform: 'translate(-50%, -100%)',
       })
     }
@@ -91,6 +100,7 @@ export function DelayedTooltip({
               left: coords.left,
               transform: coords.transform,
               zIndex: 400,
+              width: 'max-content',
               maxWidth: 'min(calc(100vw - 16px), 20rem)',
             }}
             className="pointer-events-none rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-center text-[11px] font-medium leading-snug text-[var(--muted)] shadow-sm"

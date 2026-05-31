@@ -149,7 +149,7 @@ export function ExportMenu({
         type="button"
         onClick={() => setShowMenu(!showMenu)}
         disabled={isExporting}
-        className="rounded-md p-1.5 text-[var(--muted)] transition-all duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
+        className="inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md bg-[var(--surface-subtle)] text-[var(--muted)] transition-all duration-200 hover:bg-[var(--border)] hover:text-[var(--foreground)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
         aria-label="Export options"
       >
         <MoreVertical size={16} strokeWidth={1.75} />
