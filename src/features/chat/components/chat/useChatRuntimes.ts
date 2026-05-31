@@ -23,6 +23,8 @@ function createConversationRuntime(
     prepareSendMessagesRequest: ({ api, id, messages, body, headers, credentials, trigger, messageId }) => {
       const bodyRecord = (body ?? {}) as Record<string, unknown>
       const turnId = typeof bodyRecord.turnId === 'string' ? bodyRecord.turnId.trim() : ''
+      const includeFullHistory = bodyRecord.temporaryChat === true
+      const streamPersistenceMode = includeFullHistory ? 'direct' : bodyRecord.streamPersistenceMode
       const slotFromBody = bodyRecord.multiModelSlotIndex ?? bodyRecord.variantIndex
       let slotIndex = typeof slotFromBody === 'number' && Number.isFinite(slotFromBody)
         ? slotFromBody
@@ -40,11 +42,12 @@ function createConversationRuntime(
       return {
         api,
         headers: nextHeaders,
-        credentials,
+        credentials: credentials ?? 'same-origin',
         body: {
           ...body,
+          streamPersistenceMode,
           id,
-          messages: messages.at(-1) ? [messages.at(-1)] : [],
+          messages: includeFullHistory ? messages : (messages.at(-1) ? [messages.at(-1)] : []),
           trigger,
           messageId,
         },

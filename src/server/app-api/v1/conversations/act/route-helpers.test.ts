@@ -25,6 +25,14 @@ test('resolveActAbortTimeoutMs preserves timeout defaults and clamps', () => {
 
 test('resolveActStreamPersistence preserves relay verification behavior', () => {
   assert.deepEqual(resolveActStreamPersistence({
+    requestedMode: 'direct',
+    verifiedCloudflareRelay: false,
+  }), {
+    mode: 'direct',
+    useCloudflareStreamRelay: false,
+    ignoredUnverifiedRelay: false,
+  })
+  assert.deepEqual(resolveActStreamPersistence({
     requestedMode: 'cloudflare-relay',
     verifiedCloudflareRelay: false,
   }), {

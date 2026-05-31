@@ -145,6 +145,47 @@ import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 
 const EMPTY_UI_MESSAGES: UIMessage[] = []
+const TEMPORARY_CHAT_ID = '__overlay_temporary_chat__'
+const TEMPORARY_CHAT_ICON_SRC = '/assets/icons/dashed-chat.png'
+
+function TemporaryChatButton({
+  active,
+  disabled,
+  onClick,
+}: {
+  active: boolean
+  disabled: boolean
+  onClick: () => void
+}) {
+  return (
+    <DelayedTooltip
+      label={active ? 'Temporary chat is on. Messages are erased when you leave this page.' : 'Start a temporary chat'}
+      side="bottom"
+    >
+      <button
+        type="button"
+        aria-pressed={active}
+        aria-label={active ? 'Disable temporary chat' : 'Enable temporary chat'}
+        disabled={disabled}
+        onClick={onClick}
+        className={`flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+          active
+            ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
+            : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
+        } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+      >
+        <span
+          aria-hidden
+          className="size-4 bg-current"
+          style={{
+            WebkitMask: `url(${TEMPORARY_CHAT_ICON_SRC}) center / contain no-repeat`,
+            mask: `url(${TEMPORARY_CHAT_ICON_SRC}) center / contain no-repeat`,
+          }}
+        />
+      </button>
+    </DelayedTooltip>
+  )
+}
 
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -186,6 +227,9 @@ export default function ChatInterface({
   const convexAccessToken = useConvexWorkOSToken()
   const { startSession, completeSession, markRead, setActiveViewer, getUnread, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
+  const [isTemporaryChat, setIsTemporaryChat] = useState(false)
+  const isTemporaryChatRef = useRef(false)
+  isTemporaryChatRef.current = isTemporaryChat
   const loadChatRequestRef = useRef(0)
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const appliedLiveDeltaIdsRef = useRef(new Set<string>())
@@ -525,6 +569,7 @@ export default function ChatInterface({
 
     activeChatIdRef.current = null
     pendingTitleRef.current = null
+    setIsTemporaryChat(false)
     setActiveChatId(null)
     setActiveChatTitle(null)
     setInterruptedExchangeIdx(null)
@@ -1184,6 +1229,7 @@ export default function ChatInterface({
     persistActiveRuntimeUiState()
     activeChatIdRef.current = null
     pendingTitleRef.current = null
+    setIsTemporaryChat(false)
     setActiveChatId(null)
     setActiveChatTitle(null)
     setInterruptedExchangeIdx(null)
@@ -1699,7 +1745,7 @@ export default function ChatInterface({
    * surface (no active chat), so switching between existing chats never mutates the new-chat
    * default and a page reload restores the user's actual preference.
    */
-  const isOnNewChatSurface = !activeChatId
+  const isOnNewChatSurface = !activeChatId && !isTemporaryChat
   const persistNewChatAskModels = useCallback((ids: string[]) => {
     if (!isOnNewChatSurface) return
     try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(ids)) } catch { /* ignore */ }
@@ -1710,7 +1756,7 @@ export default function ChatInterface({
   }, [isOnNewChatSurface])
 
   const snapshotCurrentAskThreadsForModelPicker = useCallback(() => {
-    if (!activeChatIdRef.current) return
+    if (!activeChatIdRef.current && !isTemporaryChat) return
     const latestTextIdx = (() => {
       for (let i = exchangeModels.length - 1; i >= 0; i--) {
         if ((exchangeGenTypes[i] ?? 'text') === 'text') return i
@@ -1732,7 +1778,7 @@ export default function ChatInterface({
       ...activeRuntime.ui,
       orphanModelThreads: nextOrphans,
     })
-  }, [activeRuntime, exchangeGenTypes, exchangeModels, selectedModels])
+  }, [activeRuntime, exchangeGenTypes, exchangeModels, isTemporaryChat, selectedModels])
 
   const handleTextModelSelectionModeChange = useCallback(
     (next: AskModelSelectionMode) => {
@@ -1877,6 +1923,39 @@ export default function ChatInterface({
     replaceUrl(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
   }
 
+  function resetToBlankChatSurface(options: { temporary: boolean }) {
+    ++loadChatRequestRef.current
+    persistActiveRuntimeUiState()
+    activeChatIdRef.current = null
+    pendingTitleRef.current = null
+    setActiveViewer(null)
+    setActiveChatId(null)
+    setInterruptedExchangeIdx(null)
+    setSourcesPanel(null)
+    setMobileChatListOpen(false)
+    setIsTemporaryChat(options.temporary)
+    setActiveChatTitle(options.temporary ? 'Temporary chat' : null)
+    const storedAsk = readStoredAskModelIds()
+    const storedAct = readStoredActModelId()
+    resetRuntimeState(emptyRuntimeRef.current, {
+      selectedActModel: storedAct,
+      selectedModels: storedAsk,
+      askModelSelectionMode: storedAsk.length > 1 ? 'multiple' : 'single',
+      activeChatTitle: options.temporary ? 'Temporary chat' : null,
+      isFirstMessage: true,
+    })
+    emptyRuntimeRef.current.hydrated = true
+    applyUiStateToView(emptyRuntimeRef.current.ui)
+    clearTransientComposerState()
+    setRuntimeHydrationVersion((value) => value + 1)
+    syncStandaloneChatUrl(null)
+  }
+
+  function handleTemporaryChatToggle() {
+    if (isActiveLoading) return
+    resetToBlankChatSurface({ temporary: !isTemporaryChat })
+  }
+
   async function createNewChat(options: {
     title?: string
     prepareRuntime?: (args: {
@@ -1891,6 +1970,7 @@ export default function ChatInterface({
     // becomes active; otherwise an older load can repaint the view after send.
     ++loadChatRequestRef.current
     persistActiveRuntimeUiState()
+    setIsTemporaryChat(false)
     const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
     const initialSelectedModels = askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4)
     const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
@@ -2037,6 +2117,8 @@ export default function ChatInterface({
   async function loadChat(chatId: string, options: { replaceUrl?: boolean } = {}) {
     const requestId = ++loadChatRequestRef.current
     persistActiveRuntimeUiState()
+    if (isTemporaryChatRef.current) resetRuntimeState(emptyRuntimeRef.current)
+    setIsTemporaryChat(false)
     clearTransientComposerState()
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
@@ -2479,6 +2561,7 @@ export default function ChatInterface({
     const attachedImagesSnapshot = [...attachedImages]
     const pendingChatDocumentsSnapshot = [...pendingChatDocuments]
     const mentionsSnapshot = [...mentions]
+    const temporaryChatSnapshot = isTemporaryChat
     const hasReadyDocs = pendingChatDocumentsSnapshot.some((d) => d.status === 'ready')
     const clearSubmittedComposer = () => {
       textareaRef.current?.clear()
@@ -2576,10 +2659,19 @@ export default function ChatInterface({
         })
       }
 
-      const existingChatId = activeChatIdRef.current ?? activeChatId
+      const existingChatId = temporaryChatSnapshot ? TEMPORARY_CHAT_ID : (activeChatIdRef.current ?? activeChatId)
       pendingScrollTurnIdRef.current = mediaTurnId
-      pendingScrollChatIdRef.current = existingChatId
-      if (!existingChatId) {
+      pendingScrollChatIdRef.current = temporaryChatSnapshot ? null : existingChatId
+      let chatId = existingChatId
+      let targetRuntime: ConversationRuntime
+      if (temporaryChatSnapshot) {
+        targetRuntime = emptyRuntimeRef.current
+        prepareMediaRuntime(targetRuntime)
+        targetRuntime.hydrated = true
+        applyUiStateToView(targetRuntime.ui)
+        setIsFirstMessage(false)
+        setRuntimeHydrationVersion((value) => value + 1)
+      } else if (!existingChatId) {
         const previewRuntime = emptyRuntimeRef.current
         resetRuntimeState(previewRuntime, {
           selectedActModel,
@@ -2593,18 +2685,19 @@ export default function ChatInterface({
         applyUiStateToView(previewRuntime.ui)
         setIsFirstMessage(false)
         setRuntimeHydrationVersion((value) => value + 1)
+        chatId = await createNewChat({
+          prepareRuntime: ({ runtime }) => {
+            prepareMediaRuntime(runtime)
+            preparedFirstSendRuntime = true
+          },
+        })
       }
-      const chatId = existingChatId || await createNewChat({
-        prepareRuntime: ({ runtime }) => {
-          prepareMediaRuntime(runtime)
-          preparedFirstSendRuntime = true
-        },
-      })
       if (!chatId) return
-      markChatModified(chatId, activeChatTitleSnapshot)
-      const targetRuntime = ensureConversationRuntime(chatId)
+      if (!temporaryChatSnapshot) markChatModified(chatId, activeChatTitleSnapshot)
+      if (!temporaryChatSnapshot) targetRuntime = ensureConversationRuntime(chatId)
+      else targetRuntime = emptyRuntimeRef.current
 
-      if (!preparedFirstSendRuntime) {
+      if (!temporaryChatSnapshot && !preparedFirstSendRuntime) {
         updateRuntimeUiState(chatId, (prev) => {
           exchIdx = prev.exchangeModels.length
           const nextGenerationResults = cloneGenerationResultsMap(prev.generationResults)
@@ -2632,24 +2725,32 @@ export default function ChatInterface({
       }
 
       setIsFirstMessage(false)
-      void overlayAppClient.conversations.addMessageResponse(
-        {
-          conversationId: chatId,
-          turnId: mediaTurnId,
-          mode: 'act',
-          role: 'user',
-          content: text,
-          parts: [{ type: 'text', text }],
-          modelId: activeModels[0],
-          ...(replyCtxSnapshot?.replyToTurnId
-            ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
-            : {}),
-        },
-        { idempotencyKey: `${mediaTurnId}:user` },
-      )
-
-      if (wasFirst && text) startFirstMessageRename(chatId, text)
-      startSession(chatId, mediaSessionMode, activeChatTitleSnapshot ?? '', targetRuntime.askChats[0].messages.length)
+      if (!temporaryChatSnapshot) {
+        void overlayAppClient.conversations.addMessageResponse(
+          {
+            conversationId: chatId,
+            turnId: mediaTurnId,
+            mode: 'act',
+            role: 'user',
+            content: text,
+            parts: [{ type: 'text', text }],
+            modelId: activeModels[0],
+            ...(replyCtxSnapshot?.replyToTurnId
+              ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
+              : {}),
+          },
+          { idempotencyKey: `${mediaTurnId}:user` },
+        )
+        if (wasFirst && text) startFirstMessageRename(chatId, text)
+      }
+      startSession(chatId, mediaSessionMode, temporaryChatSnapshot ? 'Temporary chat' : activeChatTitleSnapshot ?? '', targetRuntime.askChats[0].messages.length)
+      const updateMediaRuntimeUiState = temporaryChatSnapshot
+        ? (_chatId: string, updater: (prev: ConversationUiState) => ConversationUiState) => {
+            targetRuntime.ui = updater(cloneConversationUiState(targetRuntime.ui))
+            applyUiStateToView(targetRuntime.ui)
+            setRuntimeHydrationVersion((value) => value + 1)
+          }
+        : updateRuntimeUiState
 
       // ── Block generation for free-tier users ───────────────────────────────
       if (isFreeTier) {
@@ -2658,8 +2759,8 @@ export default function ChatInterface({
           exchIdx,
           kind: effectiveGenType,
           activeModels,
-          isChatActive: (id) => activeChatIdRef.current === id,
-          updateRuntimeUiState,
+          isChatActive: (id) => temporaryChatSnapshot ? (id === TEMPORARY_CHAT_ID && isTemporaryChatRef.current) : activeChatIdRef.current === id,
+          updateRuntimeUiState: updateMediaRuntimeUiState,
           completeSession,
         })
         return
@@ -2670,6 +2771,7 @@ export default function ChatInterface({
         const imageUrl = attachedImagesSnapshot[0]?.dataUrl ?? targetRuntime.ui.lastGeneratedImageUrl
         runImageGenerationBatch({
           chatId,
+          temporaryChat: temporaryChatSnapshot,
           turnId: mediaTurnId,
           exchIdx,
           promptForModel,
@@ -2678,15 +2780,16 @@ export default function ChatInterface({
           targetRuntime,
           mediaSlotCount,
           imageUrl,
-          isChatActive: (id) => activeChatIdRef.current === id,
-          updateRuntimeUiState,
+          isChatActive: (id) => temporaryChatSnapshot ? (id === TEMPORARY_CHAT_ID && isTemporaryChatRef.current) : activeChatIdRef.current === id,
+          updateRuntimeUiState: updateMediaRuntimeUiState,
           completeSession,
-          loadChats,
+          loadChats: temporaryChatSnapshot ? (() => {}) : loadChats,
           loadSubscription,
         })
       } else {
         runVideoGenerationBatch({
           chatId,
+          temporaryChat: temporaryChatSnapshot,
           turnId: mediaTurnId,
           exchIdx,
           promptForModel,
@@ -2696,10 +2799,10 @@ export default function ChatInterface({
           mediaSlotCount,
           videoSubMode,
           imageUrl: attachedImagesSnapshot[0]?.dataUrl ?? null,
-          isChatActive: (id) => activeChatIdRef.current === id,
-          updateRuntimeUiState,
+          isChatActive: (id) => temporaryChatSnapshot ? (id === TEMPORARY_CHAT_ID && isTemporaryChatRef.current) : activeChatIdRef.current === id,
+          updateRuntimeUiState: updateMediaRuntimeUiState,
           completeSession,
-          loadChats,
+          loadChats: temporaryChatSnapshot ? (() => {}) : loadChats,
           loadSubscription,
         })
       }
@@ -2791,10 +2894,19 @@ export default function ChatInterface({
       }
     }
 
-    const existingChatId = activeChatIdRef.current ?? activeChatId
+    const existingChatId = temporaryChatSnapshot ? TEMPORARY_CHAT_ID : (activeChatIdRef.current ?? activeChatId)
     pendingScrollTurnIdRef.current = textTurnId
-    pendingScrollChatIdRef.current = existingChatId
-    if (!existingChatId) {
+    pendingScrollChatIdRef.current = temporaryChatSnapshot ? null : existingChatId
+    let chatId = existingChatId
+    let targetRuntime: ConversationRuntime
+    if (temporaryChatSnapshot) {
+      targetRuntime = emptyRuntimeRef.current
+      prepareTextRuntime(targetRuntime)
+      targetRuntime.hydrated = true
+      applyUiStateToView(targetRuntime.ui)
+      setIsFirstMessage(false)
+      setRuntimeHydrationVersion((value) => value + 1)
+    } else if (!existingChatId) {
       const previewRuntime = emptyRuntimeRef.current
       resetRuntimeState(previewRuntime, {
         selectedActModel: selectedActModelSnapshot,
@@ -2808,24 +2920,25 @@ export default function ChatInterface({
       applyUiStateToView(previewRuntime.ui)
       setIsFirstMessage(false)
       setRuntimeHydrationVersion((value) => value + 1)
+      chatId = await createNewChat({
+        prepareRuntime: ({ runtime }) => {
+          prepareTextRuntime(runtime)
+          preparedFirstSendRuntime = true
+        },
+      })
     }
-    const chatId = existingChatId || await createNewChat({
-      prepareRuntime: ({ runtime }) => {
-        prepareTextRuntime(runtime)
-        preparedFirstSendRuntime = true
-      },
-    })
     if (!chatId) return
-    markChatModified(chatId, activeChatTitleSnapshot)
-    const targetRuntime = ensureConversationRuntime(chatId)
+    if (!temporaryChatSnapshot) markChatModified(chatId, activeChatTitleSnapshot)
+    if (!temporaryChatSnapshot) targetRuntime = ensureConversationRuntime(chatId)
+    else targetRuntime = emptyRuntimeRef.current
 
-    if (wasFirst && (text || indexedFileNames.length > 0)) {
+    if (!temporaryChatSnapshot && wasFirst && (text || indexedFileNames.length > 0)) {
       startFirstMessageRename(chatId, text || indexedFileNames[0] || 'Documents')
     }
 
-    activeChatIdRef.current = chatId
+    if (!temporaryChatSnapshot) activeChatIdRef.current = chatId
 
-    if (!preparedFirstSendRuntime) {
+    if (!temporaryChatSnapshot && !preparedFirstSendRuntime) {
       textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(targetRuntime, textModelsForTurn).historyBaseModelId
       msgCountBeforeSend = targetRuntime.askChats[0].messages.length
       updateRuntimeUiState(chatId, (prev) => ({
@@ -2851,12 +2964,12 @@ export default function ChatInterface({
       }
     }
 
-    startSession(chatId, 'act', activeChatTitleSnapshot ?? '', msgCountBeforeSend)
+    startSession(chatId, 'act', temporaryChatSnapshot ? 'Temporary chat' : activeChatTitleSnapshot ?? '', msgCountBeforeSend)
 
     setIsFirstMessage(false)
 
     const commonActBody = {
-      conversationId: chatId,
+      ...(temporaryChatSnapshot ? { temporaryChat: true } : { conversationId: chatId }),
       turnId: textTurnId,
       mode,
       automationMode: mode === 'automate',
@@ -2878,9 +2991,9 @@ export default function ChatInterface({
       partsForModel,
       userMetadata,
       commonBody: commonActBody,
-      isChatActive: (id) => activeChatIdRef.current === id,
+      isChatActive: (id) => temporaryChatSnapshot ? (id === TEMPORARY_CHAT_ID && isTemporaryChatRef.current) : activeChatIdRef.current === id,
       completeSession,
-      loadChats,
+      loadChats: temporaryChatSnapshot ? (() => {}) : loadChats,
       loadSubscription,
       onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
       logPrefix: multiText ? 'Act multi' : 'Act',
@@ -3298,7 +3411,7 @@ export default function ChatInterface({
                 <div className="flex min-w-0 items-center gap-1">
                   <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] md:truncate lg:max-w-[24rem]">
                     <span className="line-clamp-2 md:line-clamp-1 md:truncate">
-                      {selectedAutomation?.name || activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation')}
+                      {selectedAutomation?.name || (isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation'))}
                     </span>
                   </h2>
                   {activeChatId && !selectedAutomation ? (
@@ -3329,7 +3442,7 @@ export default function ChatInterface({
                       type="button"
                       onClick={() => setShowModelPicker((value) => !value)}
                       disabled={!selectedAutomation}
-                      className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] disabled:cursor-default disabled:opacity-70 md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1"
+                      className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-[13rem]"
                       aria-label="Automation model"
                     >
                       <span className="min-w-0 truncate">{getChatModelDisplayName(automationHeaderModelId) || 'Select model'}</span>
@@ -3409,7 +3522,7 @@ export default function ChatInterface({
                     </>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-0.5">
+                <div className="flex h-8 shrink-0 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5">
                   {AUTOMATION_DETAIL_TABS.map((tab) => {
                     const active = automationDetailTab === tab.id
                     const TabIcon = tab.icon
@@ -3418,7 +3531,7 @@ export default function ChatInterface({
                         key={tab.id}
                         type="button"
                         onClick={() => selectAutomationDetailTab(tab.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-colors ${
                           active
                             ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
                             : 'text-[var(--muted)] hover:text-[var(--foreground)]'
@@ -3443,7 +3556,7 @@ export default function ChatInterface({
                     type="button"
                     onClick={() => !isActiveLoading && setShowVideoSubModePicker((v) => !v)}
                     disabled={isActiveLoading}
-                    className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1 ${
+                    className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-[13rem] ${
                       isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
                     }`}
                   >
@@ -3470,7 +3583,7 @@ export default function ChatInterface({
               {isFreeTier && (
                 <Link
                   href={isBudgetExhaustedPaid ? '/account' : '/pricing'}
-                  className="hidden shrink-0 items-center gap-1 rounded-md border border-[#fde68a] bg-[#fffbeb] px-2.5 py-1 text-[11px] font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] md:flex"
+                  className="hidden h-8 shrink-0 items-center gap-1 rounded-md bg-[#fffbeb] px-2.5 text-[11px] font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] md:flex"
                 >
                   <ArrowUp size={10} />
                   {isBudgetExhaustedPaid ? 'Top up' : 'Upgrade'}
@@ -3482,7 +3595,7 @@ export default function ChatInterface({
                   <button
                     type="button"
                     onClick={() => setShowModelPicker((v) => !v)}
-                    className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:h-auto md:min-h-0 md:w-auto md:max-w-[13rem] md:py-1"
+                    className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:w-auto md:max-w-[13rem]"
                   >
                     <span className="min-w-0 truncate">{modelPickerLabel}</span>
                     <ChevronDown size={11} className="shrink-0" />
@@ -3692,11 +3805,18 @@ export default function ChatInterface({
                     onChange={handleModeChange}
                     disabled={isActiveLoading}
                   />
-                  {activeChatId && !selectedAutomation && primaryMessages.length > 0 && (
+                  {mode === 'chat' && (
+                    <TemporaryChatButton
+                      active={isTemporaryChat}
+                      disabled={isActiveLoading}
+                      onClick={handleTemporaryChatToggle}
+                    />
+                  )}
+                  {!selectedAutomation && primaryMessages.length > 0 && (activeChatId || isTemporaryChat) && (
                     <ExportMenu
                       className="shrink-0"
                       type="chat"
-                      title={activeChatTitle || activeChat?.title || 'New conversation'}
+                      title={isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || 'New conversation'}
                       content={primaryMessages.map((m) => ({
                         role: m.role,
                         content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
@@ -3707,10 +3827,10 @@ export default function ChatInterface({
                         updatedAt: activeChat?.updatedAt,
                         modelIds: activeChat?.modelIds,
                       }}
-                      resourceId={activeChatId}
+                      resourceId={isTemporaryChat ? undefined : activeChatId ?? undefined}
                       initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
                       initialShareUrl={
-                        activeChat?.shareVisibility === 'public' && activeChat?.shareToken
+                        !isTemporaryChat && activeChat?.shareVisibility === 'public' && activeChat?.shareToken
                           ? buildSharePageUrl('chat', activeChat.shareToken)
                           : null
                       }
@@ -3718,37 +3838,44 @@ export default function ChatInterface({
                   )}
                 </div>
               </div>
-            <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
-              <span data-tour="generation-mode-toggle" className="hidden md:inline-flex">
-                <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
-              </span>
-            </DelayedTooltip>
-
-            {/* Export Menu */}
-            {activeChatId && !selectedAutomation && primaryMessages.length > 0 && (
-              <ExportMenu
-                className="hidden md:block"
-                type="chat"
-                title={activeChatTitle || activeChat?.title || 'New conversation'}
-                content={primaryMessages.map((m) => ({
-                  role: m.role,
-                  content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
-                  parts: m.parts as Array<{ type: string; text?: string }>,
-                }))}
-                metadata={{
-                  createdAt: activeChat?.createdAt,
-                  updatedAt: activeChat?.updatedAt,
-                  modelIds: activeChat?.modelIds,
-                }}
-                resourceId={activeChatId}
-                initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
-                initialShareUrl={
-                  activeChat?.shareVisibility === 'public' && activeChat?.shareToken
-                    ? buildSharePageUrl('chat', activeChat.shareToken)
-                    : null
-                }
-              />
-            )}
+            <div className="hidden shrink-0 items-center gap-1.5 md:flex">
+              <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
+                <span data-tour="generation-mode-toggle" className="inline-flex">
+                  <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
+                </span>
+              </DelayedTooltip>
+              {mode === 'chat' && (
+                <TemporaryChatButton
+                  active={isTemporaryChat}
+                  disabled={isActiveLoading}
+                  onClick={handleTemporaryChatToggle}
+                />
+              )}
+              {!selectedAutomation && primaryMessages.length > 0 && (activeChatId || isTemporaryChat) && (
+                <ExportMenu
+                  className="shrink-0"
+                  type="chat"
+                  title={isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || 'New conversation'}
+                  content={primaryMessages.map((m) => ({
+                    role: m.role,
+                    content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
+                    parts: m.parts as Array<{ type: string; text?: string }>,
+                  }))}
+                  metadata={{
+                    createdAt: activeChat?.createdAt,
+                    updatedAt: activeChat?.updatedAt,
+                    modelIds: activeChat?.modelIds,
+                  }}
+                  resourceId={isTemporaryChat ? undefined : activeChatId ?? undefined}
+                  initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
+                  initialShareUrl={
+                    !isTemporaryChat && activeChat?.shareVisibility === 'public' && activeChat?.shareToken
+                      ? buildSharePageUrl('chat', activeChat.shareToken)
+                      : null
+                  }
+                />
+              )}
+            </div>
           </div>
         </div>
 

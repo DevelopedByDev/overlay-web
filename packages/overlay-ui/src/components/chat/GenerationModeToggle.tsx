@@ -30,7 +30,7 @@ export function GenerationModeToggle({
   const stretch = layout === 'stretch'
   return (
     <div
-      className={`flex items-center rounded-lg bg-[var(--surface-subtle)] p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
+      className={`flex h-8 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
     >
       {MODES.map(({ value, label, Icon }) => {
         const active = mode === value
@@ -44,7 +44,7 @@ export function GenerationModeToggle({
             className={`flex items-center justify-center rounded-md text-xs transition-colors ${
               stretch
                 ? 'min-w-0 flex-1 flex-col gap-0.5 px-0.5 py-1.5 sm:flex-row sm:gap-1 sm:px-2 sm:py-1'
-                : 'gap-1 px-2.5 py-1'
+                : 'h-7 gap-1 px-2.5'
             } ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${
               active
                 ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
@@ -100,10 +100,10 @@ export function GenerationModeSelect({
         type="button"
         onClick={() => !disabled && setOpen((o) => !o)}
         disabled={disabled}
-        className={`flex h-8 min-h-8 max-w-[7.5rem] min-w-0 items-center justify-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 text-xs leading-none text-[var(--muted)] transition-colors ${
+        className={`flex h-8 min-h-8 max-w-[7.5rem] min-w-0 items-center justify-center gap-1 rounded-md bg-[var(--surface-subtle)] px-2 text-xs leading-none text-[var(--muted)] transition-colors ${
           disabled
             ? 'cursor-not-allowed opacity-50'
-            : 'hover:border-[var(--foreground)]/20 hover:text-[var(--foreground)]'
+            : 'hover:bg-[var(--border)] hover:text-[var(--foreground)]'
         }`}
         aria-haspopup="listbox"
         aria-expanded={open}

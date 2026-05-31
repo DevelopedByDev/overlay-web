@@ -24,13 +24,14 @@ export const maxDuration = 120
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl }: {
+    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl, temporaryChat }: {
       prompt: string
       modelId?: string
       aspectRatio?: string
       conversationId?: string
       turnId?: string
       imageUrl?: string
+      temporaryChat?: boolean
     } = await request.json()
 
     const { auth } = context
@@ -151,6 +152,71 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const dataUrl = `data:image/png;base64,${imageBase64}`
+    const finalModelId = usedModelId
+
+    const recordUsage = async () => {
+      const costDollars = calculateImageCostOrNull(finalModelId)
+      if (costDollars === null) {
+        await markProviderBudgetReconcile({
+          userId: auth.userId,
+          reservationId: reservation.reservationId,
+          errorMessage: `pricing_missing:${finalModelId}`,
+        }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
+        return NextResponse.json(
+          { error: 'pricing_missing', message: `Image model ${finalModelId} is not priced for production use.` },
+          { status: 500 },
+        )
+      }
+      const costCents = billableBudgetCentsFromProviderUsd(costDollars)
+      console.log(`[GenerateImage] 💰 Cost: model=${finalModelId} | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
+      if (costCents > 0 || reservation.reservationId) {
+        try {
+          const recordResult = await finalizeProviderBudgetReservation({
+            userId: auth.userId,
+            reservationId: reservation.reservationId,
+            actualProviderCostUsd: costDollars,
+            events: [{
+              type: 'generation',
+              modelId: finalModelId,
+              inputTokens: 0,
+              outputTokens: 0,
+              cachedTokens: 0,
+              cost: costCents,
+              timestamp: Date.now(),
+            }],
+          })
+          if (recordResult) {
+            const updated = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
+              serverSecret,
+              userId: auth.userId,
+            })
+            if (updated) {
+              const totalCents = updated.creditsTotal * 100
+              const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'
+              console.log(`[GenerateImage] ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ (${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`)
+            }
+          } else {
+            console.error(`[GenerateImage] ❌ finalizeProviderBudgetReservation returned null — check server logs for Convex error`)
+          }
+        } catch (recordError) {
+          console.error('[GenerateImage] Failed to finalize budget reservation:', recordError)
+          await markProviderBudgetReconcile({
+            userId: auth.userId,
+            reservationId: reservation.reservationId,
+            errorMessage: recordError instanceof Error ? recordError.message : 'finalize_failed',
+          }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
+        }
+      } else {
+        console.log(`[GenerateImage] ⚠️  Cost is 0¢ for model=${finalModelId} — usage not recorded`)
+      }
+      return null
+    }
+
+    if (temporaryChat === true) {
+      const usageError = await recordUsage()
+      if (usageError) return usageError
+      return NextResponse.json({ outputId: null, url: dataUrl, modelUsed: finalModelId, temporary: true })
+    }
 
     // ── Upload to R2 & save output record ────────────────────────────────────
     let outputId: string | null = null
@@ -178,7 +244,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           source: 'image_generation',
           status: 'pending',
           prompt: prompt.trim(),
-          modelId: usedModelId,
+          modelId: finalModelId,
           fileName,
           mimeType: 'image/png',
           ...(conversationId ? { conversationId } : {}),
@@ -204,7 +270,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           userId: auth.userId,
           serverSecret,
           status: 'completed',
-          modelId: usedModelId,
+          modelId: finalModelId,
           r2Key,
           fileName,
           mimeType: 'image/png',
@@ -255,62 +321,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     // ── Usage tracking ────────────────────────────────────────────────────────
-    const costDollars = calculateImageCostOrNull(usedModelId)
-    if (costDollars === null) {
-      await markProviderBudgetReconcile({
-        userId: auth.userId,
-        reservationId: reservation.reservationId,
-        errorMessage: `pricing_missing:${usedModelId}`,
-      }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
-      return NextResponse.json(
-        { error: 'pricing_missing', message: `Image model ${usedModelId} is not priced for production use.` },
-        { status: 500 },
-      )
-    }
-    const costCents = billableBudgetCentsFromProviderUsd(costDollars)
-    console.log(`[GenerateImage] 💰 Cost: model=${usedModelId} | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
-    if (costCents > 0 || reservation.reservationId) {
-      try {
-        const recordResult = await finalizeProviderBudgetReservation({
-          userId: auth.userId,
-          reservationId: reservation.reservationId,
-          actualProviderCostUsd: costDollars,
-          events: [{
-            type: 'generation',
-            modelId: usedModelId,
-            inputTokens: 0,
-            outputTokens: 0,
-            cachedTokens: 0,
-            cost: costCents,
-            timestamp: Date.now(),
-          }],
-        })
-        if (recordResult) {
-          const updated = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-            serverSecret,
-            userId: auth.userId,
-          })
-          if (updated) {
-            const totalCents = updated.creditsTotal * 100
-            const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'
-            console.log(`[GenerateImage] ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ (${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`)
-          }
-        } else {
-          console.error(`[GenerateImage] ❌ finalizeProviderBudgetReservation returned null — check server logs for Convex error`)
-        }
-      } catch (recordError) {
-        console.error('[GenerateImage] Failed to finalize budget reservation:', recordError)
-        await markProviderBudgetReconcile({
-          userId: auth.userId,
-          reservationId: reservation.reservationId,
-          errorMessage: recordError instanceof Error ? recordError.message : 'finalize_failed',
-        }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
-      }
-    } else {
-      console.log(`[GenerateImage] ⚠️  Cost is 0¢ for model=${usedModelId} — usage not recorded`)
-    }
+    const usageError = await recordUsage()
+    if (usageError) return usageError
 
-    return NextResponse.json({ outputId, url: dataUrl, modelUsed: usedModelId })
+    return NextResponse.json({ outputId, url: dataUrl, modelUsed: finalModelId })
   } catch (error) {
     console.error('[GenerateImage API] Error:', error)
     return NextResponse.json({ error: 'Failed to generate image' }, { status: 500 })
