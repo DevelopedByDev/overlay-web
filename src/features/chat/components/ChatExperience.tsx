@@ -2470,7 +2470,6 @@ export default function ChatInterface({
     }
     const replyCtxSnapshot = replyContext
     const text = inputRef.current.trim()
-    const hasReadyDocs = pendingChatDocuments.some((d) => d.status === 'ready')
     const selectedActModelSnapshot = selectedActModel
     const textModelsForTurn =
       askModelSelectionMode === 'multiple' ? selectedModels.slice(0, 4) : [selectedActModel]
@@ -2478,13 +2477,25 @@ export default function ChatInterface({
     const selectedImageModelsSnapshot = [...selectedImageModels]
     const selectedVideoModelsSnapshot = [...selectedVideoModels]
     const attachedImagesSnapshot = [...attachedImages]
+    const pendingChatDocumentsSnapshot = [...pendingChatDocuments]
+    const mentionsSnapshot = [...mentions]
+    const hasReadyDocs = pendingChatDocumentsSnapshot.some((d) => d.status === 'ready')
+    const clearSubmittedComposer = () => {
+      textareaRef.current?.clear()
+      setInput('')
+      setMentions([])
+      setAttachedImages([])
+      setPendingChatDocuments([])
+      setAttachmentError(null)
+      setReplyContext(null)
+    }
     if (isActiveLoading) return
 
-    if (pendingChatDocuments.some((d) => d.status === 'uploading')) {
+    if (pendingChatDocumentsSnapshot.some((d) => d.status === 'uploading')) {
       setAttachmentError('Wait for documents to finish indexing.')
       return
     }
-    if (pendingChatDocuments.some((d) => d.status === 'error')) {
+    if (pendingChatDocumentsSnapshot.some((d) => d.status === 'error')) {
       setAttachmentError('Remove failed documents before sending.')
       return
     }
@@ -2492,7 +2503,7 @@ export default function ChatInterface({
     posthog.capture('chat_message_sent', {
       mode: 'act',
       generation_type: effectiveGenType,
-      has_attachments: attachedImages.length > 0 || pendingChatDocuments.length > 0,
+      has_attachments: attachedImagesSnapshot.length > 0 || pendingChatDocumentsSnapshot.length > 0,
       is_first_message: isFirstMessage,
     })
 
@@ -2504,7 +2515,7 @@ export default function ChatInterface({
 
     // ── Image / Video generation path ──────────────────────────────────────
     if (effectiveGenType === 'image' || effectiveGenType === 'video') {
-      if (!text && attachedImages.length === 0) return
+      if (!text && attachedImagesSnapshot.length === 0) return
       if (isSendBlocked) return
 
       const wasFirst = isFirstMessage
@@ -2536,6 +2547,8 @@ export default function ChatInterface({
       const mediaSlotCount = Math.max(1, activeModels.length)
       let exchIdx = 0
       let preparedFirstSendRuntime = false
+      clearSubmittedComposer()
+      setGenerationChip(null)
 
       const prepareMediaRuntime = (runtime: ConversationRuntime) => {
         const ui = runtime.ui
@@ -2618,10 +2631,6 @@ export default function ChatInterface({
         })
       }
 
-      setInput('')
-      setAttachedImages([])
-      setGenerationChip(null)
-      setReplyContext(null)
       setIsFirstMessage(false)
       void overlayAppClient.conversations.addMessageResponse(
         {
@@ -2698,10 +2707,10 @@ export default function ChatInterface({
     }
 
     // ── Normal text chat path ─────────────────────────────────────────────
-    if (attachedImages.length === 0 && !text && !hasReadyDocs) return
+    if (attachedImagesSnapshot.length === 0 && !text && !hasReadyDocs) return
     if (isSendBlocked) return
 
-    const readyDocs = pendingChatDocuments.filter((d) => d.status === 'ready')
+    const readyDocs = pendingChatDocumentsSnapshot.filter((d) => d.status === 'ready')
     const indexedAttachments = readyDocs.map((d) => ({ name: d.name, fileIds: d.fileIds }))
     const indexedFileNames = readyDocs.map((d) => d.name)
 
@@ -2712,7 +2721,7 @@ export default function ChatInterface({
     type UiPart = { type: string; text?: string; url?: string; mediaType?: string; fileName?: string }
     const partsForModel: UiPart[] = []
     if (text.trim()) partsForModel.push({ type: 'text', text: text.trim() })
-    for (const img of attachedImages) {
+    for (const img of attachedImagesSnapshot) {
       partsForModel.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType, fileName: img.name })
     }
     const partsForPersist: UiPart[] = [...partsForModel]
@@ -2732,8 +2741,8 @@ export default function ChatInterface({
       userMeta.replyToTurnId = replyCtxSnapshot.replyToTurnId
       userMeta.replySnippet = replyCtxSnapshot.snippet
     }
-    if (mentions.length > 0) {
-      userMeta.mentions = mentions.map((m) => ({
+    if (mentionsSnapshot.length > 0) {
+      userMeta.mentions = mentionsSnapshot.map((m) => ({
         type: m.type,
         id: m.id,
         name: m.name,
@@ -2748,6 +2757,7 @@ export default function ChatInterface({
       parts: partsForModel,
       ...(userMetadata ? { metadata: userMetadata } : {}),
     }
+    clearSubmittedComposer()
 
     const multiText = textModelsForTurn.length > 1
     const textSlotCount = Math.min(4, textModelsForTurn.length)
@@ -2843,12 +2853,6 @@ export default function ChatInterface({
 
     startSession(chatId, 'act', activeChatTitleSnapshot ?? '', msgCountBeforeSend)
 
-    setInput('')
-    setMentions([])
-    setAttachedImages([])
-    setPendingChatDocuments([])
-    setAttachmentError(null)
-    setReplyContext(null)
     setIsFirstMessage(false)
 
     const commonActBody = {
