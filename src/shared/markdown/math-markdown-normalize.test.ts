@@ -61,6 +61,19 @@ test('wraps bare Big-O notation outside existing math', () => {
   assert.equal(normalizeBareBigONotation(input), 'Costs $O(n^3/3)$, then $O(n^2)$ and `O(n)`.')
 })
 
+test('escapes currency amounts with slash-separated prose units', () => {
+  const input = 'Charge $0.25 / seat / month. Since you lead with web and mobile, use a base $2-4 per user.'
+  assert.equal(
+    normalizeAssistantMathMarkdown(input),
+    'Charge \\$0.25 / seat / month. Since you lead with web and mobile, use a base \\$2-4 per user.',
+  )
+})
+
+test('keeps compact numeric equations as inline math', () => {
+  const input = 'Use $2x + 1 = 5$ as the first equation.'
+  assert.equal(normalizeAssistantMathMarkdown(input), input)
+})
+
 test('promotes raw matrix assignment lines to display math', () => {
   const input = 'where:\nL = \\begin{bmatrix} 1 & 0 \\\\ l_{21} & 1 \\end{bmatrix}, \\quad U = \\begin{bmatrix} u_{11} & u_{12} \\\\ 0 & u_{22} \\end{bmatrix}'
   const out = normalizeBareLatexLines(input)

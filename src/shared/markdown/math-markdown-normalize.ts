@@ -538,13 +538,28 @@ function processProseRegion(text: string): string {
   // many stray `$` characters on a single very long line.
   return text.replace(
     /(?<![\\$])\$(?!\$)([^$\n]{1,400}?)\$(?!\$)/g,
-    (match, inner: string) => {
-      if (looksLikeMath(inner.trim())) return match
+    (match, inner: string, offset: number, full: string) => {
+      if (!isLikelyCurrencyProseSpan(match, inner, offset, full) && looksLikeMath(inner.trim())) {
+        return match
+      }
       // No math hints — the pair was almost certainly prose accidentally wrapped (most
       // commonly currency in financial answers). Escape both delimiters so remark-math
       // leaves them as literal `$` characters.
       return `\\$${inner}\\$`
     },
+  )
+}
+
+function isLikelyCurrencyProseSpan(match: string, inner: string, offset: number, full: string): boolean {
+  const afterOpeningDollar = full[offset + 1] ?? ''
+  if (!/\d/.test(afterOpeningDollar)) return false
+
+  const afterClosingDollar = full[offset + match.length] ?? ''
+  const body = inner.trim()
+  return (
+    /\d/.test(afterClosingDollar) ||
+    /\b[A-Za-z]{2,}\b/.test(body) ||
+    /\d(?:,\d{3})+(?:\.\d+)?/.test(body)
   )
 }
 
