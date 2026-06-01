@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import {
@@ -11,7 +12,7 @@ import {
 import overlayAppConfig from '@/overlay.config'
 import { getOverlaySession } from '@/server/auth/session'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   DEFAULT_MODEL_ID,
   DEFAULT_IMAGE_MODEL_ID,
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           serverSecret,
         },
         { throwOnError: true },
-      ).catch(() => DEFAULT_APP_SETTINGS),
+      ).catch((_error) => DEFAULT_APP_SETTINGS),
     ])
 
     const user =
@@ -151,7 +152,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json(response)
   } catch (error) {
-    console.error('[app/bootstrap] GET error:', error)
+    logger.error('[app/bootstrap] GET error:', error)
     return NextResponse.json({ error: 'Failed to load app bootstrap' }, { status: 500 })
   }
 }

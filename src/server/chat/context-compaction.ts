@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import type { UIMessage } from 'ai'
 import { getModel } from '@/shared/ai/gateway/model-data'
 import { getGatewayModelPricing } from '@/server/ai/pricing'
@@ -121,7 +122,7 @@ async function getLiveGatewayModels(): Promise<Map<string, GatewayModelListEntry
     }
     liveGatewayModelsCache = { fetchedAt: now, byId }
     return byId
-  } catch {
+  } catch (_error) {
     return liveGatewayModelsCache?.byId ?? null
   }
 }
@@ -131,7 +132,7 @@ async function gatewayIdCandidates(modelId: string): Promise<string[]> {
   try {
     const { getGatewayModelId } = await import('@/server/ai/model-runtime')
     out.add(getGatewayModelId(modelId))
-  } catch {
+  } catch (_error) {
     // Non-Gateway models fall back to snapshot/manual metadata.
   }
   const pricing = getGatewayModelPricing(modelId)
@@ -356,7 +357,7 @@ export async function compactMessagesForContext(params: {
       },
     }
   } catch (error) {
-    console.warn('[context-compaction] summarization failed; falling back to deterministic trim', {
+    logger.warn('[context-compaction] summarization failed; falling back to deterministic trim', {
       targetModelId: params.targetModelId,
       error: summarizeErrorForLog(error),
     })

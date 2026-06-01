@@ -34,6 +34,8 @@ export const SERVER_DOMAINS = [
   'web',
 ]
 
+const SERVER_INFRA_DOMAINS = ['observability']
+
 const LEGACY_COMPONENT_BOUNDARY_DEBT_FILES = [
   'src/components/layout/AppSidebar.tsx',
   'src/components/layout/GlobalSearchDialog.tsx',
@@ -71,7 +73,7 @@ function otherFeatureImportPatterns(selfDomain) {
 }
 
 function otherServerImportPatterns(selfDomain) {
-  return SERVER_DOMAINS.filter((d) => d !== selfDomain).map(
+  return SERVER_DOMAINS.filter((d) => d !== selfDomain && !SERVER_INFRA_DOMAINS.includes(d)).map(
     (d) => `@/server/${d}/*`,
   )
 }

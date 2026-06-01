@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { generateText } from '@/server/ai/sdk'
@@ -5,7 +6,7 @@ import { convex } from '@/server/database/convex'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
 
 function utcDateKey(): string {
@@ -111,7 +112,7 @@ async function persistStarters({ serverSecret, userId, prompts, day }: PersistAr
     })) as { ok?: boolean }
     return result.ok === true
   } catch (err) {
-    console.error('[chat-suggestions] failed to persist starters', err)
+    logger.error('[chat-suggestions] failed to persist starters', err)
     return false
   }
 }
@@ -145,7 +146,7 @@ function scheduleRefreshForNewDay(args: {
         await persistStarters({ serverSecret, userId, prompts: generated, day: today })
       }
     } catch (err) {
-      console.warn('[chat-suggestions] background refresh failed', err)
+      logger.warn('[chat-suggestions] background refresh failed', err)
     }
   })
 }
@@ -196,7 +197,7 @@ export async function GET() {
     try {
       generated = await generateStartersWithLLM(session.accessToken, firstName)
     } catch (err) {
-      console.warn('[chat-suggestions] generation failed', err)
+      logger.warn('[chat-suggestions] generation failed', err)
     }
 
     if (generated && generated.length === 4) {
@@ -210,7 +211,7 @@ export async function GET() {
 
     return NextResponse.json({ prompts: [...DEFAULT_CHAT_SUGGESTIONS], stale: false })
   } catch (err) {
-    console.error('[chat-suggestions]', err)
+    logger.error('[chat-suggestions]', err)
     return NextResponse.json({ prompts: [...DEFAULT_CHAT_SUGGESTIONS], stale: false })
   }
 }

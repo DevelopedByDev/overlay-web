@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextResponse } from "next/server";
 import {
   CACHE_DURATION,
@@ -16,7 +17,7 @@ export async function GET() {
 
     return response;
   } catch (error) {
-    console.error("Failed to redirect latest release download:", error);
+    logger.error("Failed to redirect latest release download:", error);
     return NextResponse.json(
       { error: "Failed to fetch latest release download" },
       { status: 500 }

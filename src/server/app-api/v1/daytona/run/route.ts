@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import type { Sandbox } from '@daytonaio/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
@@ -12,7 +13,7 @@ import {
   startIfNeeded,
   uploadSandboxBuffer,
 } from '@/server/ai/sandbox/daytona'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { deleteObject, generatePresignedDownloadUrl, uploadBuffer as uploadBufferToR2 } from '@/server/storage/object-store'
@@ -57,7 +58,7 @@ async function waitForSandboxFile(
       if (details && !details.isDir) {
         return details
       }
-    } catch {
+    } catch (_error) {
       // retry
     }
     if (attempt < attempts - 1) {
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const parsedRequest = parseDaytonaRunRequest(await request.json())
   if (!parsedRequest.ok) {
     if (parsedRequest.error.warning) {
-      console.warn(parsedRequest.error.warning.message, parsedRequest.error.warning.details)
+      logger.warn(parsedRequest.error.warning.message, parsedRequest.error.warning.details)
     }
     return NextResponse.json(parsedRequest.error.payload, { status: parsedRequest.error.status })
   }

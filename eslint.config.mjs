@@ -48,10 +48,58 @@ const sharedIsomorphicRules = {
   },
 };
 
+const serverGuardrailRules = {
+  files: [
+    "src/server/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+    "src/app/api/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+  ],
+  ignores: ["src/server/**/*.test.ts", "src/server/observability/logger.ts"],
+  rules: {
+    "no-console": "error",
+    "no-empty": ["error", { allowEmptyCatch: false }],
+    "no-restricted-imports": [
+      "error",
+      {
+        paths: [
+          {
+            name: "@/server/tools/internal-api-secret",
+            message:
+              "Import getInternalApiSecret from @/server/shared/internal-api-secret.",
+          },
+        ],
+      },
+    ],
+    "no-restricted-syntax": [
+      "error",
+      {
+        selector: "CatchClause[param=null]",
+        message:
+          "Server catch blocks must bind the error. Log it, handle it, or name it _error for an intentional ignore.",
+      },
+      {
+        selector:
+          "CallExpression[callee.property.name='catch'] > ArrowFunctionExpression[params.length=0]",
+        message:
+          "Promise catch handlers in server code must accept the error. Log it, handle it, or name it _error for an intentional ignore.",
+      },
+    ],
+    "@typescript-eslint/no-unused-vars": [
+      "warn",
+      {
+        argsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+        ignoreRestSiblings: true,
+        varsIgnorePattern: "^_",
+      },
+    ],
+  },
+};
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   sharedIsomorphicRules,
+  serverGuardrailRules,
   ...createArchitectureBoundaryConfigs(),
   // Override default ignores of eslint-config-next.
   globalIgnores([

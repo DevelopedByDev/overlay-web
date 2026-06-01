@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NextRequest, NextResponse } from 'next/server'
@@ -34,7 +35,7 @@ async function loadComposioSDK(apiKey: string): Promise<any> {
 
   try {
     ComposioModule = await import('@composio/core')
-  } catch {
+  } catch (_error) {
     const coreUrl = pathToFileURL(
       path.resolve(process.cwd(), '../overlay-desktop/node_modules/@composio/core/dist/index.mjs')
     ).href
@@ -125,7 +126,7 @@ function getAllowedAppOrigins(): string[] {
     if (!trimmed) continue
     try {
       origins.add(new URL(trimmed).origin)
-    } catch {
+    } catch (_error) {
       continue
     }
   }
@@ -238,7 +239,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         .map((item) => normalizeSlug(firstNonEmptyString(item.toolkit?.slug, item.appName) ?? ''))
         .filter(Boolean)),
     ]
-    const items = (await Promise.all(connected.map((slug) => fetchToolkitRecord(apiKey, slug).catch(() => null))))
+    const items = (await Promise.all(connected.map((slug) => fetchToolkitRecord(apiKey, slug).catch((_error) => null))))
       .filter((item): item is NonNullable<Awaited<ReturnType<typeof fetchToolkitRecord>>> => item !== null)
       .map((item) => ({
         slug: item.slug,
@@ -248,7 +249,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       }))
 
     return NextResponse.json({ connected, data: items, items, hasMore: false })
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ connected: [] })
   }
 }
@@ -305,7 +306,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         authConfigId = created.id
       }
     } catch (err) {
-      console.error('[Integrations] Failed to get/create auth config:', err)
+      logger.error('[Integrations] Failed to get/create auth config:', err)
       return NextResponse.json({ error: `Could not find auth config for ${toolkit}` }, { status: 500 })
     }
 
@@ -326,7 +327,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       connectionId: connectionRequest.id ?? connectionRequest.connectionId ?? null,
       status: connectionRequest.status ?? null,
     })
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ error: 'Failed to process integration request' }, { status: 500 })
   }
 }

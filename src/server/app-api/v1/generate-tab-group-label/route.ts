@@ -1,10 +1,11 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { calculateTokenCostOrNull } from '@/server/ai/pricing'
 import {
@@ -34,7 +35,7 @@ function fallbackLabel(text: string): string {
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = (await request.json().catch(() => ({}))) as {
+    const body = (await request.json().catch((_error) => ({}))) as {
       text?: string
     }
     const { text } = body
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           userId: auth.userId,
           reservationId: reservation.reservationId,
           errorMessage: `pricing_missing:${TAB_GROUP_MODEL}`,
-        }).catch(() => {})
+        }).catch((_error) => undefined)
       } else {
         const costCents = billableBudgetCentsFromProviderUsd(actualCostUsd)
         await finalizeProviderBudgetReservation({
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             userId: auth.userId,
             reservationId: reservation.reservationId,
             errorMessage: err instanceof Error ? err.message : 'finalize_failed',
-          }).catch(() => {})
+          }).catch((_error) => undefined)
         })
       }
     } catch (err) {
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         userId: auth.userId,
         reservationId: reservation.reservationId,
         reason: err instanceof Error ? err.message : 'tab_group_label_failed',
-      }).catch(() => {})
+      }).catch((_error) => undefined)
       return NextResponse.json({ title: fallback })
     }
 
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json({ title: sanitized })
   } catch (error) {
-    console.error('[TabGroupLabel] failed', error)
+    logger.error('[TabGroupLabel] failed', error)
     return NextResponse.json({ error: 'Failed to generate label' }, { status: 500 })
   }
 }

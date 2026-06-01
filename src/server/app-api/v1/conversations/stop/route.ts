@@ -1,6 +1,7 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
 import { convex } from '@/server/database/convex'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json({ success: true, stoppedCount: result.stoppedCount })
   } catch (e) {
-    console.error('[conversations/stop POST]', e)
+    logger.error('[conversations/stop POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to stop generating message'
     if (msg === 'Unauthorized') {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })

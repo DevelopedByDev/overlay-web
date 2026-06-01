@@ -151,7 +151,7 @@ async function readJsonConfigFile(
   const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath)
   try {
     await access(absolutePath)
-  } catch {
+  } catch (_error) {
     if (filePath === 'overlay.config.json') return {}
     throw new OverlayConfigError('Overlay config file not found', [`Missing ${absolutePath}`])
   }

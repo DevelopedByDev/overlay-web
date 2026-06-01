@@ -1,8 +1,9 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import {
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -283,7 +284,7 @@ const plannerSchema = z.object({
 function stringifyJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2)
-  } catch {
+  } catch (_error) {
     return String(value)
   }
 }
@@ -435,7 +436,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         userId: auth.userId,
         reservationId,
         reason: err instanceof Error ? err.message : 'extension_planner_failed',
-      }).catch(() => {})
+      }).catch((_error) => undefined)
       throw err
     }
 
@@ -449,7 +450,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           userId: auth.userId,
           reservationId,
           errorMessage: `pricing_missing:${effectiveModelId}`,
-        }).catch(() => {})
+        }).catch((_error) => undefined)
       } else {
         const costCents = billableBudgetCentsFromProviderUsd(actualCostUsd)
         await finalizeProviderBudgetReservation({
@@ -470,14 +471,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             userId: auth.userId,
             reservationId,
             errorMessage: err instanceof Error ? err.message : 'finalize_failed',
-          }).catch(() => {})
+          }).catch((_error) => undefined)
         })
       }
     }
 
     return NextResponse.json(result.object)
   } catch (error) {
-    console.error('[conversations/act/extension-plan] Failed:', error)
+    logger.error('[conversations/act/extension-plan] Failed:', error)
     const message = error instanceof Error ? error.message : 'Failed to plan extension act step.'
     return NextResponse.json({ error: 'extension_act_planner_failed', message }, { status: 500 })
   }

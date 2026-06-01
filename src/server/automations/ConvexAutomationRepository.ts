@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type {
   AutomationExecutionPayload,
   AutomationForUpdateNote,

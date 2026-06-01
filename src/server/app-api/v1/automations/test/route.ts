@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
@@ -6,7 +7,7 @@ export const maxDuration = 800
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await request.json().catch(() => ({})) as {
+    const body = await request.json().catch((_error) => ({})) as {
       accessToken?: string
       userId?: string
       automationId?: string
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json(result)
   } catch (error) {
     if (!(error instanceof Error && error.name === 'AutomationServiceError')) {
-      console.error('[automations/test]', error)
+      logger.error('[automations/test]', error)
     }
     const response = automationErrorResponse(error, 'Failed to test automation')
     if (response.status === 500) {

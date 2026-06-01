@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import type { StepResult, ToolSet } from 'ai'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
@@ -130,7 +131,7 @@ export class ActMessagePersistenceService {
         skipMemoryExtraction: args.skipMemoryExtraction,
       })
     } catch (err) {
-      console.error('[conversations/act] Failed to save user message:', summarizeErrorForLog(err))
+      logger.error('[conversations/act] Failed to save user message:', summarizeErrorForLog(err))
     }
   }
 
@@ -299,7 +300,7 @@ export class ActMessagePersistenceService {
         })
       }
     } catch (err) {
-      console.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
+      logger.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
     }
   }
 }

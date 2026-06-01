@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import type { ensureWorkspaceSandbox } from '@/server/ai/sandbox/daytona'
 import { accrueWorkspaceSpend } from '@/server/ai/sandbox/daytona'
 import { computeDaytonaRuntimeCost, getDaytonaResourceProfile } from '@/server/ai/sandbox/daytona-pricing'
@@ -145,17 +146,17 @@ export async function finalizeDaytonaRunMetering(params: {
           userId: params.userId,
           reservationId,
           reason: 'daytona_actual_usage_accrued',
-        }).catch(() => {})
+        }).catch((_error) => undefined)
         reservationId = null
       }
     } catch (meteringError) {
-      console.error('[Daytona Sandbox] Metering failed:', meteringError)
+      logger.error('[Daytona Sandbox] Metering failed:', meteringError)
       if (reservationId) {
         await deps.markProviderBudgetReconcile({
           userId: params.userId,
           reservationId,
           errorMessage: meteringError instanceof Error ? meteringError.message : 'daytona_metering_failed',
-        }).catch(() => {})
+        }).catch((_error) => undefined)
         reservationId = null
       }
     }
@@ -166,7 +167,7 @@ export async function finalizeDaytonaRunMetering(params: {
       userId: params.userId,
       reservationId,
       reason: 'daytona_no_metered_runtime',
-    }).catch(() => {})
+    }).catch((_error) => undefined)
   }
 }
 

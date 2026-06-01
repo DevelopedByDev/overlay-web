@@ -121,7 +121,7 @@ export class OidcAuthProvider implements AuthProvider {
       `${headerSegment}.${payloadSegment}`,
       signatureSegment,
       jwk,
-    ).catch(() => false)
+    ).catch((_error) => false)
 
     return verified ? claims : null
   }
@@ -184,7 +184,7 @@ export class OidcAuthProvider implements AuthProvider {
     const issuer = this.normalizedIssuer()
     if (!issuer) return null
 
-    const discovery = await this.fetchDiscovery(forceRefresh).catch(() => null)
+    const discovery = await this.fetchDiscovery(forceRefresh).catch((_error) => null)
     if (discovery?.jwks_uri) return discovery.jwks_uri
 
     return `${issuer}/.well-known/jwks.json`
@@ -251,7 +251,7 @@ function decodeBase64UrlJson<T>(value: string): T | null {
   try {
     const bytes = decodeBase64UrlToUint8Array(value)
     return JSON.parse(textDecoder.decode(bytes)) as T
-  } catch {
+  } catch (_error) {
     return null
   }
 }

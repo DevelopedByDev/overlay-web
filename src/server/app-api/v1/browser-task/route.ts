@@ -1,9 +1,10 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { BrowserUse } from 'browser-use-sdk/v3'
 import type { ProxyCountryCode } from 'browser-use-sdk/v3'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { BROWSER_USE_TASK_INIT_USD, calculateBrowserUseV3TokenCost } from '@/server/ai/pricing'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const requestedSessionId = sessionId?.trim()
     if (requestedSessionId) {
-      console.warn('[Browser Task API] Ignoring requested session reuse during security hardening', {
+      logger.warn('[Browser Task API] Ignoring requested session reuse during security hardening', {
         userId: auth.userId,
       })
     }
@@ -136,7 +137,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         userId: auth.userId,
         reservationId: reservation.reservationId,
         reason: err instanceof Error ? err.message : 'browser_task_failed',
-      }).catch(() => {})
+      }).catch((_error) => undefined)
       throw err
     }
 
@@ -173,7 +174,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         userId: auth.userId,
         reservationId: reservation.reservationId,
         errorMessage: err instanceof Error ? err.message : 'finalize_failed',
-      }).catch(() => {})
+      }).catch((_error) => undefined)
     })
 
     const updated = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
@@ -203,7 +204,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       },
     })
   } catch (error) {
-    console.error('[Browser Task API] Error:', error)
+    logger.error('[Browser Task API] Error:', error)
     const message = error instanceof Error ? error.message : 'Browser task failed'
     return NextResponse.json({ error: 'browser_task_failed', message }, { status: 500 })
   }

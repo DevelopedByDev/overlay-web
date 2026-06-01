@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 // Simple server-side Convex HTTP client for the landing page.
 // Browser code must use ConvexReactClient or typed Next API routes.
 
@@ -22,9 +23,9 @@ const { url: CONVEX_URL, source: CONVEX_URL_SOURCE } = resolveConvexUrl()
 const IS_BROWSER = typeof window !== 'undefined'
 
 if (!CONVEX_URL && !IS_BROWSER) {
-  console.warn('CONVEX_URL is not set')
+  logger.warn('CONVEX_URL is not set')
 } else if (CONVEX_URL) {
-  console.log(
+  logger.info(
     `[Convex] Using ${IS_DEV ? 'DEV' : 'PROD'} environment: ${CONVEX_URL} (source: ${CONVEX_URL_SOURCE})`
   )
 }
@@ -80,7 +81,7 @@ async function callConvex<T>(
   options: CallConvexOptions = {}
 ): Promise<T | null> {
   if (!IS_BROWSER && !CONVEX_URL) {
-    console.error('CONVEX_URL not configured')
+    logger.error('CONVEX_URL not configured')
     return null
   }
 
@@ -90,7 +91,7 @@ async function callConvex<T>(
       throw new Error(message)
     }
     if (!shouldSuppressConvexError(options, message)) {
-      console.error(message)
+      logger.error(message)
     }
     return null
   }
@@ -128,7 +129,7 @@ async function callConvex<T>(
     let data: ConvexResponse<T>
     try {
       data = JSON.parse(rawText) as ConvexResponse<T>
-    } catch {
+    } catch (_error) {
       throw new Error(`Convex ${type} returned invalid JSON: ${rawText.slice(0, 200)}`)
     }
 
@@ -142,7 +143,7 @@ async function callConvex<T>(
         throw new Error(message)
       }
       if (!shouldSuppressConvexError(options, message)) {
-        console.error(`Convex ${type} HTTP error:`, message)
+        logger.error(`Convex ${type} HTTP error:`, message)
       }
       return null
     }
@@ -152,7 +153,7 @@ async function callConvex<T>(
         throw new Error(data.errorMessage || `Convex ${type} error`)
       }
       if (!shouldSuppressConvexError(options, data.errorMessage ?? '')) {
-        console.error(`Convex ${type} error:`, data.errorMessage)
+        logger.error(`Convex ${type} error:`, data.errorMessage)
       }
       return null
     }
@@ -166,7 +167,7 @@ async function callConvex<T>(
       throw error
     }
     if (!shouldSuppressConvexError(options, error)) {
-      console.error(`Convex ${type} failed:`, error)
+      logger.error(`Convex ${type} failed:`, error)
     }
     return null
   }

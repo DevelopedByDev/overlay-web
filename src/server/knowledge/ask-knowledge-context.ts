@@ -1,7 +1,8 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { HybridSearchChunk } from '../../../convex/knowledge/knowledge'
 import type { AutoRetrievalBundle, SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 
@@ -73,7 +74,7 @@ export async function buildAutoRetrievalBundle(args: {
 
     return { extension: '\n\n' + lines.join('\n'), citations }
   } catch (e) {
-    console.warn('[ask-knowledge-context] hybridSearch failed:', e)
+    logger.warn('[ask-knowledge-context] hybridSearch failed:', e)
     return { extension: '', citations: {} }
   }
 }

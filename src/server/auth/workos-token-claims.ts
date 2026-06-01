@@ -15,7 +15,7 @@ export function decodeJwtExpMs(accessToken: string): number | null {
     const payload = JSON.parse(json) as { exp?: number }
     if (typeof payload.exp !== 'number') return null
     return payload.exp * 1000
-  } catch {
+  } catch (_error) {
     return null
   }
 }

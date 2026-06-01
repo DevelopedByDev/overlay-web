@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { randomBytes, randomUUID } from 'node:crypto'
 import mammoth from 'mammoth'
 import { splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
@@ -256,7 +257,7 @@ export class FileService {
     const r2Key = this.storage.keyForFile(args.userId, fileIdPlaceholder, fileName)
     const expiresIn = this.storage.getR2PresignTtlSeconds()
     await this.deps.repository.cleanupExpiredUploadIntents({ userId: args.userId }).catch((error) => {
-      console.warn('[FilesUploadUrl] Failed to clean expired upload intents', error)
+      logger.warn('[FilesUploadUrl] Failed to clean expired upload intents', error)
     })
     await this.deps.repository.createUploadIntent({
       userId: args.userId,
@@ -303,7 +304,7 @@ export class FileService {
     const r2Key = this.storage.keyForFile(args.userId, fileIdPlaceholder, args.name)
     const expiresIn = this.storage.getR2PresignTtlSeconds()
     await this.deps.repository.cleanupExpiredUploadIntents({ userId: args.userId }).catch((error) => {
-      console.warn('[FilesPresign] Failed to clean expired upload intents', error)
+      logger.warn('[FilesPresign] Failed to clean expired upload intents', error)
     })
     await this.deps.repository.createUploadIntent({
       userId: args.userId,
@@ -332,7 +333,7 @@ export class FileService {
       await this.deps.repository.recordFileBandwidth({
         userId: args.userId,
         bytes: proxyTarget.sizeBytes ?? 0,
-      }).catch((error) => console.warn('[files/content] bandwidth accounting failed', error))
+      }).catch((error) => logger.warn('[files/content] bandwidth accounting failed', error))
       const url = await this.storage.generatePresignedDownloadUrl(proxyTarget.r2Key)
       return { kind: 'redirect', url }
     }
@@ -471,7 +472,7 @@ export class FileService {
         if (msg === 'FILE_TOO_LARGE') {
           serviceError({ error: 'File too large (max 12MB)' }, 413)
         }
-        console.error('[ingest-document] extract:', error)
+        logger.error('[ingest-document] extract:', error)
         serviceError({ error: 'Could not read document' }, 400)
       }
 
@@ -573,7 +574,7 @@ export class FileService {
           now: this.clock.now(),
         })
     if (args.kind !== 'output' && !uploadIntent) {
-      await this.storage.deleteObjects([r2Key]).catch(() => {})
+      await this.storage.deleteObjects([r2Key]).catch((_error) => undefined)
       serviceError({ error: 'Upload authorization expired or was not found' }, 400)
     }
     const declaredSize =
@@ -581,7 +582,7 @@ export class FileService {
       (typeof args.declaredSizeBytes === 'number' ? Math.max(0, Math.round(args.declaredSizeBytes)) : 0)
     const actualSize = Math.max(0, Math.round(objectHead.sizeBytes))
     if (declaredSize > 0 && actualSize > declaredSize) {
-      await this.storage.deleteObjects([r2Key]).catch(() => {})
+      await this.storage.deleteObjects([r2Key]).catch((_error) => undefined)
       await this.expireUploadIntentBestEffort(args.userId, uploadIntent)
       serviceError({ error: 'Uploaded object exceeds authorized size' }, 413)
     }
@@ -605,7 +606,7 @@ export class FileService {
         sizeBytes: actualSize,
       })
     } catch (error) {
-      await this.storage.deleteObjects([r2Key]).catch(() => {})
+      await this.storage.deleteObjects([r2Key]).catch((_error) => undefined)
       await this.expireUploadIntentBestEffort(args.userId, uploadIntent)
       throw error
     }
@@ -618,7 +619,7 @@ export class FileService {
         fileId: id,
         now: this.clock.now(),
       }).catch(async (error) => {
-        console.warn('[FilesCreate] Uploaded file saved but upload intent finalization failed', error)
+        logger.warn('[FilesCreate] Uploaded file saved but upload intent finalization failed', error)
         await this.expireUploadIntentBestEffort(args.userId, uploadIntent)
       })
     }
@@ -659,7 +660,7 @@ export class FileService {
   private async cleanupUploadedDocument(r2Key: string | null): Promise<void> {
     if (!r2Key) return
     await this.storage.deleteObject(r2Key).catch((error) => {
-      console.warn(`[ingest-document] failed to delete orphaned R2 object key=${r2Key}`, error)
+      logger.warn(`[ingest-document] failed to delete orphaned R2 object key=${r2Key}`, error)
     })
   }
 
@@ -672,12 +673,12 @@ export class FileService {
       userId,
       intentId: uploadIntent._id,
       now: this.clock.now(),
-    }).catch(() => {})
+    }).catch((_error) => undefined)
   }
 
   private throwIngestCreateError(error: unknown): never {
     const msg = error instanceof Error ? error.message : String(error)
-    console.error('[ingest-document] files:create:', error)
+    logger.error('[ingest-document] files:create:', error)
     if (/unauthorized/i.test(msg)) {
       serviceError(
         {

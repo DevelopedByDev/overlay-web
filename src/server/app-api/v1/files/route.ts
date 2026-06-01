@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileErrorResponse, fileService } from '@/server/files/http'
@@ -60,7 +61,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     if (contentType.includes('application/json')) {
       try {
         body = await request.json()
-      } catch {
+      } catch (_error) {
         body = {}
       }
     }
@@ -71,7 +72,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     })
     return NextResponse.json(result)
   } catch (error) {
-    console.error('[FilesDelete] failed', error)
+    logger.error('[FilesDelete] failed', error)
     return fileErrorResponse(error, 'Failed to delete file')
   }
 }

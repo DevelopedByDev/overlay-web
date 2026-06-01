@@ -1,6 +1,7 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getVerifiedAccessTokenClaims, debugAccessTokenVerification } from '../../../../../../convex/lib/auth'
 import { rateLimitByIp } from '@/server/security/rate-limit'
 
@@ -43,7 +44,7 @@ async function getAuthenticatedUserId(request: NextRequest): Promise<string | nu
   const claims = await getVerifiedAccessTokenClaims(bearer)
   if (typeof claims?.sub !== 'string' || !claims.sub.trim()) {
     const debug = await debugAccessTokenVerification(bearer)
-    console.error('[NativeSubscription] Token verification failed:', JSON.stringify(debug))
+    logger.error('[NativeSubscription] Token verification failed:', JSON.stringify(debug))
     return null
   }
   return claims.sub
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
       { headers: NO_STORE_HEADERS },
     )
   } catch (error) {
-    console.error('[NativeSubscription] Error:', error)
+    logger.error('[NativeSubscription] Error:', error)
     return NextResponse.json(
       { error: 'Failed to fetch subscription' },
       { status: 500, headers: NO_STORE_HEADERS }

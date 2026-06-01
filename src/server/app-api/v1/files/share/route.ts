@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileErrorResponse, fileService } from '@/server/files/http'
@@ -8,7 +9,7 @@ function originForShareUrl(request: NextRequest): string {
 
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = (await request.json().catch(() => ({}))) as {
+    const body = (await request.json().catch((_error) => ({}))) as {
       fileId?: string
       visibility?: 'private' | 'public'
       accessToken?: string
@@ -26,7 +27,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (error instanceof Error && error.name === 'FileServiceError') {
       return fileErrorResponse(error, 'Failed to update share visibility')
     }
-    console.error('[files/share PATCH]', error)
+    logger.error('[files/share PATCH]', error)
     return NextResponse.json({ error: 'Failed to update share visibility' }, { status: 500 })
   }
 }

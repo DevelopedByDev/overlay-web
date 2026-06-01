@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import type { ToolSet } from '@/server/ai/sdk'
 import {
   getGatewayParallelSearchTool,
@@ -48,7 +49,7 @@ export function preloadActExternalToolTasks(params: {
     accessToken: params.accessToken,
   })
   void composioToolsTask.catch((error) => {
-    console.warn('[conversations/act] Composio tool preload failed:', summarizeErrorForLog(error))
+    logger.warn('[conversations/act] Composio tool preload failed:', summarizeErrorForLog(error))
   })
 
   const mcpToolsTask = createMcpToolSet({
@@ -57,7 +58,7 @@ export function preloadActExternalToolTasks(params: {
     serverSecret: params.serverSecret,
   })
   void mcpToolsTask.catch((error) => {
-    console.warn('[conversations/act] MCP tool preload failed:', summarizeErrorForLog(error))
+    logger.warn('[conversations/act] MCP tool preload failed:', summarizeErrorForLog(error))
   })
 
   return { composioToolsTask, mcpToolsTask }
@@ -181,7 +182,7 @@ export function logActTooling(tooling: Pick<ActTooling,
   'missingGatewaySearchTools' |
   'tools'
 >): void {
-  console.log(
+  logger.info(
     '[conversations/act] tools:',
     summarizeToolSetForLog(tooling.tools),
     tooling.composioStrippedForCompareSlot ? '| composio:stripped_for_compare_slot' : '',

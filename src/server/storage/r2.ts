@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import {
   S3Client,
   PutObjectCommand,
@@ -33,7 +34,7 @@ function getR2Endpoint(): string {
   if (configured) {
     try {
       return new URL(configured).origin
-    } catch {
+    } catch (_error) {
       return configured
     }
   }
@@ -85,7 +86,7 @@ function getConfiguredR2Endpoint(config: R2ObjectStoreConfig): string {
   if (config.endpointUrl) {
     try {
       return new URL(config.endpointUrl).origin
-    } catch {
+    } catch (_error) {
       return config.endpointUrl
     }
   }
@@ -137,7 +138,7 @@ export async function generatePresignedUploadUrl(
     { expiresIn: ttl },
   )
 
-  console.log(`[R2] generatePresignedUploadUrl key=${key} mimeType=${mimeType} size=${contentLength}B ttl=${ttl}s duration=${Date.now() - t0}ms`)
+  logger.info(`[R2] generatePresignedUploadUrl key=${key} mimeType=${mimeType} size=${contentLength}B ttl=${ttl}s duration=${Date.now() - t0}ms`)
   return url
 }
 
@@ -158,7 +159,7 @@ export async function generatePresignedDownloadUrl(
     { expiresIn: ttl },
   )
 
-  console.log(`[R2] generatePresignedDownloadUrl key=${key} ttl=${ttl}s duration=${Date.now() - t0}ms`)
+  logger.info(`[R2] generatePresignedDownloadUrl key=${key} ttl=${ttl}s duration=${Date.now() - t0}ms`)
   return url
 }
 
@@ -184,7 +185,7 @@ export async function uploadBuffer(
     }),
   )
 
-  console.log(`[R2] uploadBuffer key=${key} mimeType=${mimeType} size=${sizeBytes}B duration=${Date.now() - t0}ms`)
+  logger.info(`[R2] uploadBuffer key=${key} mimeType=${mimeType} size=${sizeBytes}B duration=${Date.now() - t0}ms`)
 }
 
 // ── Delete single object ─────────────────────────────────────────────────────
@@ -196,7 +197,7 @@ export async function deleteObject(key: string): Promise<void> {
 
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
 
-  console.log(`[R2] deleteObject key=${key} duration=${Date.now() - t0}ms`)
+  logger.info(`[R2] deleteObject key=${key} duration=${Date.now() - t0}ms`)
 }
 
 // ── Delete multiple objects (batch) ─────────────────────────────────────────
@@ -221,11 +222,11 @@ export async function deleteObjects(keys: string[]): Promise<void> {
       }),
     )
     if (result.Errors && result.Errors.length > 0) {
-      console.error(`[R2] deleteObjects partial errors: ${JSON.stringify(result.Errors)}`)
+      logger.error(`[R2] deleteObjects partial errors: ${JSON.stringify(result.Errors)}`)
     }
   }
 
-  console.log(`[R2] deleteObjects count=${keys.length} duration=${Date.now() - t0}ms`)
+  logger.info(`[R2] deleteObjects count=${keys.length} duration=${Date.now() - t0}ms`)
 }
 
 // ── Head object (check existence / metadata) ─────────────────────────────────

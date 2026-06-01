@@ -112,7 +112,7 @@ function verifySignedCookie(cookieValue: string): string | null {
     const expectedBuf = Buffer.from(expectedSignature, 'hex')
     if (sigBuf.length !== expectedBuf.length) return null
     if (!timingSafeEqual(sigBuf, expectedBuf)) return null
-  } catch {
+  } catch (_error) {
     return null
   }
 
@@ -136,7 +136,7 @@ function decodeSignedValue(value: string): string | null {
   if (!payload) return null
   try {
     return Buffer.from(payload, 'base64url').toString('utf8')
-  } catch {
+  } catch (_error) {
     return null
   }
 }
@@ -206,7 +206,7 @@ export function normalizeAuthRedirect(redirectUri?: string | null): string | nul
       return null
     }
     return `${candidate.pathname}${candidate.search}${candidate.hash}` || DEFAULT_AUTH_REDIRECT
-  } catch {
+  } catch (_error) {
     return null
   }
 }
@@ -243,7 +243,7 @@ export function readEmailVerificationTicket(
       expiresAt: parsed.expiresAt,
       userId: parsed.userId.trim(),
     }
-  } catch {
+  } catch (_error) {
     return null
   }
 }
@@ -307,7 +307,7 @@ export async function consumeAuthorizationState(
       redirectTo: parsed.redirectTo,
       ...(parsed.codeChallenge ? { codeChallenge: parsed.codeChallenge } : {}),
     }
-  } catch {
+  } catch (_error) {
     return null
   }
 }
@@ -357,7 +357,7 @@ export async function getAuthorizationUrl(
   let authorizationUrl: string
   try {
     authorizationUrl = workos.userManagement.getAuthorizationUrl(authOptions)
-  } catch {
+  } catch (_error) {
     // Fallback: try without screenHint if it causes issues
     delete authOptions.screenHint
     authorizationUrl = workos.userManagement.getAuthorizationUrl(authOptions)
@@ -558,7 +558,7 @@ export async function sendPasswordResetEmail(
       email,
     })
     return { success: true }
-  } catch {
+  } catch (_error) {
     // Don't reveal if email exists or not for security
     return { success: true } // Always return success to prevent email enumeration
   }
@@ -715,7 +715,7 @@ export async function getSession(): Promise<AuthSession | null> {
     let migratedLegacyCookie = false
     try {
       session = parseSessionPayload(payload)
-    } catch {
+    } catch (_error) {
       session = parseLegacySessionPayload(payload)
       migratedLegacyCookie = true
     }

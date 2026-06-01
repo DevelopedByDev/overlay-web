@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
@@ -5,7 +6,7 @@ import { z } from 'zod'
 import { sanitizeChatTitle } from '@/shared/chat/chat-title'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { calculateTokenCostOrNull } from '@/server/ai/pricing'
 import {
@@ -26,7 +27,7 @@ const titleSchema = z.object({
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = (await request.json().catch(() => ({}))) as {
+    const body = (await request.json().catch((_error) => ({}))) as {
       text?: string
     }
     const { text } = body
@@ -80,19 +81,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         userId: auth.userId,
         reservationId: reservation.reservationId,
         reason: err instanceof Error ? err.message : 'title_generation_failed',
-      }).catch((releaseError) => console.error('[ChatTitle][server] Failed to release reservation', releaseError))
+      }).catch((releaseError) => logger.error('[ChatTitle][server] Failed to release reservation', releaseError))
       throw err
     }
 
     const extracted = result.object.title?.trim() ?? ''
     const sanitizedTitle = sanitizeChatTitle(extracted, FALLBACK_TITLE)
     if (sanitizedTitle === FALLBACK_TITLE) {
-      console.warn('[ChatTitle][server] Gateway returned empty title', result.object)
+      logger.warn('[ChatTitle][server] Gateway returned empty title', result.object)
       await markProviderBudgetReconcile({
         userId: auth.userId,
         reservationId: reservation.reservationId,
         errorMessage: 'empty_title_after_provider_success',
-      }).catch(() => {})
+      }).catch((_error) => undefined)
       return NextResponse.json({ title: null }, { status: 502 })
     }
 
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         userId: auth.userId,
         reservationId: reservation.reservationId,
         errorMessage: `pricing_missing:${TITLE_MODEL}`,
-      }).catch(() => {})
+      }).catch((_error) => undefined)
     } else {
       const costCents = billableBudgetCentsFromProviderUsd(actualCostUsd)
       await finalizeProviderBudgetReservation({
@@ -122,18 +123,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           timestamp: Date.now(),
         }],
       }).catch(async (err) => {
-        console.error('[ChatTitle][server] Failed to finalize reservation', err)
+        logger.error('[ChatTitle][server] Failed to finalize reservation', err)
         await markProviderBudgetReconcile({
           userId: auth.userId,
           reservationId: reservation.reservationId,
           errorMessage: err instanceof Error ? err.message : 'finalize_failed',
-        }).catch(() => {})
+        }).catch((_error) => undefined)
       })
     }
 
     return NextResponse.json({ title: sanitizedTitle })
   } catch (error) {
-    console.error('[ChatTitle][server] Failed to generate title', error)
+    logger.error('[ChatTitle][server] Failed to generate title', error)
     return NextResponse.json({ error: 'Failed to generate title' }, { status: 500 })
   }
 }

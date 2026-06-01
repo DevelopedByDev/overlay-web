@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { createUser } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/server/security/rate-limit'
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
       message: 'Account created! Please check your email to verify your account.',
     })
   } catch (error) {
-    console.error('[Auth] Sign-up error:', error)
+    logger.error('[Auth] Sign-up error:', error)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
@@ -10,7 +11,7 @@ export async function POST(request: NextRequest) {
     const disabledCapabilityResponse = await requireOverlayCapability('billing')
     if (disabledCapabilityResponse) return disabledCapabilityResponse
 
-    const body = await request.json().catch(() => ({}))
+    const body = await request.json().catch((_error) => ({}))
     const authSession = await getOverlaySession()
     const auth = await resolveAuthenticatedAppUser(request, body)
     const userId = auth?.userId
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.name === 'BillingServiceError') {
       return billingErrorResponse(error, 'Failed to create portal session')
     }
-    console.error('Portal error:', error)
+    logger.error('Portal error:', error)
     return NextResponse.json(
       { error: 'Failed to create portal session' },
       { status: 500 },

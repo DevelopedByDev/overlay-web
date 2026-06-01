@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 const SERVICE_AUTH_HEADER = 'x-overlay-service-auth'
 const SERVICE_AUTH_AUDIENCE = 'overlay-internal-api'
 const SERVICE_AUTH_ISSUER = 'overlay-nextjs'
@@ -205,7 +206,7 @@ export async function verifyServiceAuthToken(
 
   const separatorIndex = trimmed.lastIndexOf('.')
   if (separatorIndex <= 0 || separatorIndex === trimmed.length - 1) {
-    console.error('[service-auth] verify failed: malformed token (no separator)')
+    logger.error('[service-auth] verify failed: malformed token (no separator)')
     return null
   }
 
@@ -214,13 +215,13 @@ export async function verifyServiceAuthToken(
   let parsed: unknown
   try {
     parsed = JSON.parse(fromBase64Url(payloadSegment))
-  } catch {
-    console.error('[service-auth] verify failed: payload JSON parse error')
+  } catch (_error) {
+    logger.error('[service-auth] verify failed: payload JSON parse error')
     return null
   }
 
   if (!isValidServiceAuthPayload(parsed)) {
-    console.error('[service-auth] verify failed: invalid payload shape', { parsed })
+    logger.error('[service-auth] verify failed: invalid payload shape', { parsed })
     return null
   }
 
@@ -237,33 +238,33 @@ export async function verifyServiceAuthToken(
     textEncoder.encode(payloadSegment),
   )
   if (!verified) {
-    console.error('[service-auth] verify failed: HMAC signature mismatch (secrets may differ between environments)')
+    logger.error('[service-auth] verify failed: HMAC signature mismatch (secrets may differ between environments)')
     return null
   }
 
   const now = Date.now()
   if (payload.exp < now) {
-    console.error('[service-auth] verify failed: token expired', { exp: payload.exp, now })
+    logger.error('[service-auth] verify failed: token expired', { exp: payload.exp, now })
     return null
   }
   if (payload.iat > now + MAX_SERVICE_AUTH_CLOCK_SKEW_MS) {
-    console.error('[service-auth] verify failed: token issued in future (clock skew)', { iat: payload.iat, now, skewMs: payload.iat - now })
+    logger.error('[service-auth] verify failed: token issued in future (clock skew)', { iat: payload.iat, now, skewMs: payload.iat - now })
     return null
   }
   if (payload.exp - payload.iat > MAX_SERVICE_AUTH_TTL_MS) {
-    console.error('[service-auth] verify failed: token ttl exceeds maximum', { iat: payload.iat, exp: payload.exp, maxTtlMs: MAX_SERVICE_AUTH_TTL_MS })
+    logger.error('[service-auth] verify failed: token ttl exceeds maximum', { iat: payload.iat, exp: payload.exp, maxTtlMs: MAX_SERVICE_AUTH_TTL_MS })
     return null
   }
   if (payload.method !== normalizeMethod(params.method)) {
-    console.error('[service-auth] verify failed: method mismatch', { expected: normalizeMethod(params.method), actual: payload.method })
+    logger.error('[service-auth] verify failed: method mismatch', { expected: normalizeMethod(params.method), actual: payload.method })
     return null
   }
   if (payload.path !== normalizePath(params.path)) {
-    console.error('[service-auth] verify failed: path mismatch', { expected: normalizePath(params.path), actual: payload.path })
+    logger.error('[service-auth] verify failed: path mismatch', { expected: normalizePath(params.path), actual: payload.path })
     return null
   }
   if (params.userId && payload.sub !== params.userId.trim()) {
-    console.error('[service-auth] verify failed: userId mismatch', { expected: params.userId.trim(), actual: payload.sub })
+    logger.error('[service-auth] verify failed: userId mismatch', { expected: params.userId.trim(), actual: payload.sub })
     return null
   }
   if (params.consumeReplay !== false) {
@@ -273,11 +274,11 @@ export async function verifyServiceAuthToken(
         ? await params.replayConsumer(payload)
         : recordServiceAuthVerification(payload.jti, payload.exp)
     } catch (error) {
-      console.error('[service-auth] verify failed: replay store error', error)
+      logger.error('[service-auth] verify failed: replay store error', error)
       return null
     }
     if (!replayAccepted) {
-      console.error('[service-auth] verify failed: replay protection triggered for jti', payload.jti)
+      logger.error('[service-auth] verify failed: replay protection triggered for jti', payload.jti)
       return null
     }
   }

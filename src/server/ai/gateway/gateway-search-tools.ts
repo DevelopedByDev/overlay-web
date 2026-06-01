@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { createGateway, generateText, stepCountIs, tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import {
@@ -97,7 +98,7 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
 
   for (const modelId of toolProxyModelAttempts(innerProxyModelId)) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      console.log(`[AI Gateway] ${toolName} inner generateText start (attempt ${attempt}/${maxAttempts})`, {
+      logger.info(`[AI Gateway] ${toolName} inner generateText start (attempt ${attempt}/${maxAttempts})`, {
         innerProxyModelId: modelId,
       })
       try {
@@ -110,7 +111,7 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
         })
       } catch (error) {
         lastError = error
-        console.warn(`[AI Gateway] ${toolName} inner generateText failed`, {
+        logger.warn(`[AI Gateway] ${toolName} inner generateText failed`, {
           innerProxyModelId: modelId,
           attempt,
           error: error instanceof Error ? error.message : String(error),
@@ -118,7 +119,7 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
         break
       }
       if (hasToolResult(last, toolName)) return last
-      console.warn(`[AI Gateway] ${toolName} missing tool result, retrying`, {
+      logger.warn(`[AI Gateway] ${toolName} missing tool result, retrying`, {
         attempt,
         finishReason: last.finishReason,
         stepCount: last.steps?.length,
@@ -178,11 +179,11 @@ export async function executeGatewayPerplexitySearch(
   })
   const extracted = extractProviderToolOutput(result, 'perplexity_search', 'Perplexity search')
   if (extracted !== undefined) {
-    console.log('[AI Gateway] perplexity_search inner generateText OK')
+    logger.info('[AI Gateway] perplexity_search inner generateText OK')
     return extracted
   }
 
-  console.error('[AI Gateway] perplexity_search inner generateText missing tool result', {
+  logger.error('[AI Gateway] perplexity_search inner generateText missing tool result', {
     finishReason: result.finishReason,
     steps: result.steps.length,
   })
@@ -253,11 +254,11 @@ export async function executeGatewayParallelSearch(
   })
   const extracted = extractProviderToolOutput(result, 'parallel_search', 'Parallel search')
   if (extracted !== undefined) {
-    console.log('[AI Gateway] parallel_search inner generateText OK')
+    logger.info('[AI Gateway] parallel_search inner generateText OK')
     return extracted
   }
 
-  console.error('[AI Gateway] parallel_search inner generateText missing tool result', {
+  logger.error('[AI Gateway] parallel_search inner generateText missing tool result', {
     finishReason: result.finishReason,
     steps: result.steps.length,
   })
@@ -326,12 +327,12 @@ export async function getGatewayPerplexitySearchTool(accessToken?: string, chatM
   try {
     await getOrCreateGateway(accessToken)
     const innerProxyModelId = resolveGatewayProviderToolProxyModelId(chatModelId)
-    console.log('[AI Gateway] perplexity_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
+    logger.info('[AI Gateway] perplexity_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
       innerProxyModelId,
     })
     return createPerplexitySearchFunctionTool(accessToken, innerProxyModelId)
   } catch (err) {
-    console.error('[AI Gateway] perplexity_search unavailable — check AI_GATEWAY_API_KEY:', err)
+    logger.error('[AI Gateway] perplexity_search unavailable — check AI_GATEWAY_API_KEY:', err)
     return null
   }
 }
@@ -340,12 +341,12 @@ export async function getGatewayParallelSearchTool(accessToken?: string, chatMod
   try {
     await getOrCreateGateway(accessToken)
     const innerProxyModelId = resolveGatewayProviderToolProxyModelId(chatModelId)
-    console.log('[AI Gateway] parallel_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
+    logger.info('[AI Gateway] parallel_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
       innerProxyModelId,
     })
     return createParallelSearchFunctionTool(accessToken, innerProxyModelId)
   } catch (err) {
-    console.error('[AI Gateway] parallel_search unavailable — check AI_GATEWAY_API_KEY:', err)
+    logger.error('[AI Gateway] parallel_search unavailable — check AI_GATEWAY_API_KEY:', err)
     return null
   }
 }
@@ -416,7 +417,7 @@ function logToolProxyFallback(
 ): void {
   const fallback = resolveGatewayProviderToolProxyModelId()
   if (modelId !== fallback) {
-    console.warn(`[AI Gateway] ${toolName} falling back to Gateway proxy model`, {
+    logger.warn(`[AI Gateway] ${toolName} falling back to Gateway proxy model`, {
       from: modelId,
       to: fallback,
     })

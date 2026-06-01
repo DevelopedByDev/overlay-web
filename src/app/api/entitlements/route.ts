@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { getOverlaySession } from '@/server/auth/session'
@@ -35,14 +36,14 @@ export async function GET() {
         error: msg,
         session: summarizeSessionForLog(session),
       })
-      console.error('Entitlements error:', error)
+      logger.error('Entitlements error:', error)
       return NextResponse.json({ error: 'Failed to fetch entitlements' }, { status: 500 })
     }
   } catch (error) {
     logAuthDebug('/api/entitlements outer error', {
       error: error instanceof Error ? error.message : String(error),
     })
-    console.error('Entitlements error:', error)
+    logger.error('Entitlements error:', error)
     return NextResponse.json({ error: 'Failed to fetch entitlements' }, { status: 500 })
   }
 }

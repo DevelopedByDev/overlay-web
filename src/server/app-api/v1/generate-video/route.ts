@@ -1,7 +1,8 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { experimental_generateVideo as generateVideo } from '@/server/ai/sdk'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { getGatewayVideoModel } from '@/server/ai/model-runtime'
 import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             errorMessage,
           },
           { throwOnError: true },
-        ).catch(() => {})
+        ).catch((_error) => undefined)
       }
       const releaseReservedBudget = async (reason?: string) => {
         if (!reservationId) return
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           reservationId,
           providerWorkStarted: providerSucceeded,
           reason,
-        }).catch((err) => console.error('[GenerateVideo] Failed to release budget reservation:', err))
+        }).catch((err) => logger.error('[GenerateVideo] Failed to release budget reservation:', err))
         reservationId = null
       }
 
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         let currentEntitlements = entitlements
         const budget = getBudgetTotals(currentEntitlements)
         const usedPct = budget.totalCents > 0 ? ((budget.usedCents / budget.totalCents) * 100).toFixed(2) : '0.00'
-        console.log(`[GenerateVideo] 📊 Entitlements: tier=${currentEntitlements.tier} | used=${budget.usedCents}¢ / ${budget.totalCents}¢ (${usedPct}% used, $${(budget.remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
+        logger.info(`[GenerateVideo] 📊 Entitlements: tier=${currentEntitlements.tier} | used=${budget.usedCents}¢ / ${budget.totalCents}¢ (${usedPct}% used, $${(budget.remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
         if (!isPaidPlan(currentEntitlements)) {
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'generation_not_allowed', message: 'Video generation requires a paid plan.' })))
           controller.close()
@@ -195,7 +196,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
               { throwOnError: true },
             )
           } catch (err) {
-            console.error('[GenerateVideo] Failed to create output record:', err)
+            logger.error('[GenerateVideo] Failed to create output record:', err)
             await releaseReservedBudget(err instanceof Error ? err.message : 'output_create_failed')
             controller.enqueue(encode(sseChunk({ type: 'error', error: 'save_failed', message: 'Could not create the output record.' })))
             controller.close()
@@ -272,7 +273,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             break
           } catch (err) {
             lastError = err instanceof Error ? err : new Error(String(err))
-            console.error(`[GenerateVideo] Model ${tryModelId} failed:`, lastError.message)
+            logger.error(`[GenerateVideo] Model ${tryModelId} failed:`, lastError.message)
             continue
           }
         }
@@ -310,9 +311,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             await uploadBuffer(key, videoBuffer, 'video/mp4')
             r2Key = key
             uploadedR2Key = key
-            console.log(`[GenerateVideo] ✅ Uploaded ${videoBuffer.length}B to R2 key=${key}`)
+            logger.info(`[GenerateVideo] ✅ Uploaded ${videoBuffer.length}B to R2 key=${key}`)
           } catch (err) {
-            console.error('[GenerateVideo] Failed to upload to R2:', err)
+            logger.error('[GenerateVideo] Failed to upload to R2:', err)
             await markOutputFailed(err instanceof Error ? err.message : 'Failed to upload video')
             if (err instanceof R2GlobalBudgetError) {
               await releaseReservedBudget('global_r2_budget_after_generation')
@@ -342,9 +343,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
               { throwOnError: true },
             )
           } catch (err) {
-            console.error('[GenerateVideo] Failed to update output:', err)
+            logger.error('[GenerateVideo] Failed to update output:', err)
             if (uploadedR2Key) {
-              await deleteObject(uploadedR2Key).catch(() => {})
+              await deleteObject(uploadedR2Key).catch((_error) => undefined)
             }
             await markOutputFailed(err instanceof Error ? err.message : 'Failed to finalize output record')
             if (err instanceof Error && err.message.includes('storage_limit_exceeded')) {
@@ -367,7 +368,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             userId: auth.userId,
             reservationId,
             errorMessage: `pricing_missing:${usedModelId}`,
-          }).catch((err) => console.error('[GenerateVideo] Failed to mark budget reservation for reconcile:', err))
+          }).catch((err) => logger.error('[GenerateVideo] Failed to mark budget reservation for reconcile:', err))
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'pricing_missing', message: 'Generated video model is not configured for billing.' })))
           controller.close()
           return
@@ -390,19 +391,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           })
           reservationId = null
         } catch (err) {
-          console.error('[GenerateVideo] Failed to finalize budget reservation:', err)
+          logger.error('[GenerateVideo] Failed to finalize budget reservation:', err)
           await markProviderBudgetReconcile({
             userId: auth.userId,
             reservationId,
             errorMessage: err instanceof Error ? err.message : 'finalize_failed',
-          }).catch((reconcileError) => console.error('[GenerateVideo] Failed to mark budget reservation for reconcile:', reconcileError))
+          }).catch((reconcileError) => logger.error('[GenerateVideo] Failed to mark budget reservation for reconcile:', reconcileError))
         }
-        console.log(`[GenerateVideo] 💰 Cost: model=${usedModelId} | duration=${usedDuration}s | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
+        logger.info(`[GenerateVideo] 💰 Cost: model=${usedModelId} | duration=${usedDuration}s | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
 
         controller.enqueue(encode(sseChunk({ type: 'completed', outputId, url: dataUrl, modelUsed: usedModelId, temporary: temporaryChat === true })))
         controller.close()
       } catch (error) {
-        console.error('[GenerateVideo] Unexpected error:', error)
+        logger.error('[GenerateVideo] Unexpected error:', error)
         await markOutputFailed(error instanceof Error ? error.message : 'Unexpected error during video generation.')
         await releaseReservedBudget(error instanceof Error ? error.message : 'unexpected_error')
         controller.enqueue(encode(sseChunk({ type: 'failed', error: 'Unexpected error during video generation.' })))

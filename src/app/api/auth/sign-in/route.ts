@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateWithPassword } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/server/security/rate-limit'
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
       user: result.user,
     })
   } catch (error) {
-    console.error('[Auth] Sign-in error:', error)
+    logger.error('[Auth] Sign-in error:', error)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

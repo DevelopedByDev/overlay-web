@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 type JwtHeader = {
   alg?: unknown
   kid?: unknown
@@ -25,7 +26,7 @@ function toBase64(value: string): string {
 function decodeBase64UrlJson<T>(value: string): T | null {
   try {
     return JSON.parse(Buffer.from(toBase64(value), 'base64').toString('utf-8')) as T
-  } catch {
+  } catch (_error) {
     return null
   }
 }
@@ -151,8 +152,8 @@ export function logAuthDebug(label: string, payload?: unknown) {
     return
   }
   if (payload === undefined) {
-    console.log(`[AuthDebug] ${label}`)
+    logger.info(`[AuthDebug] ${label}`)
     return
   }
-  console.log(`[AuthDebug] ${label}`, payload)
+  logger.info(`[AuthDebug] ${label}`, payload)
 }

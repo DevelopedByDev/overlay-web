@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { R2GlobalBudgetError } from '@/server/storage/r2-budget'
 import { ConvexFileRepository } from './ConvexFileRepository'
@@ -54,7 +55,7 @@ export function filePresignErrorResponse(error: unknown) {
       { status: 403 },
     )
   }
-  console.error('[FilesPresign] Error:', error)
+  logger.error('[FilesPresign] Error:', error)
   return NextResponse.json({ error: 'Failed to generate upload URL' }, { status: 500 })
 }
 
@@ -69,13 +70,13 @@ export function fileIngestErrorResponse(error: unknown) {
     return NextResponse.json({ error: 'Overlay storage limit reached.' }, { status: 403 })
   }
   if (error instanceof Error && error.message.includes('INTERNAL_API_SECRET')) {
-    console.error('[ingest-document] missing INTERNAL_API_SECRET')
+    logger.error('[ingest-document] missing INTERNAL_API_SECRET')
     return NextResponse.json({ error: 'Server configuration error (auth secret).' }, { status: 503 })
   }
   if (error instanceof Error && error.message.includes('[R2]')) {
-    console.error('[ingest-document] R2 misconfiguration:', error.message)
+    logger.error('[ingest-document] R2 misconfiguration:', error.message)
     return NextResponse.json({ error: 'File storage is not available.' }, { status: 503 })
   }
-  console.error('[ingest-document]', error)
+  logger.error('[ingest-document]', error)
   return NextResponse.json({ error: 'Failed to ingest document' }, { status: 500 })
 }

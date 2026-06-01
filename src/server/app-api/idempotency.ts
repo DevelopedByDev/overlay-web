@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { isStreamIdempotencyMarker } from '@/shared/api/idempotency-markers'
 
@@ -63,7 +63,7 @@ function keyHashFor(args: {
 }
 
 async function requestHashFor(request: NextRequest): Promise<string> {
-  const body = await request.clone().arrayBuffer().catch(() => new ArrayBuffer(0))
+  const body = await request.clone().arrayBuffer().catch((_error) => new ArrayBuffer(0))
   const bodyHash = sha256(Buffer.from(body))
   return sha256(`${request.method.toUpperCase()}\n${request.nextUrl.pathname}\n${request.nextUrl.search}\n${bodyHash}`)
 }
@@ -89,7 +89,7 @@ async function cacheableResponsePayload(response: Response): Promise<{
   const contentType = response.headers.get('content-type') ?? ''
   if (!contentType.includes('application/json')) return null
 
-  const body = await response.clone().text().catch(() => null)
+  const body = await response.clone().text().catch((_error) => null)
   if (body == null) return null
   if (new TextEncoder().encode(body).byteLength > MAX_CACHED_RESPONSE_BYTES) return null
 

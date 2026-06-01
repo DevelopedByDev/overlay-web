@@ -28,7 +28,7 @@ export async function executeSearchKnowledge(
       { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Search failed' }))
+      const err = await res.json().catch((_error) => ({ error: 'Search failed' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Search failed' }
     }
     const data = (await res.json()) as { chunks?: Array<Record<string, unknown>> }
@@ -59,7 +59,7 @@ export async function executeSearchInFiles(
       { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Search failed' }))
+      const err = await res.json().catch((_error) => ({ error: 'Search failed' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Search in files failed' }
     }
     const data = (await res.json()) as {
@@ -110,7 +110,7 @@ export async function executeSaveMemory(
       { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to save' }))
+      const err = await res.json().catch((_error) => ({ error: 'Failed to save' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to save memory' }
     }
     const data = (await res.json()) as { id?: string }
@@ -194,7 +194,7 @@ export async function executeUpdateMemory(
       { method: 'PATCH', forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to update' }))
+      const err = await res.json().catch((_error) => ({ error: 'Failed to update' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to update memory' }
     }
     return { success: true }
@@ -217,7 +217,7 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
       { method: 'DELETE', forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to delete' }))
+      const err = await res.json().catch((_error) => ({ error: 'Failed to delete' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to delete memory' }
     }
     return { success: true }
@@ -372,7 +372,7 @@ export async function executeCreateAutomation(
       { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to create automation' }))
+      const err = await res.json().catch((_error) => ({ error: 'Failed to create automation' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to create automation' }
     }
     const data = (await res.json()) as { id?: string }
@@ -407,7 +407,7 @@ export async function executeUpdateAutomation(
       { method: 'PATCH', forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to update automation' }))
+      const err = await res.json().catch((_error) => ({ error: 'Failed to update automation' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to update automation' }
     }
     return { success: true }
@@ -478,7 +478,7 @@ export async function executeGenerateImage(
       { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Unknown error' }))
+      const err = await res.json().catch((_error) => ({ message: 'Unknown error' }))
       return {
         success: false,
         error: (err as { message?: string }).message ?? 'Image generation failed',
@@ -532,7 +532,7 @@ export async function executeGenerateVideo(
     )
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Unknown error' }))
+      const err = await res.json().catch((_error) => ({ message: 'Unknown error' }))
       return {
         success: false,
         status: 'failed',
@@ -572,7 +572,7 @@ export async function executeGenerateVideo(
               error: event.error,
             }
           }
-        } catch {
+        } catch (_error) {
           // ignore malformed SSE lines
         }
       }
@@ -635,7 +635,7 @@ export async function executeRunDaytonaSandbox(
       { forwardCookie: options.forwardCookie },
     )
 
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    const data = (await res.json().catch((_error) => ({}))) as Record<string, unknown>
     if (!res.ok) {
       return {
         success: false,

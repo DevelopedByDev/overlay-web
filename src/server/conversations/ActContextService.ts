@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { buildDocumentContextBundle, type DocumentContextBundle } from '@/server/agent/document-context-builder'
 import {
   compactMessagesForContext,
@@ -133,7 +134,7 @@ export class ActContextService {
       try {
         const memories = await this.deps.repository.listMemories({ userId: args.userId })
         return memories || listMemories(args.userId)
-      } catch {
+      } catch (_error) {
         return []
       }
     })() : Promise.resolve([])
@@ -142,7 +143,7 @@ export class ActContextService {
       try {
         const allSkills = await this.deps.repository.listSkills({ userId: args.userId })
         return allSkills.filter((s) => s.enabled !== false && s.instructions?.trim())
-      } catch {
+      } catch (_error) {
         return []
       }
     })()
@@ -154,7 +155,7 @@ export class ActContextService {
           conversationId: args.conversationId,
           userId: args.userId,
         })
-      } catch {
+      } catch (_error) {
         return null
       }
     })()
@@ -180,7 +181,7 @@ export class ActContextService {
           userId: args.userId,
         })
         return project?.instructions?.trim() || ''
-      } catch {
+      } catch (_error) {
         return ''
       }
     })()
@@ -199,7 +200,7 @@ export class ActContextService {
           includeMemories: memoryEnabled,
         })
         return { extension: bundle.extension, citations: bundle.citations }
-      } catch {
+      } catch (_error) {
         return { extension: '', citations: {} }
       }
     })()
@@ -296,7 +297,7 @@ export class ActContextService {
           userId: args.userId,
           scope: summaryScope,
         }).catch((error) => {
-          console.warn('[conversations/act] Failed to load context summary', {
+          logger.warn('[conversations/act] Failed to load context summary', {
             conversationId: args.conversationId,
             scope: summaryScope,
             error: summarizeErrorForLog(error),
@@ -314,7 +315,7 @@ export class ActContextService {
     messagesForModel = compaction.messages
 
     if (compaction.didCompact || compaction.usedFallbackTrim) {
-      console.info('[conversations/act] context-compaction', {
+      logger.info('[conversations/act] context-compaction', {
         targetModelId: args.targetModelId,
         scope: summaryScope,
         contextWindow: compaction.contextWindow,
@@ -349,7 +350,7 @@ export class ActContextService {
         targetModelId: summary.targetModelId,
         summarizerModelId: summary.summarizerModelId,
       }).catch((error) => {
-        console.warn('[conversations/act] Failed to persist context summary', {
+        logger.warn('[conversations/act] Failed to persist context summary', {
           conversationId: args.conversationId,
           scope: summaryScope,
           error: summarizeErrorForLog(error),

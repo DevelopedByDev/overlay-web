@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -20,7 +21,7 @@ async function readJsonBody<T>(request: NextRequest, fallback: T): Promise<T> {
 
   try {
     return (await request.json()) as T
-  } catch {
+  } catch (_error) {
     return fallback
   }
 }
@@ -30,7 +31,7 @@ function toErrorResponse(error: unknown, fallbackMessage: string) {
     return NextResponse.json({ error: error.message }, { status: error.statusCode })
   }
 
-  console.error(`[Notes API] ${fallbackMessage}:`, error)
+  logger.error(`[Notes API] ${fallbackMessage}:`, error)
   return NextResponse.json({ error: fallbackMessage }, { status: 500 })
 }
 

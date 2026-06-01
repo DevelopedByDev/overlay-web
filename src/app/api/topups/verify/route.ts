@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.name === 'BillingServiceError') {
       return billingErrorResponse(error, 'Failed to verify top-up')
     }
-    console.error('[TopUp Verify] Error:', error)
+    logger.error('[TopUp Verify] Error:', error)
     return NextResponse.json({ error: 'Failed to verify top-up' }, { status: 500 })
   }
 }

@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     if (error instanceof Error && error.name === 'AutomationServiceError') {
       return automationErrorResponse(error, 'Failed to fetch automations')
     }
-    console.error('[automations GET]', error)
+    logger.error('[automations GET]', error)
     return NextResponse.json({ error: 'Failed to fetch automations' }, { status: 500 })
   }
 }
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json(result)
   } catch (error) {
     if (!(error instanceof Error && error.name === 'AutomationServiceError')) {
-      console.error('[automations POST]', error)
+      logger.error('[automations POST]', error)
     }
     return automationErrorResponse(error, 'Failed to create automation')
   }
@@ -54,7 +55,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json(result)
   } catch (error) {
     if (!(error instanceof Error && error.name === 'AutomationServiceError')) {
-      console.error('[automations PATCH]', error)
+      logger.error('[automations PATCH]', error)
     }
     return automationErrorResponse(error, 'Failed to update automation')
   }
@@ -65,7 +66,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     let body: { accessToken?: string; userId?: string; automationId?: string } = {}
     const contentType = request.headers.get('content-type') || ''
     if (contentType.includes('application/json')) {
-      body = await request.json().catch(() => ({}))
+      body = await request.json().catch((_error) => ({}))
     }
     const { auth } = context
     const result = await automationService.deleteAutomation({
@@ -75,7 +76,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     return NextResponse.json(result)
   } catch (error) {
     if (!(error instanceof Error && error.name === 'AutomationServiceError')) {
-      console.error('[automations DELETE]', error)
+      logger.error('[automations DELETE]', error)
     }
     return automationErrorResponse(error, 'Failed to delete automation')
   }

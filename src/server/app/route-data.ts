@@ -44,7 +44,7 @@ async function fetchAppJson<T>(path: string, fallback: T): Promise<T> {
     headers: cookie ? { cookie } : undefined,
   })
   if (!response.ok) return fallback
-  const value = await response.json().catch(() => fallback)
+  const value = await response.json().catch((_error) => fallback)
   if (Array.isArray(fallback)) {
     return unwrapPaginatedData(value as unknown, fallback as unknown[]) as T
   }

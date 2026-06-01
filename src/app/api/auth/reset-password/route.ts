@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { resetPassword } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
       message: 'Password reset successfully. You can now sign in.',
     })
   } catch (error) {
-    console.error('[Auth] Reset password error:', error)
+    logger.error('[Auth] Reset password error:', error)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

@@ -55,7 +55,7 @@ import {
   defaultMemoryEnabled,
   type ChatToolRequestId,
 } from '@/shared/chat/tool-requests'
-import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
+import { GenerationModeSelect, GenerationModeToggle } from '@overlay/ui/chat'
 import { ChatComposer } from './ChatComposer'
 import { ChatMessageList } from './ChatMessageList'
 import { ChatSourcesPanel } from './ChatSourcesPanel'

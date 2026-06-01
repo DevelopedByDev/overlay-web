@@ -32,7 +32,7 @@ export async function executeBrowserRunTask(
       { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Browser task failed' }))
+      const err = await res.json().catch((_error) => ({ error: 'Browser task failed' }))
       return {
         success: false,
         error:

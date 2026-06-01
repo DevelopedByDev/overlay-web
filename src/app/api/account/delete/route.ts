@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { AccountDeletionService } from '@/server/account/AccountDeletionService'
@@ -15,7 +16,7 @@ import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
  */
 export async function POST(request: NextRequest) {
   const session = await getOverlaySession(request)
-  const body = await request.json().catch(() => ({}))
+  const body = await request.json().catch((_error) => ({}))
   const auth = await resolveAuthenticatedAppUser(request, body)
   if (!auth) {
     return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
   try {
     result = await new AccountDeletionService(getOverlayServerContext()).deleteAccount({ userId })
   } catch (error) {
-    console.error('[account/delete] Account deletion failed:', error)
+    logger.error('[account/delete] Account deletion failed:', error)
     return NextResponse.json(
       {
         error: 'Could not delete your account data. Please try again or contact support@getoverlay.io.',
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  console.log(
+  logger.info(
     `[account/delete] Account purge complete for ${userId} (${userEmail}): ${result.deletedRowCount} rows`,
   )
 

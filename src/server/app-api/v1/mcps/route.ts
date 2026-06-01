@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       serverSecret,
     })
     return NextResponse.json(mcps || [])
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch MCP servers' }, { status: 500 })
   }
 }
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       timeoutMs: typeof timeoutMs === 'number' ? timeoutMs : undefined,
     })
     return NextResponse.json({ id: mcpServerId })
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ error: 'Failed to create MCP server' }, { status: 500 })
   }
 }
@@ -112,7 +112,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       timeoutMs,
     })
     return NextResponse.json({ success: true })
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ error: 'Failed to update MCP server' }, { status: 500 })
   }
 }
@@ -133,7 +133,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
       serverSecret,
     })
     return NextResponse.json({ success: true })
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ error: 'Failed to delete MCP server' }, { status: 500 })
   }
 }

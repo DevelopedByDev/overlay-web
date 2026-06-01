@@ -1,6 +1,7 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { addMemory, listMemories, removeMemory } from '@/shared/app/app-store'
 import { memoriesToClientListRows, segmentMemoryForIngestion } from '@/shared/knowledge/memory-display-segments'
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const rows = Array.isArray(fromConvex) ? fromConvex : fallback
     return NextResponse.json(raw ? rows : memoriesToClientListRows(rows))
   } catch (error) {
-    console.error('[Memory API] GET error:', error)
+    logger.error('[Memory API] GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch memories' }, { status: 500 })
   }
 }
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       memory: (memory || []).find((item) => item._id === firstId),
     })
   } catch (error) {
-    console.error('[Memory API] POST error:', error)
+    logger.error('[Memory API] POST error:', error)
     return NextResponse.json({ error: 'Failed to add memory' }, { status: 500 })
   }
 }
@@ -217,7 +218,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       memory: (memory || []).find((item) => item._id === body.memoryId?.trim()),
     })
   } catch (error) {
-    console.error('[Memory API] PATCH error:', error)
+    logger.error('[Memory API] PATCH error:', error)
     return NextResponse.json({ error: 'Failed to update memory' }, { status: 500 })
   }
 }
@@ -227,7 +228,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     let body: { memoryId?: string; accessToken?: string; userId?: string } = {}
     try {
       body = (await request.json()) as typeof body
-    } catch {
+    } catch (_error) {
       // Browser sends query params only
     }
 
@@ -245,7 +246,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     removeMemory(memoryId)
     return NextResponse.json({ success: true, memoryId, deletedAt: Date.now() })
   } catch (error) {
-    console.error('[Memory API] DELETE error:', error)
+    logger.error('[Memory API] DELETE error:', error)
     return NextResponse.json({ error: 'Failed to delete memory' }, { status: 500 })
   }
 }

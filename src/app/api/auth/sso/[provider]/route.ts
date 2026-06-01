@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthorizationUrl, normalizeAuthRedirect, normalizeCodeChallenge } from '@/server/auth/actions'
 import { requireOverlayCapability } from '@/server/capabilities'
@@ -48,7 +49,7 @@ export async function GET(
   }
 
   try {
-    console.log('[Auth] SSO request:', { provider, redirectUri, forceSignIn, isDesktopAuth })
+    logger.info('[Auth] SSO request:', { provider, redirectUri, forceSignIn, isDesktopAuth })
     
     const authUrl = await getAuthorizationUrl(
       providerMap[provider as SSOProvider],
@@ -59,10 +60,10 @@ export async function GET(
       },
     )
 
-    console.log('[Auth] Generated auth URL, redirecting...')
+    logger.info('[Auth] Generated auth URL, redirecting...')
     return NextResponse.redirect(authUrl)
   } catch (error) {
-    console.error('[Auth] SSO error details:', {
+    logger.error('[Auth] SSO error details:', {
       error,
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,

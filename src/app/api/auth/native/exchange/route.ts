@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateNativeWithCode } from '@/server/auth/actions'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     ])
     if (rateLimitResponse) return rateLimitResponse
 
-    const body = await request.json().catch(() => ({})) as {
+    const body = await request.json().catch((_error) => ({})) as {
       code?: unknown
       codeVerifier?: unknown
     }

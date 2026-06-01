@@ -4,7 +4,7 @@ import { fileService, fileUploadUrlErrorResponse } from '@/server/files/http'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { sizeBytes, name, mimeType } = await request.json().catch(() => ({})) as {
+    const { sizeBytes, name, mimeType } = await request.json().catch((_error) => ({})) as {
       sizeBytes?: number
       name?: string
       mimeType?: string

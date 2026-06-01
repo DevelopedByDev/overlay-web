@@ -1,8 +1,9 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { AppSettings, ChatModePreference, ThemePresetId } from '@overlay/app-core'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isThemePresetId } from '@/shared/app/themes'
 
 const MAX_MODEL_ID_LENGTH = 160
@@ -48,14 +49,14 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     if (!settings) throw new Error('Missing UI settings')
     return NextResponse.json(publicSettingsPayload(settings))
   } catch (error) {
-    console.error('[app/settings] GET error:', error)
+    logger.error('[app/settings] GET error:', error)
     return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 })
   }
 }
 
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const rawBody = await request.json().catch(() => null)
+    const rawBody = await request.json().catch((_error) => null)
     if (!isPlainObject(rawBody)) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
     }
@@ -240,7 +241,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (!settings) throw new Error('Missing saved UI settings')
     return NextResponse.json(publicSettingsPayload(settings))
   } catch (error) {
-    console.error('[app/settings] PATCH error:', error)
+    logger.error('[app/settings] PATCH error:', error)
     return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 })
   }
 }

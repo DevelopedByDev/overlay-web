@@ -1,7 +1,9 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { handleRouteError } from '@/server/app-api/route-errors'
 import { generateImage } from '@/server/ai/sdk'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { getGatewayImageModel } from '@/server/ai/model-runtime'
 import { IMAGE_MODELS } from '@/shared/ai/gateway/model-data'
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     let currentEntitlements = entitlements
     const budget = getBudgetTotals(currentEntitlements)
     const usedPct = budget.totalCents > 0 ? ((budget.usedCents / budget.totalCents) * 100).toFixed(2) : '0.00'
-    console.log(`[GenerateImage] 📊 Entitlements: tier=${currentEntitlements.tier} | used=${budget.usedCents}¢ / ${budget.totalCents}¢ (${usedPct}% used, $${(budget.remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
+    logger.info(`[GenerateImage] 📊 Entitlements: tier=${currentEntitlements.tier} | used=${budget.usedCents}¢ / ${budget.totalCents}¢ (${usedPct}% used, $${(budget.remainingCents / 100).toFixed(4)} remaining) | userId=${auth.userId}`)
     if (!isPaidPlan(currentEntitlements)) {
       return NextResponse.json(
         { error: 'generation_not_allowed', message: 'Image generation requires a paid plan.' },
@@ -132,19 +134,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         break
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
-        console.error(`[GenerateImage] Model ${tryModelId} failed:`, lastError.message)
+        logger.error(`[GenerateImage] Model ${tryModelId} failed:`, lastError.message)
         continue
       }
     }
 
     if (!imageBase64 || !usedModelId) {
       const errMsg = lastError?.message ?? 'Unknown error'
-      console.error('[GenerateImage] Generation failed. Last error:', errMsg)
+      logger.error('[GenerateImage] Generation failed. Last error:', errMsg)
       await releaseProviderBudgetReservation({
         userId: auth.userId,
         reservationId: reservation.reservationId,
         reason: errMsg,
-      }).catch((releaseError) => console.error('[GenerateImage] Failed to release budget reservation:', releaseError))
+      }).catch((releaseError) => logger.error('[GenerateImage] Failed to release budget reservation:', releaseError))
       return NextResponse.json(
         { error: 'generation_failed', message: `Image generation failed: ${errMsg}` },
         { status: 500 }
@@ -161,14 +163,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           userId: auth.userId,
           reservationId: reservation.reservationId,
           errorMessage: `pricing_missing:${finalModelId}`,
-        }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
+        }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
         return NextResponse.json(
           { error: 'pricing_missing', message: `Image model ${finalModelId} is not priced for production use.` },
           { status: 500 },
         )
       }
       const costCents = billableBudgetCentsFromProviderUsd(costDollars)
-      console.log(`[GenerateImage] 💰 Cost: model=${finalModelId} | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
+      logger.info(`[GenerateImage] 💰 Cost: model=${finalModelId} | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
       if (costCents > 0 || reservation.reservationId) {
         try {
           const recordResult = await finalizeProviderBudgetReservation({
@@ -193,21 +195,21 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             if (updated) {
               const totalCents = updated.creditsTotal * 100
               const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'
-              console.log(`[GenerateImage] ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ (${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`)
+              logger.info(`[GenerateImage] ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ (${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`)
             }
           } else {
-            console.error(`[GenerateImage] ❌ finalizeProviderBudgetReservation returned null — check server logs for Convex error`)
+            logger.error(`[GenerateImage] ❌ finalizeProviderBudgetReservation returned null — check server logs for Convex error`)
           }
         } catch (recordError) {
-          console.error('[GenerateImage] Failed to finalize budget reservation:', recordError)
+          logger.error('[GenerateImage] Failed to finalize budget reservation:', recordError)
           await markProviderBudgetReconcile({
             userId: auth.userId,
             reservationId: reservation.reservationId,
             errorMessage: recordError instanceof Error ? recordError.message : 'finalize_failed',
-          }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
+          }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
         }
       } else {
-        console.log(`[GenerateImage] ⚠️  Cost is 0¢ for model=${finalModelId} — usage not recorded`)
+        logger.info(`[GenerateImage] ⚠️  Cost is 0¢ for model=${finalModelId} — usage not recorded`)
       }
       return null
     }
@@ -228,7 +230,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           userId: auth.userId,
           reservationId: reservation.reservationId,
           errorMessage: 'storage_limit_exceeded_after_generation',
-        }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
+        }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
         return NextResponse.json(
           { error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this image.' },
           { status: 403 },
@@ -261,7 +263,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       await checkGlobalR2Budget(imageBuffer.length)
       await uploadBuffer(r2Key, imageBuffer, 'image/png')
       uploadedR2Key = r2Key
-      console.log(`[GenerateImage] ✅ Uploaded ${imageBuffer.length}B to R2 key=${r2Key}`)
+      logger.info(`[GenerateImage] ✅ Uploaded ${imageBuffer.length}B to R2 key=${r2Key}`)
 
       await convex.mutation(
         'outputs/outputs:update',
@@ -279,14 +281,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         { throwOnError: true },
       )
     } catch (err) {
-      console.error('[GenerateImage] Failed to save output:', err)
+      logger.error('[GenerateImage] Failed to save output:', err)
       await markProviderBudgetReconcile({
         userId: auth.userId,
         reservationId: reservation.reservationId,
         errorMessage: err instanceof Error ? err.message : 'Failed to save generated image',
-      }).catch((reconcileError) => console.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
+      }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
       if (uploadedR2Key) {
-        await deleteObject(uploadedR2Key).catch(() => {})
+        await deleteObject(uploadedR2Key).catch((_error) => undefined)
       }
       if (outputId) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to save generated image'
@@ -300,7 +302,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             errorMessage,
           },
           { throwOnError: true },
-        ).catch(() => {})
+        ).catch((_error) => undefined)
       }
       if (err instanceof R2GlobalBudgetError) {
         return NextResponse.json(
@@ -326,7 +328,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json({ outputId, url: dataUrl, modelUsed: finalModelId })
   } catch (error) {
-    console.error('[GenerateImage API] Error:', error)
-    return NextResponse.json({ error: 'Failed to generate image' }, { status: 500 })
+    return handleRouteError(error, {
+      route: 'generate-image',
+      operation: 'POST',
+      clientMessage: 'Failed to generate image',
+    })
   }
 }

@@ -8,7 +8,7 @@ import 'server-only'
  */
 
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { IndexedAttachmentRef } from '@/shared/knowledge/knowledge-agent-types'
 import { findSubstringMatchesInText } from '@/shared/storage/file-text-search'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -70,7 +70,7 @@ async function fetchFileParts(args: {
       if (!fileName && row.name) {
         fileName = row.name
       }
-    } catch {
+    } catch (_error) {
       // Skip missing parts; partial data is still useful
     }
   }

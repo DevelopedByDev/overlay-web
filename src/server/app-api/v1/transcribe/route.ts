@@ -1,7 +1,8 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Entitlements } from '@/shared/app/app-contracts'
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
       if (!groqResponse.ok) {
         const err = await groqResponse.text()
-        console.error('[Transcribe] Groq error:', err)
+        logger.error('[Transcribe] Groq error:', err)
         return NextResponse.json(
           { error: 'Groq transcription failed. Check GROQ_API_KEY and audio codec support.' },
           { status: 500 }
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       { status: 500 }
     )
   } catch (error) {
-    console.error('[Transcribe API] Error:', error)
+    logger.error('[Transcribe API] Error:', error)
     return NextResponse.json({ error: 'Failed to transcribe audio' }, { status: 500 })
   }
 }

@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result)
   } catch (error) {
     if (!(error instanceof Error && error.name === 'AutomationServiceError')) {
-      console.error('[automations/run]', error)
+      logger.error('[automations/run]', error)
     }
     const response = automationErrorResponse(error, 'Failed to run automation')
     if (response.status === 500) {

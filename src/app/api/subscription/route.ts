@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
 import { requireOverlayCapability } from '@/server/capabilities'
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     if (error instanceof Error && error.name === 'BillingServiceError') {
       return billingErrorResponse(error, 'Failed to fetch subscription')
     }
-    console.error('[Subscription API] Error fetching subscription:', error)
+    logger.error('[Subscription API] Error fetching subscription:', error)
     return NextResponse.json({ error: 'Failed to fetch subscription' }, { status: 500 })
   }
 }

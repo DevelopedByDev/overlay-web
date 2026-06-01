@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import {
   compactAssistantPersistenceForConvex,
@@ -103,7 +104,7 @@ function extractUiStreamPersistenceEvents(chunkText: string): UiStreamPersistenc
           errorText: typeof evt.errorText === 'string' ? evt.errorText : undefined,
         })
       }
-    } catch {
+    } catch (_error) {
       // Ignore partial chunks and non-JSON protocol frames.
     }
   }
@@ -172,7 +173,7 @@ export class ActGeneratingMessageService {
         variantIndex: args.multiModelTotal > 1 ? args.multiModelSlotIndex : undefined,
       }) ?? undefined
     } catch (err) {
-      console.error('[conversations/act] Failed to start generating assistant message:', summarizeErrorForLog(err))
+      logger.error('[conversations/act] Failed to start generating assistant message:', summarizeErrorForLog(err))
       return undefined
     }
   }
@@ -211,7 +212,7 @@ export class ActGeneratingMessageService {
         })
       }
     } catch (err) {
-      console.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(err))
+      logger.error('[conversations/act] Failed to mark generating message failed:', summarizeErrorForLog(err))
     }
   }
 
@@ -235,7 +236,7 @@ export class ActGeneratingMessageService {
           textDelta,
         })
       } catch (err) {
-        console.error('[conversations/act] Failed to append generating text:', summarizeErrorForLog(err))
+        logger.error('[conversations/act] Failed to append generating text:', summarizeErrorForLog(err))
       }
     }
 
@@ -253,7 +254,7 @@ export class ActGeneratingMessageService {
           newParts: compactedParts,
         })
       } catch (err) {
-        console.error(`[conversations/act] Failed to ${label} generating parts:`, summarizeErrorForLog(err))
+        logger.error(`[conversations/act] Failed to ${label} generating parts:`, summarizeErrorForLog(err))
       }
     }
 

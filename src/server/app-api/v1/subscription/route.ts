@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     if (error instanceof Error && error.name === 'BillingServiceError') {
       return billingErrorResponse(error, 'Failed to fetch subscription')
     }
-    console.error('[app/subscription]', error)
+    logger.error('[app/subscription]', error)
     return NextResponse.json({ error: 'Failed to fetch subscription' }, { status: 500 })
   }
 }

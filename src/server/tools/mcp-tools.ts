@@ -1,10 +1,11 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import { convex } from '@/server/database/convex'
 import { jsonSchemaToZod } from './mcp-schema-to-zod'
-import { getInternalApiSecret } from './internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { fireAndForgetRecordToolInvocation } from './tools/record-tool-invocation'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 
@@ -143,7 +144,7 @@ async function callMcpTool(
   toolName: string,
   input: unknown
 ): Promise<{ isError?: boolean; content: unknown }> {
-  console.log(`[MCP] Calling tool ${toolName} on server ${config.name}`)
+  logger.info(`[MCP] Calling tool ${toolName} on server ${config.name}`)
   const { client, timeoutMs } = await createMcpTransportAndClient(config)
   try {
     const result = await client.callTool(
@@ -151,15 +152,15 @@ async function callMcpTool(
       undefined,
       { signal: AbortSignal.timeout(timeoutMs) }
     )
-    console.log(`[MCP] Tool ${toolName} on server ${config.name} returned (isError=${result.isError})`)
+    logger.info(`[MCP] Tool ${toolName} on server ${config.name} returned (isError=${result.isError})`)
     return result as { isError?: boolean; content: unknown }
   } catch (err) {
-    console.error(`[MCP] Tool ${toolName} on server ${config.name} failed: ${err instanceof Error ? err.message : String(err)}`)
+    logger.error(`[MCP] Tool ${toolName} on server ${config.name} failed: ${err instanceof Error ? err.message : String(err)}`)
     throw err
   } finally {
     try {
       await client.close()
-    } catch {
+    } catch (_error) {
       // ignore close errors
     }
   }
@@ -174,7 +175,7 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
 
   const validation = await validatePublicNetworkUrl(config.url, { allowLocalDev: true, requireHttps: true })
   if (!validation.ok) {
-    console.warn(`[MCP] Refusing server ${config.name}: ${validation.error}`)
+    logger.warn(`[MCP] Refusing server ${config.name}: ${validation.error}`)
     return {}
   }
   const url = validation.url
@@ -195,7 +196,7 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
       } as import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransportOptions)
     }
   } catch (err) {
-    console.warn(`[MCP] Failed to create transport for ${config.name}: ${err instanceof Error ? err.message : String(err)}`)
+    logger.warn(`[MCP] Failed to create transport for ${config.name}: ${err instanceof Error ? err.message : String(err)}`)
     return {}
   }
 
@@ -286,7 +287,7 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
             }
             // Truncate very large results to prevent token limit errors
             if (resultText.length > MAX_MCP_TOOL_RESULT_CHARS) {
-              console.warn(`[MCP] Truncating tool ${toolId} result from ${resultText.length} to ${MAX_MCP_TOOL_RESULT_CHARS} chars`)
+              logger.warn(`[MCP] Truncating tool ${toolId} result from ${resultText.length} to ${MAX_MCP_TOOL_RESULT_CHARS} chars`)
               resultText = resultText.slice(0, MAX_MCP_TOOL_RESULT_CHARS) + '\n\n[Result truncated due to length]'
             }
             return resultText
@@ -310,12 +311,12 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
 
     return toolSet
   } catch (err) {
-    console.warn(`[MCP] Failed to discover tools from ${config.name}: ${err instanceof Error ? err.message : String(err)}`)
+    logger.warn(`[MCP] Failed to discover tools from ${config.name}: ${err instanceof Error ? err.message : String(err)}`)
     return {}
   } finally {
     try {
       await client.close()
-    } catch {
+    } catch (_error) {
       // ignore close errors
     }
   }
@@ -327,7 +328,7 @@ async function buildMcpToolSet(args: {
   serverSecret?: string
 }): Promise<ToolSet> {
   const serverSecret = args.serverSecret ?? getInternalApiSecret()
-  console.log(`[MCP] Fetching enabled MCP servers for user ${args.userId}`)
+  logger.info(`[MCP] Fetching enabled MCP servers for user ${args.userId}`)
   const configs = (await convex.query('integrations/mcpServers:listEnabled', {
     userId: args.userId,
     accessToken: args.accessToken,
@@ -335,19 +336,19 @@ async function buildMcpToolSet(args: {
   })) as McpServerConfig[]
 
   if (!configs || configs.length === 0) {
-    console.log(`[MCP] No enabled MCP servers found for user ${args.userId}`)
+    logger.info(`[MCP] No enabled MCP servers found for user ${args.userId}`)
     return {}
   }
-  console.log(`[MCP] Found ${configs.length} enabled MCP server(s): ${configs.map(c => c.name).join(', ')}`)
+  logger.info(`[MCP] Found ${configs.length} enabled MCP server(s): ${configs.map(c => c.name).join(', ')}`)
 
   const allTools: ToolSet = {}
   const globalSeen = new Set<string>()
 
   for (const config of configs) {
     try {
-      console.log(`[MCP] Discovering tools from server: ${config.name} (${config.transport} ${config.url})`)
+      logger.info(`[MCP] Discovering tools from server: ${config.name} (${config.transport} ${config.url})`)
       const serverTools = await discoverToolsForServer(config)
-      console.log(`[MCP] Discovered ${Object.keys(serverTools).length} tools from server: ${config.name}`)
+      logger.info(`[MCP] Discovered ${Object.keys(serverTools).length} tools from server: ${config.name}`)
       for (const [id, def] of Object.entries(serverTools)) {
         if (globalSeen.has(id)) {
           // Global collision: suffix the server name
@@ -365,7 +366,7 @@ async function buildMcpToolSet(args: {
         }
       }
     } catch (err) {
-      console.warn(`[MCP] Skipping server ${config.name} due to error: ${err instanceof Error ? err.message : String(err)}`)
+      logger.warn(`[MCP] Skipping server ${config.name} due to error: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -381,21 +382,21 @@ export async function createMcpToolSet(args: {
   const cacheKey = args.userId
   const cached = mcpCache.get(cacheKey)
   if (cached && now - cached.createdAt < MCP_CACHE_TTL_MS) {
-    console.log(`[MCP] Cache hit for user ${args.userId}, returning ${Object.keys(cached.tools).length} cached tools`)
+    logger.info(`[MCP] Cache hit for user ${args.userId}, returning ${Object.keys(cached.tools).length} cached tools`)
     return cached.tools
   }
 
   const existing = mcpInFlight.get(cacheKey)
   if (existing) {
-    console.log(`[MCP] In-flight request for user ${args.userId}, awaiting`)
+    logger.info(`[MCP] In-flight request for user ${args.userId}, awaiting`)
     return existing
   }
 
-  console.log(`[MCP] Building MCP tool set for user ${args.userId}`)
+  logger.info(`[MCP] Building MCP tool set for user ${args.userId}`)
   const promise = (async () => {
     try {
       const tools = await buildMcpToolSet(args)
-      console.log(`[MCP] Built ${Object.keys(tools).length} MCP tools for user ${args.userId}`)
+      logger.info(`[MCP] Built ${Object.keys(tools).length} MCP tools for user ${args.userId}`)
       mcpCache.set(cacheKey, { tools, createdAt: Date.now() })
       return tools
     } finally {
@@ -415,7 +416,7 @@ export function prewarmMcpTools(args: {
   const cached = mcpCache.get(args.userId)
   if (cached && Date.now() - cached.createdAt < MCP_CACHE_TTL_MS) return
   if (mcpInFlight.has(args.userId)) return
-  void createMcpToolSet(args).catch(() => {
+  void createMcpToolSet(args).catch((_error) => {
     // swallow
   })
 }

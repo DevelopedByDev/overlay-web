@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import type { NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
@@ -53,7 +54,7 @@ export async function resolveAuthenticatedAppUser(
       clientIp: options.clientIp,
       requiredScopes: options.requiredApiKeyScopes,
     }).catch((error) => {
-      console.error('[api-key-auth] validation failed', error)
+      logger.error('[api-key-auth] validation failed', error)
       return null
     })
     if (apiKeyAuth) {

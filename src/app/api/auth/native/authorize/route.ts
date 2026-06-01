@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     ])
     if (rateLimitResponse) return rateLimitResponse
 
-    const body = await request.json().catch(() => ({})) as {
+    const body = await request.json().catch((_error) => ({})) as {
       provider?: unknown
       redirectUri?: unknown
       codeChallenge?: unknown

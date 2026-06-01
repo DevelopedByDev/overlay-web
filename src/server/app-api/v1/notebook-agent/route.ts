@@ -1,8 +1,9 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from '@/server/ai/sdk'
 import { z } from 'zod'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { Entitlements } from '@/shared/app/app-contracts'
@@ -171,7 +172,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let bodyRaw: unknown
   try {
     bodyRaw = await request.json()
-  } catch {
+  } catch (_error) {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
@@ -358,7 +359,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	              userId,
 	              reservationId: budgetReservationId,
 	              errorMessage: `pricing_missing:${effectiveModelId}`,
-	            }).catch(() => {})
+	            }).catch((_error) => undefined)
 	            budgetReservationId = null
 	          }
 	          throw new Error(`pricing_missing:${effectiveModelId}`)
@@ -394,13 +395,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	              })
 	            }
 	          } catch (err) {
-	            console.error('[notebook-agent] Failed to record usage:', summarizeErrorForLog(err))
+	            logger.error('[notebook-agent] Failed to record usage:', summarizeErrorForLog(err))
 	            if (budgetReservationId) {
 	              await markProviderBudgetReconcile({
 	                userId,
 	                reservationId: budgetReservationId,
 	                errorMessage: summarizeErrorForLog(err),
-	              }).catch(() => {})
+	              }).catch((_error) => undefined)
 	              budgetReservationId = null
 	            }
 	          }
@@ -409,13 +410,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         emit({ type: 'done' })
 	      } catch (err) {
 	        const msg = err instanceof Error ? err.message : String(err)
-	        console.error('[notebook-agent]', summarizeErrorForLog(err))
+	        logger.error('[notebook-agent]', summarizeErrorForLog(err))
 	        if (budgetReservationId) {
 	          await releaseProviderBudgetReservation({
 	            userId,
 	            reservationId: budgetReservationId,
 	            reason: summarizeErrorForLog(err),
-	          }).catch(() => {})
+	          }).catch((_error) => undefined)
 	          budgetReservationId = null
 	        }
 	        emit({ type: 'error', error: msg })

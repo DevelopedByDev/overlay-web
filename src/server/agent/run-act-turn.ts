@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { UIMessage } from 'ai'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
 import { getBaseUrl } from '@/server/web/app-url'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -144,7 +144,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
     })
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => '')
+      const errorText = await response.text().catch((_error) => '')
       throw new Error(errorText || `Act route failed with ${response.status}`)
     }
 
@@ -165,7 +165,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
       fallbackText: error instanceof Error
         ? `Automation run failed: ${error.message}`
         : 'Automation run failed before a final response was saved.',
-    }).catch(() => null)
+    }).catch((_error) => null)
     throw error
   }
   return { conversationId }

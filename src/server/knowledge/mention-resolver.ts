@@ -80,7 +80,7 @@ async function resolveOne(
       case 'file': {
         const file = await convex
           .query<FileDoc | null>('files/files:get', { fileId: m.id, userId, serverSecret })
-          .catch(() => null)
+          .catch((_error) => null)
         if (!file) {
           return `- file id=${m.id} name="${safeName}" — (not found)`
         }
@@ -99,7 +99,7 @@ async function resolveOne(
             userId,
             serverSecret,
           })
-          .catch(() => null)
+          .catch((_error) => null)
         if (!a) return `- automation id=${m.id} name="${safeName}" — (not found)`
         const sched = a.schedule?.kind ? `schedule=${a.schedule.kind}` : ''
         const en = a.enabled === false ? 'disabled' : 'enabled'
@@ -126,7 +126,7 @@ async function resolveOne(
             userId,
             serverSecret,
           })
-          .catch(() => null)
+          .catch((_error) => null)
         if (!mcp) return `- mcp id=${m.id} name="${safeName}" — (not found)`
         const tools = mcp.toolNames?.length
           ? `tools=[${mcp.toolNames.slice(0, 8).join(',')}${mcp.toolNames.length > 8 ? '…' : ''}]`
@@ -146,7 +146,7 @@ async function resolveOne(
             userId,
             serverSecret,
           })
-          .catch(() => null)
+          .catch((_error) => null)
         if (!c) return `- chat id=${m.id} name="${safeName}" — (not found)`
         const when = c.lastModified
           ? `lastActive=${new Date(c.lastModified).toISOString().slice(0, 10)}`
@@ -156,7 +156,7 @@ async function resolveOne(
       default:
         return `- ${m.type} id=${m.id} name="${safeName}"`
     }
-  } catch {
+  } catch (_error) {
     return `- ${m.type} id=${m.id} name="${safeName}"`
   }
 }

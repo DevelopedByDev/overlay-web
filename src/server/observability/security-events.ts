@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import * as Sentry from '@sentry/nextjs'
 import { publicEnv } from '@/shared/env/public-env'
 import { serverEnv } from '@/server/env/server-env'
@@ -24,11 +25,11 @@ export function logSecurityEvent(
 
   const serialized = JSON.stringify(payload)
   if (level === 'error') {
-    console.error('[SecurityEvent]', serialized)
+    logger.error('[SecurityEvent]', serialized)
   } else if (level === 'info') {
-    console.info('[SecurityEvent]', serialized)
+    logger.info('[SecurityEvent]', serialized)
   } else {
-    console.warn('[SecurityEvent]', serialized)
+    logger.warn('[SecurityEvent]', serialized)
   }
 
   if (!sentryEnabled()) {

@@ -1,6 +1,7 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isKnownOutputType } from '@/shared/tools/output-types'
 import { deleteObject } from '@/server/storage/object-store'
 import { isOwnedOutputR2Key } from '@/server/storage/storage-keys'
@@ -57,13 +58,13 @@ async function getCanonicalOutput(args: {
     fileId: args.outputId,
     userId: args.userId,
     serverSecret: args.serverSecret,
-  }).catch(() => null)
+  }).catch((_error) => null)
   if (direct?.kind === 'output') return direct
   const migrated = await convex.query<OutputFile | null>('files/files:getByLegacyOutputId', {
     outputId: args.outputId,
     userId: args.userId,
     serverSecret: args.serverSecret,
-  }).catch(() => null)
+  }).catch((_error) => null)
   return migrated?.kind === 'output' ? migrated : null
 }
 
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json(outputs)
   } catch (error) {
-    console.error('[Outputs API] compatibility error:', error)
+    logger.error('[Outputs API] compatibility error:', error)
     return NextResponse.json({ error: 'Failed to fetch outputs' }, { status: 500 })
   }
 }
@@ -117,7 +118,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     })
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[Outputs API] compatibility delete error:', error)
+    logger.error('[Outputs API] compatibility delete error:', error)
     return NextResponse.json({ error: 'Failed to delete output' }, { status: 500 })
   }
 }

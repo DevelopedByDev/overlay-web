@@ -1,6 +1,7 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import {
   buildPersistedMessageContent,
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json({ success: true, conversationId: body.conversationId, turnId })
   } catch (e) {
-    console.error('[conversations/message POST]', e)
+    logger.error('[conversations/message POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to save message'
     return NextResponse.json({ error: msg }, { status: 500 })
   }
@@ -120,13 +121,13 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
           { status: 503 },
         )
       }
-      console.error('[conversations/message DELETE]', err)
+      logger.error('[conversations/message DELETE]', err)
       return NextResponse.json({ error: msg || 'Failed to delete turn' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, conversationId, turnId })
   } catch (e) {
-    console.error('[conversations/message DELETE]', e)
+    logger.error('[conversations/message DELETE]', e)
     return NextResponse.json({ error: 'Failed to delete turn' }, { status: 500 })
   }
 }

@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
 import { requireOverlayCapability } from '@/server/capabilities'
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.name === 'BillingServiceError') {
       return billingErrorResponse(error, 'Failed to verify checkout')
     }
-    console.error('[Checkout Verify] Error:', error)
+    logger.error('[Checkout Verify] Error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
       { error: `Failed to verify checkout: ${errorMessage}` },

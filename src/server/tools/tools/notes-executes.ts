@@ -24,7 +24,7 @@ export async function executeListNotes(
       options.userId,
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to list notes' }))
+      const err = await res.json().catch((_error) => ({ error: 'Failed to list notes' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to list notes' }
     }
     const notes = unwrapPaginatedData<{
@@ -63,7 +63,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
       options.userId,
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Note not found' }))
+      const err = await res.json().catch((_error) => ({ error: 'Note not found' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Note not found' }
     }
     const note = (await res.json()) as {
@@ -112,7 +112,7 @@ export async function executeCreateNote(
       { forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to create note' }))
+      const err = await res.json().catch((_error) => ({ error: 'Failed to create note' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to create note' }
     }
     const data = (await res.json()) as { id?: string }
@@ -143,7 +143,7 @@ export async function executeUpdateNote(
       { method: 'PATCH', forwardCookie: options.forwardCookie },
     )
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to update note' }))
+      const err = await res.json().catch((_error) => ({ error: 'Failed to update note' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to update note' }
     }
     return { success: true }
@@ -182,7 +182,7 @@ export async function executeDeleteNote(options: OverlayToolsOptions, input: { n
       }),
     })
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to delete note' }))
+      const err = await res.json().catch((_error) => ({ error: 'Failed to delete note' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to delete note' }
     }
     return { success: true }

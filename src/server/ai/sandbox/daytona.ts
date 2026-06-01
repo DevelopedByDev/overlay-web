@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { posix as pathPosix } from 'node:path'
 import {
   CodeLanguage,
@@ -10,7 +11,7 @@ import {
   type VolumeMount,
 } from '@daytonaio/sdk'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   detectDaytonaResourceProfileId,
   getDaytonaResourceProfile,
@@ -263,7 +264,7 @@ async function applyWorkspaceConfiguration(params: {
   }
 
   if (cpuDown || memoryDown || diskDown) {
-    console.warn(
+    logger.warn(
       `[Daytona] Workspace ${params.sandbox.id} is larger than the ${params.tier} profile; ` +
       'skipping downsize during phases 1-2.',
     )
@@ -288,7 +289,7 @@ async function applyWorkspaceConfiguration(params: {
       throw error
     }
 
-    console.warn(
+    logger.warn(
       `[Daytona] Workspace ${params.sandbox.id} could not be resized via the current API; continuing with existing resources.`,
       error,
     )
@@ -394,7 +395,7 @@ export async function ensureWorkspaceSandbox(params: {
       sandbox = await getDaytonaClient().get(existingWorkspace.sandboxId)
       await sandbox.refreshData()
     } catch (error) {
-      console.warn(`[Daytona] Failed to load existing workspace sandbox ${existingWorkspace.sandboxId}:`, error)
+      logger.warn(`[Daytona] Failed to load existing workspace sandbox ${existingWorkspace.sandboxId}:`, error)
       sandbox = null
     }
   }
@@ -658,7 +659,7 @@ export async function executeSandboxCommand(
   let stderr = ''
   try {
     stderr = (await sandbox.fs.downloadFile(params.stderrPath, 60)).toString('utf8')
-  } catch {
+  } catch (_error) {
     stderr = ''
   }
 

@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.name === 'BillingServiceError') {
       return billingErrorResponse(error, 'Failed to create top-up checkout')
     }
-    console.error('[TopUp Checkout] Error:', error)
+    logger.error('[TopUp Checkout] Error:', error)
     return NextResponse.json({ error: 'Failed to create top-up checkout' }, { status: 500 })
   }
 }

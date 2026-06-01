@@ -64,7 +64,7 @@ export async function validatePublicNetworkUrl(
   let parsed: URL
   try {
     parsed = new URL(raw.trim())
-  } catch {
+  } catch (_error) {
     return { ok: false, error: 'Invalid URL' }
   }
 
@@ -92,7 +92,7 @@ export async function validatePublicNetworkUrl(
   let addresses: Array<{ address: string }>
   try {
     addresses = await lookup(parsed.hostname, { all: true, verbatim: false })
-  } catch {
+  } catch (_error) {
     return { ok: false, error: 'Could not resolve URL hostname' }
   }
   if (addresses.length === 0) return { ok: false, error: 'Could not resolve URL hostname' }

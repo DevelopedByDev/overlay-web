@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { posix as pathPosix } from 'node:path'
 import type { Sandbox } from '@daytonaio/sdk'
 import { classifyOutputType } from '@/shared/tools/output-types'
@@ -185,7 +186,7 @@ async function importDaytonaArtifact(params: {
   const r2Key = keyForOutput(params.userId, `tmp-${Date.now()}`, fileName)
   await params.checkGlobalBudget(artifactBuffer.byteLength)
   await params.uploadObject(r2Key, new Uint8Array(artifactBuffer), mimeType ?? 'application/octet-stream')
-  console.log(`[Daytona] Uploaded artifact "${fileName}" (${artifactBuffer.byteLength}B) to R2 key=${r2Key}`)
+  logger.info(`[Daytona] Uploaded artifact "${fileName}" (${artifactBuffer.byteLength}B) to R2 key=${r2Key}`)
 
   const outputId = await createOutputOrCleanup({
     ...params,
@@ -238,10 +239,10 @@ async function createOutputOrCleanup(params: {
     })
     if (createdOutputId) return createdOutputId
   } catch (error) {
-    await params.deleteObject(params.r2Key).catch(() => {})
+    await params.deleteObject(params.r2Key).catch((_error) => undefined)
     throw error
   }
-  await params.deleteObject(params.r2Key).catch(() => {})
+  await params.deleteObject(params.r2Key).catch((_error) => undefined)
   throw new Error(`Failed to create Output record for sandbox artifact "${params.fileName}".`)
 }
 

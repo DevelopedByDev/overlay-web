@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   consumeAuthorizationState,
@@ -9,7 +10,7 @@ import { getOverlaySession } from '@/server/auth/session'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { convex as serverConvex } from '@/server/database/convex'
 import { createHash, randomBytes } from 'crypto'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { encryptSessionTransferPayload } from '@/server/auth/session-transfer-crypto'
 
 const SESSION_TRANSFER_TTL_MS = 90 * 1000
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
           callbackUserId: result.user.id,
           isNewUser,
         })
-        console.log('[Auth] User profile synced to Convex:', result.user.id, { isNewUser })
+        logger.info('[Auth] User profile synced to Convex:', result.user.id, { isNewUser })
       }
     } catch (syncError) {
       logAuthDebug('/api/auth/callback syncUserProfile error', {
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
           ? await inspectAccessToken(session.accessToken, result.user.id)
           : null,
       })
-      console.error('[Auth] Failed to sync user profile:', syncError)
+      logger.error('[Auth] Failed to sync user profile:', syncError)
       // Continue anyway - user can still use the app
     }
 
@@ -136,7 +137,7 @@ export async function GET(request: NextRequest) {
           expiresAt,
         })
 
-        console.log('[Auth] Created mobile session transfer token', {
+        logger.info('[Auth] Created mobile session transfer token', {
           userId: session.user.id,
           tokenHashPrefix: hashTransferTokenForLog(token),
           expiresAt,
@@ -144,7 +145,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.redirect(`overlay://auth/transfer?token=${token}`)
       } catch (mobileError) {
-        console.error('[Auth] Failed to generate mobile transfer token:', mobileError)
+        logger.error('[Auth] Failed to generate mobile transfer token:', mobileError)
         // Fall through to redirect to the page which shows a user-friendly error
       }
     }
@@ -155,7 +156,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.redirect(finalRedirect)
   } catch (error) {
-    console.error('[Auth] Callback error:', error)
+    logger.error('[Auth] Callback error:', error)
     return NextResponse.redirect(`${getBaseUrl()}/auth/sign-in?error=Authentication failed`)
   }
 }

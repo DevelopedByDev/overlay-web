@@ -13,7 +13,7 @@ export async function standardizePaginatedListResponse(
   const contentType = response.headers.get('content-type') ?? ''
   if (!contentType.includes('application/json')) return response
 
-  const payload = await response.clone().json().catch(() => undefined)
+  const payload = await response.clone().json().catch((_error) => undefined)
   if (!Array.isArray(payload)) return response
 
   const headers = new Headers(response.headers)

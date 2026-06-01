@@ -84,7 +84,7 @@ export class RedisRateLimiter implements RateLimiter {
           resetAt: now + ttlMs,
         })
       }
-    } catch {
+    } catch (_error) {
       return this.fallback.check(scope, limits)
     }
 

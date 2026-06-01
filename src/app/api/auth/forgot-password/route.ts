@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { sendPasswordResetEmail } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/server/security/rate-limit'
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
       message: 'If an account with that email exists, a password reset link has been sent.',
     })
   } catch (error) {
-    console.error('[Auth] Forgot password error:', error)
+    logger.error('[Auth] Forgot password error:', error)
     // Still return success to prevent email enumeration
     return NextResponse.json({
       success: true,

@@ -1,6 +1,7 @@
+import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
 import { getPostHogClient } from '@/server/observability/posthog-server'
 
@@ -67,7 +68,7 @@ export async function POST() {
       isNewUser: result.isNewUser,
     })
   } catch (error) {
-    console.error('[Auth] Profile sync error:', error)
+    logger.error('[Auth] Profile sync error:', error)
     return NextResponse.json(
       { error: 'Failed to sync profile' },
       { status: 500 }

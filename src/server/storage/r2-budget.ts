@@ -1,7 +1,8 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 
 export class R2GlobalBudgetError extends Error {
   constructor(usedBytes: number, capBytes: number) {
@@ -37,7 +38,7 @@ export async function checkGlobalR2Budget(requiredAdditionalBytes: number): Prom
       serverSecret,
     })) ?? 0
   } catch (err) {
-    console.error('[R2-Budget] Could not fetch total storage bytes — allowing upload but logging error:', err)
+    logger.error('[R2-Budget] Could not fetch total storage bytes — allowing upload but logging error:', err)
     return
   }
 
@@ -45,27 +46,27 @@ export async function checkGlobalR2Budget(requiredAdditionalBytes: number): Prom
   const pctUsed = (totalUsed / cap) * 100
 
   if (pctUsed >= 95) {
-    console.error(
+    logger.error(
       `[R2-Budget] 🚨 CRITICAL: global R2 usage at ${pctUsed.toFixed(1)}% (${formatGB(totalUsed)} / ${formatGB(cap)})`,
     )
   } else if (pctUsed >= 80) {
-    console.warn(
+    logger.warn(
       `[R2-Budget] ⚠️  WARNING: global R2 usage at ${pctUsed.toFixed(1)}% (${formatGB(totalUsed)} / ${formatGB(cap)})`,
     )
   } else if (pctUsed >= 60) {
-    console.info(
+    logger.info(
       `[R2-Budget] ℹ️  INFO: global R2 usage at ${pctUsed.toFixed(1)}% (${formatGB(totalUsed)} / ${formatGB(cap)})`,
     )
   }
 
   if (afterBytes > cap) {
-    console.error(
+    logger.error(
       `[R2-Budget] 🚫 BLOCKED upload: ${formatGB(requiredAdditionalBytes)} would push total to ${formatGB(afterBytes)} (cap: ${formatGB(cap)})`,
     )
     throw new R2GlobalBudgetError(totalUsed, cap)
   }
 
-  console.log(
+  logger.info(
     `[R2-Budget] Upload allowed: after=${formatGB(afterBytes)} (${((afterBytes / cap) * 100).toFixed(1)}% of cap)`,
   )
 }

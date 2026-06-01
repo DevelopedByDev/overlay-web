@@ -1,8 +1,9 @@
+import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
 import { createHash, randomBytes } from 'crypto'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import {
   decryptSessionTransferPayload,
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const requestBody = await request.json().catch(() => ({})) as {
+    const requestBody = await request.json().catch((_error) => ({})) as {
       codeChallenge?: unknown
       chromeExtensionId?: unknown
     }
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
       expiresAt,
     })
 
-    console.log('[Desktop Link] Created session transfer token', {
+    logger.info('[Desktop Link] Created session transfer token', {
       userId: session.user.id,
       tokenHashPrefix: hashTransferTokenForLog(token),
       expiresAt,
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ deepLink }, { headers: NO_STORE_HEADERS })
   } catch (error) {
-    console.error('[Desktop Link] Error:', summarizeErrorForLog(error))
+    logger.error('[Desktop Link] Error:', summarizeErrorForLog(error))
     return NextResponse.json(
       { error: 'Failed to generate desktop link' },
       { status: 500, headers: NO_STORE_HEADERS }
@@ -135,7 +136,7 @@ export async function GET(request: Request) {
     })
 
     if (!dataJson) {
-      console.warn('[Desktop Link] Session transfer consume rejected', {
+      logger.warn('[Desktop Link] Session transfer consume rejected', {
         tokenHashPrefix: hashTransferTokenForLog(token),
         hasCodeVerifier: Boolean(codeVerifier),
       })
@@ -146,14 +147,14 @@ export async function GET(request: Request) {
     }
 
     const data = JSON.parse(decryptSessionTransferPayload(dataJson))
-    console.log('[Desktop Link] Session transfer consumed', {
+    logger.info('[Desktop Link] Session transfer consumed', {
       tokenHashPrefix: hashTransferTokenForLog(token),
       userId: typeof data?.userId === 'string' ? data.userId : null,
       hasCodeVerifier: Boolean(codeVerifier),
     })
     return NextResponse.json(data, { headers: NO_STORE_HEADERS })
   } catch (error) {
-    console.error('[Desktop Link] Error retrieving session:', summarizeErrorForLog(error))
+    logger.error('[Desktop Link] Error retrieving session:', summarizeErrorForLog(error))
     return NextResponse.json(
       { error: 'Failed to retrieve session' },
       { status: 500, headers: NO_STORE_HEADERS }

@@ -1,11 +1,12 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import type { WebhookEvent, WebhookEventType } from '@/shared/schemas/webhooks'
 import { dispatchWebhookEvent } from './webhook-dispatcher'
 
 function fireAndForget(promise: Promise<unknown>, label: string): void {
   promise.catch((error) => {
-    console.warn(`[webhooks] ${label} failed`, error)
+    logger.warn(`[webhooks] ${label} failed`, error)
   })
 }
 

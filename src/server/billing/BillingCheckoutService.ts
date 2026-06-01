@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import {
   clampPaidPlanAmountCents,
   clampTopUpAmountCents,
@@ -77,7 +78,7 @@ export class BillingCheckoutService {
       }),
       {
         'Stripe paid plan price ID is not configured': () => {
-          console.error('Missing paid unit Stripe price ID')
+          logger.error('Missing paid unit Stripe price ID')
           const hint =
             process.env.VERCEL_ENV === 'production'
               ? 'Set STRIPE_PAID_UNIT_PRICE_ID for Production in Vercel.'
@@ -87,7 +88,7 @@ export class BillingCheckoutService {
       },
     )
 
-    console.log(
+    logger.info(
       `[Checkout] Created paid plan session for user ${args.user.id} (${args.user.email}) — plan=${formatDollarAmount(planAmountCents)} topUp=${formatDollarAmount(topUpAmountCents)} autoTopUp=${autoTopUpEnabled}`,
     )
     return { url: checkoutSession.url }
@@ -153,7 +154,7 @@ export class BillingCheckoutService {
       currentPeriodEnd: verification.currentPeriodEnd,
     })
 
-    console.log('[Checkout Verify] Subscription verified and updated')
+    logger.info('[Checkout Verify] Subscription verified and updated')
 
     return {
       success: true,
@@ -231,7 +232,7 @@ export class BillingCheckoutService {
       },
     )
 
-    console.log(`[TopUp Checkout] Created manual top-up checkout for ${args.userId}: ${formatDollarAmount(amountCents)}`)
+    logger.info(`[TopUp Checkout] Created manual top-up checkout for ${args.userId}: ${formatDollarAmount(amountCents)}`)
     return { url: checkoutSession.url }
   }
 

@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     if (Number.isFinite(contentLength) && contentLength > 16_384) {
       return new NextResponse(null, { status: 204 })
     }
-    const body = await request.json().catch(() => null)
+    const body = await request.json().catch((_error) => null)
     const report = body && typeof body === 'object' ? body as Record<string, unknown> : null
     logSecurityEvent(
       'csp_report',

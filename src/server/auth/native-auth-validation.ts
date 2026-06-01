@@ -26,7 +26,7 @@ export function isAllowedNativeRedirectUri(value: unknown): value is string {
       url.hostname === 'www.getoverlay.io' &&
       url.pathname === '/auth/native/callback'
     )
-  } catch {
+  } catch (_error) {
     return false
   }
 }
@@ -51,7 +51,7 @@ export function isAllowedWorkOsAuthorizationUrl(value: unknown): value is string
     return url.protocol === 'https:' &&
       url.hostname === 'api.workos.com' &&
       url.pathname === '/user_management/authorize'
-  } catch {
+  } catch (_error) {
     return false
   }
 }

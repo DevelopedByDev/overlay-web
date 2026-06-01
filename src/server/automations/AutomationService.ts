@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { runActTurnForScheduledAutomation, type ScheduledAutomationTurn } from '@/server/agent/run-act-turn'
 import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/webhooks'
 import type {
@@ -95,7 +96,7 @@ function summarizeError(error: unknown): string {
   if (typeof error === 'string') return error
   try {
     return JSON.stringify(error)
-  } catch {
+  } catch (_error) {
     return 'Unknown automation error'
   }
 }
@@ -119,7 +120,7 @@ function formatLocalTime(date: Date, timezone: string): string {
       hour: 'numeric',
       minute: '2-digit',
     }).format(date)
-  } catch {
+  } catch (_error) {
     return new Intl.DateTimeFormat('en-US', {
       timeZone: 'UTC',
       hour: 'numeric',
@@ -134,7 +135,7 @@ function weekdayName(date: Date, timezone: string): string {
       timeZone: timezone,
       weekday: 'long',
     }).format(date)
-  } catch {
+  } catch (_error) {
     return new Intl.DateTimeFormat('en-US', {
       timeZone: 'UTC',
       weekday: 'long',
@@ -373,7 +374,7 @@ export class AutomationService {
         conversationId,
         userId: args.userId,
       }).catch((error) => {
-        console.warn('[automations DELETE] Failed to delete linked conversation', error)
+        logger.warn('[automations DELETE] Failed to delete linked conversation', error)
       })
     }
 
@@ -556,7 +557,7 @@ export class AutomationService {
       conversationId,
       content: updateNote,
     }).catch((error) => {
-      console.warn('[automations PATCH] Failed to append automation update note', error)
+      logger.warn('[automations PATCH] Failed to append automation update note', error)
     })
   }
 
@@ -573,7 +574,7 @@ export class AutomationService {
         userId: args.userId,
         error: message,
         now: this.clock.now(),
-      }).catch(() => null)
+      }).catch((_error) => null)
     }
     if (args.runId && args.automationId) {
       this.events.failed({

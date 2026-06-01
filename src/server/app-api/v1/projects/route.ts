@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { handleRouteError } from '@/server/app-api/route-errors'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
@@ -50,8 +51,12 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
     return NextResponse.json(projects || [])
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 })
+  } catch (error) {
+    return handleRouteError(error, {
+      route: 'projects',
+      operation: 'GET',
+      clientMessage: 'Failed to fetch projects',
+    })
   }
 }
 
@@ -83,8 +88,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       serverSecret,
     })
     return NextResponse.json({ id, project })
-  } catch {
-    return NextResponse.json({ error: 'Failed to create project' }, { status: 500 })
+  } catch (error) {
+    return handleRouteError(error, {
+      route: 'projects',
+      operation: 'POST',
+      clientMessage: 'Failed to create project',
+    })
   }
 }
 
@@ -116,8 +125,12 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       serverSecret,
     })
     return NextResponse.json({ success: true, project })
-  } catch {
-    return NextResponse.json({ error: 'Failed to update project' }, { status: 500 })
+  } catch (error) {
+    return handleRouteError(error, {
+      route: 'projects',
+      operation: 'PATCH',
+      clientMessage: 'Failed to update project',
+    })
   }
 }
 
@@ -144,8 +157,12 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
       })
     }
     return NextResponse.json({ success: true, deletedIds: toDelete, deletedAt: Date.now() })
-  } catch {
-    return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 })
+  } catch (error) {
+    return handleRouteError(error, {
+      route: 'projects',
+      operation: 'DELETE',
+      clientMessage: 'Failed to delete project',
+    })
   }
 }
 

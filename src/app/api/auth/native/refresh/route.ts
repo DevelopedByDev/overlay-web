@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { refreshSessionFromRefreshToken } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       session,
     }, { headers: NO_STORE_HEADERS })
   } catch (error) {
-    console.error('[Auth] Native refresh error:', error)
+    logger.error('[Auth] Native refresh error:', error)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500, headers: NO_STORE_HEADERS }

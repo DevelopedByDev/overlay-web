@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { getOverlaySession } from '@/server/auth/session'
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     logAuthDebug('/api/auth/session error', {
       error: error instanceof Error ? error.message : String(error),
     })
-    console.error('[Auth] Session check error:', error)
+    logger.error('[Auth] Session check error:', error)
     return NextResponse.json({ authenticated: false }, { status: 200 })
   }
 }

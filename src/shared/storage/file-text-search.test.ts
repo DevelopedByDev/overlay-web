@@ -1,10 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-
-const {
+import {
   findSubstringMatchesInText,
   dedupeFileIdsPreserveOrder,
-} = await import(new URL('./file-text-search.ts', import.meta.url).href)
+} from './file-text-search'
 
 test('findSubstringMatchesInText finds case-insensitive non-overlapping matches', () => {
   const fullText = 'Hello WORLD hello world'

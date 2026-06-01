@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextResponse } from "next/server";
 import { fetchLatestReleaseInfo } from "@/shared/web/latest-release";
 
@@ -6,7 +7,7 @@ export async function GET() {
     const releaseInfo = await fetchLatestReleaseInfo();
     return NextResponse.json(releaseInfo);
   } catch (error) {
-    console.error("Failed to fetch latest release:", error);
+    logger.error("Failed to fetch latest release:", error);
     return NextResponse.json(
       { error: "Failed to fetch latest release" },
       { status: 500 }

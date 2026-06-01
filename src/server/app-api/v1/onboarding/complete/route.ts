@@ -1,8 +1,9 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlaySession } from '@/server/auth/session'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -25,12 +26,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       result && typeof result === 'object' && 'ok' in result && (result as { ok: boolean }).ok,
     )
     if (!persistedToConvex) {
-      console.warn('[onboarding/complete] Convex did not confirm save; cookie will still be set', {
+      logger.warn('[onboarding/complete] Convex did not confirm save; cookie will still be set', {
         userId,
       })
     }
   } catch (e) {
-    console.error('[onboarding/complete] Convex mutation failed; cookie will still be set', e)
+    logger.error('[onboarding/complete] Convex mutation failed; cookie will still be set', e)
   }
 
   const response = NextResponse.json({ ok: true as const, persistedToConvex })

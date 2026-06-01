@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 /**
  * OpenRouter Service — direct fetch to https://openrouter.ai/api/v1/chat/completions.
  * Overlay ids use `openrouter/` for our registry. Vendor models map to API slugs without that
@@ -41,7 +42,7 @@ export async function openRouterFetchWithRetry(
     if (res.status !== 429 && res.status !== 503) {
       return res
     }
-    await res.arrayBuffer().catch(() => {})
+    await res.arrayBuffer().catch((_error) => undefined)
     if (attempt >= OPENROUTER_RETRY_ATTEMPTS - 1) {
       return res
     }
@@ -297,7 +298,7 @@ export async function streamOpenRouterChat({
                 inputTokens = parsed.usage.prompt_tokens ?? 0
                 outputTokens = parsed.usage.completion_tokens ?? 0
               }
-            } catch {
+            } catch (_error) {
               // ignore malformed chunks
             }
           }
@@ -318,7 +319,7 @@ export async function streamOpenRouterChat({
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        console.error('[OpenRouter] Stream error:', msg)
+        logger.error('[OpenRouter] Stream error:', msg)
         writer.write({ type: 'error', errorText: msg })
       }
     },

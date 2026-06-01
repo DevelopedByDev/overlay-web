@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.name === 'BillingServiceError') {
       return billingErrorResponse(error, 'Failed to create checkout session')
     }
-    console.error('Checkout error:', error)
+    logger.error('Checkout error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
       { error: `Failed to create checkout session: ${errorMessage}` },

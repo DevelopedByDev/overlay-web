@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { readEmailVerificationTicket, verifyEmail, resendVerificationEmail } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
       message: 'Email verified successfully',
     })
   } catch (error) {
-    console.error('[Auth] Verify email error:', error)
+    logger.error('[Auth] Verify email error:', error)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

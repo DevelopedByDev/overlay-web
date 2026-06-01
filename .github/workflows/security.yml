@@ -94,7 +94,7 @@ jobs:
         run: echo "Skipping dependency review because GitHub dependency graph is disabled for this repository."
 
   dependency-audit:
-    name: Lockfile, Typecheck, and Audit
+    name: Lockfile, Lint, Complexity, Typecheck, and Audit
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -116,6 +116,12 @@ jobs:
         run: |
           npm install --package-lock-only --ignore-scripts
           git diff --exit-code package-lock.json package.json
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Web complexity ratchet
+        run: npm run check:web-complexity
 
       - name: Typecheck
         run: npm run typecheck

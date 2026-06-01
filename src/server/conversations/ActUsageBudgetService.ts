@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/pricing'
 import {
   billableBudgetCentsFromProviderUsd,
@@ -82,13 +83,13 @@ export class ActUsageBudgetService {
   }): Promise<{ finalized: boolean; reservationId: string | null }> {
     const providerCostUsd = calculateTokenCostOrNull(args.modelId, args.inputTokens, 0, args.outputTokens)
     if (providerCostUsd === null) {
-      console.error('[conversations/act] Missing pricing for completed provider call', { modelId: args.modelId })
+      logger.error('[conversations/act] Missing pricing for completed provider call', { modelId: args.modelId })
       if (args.reservationId) {
         await this.markReservationForReconcile({
           userId: args.userId,
           reservationId: args.reservationId,
           errorMessage: `pricing_missing:${args.modelId}`,
-        }).catch((err) => console.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(err)))
+        }).catch((err) => logger.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(err)))
         return { finalized: false, reservationId: null }
       }
       return { finalized: false, reservationId: args.reservationId }
@@ -126,13 +127,13 @@ export class ActUsageBudgetService {
       })
       return { finalized: false, reservationId: null }
     } catch (err) {
-      console.error('[conversations/act] Failed to record usage:', summarizeErrorForLog(err))
+      logger.error('[conversations/act] Failed to record usage:', summarizeErrorForLog(err))
       if (args.reservationId) {
         await this.markReservationForReconcile({
           userId: args.userId,
           reservationId: args.reservationId,
           errorMessage: summarizeErrorForLog(err),
-        }).catch((reconcileErr) => console.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(reconcileErr)))
+        }).catch((reconcileErr) => logger.error('[conversations/act] Failed to mark reservation for reconcile:', summarizeErrorForLog(reconcileErr)))
         return { finalized: false, reservationId: null }
       }
       return { finalized: false, reservationId: args.reservationId }

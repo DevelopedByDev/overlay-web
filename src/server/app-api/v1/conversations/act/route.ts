@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type UIMessage } from '@/server/ai/sdk'
@@ -145,12 +146,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const useCloudflareStreamRelay = streamPersistence.useCloudflareStreamRelay
     const resolvedStreamPersistenceMode = streamPersistence.mode
     if (streamPersistence.ignoredUnverifiedRelay) {
-      console.warn('[conversations/act] Ignoring unverified cloudflare-relay persistence request', {
+      logger.warn('[conversations/act] Ignoring unverified cloudflare-relay persistence request', {
         conversationId,
         turnId,
       })
     }
-    console.info('[conversations/act] streamPersistence', {
+    logger.info('[conversations/act] streamPersistence', {
       mode: resolvedStreamPersistenceMode,
       conversationMode: mode,
       automationMode: automationMode === true,
@@ -394,7 +395,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         const n = toolCall.toolName
         if (n !== 'perplexity_search' && n !== 'parallel_search') return
         const input = toolCall.input as Record<string, unknown> | undefined
-        console.log(`[conversations/act] ${n} START`, {
+        logger.info(`[conversations/act] ${n} START`, {
           toolCallId: toolCall.toolCallId,
           input: summarizeToolInputForLog(input),
         })
@@ -411,13 +412,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         const n = toolCall.toolName
         if (n === 'perplexity_search' || n === 'parallel_search') {
           if (success) {
-            console.log(`[conversations/act] ${n} OK`, {
+            logger.info(`[conversations/act] ${n} OK`, {
               toolCallId: toolCall.toolCallId,
               durationMs,
               output: summarizeToolOutputForLog(output),
             })
           } else {
-            console.error(`[conversations/act] ${n} FAILED`, {
+            logger.error(`[conversations/act] ${n} FAILED`, {
               toolCallId: toolCall.toolCallId,
               durationMs,
               error: summarizeErrorForLog(error),
@@ -526,13 +527,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           try {
             await drainReadableStream(backgroundBody)
           } catch (err) {
-            console.error('[conversations/act] Background stream drain failed:', summarizeErrorForLog(err))
+            logger.error('[conversations/act] Background stream drain failed:', summarizeErrorForLog(err))
             if (budgetReservationId && !budgetReservationFinalized) {
               await actUsageBudgetService.releaseReservation({
                 userId,
                 reservationId: budgetReservationId,
                 reason: summarizeErrorForLog(err),
-              }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
+              }).catch((releaseErr) => logger.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
               budgetReservationId = null
             }
             await actGeneratingMessageService.fail({
@@ -568,7 +569,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
               _deltaLogged = true
               _buf = '' // release
               const _tDelta = performance.now()
-              console.log('[TTFT][act]', {
+              logger.info('[TTFT][act]', {
                 model: attemptModelId,
                 total_ms: +(_tDelta - _t0).toFixed(1),
                 auth_ms: +(_tAuth - _t0).toFixed(1),
@@ -653,10 +654,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       attemptModelIds,
       reserveBudgetForAttempt,
       onFallback: (from, to) => {
-        console.warn('[conversations/act] model fallback', { from, to })
+        logger.warn('[conversations/act] model fallback', { from, to })
       },
       onAttemptFailure: async (error, attemptModelId, hasFallback) => {
-        console.warn('[conversations/act] model attempt failed', {
+        logger.warn('[conversations/act] model attempt failed', {
           modelId: attemptModelId,
           hasFallback,
           error: summarizeErrorForLog(error),
@@ -666,7 +667,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             userId,
             reservationId: budgetReservationId,
             reason: summarizeErrorForLog(error),
-          }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
+          }).catch((releaseErr) => logger.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
           budgetReservationId = null
         }
       },
@@ -683,13 +684,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	  } catch (error) {
     const serviceResponse = actConversationErrorResponse(error)
     if (serviceResponse) return serviceResponse
-	    console.error('[conversations/act] Error:', summarizeErrorForLog(error))
+	    logger.error('[conversations/act] Error:', summarizeErrorForLog(error))
 	    if (budgetReservationId && !budgetReservationFinalized) {
 	      await actUsageBudgetService.releaseReservation({
 	        userId: currentUserId ?? 'unknown',
 	        reservationId: budgetReservationId,
 	        reason: summarizeErrorForLog(error),
-	      }).catch((releaseErr) => console.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
+	      }).catch((releaseErr) => logger.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
 	      budgetReservationId = null
 	    }
 	    await actGeneratingMessageService.fail({

@@ -1,7 +1,8 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { generatePresignedDownloadUrl } from '@/server/storage/object-store'
 import { isOwnedOutputR2Key } from '@/server/storage/storage-keys'
 
@@ -37,7 +38,7 @@ export async function GET(
       serverSecret,
       userId: auth.userId,
       bytes: proxyTarget.sizeBytes ?? 0,
-    }).catch((error) => console.warn('[outputs/content] bandwidth accounting failed', error))
+    }).catch((error) => logger.warn('[outputs/content] bandwidth accounting failed', error))
     const presignedUrl = await generatePresignedDownloadUrl(proxyTarget.r2Key)
     return Response.redirect(presignedUrl, 302)
   }

@@ -105,12 +105,12 @@ export async function getOpenRouterLanguageModelCapturingRoutedModel(
                 stop = true
                 break
               }
-            } catch { /* ignore parse errors */ }
+            } catch (_error) { /* ignore parse errors */ }
           }
           if (stop) break
         }
-      } catch { /* ignore read errors */ } finally {
-        reader.cancel().catch(() => {})
+      } catch (_error) { /* ignore read errors */ } finally {
+        reader.cancel().catch((_error) => undefined)
       }
     })()
     return new Response(primary, {

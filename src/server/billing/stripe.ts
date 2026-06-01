@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import Stripe from 'stripe'
 
 /**
@@ -44,7 +45,7 @@ export const stripe = new Proxy({} as Stripe, {
           `Stripe is configured with a restricted key (${mode}). Checkout requires a secret key with permission to create Checkout Sessions, Customers, Subscriptions, PaymentIntents, and read Prices. Use a full sk_${mode === 'live' ? 'live' : 'test'} key, or update the restricted key permissions in Stripe.`
         )
       }
-      console.log(`[Stripe] Initialized (${mode} key)`)
+      logger.info(`[Stripe] Initialized (${mode} key)`)
       _stripe = new Stripe(stripeSecretKey)
     }
     return _stripe[prop as keyof Stripe]

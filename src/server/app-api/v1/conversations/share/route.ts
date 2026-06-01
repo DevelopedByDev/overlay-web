@@ -1,6 +1,7 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
@@ -13,7 +14,7 @@ function buildShareUrl(request: NextRequest, token: string): string {
 
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = (await request.json().catch(() => ({}))) as {
+    const body = (await request.json().catch((_error) => ({}))) as {
       conversationId?: string
       visibility?: 'private' | 'public'
       accessToken?: string
@@ -45,7 +46,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       url: result.token ? buildShareUrl(request, result.token) : null,
     })
   } catch (error) {
-    console.error('[conversations/share PATCH]', error)
+    logger.error('[conversations/share PATCH]', error)
     return NextResponse.json({ error: 'Failed to update share visibility' }, { status: 500 })
   }
 }

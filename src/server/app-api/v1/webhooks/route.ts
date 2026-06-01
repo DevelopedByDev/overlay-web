@@ -1,6 +1,7 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 import {
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       serverSecret,
     })
     return NextResponse.json(subscriptions || [])
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch webhook subscriptions' }, { status: 500 })
   }
 }
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       secret: created.secret,
     })
   } catch (error) {
-    console.error('[webhooks] create failed', error)
+    logger.error('[webhooks] create failed', error)
     return NextResponse.json({ error: 'Failed to create webhook subscription' }, { status: 500 })
   }
 }
@@ -121,7 +122,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[webhooks] update failed', error)
+    logger.error('[webhooks] update failed', error)
     return NextResponse.json({ error: 'Failed to update webhook subscription' }, { status: 500 })
   }
 }
@@ -133,7 +134,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     if (contentType.includes('application/json')) {
       try {
         body = await request.json()
-      } catch {
+      } catch (_error) {
         body = {}
       }
     }
@@ -160,7 +161,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[webhooks] delete failed', error)
+    logger.error('[webhooks] delete failed', error)
     return NextResponse.json({ error: 'Failed to delete webhook subscription' }, { status: 500 })
   }
 }

@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   const disabledCapabilityResponse = await requireOverlayCapability('billing')
   if (disabledCapabilityResponse) return disabledCapabilityResponse
 
-  const body = await request.json().catch(() => null)
+  const body = await request.json().catch((_error) => null)
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }

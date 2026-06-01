@@ -4,7 +4,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {

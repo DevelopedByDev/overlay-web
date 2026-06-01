@@ -1,6 +1,7 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -126,7 +127,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
             compactToolPayloads,
           }) ?? []
         } catch (error) {
-          console.warn('[conversations GET] Falling back to full message load after recent load failed', {
+          logger.warn('[conversations GET] Falling back to full message load after recent load failed', {
             conversationId,
             error: error instanceof Error ? error.message : String(error),
           })
@@ -245,7 +246,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     })
 
     return NextResponse.json(list || [])
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 })
   }
 }
@@ -303,7 +304,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       serverSecret,
     })
     return NextResponse.json({ id, conversation })
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 })
   }
 }
@@ -343,7 +344,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     })
     return NextResponse.json({ success: true, conversation })
   } catch (error) {
-    console.error('[conversations PATCH]', error)
+    logger.error('[conversations PATCH]', error)
     return NextResponse.json({ error: 'Failed to update conversation' }, { status: 500 })
   }
 }
@@ -362,7 +363,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
       serverSecret,
     })
     return NextResponse.json({ success: true, conversationId, deletedAt: Date.now() })
-  } catch {
+  } catch (_error) {
     return NextResponse.json({ error: 'Failed to delete conversation' }, { status: 500 })
   }
 }

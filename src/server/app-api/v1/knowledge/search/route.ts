@@ -1,7 +1,8 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/tools/internal-api-secret'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { HybridSearchChunk } from '../../../../../../convex/knowledge/knowledge'
 
 export const maxDuration = 60
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json(result)
   } catch (e) {
-    console.error('[knowledge/search]', e)
+    logger.error('[knowledge/search]', e)
     return NextResponse.json({ error: 'Search failed' }, { status: 500 })
   }
 }

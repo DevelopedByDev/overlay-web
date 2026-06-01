@@ -28,7 +28,7 @@ function decodeCursor(value: string | undefined): CursorPayload | null {
         order: parsed.order,
       }
     }
-  } catch {
+  } catch (_error) {
     // Invalid cursors fall back to the first page.
   }
   return null

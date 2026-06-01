@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-28T08:44:05.897Z",
+  "generatedAt": "2026-06-01T18:49:09.211Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -9,7 +9,17 @@
         "src/sentry.edge.config.ts",
         "src/sentry.server.config.ts"
       ]
-    ]
+    ],
+    "zeroFanInOverrides": {
+      "packages/overlay-ui/postcss.config.cjs": {
+        "classification": "keep",
+        "reason": "Package-local build config consumed by package tooling."
+      },
+      "packages/overlay-ui/tailwind.config.cjs": {
+        "classification": "keep",
+        "reason": "Package-local Tailwind config consumed by package tooling."
+      }
+    }
   },
   "allowedExactDuplicateGroups": [
     "src/sentry.edge.config.ts|src/sentry.server.config.ts"
@@ -28,9 +38,7 @@
     "src/features/knowledge/components/KnowledgeView.tsx",
     "src/features/notebook/components/InlineDiffExtension.ts",
     "src/features/notebook/components/NotebookEditor.tsx",
-    "src/features/projects/components/ProjectsSidebar.tsx",
     "src/features/projects/components/ProjectsView.tsx",
-    "src/server/ai/gateway/ai-gateway.ts",
     "src/server/ai/sandbox/daytona.ts",
     "src/server/app-api/v1/conversations/act/route.ts",
     "src/server/auth/workos-auth.ts",
@@ -42,39 +50,34 @@
   ],
   "complexFunctionCounts": {
     "src/features/chat/components/ChatExperience.tsx#ChatInterface": 1,
-    "src/server/app-api/v1/conversations/act/route.ts#POST": 1,
-    "src/components/layout/AppSidebar.tsx#AppSidebar": 1,
     "src/features/chat/components/ChatExperience.tsx#handleSend": 1,
     "src/features/chat/components/ChatExperience.tsx#loadChat": 1,
     "src/features/chat/components/ChatMessage.tsx#TextChatMessage": 1,
-    "src/components/providers/AppSettingsProvider.tsx#isAppSettingsPayload": 1,
-    "src/server/app-api/v1/settings/route.ts#PATCH": 1,
+    "src/components/layout/AppSidebar.tsx#AppSidebar": 1,
     "src/shared/tools/output-types.ts#classifyOutputType": 1,
-    "src/server/app-api/v1/daytona/run/route.ts#POST": 1,
-    "packages/overlay-tools-core/src/mcp-schema-to-zod.ts#jsonSchemaToZod": 1,
+    "src/server/app-api/v1/settings/route.ts#PATCH": 1,
+    "src/components/providers/AppSettingsProvider.tsx#isAppSettingsPayload": 1,
     "src/server/app-api/v1/generate-video/route.ts#start": 1,
-    "src/server/app-api/v1/generate-image/route.ts#POST": 1,
+    "packages/overlay-tools-core/src/mcp-schema-to-zod.ts#jsonSchemaToZod": 1,
     "packages/overlay-chat-core/src/agent-assistant-text.ts#isNimLeakedNarrationLine": 1,
-    "src/components/layout/AppSidebar.tsx#callback": 1,
+    "src/server/app-api/v1/generate-image/route.ts#POST": 1,
+    "src/app/app/settings/page.tsx#SettingsPage": 1,
     "src/features/notebook/components/InlineDiffExtension.ts#parseMarkdownLine": 1,
+    "src/components/layout/AppSidebar.tsx#callback": 1,
     "src/shared/tools/tool-result-summary.ts#summarizeToolResultForTranscript": 1,
     "src/features/notebook/components/InlineDiffExtension.ts#parseMarkdownLines": 1,
     "packages/overlay-chat-react/src/components/ExchangeBlock.tsx#ExchangeBlock": 1,
-    "src/app/app/settings/page.tsx#SettingsPage": 1,
     "src/features/files/lib/export/markdown.ts#walk": 1,
     "src/shared/config/overlayConfigSchema.ts#callback": 1,
-    "src/server/files/FileService.ts#createFile": 1,
     "src/features/knowledge/components/KnowledgeView.tsx#KnowledgeView": 1,
     "src/server/bootstrap.ts#assertSelectedProviderConfig": 1,
-    "src/server/config/loadOverlayConfig.ts#authConfigFromEnv": 1,
-    "src/server/app-api/v1/daytona/run/route.ts#guessMimeType": 1,
-    "src/features/chat/components/chat-interface/chatLogic.ts#buildAssistantVisualSequence": 1,
     "src/server/tools/tools/build.ts#buildOverlayToolSet": 1,
+    "src/features/chat/components/chat-interface/chatLogic.ts#buildAssistantVisualSequence": 1,
+    "packages/overlay-chat-react/src/components/ExchangeBlock.tsx#callback": 1,
     "src/server/automations/AutomationService.ts#buildAutomationUpdateNote": 1,
     "src/server/knowledge/mention-resolver.ts#resolveOne": 1,
     "src/shared/chat/persist-assistant-turn.ts#buildAssistantPersistenceFromSteps": 1,
     "packages/overlay-billing/src/adapters/stripe-billing-provider.ts#verifyPaidPlanCheckoutSession": 1,
-    "packages/overlay-chat-react/src/components/ExchangeBlock.tsx#callback": 1,
     "packages/overlay-chat-react/src/components/MediaSlotOutput.tsx#MediaSlotOutput": 1,
     "src/server/app-api/v1/browser-task/route.ts#POST": 1,
     "src/server/conversations/ActGeneratingMessageService.ts#extractUiStreamPersistenceEvents": 1,
@@ -85,7 +88,6 @@
     "src/features/chat/components/chat-interface/chatLogic.ts#describeComposioIntegrationTool": 1,
     "src/features/chat/components/ChatExperience.tsx#handleBranchConversationAtTurn": 1,
     "src/server/database/convex.ts#callConvex": 1,
-    "src/server/files/FileService.ts#searchText": 1,
     "packages/overlay-chat-react/src/lib/web-tool-sources.ts#collectSourceCandidatesFromUnknown": 1,
     "src/features/chat/components/chat-interface/chatLogic.ts#collectSourceCandidatesFromUnknown": 1,
     "src/features/files/components/FileViewer.tsx#FileViewer": 1,
@@ -95,19 +97,1000 @@
     "src/server/app-api/v1/conversations/act/extension-plan/route.ts",
     "src/server/app-api/v1/conversations/act/route.ts",
     "src/server/app-api/v1/conversations/route.ts",
-    "src/server/app-api/v1/daytona/run/route.ts",
     "src/server/app-api/v1/generate-image/route.ts",
     "src/server/app-api/v1/generate-video/route.ts",
     "src/server/app-api/v1/integrations/route.ts",
     "src/server/app-api/v1/notebook-agent/route.ts"
   ],
+  "zeroFanInFiles": [
+    {
+      "file": "packages/overlay-ui/postcss.config.cjs",
+      "layer": "packages/overlay-ui",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Package-local build config consumed by package tooling."
+    },
+    {
+      "file": "packages/overlay-ui/tailwind.config.cjs",
+      "layer": "packages/overlay-ui",
+      "loc": 19,
+      "classification": "keep",
+      "reason": "Package-local Tailwind config consumed by package tooling."
+    },
+    {
+      "file": "src/app/.well-known/apple-app-site-association/route.ts",
+      "layer": "src/app routes",
+      "loc": 36,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/.well-known/assetlinks.json/route.ts",
+      "layer": "src/app routes",
+      "loc": 31,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/(app)/chat/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/(app)/chat/page.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/(app)/layout.tsx",
+      "layer": "src/app routes",
+      "loc": 3,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/(app)/notes/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/(app)/notes/page.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/account/page.tsx",
+      "layer": "src/app routes",
+      "loc": 413,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/account/delete/route.ts",
+      "layer": "src/app/api other",
+      "loc": 44,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/callback/route.ts",
+      "layer": "src/app/api other",
+      "loc": 139,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/convex-token/route.ts",
+      "layer": "src/app/api other",
+      "loc": 12,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/desktop-link/route.ts",
+      "layer": "src/app/api other",
+      "loc": 145,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/forgot-password/route.ts",
+      "layer": "src/app/api other",
+      "loc": 35,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/native/authorize/route.ts",
+      "layer": "src/app/api other",
+      "loc": 85,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/native/exchange/route.ts",
+      "layer": "src/app/api other",
+      "loc": 56,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/native/provider-keys/route.ts",
+      "layer": "src/app/api other",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/native/refresh/route.ts",
+      "layer": "src/app/api other",
+      "loc": 54,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/native/subscription/route.ts",
+      "layer": "src/app/api other",
+      "loc": 90,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/reset-password/route.ts",
+      "layer": "src/app/api other",
+      "loc": 45,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/session/route.ts",
+      "layer": "src/app/api other",
+      "loc": 40,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/sign-in/route.ts",
+      "layer": "src/app/api other",
+      "loc": 47,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/sign-out/route.ts",
+      "layer": "src/app/api other",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/sign-up/route.ts",
+      "layer": "src/app/api other",
+      "loc": 50,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/sso/[provider]/route.ts",
+      "layer": "src/app/api other",
+      "loc": 68,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/sync-profile/route.ts",
+      "layer": "src/app/api other",
+      "loc": 71,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/auth/verify-email/route.ts",
+      "layer": "src/app/api other",
+      "loc": 63,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/checkout/verify/route.ts",
+      "layer": "src/app/api other",
+      "loc": 34,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/convex/[type]/route.ts",
+      "layer": "src/app/api other",
+      "loc": 21,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/latest-release/download/route.ts",
+      "layer": "src/app/api other",
+      "loc": 23,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/latest-release/route.ts",
+      "layer": "src/app/api other",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/security/csp-report/route.ts",
+      "layer": "src/app/api other",
+      "loc": 34,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/share/file/[token]/route.ts",
+      "layer": "src/app/api other",
+      "loc": 35,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/api-keys/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 23,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/automations/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/automations/run/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/bootstrap/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/browser-task/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/capabilities/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 33,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/chat-suggestions/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/conversations/act/extension-plan/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/conversations/act/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/conversations/message/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/conversations/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/conversations/share/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/conversations/stop/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/conversations/stream-auth/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/daytona/run/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/files/[fileId]/content/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/files/ingest-document/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/files/presign/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/files/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/files/search-text/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/files/share/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/files/upload-url/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/generate-image/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/generate-tab-group-label/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/generate-title/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/generate-video/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/integrations/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/knowledge/search/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/mcps/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/memory/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/notebook-agent/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/notes/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/onboarding/complete/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/onboarding/reset/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/onboarding/status/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/outputs/[outputId]/content/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/outputs/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/projects/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/settings/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/skills/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/subscription/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/subscription/settings/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/transcribe/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/webhooks/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 15,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/webhooks/stripe/route.ts",
+      "layer": "src/app/api other",
+      "loc": 10,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/automations/error.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/automations/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/automations/page.tsx",
+      "layer": "src/app routes",
+      "loc": 51,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/chat/error.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/chat/page.tsx",
+      "layer": "src/app routes",
+      "loc": 32,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/files/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 12,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/files/page.tsx",
+      "layer": "src/app routes",
+      "loc": 50,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/integrations/error.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/integrations/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 1,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/integrations/page.tsx",
+      "layer": "src/app routes",
+      "loc": 22,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/knowledge/error.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/knowledge/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 1,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/knowledge/page.tsx",
+      "layer": "src/app routes",
+      "loc": 47,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/layout.tsx",
+      "layer": "src/app routes",
+      "loc": 63,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/memories/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 1,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/memories/page.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/notes/error.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/notes/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 1,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/notes/page.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/outputs/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 1,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/outputs/page.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/page.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/projects/error.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/projects/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/projects/page.tsx",
+      "layer": "src/app routes",
+      "loc": 30,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/settings/error.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/settings/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/settings/page.tsx",
+      "layer": "src/app routes",
+      "loc": 314,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/tools/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 1,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/tools/page.tsx",
+      "layer": "src/app routes",
+      "loc": 13,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/auth/callback/page.tsx",
+      "layer": "src/app routes",
+      "loc": 174,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/auth/composio/callback/page.tsx",
+      "layer": "src/app routes",
+      "loc": 76,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/auth/forgot-password/page.tsx",
+      "layer": "src/app routes",
+      "loc": 117,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/auth/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/auth/mobile-complete/page.tsx",
+      "layer": "src/app routes",
+      "loc": 81,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/auth/native/callback/route.ts",
+      "layer": "src/app routes",
+      "loc": 47,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/auth/reset-password/page.tsx",
+      "layer": "src/app routes",
+      "loc": 170,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/auth/sign-in/page.tsx",
+      "layer": "src/app routes",
+      "loc": 299,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/auth/sign-up/page.tsx",
+      "layer": "src/app routes",
+      "loc": 472,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/error.tsx",
+      "layer": "src/app routes",
+      "loc": 24,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/for-business/page.tsx",
+      "layer": "src/app routes",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/for-content/page.tsx",
+      "layer": "src/app routes",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/for-developers/page.tsx",
+      "layer": "src/app routes",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/for-education/page.tsx",
+      "layer": "src/app routes",
+      "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/global-error.tsx",
+      "layer": "src/app routes",
+      "loc": 50,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/home/page.tsx",
+      "layer": "src/app routes",
+      "loc": 140,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/layout.tsx",
+      "layer": "src/app routes",
+      "loc": 97,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/manifesto/page.tsx",
+      "layer": "src/app routes",
+      "loc": 80,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/page.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/pricing/page.tsx",
+      "layer": "src/app routes",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/privacy/page.tsx",
+      "layer": "src/app routes",
+      "loc": 87,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/share/c/[token]/twitter-image.tsx",
+      "layer": "src/app routes",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/share/f/[token]/twitter-image.tsx",
+      "layer": "src/app routes",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/share/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/terms/page.tsx",
+      "layer": "src/app routes",
+      "loc": 87,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/instrumentation-client.ts",
+      "layer": "other",
+      "loc": 37,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/instrumentation.ts",
+      "layer": "other",
+      "loc": 10,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/middleware.ts",
+      "layer": "other",
+      "loc": 216,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/features/projects/components/ProjectFileTree.tsx",
+      "layer": "src/features",
+      "loc": 15,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    }
+  ],
   "totals": {
-    "files": 827,
-    "code": 94301,
-    "total": 105169,
-    "productionFiles": 765,
-    "productionCode": 88985,
-    "testFiles": 62,
-    "testCode": 5316
+    "files": 836,
+    "code": 96575,
+    "total": 107568,
+    "productionFiles": 764,
+    "productionCode": 89785,
+    "testFiles": 72,
+    "testCode": 6790
   }
 }

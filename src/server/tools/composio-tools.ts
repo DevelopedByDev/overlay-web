@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ToolSet } from 'ai'
@@ -47,7 +48,7 @@ function resolveComposioSessionIdFactory() {
     if (!composioSessionId) {
       composioSessionId = provided || fallbackSessionId
     } else if (provided && provided !== composioSessionId) {
-      console.warn(
+      logger.warn(
         `[Composio] Overriding mismatched session_id for ${toolName}: ${provided} -> ${composioSessionId}`
       )
     }
@@ -106,7 +107,7 @@ async function loadComposioModules(): Promise<{
       Composio: coreModule.Composio,
       VercelProvider: vercelModule.VercelProvider,
     }
-  } catch {
+  } catch (_error) {
     const coreUrl = pathToFileURL(
       path.resolve(process.cwd(), '../overlay-desktop/node_modules/@composio/core/dist/index.mjs')
     ).href
@@ -223,7 +224,7 @@ export function prewarmBrowserUnifiedTools(args: {
   const cached = composioCache.get(args.userId)
   if (cached && Date.now() - cached.createdAt < COMPOSIO_CACHE_TTL_MS) return
   if (composioInFlight.has(args.userId)) return
-  void createBrowserUnifiedTools(args).catch(() => {
+  void createBrowserUnifiedTools(args).catch((_error) => {
     // swallow — next real call will throw and surface properly
   })
 }

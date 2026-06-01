@@ -49,7 +49,7 @@ export async function parseApiBoundaryInput(request: NextRequest): Promise<Parse
 
   if (!schema) {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
-      parsed.parsedJson = objectRecord(await readOptionalJsonBody(request).catch(() => ({})))
+      parsed.parsedJson = objectRecord(await readOptionalJsonBody(request).catch((_error) => ({})))
     }
     return parsed
   }
@@ -61,7 +61,7 @@ export async function parseApiBoundaryInput(request: NextRequest): Promise<Parse
   }
 
   if (schema.formData) {
-    const formData = await request.clone().formData().catch(() => undefined)
+    const formData = await request.clone().formData().catch((_error) => undefined)
     const result = schema.formData.safeParse(formData)
     if (!result.success) return { ...parsed, error: validationError(result.error.issues) }
     parsed.parsedFormData = formData ?? null
@@ -69,11 +69,11 @@ export async function parseApiBoundaryInput(request: NextRequest): Promise<Parse
   }
 
   if (schema.json && request.method !== 'GET' && request.method !== 'HEAD') {
-    const result = schema.json.safeParse(await readJsonBody(request).catch(() => undefined))
+    const result = schema.json.safeParse(await readJsonBody(request).catch((_error) => undefined))
     if (!result.success) return { ...parsed, error: validationError(result.error.issues) }
     parsed.parsedJson = objectRecord(result.data)
   } else if (request.method !== 'GET' && request.method !== 'HEAD') {
-    parsed.parsedJson = objectRecord(await readOptionalJsonBody(request).catch(() => ({})))
+    parsed.parsedJson = objectRecord(await readOptionalJsonBody(request).catch((_error) => ({})))
   }
 
   return parsed

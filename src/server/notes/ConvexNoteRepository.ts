@@ -28,14 +28,14 @@ export class ConvexNoteRepository implements NoteRepository {
     const direct = await this.getCanonicalFile({
       fileId: args.noteId,
       userId: args.userId,
-    }).catch(() => null)
+    }).catch((_error) => null)
     if (direct?.kind === 'note') return direct
 
     const migrated = await convex.query<NoteRecord | null>('files/files:getByLegacyNoteId', {
       noteId: args.noteId,
       userId: args.userId,
       serverSecret: this.serverSecret,
-    }).catch(() => null)
+    }).catch((_error) => null)
     return migrated?.kind === 'note' ? migrated : null
   }
 

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { OverlayServerContext } from '@/server/bootstrap'
@@ -31,7 +32,7 @@ export class AccountDeletionService {
 
     if (convexResult.stripeSubscriptionId) {
       await this.ctx.billing.cancelSubscription?.(convexResult.stripeSubscriptionId).catch((error) => {
-        console.error(
+        logger.error(
           `[account/delete] Billing subscription cancel failed for ${convexResult.stripeSubscriptionId}:`,
           error,
         )
@@ -40,7 +41,7 @@ export class AccountDeletionService {
 
     await this.deleteObjectsBestEffort(convexResult.r2Keys)
     await this.ctx.auth.deleteUser?.(args.userId).catch((error) => {
-      console.error(`[account/delete] Auth user deletion failed for ${args.userId}:`, error)
+      logger.error(`[account/delete] Auth user deletion failed for ${args.userId}:`, error)
     })
 
     return convexResult
@@ -49,7 +50,7 @@ export class AccountDeletionService {
   private async deleteObjectsBestEffort(keys: string[]): Promise<void> {
     for (const key of keys) {
       await this.ctx.objectStore.deleteObject(key).catch((error) => {
-        console.error(`[account/delete] Object deletion failed for ${key}:`, error)
+        logger.error(`[account/delete] Object deletion failed for ${key}:`, error)
       })
     }
   }

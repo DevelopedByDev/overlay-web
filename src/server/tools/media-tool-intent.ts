@@ -89,7 +89,7 @@ export async function classifyMediaToolIntentForTurn(params: {
         userId: params.userId,
         reservationId: reservation.reservationId,
         errorMessage: `pricing_missing:${MEDIA_INTENT_MODEL}`,
-      }).catch(() => {})
+      }).catch((_error) => undefined)
     } else {
       const costCents = billableBudgetCentsFromProviderUsd(actualProviderCostUsd)
       await finalizeProviderBudgetReservation({
@@ -110,7 +110,7 @@ export async function classifyMediaToolIntentForTurn(params: {
           userId: params.userId,
           reservationId: reservation.reservationId,
           errorMessage: error instanceof Error ? error.message : 'media_intent_finalize_failed',
-        }).catch(() => {})
+        }).catch((_error) => undefined)
       })
     }
 
@@ -122,7 +122,7 @@ export async function classifyMediaToolIntentForTurn(params: {
       userId: params.userId,
       reservationId: reservation.reservationId,
       reason: error instanceof Error ? error.message : 'media_intent_classifier_failed',
-    }).catch(() => {})
+    }).catch((_error) => undefined)
     return null
   }
 }

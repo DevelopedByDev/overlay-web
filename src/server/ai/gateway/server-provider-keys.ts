@@ -55,7 +55,7 @@ async function readFromVault(vaultName: string): Promise<string | null> {
     const obj = (await (workos.vault.readObject as (args: { id: string }) => Promise<VaultObject>)({ id }))
     const val = typeof obj.value === 'string' ? obj.value.trim() : ''
     return val.length > 0 ? val : null
-  } catch {
+  } catch (_error) {
     return null
   }
 }

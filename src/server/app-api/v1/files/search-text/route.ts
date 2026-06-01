@@ -1,3 +1,4 @@
+import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileErrorResponse, fileService } from '@/server/files/http'
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (error instanceof Error && error.name === 'FileServiceError') {
       return fileErrorResponse(error, 'Search failed')
     }
-    console.error('[files/search-text]', error)
+    logger.error('[files/search-text]', error)
     return NextResponse.json({ error: 'Search failed' }, { status: 500 })
   }
 }
