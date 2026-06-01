@@ -150,6 +150,184 @@ test('automations GET route preserves list response shape', async (t) => {
   assert.deepEqual(await readJson(response), [])
 })
 
+test('integrations search reads Composio v3 toolkits and annotates connected state', async (t) => {
+  const originalComposioApiKey = process.env.COMPOSIO_API_KEY
+  const originalWorkosApiKey = process.env.WORKOS_API_KEY
+  process.env.COMPOSIO_API_KEY = 'test-composio-key'
+  delete process.env.WORKOS_API_KEY
+  t.after(() => {
+    if (originalComposioApiKey === undefined) {
+      delete process.env.COMPOSIO_API_KEY
+    } else {
+      process.env.COMPOSIO_API_KEY = originalComposioApiKey
+    }
+    if (originalWorkosApiKey === undefined) {
+      delete process.env.WORKOS_API_KEY
+    } else {
+      process.env.WORKOS_API_KEY = originalWorkosApiKey
+    }
+  })
+
+  const seenUrls: string[] = []
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url)
+    seenUrls.push(url.toString())
+    if (url.pathname === '/api/v3/connected_accounts') {
+      assert.equal(url.searchParams.get('user_ids'), 'user_1')
+      return Response.json({
+        items: [
+          { id: 'ca_gmail', status: 'ACTIVE', toolkit: { slug: 'gmail' } },
+          { id: 'ca_github_pending', status: 'INITIALIZING', toolkit: { slug: 'github' } },
+        ],
+      })
+    }
+    if (url.pathname === '/api/v3/toolkits') {
+      assert.equal(url.searchParams.get('search'), 'g')
+      return Response.json({
+        items: [
+          {
+            slug: 'gmail',
+            name: 'Gmail',
+            meta: {
+              description: 'Email',
+              logo: 'https://logos.composio.dev/api/gmail',
+            },
+          },
+          {
+            slug: 'github',
+            name: 'GitHub',
+            meta: {
+              description: 'Code hosting',
+              logo: 'https://logos.composio.dev/api/github',
+            },
+          },
+        ],
+        next_cursor: 'next-page',
+      })
+    }
+    throw new Error(`Unexpected fetch ${url.toString()}`)
+  })
+
+  const route = await import('./integrations/route')
+  const testContext = context()
+  testContext.auth.accessToken = ''
+  const response = await route.GET(request('/api/v1/integrations?action=search&q=g&limit=25'), testContext)
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await readJson(response), {
+    data: [
+      {
+        slug: 'gmail',
+        name: 'Gmail',
+        description: 'Email',
+        logoUrl: 'https://logos.composio.dev/api/gmail',
+        isConnected: true,
+        connectedAccountId: 'ca_gmail',
+      },
+      {
+        slug: 'github',
+        name: 'GitHub',
+        description: 'Code hosting',
+        logoUrl: 'https://logos.composio.dev/api/github',
+        isConnected: false,
+        connectedAccountId: null,
+      },
+    ],
+    items: [
+      {
+        slug: 'gmail',
+        name: 'Gmail',
+        description: 'Email',
+        logoUrl: 'https://logos.composio.dev/api/gmail',
+        isConnected: true,
+        connectedAccountId: 'ca_gmail',
+      },
+      {
+        slug: 'github',
+        name: 'GitHub',
+        description: 'Code hosting',
+        logoUrl: 'https://logos.composio.dev/api/github',
+        isConnected: false,
+        connectedAccountId: null,
+      },
+    ],
+    nextCursor: 'next-page',
+    hasMore: true,
+  })
+  assert.ok(seenUrls.every((url) => url.startsWith('https://backend.composio.dev/api/v3/')))
+})
+
+test('integrations default list reads Composio v3 connected accounts by user id', async (t) => {
+  const originalComposioApiKey = process.env.COMPOSIO_API_KEY
+  const originalWorkosApiKey = process.env.WORKOS_API_KEY
+  process.env.COMPOSIO_API_KEY = 'test-composio-key'
+  delete process.env.WORKOS_API_KEY
+  t.after(() => {
+    if (originalComposioApiKey === undefined) {
+      delete process.env.COMPOSIO_API_KEY
+    } else {
+      process.env.COMPOSIO_API_KEY = originalComposioApiKey
+    }
+    if (originalWorkosApiKey === undefined) {
+      delete process.env.WORKOS_API_KEY
+    } else {
+      process.env.WORKOS_API_KEY = originalWorkosApiKey
+    }
+  })
+
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url)
+    if (url.pathname === '/api/v3/connected_accounts') {
+      assert.equal(url.searchParams.get('user_ids'), 'user_1')
+      return Response.json({
+        items: [
+          { id: 'ca_gmail', status: 'ACTIVE', toolkit: { slug: 'gmail' } },
+          { id: 'ca_gmail_2', status: 'ACTIVE', toolkit: { slug: 'gmail' } },
+          { id: 'ca_github_pending', status: 'INITIALIZING', toolkit: { slug: 'github' } },
+        ],
+      })
+    }
+    if (url.pathname === '/api/v3/toolkits/gmail') {
+      return Response.json({
+        slug: 'gmail',
+        name: 'Gmail',
+        meta: {
+          description: 'Email',
+          logo: 'https://logos.composio.dev/api/gmail',
+        },
+      })
+    }
+    throw new Error(`Unexpected fetch ${url.toString()}`)
+  })
+
+  const route = await import('./integrations/route')
+  const testContext = context()
+  testContext.auth.accessToken = ''
+  const response = await route.GET(request('/api/v1/integrations'), testContext)
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await readJson(response), {
+    connected: ['gmail'],
+    data: [
+      {
+        slug: 'gmail',
+        name: 'Gmail',
+        description: 'Email',
+        logoUrl: 'https://logos.composio.dev/api/gmail',
+      },
+    ],
+    items: [
+      {
+        slug: 'gmail',
+        name: 'Gmail',
+        description: 'Email',
+        logoUrl: 'https://logos.composio.dev/api/gmail',
+      },
+    ],
+    hasMore: false,
+  })
+})
+
 test('automations create/update/test/run preserve validation and auth error shapes', async () => {
   const automations = await import('./automations/route')
   const testRoute = await import('./automations/test/route')

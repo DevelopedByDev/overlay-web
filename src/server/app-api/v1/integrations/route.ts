@@ -5,17 +5,27 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getServerProviderKey } from '@/server/ai/provider-keys'
 import { getBaseUrl } from '@/server/web/app-url'
 
-type ComposioAppRecord = {
-  key?: string
+const COMPOSIO_API_BASE_URL = 'https://backend.composio.dev/api/v3'
+
+type ComposioToolkitRecord = {
   slug?: string
   name?: string
-  displayName?: string
-  display_name?: string
-  appName?: string
-  app_name?: string
   description?: string
   logo?: string
   logoUrl?: string
+  meta?: {
+    description?: string
+    logo?: string
+  }
+}
+
+type ComposioConnectedAccountRecord = {
+  id?: string
+  appName?: string
+  status?: string
+  toolkit?: {
+    slug?: string
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,25 +71,45 @@ function fallbackDisplayName(slug: string): string {
     .join(' ')
 }
 
-function mapAppRecord(app: ComposioAppRecord) {
-  const slug = normalizeSlug(firstNonEmptyString(app.key, app.slug, app.appName, app.app_name, app.name) ?? '')
-  const name = firstNonEmptyString(app.displayName, app.display_name, app.name, app.appName, app.app_name)
+function mapToolkitRecord(toolkit: ComposioToolkitRecord) {
+  const slug = normalizeSlug(firstNonEmptyString(toolkit.slug, toolkit.name) ?? '')
+  const name = firstNonEmptyString(toolkit.name)
   return {
     slug,
     name: name ?? fallbackDisplayName(slug),
-    description: firstNonEmptyString(app.description) ?? '',
-    logoUrl: firstNonEmptyString(app.logoUrl, app.logo),
+    description: firstNonEmptyString(toolkit.description, toolkit.meta?.description) ?? '',
+    logoUrl: firstNonEmptyString(toolkit.logoUrl, toolkit.logo, toolkit.meta?.logo),
   }
 }
 
-async function fetchAppRecord(apiKey: string, slug: string) {
-  const res = await fetch(`https://backend.composio.dev/api/v1/apps/${encodeURIComponent(slug)}`, {
+async function fetchComposioJson<T>(apiKey: string, path: string): Promise<T | null> {
+  const res = await fetch(`${COMPOSIO_API_BASE_URL}${path}`, {
     headers: { 'x-api-key': apiKey },
   })
   if (!res.ok) return null
-  const data = await res.json() as ComposioAppRecord
-  const item = mapAppRecord(data)
+  return await res.json() as T
+}
+
+async function fetchToolkitRecord(apiKey: string, slug: string) {
+  const data = await fetchComposioJson<ComposioToolkitRecord>(
+    apiKey,
+    `/toolkits/${encodeURIComponent(slug)}`,
+  )
+  if (!data) return null
+  const item = mapToolkitRecord(data)
   return item.slug ? item : null
+}
+
+async function fetchConnectedAccounts(apiKey: string, userId: string) {
+  const url = new URL(`${COMPOSIO_API_BASE_URL}/connected_accounts`)
+  url.searchParams.set('user_ids', userId)
+  url.searchParams.set('limit', '100')
+
+  const res = await fetch(url.toString(), { headers: { 'x-api-key': apiKey } })
+  if (!res.ok) return []
+
+  const data = await res.json() as { items?: ComposioConnectedAccountRecord[] }
+  return Array.isArray(data.items) ? data.items : []
 }
 
 function getAllowedAppOrigins(): string[] {
@@ -143,20 +173,17 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
       const userId = auth.userId
 
-    // Fetch connected accounts to annotate results
-      const connectedRes = await fetch(
-        `https://backend.composio.dev/api/v1/connectedAccounts?entityId=${encodeURIComponent(userId)}&page=1&pageSize=100`,
-        { headers: { 'x-api-key': apiKey } }
-      )
-      const connectedData = connectedRes.ok ? await connectedRes.json() : { items: [] }
+      // Fetch connected accounts to annotate results
+      const connectedData = { items: await fetchConnectedAccounts(apiKey, userId) }
       const connectedMap = new Map<string, string>()
       for (const acc of connectedData.items || []) {
-        if (acc.appName) connectedMap.set(acc.appName.toLowerCase(), acc.id)
+        if (acc.status && acc.status !== 'ACTIVE') continue
+        const slug = normalizeSlug(firstNonEmptyString(acc.toolkit?.slug, acc.appName) ?? '')
+        if (slug && acc.id) connectedMap.set(slug, acc.id)
       }
 
-      const url = new URL('https://backend.composio.dev/api/v1/apps')
-      // Composio apps endpoint uses 'query' for search
-      if (q) url.searchParams.set('query', q)
+      const url = new URL(`${COMPOSIO_API_BASE_URL}/toolkits`)
+      if (q) url.searchParams.set('search', q)
       if (cursor) url.searchParams.set('cursor', cursor)
       url.searchParams.set('limit', String(limit))
 
@@ -165,11 +192,11 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const data = await res.json()
 
       // items may be under data.items or data directly as an array
-      const rawItems: ComposioAppRecord[] =
+      const rawItems: ComposioToolkitRecord[] =
         Array.isArray(data) ? data : (data.items || [])
 
-      let items = rawItems.map((app) => {
-        const mapped = mapAppRecord(app)
+      let items = rawItems.map((toolkit) => {
+        const mapped = mapToolkitRecord(toolkit)
         const slug = mapped.slug
         const connectedId = connectedMap.get(slug) ?? null
         return {
@@ -193,7 +220,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         )
       }
 
-      const nextCursor = typeof data.nextCursor === 'string' && data.nextCursor ? data.nextCursor : null
+      const nextCursor = firstNonEmptyString(data.nextCursor, data.next_cursor)
       return NextResponse.json({
         data: items,
         items,
@@ -204,20 +231,15 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     // Default: return connected integration slugs (scoped to this user's entity)
     const userId = auth.userId
-    const res = await fetch(
-      `https://backend.composio.dev/api/v1/connectedAccounts?entityId=${encodeURIComponent(userId)}&page=1&pageSize=100`,
-      { headers: { 'x-api-key': apiKey } }
-    )
-
-    if (!res.ok) return NextResponse.json({ connected: [] })
-    const data = await res.json() as { items?: Array<{ appName?: string }> }
+    const connectedAccounts = await fetchConnectedAccounts(apiKey, userId)
     const connected: string[] = [
-      ...new Set(((data.items ?? []) as Array<{ appName?: string }>)
-        .map((item) => normalizeSlug(item.appName || ''))
+      ...new Set(connectedAccounts
+        .filter((item) => !item.status || item.status === 'ACTIVE')
+        .map((item) => normalizeSlug(firstNonEmptyString(item.toolkit?.slug, item.appName) ?? ''))
         .filter(Boolean)),
     ]
-    const items = (await Promise.all(connected.map((slug) => fetchAppRecord(apiKey, slug).catch(() => null))))
-      .filter((item): item is NonNullable<Awaited<ReturnType<typeof fetchAppRecord>>> => item !== null)
+    const items = (await Promise.all(connected.map((slug) => fetchToolkitRecord(apiKey, slug).catch(() => null))))
+      .filter((item): item is NonNullable<Awaited<ReturnType<typeof fetchToolkitRecord>>> => item !== null)
       .map((item) => ({
         slug: item.slug,
         name: item.name,
