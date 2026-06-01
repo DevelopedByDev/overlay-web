@@ -65,6 +65,7 @@ export interface ActConversationRepository {
     parts?: Array<Record<string, unknown>>
     role: 'user' | 'assistant'
     routedModelId?: string
+    skipMemoryExtraction?: boolean
     tokens?: { input: number; output: number }
     turnId: string
     userId: string

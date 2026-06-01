@@ -10,6 +10,20 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SUPPORTED_INPUT_IMAGE_TYPES } from './chat-interface/constants'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
 
+const IMAGE_EXTENSION_MIME_TYPES: Record<string, string> = {
+  gif: 'image/gif',
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+}
+
+function supportedImageMimeType(file: File): string | null {
+  if (SUPPORTED_INPUT_IMAGE_TYPES.has(file.type)) return file.type
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  return IMAGE_EXTENSION_MIME_TYPES[ext] ?? null
+}
+
 export function useChatAttachments({
   embedProjectId,
   setComposerNotice,
@@ -86,8 +100,9 @@ export function useChatAttachments({
 
   function addImages(files: FileList | File[]) {
     Array.from(files).forEach((file) => {
-      if (!file.type.startsWith('image/')) return
-      if (!SUPPORTED_INPUT_IMAGE_TYPES.has(file.type)) {
+      const mimeType = supportedImageMimeType(file)
+      if (!mimeType) {
+        if (!file.type.startsWith('image/')) return
         setAttachmentError(`Unsupported image format: ${file.name}. Use JPEG, PNG, GIF, or WebP.`)
         return
       }
@@ -95,7 +110,7 @@ export function useChatAttachments({
       reader.onload = (ev) => {
         const dataUrl = ev.target?.result as string
         setAttachmentError(null)
-        setAttachedImages((prev) => [...prev, { dataUrl, mimeType: file.type, name: file.name }])
+        setAttachedImages((prev) => [...prev, { dataUrl, mimeType, name: file.name }])
       }
       reader.readAsDataURL(file)
     })

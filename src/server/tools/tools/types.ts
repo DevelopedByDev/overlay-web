@@ -24,4 +24,6 @@ export interface OverlayToolsOptions {
    * Free tier should pass `false`.
    */
   includePaidOnlyOverlayTools?: boolean
+  /** When `false`, hides memory mutation tools and restricts knowledge search to files for this turn. */
+  memoryEnabled?: boolean
 }

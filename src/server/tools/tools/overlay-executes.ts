@@ -11,13 +11,16 @@ export async function executeSearchKnowledge(
   input: { query: string; sourceKind?: 'file' | 'memory' },
 ) {
   const { query, sourceKind } = input
+  if (options.memoryEnabled === false && sourceKind === 'memory') {
+    return { success: false, error: 'Memory is off for this chat turn.' }
+  }
   try {
     const res = await callInternalApi(
       '/api/v1/knowledge/search',
       {
         query,
         projectId: options.projectId,
-        sourceKind,
+        sourceKind: options.memoryEnabled === false ? 'file' : sourceKind,
         ...toolAuthBody(options),
       },
       options.accessToken,

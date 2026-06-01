@@ -294,7 +294,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                 <select
                   value={addType ?? 'fact'}
                   onChange={(event) => setAddType(event.target.value as Memory['type'])}
-                  className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                 >
                   <option value="fact">Fact</option>
                   <option value="preference">Preference</option>
@@ -308,7 +308,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                 <select
                   value={addImportance}
                   onChange={(event) => setAddImportance(event.target.value)}
-                  className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
                 >
                   <option value="1">1</option>
                   <option value="2">2</option>

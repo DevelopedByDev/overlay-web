@@ -18,6 +18,7 @@ import {
   summarizeErrorForLog,
   summarizeToolSetForLog,
 } from '@/shared/security/safe-log'
+import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 
 type ActMode = 'chat' | 'automate'
 type MediaToolIntent = 'image' | 'video' | null
@@ -73,20 +74,27 @@ export async function prepareActTooling(params: {
   forwardCookie?: string | null
   isMultiModelFollowUpSlot: boolean
   latestUserText?: string
+  memoryEnabled?: boolean
   mediaToolIntent: MediaToolIntent
   mode?: ActMode
   paid: boolean
   preloadTasks: ActToolPreloadTasks
+  requestedToolIds?: readonly ChatToolRequestId[]
   serverSecret: string
   turnId: string
   userId: string
 }): Promise<ActTooling> {
-  const allowedOverlayToolIds = allowedOverlayToolIdsForTurn({
-    latestUserText: params.latestUserText ?? '',
-    automationMode: params.automationMode === true || params.mode === 'automate',
-    automationExecution: params.automationExecution === true,
-    mediaToolIntent: params.mediaToolIntent,
-  })
+  const memoryEnabled = params.memoryEnabled !== false
+  const allowedOverlayToolIds = withRequestedOverlayToolIds(
+    allowedOverlayToolIdsForTurn({
+      latestUserText: params.latestUserText ?? '',
+      automationMode: params.automationMode === true || params.mode === 'automate',
+      automationExecution: params.automationExecution === true,
+      mediaToolIntent: params.mediaToolIntent,
+    }),
+    params.requestedToolIds ?? [],
+    memoryEnabled,
+  )
 
   const [composioRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
     params.preloadTasks.composioToolsTask,
@@ -103,6 +111,7 @@ export async function prepareActTooling(params: {
         allowedToolIds: allowedOverlayToolIds,
         forwardCookie: params.forwardCookie ?? undefined,
         includePaidOnlyOverlayTools: params.paid,
+        memoryEnabled,
       }),
     ),
     params.paid
@@ -193,4 +202,34 @@ function exposedMediaToolIds(webToolSet: ToolSet): string[] {
     'apply_motion_control',
     'edit_video',
   ].filter((toolId) => toolId in webToolSet)
+}
+
+function withRequestedOverlayToolIds(
+  baseToolIds: string[],
+  requestedToolIds: readonly ChatToolRequestId[],
+  memoryEnabled: boolean,
+): string[] {
+  const allowed = new Set(baseToolIds)
+  if (!memoryEnabled) {
+    allowed.delete('save_memory')
+    allowed.delete('save_memory_batch')
+    allowed.delete('update_memory')
+    allowed.delete('delete_memory')
+  }
+
+  for (const toolId of requestedToolIds) {
+    if (toolId === 'memory' && memoryEnabled) {
+      allowed.add('search_knowledge')
+      allowed.add('save_memory')
+      allowed.add('save_memory_batch')
+    }
+    if (toolId === 'sandbox') {
+      allowed.add('run_daytona_sandbox')
+    }
+    if (toolId === 'browser') {
+      allowed.add('interactive_browser_session')
+    }
+  }
+
+  return Array.from(allowed)
 }

@@ -123,18 +123,20 @@ export class ActContextService {
     indexedAttachments: unknown
     indexedFileNames?: string[]
     latestUserText?: string
+    memoryEnabled?: boolean
     mentions?: IncomingMention[]
     serverSecret: string
     userId: string
   }): Promise<ActTurnContext> {
-    const memoriesTask: Promise<ActMemoryRow[]> = (async () => {
+    const memoryEnabled = args.memoryEnabled !== false
+    const memoriesTask: Promise<ActMemoryRow[]> = memoryEnabled ? (async () => {
       try {
         const memories = await this.deps.repository.listMemories({ userId: args.userId })
         return memories || listMemories(args.userId)
       } catch {
         return []
       }
-    })()
+    })() : Promise.resolve([])
 
     const skillsTask: Promise<ActSkillRow[]> = (async () => {
       try {
@@ -194,6 +196,7 @@ export class ActContextService {
           userId: args.userId,
           accessToken: args.accessToken,
           projectId: conversationProjectId,
+          includeMemories: memoryEnabled,
         })
         return { extension: bundle.extension, citations: bundle.citations }
       } catch {
@@ -231,7 +234,7 @@ export class ActContextService {
       enabledSkills,
       hasPreloadedDocContext: docContextBundle.hasContent && docContextBundle.totalChars > 0,
       indexedAttachmentList,
-      memoryContext: buildMemoryContext(effectiveMemories),
+      memoryContext: memoryEnabled ? buildMemoryContext(effectiveMemories) : '',
       mentionsContext,
       projectInstructions,
       skillsContext: buildSkillsContext(enabledSkills),

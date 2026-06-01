@@ -50,6 +50,11 @@ import {
   readStoredActModelId,
   readStoredAskModelIds,
 } from '@/shared/chat/chat-model-prefs'
+import {
+  defaultChatToolRequestIds,
+  defaultMemoryEnabled,
+  type ChatToolRequestId,
+} from '@/shared/chat/tool-requests'
 import { GenerationModeSelect, GenerationModeToggle } from './GenerationModeToggle'
 import { ChatComposer } from './ChatComposer'
 import { ChatMessageList } from './ChatMessageList'
@@ -331,6 +336,12 @@ export default function ChatInterface({
   const [modelQualitiesPos, setModelQualitiesPos] = useState<{ x: number; y: number } | null>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
+  const [selectedToolIds, setSelectedToolIds] = useState<ChatToolRequestId[]>(() =>
+    defaultChatToolRequestIds({ temporary: false }),
+  )
+  const [memoryEnabled, setMemoryEnabled] = useState(() =>
+    defaultMemoryEnabled({ temporary: false }),
+  )
   const [isDragging, setIsDragging] = useState(false)
   const lastStreamChunkAtRef = useRef<number>(Date.now())
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
@@ -387,6 +398,24 @@ export default function ChatInterface({
     setAttachmentError(null)
     setComposerNotice(null)
   }, [setAttachmentError, setPendingChatDocuments])
+  const resetComposerToolIds = useCallback((temporary: boolean) => {
+    setSelectedToolIds(defaultChatToolRequestIds({ temporary }))
+    setMemoryEnabled(defaultMemoryEnabled({ temporary }))
+  }, [])
+  const toggleComposerTool = useCallback((toolId: ChatToolRequestId) => {
+    if (toolId === 'memory') {
+      setMemoryEnabled((current) => !current)
+      return
+    }
+    setSelectedToolIds((current) =>
+      current.includes(toolId)
+        ? current.filter((id) => id !== toolId)
+        : [...current, toolId],
+    )
+  }, [])
+  const removeComposerTool = useCallback((toolId: ChatToolRequestId) => {
+    setSelectedToolIds((current) => current.filter((id) => id !== toolId))
+  }, [])
   const {
     autoTopUpEnabledDraft,
     billingActionLoading,
@@ -556,6 +585,7 @@ export default function ChatInterface({
     activeChatIdRef.current = null
     pendingTitleRef.current = null
     setIsTemporaryChat(false)
+    resetComposerToolIds(false)
     setActiveChatId(null)
     setActiveChatTitle(null)
     setInterruptedExchangeIdx(null)
@@ -576,6 +606,7 @@ export default function ChatInterface({
     applyUiStateToView,
     clearTransientComposerState,
     hideSidebar,
+    resetComposerToolIds,
     router,
     runtimesRef,
     setActiveViewer,
@@ -1208,6 +1239,7 @@ export default function ChatInterface({
     activeChatIdRef.current = null
     pendingTitleRef.current = null
     setIsTemporaryChat(false)
+    resetComposerToolIds(false)
     setActiveChatId(null)
     setActiveChatTitle(null)
     setInterruptedExchangeIdx(null)
@@ -1234,6 +1266,7 @@ export default function ChatInterface({
     mode,
     persistActiveRuntimeUiState,
     clearTransientComposerState,
+    resetComposerToolIds,
     setActiveViewer,
     setSourcesPanel,
   ])
@@ -1910,6 +1943,7 @@ export default function ChatInterface({
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
     setIsTemporaryChat(options.temporary)
+    resetComposerToolIds(options.temporary)
     setActiveChatTitle(options.temporary ? 'Temporary chat' : null)
     const storedAsk = readStoredAskModelIds()
     const storedAct = readStoredActModelId()
@@ -1947,6 +1981,7 @@ export default function ChatInterface({
     ++loadChatRequestRef.current
     persistActiveRuntimeUiState()
     setIsTemporaryChat(false)
+    resetComposerToolIds(false)
     const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
     const initialSelectedModels = askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4)
     const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
@@ -2095,6 +2130,7 @@ export default function ChatInterface({
     persistActiveRuntimeUiState()
     if (isTemporaryChatRef.current) resetRuntimeState(emptyRuntimeRef.current)
     setIsTemporaryChat(false)
+    resetComposerToolIds(false)
     clearTransientComposerState()
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
@@ -2524,6 +2560,8 @@ export default function ChatInterface({
     const pendingChatDocumentsSnapshot = [...pendingChatDocuments]
     const mentionsSnapshot = [...mentions]
     const temporaryChatSnapshot = isTemporaryChat
+    const selectedToolIdsSnapshot = [...selectedToolIds]
+    const memoryEnabledSnapshot = memoryEnabled
     const hasReadyDocs = pendingChatDocumentsSnapshot.some((d) => d.status === 'ready')
     const clearSubmittedComposer = () => {
       textareaRef.current?.clear()
@@ -2533,6 +2571,7 @@ export default function ChatInterface({
       setPendingChatDocuments([])
       setAttachmentError(null)
       setReplyContext(null)
+      resetComposerToolIds(temporaryChatSnapshot)
     }
     if (isActiveLoading) return
 
@@ -2941,6 +2980,8 @@ export default function ChatInterface({
       ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
       ...(userMeta.mentions && userMeta.mentions.length > 0 ? { mentions: userMeta.mentions } : {}),
       ...(textHistoryBaseModelId ? { historyBaseModelId: textHistoryBaseModelId } : {}),
+      requestedToolIds: selectedToolIdsSnapshot,
+      memoryEnabled: memoryEnabledSnapshot,
     }
 
     startActTextStream({
@@ -4003,6 +4044,11 @@ export default function ChatInterface({
             showAttachMenu={showAttachMenu}
             setShowAttachMenu={setShowAttachMenu}
             attachMenuRef={attachMenuRef}
+            selectedToolIds={selectedToolIds}
+            memoryEnabled={memoryEnabled}
+            onToggleTool={toggleComposerTool}
+            onToggleMemory={() => setMemoryEnabled((current) => !current)}
+            onRemoveTool={removeComposerTool}
             onModeChange={handleModeChange}
             generationChip={generationChip}
             setGenerationChip={setGenerationChip}

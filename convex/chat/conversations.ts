@@ -647,6 +647,7 @@ export const addMessage = mutation({
     replyToTurnId: v.optional(v.string()),
     replySnippet: v.optional(v.string()),
     routedModelId: v.optional(v.string()),
+    skipMemoryExtraction: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess({
@@ -695,7 +696,7 @@ export const addMessage = mutation({
       : await ctx.db.insert('conversationMessages', payload)
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
 
-	    if (args.role === 'user') {
+	    if (args.role === 'user' && args.skipMemoryExtraction !== true) {
 	      try {
 	        const subscription = await ctx.db
 	          .query('subscriptions')

@@ -167,6 +167,16 @@ export function MentionPopup({
 
   if (!position) return null
 
+  const popupWidth = 288
+  const popupHeight = 320
+  const viewportPadding = 8
+  const left = Math.min(
+    Math.max(viewportPadding, position.x),
+    Math.max(viewportPadding, window.innerWidth - popupWidth - viewportPadding),
+  )
+  const top = position.y + 18
+  const shouldOpenUp = window.innerHeight - top < popupHeight && position.y > popupHeight
+
   const selectedCategoryMeta = selectedCategory
     ? CATEGORY_ORDER.find((c) => c.type === selectedCategory)
     : null
@@ -178,8 +188,10 @@ export function MentionPopup({
       ref={popupRef}
       className="fixed z-50 w-72 max-h-80 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl flex flex-col"
       style={{
-        left: `${position.x}px`,
-        bottom: `${window.innerHeight - position.y + 8}px`,
+        left: `${left}px`,
+        ...(shouldOpenUp
+          ? { bottom: `${Math.max(viewportPadding, window.innerHeight - position.y + 8)}px` }
+          : { top: `${top}px` }),
       }}
     >
       {/* Breadcrumb header when in category view */}

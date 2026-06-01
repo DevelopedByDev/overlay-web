@@ -2,8 +2,26 @@
 
 /* eslint-disable react-hooks/refs */
 
-import { AtSign, Check, ChevronDown, FileText, Image as ImageIcon, MessageSquare, Plus, Reply, Send, Video, X, Zap } from 'lucide-react'
-import type { ClipboardEventHandler, Dispatch, RefObject, SetStateAction } from 'react'
+import {
+  AtSign,
+  Brain,
+  Check,
+  ChevronDown,
+  FileText,
+  Globe2,
+  Image as ImageIcon,
+  MessageSquare,
+  MousePointerClick,
+  Plus,
+  Reply,
+  Send,
+  SquareTerminal,
+  Video,
+  X,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react'
+import { useRef, useState, type ClipboardEventHandler, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import type { GenerationMode } from '@/shared/ai/gateway/model-types'
 import { DelayedTooltip } from './DelayedTooltip'
 import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
@@ -11,6 +29,7 @@ import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { AttachedImage, Entitlements, PendingChatDocument } from './chat-interface/types'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'
+import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 
 export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
 
@@ -55,6 +74,11 @@ export type ChatComposerProps = {
   showAttachMenu: boolean
   setShowAttachMenu: Dispatch<SetStateAction<boolean>>
   attachMenuRef: RefObject<HTMLDivElement | null>
+  selectedToolIds: ChatToolRequestId[]
+  memoryEnabled: boolean
+  onToggleTool: (toolId: ChatToolRequestId) => void
+  onToggleMemory: () => void
+  onRemoveTool: (toolId: ChatToolRequestId) => void
   onModeChange: (mode: GenerationMode) => void
   generationChip: 'image' | 'video' | null
   setGenerationChip: (chip: 'image' | 'video' | null) => void
@@ -68,6 +92,78 @@ export type ChatComposerProps = {
   onSend: () => void | Promise<void>
   onStarterSelect: (prompt: string) => void
 }
+
+const DOCUMENT_FILE_ACCEPT = [
+  '.pdf',
+  '.docx',
+  '.txt',
+  '.md',
+  '.markdown',
+  '.csv',
+  '.json',
+  '.html',
+  '.htm',
+  '.xml',
+  '.log',
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.css',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.py',
+  '.go',
+  '.rs',
+  'text/*',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+].join(',')
+
+const IMAGE_FILE_ACCEPT = [
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+].join(',')
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/') || /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i.test(file.name)
+}
+
+const TOOL_REQUEST_OPTIONS: Array<{
+  id: ChatToolRequestId
+  label: string
+  description: string
+  Icon: LucideIcon
+}> = [
+  {
+    id: 'web_search',
+    label: 'Web Search',
+    description: 'Use live web results',
+    Icon: Globe2,
+  },
+  {
+    id: 'browser',
+    label: 'Browser Use',
+    description: 'Drive a real browser',
+    Icon: MousePointerClick,
+  },
+  {
+    id: 'sandbox',
+    label: 'Sandbox',
+    description: 'Run code or commands',
+    Icon: SquareTerminal,
+  },
+]
+
+const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, tool]))
 
 export function ChatComposer(props: ChatComposerProps) {
   const disabledSend =
@@ -109,15 +205,33 @@ export function ChatComposer(props: ChatComposerProps) {
 }
 
 function ComposerInputCard(props: ChatComposerProps & { disabledSend: boolean }) {
+  const mixedFileInputRef = useRef<HTMLInputElement | null>(null)
+  const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
+
   return (
     <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
       <div className="p-2.5 sm:p-3">
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
         <input
+          ref={mixedFileInputRef}
+          type="file"
+          accept={mixedFileAccept}
+          multiple
+          className="hidden"
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? [])
+            const imageFiles = files.filter(isImageFile)
+            const documentFiles = files.filter((file) => !isImageFile(file))
+            if (imageFiles.length > 0) props.onAddImages(imageFiles)
+            if (documentFiles.length > 0) props.onAddDocumentsFromPicker(documentFiles)
+            event.target.value = ''
+          }}
+        />
+        <input
           ref={props.docInputRef}
           type="file"
-          accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json,.html,.htm,.xml,.log,.ts,.tsx,.js,.jsx,.css,.yaml,.yml,.toml,.py,.go,.rs,text/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept={DOCUMENT_FILE_ACCEPT}
           multiple
           className="hidden"
           onChange={(event) => {
@@ -141,7 +255,7 @@ function ComposerInputCard(props: ChatComposerProps & { disabledSend: boolean })
             }
           }}
         />
-        <ComposerControls {...props} />
+        <ComposerControls {...props} mixedFileInputRef={mixedFileInputRef} />
       </div>
     </div>
   )
@@ -163,17 +277,46 @@ function ReplyContextBar({ replyContext, setReplyContext }: Pick<ChatComposerPro
   )
 }
 
-function ComposerControls(props: ChatComposerProps & { disabledSend: boolean }) {
+type ComposerControlsProps = ChatComposerProps & {
+  disabledSend: boolean
+  mixedFileInputRef: RefObject<HTMLInputElement | null>
+}
+
+function ComposerControls(props: ComposerControlsProps) {
   return (
-    <div className="mt-2 flex min-h-9 items-center gap-2">
+    <div className="mt-2 grid min-h-9 grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-center gap-2">
       <AttachMenu {...props} />
       <DelayedTooltip label="Reference files, skills, automations…" side="top">
         <button type="button" onClick={() => props.textareaRef.current?.openMentionPopup()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" aria-label="Insert mention">
           <AtSign size={16} strokeWidth={1.75} />
         </button>
       </DelayedTooltip>
-      {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
-      <div className="min-w-0 flex-1" />
+      <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {!props.memoryEnabled && (
+          <DelayedTooltip label="Memory is off for this message." side="top">
+            <div className="shrink-0">
+              <ToolRequestChip
+                label="Memory Off"
+                Icon={Brain}
+                onClear={props.onToggleMemory}
+              />
+            </div>
+          </DelayedTooltip>
+        )}
+        {props.selectedToolIds.map((toolId) => {
+          const tool = TOOL_REQUEST_BY_ID.get(toolId)
+          if (!tool) return null
+          return (
+            <ToolRequestChip
+              key={toolId}
+              label={tool.label}
+              Icon={tool.Icon}
+              onClear={() => props.onRemoveTool(toolId)}
+            />
+          )
+        })}
+        {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
+      </div>
       <ModeMenu {...props} />
       {props.isActiveLoading ? (
         <DelayedTooltip label="Stop generating" side="top">
@@ -192,46 +335,159 @@ function ComposerControls(props: ChatComposerProps & { disabledSend: boolean }) 
   )
 }
 
-function AttachMenu(props: ChatComposerProps) {
+function AttachMenu(props: ChatComposerProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
+  const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('up')
+
+  function handleToggle(event: React.MouseEvent<HTMLButtonElement>) {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    setMenuDirection(spaceBelow < 340 && spaceAbove > spaceBelow ? 'up' : 'down')
+    props.setShowAttachMenu((value) => !value)
+  }
+
   return (
     <div ref={props.attachMenuRef} className="relative shrink-0">
-      <DelayedTooltip label="Attach files or switch to image/video" side="top">
-        <button type="button" onClick={() => props.setShowAttachMenu((value) => !value)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]">
+      <DelayedTooltip label="Attach files or choose tools" side="top">
+        <button type="button" onClick={handleToggle} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" aria-label="Open attachment and tools menu">
           <Plus size={18} strokeWidth={1.75} />
         </button>
       </DelayedTooltip>
       {props.showAttachMenu && (
-        <div className="absolute bottom-full left-0 z-20 mb-2 w-52 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
-          <AttachMenuButton disabled={!props.supportsVision} title={!props.supportsVision ? 'You need a vision model to attach images.' : undefined} onClick={() => { props.fileInputRef.current?.click(); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Attach Images" />
+        <div className={`absolute left-0 z-20 w-64 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+          <AttachMenuButton
+            onClick={() => {
+              props.mixedFileInputRef.current?.click()
+              props.setShowAttachMenu(false)
+            }}
+            icon={<FileText size={13} strokeWidth={1.75} />}
+            label="Attach photos and files"
+            suffix="Images, docs"
+          />
+          {TOOL_REQUEST_OPTIONS.map((tool) => {
+            const active = props.selectedToolIds.includes(tool.id)
+            const Icon = tool.Icon
+            return (
+              <AttachMenuButton
+                key={tool.id}
+                active={active}
+                onClick={() => {
+                  props.onToggleTool(tool.id)
+                  props.setShowAttachMenu(false)
+                }}
+                icon={<Icon size={13} strokeWidth={1.75} />}
+                label={tool.label}
+                suffix={active ? undefined : tool.description}
+                checked={active}
+              />
+            )
+          })}
+          <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate images" />
+          <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate videos" />
           <div className="my-1 border-t border-[var(--border)]" />
-          <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate Image" />
-          <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate Video" />
-          <div className="my-1 border-t border-[var(--border)]" />
-          <AttachMenuButton onClick={() => { props.docInputRef.current?.click(); props.setShowAttachMenu(false) }} icon={<FileText size={13} />} label="Documents" suffix="PDF, Word, text" />
+          <AttachMenuButton
+            active={props.memoryEnabled}
+            onClick={() => {
+              props.onToggleMemory()
+              props.setShowAttachMenu(false)
+            }}
+            icon={<Brain size={13} strokeWidth={1.75} />}
+            label="Memory"
+            showSwitch
+            neutralWhenActive
+          />
         </div>
       )}
     </div>
   )
 }
 
-function AttachMenuButton({ disabled, title, onClick, icon, label, suffix }: { disabled?: boolean; title?: string; onClick: () => void; icon: React.ReactNode; label: string; suffix?: string }) {
+function AttachMenuButton({
+  active,
+  disabled,
+  title,
+  onClick,
+  icon,
+  label,
+  suffix,
+  showSwitch,
+  checked,
+  neutralWhenActive,
+}: {
+  active?: boolean
+  disabled?: boolean
+  title?: string
+  onClick: () => void
+  icon: React.ReactNode
+  label: string
+  suffix?: string
+  showSwitch?: boolean
+  checked?: boolean
+  neutralWhenActive?: boolean
+}) {
+  const activeClass = active && !neutralWhenActive
+    ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
+    : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
+
   return (
-    <button type="button" onClick={onClick} disabled={disabled} title={title} className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors ${disabled ? 'cursor-not-allowed text-[#bbb]' : 'text-[var(--muted)] hover:bg-[var(--surface-muted)]'}`}>
+    <button type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active} className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors ${disabled ? 'cursor-not-allowed text-[#bbb]' : activeClass}`}>
       {icon}
       <span>{label}</span>
-      {suffix ? <span className="ml-auto text-[10px] text-[var(--muted-light)]">{suffix}</span> : null}
+      {showSwitch ? (
+        <span className={`ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${active ? 'bg-[var(--foreground)]' : 'bg-[var(--border)]'}`}>
+          <span className={`h-3 w-3 rounded-full bg-[var(--surface-elevated)] transition-transform ${active ? 'translate-x-3' : ''}`} />
+        </span>
+      ) : checked ? (
+        <Check size={11} strokeWidth={1.8} className="ml-auto shrink-0 text-[var(--foreground)]" />
+      ) : suffix ? (
+        <span className="ml-auto max-w-[6.75rem] truncate text-[10px] text-[var(--muted-light)]">{suffix}</span>
+      ) : null}
     </button>
+  )
+}
+
+function ToolRequestChip({
+  label,
+  Icon,
+  onClear,
+}: {
+  label: string
+  Icon: LucideIcon
+  onClear: () => void
+}) {
+  return (
+    <div className="group flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 text-xs font-medium text-[var(--foreground)]">
+      <button
+        type="button"
+        onClick={onClear}
+        className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+        aria-label={`Remove ${label}`}
+      >
+        <Icon size={11} strokeWidth={1.75} className="absolute opacity-100 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0" />
+        <X size={10} strokeWidth={1.8} className="absolute opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" />
+      </button>
+      <span>{label}</span>
+    </div>
   )
 }
 
 function GenerationChip({ chip, onClear }: { chip: 'image' | 'video'; onClear: () => void }) {
   return (
-    <div className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--foreground)] px-2 py-1 text-xs font-medium text-[var(--background)]">
-      {chip === 'image' ? <ImageIcon size={10} /> : <Video size={10} />}
-      {chip === 'image' ? 'Image' : 'Video'}
-      <button type="button" onClick={onClear} className="ml-0.5 hover:opacity-70">
-        <X size={9} />
+    <div className="group flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-[var(--foreground)] px-2 text-xs font-medium text-[var(--background)]">
+      <button
+        type="button"
+        onClick={onClear}
+        className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-75"
+        aria-label={`Remove ${chip === 'image' ? 'image' : 'video'} mode`}
+      >
+        {chip === 'image' ? (
+          <ImageIcon size={10} className="absolute opacity-100 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0" />
+        ) : (
+          <Video size={10} className="absolute opacity-100 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0" />
+        )}
+        <X size={9} className="absolute opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" />
       </button>
+      {chip === 'image' ? 'Image' : 'Video'}
     </div>
   )
 }

@@ -108,6 +108,7 @@ export class ActMessagePersistenceService {
     latestUserText?: string
     modelId: string
     skip: boolean
+    skipMemoryExtraction?: boolean
     turnId: string
     userId: string
     attachmentNames?: string[]
@@ -126,6 +127,7 @@ export class ActMessagePersistenceService {
           attachmentNames: args.attachmentNames,
         }) as Array<Record<string, unknown>>,
         modelId: args.modelId,
+        skipMemoryExtraction: args.skipMemoryExtraction,
       })
     } catch (err) {
       console.error('[conversations/act] Failed to save user message:', summarizeErrorForLog(err))

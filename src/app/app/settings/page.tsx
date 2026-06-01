@@ -21,6 +21,7 @@ import {
   SettingRow,
   SettingsActionRow,
   SettingsCard,
+  SettingsGroup,
   SettingsPageShell,
   SettingsTopUpCard,
   ThemePresetRow,
@@ -148,12 +149,13 @@ export default function SettingsPage() {
         ) : null
       }
       actions={section === 'memories' ? memoriesHeaderState?.actions : null}
+      fullBleed={section === 'memories'}
     >
           {isLoading ? (
             <SettingsSectionSkeleton rows={section === 'general' ? 2 : 1} />
           ) : null}
           {!isLoading && section === 'general' && (
-            <>
+            <SettingsGroup>
               <SettingRow
                 icon={<Play size={18} strokeWidth={1.8} />}
                 title="Auto-continue"
@@ -190,7 +192,7 @@ export default function SettingsPage() {
                   </button>
                 }
               />
-            </>
+            </SettingsGroup>
           )}
 
           {!isLoading && section === 'account' && (
@@ -253,7 +255,7 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'customization' && (
-            <>
+            <SettingsGroup>
               <SettingRow
                 icon={settings.theme === 'dark' ? <Moon size={18} strokeWidth={1.8} /> : <Sun size={18} strokeWidth={1.8} />}
                 title="Dark mode"
@@ -280,11 +282,11 @@ export default function SettingsPage() {
                 icon={<Palette size={18} strokeWidth={1.8} />}
                 onChange={(id) => void updateSettings({ darkThemePreset: id })}
               />
-            </>
+            </SettingsGroup>
           )}
 
           {!isLoading && section === 'memories' && (
-            <div className="-mx-6 -my-6 h-[calc(100vh-4rem)]">
+            <div className="h-full">
               <MemoriesView userId="" onHeaderStateChange={setMemoriesHeaderState} />
             </div>
           )}

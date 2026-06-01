@@ -1,5 +1,6 @@
 import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { HIGH_RISK_TOOL_AUTHORIZATION_NOTE } from '@/server/tools/tools/exposure-policy'
+import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 
 type ActMode = 'chat' | 'automate'
 
@@ -23,10 +24,12 @@ export function buildActAgentInstructions(params: {
   indexedNote: string
   isMultiModelFollowUpSlot: boolean
   memoryContext: string
+  memoryEnabled?: boolean
   mentionsContext: string
   mode?: ActMode
   paid: boolean
   projectInstructions?: string
+  requestedToolIds?: readonly ChatToolRequestId[]
   skillsContext: string
   userSystemPromptExtension: string
   automationExecution?: boolean
@@ -45,6 +48,7 @@ export function buildActAgentInstructions(params: {
     params.mentionsContext +
     notes.generationNote +
     notes.automationDraftNote +
+    requestedToolsNote(params.requestedToolIds ?? [], params.memoryEnabled !== false) +
     notes.browserToolNote +
     notes.sandboxToolNote +
     notes.toolAuthorizationNote +
@@ -148,12 +152,43 @@ function generationNote(exposedMediaTools: string[]): string {
 
 function knowledgeNote(params: {
   constants: ActInstructionConstants
+  memoryEnabled?: boolean
   paid: boolean
 }): string {
+  const base = params.paid ? params.constants.ACT_KNOWLEDGE_WEB_TOOLS_NOTE : params.constants.ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB
+  if (params.memoryEnabled === false) {
+    return '\n' +
+      base +
+      '\n\nMemory is off for this turn. Do not use saved memories, search memory, save memory, update memory, or delete memory. Knowledge search is restricted to indexed files only.'
+  }
   return '\n' +
-    (params.paid ? params.constants.ACT_KNOWLEDGE_WEB_TOOLS_NOTE : params.constants.ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB) +
+    base +
     '\n\nYou also have save_memory, update_memory, and delete_memory.\n\n' +
     params.constants.MEMORY_SAVE_PROTOCOL
+}
+
+function requestedToolsNote(
+  requestedToolIds: readonly ChatToolRequestId[],
+  memoryEnabled: boolean,
+): string {
+  if (requestedToolIds.length === 0) return ''
+  const lines: string[] = []
+  for (const toolId of requestedToolIds) {
+    if (toolId === 'web_search') {
+      lines.push('- Web Search: the user selected web search for this message. Call perplexity_search or parallel_search before answering.')
+    } else if (toolId === 'memory') {
+      lines.push(memoryEnabled
+        ? '- Memory: the user selected memory for this message. Use the provided memory context, and call search_knowledge with sourceKind "memory" if stored memory is needed beyond that context.'
+        : '- Memory: the user selected memory, but memory is off for this turn. Do not use memory tools or memory context.')
+    } else if (toolId === 'sandbox') {
+      lines.push('- Sandbox: the user selected sandbox for this message. Call run_daytona_sandbox when a command, script, file transform, or code execution can help answer.')
+    } else if (toolId === 'browser') {
+      lines.push('- Browser Use: the user selected browser use for this message. Call interactive_browser_session when the task needs UI interaction, authenticated browsing, screenshots, or a JS-heavy page.')
+    }
+  }
+  return lines.length > 0
+    ? '\n\nThe user specifically requested these tools for this turn. Use the matching tool call when it is available; if a selected tool is unavailable, say so briefly.\n' + lines.join('\n')
+    : ''
 }
 
 function projectInstructionsExtension(projectInstructions?: string): string {

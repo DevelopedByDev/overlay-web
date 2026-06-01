@@ -39,7 +39,12 @@ import type { OverlayToolsOptions } from './types'
 export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
   const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
-  const shouldExposeTool = (toolId: string): boolean => !allowedToolIds || allowedToolIds.has(toolId)
+  const memoryEnabled = options.memoryEnabled !== false
+  const memoryMutationToolIds = new Set(['save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'])
+  const shouldExposeTool = (toolId: string): boolean => {
+    if (!memoryEnabled && memoryMutationToolIds.has(toolId)) return false
+    return !allowedToolIds || allowedToolIds.has(toolId)
+  }
   const assertToolAllowed = (toolId: string): void => assertOverlayToolAllowed(toolId, allowedToolIds)
   const includePaidOnlyOverlay = options.includePaidOnlyOverlayTools !== false
   const automationScheduleSchema = z.discriminatedUnion('kind', [
@@ -188,8 +193,9 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('search_knowledge')) {
     tools.search_knowledge = tool({
     description:
-      'Search the user\'s saved knowledge: indexed files and memories. Uses hybrid semantic + keyword retrieval. ' +
-      'Call this when you need facts from their knowledge base, prior notes, or stored context that is not in the chat transcript.',
+      memoryEnabled
+        ? 'Search the user\'s saved knowledge: indexed files and memories. Uses hybrid semantic + keyword retrieval. Call this when you need facts from their knowledge base, prior notes, or stored context that is not in the chat transcript.'
+        : 'Search the user\'s indexed files. Memory is off for this turn, so this tool is restricted to file results.',
     inputSchema: z.object({
       query: z.string().describe('Search query: keywords or a short natural-language question'),
       sourceKind: z
@@ -199,7 +205,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     }),
     execute: async (input) => {
       assertToolAllowed('search_knowledge')
-      return executeSearchKnowledge(options, input)
+      return executeSearchKnowledge(options, memoryEnabled ? input : { ...input, sourceKind: 'file' as const })
     },
   })
   }

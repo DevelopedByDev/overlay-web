@@ -100,6 +100,12 @@ export interface SettingsPageShellProps {
   activeLabel: string
   activeDetail?: ReactNode
   actions?: ReactNode
+  /**
+   * When true, children fill the body directly without the centered
+   * max-width padding wrapper. Used by sections that manage their own
+   * full-height layout and scrolling (e.g. Memories).
+   */
+  fullBleed?: boolean
   children: ReactNode
 }
 
@@ -108,6 +114,7 @@ export function SettingsPageShell({
   activeLabel,
   activeDetail,
   actions,
+  fullBleed = false,
   children,
 }: SettingsPageShellProps) {
   return (
@@ -122,8 +129,17 @@ export function SettingsPageShell({
         />
       }
     >
-      <AppScreenBody padding="none" maxWidth="none" className="px-6 py-6">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">{children}</div>
+      <AppScreenBody
+        padding="none"
+        maxWidth="none"
+        scroll={fullBleed ? 'hidden' : 'auto'}
+        className={fullBleed ? '' : 'px-6 py-6'}
+      >
+        {fullBleed ? (
+          children
+        ) : (
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">{children}</div>
+        )}
       </AppScreenBody>
     </AppScreenShell>
   )
@@ -169,11 +185,9 @@ export interface SettingRowProps {
 
 export function SettingRow({ icon, title, description, checked, disabled, onChange }: SettingRowProps) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-[var(--surface-muted)]">
       <div className="flex min-w-0 items-start gap-3">
-        <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">
-          {icon}
-        </div>
+        <span className="mt-0.5 shrink-0 text-[var(--muted)]">{icon}</span>
         <div className="min-w-0">
           <h2 className="text-sm font-medium text-[var(--foreground)]">{title}</h2>
           <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{description}</p>
@@ -193,11 +207,9 @@ export interface SettingsActionRowProps {
 
 export function SettingsActionRow({ icon, title, description, action }: SettingsActionRowProps) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-[var(--surface-muted)]">
       <div className="flex min-w-0 items-start gap-3">
-        <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">
-          {icon}
-        </div>
+        <span className="mt-0.5 shrink-0 text-[var(--muted)]">{icon}</span>
         <div className="min-w-0">
           <h2 className="text-sm font-medium text-[var(--foreground)]">{title}</h2>
           <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{description}</p>
@@ -235,11 +247,9 @@ export function ThemePresetRow({
 }: ThemePresetRowProps) {
   const active = presets.find((preset) => preset.id === value)
   return (
-    <div className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm">
+    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-[var(--surface-muted)]">
       <div className="flex min-w-0 items-start gap-3">
-        <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">
-          {icon}
-        </div>
+        <span className="mt-0.5 shrink-0 text-[var(--muted)]">{icon}</span>
         <div className="min-w-0">
           <h2 className="text-sm font-medium text-[var(--foreground)]">{label}</h2>
           <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{description}</p>
@@ -275,9 +285,17 @@ export function ThemePresetRow({
   )
 }
 
+export function SettingsGroup({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] divide-y divide-[var(--border)]">
+      {children}
+    </div>
+  )
+}
+
 export function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-sm">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
       <h2 className="text-sm font-medium text-[var(--foreground)]">{title}</h2>
       <div className="mt-3 text-sm leading-relaxed text-[var(--muted)]">{children}</div>
     </div>
@@ -286,7 +304,7 @@ export function SettingsCard({ title, children }: { title: string; children: Rea
 
 export function SettingsTopUpCard({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-sm">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
       {children}
     </div>
   )

@@ -14,6 +14,7 @@ import {
   FREE_TIER_AUTO_MODEL_ID,
   isNvidiaNimChatModelId,
 } from '@/shared/ai/gateway/model-types'
+import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
 import { fireAndForgetRecordToolInvocation } from '@/server/tools/tools/record-tool-invocation'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
@@ -101,6 +102,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       automationMode,
       automationExecution,
       mediaToolIntent,
+      requestedToolIds: rawRequestedToolIds,
+      memoryEnabled: rawMemoryEnabled,
       actAbortTimeoutMs,
       streamPersistenceMode,
       mentions: rawMentions,
@@ -122,6 +125,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       automationMode?: boolean
       automationExecution?: boolean
       mediaToolIntent?: 'image' | 'video' | null
+      requestedToolIds?: unknown
+      memoryEnabled?: boolean
       actAbortTimeoutMs?: number
       streamPersistenceMode?: 'convex-deltas' | 'cloudflare-relay' | 'direct'
       mentions?: Array<{ type: string; id: string; name: string; fileIds?: string[] }>
@@ -156,6 +161,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     const effectiveModelId = resolveEffectiveActModelId(modelId)
     const serverSecret = getInternalApiSecret()
+    const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
+    const memoryEnabled = rawMemoryEnabled !== false
 
     const {
       appSettings,
@@ -210,6 +217,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       latestUserText,
       latestUserParts,
       attachmentNames,
+      skipMemoryExtraction: !memoryEnabled,
       skip: isMultiModelFollowUpSlot,
     })
     const turnContextTask = actContextService.loadTurnContext({
@@ -218,6 +226,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       indexedAttachments: rawIndexedAttachments,
       indexedFileNames,
       latestUserText,
+      memoryEnabled,
       mentions: rawMentions,
       serverSecret,
       userId,
@@ -299,10 +308,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       forwardCookie: request.headers.get('cookie'),
       isMultiModelFollowUpSlot,
       latestUserText,
+      memoryEnabled,
       mediaToolIntent: resolvedMediaToolIntent,
       mode,
       paid,
       preloadTasks: toolPreloadTasks,
+      requestedToolIds,
       serverSecret,
       turnId: tid,
       userId,
@@ -328,10 +339,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       indexedNote,
       isMultiModelFollowUpSlot,
       memoryContext,
+      memoryEnabled,
       mentionsContext,
       mode,
       paid,
       projectInstructions,
+      requestedToolIds,
       skillsContext,
       userSystemPromptExtension,
       automationExecution: automationExecution === true,
