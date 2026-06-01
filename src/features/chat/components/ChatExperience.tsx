@@ -76,6 +76,7 @@ import { useChatBillingControls } from './chat/useChatBillingControls'
 import { useDraftReviewActions } from './chat/useDraftReviewActions'
 import { useEmptyChatStarters } from './chat/useEmptyChatStarters'
 import { useChatPreferences } from './chat/useChatPreferences'
+import { safeSetLocalStorage, toggleModelSelection } from './chat/model-selection-utils'
 import { useChatPanels, type AttachmentPreview, type AttachmentPreviewMode } from './chat/useChatPanels'
 import { useChatRuntimes } from './chat/useChatRuntimes'
 import { useComposerTextState } from './chat/useComposerTextState'
@@ -126,13 +127,15 @@ import {
   assistantBlocksToPlainText,
   chatGreetingLine,
   chooseAssistantCandidate,
-  getMessageText,
   getUserTurnId,
+  buildRestoredMessageExchanges,
   groupOutputsIntoExchanges,
+  restoreGenerationStateForExchanges,
   scrollToExchangeTurn,
   stripAssistantAfterUserTurn,
   buildAssistantVisualSequence,
   generateTitle,
+  syntheticMessagesForOutputGroups,
 } from './chat-interface/chatLogic'
 import type {
   AskModelSelectionMode,
@@ -192,7 +195,7 @@ function TemporaryChatButton({
 
 // ─── main component ───────────────────────────────────────────────────────────
 
-export default function ChatInterface({
+export default function ChatExperience({
   userId,
   firstName,
   hideSidebar,
@@ -666,8 +669,6 @@ export default function ChatInterface({
     actChat.status === 'submitted' ||
     activePersistedGenerating
 
-  const supportsVision = getModel(selectedActModel)?.supportsVision ?? false
-
   useEffect(() => {
     if (!activeChatId || !chatStreamRelayApi) return
     const hasLocalHttpStream =
@@ -719,11 +720,6 @@ export default function ChatInterface({
       })
       const targetChat = slotHasGenerating && slotChat ? slotChat : actChat
       resumedCloudflareStreamsRef.current.add(key)
-      console.info('[chat-stream] path=cloudflare resume-request', {
-        conversationId: activeChatId,
-        turnId: target.turnId,
-        variantIndex: target.variantIndex,
-      })
       void targetChat.resumeStream({
         body: {
           conversationId: activeChatId,
@@ -731,14 +727,8 @@ export default function ChatInterface({
           variantIndex: target.variantIndex,
           multiModelSlotIndex: target.variantIndex,
         },
-      }).catch((error) => {
+      }).catch(() => {
         resumedCloudflareStreamsRef.current.delete(key)
-        console.warn('[chat-stream] path=cloudflare resume-failed', {
-          conversationId: activeChatId,
-          turnId: target.turnId,
-          variantIndex: target.variantIndex,
-          reason: error instanceof Error ? error.message : String(error),
-        })
       })
     }
   }, [activeChatId, activeRuntime, actChat, chatInstances, chatStreamRelayApi, liveMessages])
@@ -1355,9 +1345,6 @@ export default function ChatInterface({
     const _hasText = _parts?.some((p) => p.type === 'text' && (p.text?.trim().length ?? 0) > 0)
     if (!_hasText) return
     ttftLoggedRef.current = true
-    const _ttft = performance.now() - ttftSendTimeRef.current
-    const _model = selectedActModel
-    console.log(`[TTFT][client] first-token | ${_ttft.toFixed(1)}ms | mode=act | model=${_model}`)
   }, [isActiveLoading, actChat.messages, selectedActModel])
 
   useLayoutEffect(() => {
@@ -1645,12 +1632,12 @@ export default function ChatInterface({
       if (isActiveLoading || generationMode !== 'image') return
       if (next === imageModelSelectionMode) return
       if (isFreeTier && next === 'multiple') return
-      localStorage.setItem(IMAGE_MODEL_SELECTION_MODE_KEY, next)
+      safeSetLocalStorage(IMAGE_MODEL_SELECTION_MODE_KEY, next)
       setImageModelSelectionMode(next)
       if (next === 'single' && selectedImageModels.length > 1) {
         const one = [selectedImageModels[0]!]
         setSelectedImageModels(one)
-        localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(one))
+        safeSetLocalStorage(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(one))
       }
     },
     [
@@ -1669,12 +1656,12 @@ export default function ChatInterface({
       if (isActiveLoading || generationMode !== 'video') return
       if (next === videoModelSelectionMode) return
       if (isFreeTier && next === 'multiple') return
-      localStorage.setItem(VIDEO_MODEL_SELECTION_MODE_KEY, next)
+      safeSetLocalStorage(VIDEO_MODEL_SELECTION_MODE_KEY, next)
       setVideoModelSelectionMode(next)
       if (next === 'single' && selectedVideoModels.length > 1) {
         const one = [selectedVideoModels[0]!]
         setSelectedVideoModels(one)
-        localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(one))
+        safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(one))
       }
     },
     [
@@ -1691,61 +1678,31 @@ export default function ChatInterface({
   function handleVideoSubModeChange(subMode: VideoSubMode) {
     if (isActiveLoading) return
     setVideoSubMode(subMode)
-    try { localStorage.setItem(VIDEO_SUB_MODE_KEY, subMode) } catch { /* ignore */ }
+    safeSetLocalStorage(VIDEO_SUB_MODE_KEY, subMode)
     const models = getVideoModelsBySubMode(subMode)
     const first = models[0]?.id
     if (first && !models.some((m) => selectedVideoModels.includes(m.id))) {
       setSelectedVideoModels([first])
-      try { localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify([first])) } catch { /* ignore */ }
+      safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify([first]))
     }
   }
 
   function toggleImageModelInPicker(modelId: string) {
     if (isActiveLoading) return
-    if (imageModelSelectionMode === 'single') {
-      if (selectedImageModels.length === 1 && selectedImageModels[0] === modelId) return
-      const next = [modelId]
-      setSelectedImageModels(next)
-      localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
-      setShowModelPicker(false)
-      return
-    }
-    const isSel = selectedImageModels.includes(modelId)
-    if (isSel) {
-      if (selectedImageModels.length === 1) return
-      const next = selectedImageModels.filter((x) => x !== modelId)
-      setSelectedImageModels(next)
-      localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
-    } else {
-      if (selectedImageModels.length >= 4) return
-      const next = [...selectedImageModels, modelId]
-      setSelectedImageModels(next)
-      localStorage.setItem(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
-    }
+    const next = toggleModelSelection(selectedImageModels, modelId, imageModelSelectionMode)
+    if (sameModelOrder(next, selectedImageModels)) return
+    setSelectedImageModels(next)
+    safeSetLocalStorage(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
+    if (imageModelSelectionMode === 'single') setShowModelPicker(false)
   }
 
   function toggleVideoModelInPicker(modelId: string) {
     if (isActiveLoading) return
-    if (videoModelSelectionMode === 'single') {
-      if (selectedVideoModels.length === 1 && selectedVideoModels[0] === modelId) return
-      const next = [modelId]
-      setSelectedVideoModels(next)
-      localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
-      setShowModelPicker(false)
-      return
-    }
-    const isSel = selectedVideoModels.includes(modelId)
-    if (isSel) {
-      if (selectedVideoModels.length === 1) return
-      const next = selectedVideoModels.filter((x) => x !== modelId)
-      setSelectedVideoModels(next)
-      localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
-    } else {
-      if (selectedVideoModels.length >= 4) return
-      const next = [...selectedVideoModels, modelId]
-      setSelectedVideoModels(next)
-      localStorage.setItem(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
-    }
+    const next = toggleModelSelection(selectedVideoModels, modelId, videoModelSelectionMode)
+    if (sameModelOrder(next, selectedVideoModels)) return
+    setSelectedVideoModels(next)
+    safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
+    if (videoModelSelectionMode === 'single') setShowModelPicker(false)
   }
 
   /**
@@ -1758,11 +1715,11 @@ export default function ChatInterface({
   const isOnNewChatSurface = !activeChatId && !isTemporaryChat
   const persistNewChatAskModels = useCallback((ids: string[]) => {
     if (!isOnNewChatSurface) return
-    try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(ids)) } catch { /* ignore */ }
+    safeSetLocalStorage(CHAT_MODEL_KEY, JSON.stringify(ids))
   }, [isOnNewChatSurface])
   const persistNewChatActModel = useCallback((id: string) => {
     if (!isOnNewChatSurface) return
-    try { localStorage.setItem(ACT_MODEL_KEY, id) } catch { /* ignore */ }
+    safeSetLocalStorage(ACT_MODEL_KEY, id)
   }, [isOnNewChatSurface])
 
   const snapshotCurrentAskThreadsForModelPicker = useCallback(() => {
@@ -1827,8 +1784,8 @@ export default function ChatInterface({
   function toggleTextModelInPicker(modelId: string) {
     snapshotCurrentAskThreadsForModelPicker()
     if (askModelSelectionMode === 'single') {
-      if (selectedActModel === modelId && selectedModels.length === 1) return
-      const next = [modelId]
+      const next = toggleModelSelection(selectedModels, modelId, askModelSelectionMode)
+      if (sameModelOrder(next, selectedModels) && selectedActModel === modelId) return
       setSelectedActModel(modelId)
       setSelectedModels(next)
       persistNewChatActModel(modelId)
@@ -1836,26 +1793,17 @@ export default function ChatInterface({
       setShowModelPicker(false)
       return
     }
-    const isSel = selectedModels.includes(modelId)
-    if (isSel) {
-      if (selectedModels.length === 1) return
-      const next = selectedModels.filter((x) => x !== modelId)
-      setSelectedModels(next)
-      if (!next.includes(selectedActModel)) {
-        setSelectedActModel(next[0]!)
-        persistNewChatActModel(next[0]!)
-      }
-      persistNewChatAskModels(next)
-    } else {
-      if (selectedModels.length >= 4) return
-      const next = [...selectedModels, modelId]
-      setSelectedModels(next)
-      if (next.length === 1) {
-        setSelectedActModel(modelId)
-        persistNewChatActModel(modelId)
-      }
-      persistNewChatAskModels(next)
+    const next = toggleModelSelection(selectedModels, modelId, askModelSelectionMode)
+    if (sameModelOrder(next, selectedModels)) return
+    setSelectedModels(next)
+    if (!next.includes(selectedActModel)) {
+      setSelectedActModel(next[0]!)
+      persistNewChatActModel(next[0]!)
+    } else if (next.length === 1) {
+      setSelectedActModel(modelId)
+      persistNewChatActModel(modelId)
     }
+    persistNewChatAskModels(next)
   }
 
   // ── chat management ────────────────────────────────────────────────────────
@@ -2191,13 +2139,7 @@ export default function ChatInterface({
       const outputGroups = groupOutputsIntoExchanges(outputs)
 
       if (rawMessages.length === 0 && outputGroups.length > 0) {
-        rawMessages = outputGroups.map((group, idx) => ({
-          id: `restored-output-${idx}`,
-          turnId: `out-${idx}`,
-          mode: 'ask' as const,
-          role: 'user' as const,
-          parts: [{ type: 'text', text: group.prompt }],
-        }))
+        rawMessages = syntheticMessagesForOutputGroups<RawMsg>(outputGroups)
       }
 
       const hasUserMessages = rawMessages.some((msg) => msg.role === 'user')
@@ -2218,93 +2160,10 @@ export default function ChatInterface({
 
       if (requestId !== loadChatRequestRef.current) return
 
-      const exchanges: Array<{
-        userMsg: RawMsg
-        responses: Array<{ model: string; msg: RawMsg }>
-        mode: 'ask' | 'act'
-      }> = []
-
-      const hasTurnIds = rawMessages.some((m) => m.turnId)
-      if (hasTurnIds) {
-        const turnOrder: string[] = []
-        const byTurn = new Map<string, { user?: RawMsg; assistants: RawMsg[] }>()
-        for (const msg of rawMessages) {
-          const tid = msg.turnId || msg.id
-          if (!byTurn.has(tid)) {
-            byTurn.set(tid, { assistants: [] })
-            turnOrder.push(tid)
-          }
-          const g = byTurn.get(tid)!
-          if (msg.role === 'user') g.user = msg
-          else g.assistants.push(msg)
-        }
-        for (const tid of turnOrder) {
-          const g = byTurn.get(tid)!
-          if (!g.user && g.assistants.length > 0) {
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('[ChatInterface] Orphan assistant rows without user message for turn', tid)
-            }
-            const mode = (g.assistants[0]?.mode || 'ask') as 'ask' | 'act'
-            const orphanResponses = g.assistants.map((a) => ({
-              model: a.model || DEFAULT_MODEL_ID,
-              msg: a,
-            }))
-            const lastEx = exchanges[exchanges.length - 1]
-            if (lastEx) {
-              for (const r of orphanResponses) {
-                lastEx.responses.push(r)
-              }
-            } else {
-              exchanges.push({
-                userMsg: {
-                  id: `synthetic-user-${tid}`,
-                  turnId: tid,
-                  role: 'user',
-                  mode,
-                  parts: [{ type: 'text', text: '[Earlier message unavailable]' }],
-                },
-                responses: orphanResponses,
-                mode,
-              })
-            }
-            continue
-          }
-          if (!g.user) continue
-          const mode = (g.assistants[0]?.mode || g.user.mode || 'ask') as 'ask' | 'act'
-          const responses = g.assistants.map((a) => ({
-            model: a.model || DEFAULT_MODEL_ID,
-            msg: a,
-          }))
-          if (hasAutomationContext && responses.length === 0) {
-            responses.push({
-              model: DEFAULT_MODEL_ID,
-              msg: {
-                id: `missing-automation-response-${tid}`,
-                turnId: tid,
-                role: 'assistant',
-                mode,
-                parts: [{
-                  type: 'text',
-                  text: 'No saved model response was found for this automation run. You can retry this turn to regenerate it.',
-                }],
-                status: 'error',
-              } as RawMsg,
-            })
-          }
-          exchanges.push({ userMsg: g.user, responses, mode })
-        }
-      } else {
-        let cur: (typeof exchanges)[0] | null = null
-        for (const msg of rawMessages) {
-          if (msg.role === 'user') {
-            if (cur) exchanges.push(cur)
-            cur = { userMsg: msg, responses: [], mode: 'ask' }
-          } else if (msg.role === 'assistant' && cur) {
-            cur.responses.push({ model: msg.model || DEFAULT_MODEL_ID, msg })
-          }
-        }
-        if (cur) exchanges.push(cur)
-      }
+      const exchanges = buildRestoredMessageExchanges(rawMessages, {
+        defaultModelId: DEFAULT_MODEL_ID,
+        hasAutomationContext,
+      })
 
       const exchangeModesFromServer = exchanges.map((e) => e.mode)
       const uniqueModels: string[] = []
@@ -2357,33 +2216,11 @@ export default function ChatInterface({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       runtime.actChat.messages = actLinear as any
 
-      const restoredGenTypes: ('text' | 'image' | 'video')[] = exchanges.map(() => 'text')
-      const restoredResults = new Map<number, GenerationResult[]>()
-      const restoredExchangeModels = exchanges.map((ex) => ex.responses.map((r) => r.model))
-
-      let nextOutputGroupIdx = 0
-      for (let idx = 0; idx < exchanges.length; idx++) {
-        const exchangeTurnId = exchanges[idx].userMsg.turnId?.trim() || null
-        const userPrompt = getMessageText(exchanges[idx].userMsg).trim()
-        const matchIdx = outputGroups.findIndex((group, groupIdx) => {
-          if (groupIdx < nextOutputGroupIdx) return false
-          // When the user turn has a turnId, only match outputs with the same turnId.
-          // Prompt-only matching caused false positives (e.g. image outputs without turnId
-          // matching unrelated text turns that shared the same prompt), which hid assistant text.
-          if (exchangeTurnId) {
-            const gt = group.turnId?.trim() || null
-            return gt === exchangeTurnId
-          }
-          return !group.turnId?.trim() && group.prompt.trim() === userPrompt
-        })
-        if (matchIdx === -1) continue
-
-        const group = outputGroups[matchIdx]
-        nextOutputGroupIdx = matchIdx + 1
-        restoredGenTypes[idx] = group.type
-        restoredResults.set(idx, group.results)
-        restoredExchangeModels[idx] = group.modelIds
-      }
+      const {
+        exchangeGenTypes: restoredGenTypes,
+        generationResults: restoredResults,
+        exchangeModels: restoredExchangeModels,
+      } = restoreGenerationStateForExchanges(exchanges, outputGroups)
 
       runtime.ui = createConversationUiState({
         selectedActModel: resolvedActModel,
@@ -2406,8 +2243,7 @@ export default function ChatInterface({
       shouldScrollRef.current = true
       applyUiStateToView(runtime.ui)
       setRuntimeHydrationVersion((value) => value + 1)
-    } catch (err) {
-      console.error('[ChatInterface] loadChat failed:', err)
+    } catch {
       clearRuntimeMessages(runtime)
       runtime.hydrated = false
       setComposerNotice('Could not load this chat. Try again.')
@@ -3006,7 +2842,7 @@ export default function ChatInterface({
   const handleModeChange = useCallback((mode: GenerationMode) => {
     setGenerationMode(mode)
     setGenerationChip(null)
-    localStorage.setItem(CHAT_GEN_MODE_KEY, mode)
+    safeSetLocalStorage(CHAT_GEN_MODE_KEY, mode)
   }, [setGenerationChip, setGenerationMode])
 
   const isActiveLoadingRef = useRef(isActiveLoading)
@@ -3029,7 +2865,7 @@ export default function ChatInterface({
           const order: GenerationMode[] = ['text', 'image', 'video']
           const i = order.indexOf(prev)
           const next = order[(i + 1) % order.length]!
-          localStorage.setItem(CHAT_GEN_MODE_KEY, next)
+          safeSetLocalStorage(CHAT_GEN_MODE_KEY, next)
           return next
         })
         setGenerationChip(null)
@@ -3918,63 +3754,71 @@ export default function ChatInterface({
             messagesScrollRef={messagesScrollRef}
             messagesEndRef={messagesEndRef}
             showLoadingState={showChatLoadingState}
-            primaryMessages={primaryMessages}
-            latestExchangeIndex={latestExchIdx}
-            generationResults={generationResults}
-            exchangeGenTypes={exchangeGenTypes}
-            exchangeModels={exchangeModels}
-            selectedImageModels={selectedImageModels}
-            selectedVideoModels={selectedVideoModels}
-            selectedTabPerExchange={selectedTabPerExchange}
-            selectedModels={selectedModels}
-            exchangeModes={exchangeModes}
-            actChat={actChat}
-            chatInstances={chatInstances}
-            isActiveLoading={isActiveLoading}
-            isOptimisticLoading={isOptimisticLoading}
-            interruptedExchangeIdx={interruptedExchangeIdx}
-            exitingTurnIds={exitingTurnIds}
-            sourcesPanel={sourcesPanel}
-            getResponseForExchangeForModel={getResponseForExchangeForModel}
-            onTabSelect={handleTabSelect}
-            onJumpToReply={jumpToReplyTarget}
-            onDeleteTurn={handleDeleteTurnById}
-            onReplyToMediaPrompt={beginReplyToMediaPrompt}
-            onReplyToAssistantText={beginReplyToAssistantText}
-            onBranch={handleBranchConversationAtTurn}
-            onOpenDraft={setDraftModalState}
-            onOpenSources={openSourcesPanel}
-            onRetry={handleRetryExchange}
-            onOpenFilePreview={openFilePreview}
-            onOpenAttachmentPreview={openAttachmentPreview}
-            onContinue={handleContinue}
+            state={{
+              primaryMessages,
+              latestExchangeIndex: latestExchIdx,
+              generationResults,
+              exchangeGenTypes,
+              exchangeModels,
+              selectedImageModels,
+              selectedVideoModels,
+              selectedTabPerExchange,
+              selectedModels,
+              exchangeModes,
+            }}
+            runtime={{
+              actChat,
+              chatInstances,
+              isActiveLoading,
+              isOptimisticLoading,
+              interruptedExchangeIdx,
+              exitingTurnIds,
+              sourcesPanel,
+              getResponseForExchangeForModel,
+            }}
+            actions={{
+              onTabSelect: handleTabSelect,
+              onJumpToReply: jumpToReplyTarget,
+              onDeleteTurn: handleDeleteTurnById,
+              onReplyToMediaPrompt: beginReplyToMediaPrompt,
+              onReplyToAssistantText: beginReplyToAssistantText,
+              onBranch: handleBranchConversationAtTurn,
+              onOpenDraft: setDraftModalState,
+              onOpenSources: openSourcesPanel,
+              onRetry: handleRetryExchange,
+              onOpenFilePreview: openFilePreview,
+              onOpenAttachmentPreview: openAttachmentPreview,
+              onContinue: handleContinue,
+            }}
           />
         )}
         {showAutomationChatTab && (
           <ChatComposer
             mode={mode}
-            showCenteredEmptyChat={showCenteredEmptyChat}
-            greetingLine={greetingLine}
-            emptyChatStarters={emptyChatStarters}
-            belowEmptyComposer={belowEmptyComposer}
-            attachedImages={attachedImages}
-            setAttachedImages={setAttachedImages}
-            pendingChatDocuments={pendingChatDocuments}
-            removePendingDocument={removePendingDocument}
-            attachmentError={attachmentError}
-            composerNotice={composerNotice}
-            isSendBlocked={isSendBlocked}
-            isBudgetExhaustedPaid={isBudgetExhaustedPaid}
-            entitlements={entitlements}
-            topUpAmountDraftCents={topUpAmountDraftCents}
-            setTopUpAmountDraftCents={setTopUpAmountDraftCents}
-            autoTopUpEnabledDraft={autoTopUpEnabledDraft}
-            setAutoTopUpEnabledDraft={setAutoTopUpEnabledDraft}
-            billingActionLoading={billingActionLoading}
-            onStartTopUp={handleStartTopUp}
-            onSaveTopUpPreference={handleSaveTopUpPreference}
-            blockedComposerContent={
-              isBudgetExhaustedPaid ? (
+            emptyState={{
+              showCenteredEmptyChat,
+              greetingLine,
+              emptyChatStarters,
+              belowEmptyComposer,
+            }}
+            attachments={{
+              attachedImages,
+              setAttachedImages,
+              pendingChatDocuments,
+              removePendingDocument,
+              attachmentError,
+              fileInputRef,
+              docInputRef,
+              onAddImages: addImages,
+              onAddDocumentsFromPicker: addDocumentsFromPicker,
+              onOpenAttachmentPreview: openAttachmentPreview,
+              onOpenFilePreview: openFilePreview,
+            }}
+            runtime={{
+              composerNotice,
+              isSendBlocked,
+              isActiveLoading,
+              blockedComposerContent: isBudgetExhaustedPaid ? (
                 <TopUpPreferenceControl
                   variant="app"
                   title="No budget for paid models"
@@ -4024,46 +3868,46 @@ export default function ChatInterface({
                   <ArrowUp size={13} className="shrink-0 text-amber-500" />
                   This model requires a paid plan. Switch to Auto or upgrade.
                 </div>
-              )
-            }
-            replyContext={replyContext}
-            setReplyContext={setReplyContext}
-            fileInputRef={fileInputRef}
-            docInputRef={docInputRef}
-            textareaRef={textareaRef}
-            input={input}
-            inputRevision={inputRevision}
-            onInputChange={handleComposerInputChange}
-            onMentionsChange={setMentions}
-            onPaste={handlePaste}
-            onAddImages={addImages}
-            onAddDocumentsFromPicker={addDocumentsFromPicker}
-            onOpenAttachmentPreview={openAttachmentPreview}
-            onOpenFilePreview={openFilePreview}
-            supportsVision={supportsVision}
-            showAttachMenu={showAttachMenu}
-            setShowAttachMenu={setShowAttachMenu}
-            attachMenuRef={attachMenuRef}
-            selectedToolIds={selectedToolIds}
-            memoryEnabled={memoryEnabled}
-            onToggleTool={toggleComposerTool}
-            onToggleMemory={() => setMemoryEnabled((current) => !current)}
-            onRemoveTool={removeComposerTool}
-            onModeChange={handleModeChange}
-            generationChip={generationChip}
-            setGenerationChip={setGenerationChip}
-            showModeMenu={showModeMenu}
-            setShowModeMenu={setShowModeMenu}
-            modeMenuRef={modeMenuRef}
-            onNavigateMode={(nextMode) => {
-              router.push(nextMode === 'chat' ? '/app/chat' : '/app/automations')
-              setShowModeMenu(false)
+              ),
             }}
-            isActiveLoading={isActiveLoading}
-            hasComposerText={hasComposerText}
-            onStop={stopActiveChat}
-            onSend={handleSend}
-            onStarterSelect={setInput}
+            inputState={{
+              replyContext,
+              setReplyContext,
+              textareaRef,
+              input,
+              inputRevision,
+              onInputChange: handleComposerInputChange,
+              onMentionsChange: setMentions,
+              onPaste: handlePaste,
+              hasComposerText,
+            }}
+            toolState={{
+              showAttachMenu,
+              setShowAttachMenu,
+              attachMenuRef,
+              selectedToolIds,
+              memoryEnabled,
+              onToggleTool: toggleComposerTool,
+              onToggleMemory: () => setMemoryEnabled((current) => !current),
+              onRemoveTool: removeComposerTool,
+            }}
+            modeState={{
+              onModeChange: handleModeChange,
+              generationChip,
+              setGenerationChip,
+              showModeMenu,
+              setShowModeMenu,
+              modeMenuRef,
+              onNavigateMode: (nextMode) => {
+                router.push(nextMode === 'chat' ? '/app/chat' : '/app/automations')
+                setShowModeMenu(false)
+              },
+            }}
+            actions={{
+              onStop: stopActiveChat,
+              onSend: handleSend,
+              onStarterSelect: setInput,
+            }}
           />
         )}
         </AppScreenBody>

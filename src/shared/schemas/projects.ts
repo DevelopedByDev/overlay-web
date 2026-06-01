@@ -10,6 +10,9 @@ export const ProjectListQuery = PaginationQuery.extend({
 export const CreateProjectRequest = z.object({
   ...AuthFields,
   name: z.string().min(1).max(200).optional(),
+  parentId: z.string().min(1).nullable().optional(),
+  instructions: z.string().optional(),
+  clientId: z.string().optional(),
   description: z.string().optional(),
   color: z.string().optional(),
 }).passthrough()

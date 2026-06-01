@@ -1,6 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { readValidatedJson } from '@/server/app-api/validated-input'
 import { experimental_generateVideo as generateVideo } from '@/server/ai/sdk'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
@@ -11,6 +12,7 @@ import { calculateVideoCostOrNull } from '@/server/ai/pricing'
 import { uploadBuffer, keyForOutput, deleteObject } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import { GenerateVideoRequest } from '@/shared/schemas/chat'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -28,17 +30,9 @@ function sseChunk(data: Record<string, unknown>): string {
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
-  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, temporaryChat }: {
-    prompt: string
-    modelId?: string
-    aspectRatio?: string
-    duration?: number
-    conversationId?: string
-    turnId?: string
-    videoSubMode?: VideoSubMode
-    imageUrl?: string | null
-    temporaryChat?: boolean
-  } = await request.json()
+  const bodyResult = await readValidatedJson(request, context, GenerateVideoRequest)
+  if (!bodyResult.ok) return bodyResult.response
+  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, temporaryChat } = bodyResult.data
 
   const { auth } = context
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-01T18:49:09.211Z",
+  "generatedAt": "2026-06-01T19:38:30.757Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -49,9 +49,8 @@
     "src/shared/ai/gateway/generated/vercel-ai-gateway-pricing.ts"
   ],
   "complexFunctionCounts": {
-    "src/features/chat/components/ChatExperience.tsx#ChatInterface": 1,
+    "src/features/chat/components/ChatExperience.tsx#ChatExperience": 1,
     "src/features/chat/components/ChatExperience.tsx#handleSend": 1,
-    "src/features/chat/components/ChatExperience.tsx#loadChat": 1,
     "src/features/chat/components/ChatMessage.tsx#TextChatMessage": 1,
     "src/components/layout/AppSidebar.tsx#AppSidebar": 1,
     "src/shared/tools/output-types.ts#classifyOutputType": 1,
@@ -61,6 +60,7 @@
     "packages/overlay-tools-core/src/mcp-schema-to-zod.ts#jsonSchemaToZod": 1,
     "packages/overlay-chat-core/src/agent-assistant-text.ts#isNimLeakedNarrationLine": 1,
     "src/server/app-api/v1/generate-image/route.ts#POST": 1,
+    "src/features/chat/components/ChatExperience.tsx#loadChat": 1,
     "src/app/app/settings/page.tsx#SettingsPage": 1,
     "src/features/notebook/components/InlineDiffExtension.ts#parseMarkdownLine": 1,
     "src/components/layout/AppSidebar.tsx#callback": 1,
@@ -1075,22 +1075,15 @@
       "loc": 216,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/features/projects/components/ProjectFileTree.tsx",
-      "layer": "src/features",
-      "loc": 15,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     }
   ],
   "totals": {
-    "files": 836,
-    "code": 96575,
-    "total": 107568,
-    "productionFiles": 764,
-    "productionCode": 89785,
+    "files": 838,
+    "code": 96623,
+    "total": 107645,
+    "productionFiles": 766,
+    "productionCode": 89779,
     "testFiles": 72,
-    "testCode": 6790
+    "testCode": 6844
   }
 }

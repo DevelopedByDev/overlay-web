@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { AlertCircle, FileText, X } from 'lucide-react'
-import type { ChatComposerProps } from './ChatComposer'
+import type { ChatComposerAttachmentState } from './ChatComposerTypes'
 
 export function AttachmentPreviewTray({
   attachedImages,
@@ -11,7 +11,7 @@ export function AttachmentPreviewTray({
   removePendingDocument,
   onOpenAttachmentPreview,
   onOpenFilePreview,
-}: Pick<ChatComposerProps, 'attachedImages' | 'setAttachedImages' | 'pendingChatDocuments' | 'removePendingDocument' | 'onOpenAttachmentPreview' | 'onOpenFilePreview'>) {
+}: Pick<ChatComposerAttachmentState, 'attachedImages' | 'setAttachedImages' | 'pendingChatDocuments' | 'removePendingDocument' | 'onOpenAttachmentPreview' | 'onOpenFilePreview'>) {
   if (attachedImages.length === 0 && pendingChatDocuments.length === 0) return null
   return (
     <div className="mb-2 flex min-w-0 flex-wrap gap-2">
@@ -63,7 +63,10 @@ export function AttachmentPreviewTray({
 export function ComposerAlerts({
   attachmentError,
   composerNotice,
-}: Pick<ChatComposerProps, 'attachmentError' | 'composerNotice'>) {
+}: {
+  attachmentError: string | null
+  composerNotice: string | null
+}) {
   const alert = attachmentError ?? composerNotice
   if (!alert) return null
   const error = Boolean(attachmentError)

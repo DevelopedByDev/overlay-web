@@ -13,7 +13,7 @@ type ChatInterfaceProps = {
   initialChats?: CachedConversation[]
 }
 
-function ChatInterfaceFallback() {
+function ChatSuspenseFallback() {
   return (
     <div className="flex h-full min-h-0 w-full items-start justify-center px-4 py-6">
       <div className="w-full max-w-4xl space-y-4" aria-hidden>
@@ -28,9 +28,9 @@ function ChatInterfaceFallback() {
   )
 }
 
-export default function ChatInterface(props: ChatInterfaceProps) {
+export default function ChatSuspenseBoundary(props: ChatInterfaceProps) {
   return (
-    <Suspense fallback={<ChatInterfaceFallback />}>
+    <Suspense fallback={<ChatSuspenseFallback />}>
       <ChatExperience {...props} />
     </Suspense>
   )

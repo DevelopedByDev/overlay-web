@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import ChatInterface from '@/features/chat/components/ChatInterface'
+import ChatSuspenseBoundary from '@/features/chat/components/ChatSuspenseBoundary'
 import { getOverlaySession } from '@/server/auth/session'
 import { getInitialChatHistory } from '@/server/app/route-data'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
@@ -13,7 +13,7 @@ async function ChatRouteContent({
 }) {
   const initialChats = userId ? await getInitialChatHistory() : []
   return (
-    <ChatInterface
+    <ChatSuspenseBoundary
       userId={userId}
       firstName={firstName}
       initialChats={initialChats}

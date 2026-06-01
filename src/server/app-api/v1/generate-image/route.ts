@@ -2,6 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { handleRouteError } from '@/server/app-api/route-errors'
+import { readValidatedJson } from '@/server/app-api/validated-input'
 import { generateImage } from '@/server/ai/sdk'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
@@ -12,6 +13,7 @@ import { uploadBuffer, keyForOutput } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
 import { deleteObject } from '@/server/storage/object-store'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import { GenerateImageRequest } from '@/shared/schemas/chat'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -26,15 +28,9 @@ export const maxDuration = 120
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl, temporaryChat }: {
-      prompt: string
-      modelId?: string
-      aspectRatio?: string
-      conversationId?: string
-      turnId?: string
-      imageUrl?: string
-      temporaryChat?: boolean
-    } = await request.json()
+    const bodyResult = await readValidatedJson(request, context, GenerateImageRequest)
+    if (!bodyResult.ok) return bodyResult.response
+    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl, temporaryChat } = bodyResult.data
 
     const { auth } = context
 

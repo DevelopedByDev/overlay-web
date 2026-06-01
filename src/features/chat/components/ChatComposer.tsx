@@ -21,77 +21,13 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react'
-import { useRef, useState, type ClipboardEventHandler, type Dispatch, type RefObject, type SetStateAction } from 'react'
-import type { GenerationMode } from '@/shared/ai/gateway/model-types'
+import { useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
-import { MentionInput, type MentionInputHandle } from './chat-interface/MentionInput'
-import type { MentionItem } from '@/shared/knowledge/mention-types'
-import type { AttachedImage, Entitlements, PendingChatDocument } from './chat-interface/types'
+import { MentionInput } from './chat-interface/MentionInput'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
-
-export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
-
-export type ChatComposerProps = {
-  mode: 'chat' | 'automate'
-  showCenteredEmptyChat: boolean
-  greetingLine: string
-  emptyChatStarters: string[]
-  belowEmptyComposer?: React.ReactNode
-  attachedImages: AttachedImage[]
-  setAttachedImages: Dispatch<SetStateAction<AttachedImage[]>>
-  pendingChatDocuments: PendingChatDocument[]
-  removePendingDocument: (clientId: string) => void
-  attachmentError: string | null
-  composerNotice: string | null
-  isSendBlocked: boolean
-  isBudgetExhaustedPaid: boolean
-  entitlements: Entitlements | null
-  topUpAmountDraftCents: number
-  setTopUpAmountDraftCents: (value: number) => void
-  autoTopUpEnabledDraft: boolean
-  setAutoTopUpEnabledDraft: (value: boolean) => void
-  billingActionLoading: 'checkout' | 'save' | null
-  onStartTopUp: () => void | Promise<void>
-  onSaveTopUpPreference: () => void | Promise<void>
-  blockedComposerContent: React.ReactNode
-  replyContext: ReplyContext
-  setReplyContext: (context: ReplyContext) => void
-  fileInputRef: RefObject<HTMLInputElement | null>
-  docInputRef: RefObject<HTMLInputElement | null>
-  textareaRef: RefObject<MentionInputHandle | null>
-  input: string
-  inputRevision: number
-  onInputChange: (text: string) => void
-  onMentionsChange: (mentions: MentionItem[]) => void
-  onPaste: ClipboardEventHandler
-  onAddImages: (files: FileList | File[]) => void
-  onAddDocumentsFromPicker: (files: FileList | File[] | null) => void
-  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
-  onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
-  supportsVision: boolean
-  showAttachMenu: boolean
-  setShowAttachMenu: Dispatch<SetStateAction<boolean>>
-  attachMenuRef: RefObject<HTMLDivElement | null>
-  selectedToolIds: ChatToolRequestId[]
-  memoryEnabled: boolean
-  onToggleTool: (toolId: ChatToolRequestId) => void
-  onToggleMemory: () => void
-  onRemoveTool: (toolId: ChatToolRequestId) => void
-  onModeChange: (mode: GenerationMode) => void
-  generationChip: 'image' | 'video' | null
-  setGenerationChip: (chip: 'image' | 'video' | null) => void
-  showModeMenu: boolean
-  setShowModeMenu: Dispatch<SetStateAction<boolean>>
-  modeMenuRef: RefObject<HTMLDivElement | null>
-  onNavigateMode: (mode: 'chat' | 'automate') => void
-  isActiveLoading: boolean
-  hasComposerText: boolean
-  onStop: () => void | Promise<void>
-  onSend: () => void | Promise<void>
-  onStarterSelect: (prompt: string) => void
-}
+import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
 
 const DOCUMENT_FILE_ACCEPT = [
   '.pdf',
@@ -166,45 +102,46 @@ const TOOL_REQUEST_OPTIONS: Array<{
 const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, tool]))
 
 export function ChatComposer(props: ChatComposerProps) {
+  const viewProps = toComposerViewProps(props)
   const disabledSend =
-    !props.hasComposerText &&
-    props.attachedImages.length === 0 &&
-    !props.pendingChatDocuments.some((doc) => doc.status === 'ready')
+    !viewProps.hasComposerText &&
+    viewProps.attachedImages.length === 0 &&
+    !viewProps.pendingChatDocuments.some((doc) => doc.status === 'ready')
 
   return (
     <>
       <div
         className={`flex min-h-0 flex-col ${
-          props.showCenteredEmptyChat ? 'min-h-0 flex-1 md:justify-center' : 'shrink-0'
-        } ${!props.showCenteredEmptyChat ? 'px-3 pb-3 sm:px-4 sm:pb-4' : 'px-4 pb-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))]'}`}
+          viewProps.showCenteredEmptyChat ? 'min-h-0 flex-1 md:justify-center' : 'shrink-0'
+        } ${!viewProps.showCenteredEmptyChat ? 'px-3 pb-3 sm:px-4 sm:pb-4' : 'px-4 pb-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))]'}`}
       >
-        <ChatEmptyHero visible={props.showCenteredEmptyChat} greetingLine={props.greetingLine} />
+        <ChatEmptyHero visible={viewProps.showCenteredEmptyChat} greetingLine={viewProps.greetingLine} />
         <div
           className={`mx-auto w-full min-w-0 shrink-0 transition-[max-width] duration-[780ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            props.showCenteredEmptyChat ? 'max-w-[36rem]' : 'max-w-[56rem]'
+            viewProps.showCenteredEmptyChat ? 'max-w-[36rem]' : 'max-w-[56rem]'
           }`}
         >
-          <AttachmentPreviewTray {...props} />
-          <ComposerAlerts attachmentError={props.attachmentError} composerNotice={props.composerNotice} />
-          {props.isSendBlocked && !props.isActiveLoading ? (
-            props.blockedComposerContent
+          <AttachmentPreviewTray {...viewProps} />
+          <ComposerAlerts attachmentError={viewProps.attachmentError} composerNotice={viewProps.composerNotice} />
+          {viewProps.isSendBlocked && !viewProps.isActiveLoading ? (
+            viewProps.blockedComposerContent
           ) : (
-            <ComposerInputCard {...props} disabledSend={disabledSend} />
+            <ComposerInputCard {...viewProps} disabledSend={disabledSend} />
           )}
         </div>
         <ChatEmptyState
-          visible={props.showCenteredEmptyChat}
-          greetingLine={props.greetingLine}
-          starters={props.emptyChatStarters}
-          belowComposer={props.belowEmptyComposer}
-          onStarterSelect={props.onStarterSelect}
+          visible={viewProps.showCenteredEmptyChat}
+          greetingLine={viewProps.greetingLine}
+          starters={viewProps.emptyChatStarters}
+          belowComposer={viewProps.belowEmptyComposer}
+          onStarterSelect={viewProps.onStarterSelect}
         />
       </div>
     </>
   )
 }
 
-function ComposerInputCard(props: ChatComposerProps & { disabledSend: boolean }) {
+function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
   const mixedFileInputRef = useRef<HTMLInputElement | null>(null)
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
 
@@ -261,7 +198,7 @@ function ComposerInputCard(props: ChatComposerProps & { disabledSend: boolean })
   )
 }
 
-function ReplyContextBar({ replyContext, setReplyContext }: Pick<ChatComposerProps, 'replyContext' | 'setReplyContext'>) {
+function ReplyContextBar({ replyContext, setReplyContext }: Pick<ComposerViewProps, 'replyContext' | 'setReplyContext'>) {
   if (!replyContext) return null
   return (
     <div className="flex items-start gap-2 rounded-t-2xl border-b border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-xs text-[var(--muted)]">
@@ -277,7 +214,7 @@ function ReplyContextBar({ replyContext, setReplyContext }: Pick<ChatComposerPro
   )
 }
 
-type ComposerControlsProps = ChatComposerProps & {
+type ComposerControlsProps = ComposerViewProps & {
   disabledSend: boolean
   mixedFileInputRef: RefObject<HTMLInputElement | null>
 }
@@ -335,10 +272,10 @@ function ComposerControls(props: ComposerControlsProps) {
   )
 }
 
-function AttachMenu(props: ChatComposerProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
+function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
   const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('up')
 
-  function handleToggle(event: React.MouseEvent<HTMLButtonElement>) {
+  function handleToggle(event: MouseEvent<HTMLButtonElement>) {
     const rect = event.currentTarget.getBoundingClientRect()
     const spaceBelow = window.innerHeight - rect.bottom
     const spaceAbove = rect.top
@@ -418,7 +355,7 @@ function AttachMenuButton({
   disabled?: boolean
   title?: string
   onClick: () => void
-  icon: React.ReactNode
+  icon: ReactNode
   label: string
   suffix?: string
   showSwitch?: boolean
@@ -492,7 +429,7 @@ function GenerationChip({ chip, onClear }: { chip: 'image' | 'video'; onClear: (
   )
 }
 
-function ModeMenu(props: ChatComposerProps) {
+function ModeMenu(props: ComposerViewProps) {
   return (
     <div ref={props.modeMenuRef} className="relative shrink-0">
       <button type="button" onClick={() => props.setShowModeMenu((value) => !value)} className={`flex h-9 items-center gap-1 rounded-lg px-2.5 text-xs transition-colors hover:bg-[var(--surface-muted)] ${props.mode === 'automate' ? 'text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}>

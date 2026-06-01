@@ -47,7 +47,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 type HubChat = ProjectChatSummary
 type ProjectFileRecord = ProjectFileSummary
 
-const ChatInterface = dynamic(() => import('@/features/chat/components/ChatInterface'))
+const ChatSuspenseBoundary = dynamic(() => import('@/features/chat/components/ChatSuspenseBoundary'))
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'))
 
 // ─── File viewer fetched by ID ────────────────────────────────────────────────
@@ -414,7 +414,7 @@ function ProjectHubBody({
   return (
     <AppScreenShell header={projectHeaderTitle}>
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden">
-        <ChatInterface
+        <ChatSuspenseBoundary
           userId={userId}
           firstName={firstName}
           hideSidebar
@@ -608,7 +608,7 @@ export default function ProjectsView({
 
   if (view === 'chat' && id) {
     return (
-      <ChatInterface userId={userId} firstName={firstName} hideSidebar projectName={projectName} />
+      <ChatSuspenseBoundary userId={userId} firstName={firstName} hideSidebar projectName={projectName} />
     )
   }
 

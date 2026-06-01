@@ -1,0 +1,45 @@
+import type { ClipboardEventHandler, Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
+import type { GenerationMode } from '@/shared/ai/gateway/model-types'
+import type { MentionItem } from '@/shared/knowledge/mention-types'
+import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
+import type { MentionInputHandle } from './chat-interface/MentionInput'
+import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
+
+export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
+export type ChatComposerEmptyState = { showCenteredEmptyChat: boolean; greetingLine: string; emptyChatStarters: string[]; belowEmptyComposer?: ReactNode }
+export type ChatComposerAttachmentState = {
+  attachedImages: AttachedImage[]; setAttachedImages: Dispatch<SetStateAction<AttachedImage[]>>
+  pendingChatDocuments: PendingChatDocument[]; removePendingDocument: (clientId: string) => void
+  attachmentError: string | null; fileInputRef: RefObject<HTMLInputElement | null>; docInputRef: RefObject<HTMLInputElement | null>
+  onAddImages: (files: FileList | File[]) => void; onAddDocumentsFromPicker: (files: FileList | File[] | null) => void
+  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
+  onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
+}
+export type ChatComposerRuntime = { composerNotice: string | null; isSendBlocked: boolean; isActiveLoading: boolean; blockedComposerContent: ReactNode }
+export type ChatComposerInputState = {
+  replyContext: ReplyContext; setReplyContext: (context: ReplyContext) => void; textareaRef: RefObject<MentionInputHandle | null>
+  input: string; inputRevision: number; onInputChange: (text: string) => void; onMentionsChange: (mentions: MentionItem[]) => void
+  onPaste: ClipboardEventHandler; hasComposerText: boolean
+}
+export type ChatComposerToolState = {
+  showAttachMenu: boolean; setShowAttachMenu: Dispatch<SetStateAction<boolean>>; attachMenuRef: RefObject<HTMLDivElement | null>
+  selectedToolIds: ChatToolRequestId[]; memoryEnabled: boolean
+  onToggleTool: (toolId: ChatToolRequestId) => void; onToggleMemory: () => void; onRemoveTool: (toolId: ChatToolRequestId) => void
+}
+export type ChatComposerModeState = {
+  onModeChange: (mode: GenerationMode) => void; generationChip: 'image' | 'video' | null; setGenerationChip: (chip: 'image' | 'video' | null) => void
+  showModeMenu: boolean; setShowModeMenu: Dispatch<SetStateAction<boolean>>; modeMenuRef: RefObject<HTMLDivElement | null>; onNavigateMode: (mode: 'chat' | 'automate') => void
+}
+export type ChatComposerActions = { onStop: () => void | Promise<void>; onSend: () => void | Promise<void>; onStarterSelect: (prompt: string) => void }
+export type ChatComposerProps = {
+  mode: 'chat' | 'automate'; emptyState: ChatComposerEmptyState; attachments: ChatComposerAttachmentState
+  runtime: ChatComposerRuntime; inputState: ChatComposerInputState; toolState: ChatComposerToolState
+  modeState: ChatComposerModeState; actions: ChatComposerActions
+}
+export type ComposerViewProps = { mode: 'chat' | 'automate' }
+  & ChatComposerEmptyState & ChatComposerAttachmentState & ChatComposerRuntime & ChatComposerInputState
+  & ChatComposerToolState & ChatComposerModeState & ChatComposerActions
+
+export function toComposerViewProps(props: ChatComposerProps): ComposerViewProps {
+  return { mode: props.mode, ...props.emptyState, ...props.attachments, ...props.runtime, ...props.inputState, ...props.toolState, ...props.modeState, ...props.actions }
+}

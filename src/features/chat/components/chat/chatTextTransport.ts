@@ -35,7 +35,6 @@ function failTextTurn(
   error: unknown,
   fallbackMessage: string,
 ) {
-  console.error(`[ChatInterface] ${params.logPrefix} sendMessage failed`, error)
   params.completeSession(params.chatId, params.isChatActive(params.chatId))
   if (params.isChatActive(params.chatId)) {
     params.onError(error, fallbackMessage)

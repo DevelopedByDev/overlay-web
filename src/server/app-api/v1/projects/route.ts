@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { handleRouteError } from '@/server/app-api/route-errors'
+import { readValidatedJson, readValidatedQuery } from '@/server/app-api/validated-input'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
+import {
+  CreateProjectRequest,
+  DeleteProjectRequest,
+  ProjectListQuery,
+  UpdateProjectRequest,
+} from '@/shared/schemas/projects'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type ProjectDoc = {
@@ -26,9 +33,12 @@ function readBooleanParam(value: string | null): boolean | undefined {
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
+    const queryResult = readValidatedQuery(request, context, ProjectListQuery)
+    if (!queryResult.ok) return queryResult.response
+    const query = queryResult.data
     const { auth } = context
     const serverSecret = getInternalApiSecret()
-    const projectId = request.nextUrl.searchParams.get('projectId')
+    const projectId = query.projectId ?? null
 
     if (projectId) {
       const project = await convex.query<ProjectDoc | null>('projects/projects:get', {
@@ -40,9 +50,9 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json(project)
     }
 
-    const updatedSinceParam = request.nextUrl.searchParams.get('updatedSince')
+    const updatedSinceParam = query.updatedSince
     const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
-    const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
+    const includeDeleted = readBooleanParam(query.includeDeleted ?? null)
 
     const projects = await convex.query<ProjectDoc[]>('projects/projects:list', {
       userId: auth.userId,
@@ -62,14 +72,9 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await request.json() as {
-      name?: string
-      parentId?: string | null
-      instructions?: string
-      clientId?: string
-      accessToken?: string
-      userId?: string
-    }
+    const bodyResult = await readValidatedJson(request, context, CreateProjectRequest)
+    if (!bodyResult.ok) return bodyResult.response
+    const body = bodyResult.data
     const { auth } = context
     const serverSecret = getInternalApiSecret()
     const { name, parentId, instructions, clientId } = body
@@ -99,14 +104,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await request.json() as {
-      projectId?: string
-      name?: string
-      instructions?: string
-      parentId?: string | null
-      accessToken?: string
-      userId?: string
-    }
+    const bodyResult = await readValidatedJson(request, context, UpdateProjectRequest)
+    if (!bodyResult.ok) return bodyResult.response
+    const body = bodyResult.data
     const { auth } = context
     const serverSecret = getInternalApiSecret()
     const { projectId, name, instructions, parentId } = body
@@ -136,9 +136,12 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
 export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
+    const queryResult = readValidatedQuery(request, context, DeleteProjectRequest)
+    if (!queryResult.ok) return queryResult.response
+    const query = queryResult.data
     const { auth } = context
     const serverSecret = getInternalApiSecret()
-    const projectId = request.nextUrl.searchParams.get('projectId')
+    const projectId = query.projectId ?? null
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
 
     // Cascade delete child projects first (Convex mutation handles each project's items)

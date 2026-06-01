@@ -1,6 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { readValidatedJson } from '@/server/app-api/validated-input'
 import { convertToModelMessages, stepCountIs, ToolLoopAgent, type UIMessage } from '@/server/ai/sdk'
 import type { LanguageModelV3 } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -29,6 +30,7 @@ import {
   resolveNvidiaApiKey,
 } from '@/server/ai/model-runtime'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
+import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   actContextService,
   actConversationErrorResponse,
@@ -88,6 +90,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const _ttftDebug = process.env.TTFT_DEBUG === 'true'
     let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
     if (_ttftDebug) _t0 = performance.now()
+    const bodyResult = await readValidatedJson(request, context, ActConversationRequest)
+    if (!bodyResult.ok) return bodyResult.response
     const {
       messages,
       systemPrompt,
@@ -111,29 +115,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
       multiModelTotal: rawMultiModelTotal,
-    }: {
-      messages: UIMessage[]
-      systemPrompt?: string
-      conversationId?: string
-      turnId?: string
-      modelId?: string
-      indexedFileNames?: string[]
-      indexedAttachments?: unknown
-      attachmentNames?: string[]
-      replyContextForModel?: string
-      historyBaseModelId?: string
-      mode?: 'chat' | 'automate'
-      automationMode?: boolean
-      automationExecution?: boolean
-      mediaToolIntent?: 'image' | 'video' | null
-      requestedToolIds?: unknown
-      memoryEnabled?: boolean
-      actAbortTimeoutMs?: number
-      streamPersistenceMode?: 'convex-deltas' | 'cloudflare-relay' | 'direct'
-      mentions?: Array<{ type: string; id: string; name: string; fileIds?: string[] }>
-      multiModelSlotIndex?: number
-      multiModelTotal?: number
-    } = await request.json()
+    } = bodyResult.data
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json({ error: 'messages required' }, { status: 400 })
+    }
+    const uiMessages = messages as UIMessage[]
     actWebhookSkip = automationExecution === true
     const { auth } = context
 	    const userId = auth.userId
@@ -181,7 +167,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       latestUserParts,
       latestUserText,
     } = actMessagePersistenceService.getLatestUserPersistence({
-      messages,
+      messages: uiMessages,
       attachmentNames,
     })
 
@@ -265,7 +251,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ? indexedFilesSystemNotePreloaded(indexedAttachmentList)
       : indexedFilesSystemNote(indexedAttachmentList)
     let messagesForModel = await actContextService.buildMessagesForModel({
-      requestMessages: messages,
+      requestMessages: uiMessages,
       latestUserMessage,
       latestTurnId: tid,
       conversationId: cid,
@@ -488,7 +474,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const hasCitations = Object.keys(sourceCitationMap).length > 0
 
     const _uiResp = result.toUIMessageStreamResponse({
-      originalMessages: messages,
+      originalMessages: uiMessages,
       onError: (error: unknown) => userFacingOpenRouterError(error),
       messageMetadata: ({ part }) => {
         const metadata: Record<string, unknown> = {}
@@ -646,7 +632,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       modelId: effectiveModelId,
       paid,
       onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
-      requiresVision: messagesRequireVision(messages),
+      requiresVision: messagesRequireVision(uiMessages),
       maxCandidates: MAX_ACT_MODEL_ATTEMPTS - 1,
     })
     const attemptModelIds = [...new Set([effectiveModelId, ...fallbackModelIds])].slice(0, MAX_ACT_MODEL_ATTEMPTS)

@@ -29,6 +29,8 @@ type Project = ProjectSummary
 type ProjectChat = ProjectChatSummary
 type ProjectFile = ProjectFileSummary
 
+const arrayOrEmpty = <T,>(value: unknown): T[] => Array.isArray(value) ? value : []
+
 export function FilesInlinePanel({
   searchQuery = '',
   onNavigate,
@@ -144,12 +146,8 @@ export function ProjectsInlinePanel({
 
   const loadProjects = useCallback(async () => {
     try {
-      setProjects(await overlayAppClient.projects.get<Project[]>({ limit: 100 }))
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
+      setProjects(arrayOrEmpty<Project>(await overlayAppClient.projects.get<Project[]>({ limit: 100 })))
+    } catch { setProjects([]) } finally { setLoading(false) }
   }, [])
 
   useEffect(() => {
@@ -167,7 +165,7 @@ export function ProjectsInlinePanel({
       ])
       const noteRows = Array.isArray(notes) ? projectNotesFromFiles(notes) : []
       const fileRows = Array.isArray(files) ? projectFilesExcludingNotes(files) : []
-      setItemsByProject((prev) => ({ ...prev, [projectId]: { chats, notes: noteRows, files: fileRows } }))
+      setItemsByProject((prev) => ({ ...prev, [projectId]: { chats: arrayOrEmpty<ProjectChat>(chats), notes: noteRows, files: fileRows } }))
     } finally {
       setItemsLoading((prev) => {
         const next = new Set(prev)

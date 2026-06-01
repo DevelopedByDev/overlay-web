@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { getOverlaySession } from '@/server/auth/session'
-import ChatInterface from '@/features/chat/components/ChatInterface'
+import ChatSuspenseBoundary from '@/features/chat/components/ChatSuspenseBoundary'
 import { getInitialChatHistory } from '@/server/app/route-data'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
@@ -30,7 +30,7 @@ async function AutomationsRouteContent({
 }) {
   const initialChats = userId ? await getInitialChatHistory() : []
   return (
-    <ChatInterface
+    <ChatSuspenseBoundary
       userId={userId}
       firstName={firstName}
       mode="automate"

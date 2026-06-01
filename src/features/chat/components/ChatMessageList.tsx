@@ -1,6 +1,6 @@
 'use client'
 
-import type { RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
@@ -9,10 +9,7 @@ import { ChatMessage } from './ChatMessage'
 
 type ChatInstance = UseChatHelpers<UIMessage>
 
-type ChatMessageListProps = {
-  messagesScrollRef: RefObject<HTMLDivElement | null>
-  messagesEndRef: RefObject<HTMLDivElement | null>
-  showLoadingState: boolean
+export type ChatMessageListState = {
   primaryMessages: UIMessage[]
   latestExchangeIndex: number
   generationResults: Map<number, GenerationResult[]>
@@ -23,6 +20,9 @@ type ChatMessageListProps = {
   selectedTabPerExchange: number[]
   selectedModels: string[]
   exchangeModes: ('ask' | 'act')[]
+}
+
+export type ChatMessageListRuntime = {
   actChat: ChatInstance
   chatInstances: ChatInstance[]
   isActiveLoading: boolean
@@ -31,6 +31,9 @@ type ChatMessageListProps = {
   exitingTurnIds: string[]
   sourcesPanel: { turnId: string; sources: WebSourceItem[] } | null
   getResponseForExchangeForModel: (modelId: string, exchangeIndex: number, slotOrder?: string[]) => UIMessage | null
+}
+
+export type ChatMessageListActions = {
   onTabSelect: (exchangeIndex: number, tabIndex: number) => void
   onJumpToReply: (turnId: string) => void
   onDeleteTurn: (turnId: string) => void | Promise<void>
@@ -45,40 +48,22 @@ type ChatMessageListProps = {
   onContinue: () => void
 }
 
+type ChatMessageListProps = {
+  messagesScrollRef: RefObject<HTMLDivElement | null>
+  messagesEndRef: RefObject<HTMLDivElement | null>
+  showLoadingState: boolean
+  state: ChatMessageListState
+  runtime: ChatMessageListRuntime
+  actions: ChatMessageListActions
+}
+
 export function ChatMessageList({
   messagesScrollRef,
   messagesEndRef,
   showLoadingState,
-  primaryMessages,
-  latestExchangeIndex,
-  generationResults,
-  exchangeGenTypes,
-  exchangeModels,
-  selectedImageModels,
-  selectedVideoModels,
-  selectedTabPerExchange,
-  selectedModels,
-  exchangeModes,
-  actChat,
-  chatInstances,
-  isActiveLoading,
-  isOptimisticLoading,
-  interruptedExchangeIdx,
-  exitingTurnIds,
-  sourcesPanel,
-  getResponseForExchangeForModel,
-  onTabSelect,
-  onJumpToReply,
-  onDeleteTurn,
-  onReplyToMediaPrompt,
-  onReplyToAssistantText,
-  onBranch,
-  onOpenDraft,
-  onOpenSources,
-  onRetry,
-  onOpenFilePreview,
-  onOpenAttachmentPreview,
-  onContinue,
+  state,
+  runtime,
+  actions,
 }: ChatMessageListProps) {
   return (
     <div
@@ -90,36 +75,9 @@ export function ChatMessageList({
           <ChatMessageListSkeleton />
         ) : (
           <ChatMessages
-            primaryMessages={primaryMessages}
-            latestExchangeIndex={latestExchangeIndex}
-            generationResults={generationResults}
-            exchangeGenTypes={exchangeGenTypes}
-            exchangeModels={exchangeModels}
-            selectedImageModels={selectedImageModels}
-            selectedVideoModels={selectedVideoModels}
-            selectedTabPerExchange={selectedTabPerExchange}
-            selectedModels={selectedModels}
-            exchangeModes={exchangeModes}
-            actChat={actChat}
-            chatInstances={chatInstances}
-            isActiveLoading={isActiveLoading}
-            isOptimisticLoading={isOptimisticLoading}
-            interruptedExchangeIdx={interruptedExchangeIdx}
-            exitingTurnIds={exitingTurnIds}
-            sourcesPanel={sourcesPanel}
-            getResponseForExchangeForModel={getResponseForExchangeForModel}
-            onTabSelect={onTabSelect}
-            onJumpToReply={onJumpToReply}
-            onDeleteTurn={onDeleteTurn}
-            onReplyToMediaPrompt={onReplyToMediaPrompt}
-            onReplyToAssistantText={onReplyToAssistantText}
-            onBranch={onBranch}
-            onOpenDraft={onOpenDraft}
-            onOpenSources={onOpenSources}
-            onRetry={onRetry}
-            onOpenFilePreview={onOpenFilePreview}
-            onOpenAttachmentPreview={onOpenAttachmentPreview}
-            onContinue={onContinue}
+            state={state}
+            runtime={runtime}
+            actions={actions}
           />
         )}
         <div ref={messagesEndRef} />
@@ -128,14 +86,18 @@ export function ChatMessageList({
   )
 }
 
-function ChatMessages(props: Omit<ChatMessageListProps, 'messagesScrollRef' | 'messagesEndRef' | 'showLoadingState'>) {
-  const blocks: React.ReactNode[] = []
+function ChatMessages({
+  state,
+  runtime,
+  actions,
+}: Pick<ChatMessageListProps, 'state' | 'runtime' | 'actions'>) {
+  const blocks: ReactNode[] = []
   let exchangeIndex = 0
 
-  for (const message of props.primaryMessages) {
+  for (const message of state.primaryMessages) {
     if (message.role !== 'user') continue
     const currentExchangeIndex = exchangeIndex++
-    const generationType = props.exchangeGenTypes[currentExchangeIndex]
+    const generationType = state.exchangeGenTypes[currentExchangeIndex]
 
     if (generationType === 'image' || generationType === 'video') {
       blocks.push(
@@ -144,15 +106,15 @@ function ChatMessages(props: Omit<ChatMessageListProps, 'messagesScrollRef' | 'm
           kind={generationType}
           message={message}
           exchangeIndex={currentExchangeIndex}
-          generationResults={props.generationResults.get(currentExchangeIndex)}
-          exchangeModels={props.exchangeModels[currentExchangeIndex] ?? []}
-          selectedImageModels={props.selectedImageModels}
-          selectedVideoModels={props.selectedVideoModels}
-          exitingTurnIds={props.exitingTurnIds}
-          onJumpToReply={props.onJumpToReply}
-          onDeleteTurn={props.onDeleteTurn}
-          onReplyToMediaPrompt={props.onReplyToMediaPrompt}
-          onOpenAttachmentPreview={props.onOpenAttachmentPreview}
+          generationResults={state.generationResults.get(currentExchangeIndex)}
+          exchangeModels={state.exchangeModels[currentExchangeIndex] ?? []}
+          selectedImageModels={state.selectedImageModels}
+          selectedVideoModels={state.selectedVideoModels}
+          exitingTurnIds={runtime.exitingTurnIds}
+          onJumpToReply={actions.onJumpToReply}
+          onDeleteTurn={actions.onDeleteTurn}
+          onReplyToMediaPrompt={actions.onReplyToMediaPrompt}
+          onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
         />,
       )
       continue
@@ -164,32 +126,32 @@ function ChatMessages(props: Omit<ChatMessageListProps, 'messagesScrollRef' | 'm
         kind="text"
         message={message}
         exchangeIndex={currentExchangeIndex}
-        primaryMessages={props.primaryMessages}
-        latestExchangeIndex={props.latestExchangeIndex}
-        actChat={props.actChat}
-        chatInstances={props.chatInstances}
-        exchangeModes={props.exchangeModes}
-        exchangeModels={props.exchangeModels}
-        selectedTabPerExchange={props.selectedTabPerExchange}
-        selectedModels={props.selectedModels}
-        isActiveLoading={props.isActiveLoading}
-        isOptimisticLoading={props.isOptimisticLoading}
-        interruptedExchangeIdx={props.interruptedExchangeIdx}
-        exitingTurnIds={props.exitingTurnIds}
-        sourcesPanel={props.sourcesPanel}
-        getResponseForExchangeForModel={props.getResponseForExchangeForModel}
-        onTabSelect={props.onTabSelect}
-        onJumpToReply={props.onJumpToReply}
-        onDeleteTurn={props.onDeleteTurn}
-        onReplyToAssistantText={props.onReplyToAssistantText}
-        onBranch={props.onBranch}
-        onOpenDraft={props.onOpenDraft}
-        onOpenSources={(turnId: string, sources: WebSourceItem[]) => props.onOpenSources(turnId, sources)}
-        onRetry={props.onRetry}
-          onOpenFilePreview={props.onOpenFilePreview}
-          onOpenAttachmentPreview={props.onOpenAttachmentPreview}
-          onContinue={props.onContinue}
-        />,
+        primaryMessages={state.primaryMessages}
+        latestExchangeIndex={state.latestExchangeIndex}
+        actChat={runtime.actChat}
+        chatInstances={runtime.chatInstances}
+        exchangeModes={state.exchangeModes}
+        exchangeModels={state.exchangeModels}
+        selectedTabPerExchange={state.selectedTabPerExchange}
+        selectedModels={state.selectedModels}
+        isActiveLoading={runtime.isActiveLoading}
+        isOptimisticLoading={runtime.isOptimisticLoading}
+        interruptedExchangeIdx={runtime.interruptedExchangeIdx}
+        exitingTurnIds={runtime.exitingTurnIds}
+        sourcesPanel={runtime.sourcesPanel}
+        getResponseForExchangeForModel={runtime.getResponseForExchangeForModel}
+        onTabSelect={actions.onTabSelect}
+        onJumpToReply={actions.onJumpToReply}
+        onDeleteTurn={actions.onDeleteTurn}
+        onReplyToAssistantText={actions.onReplyToAssistantText}
+        onBranch={actions.onBranch}
+        onOpenDraft={actions.onOpenDraft}
+        onOpenSources={(turnId: string, sources: WebSourceItem[]) => actions.onOpenSources(turnId, sources)}
+        onRetry={actions.onRetry}
+        onOpenFilePreview={actions.onOpenFilePreview}
+        onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
+        onContinue={actions.onContinue}
+      />,
     )
   }
 

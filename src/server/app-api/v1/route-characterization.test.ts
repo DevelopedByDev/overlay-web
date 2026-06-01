@@ -138,6 +138,68 @@ test('files DELETE route preserves missing fileId error shape', async () => {
   assert.deepEqual(await readJson(response), { error: 'fileId required' })
 })
 
+test('generate-image rejects malformed request bodies before provider work', async () => {
+  const route = await import('./generate-image/route')
+  const response = await route.POST(
+    request('/api/v1/generate-image', {
+      method: 'POST',
+      body: JSON.stringify({ prompt: 123 }),
+    }),
+    context(),
+  )
+
+  assert.equal(response.status, 400)
+  const body = await readJson(response) as { error?: string; issues?: unknown[] }
+  assert.equal(body.error, 'Invalid request')
+  assert.ok(Array.isArray(body.issues))
+})
+
+test('generate-video rejects malformed request bodies before provider work', async () => {
+  const route = await import('./generate-video/route')
+  const response = await route.POST(
+    request('/api/v1/generate-video', {
+      method: 'POST',
+      body: JSON.stringify({ prompt: 'make a clip', videoSubMode: 'unsupported-mode' }),
+    }),
+    context(),
+  )
+
+  assert.equal(response.status, 400)
+  const body = await readJson(response) as { error?: string; issues?: unknown[] }
+  assert.equal(body.error, 'Invalid request')
+  assert.ok(Array.isArray(body.issues))
+})
+
+test('projects POST rejects malformed request bodies before Convex work', async () => {
+  const route = await import('./projects/route')
+  const response = await route.POST(
+    request('/api/v1/projects', {
+      method: 'POST',
+      body: JSON.stringify({ name: 123 }),
+    }),
+    context(),
+  )
+
+  assert.equal(response.status, 400)
+  const body = await readJson(response) as { error?: string; issues?: unknown[] }
+  assert.equal(body.error, 'Invalid request')
+  assert.ok(Array.isArray(body.issues))
+})
+
+test('conversations act keeps legacy missing messages error after schema validation', async () => {
+  const route = await import('./conversations/act/route')
+  const response = await route.POST(
+    request('/api/v1/conversations/act', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+    context(),
+  )
+
+  assert.equal(response.status, 400)
+  assert.deepEqual(await readJson(response), { error: 'messages required' })
+})
+
 test('automations GET route preserves list response shape', async (t) => {
   t.mock.method(convex, 'query', async (path: string) => {
     assert.equal(path, 'automations/automations:list')
