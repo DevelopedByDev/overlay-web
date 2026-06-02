@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { OverlaySidebarAction, OverlaySidebarActionKey } from '@overlay/app-core'
 import { readNewChatModelFieldsFromStorage } from '@/shared/chat/chat-model-prefs'
@@ -43,7 +43,6 @@ export function useAppSidebarActions({
   onProjectCreated,
 }: UseAppSidebarActionsOptions) {
   const router = useRouter()
-  const [pendingActionKey, setPendingActionKey] = useState<OverlaySidebarActionKey | null>(null)
 
   const createChat = useCallback(async () => {
     if (!user) {
@@ -75,61 +74,15 @@ export function useAppSidebarActions({
     return true
   }, [onChatCreated, onCloseMobileMenu, requireAuth, router, user])
 
-  const createAutomationConversation = useCallback(async () => {
+  const startAutomationDraft = useCallback(() => {
     if (!user) {
       requireAuth('send')
       return false
     }
-    if (pendingActionKey === 'automations.create') return false
-    setPendingActionKey('automations.create')
-    const models = readNewChatModelFieldsFromStorage()
-    const title = 'New automation'
-    try {
-      const conversationKey = createIdempotencyKey()
-      const res = await overlayAppClient.conversations.createResponse(
-        {
-          title,
-          askModelIds: models.askModelIds,
-          actModelId: models.actModelId,
-          lastMode: 'act',
-        },
-        { idempotencyKey: conversationKey },
-      )
-      if (!res.ok) return false
-      const data = await res.json() as {
-        id?: string
-        conversation?: { _id: string; title: string; lastModified: number }
-      }
-      if (!data.id) return false
-      const chat = data.conversation ?? { _id: data.id, title, lastModified: 0 }
-      upsertCachedChat(chat)
-      dispatchChatCreated({ chat })
-      const automationRes = await overlayAppClient.automations.createResponse(
-        {
-          name: title,
-          description: 'Draft automation. Add a description before enabling it.',
-          instructions: 'Describe what this automation should do.',
-          enabled: false,
-          schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-          modelId: models.actModelId,
-          sourceConversationId: data.id,
-        },
-        { idempotencyKey: createIdempotencyKey() },
-      )
-      if (!automationRes.ok) return false
-      const automationData = await automationRes.json() as { id?: string }
-      const automationId = automationData.id ?? null
-      if (!automationId) return false
-      window.dispatchEvent(new Event('overlay:automations-updated'))
-      onCloseMobileMenu()
-      const query = new URLSearchParams({ id: data.id, automationId })
-      router.push(`/app/automations?${query.toString()}`)
-      return true
-    } finally {
-      setPendingActionKey(null)
-    }
-  }, [onCloseMobileMenu, pendingActionKey, requireAuth, router, user])
+    onCloseMobileMenu()
+    router.push('/app/automations')
+    return true
+  }, [onCloseMobileMenu, requireAuth, router, user])
 
   const createNote = useCallback(async () => {
     if (!user) {
@@ -205,19 +158,18 @@ export function useAppSidebarActions({
     if (action.actionKey === 'chat.create') return createChat()
     if (action.actionKey === 'notes.create') return createNote()
     if (action.actionKey === 'projects.create') return createProject()
-    return createAutomationConversation()
+    return startAutomationDraft()
   }, [
-    createAutomationConversation,
     createChat,
     createNote,
     createProject,
     requireAuth,
+    startAutomationDraft,
     user,
   ])
 
   return {
     createChat,
-    pendingActionKey,
     runSidebarAction,
   }
 }

@@ -141,22 +141,42 @@ body {
   overflow-x: hidden;
 }
 
-.temporary-chat-dashed-surface {
-  --foreground: #111111;
-  --muted: #525252;
-  --muted-light: #7a7a7a;
-  --border: #d7d7d7;
-  --surface-muted: #f3f3f3;
-  --surface-subtle: #f7f7f7;
+.temporary-chat-inverse-surface {
+  --temporary-chat-bg: #111111;
+  --temporary-chat-fg: #ffffff;
+  --temporary-chat-muted: #d4d4d4;
+  --temporary-chat-border: rgba(255, 255, 255, 0.42);
+  --foreground: var(--temporary-chat-fg);
+  --muted: var(--temporary-chat-muted);
+  --muted-light: #a3a3a3;
+  --border: rgba(255, 255, 255, 0.22);
+  --surface-muted: rgba(255, 255, 255, 0.12);
+  --surface-subtle: rgba(255, 255, 255, 0.09);
+  --surface-elevated: #111111;
+  background-color: var(--temporary-chat-bg);
+  color: var(--temporary-chat-fg);
+}
+
+[data-theme='dark'] .temporary-chat-inverse-surface {
+  --temporary-chat-bg: #ffffff;
+  --temporary-chat-fg: #111111;
+  --temporary-chat-muted: #525252;
+  --temporary-chat-border: rgba(17, 17, 17, 0.32);
+  --muted-light: #737373;
+  --border: rgba(17, 17, 17, 0.18);
+  --surface-muted: rgba(17, 17, 17, 0.08);
+  --surface-subtle: rgba(17, 17, 17, 0.06);
   --surface-elevated: #ffffff;
-  background-color: #ffffff;
-  background-image: repeating-linear-gradient(
-    135deg,
-    rgba(17, 17, 17, 0.055) 0,
-    rgba(17, 17, 17, 0.055) 1px,
-    transparent 1px,
-    transparent 8px
+}
+
+.temporary-chat-body-pattern {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 18%, transparent) 1px,
+    transparent 1px
   );
+  background-position: 0 0;
+  background-size: 18px 18px;
 }
 
 html[data-temporary-chat-ui] .app-main {

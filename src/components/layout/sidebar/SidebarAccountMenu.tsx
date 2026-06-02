@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowUp, LogOut, User } from 'lucide-react'
+import { LogOut, User } from 'lucide-react'
 import { PROFILE_APP_LINKS } from './sidebarNavigation'
 import { StorageBar, UsageBar, type SidebarEntitlements } from './SidebarUsageMeters'
 
@@ -11,16 +11,12 @@ export function SidebarAccountMenu({
   itemPaddingClass = 'py-2',
   onAccountClick,
   onSignOut,
-  onUpgradeClick,
-  showUpgradeCta,
 }: {
   billingEnabled: boolean
   entitlements: SidebarEntitlements | null
   itemPaddingClass?: string
   onAccountClick: () => void
   onSignOut: () => void
-  onUpgradeClick: () => void
-  showUpgradeCta: boolean
 }) {
   return (
     <>
@@ -63,16 +59,6 @@ export function SidebarAccountMenu({
           <User size={13} />
           Account
         </Link>
-        {showUpgradeCta ? (
-          <Link
-            href="/pricing"
-            onClick={onUpgradeClick}
-            className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs font-semibold text-[#b45309] transition-colors hover:bg-[#fffbeb]`}
-          >
-            <ArrowUp size={13} className="shrink-0" />
-            Upgrade
-          </Link>
-        ) : null}
       </div>
       <div className="border-t border-[var(--border)]">
         <button

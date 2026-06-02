@@ -27,7 +27,7 @@ export function GenerationModeToggle({
   const stretch = layout === 'stretch'
   return (
     <div
-      className={`flex h-8 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
+      className={`flex h-8 items-center rounded-lg bg-(--surface-subtle) p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
     >
       {MODES.map(({ value, label, Icon }) => {
         const active = mode === value
@@ -44,8 +44,8 @@ export function GenerationModeToggle({
                 : 'h-7 gap-1 px-2.5'
             } ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${
               active
-                ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                ? 'bg-(--surface-elevated) font-medium text-(--foreground) shadow-sm'
+                : 'text-(--muted) hover:text-(--foreground)'
             }`}
           >
             <Icon size={stretch ? 13 : 11} className="shrink-0" />
@@ -107,16 +107,16 @@ export function CollapsibleGenerationMode({
         disabled={disabled}
         onClick={() => !disabled && setOpen((v) => !v)}
         title={`Output: ${label}`}
-        className={`inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--surface-subtle)] px-2 text-xs text-[var(--muted)] transition-colors ${
-          disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
+        className={`inline-flex h-8 items-center gap-1 rounded-lg bg-(--surface-subtle) px-2 text-xs text-(--muted) transition-colors ${
+          disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-(--surface-muted) hover:text-(--foreground)'
         }`}
       >
         <Icon size={14} className="shrink-0" />
-        <span className="max-w-[4.5rem] truncate sm:max-w-none">{label}</span>
+        <span className="max-w-18 truncate sm:max-w-none">{label}</span>
         <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
-        <div className="absolute bottom-full left-0 z-50 mb-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
+        <div className="absolute bottom-full left-0 z-50 mb-1.5 rounded-xl border border-(--border) bg-(--surface-elevated) p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
           <GenerationModeToggle
             mode={mode}
             onChange={(next) => {
@@ -125,7 +125,7 @@ export function CollapsibleGenerationMode({
             }}
             disabled={disabled}
             layout="stretch"
-            className="min-w-[11rem]"
+            className="min-w-44"
           />
         </div>
       ) : null}
@@ -152,7 +152,7 @@ interface AskActModeToggleProps {
 /** Same chrome as {@link GenerationModeToggle} — for the composer only. */
 export function AskActModeToggle({ mode, onChange, disabled, className = '' }: AskActModeToggleProps) {
   return (
-    <div className={`flex h-8 items-center bg-[var(--surface-subtle)] rounded-lg p-0.5 shrink-0 ${className}`}>
+    <div className={`flex h-8 items-center bg-(--surface-subtle) rounded-lg p-0.5 shrink-0 ${className}`}>
       {ASK_ACT_MODES.map(({ value, label, Icon }) => {
         const active = mode === value
         return (
@@ -166,8 +166,8 @@ export function AskActModeToggle({ mode, onChange, disabled, className = '' }: A
               disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
             } ${
               active
-                ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm font-medium'
-                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                ? 'bg-(--surface-elevated) text-(--foreground) shadow-sm font-medium'
+                : 'text-(--muted) hover:text-(--foreground)'
             }`}
           >
             <Icon size={11} />

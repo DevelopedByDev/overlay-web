@@ -38,19 +38,19 @@ export function SourcesPanel({
       aria-hidden={!open}
       className={
         shellPanel
-          ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--background)]'
-          : `hidden h-full shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--background)] transition-[width] duration-200 md:flex ${
+          ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-(--background)'
+          : `hidden h-full shrink-0 flex-col overflow-hidden border-l border-(--border) bg-(--background) transition-[width] duration-200 md:flex ${
               open ? 'w-[min(40vw,380px)]' : 'w-0 border-l-0'
             }`
       }
     >
       <div className={shellPanel ? 'flex h-full min-h-0 w-full flex-col' : 'flex h-full w-[min(40vw,380px)] flex-col'}>
-        <div className="flex h-16 min-h-16 max-h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
-          <h2 className="text-sm font-medium text-[var(--foreground)]">Sources</h2>
+        <div className="flex h-16 min-h-16 max-h-16 shrink-0 items-center justify-between border-b border-(--border) px-4">
+          <h2 className="text-sm font-medium text-(--foreground)">Sources</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className="rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
             aria-label="Close"
           >
             <X size={18} strokeWidth={1.75} />
@@ -84,24 +84,24 @@ export function SourcesPanel({
                     href={safeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group block rounded-lg px-2 py-2 transition-colors hover:bg-[var(--surface-subtle)]"
+                    className="group block rounded-lg px-2 py-2 transition-colors hover:bg-(--surface-subtle)"
                   >
                     <div className="flex min-w-0 items-start gap-2.5">
-                      <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-[var(--surface-elevated)] ring-1 ring-[var(--border)]">
+                      <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-(--surface-elevated) ring-1 ring-(--border)">
                         {fav ? (
                           <img src={fav} alt="" className="h-3.5 w-3.5" width={14} height={14} />
                         ) : (
-                          <span className="text-[9px] font-semibold text-[var(--muted)]">
+                          <span className="text-[9px] font-semibold text-(--muted)">
                             {site.charAt(0).toUpperCase()}
                           </span>
                         )}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-medium leading-snug text-[var(--foreground)] group-hover:underline">
+                        <p className="truncate text-[13px] font-medium leading-snug text-(--foreground) group-hover:underline">
                           {displayTitle}
                         </p>
                         {subtext ? (
-                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-[var(--muted)]">
+                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-(--muted)">
                             {subtext}
                           </p>
                         ) : null}

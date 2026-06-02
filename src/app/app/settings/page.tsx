@@ -264,24 +264,27 @@ export default function SettingsPage() {
                 disabled={busy}
                 onChange={() => void updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
               />
-              <ThemePresetRow
-                label="Light theme"
-                description="Choose the color preset used when the app is in light mode."
-                presets={LIGHT_PRESETS}
-                value={settings.lightThemePreset}
-                disabled={busy}
-                icon={<Palette size={18} strokeWidth={1.8} />}
-                onChange={(id) => void updateSettings({ lightThemePreset: id })}
-              />
-              <ThemePresetRow
-                label="Dark theme"
-                description="Choose the color preset used when the app is in dark mode."
-                presets={DARK_PRESETS}
-                value={settings.darkThemePreset}
-                disabled={busy}
-                icon={<Palette size={18} strokeWidth={1.8} />}
-                onChange={(id) => void updateSettings({ darkThemePreset: id })}
-              />
+              {settings.theme === 'dark' ? (
+                <ThemePresetRow
+                  label="Dark theme"
+                  description="Choose the color preset used when the app is in dark mode."
+                  presets={DARK_PRESETS}
+                  value={settings.darkThemePreset}
+                  disabled={busy}
+                  icon={<Palette size={18} strokeWidth={1.8} />}
+                  onChange={(id) => void updateSettings({ darkThemePreset: id })}
+                />
+              ) : (
+                <ThemePresetRow
+                  label="Light theme"
+                  description="Choose the color preset used when the app is in light mode."
+                  presets={LIGHT_PRESETS}
+                  value={settings.lightThemePreset}
+                  disabled={busy}
+                  icon={<Palette size={18} strokeWidth={1.8} />}
+                  onChange={(id) => void updateSettings({ lightThemePreset: id })}
+                />
+              )}
             </SettingsGroup>
           )}
 

@@ -199,7 +199,6 @@ export const DEFAULT_OVERLAY_SIDEBAR_ACTIONS: readonly OverlaySidebarAction[] = 
     navigationItemId: 'automations',
     routePatterns: ['/app/automations'],
     requiresAuth: true,
-    primaryNavAction: true,
     featureFlagId: 'automations',
     requiredCapabilities: ['automations'],
     order: 40,

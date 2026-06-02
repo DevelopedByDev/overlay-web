@@ -33,11 +33,11 @@ export function MediaSlotOutput({
   return (
     <div className={`flex min-w-0 flex-col ${isMulti ? 'w-full gap-1.5' : 'gap-2 self-start'}`}>
       {isMulti ? (
-        <div className="h-5 text-xs font-medium text-[var(--muted)]">
+        <div className="h-5 text-xs font-medium text-(--muted)">
           {multiStatusLabel}
         </div>
       ) : (!result || result.status === 'generating') ? (
-        <p className="text-xs font-medium text-[var(--muted)]">
+        <p className="text-xs font-medium text-(--muted)">
           {genType === 'image' ? 'Creating image' : 'Creating video'}
         </p>
       ) : null}
@@ -62,7 +62,7 @@ export function MediaSlotOutput({
         >
           {isMulti ? (
             <div className="mx-auto flex max-w-[240px] flex-col items-center gap-2 px-5 text-center">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-elevated)] text-red-500 shadow-sm">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--surface-elevated) text-red-500 shadow-sm">
                 <AlertCircle size={18} />
               </span>
               <div className="space-y-1">
@@ -133,7 +133,7 @@ export function MediaCompletedReveal({
 
   return (
     <div
-      className={`relative group max-w-full shrink-0 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] ${isMulti ? 'w-full' : ''} ${frameClass}`}
+      className={`relative group max-w-full shrink-0 overflow-hidden rounded-xl border border-(--border) bg-(--surface-muted) ${isMulti ? 'w-full' : ''} ${frameClass}`}
       style={singleBoxStyle}
     >
       <div
@@ -149,7 +149,7 @@ export function MediaCompletedReveal({
           onLoad={markReady}
           onError={markReady}
           className={`absolute inset-0 z-20 block h-full w-full rounded-xl transition-opacity duration-300 ease-out ${
-            isMulti ? 'object-contain object-center' : 'border border-[var(--border)] object-contain'
+            isMulti ? 'object-contain object-center' : 'border border-(--border) object-contain'
           } ${ready ? 'opacity-100' : 'opacity-0'}`}
         />
       ) : (
@@ -162,12 +162,12 @@ export function MediaCompletedReveal({
           onLoadedMetadata={markReady}
           onCanPlay={markReady}
           onError={markReady}
-          className={`absolute inset-0 z-20 block h-full w-full rounded-xl ${isMulti ? 'object-contain object-center' : 'border border-[var(--border)]'} transition-opacity duration-300 ease-out ${
+          className={`absolute inset-0 z-20 block h-full w-full rounded-xl ${isMulti ? 'object-contain object-center' : 'border border-(--border)'} transition-opacity duration-300 ease-out ${
             ready ? 'opacity-100' : 'opacity-0'
           }`}
         />
       )}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 h-16 bg-gradient-to-b from-black/55 via-black/18 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 h-16 bg-linear-to-b from-black/55 via-black/18 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
       <div className="absolute inset-x-0 top-0 z-40 flex items-start justify-between gap-3 p-2.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
         <span className="min-w-0 rounded-full bg-black/30 px-2.5 py-1 text-[11px] font-medium leading-none text-white/95 backdrop-blur-[1px]">
           <span className="block truncate">{modelName}</span>
@@ -175,10 +175,10 @@ export function MediaCompletedReveal({
         <a
           href={url}
           download={genType === 'image' ? 'generated.png' : 'generated.mp4'}
-          className="pointer-events-auto shrink-0 rounded-full bg-[var(--glass-bg)] p-1.5 shadow-sm transition-colors hover:bg-[var(--surface-elevated)]"
+          className="pointer-events-auto shrink-0 rounded-full bg-(--glass-bg) p-1.5 shadow-sm transition-colors hover:bg-(--surface-elevated)"
           title="Download"
         >
-          <Download size={13} className="text-[var(--foreground)]" />
+          <Download size={13} className="text-(--foreground)" />
         </a>
       </div>
       {genType === 'video' && (

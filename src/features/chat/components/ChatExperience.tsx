@@ -177,7 +177,7 @@ function TemporaryChatButton({
         onClick={onClick}
         className={`flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-[background-color,border-color,box-shadow,color] duration-300 ${
           active
-            ? 'temporary-chat-dashed-surface border-dashed border-[#d7d7d7] text-[#111111] shadow-sm'
+            ? 'temporary-chat-inverse-surface border-dashed border-[var(--temporary-chat-border)] shadow-sm'
             : 'border-transparent bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
         } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
       >
@@ -237,6 +237,7 @@ export default function ChatExperience({
   const [isTemporaryChat, setIsTemporaryChat] = useState(false)
   const isTemporaryChatRef = useRef(false)
   isTemporaryChatRef.current = isTemporaryChat
+  const composerMode: 'chat' | 'automate' = isTemporaryChat ? 'chat' : mode
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(TEMPORARY_CHAT_UI_EVENT, {
@@ -403,7 +404,7 @@ export default function ChatExperience({
     addImages,
     handlePaste,
   } = useChatAttachments({ embedProjectId, setComposerNotice })
-  const emptyChatStarters = useEmptyChatStarters({ firstName, mode, userId })
+  const emptyChatStarters = useEmptyChatStarters({ firstName, mode: composerMode, userId })
 
   const [replyContext, setReplyContext] = useState<{
     snippet: string
@@ -2411,6 +2412,7 @@ export default function ChatExperience({
     const pendingChatDocumentsSnapshot = [...pendingChatDocuments]
     const mentionsSnapshot = [...mentions]
     const temporaryChatSnapshot = isTemporaryChat
+    const requestMode: 'chat' | 'automate' = temporaryChatSnapshot ? 'chat' : mode
     const selectedToolIdsSnapshot = [...selectedToolIds]
     const memoryEnabledSnapshot = memoryEnabled
     const hasReadyDocs = pendingChatDocumentsSnapshot.some((d) => d.status === 'ready')
@@ -2823,8 +2825,8 @@ export default function ChatExperience({
     const commonActBody = {
       ...(temporaryChatSnapshot ? { temporaryChat: true } : { conversationId: chatId }),
       turnId: textTurnId,
-      mode,
-      automationMode: mode === 'automate',
+      mode: requestMode,
+      automationMode: requestMode === 'automate',
       ...(indexedFileNames.length > 0
         ? { indexedFileNames, indexedAttachments: indexedAttachments }
         : {}),
@@ -3124,7 +3126,7 @@ export default function ChatExperience({
     autoContinuedForMessageRef.current.clear()
   }, [activeChatId])
 
-  const greetingLine = mode === 'automate' ? 'What are we automating today?' : chatGreetingLine(firstName)
+  const greetingLine = composerMode === 'automate' ? 'What are we automating today?' : chatGreetingLine(firstName)
 
   const selectAutomationDetailTab = useCallback((tab: AutomationDetailTab) => {
     const params = new URLSearchParams(searchParams?.toString() ?? '')
@@ -3374,7 +3376,7 @@ export default function ChatExperience({
                                       {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
                                       {m.name}
                                     </span>
-                                    <ModelBadges model={m} isFreeTier={isFreeTier} onUpgradeClick={() => router.push('/account')} />
+                                    <ModelBadges model={m} />
                                   </button>
                                 </div>
                               )
@@ -3441,15 +3443,6 @@ export default function ChatExperience({
                     </div>
                   )}
                 </div>
-              )}
-              {isFreeTier && (
-                <Link
-                  href={isBudgetExhaustedPaid ? '/account' : '/pricing'}
-                  className="hidden h-8 shrink-0 items-center gap-1 rounded-md bg-[#fffbeb] px-2.5 text-[11px] font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] md:flex"
-                >
-                  <ArrowUp size={10} />
-                  {isBudgetExhaustedPaid ? 'Top up' : 'Upgrade'}
-                </Link>
               )}
               <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
                 <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
@@ -3571,7 +3564,7 @@ export default function ChatExperience({
                               {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
                               {m.name}
                             </span>
-                            <ModelBadges model={m} isFreeTier={isFreeTier} onUpgradeClick={() => router.push('/account')} />
+                            <ModelBadges model={m} />
                           </button>
                         </div>
                       )
@@ -3741,7 +3734,14 @@ export default function ChatExperience({
           </div>
         </AppScreenHeader>
 
-        <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex min-h-0 flex-1 flex-col">
+        <AppScreenBody
+          padding="none"
+          maxWidth="none"
+          scroll="hidden"
+          className={`flex min-h-0 flex-1 flex-col transition-[background-color,background-image] duration-300 ${
+            isTemporaryChat ? 'temporary-chat-body-pattern' : ''
+          }`}
+        >
         {hasAutomationContext && !selectedAutomationLoading && !selectedAutomation && !showAutomationChatTab && (
           <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
             <p className="text-sm text-[var(--muted)]">Automation not found.</p>
@@ -3809,7 +3809,7 @@ export default function ChatExperience({
         )}
         {showAutomationChatTab && (
           <ChatComposer
-            mode={mode}
+            mode={composerMode}
             emptyState={{
               showCenteredEmptyChat,
               greetingLine,

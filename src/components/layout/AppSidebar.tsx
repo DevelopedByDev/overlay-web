@@ -7,7 +7,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore
 import {
   MessageSquare, User,
   ChevronUp, Plug, Sparkles, Server, Package,
-  Loader2, Menu, X, ArrowUp, Settings, ChevronDown, ChevronLeft, ChevronRight,
+  Loader2, Menu, X, Settings, ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
@@ -342,8 +342,6 @@ export default function AppSidebar({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  /** Hide until loaded so paid users never see a flash of the upgrade CTA. */
-  const showUpgradeCta = billingEnabled && entitlements !== null && entitlements.tier === 'free'
   const contextualAction = resolveSidebarActionForPath(pathname, sidebarActions)
   const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
   const hasInlineChildren = (href?: string) =>
@@ -623,18 +621,6 @@ export default function AppSidebar({
       </div>
 
       <div className={`space-y-3 border-t border-[var(--border)] py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
-        {showUpgradeCta && !isGuestConfirmed && (
-          <Link
-            href="/pricing"
-            title="Upgrade to Pro"
-            className={`flex w-full items-center gap-2 rounded-md border border-[#fde68a] bg-[#fffbeb] px-2.5 py-1.5 text-xs font-medium text-[#92400e] transition-colors hover:bg-[#fef3c7] ${
-              sidebarCollapsed ? 'justify-center' : ''
-            }`}
-          >
-            <ArrowUp size={13} className="shrink-0" />
-            {!sidebarCollapsed && <span className="truncate">Upgrade to Pro</span>}
-          </Link>
-        )}
         <div ref={menuRef} className="relative">
           {accountMenuOpen && (
             <div
@@ -654,11 +640,6 @@ export default function AppSidebar({
                   setAccountMenuOpen(false)
                   void handleSignOut()
                 }}
-                onUpgradeClick={() => {
-                  setAccountMenuOpen(false)
-                  setMobileMenuOpen(false)
-                }}
-                showUpgradeCta={showUpgradeCta}
               />
             </div>
           )}
@@ -733,8 +714,6 @@ export default function AppSidebar({
                     setMobileAccountOpen(false)
                     void handleSignOut()
                   }}
-                  onUpgradeClick={() => setMobileAccountOpen(false)}
-                  showUpgradeCta={showUpgradeCta}
                 />
               </div>
             )}

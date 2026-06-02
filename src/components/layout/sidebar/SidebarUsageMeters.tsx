@@ -29,7 +29,7 @@ export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements |
     (typeof entitlements.creditsTotal === 'number' ? Math.max(0, entitlements.creditsTotal * 100) : 0)
 
   if (planKind === 'free') {
-    return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Upgrade to a paid plan to use premium models and budgeted tools.</p>
+    return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Premium models and budgeted tools are unavailable on this plan.</p>
   }
 
   if (budgetTotalCents <= 0) return <p className="text-[11px] text-[#aaa]">No budget limit set</p>

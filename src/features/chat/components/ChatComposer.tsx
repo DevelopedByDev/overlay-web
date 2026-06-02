@@ -148,7 +148,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   return (
     <div className={`overflow-visible rounded-2xl border shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300 ${
       props.isTemporaryChat
-        ? 'temporary-chat-dashed-surface border-dashed border-[#d7d7d7] text-[#111111] shadow-[0_10px_30px_rgba(10,10,10,0.08)]'
+        ? 'temporary-chat-inverse-surface border-dashed border-[var(--temporary-chat-border)] shadow-[0_10px_30px_rgba(10,10,10,0.08)]'
         : 'border-[var(--border)] bg-[var(--surface-elevated)]'
     }`}>
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
@@ -189,7 +189,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           onPaste={props.onPaste}
           onUploadFile={() => props.docInputRef.current?.click()}
           placeholder={props.mode === 'automate' ? 'Describe an automation, use @ to reference files, skills, automations...' : 'Ask anything, use @ to reference files, skills, automations...'}
-          className={props.isTemporaryChat ? 'text-[#111111] empty:before:text-[#7a7a7a]' : undefined}
+          className={props.isTemporaryChat ? 'text-[var(--foreground)] empty:before:text-[var(--muted)]' : undefined}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
@@ -226,7 +226,11 @@ type ComposerControlsProps = ComposerViewProps & {
 
 function ComposerControls(props: ComposerControlsProps) {
   return (
-    <div className="mt-2 grid min-h-9 grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-center gap-2">
+    <div className={`mt-2 grid min-h-9 items-center gap-2 ${
+      props.isTemporaryChat
+        ? 'grid-cols-[auto_auto_minmax(0,1fr)_auto]'
+        : 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]'
+    }`}>
       <AttachMenu {...props} />
       <DelayedTooltip label="Reference files, skills, automations…" side="top">
         <button type="button" onClick={() => props.textareaRef.current?.openMentionPopup()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" aria-label="Insert mention">
@@ -238,7 +242,7 @@ function ComposerControls(props: ComposerControlsProps) {
           <DelayedTooltip label="Memory is off for this message." side="top">
             <div className="shrink-0">
               <ToolRequestChip
-                label="Memory Off"
+                label="Memory: OFF"
                 Icon={Brain}
                 onClear={props.onToggleMemory}
               />
@@ -259,16 +263,33 @@ function ComposerControls(props: ComposerControlsProps) {
         })}
         {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
       </div>
-      <ModeMenu {...props} />
+      {props.isTemporaryChat ? null : <ModeMenu {...props} />}
       {props.isActiveLoading ? (
         <DelayedTooltip label="Stop generating" side="top">
-          <button type="button" onClick={() => void props.onStop()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80">
-            <div className="h-3.5 w-3.5 rounded-sm bg-[var(--background)]" />
+          <button
+            type="button"
+            onClick={() => void props.onStop()}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:opacity-80 ${
+              props.isTemporaryChat
+                ? 'bg-[var(--temporary-chat-fg)] text-[var(--temporary-chat-bg)]'
+                : 'bg-[var(--foreground)] text-[var(--background)]'
+            }`}
+          >
+            <div className="h-3.5 w-3.5 rounded-sm bg-current" />
           </button>
         </DelayedTooltip>
       ) : (
         <DelayedTooltip label="Send (↵) · new line (⇧↵)" side="top">
-          <button type="button" onClick={() => void props.onSend()} disabled={props.disabledSend} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40">
+          <button
+            type="button"
+            onClick={() => void props.onSend()}
+            disabled={props.disabledSend}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:opacity-80 disabled:opacity-40 ${
+              props.isTemporaryChat
+                ? 'bg-[var(--temporary-chat-fg)] text-[var(--temporary-chat-bg)]'
+                : 'bg-[var(--foreground)] text-[var(--background)]'
+            }`}
+          >
             <Send size={17} strokeWidth={1.75} />
           </button>
         </DelayedTooltip>

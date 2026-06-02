@@ -1,5 +1,5 @@
-import { ArrowUp, BrainCircuit, Check, DollarSign, ImageIcon, ShieldCheck, X, Zap } from 'lucide-react'
-import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import { BrainCircuit, Check, DollarSign, ImageIcon, ShieldCheck, X, Zap } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 export interface ChatModelIndicatorModel {
   cost: number
@@ -13,41 +13,11 @@ export interface ChatModelIndicatorModel {
 
 export function ModelBadges({
   model,
-  isFreeTier,
-  onUpgradeClick,
 }: {
   model: ChatModelIndicatorModel
-  isFreeTier: boolean
-  onUpgradeClick?: () => void
 }) {
-  const showUpgrade = isFreeTier && model.cost > 0
-
-  function handleUpgradeClick(event: MouseEvent<HTMLSpanElement>) {
-    event.stopPropagation()
-    onUpgradeClick?.()
-  }
-
-  function handleUpgradeKeyDown(event: KeyboardEvent<HTMLSpanElement>) {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.stopPropagation()
-      onUpgradeClick?.()
-    }
-  }
-
   return (
     <span className="flex h-5 shrink-0 items-center gap-1">
-      {showUpgrade && (
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={handleUpgradeClick}
-          onKeyDown={handleUpgradeKeyDown}
-          className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded"
-          style={{ background: 'var(--chat-badge-upgrade-bg)', color: 'var(--chat-badge-upgrade-fg)' }}
-        >
-          <ArrowUp size={10} strokeWidth={2} />
-        </span>
-      )}
       {model.supportsVision && (
         <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
           <ImageIcon size={10} strokeWidth={1.75} />
