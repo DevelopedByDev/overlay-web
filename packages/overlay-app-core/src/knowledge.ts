@@ -151,6 +151,34 @@ export function sortedCurrentFolderFolders(
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
+export function collectKnowledgeFileSubtreeIds(
+  files: readonly Pick<KnowledgeFileNode, '_id' | 'parentId'>[],
+  rootIds: readonly string[],
+): Set<string> {
+  const deletedIds = new Set(rootIds)
+  let changed = true
+
+  while (changed) {
+    changed = false
+    for (const file of files) {
+      if (file.parentId && deletedIds.has(file.parentId) && !deletedIds.has(file._id)) {
+        deletedIds.add(file._id)
+        changed = true
+      }
+    }
+  }
+
+  return deletedIds
+}
+
+export function removeKnowledgeFileSubtrees<T extends Pick<KnowledgeFileNode, '_id' | 'parentId'>>(
+  files: readonly T[],
+  rootIds: readonly string[],
+): T[] {
+  const deletedIds = collectKnowledgeFileSubtreeIds(files, rootIds)
+  return files.filter((file) => !deletedIds.has(file._id))
+}
+
 export function canMoveKnowledgeFile(
   files: readonly Pick<KnowledgeFileNode, '_id' | 'parentId'>[],
   fileId: string,

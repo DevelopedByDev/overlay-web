@@ -1,15 +1,11 @@
-'use client'
-
-import { useSearchParams } from 'next/navigation'
-import { resolveKnowledgeLayout } from '@overlay/app-core'
+import { Suspense } from 'react'
 import { FilesRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { FilesRouteLoadingSkeleton } from './FilesRouteLoadingSkeleton'
 
 export default function Loading() {
-  const searchParams = useSearchParams()
-  const layout = resolveKnowledgeLayout({
-    layout: searchParams?.get('layout'),
-    activeTab: 'files',
-  })
-
-  return <FilesRouteSkeleton layout={layout} />
+  return (
+    <Suspense fallback={<FilesRouteSkeleton />}>
+      <FilesRouteLoadingSkeleton />
+    </Suspense>
+  )
 }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   canMoveKnowledgeFile,
+  collectKnowledgeFileSubtreeIds,
   createManualMemoryRequest,
   filePathLabel,
   filterKnowledgeFileNodes,
@@ -9,6 +10,7 @@ import {
   folderBreadcrumb,
   knowledgePendingPreview,
   opensInDocumentEditor,
+  removeKnowledgeFileSubtrees,
   resolveKnowledgeLayout,
   resolveKnowledgeOutputFilter,
   resolveKnowledgeTab,
@@ -42,6 +44,12 @@ test('knowledge file helpers filter, sort, and protect folder moves', () => {
   assert.deepEqual(folderBreadcrumb(files, files[1]!).map((file) => file._id), ['folder', 'nested'])
   assert.equal(canMoveKnowledgeFile(files, 'folder', 'nested'), false)
   assert.equal(canMoveKnowledgeFile(files, 'b', 'nested'), true)
+})
+
+test('knowledge file helpers remove deleted folders and descendants', () => {
+  assert.deepEqual([...collectKnowledgeFileSubtreeIds(files, ['folder'])], ['folder', 'nested', 'a'])
+  assert.deepEqual(removeKnowledgeFileSubtrees(files, ['folder']).map((file) => file._id), ['b'])
+  assert.deepEqual(removeKnowledgeFileSubtrees(files, ['a', 'b']).map((file) => file._id), ['folder', 'nested'])
 })
 
 test('knowledge memory and document helpers match web behavior', () => {

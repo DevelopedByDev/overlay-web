@@ -2,7 +2,7 @@
 
 // Compatibility wrapper: canonical knowledge contracts/controllers live in @overlay/app-core,
 // typed transport lives in @overlay/api-client, and reusable presentation lives in @overlay/modules-react.
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import posthog from 'posthog-js'
 import { FileViewer, getFileType, isEditableType } from '@/features/files/components/FileViewer'
@@ -12,15 +12,18 @@ import {
   FILES_CHANGED_EVENT,
   IMPORT_MEMORY_PROMPT,
   canMoveKnowledgeFile,
+  collectKnowledgeFileSubtreeIds,
   createManualMemoryRequest,
   filterKnowledgeFileNodes,
   filterMemoryRows,
   folderBreadcrumb as buildFolderBreadcrumb,
   knowledgePendingPreview,
   opensInDocumentEditor,
+  removeKnowledgeFileSubtrees,
   resolveKnowledgeLayout,
   resolveKnowledgeOutputFilter,
   resolveKnowledgeTab,
+  type KnowledgeLayout,
   sortedCurrentFolderFiles,
   sortedCurrentFolderFolders,
   sortedCurrentFolderNodes,
@@ -65,6 +68,9 @@ export default function KnowledgeView({
   const activeTab: Tab = resolveKnowledgeTab({ mode, view: viewParam })
 
   const layout = resolveKnowledgeLayout({ layout: searchParams?.get('layout'), activeTab })
+  const [isQueryPending, startQueryTransition] = useTransition()
+  const [pendingFilesLayout, setPendingFilesLayout] = useState<KnowledgeLayout | null>(null)
+  const visibleFilesLayout = pendingFilesLayout ?? layout
 
   function updateQuery(updates: Record<string, string | null | undefined>) {
     const p = new URLSearchParams(searchParams?.toString() ?? '')
@@ -72,8 +78,22 @@ export default function KnowledgeView({
       if (v === null || v === undefined || v === '') p.delete(k)
       else p.set(k, v)
     }
-    router.push(`${pathname}?${p.toString()}`)
+    const nextLayout = updates.layout === 'list' || updates.layout === 'cards' ? updates.layout : null
+    if (activeTab === 'files' && nextLayout && nextLayout !== layout) {
+      setPendingFilesLayout(nextLayout)
+    }
+    const query = p.toString()
+    startQueryTransition(() => {
+      router.push(query ? `${pathname}?${query}` : pathname)
+    })
   }
+
+  useEffect(() => {
+    if (!pendingFilesLayout) return
+    if (!isQueryPending && layout === pendingFilesLayout) {
+      setPendingFilesLayout(null)
+    }
+  }, [isQueryPending, layout, pendingFilesLayout])
 
   const [, setOutputsRefreshKey] = useState(0)
   const [outputFilterOpen, setOutputFilterOpen] = useState(false)
@@ -214,20 +234,27 @@ export default function KnowledgeView({
 
   async function bulkDeleteFiles() {
     if (selectedFileIds.size === 0 || bulkDeleting) return
+    const ids = Array.from(selectedFileIds)
     setBulkDeleting(true)
     try {
-      await Promise.all(
-        [...selectedFileIds].map((id) =>
-          overlayAppClient.files.deleteResponse({ fileId: id }),
-        ),
+      const responses = await Promise.all(
+        ids.map((id) => overlayAppClient.files.deleteResponse({ fileId: id })),
       )
-      if (selectedFile && selectedFileIds.has(selectedFile._id)) {
+      const deletedRootIds = ids.filter((_, index) => responses[index]?.ok)
+      if (deletedRootIds.length === 0) return
+
+      const deletedIds = collectKnowledgeFileSubtreeIds(files, deletedRootIds)
+      setFiles((prev) => removeKnowledgeFileSubtrees(prev, deletedRootIds))
+
+      if (selectedFile && deletedIds.has(selectedFile._id)) {
         setSelectedFile(null)
         setFileContent('')
         setFileTitle('')
         updateQuery({ file: null })
       }
-      await loadFiles()
+      if (activeFolder && deletedIds.has(activeFolder._id)) {
+        navigateToFolder(null)
+      }
       window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
       exitSelectMode()
     } finally {
@@ -426,16 +453,21 @@ export default function KnowledgeView({
     e.stopPropagation()
     const node = files.find((f) => f._id === id)
     const res = await overlayAppClient.files.deleteResponse({ fileId: id })
-    if (res.ok && node) {
+    if (!res.ok) return
+    const deletedIds = collectKnowledgeFileSubtreeIds(files, [id])
+    setFiles((prev) => removeKnowledgeFileSubtrees(prev, [id]))
+    if (node) {
       posthog.capture('knowledge_file_deleted', { file_name: node.name, type: node.type })
     }
-    if (selectedFile?._id === id) {
+    if (selectedFile && deletedIds.has(selectedFile._id)) {
       setSelectedFile(null)
       setFileContent('')
       setFileTitle('')
       updateQuery({ file: null })
     }
-    await loadFiles()
+    if (activeFolder && deletedIds.has(activeFolder._id)) {
+      navigateToFolder(null)
+    }
     window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
   }
 
@@ -674,7 +706,7 @@ export default function KnowledgeView({
             folderBreadcrumb={folderBreadcrumb}
             folderUploadRef={folderUploadRef}
             isSavingFile={isSavingFile}
-            layout={layout}
+            layout={activeTab === 'files' ? visibleFilesLayout : layout}
             memoryCount={memoriesFiltered.length}
             memorySearchOpen={memorySearchOpen}
             memorySearchQuery={memorySearchQuery}
@@ -788,13 +820,13 @@ export default function KnowledgeView({
 
         {activeTab === 'files' && !selectedFile && (
           <KnowledgeFilesPanel
-            loading={filesLoading}
+            loading={filesLoading || Boolean(pendingFilesLayout)}
             filesCount={files.length}
             nodes={rootNodes}
             folders={folderCardsSorted}
             flatFiles={flatFilesSorted}
             allFiles={filesFiltered}
-            layout={layout}
+            layout={visibleFilesLayout}
             selectedFileId={null}
             selectedIds={selectedFileIds}
             selectMode={selectMode}

@@ -5,9 +5,10 @@ import { getInitialKnowledgeFiles, getInitialKnowledgeMemories } from '@/server/
 import { redirect } from 'next/navigation'
 import { resolveKnowledgeLayout } from '@overlay/app-core'
 import { FilesRouteSkeleton, type FilesRouteSkeletonLayout } from '../_components/AppRouteSkeletons'
+import { FilesRouteLoadingSkeleton } from './FilesRouteLoadingSkeleton'
 
 const KnowledgeView = dynamic(() => import('@/features/knowledge/components/KnowledgeView'), {
-  loading: () => <FilesRouteSkeleton />,
+  loading: () => <FilesRouteLoadingSkeleton />,
 })
 
 type FilesSearchParams = {

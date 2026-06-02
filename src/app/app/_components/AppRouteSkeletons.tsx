@@ -15,6 +15,38 @@ function SidebarRows({ rows = 7 }: { rows?: number }) {
   )
 }
 
+function AppSidebarLoadingSkeleton() {
+  return (
+    <>
+      <div className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--sidebar-surface)_95%,transparent)] backdrop-blur md:hidden">
+        <div className="flex h-14 items-center justify-between gap-2 px-3">
+          <SkeletonBlock className="h-9 w-9 rounded-full" />
+          <div className="flex min-w-0 flex-1 justify-center px-1">
+            <SkeletonBlock className="h-5 w-28" />
+          </div>
+          <SkeletonBlock className="h-9 w-9 rounded-full" />
+        </div>
+      </div>
+
+      <aside className="hidden h-full w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)] md:flex">
+        <div className="flex h-16 min-h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-5">
+          <SkeletonBlock className="h-5 w-28" />
+          <SkeletonBlock className="h-9 w-9 rounded-md" />
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <SidebarRows rows={7} />
+          <div className="border-t border-[var(--border)] px-2 py-3">
+            <SidebarRows rows={5} />
+          </div>
+        </div>
+        <div className="space-y-3 border-t border-[var(--border)] px-3 py-3">
+          <SkeletonBlock className="h-8 w-full rounded-md" />
+        </div>
+      </aside>
+    </>
+  )
+}
+
 function PageHeaderSkeleton({ actions = 2 }: { actions?: number }) {
   return (
     <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
@@ -27,6 +59,17 @@ function PageHeaderSkeleton({ actions = 2 }: { actions?: number }) {
           <SkeletonBlock key={index} className="h-8 w-8 rounded-md" />
         ))}
       </div>
+    </div>
+  )
+}
+
+export function AppShellLoadingFallback() {
+  return (
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      <AppSidebarLoadingSkeleton />
+      <main className="flex-1 overflow-auto pt-14 md:pt-0">
+        <ChatRouteSkeleton />
+      </main>
     </div>
   )
 }

@@ -10,19 +10,13 @@ import { CapabilitiesProvider } from '@/components/providers/CapabilitiesProvide
 import { getInitialAutomationsList, getInitialProjectList } from '@/server/app/route-data'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { AppConfigurationErrorState } from './_components/AppConfigurationErrorState'
+import { AppShellLoadingFallback, ChatRouteSkeleton } from './_components/AppRouteSkeletons'
 
 function AppMainFallback() {
-  return (
-    <div className="flex min-h-full flex-col overflow-hidden bg-[var(--background)]">
-      <div className="h-16 shrink-0 border-b border-[var(--border)]" />
-      <div className="flex min-h-0 flex-1 flex-col justify-end px-4 pb-4">
-        <div className="mx-auto h-24 w-full max-w-[56rem] rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]" />
-      </div>
-    </div>
-  )
+  return <ChatRouteSkeleton />
 }
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+async function AppLayoutContent({ children }: { children: React.ReactNode }) {
   let session: Awaited<ReturnType<typeof getOverlaySession>>
   let capabilities: ReturnType<typeof getOverlayCapabilitiesSync>
   try {
@@ -63,5 +57,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </NavigationProgressProvider>
       </AsyncSessionsProvider>
     </div>
+  )
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<AppShellLoadingFallback />}>
+      <AppLayoutContent>{children}</AppLayoutContent>
+    </Suspense>
   )
 }
