@@ -46,6 +46,37 @@ import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 
 // ─── Main KnowledgeView ───────────────────────────────────────────────────────
 
+type FilesCategory = 'notes' | 'files' | 'outputs'
+
+function resolveFilesCategory(view: string | null | undefined): FilesCategory {
+  if (view === 'notes' || view === 'outputs') return view
+  return 'files'
+}
+
+function filterFilesByCategory(files: readonly FileNode[], category: FilesCategory): FileNode[] {
+  const keep = new Set<string>()
+  const fileById = new Map(files.map((file) => [file._id, file]))
+
+  for (const file of files) {
+    const matches =
+      category === 'notes'
+        ? file.kind === 'note'
+        : category === 'outputs'
+          ? file.kind === 'output'
+          : file.type === 'folder' || (file.kind !== 'note' && file.kind !== 'output')
+
+    if (!matches) continue
+    keep.add(file._id)
+    let parentId = file.parentId
+    while (parentId) {
+      keep.add(parentId)
+      parentId = fileById.get(parentId)?.parentId ?? null
+    }
+  }
+
+  return files.filter((file) => keep.has(file._id))
+}
+
 export default function KnowledgeView({
   userId: _userId,
   mode = 'knowledge',
@@ -66,6 +97,7 @@ export default function KnowledgeView({
   const folderParam = searchParams?.get('folder') ?? null
   const viewParam = searchParams?.get('view') ?? (mode === 'files' ? 'files' : 'memories')
   const activeTab: Tab = resolveKnowledgeTab({ mode, view: viewParam })
+  const filesCategory = mode === 'files' ? resolveFilesCategory(searchParams?.get('view')) : 'files'
 
   const layout = resolveKnowledgeLayout({ layout: searchParams?.get('layout'), activeTab })
   const [isQueryPending, startQueryTransition] = useTransition()
@@ -613,8 +645,8 @@ export default function KnowledgeView({
   }
 
   const filesFiltered = useMemo(() => {
-    return filterKnowledgeFileNodes(files, fileSearchQuery)
-  }, [files, fileSearchQuery])
+    return filterKnowledgeFileNodes(filterFilesByCategory(files, filesCategory), fileSearchQuery)
+  }, [files, fileSearchQuery, filesCategory])
 
   const memoriesFiltered = useMemo(() => {
     return filterMemoryRows(memories, memorySearchQuery)
@@ -701,6 +733,7 @@ export default function KnowledgeView({
             createMenuOpen={createMenuOpen}
             createMenuRef={createMenuRef}
             fileCount={filesFiltered.length}
+            filesCategory={filesCategory}
             fileTitle={fileTitle}
             fileUploadRef={fileUploadRef}
             folderBreadcrumb={folderBreadcrumb}
@@ -821,7 +854,7 @@ export default function KnowledgeView({
         {activeTab === 'files' && !selectedFile && (
           <KnowledgeFilesPanel
             loading={filesLoading || Boolean(pendingFilesLayout)}
-            filesCount={files.length}
+            filesCount={filesFiltered.length}
             nodes={rootNodes}
             folders={folderCardsSorted}
             flatFiles={flatFilesSorted}

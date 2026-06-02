@@ -48,7 +48,7 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
                   initialProjects={initialProjects}
                   initialAutomations={initialAutomations}
                 />
-                <main className="flex-1 overflow-auto pt-14 md:pt-0">
+                <main className="app-main flex-1 overflow-auto pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
                   <Suspense fallback={<AppMainFallback />}>{children}</Suspense>
                 </main>
               </OnboardingProvider>

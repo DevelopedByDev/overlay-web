@@ -17,7 +17,7 @@ import type {
 } from '@overlay/app-core'
 
 const TOOLBAR_ICON_BUTTON_CLASS =
-  'flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
 
 export function OutputFilterMenu({
   onCommit,
@@ -33,13 +33,13 @@ export function OutputFilterMenu({
   setOpen: (value: boolean | ((value: boolean) => boolean)) => void
 }) {
   return (
-    <div ref={outputFilterRef} className="relative w-fit max-w-[13rem]">
+    <div ref={outputFilterRef} className="relative h-8 w-fit max-w-[13rem]">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs text-[var(--foreground)] md:py-1 ${
+        className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--foreground)] ${
           open ? 'bg-[var(--border)]' : 'hover:bg-[var(--border)]'
         }`}
       >

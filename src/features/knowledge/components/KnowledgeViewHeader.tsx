@@ -1,11 +1,15 @@
 'use client'
 
 import type React from 'react'
+import Link from 'next/link'
 import {
   ArrowLeft,
+  BookOpen,
   ChevronRight,
+  FileText,
   FolderInput,
   FolderOpen,
+  Images,
   LayoutGrid,
   LayoutList,
   Plus,
@@ -23,12 +27,13 @@ import { AppScreenHeader } from '@overlay/modules-react/shell'
 import { FilesCreateUploadControls, OutputFilterMenu } from './KnowledgeToolbarMenus'
 
 const TOOLBAR_ICON_BUTTON_CLASS =
-  'flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
 
 const TOOLBAR_FILLED_BUTTON_CLASS =
-  'flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
+  'inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-0 text-xs leading-none text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
 
 type KnowledgeLayout = 'list' | 'cards'
+type FilesCategory = 'notes' | 'files' | 'outputs'
 
 function SelectedFileHeader({
   fileTitle,
@@ -138,20 +143,23 @@ function FolderHeader({
 function HeaderTitle({
   activeTab,
   fileCount,
+  filesCategory,
   memoryCount,
   memorySearchOpen,
   mode,
 }: {
   activeTab: Tab
   fileCount: number
+  filesCategory: FilesCategory
   memoryCount: number
   memorySearchOpen: boolean
   mode: 'knowledge' | 'files'
 }) {
+  const filesTitle = filesCategory === 'notes' ? 'Notes' : filesCategory === 'outputs' ? 'Outputs' : 'Files'
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-3">
       <h1 className="text-sm font-medium text-[var(--foreground)]">
-        {mode === 'files' ? 'Files' : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
+        {mode === 'files' ? filesTitle : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
       </h1>
       {activeTab !== 'outputs' && !memorySearchOpen && (
         <span className="text-xs text-[var(--muted-light)]">
@@ -221,7 +229,7 @@ function BulkSelectControls({
           else if (activeTab === 'files') onBulkDeleteFiles()
           else onBulkDeleteOutputs()
         }}
-        className="flex items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs text-red-600 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-0 text-xs leading-none text-red-600 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Trash2 size={13} />
         {bulkDeleting ? 'Deleting…' : `Delete (${selectedCount})`}
@@ -238,12 +246,12 @@ function LayoutControls({
   onUpdateQuery: (updates: Record<string, string | null | undefined>) => void
 }) {
   return (
-    <div className="flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5">
+    <div className="flex h-8 min-h-8 items-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5">
       <button
         type="button"
         title="List"
         onClick={() => onUpdateQuery({ layout: 'list' })}
-        className={`rounded px-2 py-1 transition-colors ${
+        className={`inline-flex h-7 items-center rounded px-2 transition-colors ${
           layout === 'list'
             ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
             : 'text-[var(--muted-light)] hover:text-[var(--foreground)]'
@@ -255,7 +263,7 @@ function LayoutControls({
         type="button"
         title="Cards"
         onClick={() => onUpdateQuery({ layout: 'cards' })}
-        className={`rounded px-2 py-1 transition-colors ${
+        className={`inline-flex h-7 items-center rounded px-2 transition-colors ${
           layout === 'cards'
             ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
             : 'text-[var(--muted-light)] hover:text-[var(--foreground)]'
@@ -267,6 +275,42 @@ function LayoutControls({
   )
 }
 
+const FILES_CATEGORY_ITEMS: Array<{
+  id: FilesCategory
+  href: string
+  label: string
+  Icon: typeof BookOpen
+}> = [
+  { id: 'notes', href: '/app/files?view=notes', label: 'Notes', Icon: BookOpen },
+  { id: 'files', href: '/app/files', label: 'Files', Icon: FileText },
+  { id: 'outputs', href: '/app/files?view=outputs', label: 'Outputs', Icon: Images },
+]
+
+function FilesCategoryControls({ category }: { category: FilesCategory }) {
+  return (
+    <div className="flex h-8 min-h-8 items-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5">
+      {FILES_CATEGORY_ITEMS.map(({ id, href, label, Icon }) => {
+        const active = category === id
+        return (
+          <Link
+            key={id}
+            href={href}
+            aria-current={active ? 'page' : undefined}
+            className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-[11px] font-medium transition-colors ${
+              active
+                ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
+                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            <Icon size={12} strokeWidth={1.75} />
+            <span className="hidden sm:inline">{label}</span>
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
+
 export function KnowledgeViewHeader({
   activeFolder,
   activeTab,
@@ -274,6 +318,7 @@ export function KnowledgeViewHeader({
   createMenuOpen,
   createMenuRef,
   fileCount,
+  filesCategory,
   fileTitle,
   fileUploadRef,
   folderBreadcrumb,
@@ -324,6 +369,7 @@ export function KnowledgeViewHeader({
   createMenuOpen: boolean
   createMenuRef: React.RefObject<HTMLDivElement | null>
   fileCount: number
+  filesCategory: FilesCategory
   fileTitle: string
   fileUploadRef: React.RefObject<HTMLInputElement | null>
   folderBreadcrumb: FileNode[]
@@ -393,6 +439,7 @@ export function KnowledgeViewHeader({
             <HeaderTitle
               activeTab={activeTab}
               fileCount={fileCount}
+              filesCategory={filesCategory}
               memoryCount={memoryCount}
               memorySearchOpen={memorySearchOpen}
               mode={mode}
@@ -482,6 +529,9 @@ export function KnowledgeViewHeader({
                 uploadMenuOpen={uploadMenuOpen}
                 uploadMenuRef={uploadMenuRef}
               />
+            ) : null}
+            {mode === 'files' && activeTab === 'files' ? (
+              <FilesCategoryControls category={filesCategory} />
             ) : null}
           </div>
         </>

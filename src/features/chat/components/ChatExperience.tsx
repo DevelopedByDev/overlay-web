@@ -94,6 +94,7 @@ import {
   removeCachedChat,
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
+import { TEMPORARY_CHAT_UI_EVENT } from '@/shared/chat/temporary-chat-ui'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { FileViewerPanel } from '@/features/files/components/FileViewer'
 import { DelayedTooltip } from './DelayedTooltip'
@@ -174,10 +175,10 @@ function TemporaryChatButton({
         aria-label={active ? 'Disable temporary chat' : 'Enable temporary chat'}
         disabled={disabled}
         onClick={onClick}
-        className={`flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+        className={`flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-[background-color,border-color,box-shadow,color] duration-300 ${
           active
-            ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-            : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
+            ? 'temporary-chat-dashed-surface border-dashed border-[#d7d7d7] text-[#111111] shadow-sm'
+            : 'border-transparent bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
         } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
       >
         <span
@@ -236,6 +237,20 @@ export default function ChatExperience({
   const [isTemporaryChat, setIsTemporaryChat] = useState(false)
   const isTemporaryChatRef = useRef(false)
   isTemporaryChatRef.current = isTemporaryChat
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(TEMPORARY_CHAT_UI_EVENT, {
+      detail: { active: isTemporaryChat },
+    }))
+  }, [isTemporaryChat])
+
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent(TEMPORARY_CHAT_UI_EVENT, {
+        detail: { active: false },
+      }))
+    }
+  }, [])
   const loadChatRequestRef = useRef(0)
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const appliedLiveDeltaIdsRef = useRef(new Set<string>())
@@ -3818,6 +3833,7 @@ export default function ChatExperience({
               composerNotice,
               isSendBlocked,
               isActiveLoading,
+              isTemporaryChat,
               blockedComposerContent: isBudgetExhaustedPaid ? (
                 <TopUpPreferenceControl
                   variant="app"

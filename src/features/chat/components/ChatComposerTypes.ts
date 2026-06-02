@@ -15,7 +15,13 @@ export type ChatComposerAttachmentState = {
   onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
 }
-export type ChatComposerRuntime = { composerNotice: string | null; isSendBlocked: boolean; isActiveLoading: boolean; blockedComposerContent: ReactNode }
+export type ChatComposerRuntime = {
+  composerNotice: string | null
+  isSendBlocked: boolean
+  isActiveLoading: boolean
+  isTemporaryChat: boolean
+  blockedComposerContent: ReactNode
+}
 export type ChatComposerInputState = {
   replyContext: ReplyContext; setReplyContext: (context: ReplyContext) => void; textareaRef: RefObject<MentionInputHandle | null>
   input: string; inputRevision: number; onInputChange: (text: string) => void; onMentionsChange: (mentions: MentionItem[]) => void

@@ -146,7 +146,11 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
 
   return (
-    <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+    <div className={`overflow-visible rounded-2xl border shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300 ${
+      props.isTemporaryChat
+        ? 'temporary-chat-dashed-surface border-dashed border-[#d7d7d7] text-[#111111] shadow-[0_10px_30px_rgba(10,10,10,0.08)]'
+        : 'border-[var(--border)] bg-[var(--surface-elevated)]'
+    }`}>
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
       <div className="p-2.5 sm:p-3">
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
@@ -185,6 +189,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           onPaste={props.onPaste}
           onUploadFile={() => props.docInputRef.current?.click()}
           placeholder={props.mode === 'automate' ? 'Describe an automation, use @ to reference files, skills, automations...' : 'Ask anything, use @ to reference files, skills, automations...'}
+          className={props.isTemporaryChat ? 'text-[#111111] empty:before:text-[#7a7a7a]' : undefined}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()

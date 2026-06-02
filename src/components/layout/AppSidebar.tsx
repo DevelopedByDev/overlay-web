@@ -35,6 +35,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/shared/knowledge/mention-types'
+import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
 import {
   getSidebarCollapsedSnapshot,
   setStoredSidebarCollapsed,
@@ -85,6 +86,7 @@ export default function AppSidebar({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [entitlements, setEntitlements] = useState<SidebarEntitlements | null>(null)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
+  const [temporaryChatUiHidden, setTemporaryChatUiHidden] = useState(false)
   const sidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapsed,
     getSidebarCollapsedSnapshot,
@@ -122,8 +124,24 @@ export default function AppSidebar({
     return () => window.removeEventListener('overlay:projects-changed', onProjectsChanged)
   }, [])
 
+  useEffect(() => {
+    function onTemporaryChatUi(event: Event) {
+      const active = Boolean((event as CustomEvent<TemporaryChatUiEventDetail>).detail?.active)
+      setTemporaryChatUiHidden(active)
+      if (active) {
+        setMobileMenuOpen(false)
+        setMobileAccountOpen(false)
+        setAccountMenuOpen(false)
+      }
+    }
+
+    window.addEventListener(TEMPORARY_CHAT_UI_EVENT, onTemporaryChatUi)
+    return () => window.removeEventListener(TEMPORARY_CHAT_UI_EVENT, onTemporaryChatUi)
+  }, [])
+
   const effectivePendingHref =
     pendingNav && pathname === pendingNav.fromPath ? pendingNav.href : null
+  const hideTemporaryChatChrome = temporaryChatUiHidden && pathname.startsWith('/app/chat')
   const projectsOpen = pathname.startsWith('/app/projects')
   const notesOpen = pathname.startsWith('/app/notes')
   const filesOpen = pathname.startsWith('/app/files')
@@ -153,6 +171,11 @@ export default function AppSidebar({
       // ignore
     }
   }, [billingEnabled, setEntitlements])
+
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-temporary-chat-ui', hideTemporaryChatChrome)
+    return () => document.documentElement.removeAttribute('data-temporary-chat-ui')
+  }, [hideTemporaryChatChrome])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -673,7 +696,9 @@ export default function AppSidebar({
 
   return (
     <>
-      <div className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--sidebar-surface)_95%,transparent)] backdrop-blur md:hidden">
+      <div className={`fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--sidebar-surface)_95%,transparent)] backdrop-blur transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:hidden ${
+        hideTemporaryChatChrome ? 'pointer-events-none -translate-y-full opacity-0' : 'translate-y-0 opacity-100'
+      }`}>
         <div className="flex h-14 items-center justify-between gap-2 px-3">
           <button
             type="button"
@@ -718,23 +743,25 @@ export default function AppSidebar({
       </div>
 
       <aside
-        className={`hidden h-full shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)] transition-[width] duration-200 md:flex ${
-          sidebarCollapsed ? 'w-[72px]' : 'w-56'
+        className={`hidden h-full shrink-0 flex-col overflow-hidden border-r bg-[var(--sidebar-surface)] transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
+          hideTemporaryChatChrome
+            ? 'w-0 border-transparent opacity-0 pointer-events-none'
+            : `${sidebarCollapsed ? 'w-[72px]' : 'w-56'} border-[var(--border)] opacity-100`
         }`}
       >
         {sidebarContent}
       </aside>
 
-      <div className={`fixed inset-0 z-50 md:hidden ${mobileMenuOpen ? '' : 'pointer-events-none'}`}>
+      <div className={`fixed inset-0 z-50 md:hidden ${mobileMenuOpen && !hideTemporaryChatChrome ? '' : 'pointer-events-none'}`}>
         <button
           type="button"
           aria-label="Close app navigation"
           onClick={() => setMobileMenuOpen(false)}
-          className={`absolute inset-0 bg-black/30 transition-opacity ${mobileMenuOpen ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 bg-black/30 transition-opacity ${mobileMenuOpen && !hideTemporaryChatChrome ? 'opacity-100' : 'opacity-0'}`}
         />
         <aside
           className={`absolute inset-y-0 left-0 flex w-[82vw] max-w-[320px] flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)] shadow-[0_20px_80px_rgba(10,10,10,0.18)] transition-transform ${
-            mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+            mobileMenuOpen && !hideTemporaryChatChrome ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
