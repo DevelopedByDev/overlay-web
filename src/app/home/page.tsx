@@ -1,306 +1,192 @@
 "use client";
 
-import Link from "next/link";
 import {
   Bot,
   Brain,
-  Cpu,
-  FolderOpen,
-  GitBranch,
-  Layers,
-  Lock,
+  Code2,
+  FileText,
   MessageSquare,
   Plug,
-  Repeat,
-  Scale,
-  Shield,
+  Search,
+  ShieldCheck,
   Sparkles,
-  Wallet,
-  Wrench,
-  Zap,
+  Workflow,
 } from "lucide-react";
-import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
-import { StaticMarketingShell, useStaticMarketingTheme } from "@/features/marketing/components/StaticMarketingShell";
 import { useAuth } from "@/contexts/AuthContext";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
-import { MARKETING_GITHUB_URL, getMarketingAppHref } from "@/shared/marketing/marketing";
+import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
+import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
+import {
+  EditorialIntro,
+  MarketingBand,
+  MarketingCtaRow,
+  PricingControlPreview,
+  PrimaryMarketingLink,
+  ProductWorkspaceDemo,
+  ScreenshotFrame,
+  SecondaryMarketingLink,
+  TrustStrip,
+} from "@/features/marketing/components/MarketingShowcase";
+import { MARKETING_GITHUB_URL, MARKETING_SALES_URL, getMarketingAppHref } from "@/shared/marketing/marketing";
 
-const PLATFORM_PRIMITIVES = [
+const WORKFLOWS = [
   {
-    icon: MessageSquare,
-    title: "Chat",
-    description: "One interface for GPT, Claude, Gemini, Grok, and more. Pick the right model for every task.",
+    icon: Search,
+    title: "Research",
+    body: "Search the web, inspect sources, compare models, and keep the source trail attached to the final brief.",
   },
   {
-    icon: Wrench,
-    title: "Tools",
-    description: "Web search, deep research, image and video generation, browser automation, and code sandboxes.",
-  },
-  {
-    icon: FolderOpen,
-    title: "Files",
-    description: "Upload, reference, and reason over documents, code, images, and videos in context.",
-  },
-  {
-    icon: Brain,
-    title: "Memory",
-    description: "Preserve useful context across conversations and workflows. Your knowledge compounds.",
-  },
-  {
-    icon: Repeat,
-    title: "Automations",
-    description: "Save repeatable workflows for you and your team. Let the machine handle the routine.",
-  },
-  {
-    icon: Plug,
-    title: "Connectors",
-    description: "Pre-built integrations to the tools you already use. No context switching required.",
-  },
-  {
-    icon: Cpu,
-    title: "MCPs",
-    description: "Build custom tools and connectors for workflows specific to your domain.",
-  },
-  {
-    icon: GitBranch,
-    title: "Open Source",
-    description: "Auditable, extensible, and adaptable to your needs. Own your infrastructure.",
-  },
-];
-
-const USE_CASES = [
-  {
-    href: "/use-cases/business",
-    label: "For Business",
-    description: "Research, analysis, strategy, and operations at the speed of thought.",
-    icon: Scale,
-  },
-  {
-    href: "/use-cases/content",
-    label: "For Content",
-    description: "Writing, images, video, and publishing workflows that scale.",
     icon: Sparkles,
+    title: "Create",
+    body: "Draft text, generate assets, and preserve the creative brief across writing, image, and video work.",
   },
   {
-    href: "/use-cases/developers",
-    label: "For Developers",
-    description: "Code, debug, review, and ship with agents that understand your codebase.",
-    icon: Zap,
+    icon: Workflow,
+    title: "Automate",
+    body: "Turn recurring browser tasks, research loops, and operational follow-ups into saved workflows.",
   },
   {
-    href: "/use-cases/education",
-    label: "For Education",
-    description: "Curriculum, assessment, tutoring, and governance for schools and universities.",
-    icon: Layers,
+    icon: ShieldCheck,
+    title: "Govern",
+    body: "Move AI work from personal accounts into a private, auditable workspace your team controls.",
   },
 ];
 
-const ADVANTAGES = [
-  {
-    icon: Lock,
-    title: "No vendor lock-in",
-    description: "Choose models, providers, deployment style, and integrations. Your data, your rules.",
-  },
-  {
-    icon: Wrench,
-    title: "Fully customizable",
-    description: "Shape the workspace around your team, not generic SaaS defaults. Add or remove features as you need.",
-  },
-  {
-    icon: Cpu,
-    title: "Fully extensible",
-    description: "New tools, MCPs, connectors, and dashboards can be built as your needs evolve.",
-  },
-  {
-    icon: Shield,
-    title: "On-prem or private",
-    description: "Maximum privacy and full control of data flow. Deploy on your own infrastructure.",
-  },
-  {
-    icon: Bot,
-    title: "Better governance",
-    description: "Move AI use from unmanaged consumer accounts into a team-controlled, auditable system.",
-  },
-  {
-    icon: Wallet,
-    title: "Cost savings",
-    description: "Pay for the platform, not per-seat model subscriptions. Only pay for the AI usage you actually consume.",
-  },
+const PRIMITIVES = [
+  { icon: MessageSquare, label: "Chat", detail: "GPT, Claude, Gemini, Grok, and more." },
+  { icon: FileText, label: "Files", detail: "Reference docs, code, images, and video." },
+  { icon: Brain, label: "Memory", detail: "Useful context compounds across work." },
+  { icon: Bot, label: "Tools", detail: "Browser tasks, sandboxes, search, generation." },
+  { icon: Plug, label: "Connectors", detail: "Use approved apps and custom MCPs." },
+  { icon: Code2, label: "Open source", detail: "Inspect, extend, self-host, and adapt." },
 ];
 
 function HomeLandingContent() {
   const { isAuthenticated } = useAuth();
-  const theme = useStaticMarketingTheme();
   const webAppHref = getMarketingAppHref(isAuthenticated);
 
   return (
     <StaticMarketingShell>
       <main className="flex-1">
-        {/* Hero */}
-        <section className="px-6 py-24 md:px-8 md:py-32">
-          <div className="mx-auto max-w-5xl text-center">
-            <p className={`text-sm font-medium uppercase tracking-[0.15em] ${theme.subtleClass}`}>
-              The AI-native workspace
-            </p>
-            <h1
-              className="mt-6 text-4xl leading-[1.05] tracking-tight md:text-6xl lg:text-7xl"
-              style={{ fontFamily: "var(--font-serif)" }}
-            >
-              One place to think,
-              <br />
-              create, and ship.
-            </h1>
-            <p className={`mx-auto mt-6 max-w-2xl text-lg leading-8 md:text-xl ${theme.mutedClass}`}>
-              Overlay brings chat, files, memory, and automations into one surface. Use every major AI model with the
-              context that compounds across your work.
-            </p>
-            <div className="mt-10 flex flex-wrap justify-center gap-3">
-              <Link
-                href={webAppHref}
-                className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-medium ${theme.primaryButtonClass}`}
-              >
-                Start with Overlay
-              </Link>
-              <Link
-                href="/pricing"
-                className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 text-sm font-medium ${theme.secondaryButtonClass}`}
-              >
-                See pricing
-              </Link>
+        <section className="px-5 py-16 md:px-8 md:py-24">
+          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.62fr_1.38fr] lg:items-center">
+            <div>
+              <EditorialIntro
+                title={
+                  <>
+                    Your AI workspace.
+                    <br />
+                    On your terms.
+                  </>
+                }
+                body="One workspace for models, files, memory, tools, and automations. Private by default. Open source. Yours to extend."
+              />
+              <MarketingCtaRow>
+                <PrimaryMarketingLink href={webAppHref}>Open app</PrimaryMarketingLink>
+                <SecondaryMarketingLink href={MARKETING_SALES_URL} external>
+                  Contact sales
+                </SecondaryMarketingLink>
+              </MarketingCtaRow>
+              <div className="mt-8 grid gap-3 text-xs text-[var(--muted)] sm:grid-cols-3">
+                {["Self-hostable", "Model choice", "Usage-based AI"].map((item) => (
+                  <div key={item} className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--foreground)]" />
+                    {item}
+                  </div>
+                ))}
+              </div>
             </div>
+            <ProductWorkspaceDemo />
           </div>
         </section>
 
-        {/* Platform Primitives */}
-        <section className={`border-t px-6 py-20 md:px-8 md:py-24 ${theme.dividerClass}`}>
-          <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className={`text-sm font-medium uppercase tracking-[0.15em] ${theme.subtleClass}`}>Platform</p>
-              <h2
-                className="mt-4 text-3xl tracking-tight md:text-4xl"
-                style={{ fontFamily: "var(--font-serif)" }}
-              >
-                Primitives for AI-native work
-              </h2>
-              <p className={`mt-4 text-base leading-7 ${theme.mutedClass}`}>
-                Everything you need to build, iterate, and ship — in one open-source workspace.
+        <MarketingBand id="product">
+          <div className="grid gap-10 lg:grid-cols-[0.45fr_1fr] lg:items-start">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">Product</p>
+              <h2 className="mt-4 text-3xl tracking-tight md:text-5xl">The primitives of AI-native work, in one surface.</h2>
+              <p className="mt-5 text-sm leading-7 text-[var(--muted)]">
+                Overlay is not another isolated chat box. It is the control surface between people, models, files,
+                tools, connectors, and recurring work.
               </p>
             </div>
-            <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {PLATFORM_PRIMITIVES.map((item) => (
-                <div
-                  key={item.title}
-                  className={`group rounded-2xl border p-6 transition-colors hover:bg-[var(--surface-muted)] ${theme.panelClass}`}
-                >
-                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--surface-muted)] text-[var(--foreground)]">
-                    <item.icon className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-base font-semibold tracking-tight">{item.title}</h3>
-                  <p className={`mt-2 text-sm leading-relaxed ${theme.mutedClass}`}>{item.description}</p>
-                </div>
+            <div className="grid gap-px overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--border)] md:grid-cols-2 xl:grid-cols-3">
+              {PRIMITIVES.map((item) => (
+                <article key={item.label} className="bg-[var(--surface-elevated)] p-5">
+                  <item.icon className="h-5 w-5" strokeWidth={1.7} />
+                  <h3 className="mt-5 text-sm font-medium">{item.label}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{item.detail}</p>
+                </article>
               ))}
             </div>
           </div>
-        </section>
+        </MarketingBand>
 
-        {/* Use Cases */}
-        <section className={`border-t px-6 py-20 md:px-8 md:py-24 ${theme.dividerClass}`}>
-          <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className={`text-sm font-medium uppercase tracking-[0.15em] ${theme.subtleClass}`}>Use cases</p>
-              <h2
-                className="mt-4 text-3xl tracking-tight md:text-4xl"
-                style={{ fontFamily: "var(--font-serif)" }}
-              >
-                Built for how you work
-              </h2>
-              <p className={`mt-4 text-base leading-7 ${theme.mutedClass}`}>
-                Overlay adapts to your domain, not the other way around.
+        <MarketingBand>
+          <div className="grid gap-8 lg:grid-cols-2 lg:items-center">
+            <ProductWorkspaceDemo tone="dark" compact title="Work keeps moving." />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">Workflows</p>
+              <h2 className="mt-4 text-3xl tracking-tight md:text-5xl">From prompt to outcome without resetting context.</h2>
+              <div className="mt-8 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+                {WORKFLOWS.map((workflow) => (
+                  <article key={workflow.title} className="grid gap-4 py-5 sm:grid-cols-[44px_1fr]">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-muted)]">
+                      <workflow.icon className="h-5 w-5" strokeWidth={1.7} />
+                    </span>
+                    <div>
+                      <h3 className="text-base font-medium">{workflow.title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{workflow.body}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </MarketingBand>
+
+        <MarketingBand>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <ScreenshotFrame
+              src="/assets/images/Screenshot 2026-04-24 at 4.39.17\u202fPM.png"
+              alt="Overlay model picker with selected models"
+              label="Model routing"
+            />
+            <ScreenshotFrame
+              src="/assets/images/Screenshot 2026-04-28 at 5.35.01\u202fPM.png"
+              alt="Overlay connect your tools modal"
+              label="Connectors"
+            />
+          </div>
+        </MarketingBand>
+
+        <MarketingBand>
+          <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">Pricing</p>
+              <h2 className="mt-4 text-3xl tracking-tight md:text-5xl">Pay for the platform and the AI you actually use.</h2>
+              <p className="mt-5 text-sm leading-7 text-[var(--muted)]">
+                Start free, upgrade when premium models and agents matter, and move enterprise usage into a private
+                deployment when governance becomes the priority.
               </p>
+              <MarketingCtaRow>
+                <PrimaryMarketingLink href="/pricing">View pricing</PrimaryMarketingLink>
+                <SecondaryMarketingLink href={MARKETING_GITHUB_URL} external>
+                  View source
+                </SecondaryMarketingLink>
+              </MarketingCtaRow>
             </div>
-            <div className="mt-14 grid gap-4 md:grid-cols-2">
-              {USE_CASES.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`group flex items-start gap-5 rounded-2xl border p-6 transition-colors hover:bg-[var(--surface-muted)] ${theme.panelClass}`}
-                >
-                  <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-muted)] text-[var(--foreground)] transition-colors group-hover:bg-[var(--surface-subtle)]">
-                    <item.icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-semibold tracking-tight">{item.label}</h3>
-                    <p className={`mt-1 text-sm leading-relaxed ${theme.mutedClass}`}>{item.description}</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
+            <PricingControlPreview amount="$24" />
           </div>
-        </section>
+        </MarketingBand>
 
-        {/* The Overlay Advantage */}
-        <section className={`border-t px-6 py-20 md:px-8 md:py-24 ${theme.dividerClass}`}>
-          <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className={`text-sm font-medium uppercase tracking-[0.15em] ${theme.subtleClass}`}>Why Overlay</p>
-              <h2
-                className="mt-4 text-3xl tracking-tight md:text-4xl"
-                style={{ fontFamily: "var(--font-serif)" }}
-              >
-                The Overlay advantage
-              </h2>
-              <p className={`mt-4 text-base leading-7 ${theme.mutedClass}`}>
-                Shift from fragmented subscriptions to a single, open-source platform you control.
-              </p>
-            </div>
-            <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {ADVANTAGES.map((item) => (
-                <div key={item.title} className="flex flex-col">
-                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--surface-muted)] text-[var(--foreground)]">
-                    <item.icon className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-base font-semibold tracking-tight">{item.title}</h3>
-                  <p className={`mt-2 text-sm leading-relaxed ${theme.mutedClass}`}>{item.description}</p>
-                </div>
-              ))}
-            </div>
+        <MarketingBand>
+          <TrustStrip />
+          <div className="mt-8 text-sm leading-7 text-[var(--muted)]">
+            [VIDEO: 45s product loop showing model selection, file reference, browser tool, and saved automation]
           </div>
-        </section>
-
-        {/* Pricing CTA */}
-        <section className={`border-t px-6 py-20 md:px-8 md:py-24 ${theme.dividerClass}`}>
-          <div className="mx-auto max-w-4xl text-center">
-            <p className={`text-sm font-medium uppercase tracking-[0.15em] ${theme.subtleClass}`}>Pricing</p>
-            <h2
-              className="mt-4 text-3xl tracking-tight md:text-5xl"
-              style={{ fontFamily: "var(--font-serif)" }}
-            >
-              Better models, better context, lower cost.
-            </h2>
-            <p className={`mx-auto mt-5 max-w-2xl text-base leading-7 ${theme.mutedClass}`}>
-              Starts at $8 per month. You get model choice, memory, connectors, and automations in an open-source
-              product you can inspect, extend, and deploy on-prem.
-            </p>
-            <div className="mt-10 flex flex-wrap justify-center gap-3">
-              <Link
-                href="/pricing"
-                className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-medium ${theme.primaryButtonClass}`}
-              >
-                View plans
-              </Link>
-              <a
-                href={MARKETING_GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 text-sm font-medium ${theme.secondaryButtonClass}`}
-              >
-                View source
-              </a>
-            </div>
-          </div>
-        </section>
+        </MarketingBand>
       </main>
-
       <MarketingFooter />
     </StaticMarketingShell>
   );

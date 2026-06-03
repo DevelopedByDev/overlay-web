@@ -23,9 +23,8 @@ import {
   marketingHeading,
   marketingMuted,
   marketingPageTitle,
-  marketingPanel,
-  marketingPanelLg,
 } from '@/features/landing/lib/landingPageStyles'
+import { PricingControlPreview } from '@/features/marketing/components/MarketingShowcase'
 import {
   AccountContinueCard,
   AccountLoadingState,
@@ -40,8 +39,8 @@ const PKCE_CHALLENGE_RE = /^[A-Za-z0-9._~-]{43,128}$/
 
 function AccountPageContent() {
   const { isLandingDark } = useLandingTheme()
-  const panel = marketingPanel()
-  const panelLg = marketingPanelLg()
+  const panel = 'rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-5'
+  const panelLg = 'mx-auto max-w-md rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-8'
   const t = {
     title: marketingPageTitle(),
     h: marketingHeading(),
@@ -278,8 +277,8 @@ function AccountPageContent() {
 
   return (
     <StaticMarketingShell>
-      <main className="px-4 pb-10 pt-10 md:px-8 md:pb-14 md:pt-14">
-        <div className="mx-auto max-w-4xl">
+      <main className="px-5 py-12 md:px-8 md:py-16">
+        <div className="mx-auto max-w-6xl">
       {message ? (
         <AccountMessageBanner
           message={message}
@@ -289,7 +288,24 @@ function AccountPageContent() {
         />
       ) : null}
 
-      <h1 className={`text-3xl font-serif md:text-4xl mb-8 ${t.title}`}>Account</h1>
+      <div className="mb-10 grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">Account</p>
+          <h1 className={`mt-4 text-5xl leading-[0.95] tracking-tight md:text-7xl ${t.title}`}>
+            Your Overlay control center.
+          </h1>
+          <p className={`mt-5 max-w-2xl text-sm leading-7 ${t.muted}`}>
+            Manage plan status, usage, top-ups, desktop handoff, and account access outside the main app chrome.
+          </p>
+        </div>
+        <PricingControlPreview
+          amount={
+            entitlements && entitlements.planKind === 'paid'
+              ? `$${Math.max(0, entitlements.budgetRemainingCents / 100).toFixed(2)}`
+              : '$0'
+          }
+        />
+      </div>
 
       {loading || authLoading || !sessionCheckComplete || !capabilitiesLoaded ? (
         <AccountLoadingState mutedClass={t.muted} dark={isLandingDark} />
@@ -309,61 +325,63 @@ function AccountPageContent() {
           }
         />
       ) : (
-        <div className="space-y-6">
-          <AccountProfileCard
-            panelClass={panel}
-            headingClass={t.h}
-            mutedClass={t.muted}
-            dark={isLandingDark}
-            name={user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
-            email={user?.email}
-            actions={
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <button
-                  onClick={handleSignOut}
-                  disabled={signingOut}
-                  className="w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto text-[var(--danger)] hover:bg-[var(--surface-muted)]"
-                >
-                  {signingOut ? 'Signing out...' : 'Sign out'}
-                </button>
-                <DeleteAccountSection isLandingDark={isLandingDark} />
-              </div>
-            }
-          />
+        <div className="space-y-5">
+          <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+            <AccountProfileCard
+              panelClass={panel}
+              headingClass={t.h}
+              mutedClass={t.muted}
+              dark={isLandingDark}
+              name={user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
+              email={user?.email}
+              actions={
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <button
+                    onClick={handleSignOut}
+                    disabled={signingOut}
+                    className="w-full rounded-lg px-4 py-2 text-sm font-medium text-[var(--danger)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50 sm:w-auto"
+                  >
+                    {signingOut ? 'Signing out...' : 'Sign out'}
+                  </button>
+                  <DeleteAccountSection isLandingDark={isLandingDark} />
+                </div>
+              }
+            />
 
-          <AccountContinueCard
-            panelClass={panel}
-            mutedClass={t.muted}
-            bodyClass={t.body}
-            actions={
-              <>
-                <button
-                  onClick={handleOpenInApp}
-                  disabled={actionLoading === 'openApp'}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:bg-[var(--surface-muted)]"
-                >
-                  {actionLoading === 'openApp' ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      Opening...
-                    </>
-                  ) : (
-                    <>
-                      Open in desktop app
-                      <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
-                </button>
-                <Link
-                  href="/app/chat"
-                  className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]"
-                >
-                  Open web app
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </>
-            }
-          />
+            <AccountContinueCard
+              panelClass={panel}
+              mutedClass={t.muted}
+              bodyClass={t.body}
+              actions={
+                <>
+                  <button
+                    onClick={handleOpenInApp}
+                    disabled={actionLoading === 'openApp'}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50"
+                  >
+                    {actionLoading === 'openApp' ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Opening...
+                      </>
+                    ) : (
+                      <>
+                        Open in desktop app
+                        <ArrowRight className="h-4 w-4" />
+                      </>
+                    )}
+                  </button>
+                  <Link
+                    href="/app/chat"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--button-primary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-primary-text)] transition-opacity hover:opacity-90"
+                  >
+                    Open web app
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </>
+              }
+            />
+          </div>
 
           <AccountBillingPanel
             actionLoading={actionLoading}

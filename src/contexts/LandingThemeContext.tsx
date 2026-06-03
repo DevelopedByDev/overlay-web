@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import { LANDING_THEME_STORAGE_KEY } from "@/features/landing/lib/landingThemeConstants";
 
 export type LandingTheme = "light" | "dark";
@@ -52,6 +52,63 @@ function writeStoredLandingTheme(theme: LandingTheme) {
   }
 }
 
+/** Self-contained CSS variables for the landing theme.
+ *  These are inlined on the wrapper div so the landing subtree never reads
+ *  the app's theme (which AppSettingsProvider overrides via JS-injected
+ *  preset variables on document.documentElement.style). */
+const LANDING_CSS_VARS: Record<LandingTheme, React.CSSProperties> = {
+  light: {
+    "--background": "#fafafa",
+    "--foreground": "#0a0a0a",
+    "--muted": "#71717a",
+    "--muted-light": "#a1a1aa",
+    "--border": "#e4e4e7",
+    "--surface-elevated": "#ffffff",
+    "--surface-muted": "#f5f5f5",
+    "--surface-subtle": "#f0f0f0",
+    "--sidebar-surface": "#f5f5f5",
+    "--overlay-scrim": "rgba(0,0,0,0.4)",
+    "--accent": "#0a0a0a",
+    "--button-primary-bg": "#0a0a0a",
+    "--button-primary-text": "#ffffff",
+    "--button-secondary-bg": "#ffffff",
+    "--button-secondary-border": "#e4e4e7",
+    "--button-secondary-text": "#0a0a0a",
+    "--input-background": "#ffffff",
+    "--input-border": "#e4e4e7",
+    "--input-text": "#0a0a0a",
+    "--input-placeholder": "#a1a1aa",
+    "--success": "#10b981",
+    "--warning": "#f59e0b",
+    "--danger": "#ef4444",
+  } as React.CSSProperties,
+  dark: {
+    "--background": "#09090b",
+    "--foreground": "#f5f5f5",
+    "--muted": "#a1a1aa",
+    "--muted-light": "#71717a",
+    "--border": "#27272a",
+    "--surface-elevated": "#111113",
+    "--surface-muted": "#151518",
+    "--surface-subtle": "#1c1c20",
+    "--sidebar-surface": "#151518",
+    "--overlay-scrim": "rgba(0,0,0,0.6)",
+    "--accent": "#f5f5f5",
+    "--button-primary-bg": "#f5f5f5",
+    "--button-primary-text": "#0a0a0a",
+    "--button-secondary-bg": "transparent",
+    "--button-secondary-border": "#27272a",
+    "--button-secondary-text": "#f5f5f5",
+    "--input-background": "#111113",
+    "--input-border": "#27272a",
+    "--input-text": "#f5f5f5",
+    "--input-placeholder": "#71717a",
+    "--success": "#10b981",
+    "--warning": "#f59e0b",
+    "--danger": "#ef4444",
+  } as React.CSSProperties,
+};
+
 export function LandingThemeProvider({ children }: { children: React.ReactNode }) {
   const landingTheme = useSyncExternalStore<LandingTheme>(
     subscribeToLandingTheme,
@@ -78,54 +135,15 @@ export function LandingThemeProvider({ children }: { children: React.ReactNode }
     [landingTheme, setLandingTheme, toggleLandingTheme],
   );
 
-  // Override the app's html-level theme while this provider is mounted.
-  // The root layout.tsx inline script + AppSettingsProvider both set
-  // document.documentElement.dataset.theme from the app's settings. Since
-  // globals.css only defines [data-theme='dark'] (no light override),
-  // a div-level attribute cannot win back light mode. We must override
-  // the <html> element itself and restore the app's theme on unmount.
-  const originalRef = useRef<{ theme: string | undefined; colorScheme: string }>({
-    theme: undefined,
-    colorScheme: "",
-  });
-  useEffect(() => {
-    const root = document.documentElement;
-    originalRef.current = {
-      theme: root.dataset.theme,
-      colorScheme: root.style.colorScheme,
-    };
-    root.dataset.theme = landingTheme;
-    root.style.colorScheme = landingTheme;
-
-    return () => {
-      const { theme, colorScheme } = originalRef.current;
-      if (theme !== undefined) {
-        root.dataset.theme = theme;
-      } else {
-        delete root.dataset.theme;
-      }
-      if (colorScheme) {
-        root.style.colorScheme = colorScheme;
-      } else {
-        root.style.removeProperty("colorScheme");
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.theme = landingTheme;
-    root.style.colorScheme = landingTheme;
-  }, [landingTheme]);
-
   return (
     <LandingThemeContext.Provider value={value}>
       <div
         suppressHydrationWarning
-        data-theme={landingTheme}
         data-landing-theme={landingTheme}
-        style={{ colorScheme: landingTheme }}
+        style={{
+          colorScheme: landingTheme,
+          ...LANDING_CSS_VARS[landingTheme],
+        }}
         className="flex min-h-screen flex-col bg-[var(--background)] text-[var(--foreground)]"
       >
         {children}

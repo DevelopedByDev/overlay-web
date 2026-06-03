@@ -1,77 +1,75 @@
 "use client";
 
-import Link from "next/link";
-import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
-import { StaticMarketingShell, useStaticMarketingTheme } from "@/features/marketing/components/StaticMarketingShell";
+import { useAuth } from "@/contexts/AuthContext";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
+import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
+import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
+import {
+  EditorialIntro,
+  MarketingBand,
+  MarketingCtaRow,
+  PrimaryMarketingLink,
+  PrincipleGrid,
+  ProductWorkspaceDemo,
+  SecondaryMarketingLink,
+} from "@/features/marketing/components/MarketingShowcase";
+import { MARKETING_GITHUB_URL, getMarketingAppHref } from "@/shared/marketing/marketing";
 
-const BELIEFS = [
-  {
-    title: "AI needs an interface layer",
-    body: "The best models change constantly. People should not rebuild their workflow every time the leaderboard moves.",
-  },
-  {
-    title: "Context should compound",
-    body: "Notes, files, projects, tools, and memory should live together so each session starts with the work already in place.",
-  },
-  {
-    title: "Open wins",
-    body: "The most important software platforms become standards when people can inspect them, extend them, and build on them.",
-  },
-  {
-    title: "The aggregator should be user-aligned",
-    body: "Overlay is not trying to trap you in one model, one provider, or one workflow. It is a surface for choosing the best tool for the job.",
-  },
+const PRINCIPLES = [
+  ["Privacy", "The interface closest to your work should respect where that work lives."],
+  ["Openness", "Teams should be able to inspect, self-host, extend, and change the system they depend on."],
+  ["Control", "Model choice, data flow, and workflow policy should be configurable, not dictated by one vendor."],
+  ["Simplicity", "The product should feel like a tool you use every day, not a maze of disconnected AI accounts."],
 ];
 
 function ManifestoContent() {
-  const theme = useStaticMarketingTheme();
+  const { isAuthenticated } = useAuth();
+  const appHref = getMarketingAppHref(isAuthenticated);
 
   return (
     <StaticMarketingShell>
-      <main className="px-6 py-16 md:px-8 md:py-20">
-        <div className="mx-auto max-w-4xl">
-          <p className={`text-sm uppercase tracking-[0.2em] ${theme.subtleClass}`}>Manifesto</p>
-          <h1 className="mt-4 max-w-[12ch] text-5xl leading-[0.95] tracking-tight md:text-7xl" style={{ fontFamily: "var(--font-serif)" }}>
-            The open AI workspace.
-          </h1>
-          <p className={`mt-8 max-w-2xl text-lg leading-8 ${theme.mutedClass}`}>
-            Overlay exists because AI is too important to live inside closed, isolated products. The interface closest to the human should be open, extensible, and built around real work.
-          </p>
-
-          <div className={`mt-14 grid gap-4 md:grid-cols-2`}>
-            {BELIEFS.map((belief) => (
-              <article key={belief.title} className={`rounded-[24px] border p-6 ${theme.panelClass}`}>
-                <h2 className="text-2xl tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>
-                  {belief.title}
-                </h2>
-                <p className={`mt-4 text-sm leading-7 ${theme.mutedClass}`}>{belief.body}</p>
-              </article>
-            ))}
-          </div>
-
-          <section className={`mt-16 border-t pt-10 ${theme.dividerClass}`}>
-            <h2 className="text-3xl tracking-tight md:text-5xl" style={{ fontFamily: "var(--font-serif)" }}>
-              One surface for everything AI.
-            </h2>
-            <p className={`mt-5 max-w-2xl text-base leading-7 ${theme.mutedClass}`}>
-              Text, images, video, agents, automations, apps, files, memory, and integrations should meet in one place. Use it, build on it, contribute, and tell us what is broken.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/pricing" className={`inline-flex rounded-full border px-5 py-3 text-sm ${theme.secondaryButtonClass}`}>
-                See pricing
-              </Link>
-              <a
-                href="https://github.com/DevelopedByDev/overlay-web"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`inline-flex rounded-full border px-5 py-3 text-sm ${theme.secondaryButtonClass}`}
-              >
-                View source
-              </a>
+      <main>
+        <section className="px-5 py-16 md:px-8 md:py-24">
+          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
+            <div>
+              <EditorialIntro
+                label="Manifesto"
+                title="AI should amplify human potential, not replace it."
+                body="Overlay exists because the best models, tools, files, and workflows should meet in one open interface that people and institutions can actually control."
+              />
+              <MarketingCtaRow>
+                <PrimaryMarketingLink href={appHref}>Open app</PrimaryMarketingLink>
+                <SecondaryMarketingLink href={MARKETING_GITHUB_URL} external>
+                  View source
+                </SecondaryMarketingLink>
+              </MarketingCtaRow>
             </div>
-          </section>
-        </div>
+            <ProductWorkspaceDemo tone="dark" compact title="Context compounds." />
+          </div>
+        </section>
+
+        <MarketingBand>
+          <div className="grid gap-10 lg:grid-cols-[0.42fr_1fr]">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">Principles</p>
+              <h2 className="mt-4 text-3xl tracking-tight md:text-5xl">The interface should be user-aligned.</h2>
+            </div>
+            <PrincipleGrid />
+          </div>
+        </MarketingBand>
+
+        <MarketingBand>
+          <div className="mx-auto max-w-4xl">
+            <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
+              {PRINCIPLES.map(([title, body]) => (
+                <section key={title} className="grid gap-4 py-7 md:grid-cols-[180px_1fr]">
+                  <h2 className="text-sm font-medium">{title}</h2>
+                  <p className="text-base leading-8 text-[var(--muted)]">{body}</p>
+                </section>
+              ))}
+            </div>
+          </div>
+        </MarketingBand>
       </main>
       <MarketingFooter />
     </StaticMarketingShell>
@@ -85,4 +83,3 @@ export default function ManifestoPage() {
     </LandingThemeProvider>
   );
 }
-

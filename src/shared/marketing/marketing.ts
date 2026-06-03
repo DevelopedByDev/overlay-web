@@ -13,7 +13,7 @@ export const AUDIENCE_PAGES: Array<{
 }> = [
   {
     key: "business",
-    href: "/use-cases/business",
+    href: "/for-business",
     label: "Overlay for business",
     navLabel: "Business",
     eyebrow: "Enterprise",
@@ -21,7 +21,7 @@ export const AUDIENCE_PAGES: Array<{
   },
   {
     key: "education",
-    href: "/use-cases/education",
+    href: "/for-education",
     label: "Overlay for education",
     navLabel: "Education",
     eyebrow: "Education",
@@ -29,7 +29,7 @@ export const AUDIENCE_PAGES: Array<{
   },
   {
     key: "content",
-    href: "/use-cases/content",
+    href: "/for-content",
     label: "Overlay for content",
     navLabel: "Content",
     eyebrow: "Content",
@@ -37,7 +37,7 @@ export const AUDIENCE_PAGES: Array<{
   },
   {
     key: "developers",
-    href: "/use-cases/developers",
+    href: "/for-developers",
     label: "Overlay for developers",
     navLabel: "Developers",
     eyebrow: "Developers",

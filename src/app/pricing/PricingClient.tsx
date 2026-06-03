@@ -25,6 +25,7 @@ import {
   marketingPageTitle,
   marketingPanel,
 } from '@/features/landing/lib/landingPageStyles'
+import { PricingControlPreview } from '@/features/marketing/components/MarketingShowcase'
 import { formatBytes } from '@/shared/storage/storage-limits'
 
 const TIER_STARTER_CENTS = 800
@@ -139,8 +140,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
     body: marketingBody(),
     muted: marketingMuted(),
     panel: marketingPanel(),
-    heroGlow:
-      'bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--foreground)_6%,transparent),transparent_45%)]',
+    heroGlow: '',
     primaryButton:
       'bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] hover:opacity-90',
     secondaryButton:
@@ -386,27 +386,32 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
         <UserIdExtractor />
       </Suspense>
 
-      <main className="px-6 py-16 md:px-8 md:py-20">
+      <main className="px-5 py-16 md:px-8 md:py-24">
         <div className="mx-auto flex max-w-6xl flex-col gap-10">
-          <div className="text-center">
-            <p className={`text-sm uppercase tracking-[0.2em] ${staticTheme.subtleClass}`}>Plans and pricing</p>
-            <h1 className="mt-4 text-4xl tracking-tight md:text-6xl" style={{ fontFamily: 'var(--font-serif)' }}>
-              Simple pricing.
-            </h1>
-            <p className={`mx-auto mt-5 max-w-2xl text-base leading-7 ${staticTheme.mutedClass}`}>
-              Start free. Upgrade when you want premium models, agents, browser tasks, and more monthly budget.
-            </p>
-            {!authLoading && !isAuthenticated ? (
-              <div className="mt-6 inline-flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-900">
-                Sign in to subscribe.
-                <Link href="/auth/sign-in?redirect=/pricing" className="font-medium underline">
-                  Sign in →
-                </Link>
-              </div>
-            ) : null}
-            {error ? (
-              <div className="mt-6 inline-flex rounded-lg bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div>
-            ) : null}
+          <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
+            <div>
+              <p className={`text-xs font-medium uppercase tracking-[0.24em] ${staticTheme.subtleClass}`}>Plans and pricing</p>
+              <h1 className="mt-4 text-5xl leading-[0.95] tracking-tight md:text-7xl">
+                Pay for the platform and the AI you use.
+              </h1>
+              <p className={`mt-6 max-w-2xl text-base leading-7 ${staticTheme.mutedClass}`}>
+                Start free. Upgrade when you want premium models, agents, browser tasks, and more monthly budget.
+              </p>
+              {!authLoading && !isAuthenticated ? (
+                <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-2 text-sm text-[var(--foreground)]">
+                  Sign in to subscribe.
+                  <Link href="/auth/sign-in?redirect=/pricing" className="font-medium underline underline-offset-4">
+                    Sign in
+                  </Link>
+                </div>
+              ) : null}
+              {error ? (
+                <div className="mt-6 inline-flex rounded-lg border border-[color:color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-2 text-sm text-[var(--danger)]">
+                  {error}
+                </div>
+              ) : null}
+            </div>
+            <PricingControlPreview amount={formatDollarAmount(selectedPlanAmountCents)} />
           </div>
 
           <div className="hidden gap-3 lg:grid lg:grid-cols-3">

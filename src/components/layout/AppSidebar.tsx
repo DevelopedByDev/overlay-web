@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
 import {
   MessageSquare, User,
@@ -57,7 +57,11 @@ export default function AppSidebar({
 }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
-  const currentSearchParams = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search)
+  const routeSearchParams = useSearchParams()
+  const currentSearchParams = useMemo(
+    () => new URLSearchParams(routeSearchParams?.toString() ?? ''),
+    [routeSearchParams],
+  )
   const { capabilities } = useOverlayCapabilities()
   const { requireAuth } = useGuestGate()
   const { user: authUser, isLoading: authLoading } = useAuth()

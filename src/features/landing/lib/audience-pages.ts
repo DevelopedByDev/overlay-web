@@ -3,6 +3,7 @@ import type { AudiencePageKey } from "@/shared/marketing/marketing";
 import { MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/shared/marketing/marketing";
 
 type AudiencePageContent = {
+  audience: AudiencePageKey;
   metadata: Metadata;
   eyebrow: string;
   title: string;
@@ -19,15 +20,16 @@ type AudiencePageContent = {
 
 export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent> = {
   business: {
+    audience: "business",
     metadata: {
       title: "Overlay for business",
       description:
         "One AI-native workspace for research, operations, and execution. Secure context, flexible model routing, automations, and integrations for teams that ship.",
     },
     eyebrow: "Business",
-    title: "Overlay for business",
+    title: "One AI layer for serious work.",
     description:
-      "Give your team one AI interaction layer for research, operations, browser work, and automations — without scattering context across five separate subscriptions.",
+      "Give your team one controlled workspace for research, operations, browser work, and automations without scattering context across separate subscriptions.",
     support:
       "Overlay keeps conversations, files, notes, outputs, and integrations in one surface so work moves from question to execution with less operational drag and no vendor lock-in.",
     features: [
@@ -65,13 +67,14 @@ export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent>
     secondaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fchat" },
   },
   education: {
+    audience: "education",
     metadata: {
       title: "Overlay for education",
       description:
         "An AI-native platform for teachers, students, parents, and administrators. Curriculum, assessment, tutoring, and governance in one school-controlled workspace.",
     },
     eyebrow: "Education",
-    title: "Overlay for education",
+    title: "A private AI layer for your school.",
     description:
       "Give your school an AI-native layer that improves outcomes without losing control of data, standards, or policy.",
     support:
@@ -111,13 +114,14 @@ export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent>
     secondaryCta: { label: "Open app", href: "/auth/sign-in?redirect=%2Fapp%2Fchat" },
   },
   content: {
+    audience: "content",
     metadata: {
       title: "Overlay for content",
       description:
         "Research, drafting, voice capture, and multimodal generation in one AI workspace for content teams and independent creators.",
     },
     eyebrow: "Content",
-    title: "Overlay for content",
+    title: "Research, draft, and generate in one place.",
     description:
       "Move from research to script to visual output in one workspace. Voice notes, drafts, browser tasks, and generation loops stay in context from first idea to final asset.",
     support:
@@ -157,13 +161,14 @@ export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent>
     secondaryCta: { label: "Contact sales", href: MARKETING_SALES_URL, external: true },
   },
   developers: {
+    audience: "developers",
     metadata: {
       title: "Overlay for developers",
       description:
         "Model routing, browser tasks, extensions, integrations, and open-source control for developers building with AI every day.",
     },
     eyebrow: "Developers",
-    title: "Overlay for developers",
+    title: "A serious AI workspace for technical work.",
     description:
       "Use the best model, the right tool, and your own context in one open-source AI workspace built for technical workflows.",
     support:

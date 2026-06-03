@@ -41,15 +41,6 @@ const staticSecurityHeaders = [
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@overlay/app-core"],
-  async redirects() {
-    // The audience pages moved under /use-cases/*; keep the old /for-* URLs working.
-    return [
-      { source: "/for-business", destination: "/use-cases/business", permanent: true },
-      { source: "/for-content", destination: "/use-cases/content", permanent: true },
-      { source: "/for-developers", destination: "/use-cases/developers", permanent: true },
-      { source: "/for-education", destination: "/use-cases/education", permanent: true },
-    ];
-  },
   async headers() {
     return [
       {

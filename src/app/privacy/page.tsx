@@ -1,9 +1,4 @@
-"use client";
-
-import Link from "next/link";
-import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
-import { StaticMarketingShell, useStaticMarketingTheme } from "@/features/marketing/components/StaticMarketingShell";
-import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
+import { LegalPageTemplate } from "@/features/marketing/components/LegalPageTemplate";
 
 const PRIVACY = [
   {
@@ -40,56 +35,15 @@ const PRIVACY = [
   },
 ];
 
-function PrivacyContent() {
-  const theme = useStaticMarketingTheme();
-
-  return (
-    <StaticMarketingShell>
-      <main className="px-6 py-16 md:px-8 md:py-20">
-        <div className="mx-auto max-w-3xl">
-          <p className={`text-sm uppercase tracking-[0.2em] ${theme.subtleClass}`}>Privacy</p>
-          <h1 className="mt-4 text-4xl tracking-tight md:text-6xl" style={{ fontFamily: "var(--font-serif)" }}>
-            Privacy policy.
-          </h1>
-          <p className={`mt-5 text-base leading-7 ${theme.mutedClass}`}>Last updated: April 24, 2026</p>
-          <p className={`mt-8 text-lg leading-8 ${theme.mutedClass}`}>
-            Overlay is a workspace for real work, so privacy needs to be understandable. This page explains what we collect and why.
-          </p>
-
-          <div className={`mt-12 border-t ${theme.dividerClass}`}>
-            {PRIVACY.map((section) => (
-              <section key={section.title} className={`border-b py-8 ${theme.dividerClass}`}>
-                <h2 className="text-2xl tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>
-                  {section.title}
-                </h2>
-                <p className={`mt-3 text-base leading-7 ${theme.mutedClass}`}>{section.body}</p>
-              </section>
-            ))}
-          </div>
-
-          <p className={`mt-10 text-sm leading-6 ${theme.mutedClass}`}>
-            Privacy questions or deletion requests:{" "}
-            <a href="mailto:divyansh@layernorm.co" className="underline underline-offset-4">
-              divyansh@layernorm.co
-            </a>
-            . See also the{" "}
-            <Link href="/terms" className="underline underline-offset-4">
-              terms of service
-            </Link>
-            .
-          </p>
-        </div>
-      </main>
-      <MarketingFooter />
-    </StaticMarketingShell>
-  );
-}
-
 export default function PrivacyPolicy() {
   return (
-    <LandingThemeProvider>
-      <PrivacyContent />
-    </LandingThemeProvider>
+    <LegalPageTemplate
+      label="Privacy"
+      title="Privacy policy."
+      updated="April 24, 2026"
+      intro="Overlay is a workspace for real work, so privacy needs to be understandable. This page explains what we collect and why."
+      sections={PRIVACY}
+      crossLink={{ href: "/terms", label: "terms of service" }}
+    />
   );
 }
-
