@@ -102,6 +102,18 @@ export class ConversationsClient {
     return this.http.request('/api/v1/conversations/message', this.http.jsonRequest(body, { ...init, method: 'DELETE' }))
   }
 
+  updateMessageUiPartResponse(
+    body: {
+      conversationId: string
+      messageId: string
+      partId: string
+      data: unknown
+    },
+    init?: RequestInit,
+  ) {
+    return this.http.request('/api/v1/conversations/message', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
+  }
+
   stopResponse(
     body: {
       conversationId?: string

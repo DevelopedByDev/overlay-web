@@ -9,6 +9,7 @@ import { projectRouteViewForFile } from '@overlay/app-core'
 import { BookOpen,ChevronDown,FileText,FolderOpen,FolderPlus,Loader2,MessageSquare,Pencil,Plus,Upload } from 'lucide-react'
 import { type ChangeEvent,type ReactNode,type RefObject } from 'react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
+import { FileTypeIcon } from '../shared/file-type-icon'
 
 export interface ProjectHubHeaderProps {
   projectName: string
@@ -291,7 +292,7 @@ export function ProjectHubTabs({
                     {projectRouteViewForFile(file) === 'note' ? (
                       <BookOpen size={13} className="shrink-0 text-[var(--muted-light)]" />
                     ) : (
-                      <FileText size={13} className="shrink-0 text-[var(--muted-light)]" />
+                      <FileTypeIcon file={file} size={13} className="text-[var(--muted-light)]" />
                     )}
                     <span className="min-w-0 flex-1 truncate">{file.name || 'Untitled'}</span>
                   </button>

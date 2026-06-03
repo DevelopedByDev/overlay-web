@@ -6,9 +6,10 @@ ProjectRouteView,
 ProjectSummary
 } from '@overlay/app-core'
 import { projectRouteViewForFile,rootProjectFiles } from '@overlay/app-core'
-import { BookOpen,ChevronRight,FileText,Folder,FolderOpen,MessageSquare,Pencil,Trash2 } from 'lucide-react'
+import { BookOpen,ChevronRight,Folder,FolderOpen,MessageSquare,Pencil,Trash2 } from 'lucide-react'
 import { useState,type MouseEvent,type ReactNode } from 'react'
 
+import { FileTypeIcon } from '../shared/file-type-icon'
 import { inlineConfirmDeleteButtonClass,panelItemClass } from './shared'
 
 export interface ProjectInlineBranchProps {
@@ -278,7 +279,7 @@ export function ProjectInlineBranch({
                   className={`${panelItemClass} cursor-pointer`}
                   style={{ paddingLeft: `${34 + depth * 14}px` }}
                 >
-                  <FileText size={11} className="shrink-0 text-[var(--muted-light)]" />
+                  <FileTypeIcon file={file} size={11} className="text-[var(--muted-light)]" />
                   <span className="min-w-0 flex-1 truncate">{file.name}</span>
                 </div>
               ))}

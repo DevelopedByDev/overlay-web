@@ -4,6 +4,7 @@ import type { ReactNode, RefObject } from 'react'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
+import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
 import { ChatMessage } from './ChatMessage'
 
@@ -46,6 +47,8 @@ export type ChatMessageListActions = {
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
   onContinue: () => void
+  onGeneratedUiChange: (messageId: string, partId: string, data: GeneratedUiData) => void
+  getConnectorLogoUrl?: (serviceName: string, slug?: string) => string | null
 }
 
 type ChatMessageListProps = {
@@ -151,6 +154,8 @@ function ChatMessages({
         onOpenFilePreview={actions.onOpenFilePreview}
         onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
         onContinue={actions.onContinue}
+        onGeneratedUiChange={actions.onGeneratedUiChange}
+        getConnectorLogoUrl={actions.getConnectorLogoUrl}
       />,
     )
   }

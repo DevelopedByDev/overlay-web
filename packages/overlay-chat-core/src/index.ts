@@ -1,6 +1,7 @@
 export * from './agent-assistant-text'
 export * from './constants'
 export * from './gating'
+export * from './generated-ui'
 export * from './markdown-table-fix'
 export * from './messages'
 export * from './paste'

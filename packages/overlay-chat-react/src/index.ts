@@ -6,6 +6,7 @@ export { ComprehensiveModelPicker as ModelPicker } from './components/Comprehens
 export * from './components/ConversationList'
 export * from './components/DropdownSelect'
 export * from './components/GenerationModeToggle'
+export * from './components/GeneratedUiCard'
 export * from './components/ExchangeBlock'
 export * from './components/MarkdownMessage'
 export * from './components/MediaSlotOutput'

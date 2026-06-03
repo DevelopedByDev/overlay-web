@@ -2,6 +2,7 @@ import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { Chat } from '@/components/providers/ai-chat-client'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { OutputType } from '@/shared/tools/output-types'
+import type { GeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import type { AutomationDraftSummary } from '@/features/automations/lib/automation-drafts'
 import type { SkillDraftSummary } from '@/features/automations/lib/skill-drafts'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -75,6 +76,7 @@ export type AssistantVisualBlock =
     }
   | { kind: 'text'; text: string }
   | { kind: 'file'; url: string; mediaType?: string }
+  | { kind: 'generated-ui'; part: GeneratedUiPart }
   | { kind: 'reasoning'; key: string; text: string; state?: string }
 
 export type ToolVisualBlock = Extract<AssistantVisualBlock, { kind: 'tool' }>
@@ -85,6 +87,7 @@ export type AssistantVisualSegment =
   | { kind: 'reasoning'; block: ReasoningVisualBlock; originIndex: number }
   | { kind: 'text'; block: Extract<AssistantVisualBlock, { kind: 'text' }>; originIndex: number }
   | { kind: 'file'; block: Extract<AssistantVisualBlock, { kind: 'file' }>; originIndex: number }
+  | { kind: 'generated-ui'; block: Extract<AssistantVisualBlock, { kind: 'generated-ui' }>; originIndex: number }
   | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
   | { kind: 'tools'; items: ToolGroupItem[]; originIndex: number }
 

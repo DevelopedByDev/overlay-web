@@ -2,6 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
+import { GeneratedUiCard } from '@overlay/chat-react'
+import { isGeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import { MarkdownMessage } from '@/features/chat/components/MarkdownMessage'
 import type { SharedConversation } from '@/app/share/c/[token]/page'
 
@@ -13,6 +15,10 @@ type AnyPart = {
   url?: string
   mediaType?: string
   fileName?: string
+  id?: string
+  dataType?: string
+  data?: unknown
+  transient?: boolean
   toolInvocation?: { toolName: string; state?: string }
 }
 
@@ -88,33 +94,36 @@ function UserMessage({ message }: { message: Message }) {
 }
 
 function AssistantMessage({ message }: { message: Message }) {
-  // Prefer assembled `content`; fall back to concatenated text parts.
-  let text = message.content?.trim() ?? ''
   const parts = asParts(message)
-  if (!text) {
-    const chunks: string[] = []
-    for (const part of parts) {
-      if (isTextPart(part) && part.text) chunks.push(part.text)
-    }
-    text = chunks.join('\n\n')
-  }
-  const imageParts = parts.filter(isImagePart)
+  const hasRenderableParts = parts.some((part) => (
+    isTextPart(part) ||
+    isImagePart(part) ||
+    isGeneratedUiPart(part)
+  ))
+  const fallbackText = hasRenderableParts ? '' : message.content?.trim() ?? ''
   return (
     <div className="flex justify-start">
       <div className="flex w-full max-w-[100%] flex-col gap-3">
-        {text && <MarkdownMessage text={text} isStreaming={false} />}
-        {imageParts.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {imageParts.map((part, idx) => (
+        {fallbackText ? <MarkdownMessage text={fallbackText} isStreaming={false} /> : null}
+        {hasRenderableParts ? parts.map((part, idx) => {
+          if (isTextPart(part) && part.text?.trim()) {
+            return <MarkdownMessage key={idx} text={part.text} isStreaming={false} />
+          }
+          if (isGeneratedUiPart(part)) {
+            return <GeneratedUiCard key={part.id} part={part} readOnly />
+          }
+          if (isImagePart(part)) {
+            return (
               <img
                 key={idx}
                 src={part.url}
                 alt=""
                 className="max-h-96 max-w-full rounded-lg border border-[var(--border)] object-contain"
               />
-            ))}
-          </div>
-        )}
+            )
+          }
+          return null
+        }) : null}
       </div>
     </div>
   )

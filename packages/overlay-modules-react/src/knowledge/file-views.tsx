@@ -2,9 +2,10 @@
 
 import type { KnowledgeFileNode } from '@overlay/app-core'
 import { filePathLabel } from '@overlay/app-core'
-import { BookOpen,FileText,Folder,Trash2 } from 'lucide-react'
+import { BookOpen,Folder,Trash2 } from 'lucide-react'
 import { useState,type MouseEvent } from 'react'
 
+import { FileTypeIcon } from '../shared/file-type-icon'
 import { BulkSelectMarker } from './selection'
 
 export function KnowledgeFileList({
@@ -134,7 +135,7 @@ export function FileTreeRow({
           ) : node.kind === 'note' ? (
             <BookOpen size={14} className="shrink-0 text-[var(--muted-light)]" />
           ) : (
-            <FileText size={14} className="shrink-0 text-[var(--muted-light)]" />
+            <FileTypeIcon file={node} size={15} className="text-[var(--muted-light)]" />
           )}
           <span className="min-w-0 flex-1 truncate leading-relaxed">{node.name}</span>
         </div>
@@ -228,7 +229,7 @@ export function FileCard({
     >
       {selectMode ? <BulkSelectMarker selected={bulkSel} className="absolute left-3 top-3 z-10" /> : null}
       <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
-        <FileText size={36} className="text-[var(--muted-light)]" />
+        <FileTypeIcon file={file} size={36} framed />
       </div>
       <div className="px-3 py-2">
         <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{file.name}</p>

@@ -10,6 +10,10 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
 import { convex } from '@/server/database/convex'
+import {
+  GENERATED_UI_DATA_TYPE,
+  normalizeGeneratedUiData,
+} from '@overlay/chat-core/generated-ui'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type ConversationDoc = {
@@ -95,6 +99,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         content: string
         contentType: 'text' | 'image' | 'video'
         parts?: Array<
+          | { type: 'data'; id: string; dataType: 'overlay.generated_ui'; data: unknown; transient?: boolean }
           | { type: string; text?: string; url?: string; mediaType?: string; fileName?: string; state?: string }
           | {
               type: 'tool-invocation'
@@ -147,6 +152,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           content: string
           contentType: 'text' | 'image' | 'video'
           parts?: Array<
+            | { type: 'data'; id: string; dataType: 'overlay.generated_ui'; data: unknown; transient?: boolean }
             | { type: string; text?: string; url?: string; mediaType?: string; fileName?: string; state?: string }
             | {
                 type: 'tool-invocation'
@@ -194,6 +200,22 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           role: message.role,
           parts: message.parts?.length
             ? message.parts.map((part) => {
+                if (
+                  part.type === 'data' &&
+                  'dataType' in part &&
+                  part.dataType === GENERATED_UI_DATA_TYPE
+                ) {
+                  const normalized = normalizeGeneratedUiData((part as { data?: unknown }).data)
+                  if (normalized) {
+                    return {
+                      type: 'data' as const,
+                      id: (part as { id?: string }).id,
+                      dataType: GENERATED_UI_DATA_TYPE,
+                      data: normalized,
+                      ...((part as { transient?: boolean }).transient ? { transient: true } : {}),
+                    }
+                  }
+                }
                 if (part.type === 'tool-invocation' && 'toolInvocation' in part && part.toolInvocation) {
                   return {
                     type: 'tool-invocation' as const,

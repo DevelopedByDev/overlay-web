@@ -1,5 +1,9 @@
 import type { UIMessage } from 'ai'
 import { summarizeToolResultForTranscript } from '@/shared/tools/tool-result-summary'
+import {
+  generatedUiDataToPlainText,
+  isGeneratedUiPart,
+} from '@overlay/chat-core/generated-ui'
 
 /**
  * `convertToModelMessages` treats any `type` starting with `tool-` as a live tool UI part.
@@ -53,6 +57,10 @@ export function sanitizeUiMessagesForModelApi(messages: UIMessage[]): UIMessage[
             toolOutput: invocation.toolOutput,
           })
           if (summary) texts.push(summary)
+        }
+        const candidatePart: unknown = p
+        if (isGeneratedUiPart(candidatePart)) {
+          texts.push(generatedUiDataToPlainText(candidatePart.data))
         }
       }
       const merged = texts.join('\n\n').trim()

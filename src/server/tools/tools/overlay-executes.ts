@@ -5,6 +5,10 @@ import type { OverlayToolsOptions } from './types'
 import { buildAutomationDraftFromTurn, type AutomationScheduleDraft } from '@/features/automations/lib/automation-drafts'
 import { buildSkillDraftFromTurn } from '@/features/automations/lib/skill-drafts'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
+import {
+  GENERATED_UI_VERSION,
+  normalizeGeneratedUiData,
+} from '@overlay/chat-core/generated-ui'
 
 export async function executeSearchKnowledge(
   options: OverlayToolsOptions,
@@ -38,6 +42,36 @@ export async function executeSearchKnowledge(
       success: false,
       error: err instanceof Error ? err.message : 'Search failed',
     }
+  }
+}
+
+function generatedUiId(kind: string, payload: unknown): string {
+  const raw = JSON.stringify(payload)
+  let hash = 0
+  for (let i = 0; i < raw.length; i++) {
+    hash = (hash * 31 + raw.charCodeAt(i)) | 0
+  }
+  return `${kind.replace(/[^a-z0-9]+/gi, '-')}-${Math.abs(hash).toString(36)}`
+}
+
+export async function executePresentGeneratedUi(
+  _options: OverlayToolsOptions,
+  input: Record<string, unknown>,
+) {
+  const id = typeof input.id === 'string' && input.id.trim()
+    ? input.id.trim()
+    : undefined
+  const generatedUi = normalizeGeneratedUiData({
+    ...input,
+    version: GENERATED_UI_VERSION,
+  })
+  if (!generatedUi) {
+    return { success: false, error: 'Invalid generated UI payload.' }
+  }
+  return {
+    success: true,
+    id: id ?? generatedUiId(generatedUi.kind, generatedUi),
+    generatedUi,
   }
 }
 

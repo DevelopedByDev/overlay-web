@@ -12,6 +12,11 @@ import type {
   ToolGroupItem,
   ToolVisualBlock,
 } from './types'
+import {
+  buildGeneratedUiPart,
+  generatedUiDataToPlainText,
+  isGeneratedUiPart,
+} from './generated-ui'
 
 export function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> }): string {
   if (!msg.parts) return ''
@@ -23,6 +28,7 @@ export function messageHasVisibleAssistantActivity(msg: {
 }): boolean {
   return (msg.parts ?? []).some((part) => {
     if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
+    if (isGeneratedUiPart(part)) return true
     if (part.type === 'tool-invocation') return Boolean(part.toolInvocation)
     if (part.type === 'file') return Boolean(part.url)
     return part.type.startsWith('tool-')
@@ -39,8 +45,12 @@ export function chooseAssistantCandidate<T extends {
 
 export function assistantBlocksToPlainText(blocks: AssistantVisualBlock[]): string {
   return blocks
-    .filter((block): block is { kind: 'text'; text: string } => block.kind === 'text')
-    .map((block) => block.text)
+    .map((block) => {
+      if (block.kind === 'text') return block.text
+      if (block.kind === 'generated-ui') return generatedUiDataToPlainText(block.part.data)
+      return ''
+    })
+    .filter(Boolean)
     .join('\n\n')
 }
 
@@ -103,6 +113,11 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
       i++
       continue
     }
+    if (block.kind === 'generated-ui') {
+      out.push({ kind: 'generated-ui', block, originIndex: i })
+      i++
+      continue
+    }
     if (block.kind === 'text') {
       out.push({ kind: 'text', block, originIndex: i })
       i++
@@ -134,6 +149,24 @@ export function getMessageImages(msg: { parts?: Array<{ type: string; url?: stri
   return msg.parts
     .filter((part) => part.type === 'file' && part.url && (part.mediaType?.startsWith('image/') ?? true))
     .map((part) => part.url!)
+}
+
+export function generatedUiPartFromToolBlock(block: ToolVisualBlock) {
+  if (block.name !== 'present_generated_ui') return null
+  const output = block.toolOutput && typeof block.toolOutput === 'object'
+    ? (block.toolOutput as Record<string, unknown>)
+    : null
+  if (!output || output.success !== true) return null
+  const id =
+    typeof output.id === 'string' && output.id.trim()
+      ? output.id.trim()
+      : block.key
+  return buildGeneratedUiPart(id, output.generatedUi)
+}
+
+export function messagePartToGeneratedUiBlock(part: unknown): Extract<AssistantVisualBlock, { kind: 'generated-ui' }> | null {
+  if (isGeneratedUiPart(part)) return { kind: 'generated-ui', part }
+  return null
 }
 
 export function getUserMessageDocNames(msg: unknown): string[] {

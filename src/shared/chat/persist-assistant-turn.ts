@@ -1,6 +1,12 @@
 import type { StepResult, ToolSet } from 'ai'
 import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import { summarizeToolResultForTranscript } from '@/shared/tools/tool-result-summary'
+import {
+  GENERATED_UI_DATA_TYPE,
+  buildGeneratedUiPart,
+  generatedUiDataToPlainText,
+  normalizeGeneratedUiData,
+} from '@overlay/chat-core/generated-ui'
 
 /** Persisted when the model produced no text/tool transcript so reload never drops the assistant row. */
 export const ASSISTANT_EMPTY_CONTENT_PLACEHOLDER = '[Empty response]'
@@ -116,6 +122,21 @@ export function compactAssistantPersistenceForConvex(input: {
       continue
     }
 
+    if (part.type === 'data' && part.dataType === GENERATED_UI_DATA_TYPE) {
+      const normalized = normalizeGeneratedUiData(part.data)
+      const id = typeof part.id === 'string' && part.id.trim() ? part.id.trim() : ''
+      if (normalized && id) {
+        parts.push({
+          type: 'data',
+          id,
+          dataType: GENERATED_UI_DATA_TYPE,
+          data: normalized,
+          ...(part.transient === true ? { transient: true } : {}),
+        })
+      }
+      continue
+    }
+
     parts.push(clampNestingDepth(part) as Record<string, unknown>)
   }
 
@@ -143,6 +164,7 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   const list = steps ?? []
   const textSegments: string[] = []
   const synthesizedToolSegments: string[] = []
+  const generatedUiTextSegments: string[] = []
   for (const step of list) {
     const trimmedText = step.text?.trim()
     if (trimmedText) {
@@ -153,6 +175,14 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
     )
     for (const tc of step.toolCalls ?? []) {
       const result = toolResultsById.get(tc.toolCallId)
+      if (tc.toolName === 'present_generated_ui') {
+        const output = result?.output && typeof result.output === 'object'
+          ? result.output as Record<string, unknown>
+          : null
+        const data = output?.success === true ? normalizeGeneratedUiData(output.generatedUi) : null
+        if (data) generatedUiTextSegments.push(generatedUiDataToPlainText(data))
+        continue
+      }
       const summary = summarizeToolResultForTranscript({
         toolName: tc.toolName,
         toolInput: tc.input,
@@ -163,7 +193,7 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
     }
   }
   const fallback = normalizeAgentAssistantText(fallbackText.trim())
-  let content = textSegments.join('\n\n') || synthesizedToolSegments.join('\n\n') || fallback
+  let content = textSegments.join('\n\n') || generatedUiTextSegments.join('\n\n') || synthesizedToolSegments.join('\n\n') || fallback
   content = ensureAssistantPersistContent(content)
 
   const parts: Array<Record<string, unknown>> = []
@@ -192,6 +222,19 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
     const calls = step.toolCalls ?? []
     for (const tc of calls) {
       const result = toolResultsById.get(tc.toolCallId)
+      if (tc.toolName === 'present_generated_ui') {
+        const output = result?.output && typeof result.output === 'object'
+          ? result.output as Record<string, unknown>
+          : null
+        const part = output?.success === true
+          ? buildGeneratedUiPart(
+              (typeof output.id === 'string' && output.id.trim()) || tc.toolCallId,
+              output.generatedUi,
+            )
+          : null
+        if (part) parts.push(part)
+        continue
+      }
       parts.push({
         type: 'tool-invocation',
         toolInvocation: {

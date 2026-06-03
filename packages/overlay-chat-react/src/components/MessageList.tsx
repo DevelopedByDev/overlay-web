@@ -9,6 +9,8 @@ import type {
   MessageTextPart,
   MessageToolPart,
 } from '@overlay/chat-core'
+import type { GeneratedUiPart } from '@overlay/chat-core/generated-ui'
+import { isGeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import {
   BrowserSessionToolBlock,
   ReasoningBlock,
@@ -18,6 +20,7 @@ import {
 } from './tools'
 import { MarkdownMessage } from './MarkdownMessage'
 import { UserMessageBubble } from './UserMessageBubble'
+import { GeneratedUiCard } from './GeneratedUiCard'
 
 interface MessageListProps {
   messages: ConversationMessage[]
@@ -31,6 +34,7 @@ type AssistantSegment =
   | { kind: 'tools'; parts: MessageToolPart[]; key: string }
   | { kind: 'source'; part: MessageSourcePart; key: string }
   | { kind: 'file'; part: MessageFilePart; key: string }
+  | { kind: 'generated-ui'; part: GeneratedUiPart; key: string }
   | { kind: 'other'; part: ConversationMessagePart; key: string }
 
 function assistantSegments(parts: ConversationMessagePart[]): AssistantSegment[] {
@@ -64,6 +68,11 @@ function assistantSegments(parts: ConversationMessagePart[]): AssistantSegment[]
 
     if (part.type === 'file') {
       segments.push({ kind: 'file', part, key: part.id })
+      continue
+    }
+
+    if (isGeneratedUiPart(part)) {
+      segments.push({ kind: 'generated-ui', part, key: part.id })
       continue
     }
 
@@ -212,6 +221,10 @@ function AssistantMessageBody({
               )}
             </div>
           )
+        }
+
+        if (segment.kind === 'generated-ui') {
+          return <GeneratedUiCard key={segment.key} part={segment.part} readOnly />
         }
 
         return null

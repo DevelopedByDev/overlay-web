@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { FileText, Music, FileQuestion, Download, Loader2, FileType } from 'lucide-react'
+import { Music, FileQuestion, Download, Loader2, FileType } from 'lucide-react'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { FileTypeIcon } from '@overlay/modules-react'
 
 // ─── Type detection ───────────────────────────────────────────────────────────
 
@@ -308,7 +309,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-[var(--muted)]">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-subtle)]">
         {labels[ext] ? (
-          <FileText size={28} className="text-[var(--muted)]" />
+          <FileTypeIcon file={{ name, extension: ext }} size={30} framed />
         ) : (
           <FileQuestion size={28} className="text-[var(--muted)]" />
         )}

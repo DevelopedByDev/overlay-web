@@ -7,8 +7,52 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { applyStorageUsageDelta } from '../files/lib/storageQuota'
 
+const generatedUiVariant = v.object({
+  id: v.string(),
+  label: v.string(),
+  subject: v.optional(v.string()),
+  body: v.string(),
+})
+
+const generatedUiData = v.union(
+  v.object({
+    version: v.literal(1),
+    kind: v.literal('draft.text'),
+    title: v.optional(v.string()),
+    body: v.string(),
+    format: v.optional(v.union(v.literal('plain'), v.literal('markdown'))),
+  }),
+  v.object({
+    version: v.literal(1),
+    kind: v.literal('draft.email'),
+    subject: v.string(),
+    body: v.string(),
+    to: v.optional(v.array(v.string())),
+    cc: v.optional(v.array(v.string())),
+    bcc: v.optional(v.array(v.string())),
+    provider: v.optional(v.literal('gmail')),
+    variants: v.optional(v.array(generatedUiVariant)),
+  }),
+  v.object({
+    version: v.literal(1),
+    kind: v.literal('connector.connect'),
+    serviceName: v.string(),
+    slug: v.optional(v.string()),
+    description: v.optional(v.string()),
+    connectUrl: v.optional(v.string()),
+    connected: v.optional(v.boolean()),
+  }),
+)
+
 /** Matches AI SDK UI parts we persist; `tool-invocation` restores tool chips after reload. */
 const messagePart = v.union(
+  v.object({
+    type: v.literal('data'),
+    id: v.string(),
+    dataType: v.literal('overlay.generated_ui'),
+    data: generatedUiData,
+    transient: v.optional(v.boolean()),
+  }),
   v.object({
     type: v.literal('tool-invocation'),
     toolInvocation: v.object({
@@ -30,6 +74,10 @@ const messagePart = v.union(
 )
 
 const messageParts = v.optional(v.array(messagePart))
+
+function isGeneratedUiPart(candidate: MessagePart): candidate is Extract<MessagePart, { dataType: 'overlay.generated_ui' }> {
+  return candidate.type === 'data' && 'dataType' in candidate && candidate.dataType === 'overlay.generated_ui'
+}
 
 function clampAskModels(ids: string[]): string[] {
   const uniq = [...new Set(ids.filter(Boolean))]
@@ -856,6 +904,58 @@ export const finalizeGeneratingMessage = mutation({
     })
     await deleteMessageDeltas(ctx, args.messageId)
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
+  },
+})
+
+export const updateMessageUiPart = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    partId: v.string(),
+    data: generatedUiData,
+  },
+  handler: async (ctx, args) => {
+    await authorizeUserAccess({
+      userId: args.userId,
+      accessToken: args.accessToken,
+      serverSecret: args.serverSecret,
+    })
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+    const message = await ctx.db.get(args.messageId)
+    if (
+      !message ||
+      message.conversationId !== args.conversationId ||
+      message.userId !== args.userId ||
+      message.role !== 'assistant'
+    ) {
+      throw new Error('Message not found')
+    }
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    let changed = false
+    const nextParts = parts.map((part) => {
+      if (isGeneratedUiPart(part) && part.id === args.partId) {
+        changed = true
+        return {
+          ...part,
+          data: args.data,
+        }
+      }
+      return part
+    })
+    if (!changed) throw new Error('Generated UI part not found')
+    const now = Date.now()
+    await ctx.db.patch(args.messageId, {
+      parts: nextParts,
+      updatedAt: now,
+    })
+    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    return { success: true }
   },
 })
 

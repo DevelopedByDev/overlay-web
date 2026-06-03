@@ -11,6 +11,7 @@
     "./agent-assistant-text": "./src/agent-assistant-text.ts",
     "./constants": "./src/constants.ts",
     "./gating": "./src/gating.ts",
+    "./generated-ui": "./src/generated-ui.ts",
     "./markdown-table-fix": "./src/markdown-table-fix.ts",
     "./messages": "./src/messages.ts",
     "./paste": "./src/paste.ts",

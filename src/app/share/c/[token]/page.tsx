@@ -8,6 +8,7 @@ export const revalidate = 0
 
 type SharedMessagePart =
   | { type: 'tool-invocation'; toolInvocation: { toolName: string; state?: string } }
+  | { type: 'data'; id: string; dataType: 'overlay.generated_ui'; data: unknown; transient?: boolean }
   | { type: string; text?: string; url?: string; mediaType?: string; fileName?: string }
 
 export type SharedConversation = {

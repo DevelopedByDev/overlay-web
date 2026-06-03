@@ -8,6 +8,7 @@ import {
   getChatModelDisplayName,
 } from '@/shared/ai/gateway/model-data'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
+import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import {
   assistantBlocksToPlainText,
@@ -60,6 +61,8 @@ type TextChatMessageProps = CommonMessageProps & {
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
   onContinue: () => void
+  onGeneratedUiChange: (messageId: string, partId: string, data: GeneratedUiData) => void
+  getConnectorLogoUrl?: (serviceName: string, slug?: string) => string | null
 }
 
 export type ChatMessageProps = ComponentProps<typeof ChatMediaMessage> | TextChatMessageProps
@@ -127,6 +130,9 @@ function TextChatMessage(props: TextChatMessageProps) {
   const responseParts = responseMsg && Array.isArray((responseMsg as { parts?: unknown[] }).parts)
     ? (responseMsg as { parts: unknown[] }).parts
     : undefined
+  const responseMessageId = responseMsg && typeof (responseMsg as { id?: unknown }).id === 'string'
+    ? (responseMsg as { id: string }).id
+    : null
   let assistantVisualBlocks = buildAssistantVisualSequence(responseParts)
   if (assistantVisualBlocks.length === 0 && responseText.trim()) {
     assistantVisualBlocks = [{ kind: 'text', text: normalizeAgentAssistantText(responseText) }]
@@ -189,6 +195,8 @@ function TextChatMessage(props: TextChatMessageProps) {
       userMentions={(message as { metadata?: { mentions?: Array<{ type: string; id: string; name: string }> } }).metadata?.mentions}
       onContinue={(['[Request timed out after 300s. Continue?]', '[Interrupted by user. Continue?]'] as const).some((s) => assistantPlainForReply.includes(s)) ? props.onContinue : undefined}
       getModelDisplayName={getChatModelDisplayName}
+      onGeneratedUiChange={responseMessageId ? (partId, data) => props.onGeneratedUiChange(responseMessageId, partId, data) : undefined}
+      getConnectorLogoUrl={props.getConnectorLogoUrl}
     />
   )
 }

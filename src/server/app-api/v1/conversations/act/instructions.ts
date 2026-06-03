@@ -46,6 +46,7 @@ export function buildActAgentInstructions(params: {
     projectInstructionsExtension(params.projectInstructions) +
     params.skillsContext +
     params.mentionsContext +
+    generatedUiNote() +
     notes.generationNote +
     notes.automationDraftNote +
     requestedToolsNote(params.requestedToolIds ?? [], params.memoryEnabled !== false) +
@@ -63,6 +64,10 @@ export function buildActAgentInstructions(params: {
     '\n\n' +
     params.constants.TABLE_FORMAT_INSTRUCTION +
     notes.freeTierNote
+}
+
+function generatedUiNote(): string {
+  return '\n\nGenerated UI cards: use the present_generated_ui tool instead of plain markdown when the user asks you to draft substantial editable text (essay, memo, statement, proposal) or an email. Use kind "draft.text" for general drafts and kind "draft.email" for email drafts. For connector authorization prompts, use kind "connector.connect" when you have the connection URL or need a clean connection card. Do not duplicate the full generated draft in normal prose after calling the tool, and do not use emoji or pointing-hand callouts around connector cards.'
 }
 
 function buildActInstructionNotes(params: Parameters<typeof buildActAgentInstructions>[0]) {

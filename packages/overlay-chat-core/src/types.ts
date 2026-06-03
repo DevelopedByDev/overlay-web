@@ -1,3 +1,5 @@
+import type { GeneratedUiPart } from './generated-ui'
+
 export type ChatMode = 'ask' | 'act'
 export type GenerationMode = 'text' | 'image' | 'video'
 export type AskModelSelectionMode = 'single' | 'multiple'
@@ -76,6 +78,7 @@ export type AssistantVisualBlock =
     }
   | { kind: 'text'; text: string }
   | { kind: 'file'; url: string; mediaType?: string }
+  | { kind: 'generated-ui'; part: GeneratedUiPart }
   | { kind: 'reasoning'; key: string; text: string; state?: string }
 
 export type ToolVisualBlock = Extract<AssistantVisualBlock, { kind: 'tool' }>
@@ -86,6 +89,7 @@ export type AssistantVisualSegment =
   | { kind: 'reasoning'; block: ReasoningVisualBlock; originIndex: number }
   | { kind: 'text'; block: Extract<AssistantVisualBlock, { kind: 'text' }>; originIndex: number }
   | { kind: 'file'; block: Extract<AssistantVisualBlock, { kind: 'file' }>; originIndex: number }
+  | { kind: 'generated-ui'; block: Extract<AssistantVisualBlock, { kind: 'generated-ui' }>; originIndex: number }
   | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
   | { kind: 'tools'; items: ToolGroupItem[]; originIndex: number }
 

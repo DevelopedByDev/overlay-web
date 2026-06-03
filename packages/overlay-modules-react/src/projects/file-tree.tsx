@@ -4,9 +4,10 @@ import type {
 ProjectFileSummary
 } from '@overlay/app-core'
 import { childProjectFiles,rootProjectFiles } from '@overlay/app-core'
-import { BookOpen,ChevronRight,FileText,Folder,FolderOpen,Trash2 } from 'lucide-react'
+import { BookOpen,ChevronRight,Folder,FolderOpen,Trash2 } from 'lucide-react'
 import { useState,type MouseEvent,type ReactNode } from 'react'
 
+import { FileTypeIcon } from '../shared/file-type-icon'
 import { PROJECT_TREE_CHEVRON_COL,PROJECT_TREE_DEPTH_STEP_PX,PROJECT_TREE_ICON_COL,panelItemClass } from './shared'
 
 export interface ProjectFileTreeNodeProps {
@@ -81,7 +82,7 @@ export function ProjectFileTreeNode({
           ) : (
             <>
               <span className="w-[18px] shrink-0 inline-block" />
-              <FileText size={12} className="shrink-0 text-[#888]" />
+              <FileTypeIcon file={file} size={12} className="text-[#888]" />
             </>
           )
         ) : isFolder ? (
@@ -104,7 +105,7 @@ export function ProjectFileTreeNode({
           <>
             <div className={PROJECT_TREE_CHEVRON_COL} aria-hidden />
             <div className={PROJECT_TREE_ICON_COL}>
-              <FileText size={12} />
+              <FileTypeIcon file={file} size={12} />
             </div>
           </>
         )}
@@ -215,7 +216,7 @@ export function FilesInlineBranch({
             : <Folder size={12} className="shrink-0" />
           : file.kind === 'note'
             ? <BookOpen size={12} className="shrink-0 text-[var(--muted-light)]" />
-            : <FileText size={12} className="shrink-0 text-[var(--muted-light)]" />}
+            : <FileTypeIcon file={file} size={12} className="text-[var(--muted-light)]" />}
         <span className="min-w-0 flex-1 truncate">{file.name}</span>
       </div>
 

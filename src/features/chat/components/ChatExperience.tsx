@@ -15,6 +15,7 @@ import {
   ArrowUp,
 } from 'lucide-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import {
   cloneConversationUiState,
   cloneGenerationResultsMap,
@@ -109,7 +110,11 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/providers/ConvexProviderWithWorkOS'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
-import { warmIntegrationLogoCache } from '@/features/integrations/lib/integration-logo-cache'
+import {
+  getIntegrationLogoUrl,
+  resolveSlugFromName,
+  warmIntegrationLogoCache,
+} from '@/features/integrations/lib/integration-logo-cache'
 import {
   CHAT_GEN_MODE_KEY,
   DEFAULT_CHAT_TITLE,
@@ -336,6 +341,11 @@ export default function ChatExperience({
   // Warm integration logo cache so Composio logos render in chat connect cards.
   useEffect(() => {
     void warmIntegrationLogoCache()
+  }, [])
+
+  const getConnectorLogoUrl = useCallback((serviceName: string, slug?: string) => {
+    const resolved = slug || resolveSlugFromName(serviceName)
+    return resolved ? getIntegrationLogoUrl(resolved) : null
   }, [])
 
   const [exchangeModels, setExchangeModels] = useState<string[][]>([])
@@ -1113,6 +1123,79 @@ export default function ChatExperience({
     })
     dispatchChatModified({ chat })
   }, [activeChatTitle, chats])
+
+  const handleGeneratedUiChange = useCallback((messageId: string, partId: string, data: GeneratedUiData) => {
+    const patchMessages = (messages: UIMessage[]): { changed: boolean; messages: UIMessage[] } => {
+      let changed = false
+      const nextMessages = messages.map((message) => {
+        const current = message as unknown as { id?: string; parts?: Array<Record<string, unknown>> }
+        if (current.id !== messageId || !Array.isArray(current.parts)) return message
+        let partsChanged = false
+        const nextParts = current.parts.map((part) => {
+          if (
+            part.type === 'data' &&
+            part.id === partId &&
+            part.dataType === 'overlay.generated_ui'
+          ) {
+            partsChanged = true
+            return { ...part, data }
+          }
+          return part
+        })
+        if (!partsChanged) return message
+        changed = true
+        return { ...message, parts: nextParts } as UIMessage
+      })
+      return { changed, messages: changed ? nextMessages : messages }
+    }
+
+    const targetChatId = isTemporaryChatRef.current ? TEMPORARY_CHAT_ID : activeChatIdRef.current
+    const runtime = isTemporaryChatRef.current
+      ? emptyRuntimeRef.current
+      : targetChatId
+        ? runtimesRef.current.get(targetChatId)
+        : null
+    if (!runtime) return
+
+    let changed = false
+    const actPatch = patchMessages(runtime.actChat.messages as UIMessage[])
+    if (actPatch.changed) {
+      runtime.actChat.messages = actPatch.messages as never
+      changed = true
+    }
+    runtime.askChats.forEach((chat) => {
+      const patch = patchMessages(chat.messages as UIMessage[])
+      if (patch.changed) {
+        chat.messages = patch.messages as never
+        changed = true
+      }
+    })
+    if (changed) {
+      if (isTemporaryChatRef.current || (targetChatId && activeChatIdRef.current === targetChatId)) {
+        actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
+        chat0Ref.current.setMessages([...runtime.askChats[0]!.messages] as UIMessage[])
+        chat1Ref.current.setMessages([...runtime.askChats[1]!.messages] as UIMessage[])
+        chat2Ref.current.setMessages([...runtime.askChats[2]!.messages] as UIMessage[])
+        chat3Ref.current.setMessages([...runtime.askChats[3]!.messages] as UIMessage[])
+      }
+      forceLiveSyncRender((value) => value + 1)
+    }
+
+    if (isTemporaryChatRef.current || !targetChatId || targetChatId === TEMPORARY_CHAT_ID) return
+    void overlayAppClient.conversations.updateMessageUiPartResponse({
+      conversationId: targetChatId,
+      messageId,
+      partId,
+      data,
+    }).then((res) => {
+      if (res.ok) return
+      setComposerNotice('Could not save draft edits.')
+      window.setTimeout(() => setComposerNotice(null), 4000)
+    }).catch(() => {
+      setComposerNotice('Could not save draft edits.')
+      window.setTimeout(() => setComposerNotice(null), 4000)
+    })
+  }, [actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, emptyRuntimeRef, forceLiveSyncRender, runtimesRef])
 
   const headerTitleInputRef = useRef<HTMLInputElement>(null)
 
@@ -3804,6 +3887,8 @@ export default function ChatExperience({
               onOpenFilePreview: openFilePreview,
               onOpenAttachmentPreview: openAttachmentPreview,
               onContinue: handleContinue,
+              onGeneratedUiChange: handleGeneratedUiChange,
+              getConnectorLogoUrl,
             }}
           />
         )}

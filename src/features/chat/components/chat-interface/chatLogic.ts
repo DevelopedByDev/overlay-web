@@ -11,6 +11,11 @@ import {
   splitRedactedThinkingSegments,
 } from '@/shared/chat/agent-assistant-text'
 import { INTEGRATION_SERVICE_NAMES } from './constants'
+import {
+  buildGeneratedUiPart,
+  generatedUiDataToPlainText,
+  isGeneratedUiPart,
+} from '@overlay/chat-core/generated-ui'
 import type {
   AssistantVisualBlock,
   AssistantVisualSegment,
@@ -32,6 +37,7 @@ export function getMessageText(msg: { parts?: Array<{ type: string; text?: strin
 export function messageHasVisibleAssistantActivity(msg: { parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }> }): boolean {
   return (msg.parts ?? []).some((part) => {
     if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
+    if (isGeneratedUiPart(part)) return true
     if (part.type === 'tool-invocation') return Boolean(part.toolInvocation)
     if (part.type === 'file') return Boolean(part.url)
     return part.type.startsWith('tool-')
@@ -65,6 +71,22 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
     }
     if (legacy?.type === 'tool-invocation' && legacy.toolInvocation?.toolName) {
       const inv = legacy.toolInvocation
+      if (inv.toolName === 'present_generated_ui') {
+        const output = inv.toolOutput && typeof inv.toolOutput === 'object'
+          ? inv.toolOutput as Record<string, unknown>
+          : null
+        if (output?.success === true) {
+          const part = buildGeneratedUiPart(
+            (typeof output.id === 'string' && output.id.trim()) || inv.toolCallId || `generated-ui-${out.length}`,
+            output.generatedUi,
+          )
+          if (part) {
+            out.push({ kind: 'generated-ui', part })
+            continue
+          }
+        }
+        continue
+      }
       out.push({
         kind: 'tool',
         key: (inv.toolCallId && inv.toolCallId.trim()) || `legacy-inv-${out.length}`,
@@ -82,10 +104,27 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
         input?: Record<string, unknown>
         output?: unknown
       }
+      const toolName = getToolName(p as never)
+      if (toolName === 'present_generated_ui') {
+        const output = part.output && typeof part.output === 'object'
+          ? part.output as Record<string, unknown>
+          : null
+        if (output?.success === true) {
+          const generatedPart = buildGeneratedUiPart(
+            (typeof output.id === 'string' && output.id.trim()) || part.toolCallId || `generated-ui-${out.length}`,
+            output.generatedUi,
+          )
+          if (generatedPart) {
+            out.push({ kind: 'generated-ui', part: generatedPart })
+            continue
+          }
+        }
+        continue
+      }
       out.push({
         kind: 'tool',
         key: (part.toolCallId && part.toolCallId.trim()) || `sdk-tool-${out.length}`,
-        name: getToolName(p as never),
+        name: toolName,
         state: part.state,
         toolInput: part.input,
         toolOutput: part.output,
@@ -110,6 +149,10 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
       continue
     }
     const pt = p as { type?: string; text?: string; url?: string; mediaType?: string }
+    if (isGeneratedUiPart(p)) {
+      out.push({ kind: 'generated-ui', part: p })
+      continue
+    }
     if (pt.type === 'file' && typeof pt.url === 'string' && pt.url) {
       out.push({ kind: 'file', url: pt.url, mediaType: pt.mediaType })
       continue
@@ -174,8 +217,12 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
 
 export function assistantBlocksToPlainText(blocks: AssistantVisualBlock[]): string {
   return blocks
-    .filter((b): b is { kind: 'text'; text: string } => b.kind === 'text')
-    .map((b) => b.text)
+    .map((b) => {
+      if (b.kind === 'text') return b.text
+      if (b.kind === 'generated-ui') return generatedUiDataToPlainText(b.part.data)
+      return ''
+    })
+    .filter(Boolean)
     .join('\n\n')
 }
 export function pickFirstStringFromInput(input: Record<string, unknown> | undefined, keys: string[]): string | null {

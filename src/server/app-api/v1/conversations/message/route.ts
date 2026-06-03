@@ -7,6 +7,7 @@ import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
 } from '@/server/chat/chat-message-persistence'
+import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -129,5 +130,60 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
   } catch (e) {
     logger.error('[conversations/message DELETE]', e)
     return NextResponse.json({ error: 'Failed to delete turn' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
+  try {
+    const body = await request.json() as {
+      conversationId?: string
+      messageId?: string
+      partId?: string
+      data?: unknown
+      accessToken?: string
+      userId?: string
+    }
+    const { auth } = context
+    const conversationId = body.conversationId?.trim()
+    const messageId = body.messageId?.trim()
+    const partId = body.partId?.trim()
+    const data = normalizeGeneratedUiData(body.data)
+    if (!conversationId || !messageId || !partId || !data) {
+      return NextResponse.json(
+        { error: 'conversationId, messageId, partId, and valid generated UI data are required' },
+        { status: 400 },
+      )
+    }
+
+    try {
+      const serverSecret = getInternalApiSecret()
+      await convex.mutation(
+        'chat/conversations:updateMessageUiPart',
+        {
+          conversationId: conversationId as Id<'conversations'>,
+          messageId: messageId as Id<'conversationMessages'>,
+          userId: auth.userId,
+          serverSecret,
+          partId,
+          data,
+        },
+        { throwOnError: true },
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg === 'Unauthorized' || msg.includes('Unauthorized')) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+      }
+      if (msg.includes('Generated UI part not found') || msg.includes('Message not found')) {
+        return NextResponse.json({ error: msg }, { status: 404 })
+      }
+      logger.error('[conversations/message PATCH]', err)
+      return NextResponse.json({ error: msg || 'Failed to update generated UI part' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, conversationId, messageId, partId })
+  } catch (e) {
+    logger.error('[conversations/message PATCH]', e)
+    return NextResponse.json({ error: 'Failed to update generated UI part' }, { status: 500 })
   }
 }

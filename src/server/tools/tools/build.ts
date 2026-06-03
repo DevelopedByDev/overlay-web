@@ -19,6 +19,7 @@ import {
   executeDeleteMemory,
   executeGenerateImage,
   executeGenerateVideo,
+  executePresentGeneratedUi,
   executeListAutomations,
   executeListSkills,
   executePauseAutomation,
@@ -47,6 +48,41 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   }
   const assertToolAllowed = (toolId: string): void => assertOverlayToolAllowed(toolId, allowedToolIds)
   const includePaidOnlyOverlay = options.includePaidOnlyOverlayTools !== false
+  const generatedUiVariantSchema = z.object({
+    id: z.string().min(1).optional(),
+    label: z.string().min(1),
+    subject: z.string().min(1).optional(),
+    body: z.string().min(1),
+  }).strict()
+  const presentGeneratedUiSchema = z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('draft.text'),
+      id: z.string().min(1).optional(),
+      title: z.string().min(1).optional(),
+      body: z.string().min(1).describe('The complete draft text to render in the editable card.'),
+      format: z.enum(['plain', 'markdown']).optional(),
+    }).strict(),
+    z.object({
+      kind: z.literal('draft.email'),
+      id: z.string().min(1).optional(),
+      subject: z.string().min(1),
+      body: z.string().min(1).describe('The complete email body to render in the editable card.'),
+      to: z.array(z.string().min(1)).max(20).optional(),
+      cc: z.array(z.string().min(1)).max(20).optional(),
+      bcc: z.array(z.string().min(1)).max(20).optional(),
+      provider: z.literal('gmail').optional(),
+      variants: z.array(generatedUiVariantSchema).max(6).optional(),
+    }).strict(),
+    z.object({
+      kind: z.literal('connector.connect'),
+      id: z.string().min(1).optional(),
+      serviceName: z.string().min(1),
+      slug: z.string().min(1).optional(),
+      description: z.string().min(1).optional(),
+      connectUrl: z.string().url().optional(),
+      connected: z.boolean().optional(),
+    }).strict(),
+  ])
   const automationScheduleSchema = z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('interval'),
@@ -70,6 +106,16 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       minuteUTC: z.number().int().min(0).max(59),
     }),
   ])
+
+  tools.present_generated_ui = tool({
+    description:
+      'Render a polished Overlay UI card in the chat for generated drafts and connector connection prompts. ' +
+      'Use this when the user asks you to write an essay, memo, reusable text draft, or email, or when you need to show a connector connection card. ' +
+      'After calling this tool, do not duplicate the full draft in normal prose; write only a short lead-in if useful. ' +
+      'Never use emojis, pointing-hand callouts, raw JSON, or markdown tables to imitate these cards.',
+    inputSchema: presentGeneratedUiSchema,
+    execute: async (input) => executePresentGeneratedUi(options, input as Record<string, unknown>),
+  })
 
   if (shouldExposeTool('list_skills')) {
     tools.list_skills = tool({

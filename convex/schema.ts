@@ -525,6 +525,46 @@ export default defineSchema({
       v.array(
         v.union(
           v.object({
+            type: v.literal('data'),
+            id: v.string(),
+            dataType: v.literal('overlay.generated_ui'),
+            data: v.union(
+              v.object({
+                version: v.literal(1),
+                kind: v.literal('draft.text'),
+                title: v.optional(v.string()),
+                body: v.string(),
+                format: v.optional(v.union(v.literal('plain'), v.literal('markdown'))),
+              }),
+              v.object({
+                version: v.literal(1),
+                kind: v.literal('draft.email'),
+                subject: v.string(),
+                body: v.string(),
+                to: v.optional(v.array(v.string())),
+                cc: v.optional(v.array(v.string())),
+                bcc: v.optional(v.array(v.string())),
+                provider: v.optional(v.literal('gmail')),
+                variants: v.optional(v.array(v.object({
+                  id: v.string(),
+                  label: v.string(),
+                  subject: v.optional(v.string()),
+                  body: v.string(),
+                }))),
+              }),
+              v.object({
+                version: v.literal(1),
+                kind: v.literal('connector.connect'),
+                serviceName: v.string(),
+                slug: v.optional(v.string()),
+                description: v.optional(v.string()),
+                connectUrl: v.optional(v.string()),
+                connected: v.optional(v.boolean()),
+              }),
+            ),
+            transient: v.optional(v.boolean()),
+          }),
+          v.object({
             type: v.literal('tool-invocation'),
             toolInvocation: v.object({
               toolCallId: v.optional(v.string()),
@@ -574,6 +614,46 @@ export default defineSchema({
     newParts: v.optional(
       v.array(
         v.union(
+          v.object({
+            type: v.literal('data'),
+            id: v.string(),
+            dataType: v.literal('overlay.generated_ui'),
+            data: v.union(
+              v.object({
+                version: v.literal(1),
+                kind: v.literal('draft.text'),
+                title: v.optional(v.string()),
+                body: v.string(),
+                format: v.optional(v.union(v.literal('plain'), v.literal('markdown'))),
+              }),
+              v.object({
+                version: v.literal(1),
+                kind: v.literal('draft.email'),
+                subject: v.string(),
+                body: v.string(),
+                to: v.optional(v.array(v.string())),
+                cc: v.optional(v.array(v.string())),
+                bcc: v.optional(v.array(v.string())),
+                provider: v.optional(v.literal('gmail')),
+                variants: v.optional(v.array(v.object({
+                  id: v.string(),
+                  label: v.string(),
+                  subject: v.optional(v.string()),
+                  body: v.string(),
+                }))),
+              }),
+              v.object({
+                version: v.literal(1),
+                kind: v.literal('connector.connect'),
+                serviceName: v.string(),
+                slug: v.optional(v.string()),
+                description: v.optional(v.string()),
+                connectUrl: v.optional(v.string()),
+                connected: v.optional(v.boolean()),
+              }),
+            ),
+            transient: v.optional(v.boolean()),
+          }),
           v.object({
             type: v.literal('tool-invocation'),
             toolInvocation: v.object({
