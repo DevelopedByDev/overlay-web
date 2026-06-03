@@ -21,6 +21,7 @@ export type ChatComposerRuntime = {
   isActiveLoading: boolean
   isTemporaryChat: boolean
   blockedComposerContent: ReactNode
+  scrollToBottomControl?: ReactNode
 }
 export type ChatComposerInputState = {
   replyContext: ReplyContext; setReplyContext: (context: ReplyContext) => void; textareaRef: RefObject<MentionInputHandle | null>

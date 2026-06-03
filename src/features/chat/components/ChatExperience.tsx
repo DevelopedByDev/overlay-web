@@ -496,6 +496,7 @@ export default function ChatExperience({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const shouldScrollRef = useRef(false)
+  const [isConversationBottomVisible, setIsConversationBottomVisible] = useState(true)
   const pendingScrollTurnIdRef = useRef<string | null>(null)
   const pendingScrollChatIdRef = useRef<string | null>(null)
   const textareaRef = useRef<MentionInputHandle>(null)
@@ -1473,16 +1474,91 @@ export default function ChatExperience({
     runtimeHydrationVersion,
   ])
 
+  const updateConversationBottomVisibility = useCallback(() => {
+    const container = messagesScrollRef.current
+    const endMarker = messagesEndRef.current
+    if (!container || !endMarker) {
+      setIsConversationBottomVisible(true)
+      return
+    }
+    const containerRect = container.getBoundingClientRect()
+    const markerRect = endMarker.getBoundingClientRect()
+    const visible =
+      markerRect.top <= containerRect.bottom + 24 &&
+      markerRect.bottom >= containerRect.top - 24
+    setIsConversationBottomVisible((current) => (current === visible ? current : visible))
+  }, [])
+
+  useEffect(() => {
+    const container = messagesScrollRef.current
+    if (!container) {
+      setIsConversationBottomVisible(true)
+      return
+    }
+    let frame = 0
+    const schedule = () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        updateConversationBottomVisibility()
+      })
+    }
+    container.addEventListener('scroll', schedule, { passive: true })
+    window.addEventListener('resize', schedule)
+    schedule()
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      container.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', schedule)
+    }
+  }, [
+    activeChatId,
+    isActiveLoading,
+    isOptimisticLoading,
+    isTemporaryChat,
+    runtimeHydrationVersion,
+    showAutomationChatTab,
+    updateConversationBottomVisibility,
+  ])
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(updateConversationBottomVisibility)
+    return () => window.cancelAnimationFrame(frame)
+  }, [
+    actChat.messages.length,
+    chat0.messages.length,
+    chat1.messages.length,
+    chat2.messages.length,
+    chat3.messages.length,
+    isActiveLoading,
+    isOptimisticLoading,
+    runtimeHydrationVersion,
+    updateConversationBottomVisibility,
+  ])
+
+  const scrollToConversationBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const endMarker = messagesEndRef.current
+    if (endMarker) {
+      endMarker.scrollIntoView({ behavior, block: 'end' })
+      window.requestAnimationFrame(updateConversationBottomVisibility)
+      return
+    }
+    const container = messagesScrollRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior })
+    window.requestAnimationFrame(updateConversationBottomVisibility)
+  }, [updateConversationBottomVisibility])
+
   useEffect(() => {
     if (shouldScrollRef.current) {
       if (pendingScrollTurnIdRef.current) {
         shouldScrollRef.current = false
         return
       }
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      scrollToConversationBottom('smooth')
       shouldScrollRef.current = false
     }
-  }, [chat0.messages.length, actChat.messages.length])
+  }, [chat0.messages.length, actChat.messages.length, scrollToConversationBottom])
 
   useEffect(() => {
     if (!showModelPicker) {
@@ -3157,6 +3233,13 @@ export default function ChatExperience({
   const showChatLoadingState = showAutomationChatTab && isExistingConversationView && !hasHistory && !activeChatHydrated
   /** Empty chat (any modality): center composer + suggestions only on the true new-chat surface. */
   const showCenteredEmptyChat = !hasHistory && (!isExistingConversationView || activeChatHydrated)
+  const reserveLatestExchangeStartSpace = showAutomationChatTab && hasHistory && (isActiveLoading || isOptimisticLoading)
+  const showScrollToBottomControl =
+    showAutomationChatTab &&
+    hasHistory &&
+    !showChatLoadingState &&
+    !showCenteredEmptyChat &&
+    !isConversationBottomVisible
   const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
   const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
 
@@ -3839,6 +3922,7 @@ export default function ChatExperience({
             messagesScrollRef={messagesScrollRef}
             messagesEndRef={messagesEndRef}
             showLoadingState={showChatLoadingState}
+            reserveLatestExchangeStartSpace={reserveLatestExchangeStartSpace}
             state={{
               primaryMessages,
               latestExchangeIndex: latestExchIdx,
@@ -3906,6 +3990,18 @@ export default function ChatExperience({
               isSendBlocked,
               isActiveLoading,
               isTemporaryChat,
+              scrollToBottomControl: showScrollToBottomControl ? (
+                <DelayedTooltip label="Jump to latest" side="top">
+                  <button
+                    type="button"
+                    aria-label="Jump to latest message"
+                    onClick={() => scrollToConversationBottom('smooth')}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] shadow-sm transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <ChevronDown size={17} strokeWidth={1.9} />
+                  </button>
+                </DelayedTooltip>
+              ) : null,
               blockedComposerContent: isBudgetExhaustedPaid ? (
                 <TopUpPreferenceControl
                   variant="app"

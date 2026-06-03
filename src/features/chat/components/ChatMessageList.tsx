@@ -56,6 +56,7 @@ type ChatMessageListProps = {
   messagesScrollRef: RefObject<HTMLDivElement | null>
   messagesEndRef: RefObject<HTMLDivElement | null>
   showLoadingState: boolean
+  reserveLatestExchangeStartSpace?: boolean
   state: ChatMessageListState
   runtime: ChatMessageListRuntime
   actions: ChatMessageListActions
@@ -65,6 +66,7 @@ export function ChatMessageList({
   messagesScrollRef,
   messagesEndRef,
   showLoadingState,
+  reserveLatestExchangeStartSpace = false,
   state,
   runtime,
   actions,
@@ -84,7 +86,13 @@ export function ChatMessageList({
             actions={actions}
           />
         )}
-        <div ref={messagesEndRef} />
+        <div ref={messagesEndRef} className="h-px shrink-0" />
+        {reserveLatestExchangeStartSpace ? (
+          <div
+            aria-hidden
+            className="h-[calc(100dvh-16rem)] min-h-[24rem] max-h-[44rem] shrink-0"
+          />
+        ) : null}
       </div>
     </div>
   )
