@@ -24,10 +24,18 @@ import type {
 } from '@overlay/chat-core/generated-ui'
 import { generatedUiDataToPlainText } from '@overlay/chat-core/generated-ui'
 
+export type GeneratedUiConnectorActions = {
+  getLogoUrl?: (serviceName: string, slug?: string) => string | null
+  isConnected?: (serviceName: string, slug?: string) => boolean
+  connect?: (serviceName: string, slug?: string) => void | Promise<void>
+  openExternalUrl?: (url: string) => void
+  openEmailDraft?: (data: GeneratedEmailDraftData) => void
+}
+
 type GeneratedUiCardProps = {
   part: GeneratedUiPart
   readOnly?: boolean
-  getConnectorLogoUrl?: (serviceName: string, slug?: string) => string | null
+  connectorActions?: GeneratedUiConnectorActions
   onDataChange?: (partId: string, data: GeneratedUiData) => void
 }
 
@@ -163,49 +171,6 @@ function ConnectorLogo({
   return <span className="text-xs font-semibold text-[var(--foreground)]">{letter}</span>
 }
 
-function useConnectedIntegrations(enabled: boolean) {
-  const [connected, setConnected] = useState<Set<string> | null>(null)
-
-  useEffect(() => {
-    if (!enabled) return
-    let cancelled = false
-    fetch('/api/v1/integrations', { credentials: 'same-origin' })
-      .then((res) => (res.ok ? res.json() : { connected: [] }))
-      .then((data: { connected?: string[] }) => {
-        if (!cancelled) setConnected(new Set(data.connected ?? []))
-      })
-      .catch(() => {
-        if (!cancelled) setConnected(new Set())
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [enabled])
-
-  return connected
-}
-
-async function openIntegrationConnect(slug: string) {
-  const oauthTab = window.open('about:blank', '_blank')
-  try {
-    const res = await fetch('/api/v1/integrations', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'connect', toolkit: slug }),
-    })
-    const data = (await res.json().catch(() => ({}))) as { redirectUrl?: string; error?: string }
-    if (!res.ok || !data.redirectUrl) {
-      oauthTab?.close()
-      return
-    }
-    if (oauthTab) oauthTab.location.href = data.redirectUrl
-    else window.location.href = data.redirectUrl
-  } catch {
-    oauthTab?.close()
-  }
-}
-
 function ActionButton({
   children,
   onClick,
@@ -240,7 +205,7 @@ function ActionButton({
 export function GeneratedUiCard({
   part,
   readOnly = false,
-  getConnectorLogoUrl,
+  connectorActions,
   onDataChange,
 }: GeneratedUiCardProps) {
   const [data, setData] = useState<GeneratedUiData>(part.data)
@@ -305,7 +270,7 @@ export function GeneratedUiCard({
         <div className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2">
           <GeneratedUiHeader
             data={data}
-            getConnectorLogoUrl={getConnectorLogoUrl}
+            connectorActions={connectorActions}
           />
           <div className="flex shrink-0 items-center gap-1">
             {canEdit ? (
@@ -345,7 +310,7 @@ export function GeneratedUiCard({
             <EmailDraftCardBody
               data={data}
               editing={editing}
-              getConnectorLogoUrl={getConnectorLogoUrl}
+              connectorActions={connectorActions}
               readOnly={readOnly}
               onBlur={() => flush()}
               onChange={update}
@@ -353,7 +318,7 @@ export function GeneratedUiCard({
           ) : (
             <ConnectorCardBody
               data={data}
-              getConnectorLogoUrl={getConnectorLogoUrl}
+              connectorActions={connectorActions}
               readOnly={readOnly}
             />
           )}
@@ -365,13 +330,13 @@ export function GeneratedUiCard({
 
 function GeneratedUiHeader({
   data,
-  getConnectorLogoUrl,
+  connectorActions,
 }: {
   data: GeneratedUiData
-  getConnectorLogoUrl?: (serviceName: string, slug?: string) => string | null
+  connectorActions?: GeneratedUiConnectorActions
 }) {
   if (data.kind === 'connector.connect') {
-    const logoUrl = getConnectorLogoUrl?.(data.serviceName, data.slug)
+    const logoUrl = connectorActions?.getLogoUrl?.(data.serviceName, data.slug)
     return (
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
@@ -385,7 +350,7 @@ function GeneratedUiHeader({
     )
   }
   if (data.kind === 'draft.email') {
-    const logoUrl = data.provider === 'gmail' ? getConnectorLogoUrl?.('Gmail', 'gmail') : null
+    const logoUrl = data.provider === 'gmail' ? connectorActions?.getLogoUrl?.('Gmail', 'gmail') : null
     return (
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
@@ -477,21 +442,20 @@ function EmailField({
 function EmailDraftCardBody({
   data,
   editing,
-  getConnectorLogoUrl,
+  connectorActions,
   readOnly,
   onChange,
   onBlur,
 }: {
   data: GeneratedEmailDraftData
   editing: boolean
-  getConnectorLogoUrl?: (serviceName: string, slug?: string) => string | null
+  connectorActions?: GeneratedUiConnectorActions
   readOnly: boolean
   onChange: (data: GeneratedUiData, immediate?: boolean) => void
   onBlur: () => void
 }) {
-  const connected = useConnectedIntegrations(!readOnly && data.provider === 'gmail')
-  const gmailConnected = connected?.has('gmail') ?? false
-  const gmailLogo = getConnectorLogoUrl?.('Gmail', 'gmail')
+  const gmailConnected = connectorActions?.isConnected?.('Gmail', 'gmail') ?? false
+  const gmailLogo = connectorActions?.getLogoUrl?.('Gmail', 'gmail')
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null)
 
   function applyVariant(variant: GeneratedUiVariant) {
@@ -502,8 +466,6 @@ function EmailDraftCardBody({
       body: variant.body,
     }, true)
   }
-
-  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(formatCsv(data.to))}&cc=${encodeURIComponent(formatCsv(data.cc))}&bcc=${encodeURIComponent(formatCsv(data.bcc))}&su=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`
 
   return (
     <div>
@@ -576,20 +538,20 @@ function EmailDraftCardBody({
       )}
       {!readOnly && data.provider === 'gmail' ? (
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] px-3 py-3">
-          {gmailConnected ? (
+          {gmailConnected && connectorActions?.openEmailDraft ? (
             <ActionButton
-              onClick={() => window.open(gmailUrl, '_blank', 'noopener,noreferrer')}
+              onClick={() => connectorActions.openEmailDraft?.(data)}
               variant="primary"
             >
               {gmailLogo ? <ConnectorLogo serviceName="Gmail" slug="gmail" logoUrl={gmailLogo} /> : <Mail size={14} strokeWidth={1.75} />}
               Open in Gmail
             </ActionButton>
-          ) : (
-            <ActionButton onClick={() => void openIntegrationConnect('gmail')} variant="primary">
+          ) : connectorActions?.connect ? (
+            <ActionButton onClick={() => void connectorActions.connect?.('Gmail', 'gmail')} variant="primary">
               {gmailLogo ? <ConnectorLogo serviceName="Gmail" slug="gmail" logoUrl={gmailLogo} /> : <Mail size={14} strokeWidth={1.75} />}
               Connect Gmail
             </ActionButton>
-          )}
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -598,17 +560,16 @@ function EmailDraftCardBody({
 
 function ConnectorCardBody({
   data,
-  getConnectorLogoUrl,
+  connectorActions,
   readOnly,
 }: {
   data: GeneratedConnectorData
-  getConnectorLogoUrl?: (serviceName: string, slug?: string) => string | null
+  connectorActions?: GeneratedUiConnectorActions
   readOnly: boolean
 }) {
   const slug = data.slug || data.serviceName.toLowerCase().replace(/[^a-z0-9]+/g, '')
-  const connected = useConnectedIntegrations(!readOnly && Boolean(slug))
-  const isConnected = data.connected || (slug ? connected?.has(slug) : false)
-  const logoUrl = getConnectorLogoUrl?.(data.serviceName, data.slug)
+  const isConnected = data.connected || connectorActions?.isConnected?.(data.serviceName, slug) || false
+  const logoUrl = connectorActions?.getLogoUrl?.(data.serviceName, data.slug)
 
   return (
     <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -629,12 +590,12 @@ function ConnectorCardBody({
           Connected
         </span>
       ) : data.connectUrl ? (
-        <ActionButton onClick={() => window.open(data.connectUrl, '_blank', 'noopener,noreferrer')} variant="primary">
+        <ActionButton onClick={() => connectorActions?.openExternalUrl?.(data.connectUrl!)} disabled={!connectorActions?.openExternalUrl} variant="primary">
           <ExternalLink size={14} strokeWidth={1.75} />
           Connect
         </ActionButton>
-      ) : slug ? (
-        <ActionButton onClick={() => void openIntegrationConnect(slug)} variant="primary">
+      ) : slug && connectorActions?.connect ? (
+        <ActionButton onClick={() => void connectorActions.connect?.(data.serviceName, slug)} variant="primary">
           <Plug size={14} strokeWidth={1.75} />
           Connect
         </ActionButton>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { notifyOpenerIntegrationsChanged } from '@/features/integrations/lib/integrations-events'
+import { notifyOpenerIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import posthog from 'posthog-js'
 
 function CallbackContent() {

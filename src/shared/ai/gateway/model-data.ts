@@ -40,11 +40,7 @@ export const AVAILABLE_MODELS: ChatModel[] = [
 
   // OpenRouter (free). API id for the auto router stays `openrouter/free` (do not send bare `free`).
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 25.0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 100.0 },
-  { id: 'openrouter/inclusionai/ring-2.6-1t:free', name: 'Free: Ring 2.6 1T', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 23.0, cost: 0, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
-  { id: 'openrouter/deepseek/deepseek-v4-flash:free', name: 'Free: DeepSeek V4 Flash', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 46.5, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
-  { id: 'openrouter/minimax/minimax-m2.5:free', name: 'Free: MiniMax M2.5', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 42.0, cost: 0, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
-  { id: 'openrouter/arcee-ai/trinity-large-thinking:free', name: 'Free: Trinity Large Thinking', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 34.0, cost: 0, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
-  { id: 'openrouter/openai/gpt-oss-120b:free', name: 'Free: GPT OSS 120B', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 33.3, cost: 0, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
+  { id: 'openrouter/moonshotai/kimi-k2.6:free', name: 'Free: Kimi K2.6', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 46.8, cost: 0, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
   { id: 'openrouter/z-ai/glm-4.5-air:free', name: 'Free: GLM 4.5 Air', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 35.0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
   { id: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', name: 'Free: Nemotron 3 Super 120B', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 34.5, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
 
@@ -75,14 +71,10 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  'openrouter/deepseek/deepseek-v4-flash:free',
+  'openrouter/moonshotai/kimi-k2.6:free',
   'stepfun-ai/step-3.5-flash',
-  'openrouter/minimax/minimax-m2.5:free',
   'openrouter/z-ai/glm-4.5-air:free',
   'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
-  'openrouter/arcee-ai/trinity-large-thinking:free',
-  'openrouter/openai/gpt-oss-120b:free',
-  'openrouter/inclusionai/ring-2.6-1t:free',
   FREE_TIER_AUTO_MODEL_ID,
 ]
 
@@ -187,7 +179,9 @@ export function getModelsByIntelligence(isFreeTier: boolean): ChatModel[] {
   if (!isFreeTier) return sorted
   const free = sorted.filter((m) => isFreeTierChatModelId(m.id))
   const premium = sorted.filter((m) => !isFreeTierChatModelId(m.id))
-  return [...free, ...premium]
+  const freeAuto = free.filter((m) => m.id === FREE_TIER_AUTO_MODEL_ID)
+  const explicitFree = free.filter((m) => m.id !== FREE_TIER_AUTO_MODEL_ID)
+  return [...freeAuto, ...explicitFree, ...premium]
 }
 
 // ─── Image Models (priority order — top = highest priority fallback) ──────────

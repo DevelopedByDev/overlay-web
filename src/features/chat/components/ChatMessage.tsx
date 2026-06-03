@@ -9,6 +9,7 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
+import type { GeneratedUiConnectorActions } from '@overlay/chat-react'
 import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import {
   assistantBlocksToPlainText,
@@ -62,7 +63,7 @@ type TextChatMessageProps = CommonMessageProps & {
   onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
   onContinue: () => void
   onGeneratedUiChange: (messageId: string, partId: string, data: GeneratedUiData) => void
-  getConnectorLogoUrl?: (serviceName: string, slug?: string) => string | null
+  generatedUiConnectorActions?: GeneratedUiConnectorActions
 }
 
 export type ChatMessageProps = ComponentProps<typeof ChatMediaMessage> | TextChatMessageProps
@@ -196,7 +197,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       onContinue={(['[Request timed out after 300s. Continue?]', '[Interrupted by user. Continue?]'] as const).some((s) => assistantPlainForReply.includes(s)) ? props.onContinue : undefined}
       getModelDisplayName={getChatModelDisplayName}
       onGeneratedUiChange={responseMessageId ? (partId, data) => props.onGeneratedUiChange(responseMessageId, partId, data) : undefined}
-      getConnectorLogoUrl={props.getConnectorLogoUrl}
+      generatedUiConnectorActions={props.generatedUiConnectorActions}
     />
   )
 }

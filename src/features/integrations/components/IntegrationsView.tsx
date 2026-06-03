@@ -21,8 +21,8 @@ import {
 import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, IntegrationsPanel } from '@overlay/modules-react/extensions'
 import { IntegrationListSkeleton } from '@overlay/ui/feedback'
-import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/features/integrations/lib/integrations-events'
-import { setIntegrationLogoUrl } from '@/features/integrations/lib/integration-logo-cache'
+import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/integrations/integrations-events'
+import { setIntegrationLogoUrl } from '@/shared/integrations/integration-logo-cache'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 

@@ -13,7 +13,7 @@ import type { SourceCitationMap } from '../lib/source-citations'
 import type { WebSourceItem } from '../lib/web-sources'
 import { MarkdownMessage } from './MarkdownMessage'
 import { FlashCopyIconButton } from './DraftReviewModal'
-import { GeneratedUiCard } from './GeneratedUiCard'
+import { GeneratedUiCard, type GeneratedUiConnectorActions } from './GeneratedUiCard'
 import { UserMessageBubble } from './UserMessageBubble'
 import {
   BrowserToolBlock,
@@ -83,7 +83,7 @@ export interface ExchangeBlockProps {
   userMentions?: Array<{ type: string; id: string; name: string }>
   onContinue?: () => void
   getModelDisplayName: (modelId: string) => string
-  getConnectorLogoUrl?: (serviceName: string, slug?: string) => string | null
+  generatedUiConnectorActions?: GeneratedUiConnectorActions
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
 }
 
@@ -92,7 +92,7 @@ export function ExchangeBlock({
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
-  getConnectorLogoUrl, onGeneratedUiChange,
+  generatedUiConnectorActions, onGeneratedUiChange,
 }: ExchangeBlockProps) {
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -360,7 +360,7 @@ export function ExchangeBlock({
               <GeneratedUiCard
                 key={`${exchIdx}-seq-${seg.originIndex}-${seg.block.part.id}`}
                 part={seg.block.part}
-                getConnectorLogoUrl={getConnectorLogoUrl}
+                connectorActions={generatedUiConnectorActions}
                 onDataChange={onGeneratedUiChange}
               />
             )

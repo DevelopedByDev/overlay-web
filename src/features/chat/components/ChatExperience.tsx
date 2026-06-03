@@ -110,11 +110,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useConvexWorkOSToken } from '@/components/providers/ConvexProviderWithWorkOS'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
-import {
-  getIntegrationLogoUrl,
-  resolveSlugFromName,
-  warmIntegrationLogoCache,
-} from '@/features/integrations/lib/integration-logo-cache'
+import { useGeneratedUiConnectorActions } from './chat/useGeneratedUiConnectorActions'
 import {
   CHAT_GEN_MODE_KEY,
   DEFAULT_CHAT_TITLE,
@@ -337,16 +333,7 @@ export default function ChatExperience({
   } = useChatPreferences()
   const [, setIsSwitchingChat] = useState(false)
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
-
-  // Warm integration logo cache so Composio logos render in chat connect cards.
-  useEffect(() => {
-    void warmIntegrationLogoCache()
-  }, [])
-
-  const getConnectorLogoUrl = useCallback((serviceName: string, slug?: string) => {
-    const resolved = slug || resolveSlugFromName(serviceName)
-    return resolved ? getIntegrationLogoUrl(resolved) : null
-  }, [])
+  const generatedUiConnectorActions = useGeneratedUiConnectorActions()
 
   const [exchangeModels, setExchangeModels] = useState<string[][]>([])
   const [selectedTabPerExchange, setSelectedTabPerExchange] = useState<number[]>([])
@@ -3888,7 +3875,7 @@ export default function ChatExperience({
               onOpenAttachmentPreview: openAttachmentPreview,
               onContinue: handleContinue,
               onGeneratedUiChange: handleGeneratedUiChange,
-              getConnectorLogoUrl,
+              generatedUiConnectorActions,
             }}
           />
         )}

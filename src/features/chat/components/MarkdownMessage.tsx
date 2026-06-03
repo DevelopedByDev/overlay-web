@@ -34,7 +34,7 @@ import {
   getIntegrationLogoUrl,
   resolveSlugFromName,
   warmIntegrationLogoCache,
-} from '@/features/integrations/lib/integration-logo-cache'
+} from '@/shared/integrations/integration-logo-cache'
 
 const LazySyntaxHighlighter = lazy(() => import('./LazySyntaxHighlighter'))
 

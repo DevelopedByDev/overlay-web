@@ -1,13 +1,13 @@
 /**
- * Shared client-side cache for Composio integration logo URLs.
- * Populated by IntegrationsView / ChatInterface and consumed by MarkdownMessage
- * when rendering integration connect cards in chat.
+ * Client-side cache for Composio integration logo URLs.
+ *
+ * This lives in shared because chat, onboarding, and integrations surfaces all
+ * need the same logo lookup without importing across feature folders.
  */
 
 const cache = new Map<string, string | null>()
 let inflight: Promise<void> | null = null
 
-/** Map normalized service names to Composio slugs. */
 const NAME_TO_SLUG: Record<string, string> = {
   'gmail': 'gmail',
   'google calendar': 'googlecalendar',
@@ -123,7 +123,7 @@ export async function warmIntegrationLogoCache(): Promise<void> {
         }
       }
     } catch {
-      // silent fail
+      // Silent fail; callers fall back to initials.
     } finally {
       inflight = null
     }

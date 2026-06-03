@@ -59,9 +59,14 @@ export interface VideoModel {
 }
 
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
-export const FREE_TIER_DEFAULT_MODEL_ID = 'openrouter/openai/gpt-oss-120b:free'
+export const FREE_TIER_DEFAULT_MODEL_ID = 'openrouter/z-ai/glm-4.5-air:free'
+// Retired free IDs stay here only so saved user preferences migrate to the current default.
 export const FREE_TIER_LEGACY_DEFAULT_MODEL_IDS = [
   'openrouter/inclusionai/ring-2.6-1t:free',
+  'openrouter/deepseek/deepseek-v4-flash:free',
+  'openrouter/minimax/minimax-m2.5:free',
+  'openrouter/arcee-ai/trinity-large-thinking:free',
+  'openrouter/openai/gpt-oss-120b:free',
 ] as const
 
 export const NVIDIA_NIM_MODEL_IDS = [
@@ -69,11 +74,7 @@ export const NVIDIA_NIM_MODEL_IDS = [
 ] as const
 
 export const FREE_TIER_OPENROUTER_MODEL_IDS = [
-  'openrouter/inclusionai/ring-2.6-1t:free',
-  'openrouter/deepseek/deepseek-v4-flash:free',
-  'openrouter/minimax/minimax-m2.5:free',
-  'openrouter/arcee-ai/trinity-large-thinking:free',
-  'openrouter/openai/gpt-oss-120b:free',
+  'openrouter/moonshotai/kimi-k2.6:free',
   'openrouter/z-ai/glm-4.5-air:free',
   'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
 ] as const
@@ -94,6 +95,7 @@ export function isFreeTierChatModelId(modelId: string | undefined): modelId is s
   return Boolean(
     modelId &&
       (modelId === FREE_TIER_AUTO_MODEL_ID ||
+        isLegacyFreeTierDefaultModelId(modelId) ||
         isNvidiaNimChatModelId(modelId) ||
         isFreeTierOpenRouterChatModelId(modelId)),
   )

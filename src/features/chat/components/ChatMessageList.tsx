@@ -5,6 +5,7 @@ import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
+import type { GeneratedUiConnectorActions } from '@overlay/chat-react'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
 import { ChatMessage } from './ChatMessage'
 
@@ -48,7 +49,7 @@ export type ChatMessageListActions = {
   onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
   onContinue: () => void
   onGeneratedUiChange: (messageId: string, partId: string, data: GeneratedUiData) => void
-  getConnectorLogoUrl?: (serviceName: string, slug?: string) => string | null
+  generatedUiConnectorActions?: GeneratedUiConnectorActions
 }
 
 type ChatMessageListProps = {
@@ -155,7 +156,7 @@ function ChatMessages({
         onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
         onContinue={actions.onContinue}
         onGeneratedUiChange={actions.onGeneratedUiChange}
-        getConnectorLogoUrl={actions.getConnectorLogoUrl}
+        generatedUiConnectorActions={actions.generatedUiConnectorActions}
       />,
     )
   }

@@ -6,13 +6,13 @@ import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 
 test('free model fallbacks stay inside the free-tier catalog', () => {
   const fallbacks = getChatModelFallbackCandidates({
-    modelId: 'openrouter/inclusionai/ring-2.6-1t:free',
+    modelId: 'openrouter/moonshotai/kimi-k2.6:free',
     paid: false,
   })
-  assert.equal(fallbacks[0], 'openrouter/deepseek/deepseek-v4-flash:free')
+  assert.equal(fallbacks[0], 'stepfun-ai/step-3.5-flash')
   assert.ok(fallbacks.length > 0)
   assert.ok(fallbacks.every(isFreeTierChatModelId))
-  assert.ok(!fallbacks.includes('openrouter/inclusionai/ring-2.6-1t:free'))
+  assert.ok(!fallbacks.includes('openrouter/moonshotai/kimi-k2.6:free'))
 })
 
 test('paid model fallbacks are strictly cheaper than the selected model', () => {
@@ -40,4 +40,3 @@ test('paid fallbacks respect zero data retention settings', () => {
   assert.ok(fallbacks.length > 0)
   assert.ok(fallbacks.every((modelId) => getModel(modelId)?.supportsZeroDataRetention === true))
 })
-
