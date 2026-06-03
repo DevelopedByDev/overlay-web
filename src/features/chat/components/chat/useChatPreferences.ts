@@ -1,7 +1,5 @@
 'use client'
 
-/* eslint-disable react-hooks/set-state-in-effect */
-
 import { useEffect, useRef, useState } from 'react'
 import type { AskModelSelectionMode } from '../chat-interface/types'
 import type { GenerationMode, VideoSubMode } from '@/shared/ai/gateway/model-types'
@@ -12,8 +10,8 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
 import {
-  ACT_MODEL_KEY,
-  CHAT_MODEL_KEY,
+  readStoredActModelId,
+  readStoredAskModelIds,
 } from '@/shared/chat/chat-model-prefs'
 import {
   CHAT_GEN_MODE_KEY,
@@ -47,25 +45,12 @@ export function useChatPreferences() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(CHAT_MODEL_KEY)
-      let restoredSelectedModels: string[] | null = null
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved)
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            restoredSelectedModels = parsed.slice(0, 4)
-            setSelectedModels(restoredSelectedModels)
-          }
-        } catch {
-          restoredSelectedModels = [saved]
-          setSelectedModels(restoredSelectedModels)
-        }
-      }
+      const restoredSelectedModels = readStoredAskModelIds()
+      setSelectedModels(restoredSelectedModels)
       if ((restoredSelectedModels?.length ?? 1) > 1) {
         setAskModelSelectionMode('multiple')
       }
-      const savedAct = localStorage.getItem(ACT_MODEL_KEY)
-      if (savedAct) setSelectedActModel(savedAct)
+      setSelectedActModel(readStoredActModelId())
       const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
       if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
 

@@ -17,6 +17,37 @@ function normalizeAskIds(raw: string[]): string[] {
   return out
 }
 
+export function normalizeChatModelSelection({
+  askModelIds,
+  actModelId,
+  fallbackModelId = DEFAULT_MODEL_ID,
+}: {
+  askModelIds?: readonly string[]
+  actModelId?: string
+  fallbackModelId?: string
+}): {
+  askModelIds: string[]
+  actModelId: string
+} {
+  const fallback = getModel(fallbackModelId)?.id ?? DEFAULT_MODEL_ID
+  const resolvedAct = actModelId ? getModel(actModelId)?.id : undefined
+  let ask = normalizeAskIds([...(askModelIds ?? [])])
+
+  if (resolvedAct && !ask.includes(resolvedAct)) {
+    ask = [resolvedAct, ...ask].slice(0, 4)
+  }
+  if (ask.length === 0) ask = [resolvedAct ?? fallback]
+
+  const act = resolvedAct && ask.includes(resolvedAct)
+    ? resolvedAct
+    : ask[0] ?? fallback
+
+  return {
+    askModelIds: ask,
+    actModelId: act,
+  }
+}
+
 /** Read preferred Ask slot model ids from localStorage (browser only). */
 export function readStoredAskModelIds(): string[] {
   if (typeof window === 'undefined') return [DEFAULT_MODEL_ID]
@@ -27,11 +58,11 @@ export function readStoredAskModelIds(): string[] {
       const parsed = JSON.parse(saved) as unknown
       if (Array.isArray(parsed) && parsed.length > 0) {
         const ids = parsed.filter((id): id is string => typeof id === 'string')
-        const norm = normalizeAskIds(ids)
+        const norm = normalizeChatModelSelection({ askModelIds: ids }).askModelIds
         if (norm.length > 0) return norm
       }
     } catch {
-      const norm = normalizeAskIds([saved])
+      const norm = normalizeChatModelSelection({ askModelIds: [saved] }).askModelIds
       if (norm.length > 0) return norm
     }
   } catch {
@@ -45,7 +76,12 @@ export function readStoredActModelId(): string {
   if (typeof window === 'undefined') return DEFAULT_MODEL_ID
   try {
     const saved = localStorage.getItem(ACT_MODEL_KEY)?.trim()
-    if (saved && getModel(saved)) return getModel(saved)!.id
+    if (saved) {
+      return normalizeChatModelSelection({
+        askModelIds: readStoredAskModelIds(),
+        actModelId: saved,
+      }).actModelId
+    }
   } catch {
     /* ignore */
   }

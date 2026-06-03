@@ -11,6 +11,7 @@ export default defineSchema({
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     autoContinue: v.optional(v.boolean()),
     defaultChatMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
+    modelPreference: v.optional(v.union(v.literal('same-for-each-chat'), v.literal('different-for-each-chat'))),
     defaultAskModelIds: v.optional(v.array(v.string())),
     defaultActModelId: v.optional(v.string()),
     defaultImageModelId: v.optional(v.string()),

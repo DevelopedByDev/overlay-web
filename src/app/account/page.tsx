@@ -11,7 +11,8 @@ import { DeleteAccountSection } from '@/features/account/components/DeleteAccoun
 import { useAccountBillingState } from '@/features/account/hooks/useAccountBillingState'
 import { useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
-import { PageNavbar } from '@/components/layout/PageNavbar'
+import { StaticMarketingShell } from '@/features/marketing/components/StaticMarketingShell'
+import { MarketingFooter } from '@/features/marketing/components/MarketingFooter'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   getStoredDesktopPkceChallenge,
@@ -29,7 +30,6 @@ import {
   AccountContinueCard,
   AccountLoadingState,
   AccountMessageBanner,
-  AccountPageFrame,
   AccountProfileCard,
   AccountSignInPrompt,
 } from '@overlay/modules-react/settings'
@@ -40,16 +40,14 @@ const PKCE_CHALLENGE_RE = /^[A-Za-z0-9._~-]{43,128}$/
 
 function AccountPageContent() {
   const { isLandingDark } = useLandingTheme()
-  const panel = marketingPanel(isLandingDark)
-  const panelLg = marketingPanelLg(isLandingDark)
+  const panel = marketingPanel()
+  const panelLg = marketingPanelLg()
   const t = {
-    title: marketingPageTitle(isLandingDark),
-    h: marketingHeading(isLandingDark),
-    muted: marketingMuted(isLandingDark),
-    body: marketingBody(isLandingDark),
+    title: marketingPageTitle(),
+    h: marketingHeading(),
+    muted: marketingMuted(),
+    body: marketingBody(),
   }
-  const footBorder = isLandingDark ? 'border-zinc-800' : 'border-zinc-200'
-  const footMuted = marketingMuted(isLandingDark)
   const router = useRouter()
   const searchParams = useSearchParams()
   const desktopCodeChallenge = searchParams?.get('desktop_code_challenge')?.trim() || getStoredDesktopPkceChallenge() || ''
@@ -279,33 +277,9 @@ function AccountPageContent() {
   }
 
   return (
-    <AccountPageFrame
-      header={<PageNavbar />}
-      footerBorderClass={footBorder}
-      footerMutedClass={footMuted}
-      dark={isLandingDark}
-      footer={
-        <footer className={`relative z-10 mt-auto border-t py-8 px-8 ${footBorder}`}>
-          <div className={`mx-auto flex max-w-4xl items-center justify-between text-sm ${footMuted}`}>
-            <p>© 2026 overlay</p>
-            <div className="flex gap-6">
-              <Link
-                href="/terms"
-                className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
-              >
-                terms
-              </Link>
-              <Link
-                href="/privacy"
-                className={isLandingDark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}
-              >
-                privacy
-              </Link>
-            </div>
-          </div>
-        </footer>
-      }
-    >
+    <StaticMarketingShell>
+      <main className="px-4 pb-10 pt-10 md:px-8 md:pb-14 md:pt-14">
+        <div className="mx-auto max-w-4xl">
       {message ? (
         <AccountMessageBanner
           message={message}
@@ -327,11 +301,7 @@ function AccountPageContent() {
           action={
             <Link
               href="/auth/sign-in"
-              className={`inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-colors ${
-                isLandingDark
-                  ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-                  : 'bg-zinc-900 text-white hover:bg-zinc-800'
-              }`}
+              className="inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-opacity hover:opacity-90 bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]"
             >
               Sign in
               <ArrowRight className="w-4 h-4" />
@@ -352,11 +322,7 @@ function AccountPageContent() {
                 <button
                   onClick={handleSignOut}
                   disabled={signingOut}
-                  className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto ${
-                    isLandingDark
-                      ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
-                      : 'text-red-600 hover:bg-red-50 hover:text-red-700'
-                  }`}
+                  className="w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 sm:w-auto text-[var(--danger)] hover:bg-[var(--surface-muted)]"
                 >
                   {signingOut ? 'Signing out...' : 'Sign out'}
                 </button>
@@ -374,11 +340,7 @@ function AccountPageContent() {
                 <button
                   onClick={handleOpenInApp}
                   disabled={actionLoading === 'openApp'}
-                  className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                    isLandingDark
-                      ? 'border-zinc-600 text-zinc-200 hover:bg-zinc-800'
-                      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-50'
-                  }`}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:bg-[var(--surface-muted)]"
                 >
                   {actionLoading === 'openApp' ? (
                     <>
@@ -394,11 +356,7 @@ function AccountPageContent() {
                 </button>
                 <Link
                   href="/app/chat"
-                  className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    isLandingDark
-                      ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-                      : 'bg-zinc-900 text-white hover:bg-zinc-800'
-                  }`}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]"
                 >
                   Open web app
                   <ArrowRight className="h-4 w-4" />
@@ -429,7 +387,10 @@ function AccountPageContent() {
           />
         </div>
       )}
-    </AccountPageFrame>
+        </div>
+      </main>
+      <MarketingFooter />
+    </StaticMarketingShell>
   )
 }
 
@@ -438,11 +399,10 @@ export default function AccountPage() {
     <LandingThemeProvider>
       <Suspense
         fallback={
-          <div className="flex min-h-screen items-center justify-center gradient-bg">
-            <div className="liquid-glass" />
+          <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
             <div className="relative z-10 text-center">
-              <RefreshCw className="mx-auto h-8 w-8 animate-spin text-zinc-400" />
-              <p className="mt-4 text-zinc-500">Loading...</p>
+              <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[var(--muted)]" />
+              <p className="mt-4 text-[var(--muted)]">Loading...</p>
             </div>
           </div>
         }

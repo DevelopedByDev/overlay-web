@@ -5,7 +5,7 @@ import { MarketingFooter } from "@/features/marketing/components/MarketingFooter
 import { StaticMarketingShell, useStaticMarketingTheme } from "@/features/marketing/components/StaticMarketingShell";
 import { useAuth } from "@/contexts/AuthContext";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
-import { MARKETING_GITHUB_URL, getMarketingAppHref } from "@/features/landing/lib/marketing";
+import { MARKETING_GITHUB_URL, getMarketingAppHref } from "@/shared/marketing/marketing";
 
 const VALUE_POINTS = [
   {

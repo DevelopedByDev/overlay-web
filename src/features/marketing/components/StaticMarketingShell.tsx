@@ -1,25 +1,29 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
 import type { ReactNode } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useLandingTheme } from "@/contexts/LandingThemeContext";
-import { getMarketingAppHref, MARKETING_GITHUB_URL } from "@/features/landing/lib/marketing";
+import { MarketingNavbar } from "@/features/marketing/components/MarketingNavbar";
 
+/**
+ * Token-based theme for every marketing / account / legal surface.
+ *
+ * Colors come from the app's CSS variables (see globals.css), scoped by the
+ * `data-theme` attribute that `LandingThemeProvider` sets. Because the tokens
+ * already resolve correctly for light and dark, these class strings no longer
+ * need to branch on `isLandingDark` — keeping the surfaces identical to the app.
+ */
 export function useStaticMarketingTheme() {
   const { landingTheme, toggleLandingTheme, isLandingDark } = useLandingTheme();
-  const shellClass = isLandingDark ? "bg-[#0a0a0a] text-zinc-100" : "bg-[#faf8f4] text-zinc-950";
-  const panelClass = isLandingDark ? "border-white/10 bg-white/[0.03]" : "border-black/10 bg-white";
-  const mutedClass = isLandingDark ? "text-zinc-400" : "text-zinc-600";
-  const subtleClass = isLandingDark ? "text-zinc-500" : "text-zinc-500";
-  const dividerClass = isLandingDark ? "border-white/10" : "border-black/5";
-  const secondaryButtonClass = isLandingDark
-    ? "text-zinc-300 hover:bg-white/[0.04] hover:text-zinc-100"
-    : "text-zinc-600 hover:bg-black/[0.03] hover:text-zinc-950";
-  const primaryButtonClass = isLandingDark
-    ? "bg-zinc-100 text-zinc-950 hover:bg-white"
-    : "bg-zinc-950 text-white hover:bg-zinc-800";
+
+  const shellClass = "bg-[var(--background)] text-[var(--foreground)]";
+  const panelClass = "border-[var(--border)] bg-[var(--surface-elevated)]";
+  const mutedClass = "text-[var(--muted)]";
+  const subtleClass = "text-[var(--muted-light)]";
+  const dividerClass = "border-[var(--border)]";
+  const secondaryButtonClass =
+    "border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--surface-muted)]";
+  const primaryButtonClass =
+    "bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] hover:opacity-90";
 
   return {
     landingTheme,
@@ -35,55 +39,13 @@ export function useStaticMarketingTheme() {
   };
 }
 
-export function StaticMarketingNav() {
-  const { isAuthenticated } = useAuth();
-  const theme = useStaticMarketingTheme();
-  const webAppHref = getMarketingAppHref(isAuthenticated);
-
-  return (
-    <header className={`border-b px-6 py-5 md:px-8 ${theme.dividerClass}`}>
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-        <Link href="/home" className="flex items-center gap-3">
-          <Image src="/assets/overlay-logo.png" alt="Overlay" width={28} height={28} />
-          <span className="text-lg tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>
-            overlay
-          </span>
-        </Link>
-
-        <div className="flex items-center gap-2 text-sm">
-          <Link href="/pricing" className={`hidden rounded-full px-4 py-2 md:inline-flex ${theme.secondaryButtonClass}`}>
-            Pricing
-          </Link>
-          <Link href="/manifesto" className={`hidden rounded-full px-4 py-2 md:inline-flex ${theme.secondaryButtonClass}`}>
-            Manifesto
-          </Link>
-          <a
-            href={MARKETING_GITHUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`hidden rounded-full px-4 py-2 md:inline-flex ${theme.secondaryButtonClass}`}
-          >
-            GitHub
-          </a>
-          <button type="button" onClick={theme.toggleLandingTheme} className={`rounded-full px-4 py-2 ${theme.secondaryButtonClass}`}>
-            {theme.landingTheme === "dark" ? "Light" : "Dark"}
-          </button>
-          <Link href={webAppHref} className={`inline-flex rounded-full px-4 py-2 text-sm ${theme.primaryButtonClass}`}>
-            Open app
-          </Link>
-        </div>
-      </div>
-    </header>
-  );
-}
-
 export function StaticMarketingShell({ children }: { children: ReactNode }) {
   const theme = useStaticMarketingTheme();
 
   return (
-    <div className={`min-h-screen ${theme.shellClass}`}>
-      <StaticMarketingNav />
-      {children}
+    <div className={`flex min-h-screen flex-col ${theme.shellClass}`}>
+      <MarketingNavbar />
+      <div className="flex-1">{children}</div>
     </div>
   );
 }

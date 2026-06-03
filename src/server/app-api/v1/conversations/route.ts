@@ -5,9 +5,9 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
-  isFreeTierChatModelId,
-  isLegacyFreeTierDefaultModelId,
+  resolveFreeTierChatModelId,
 } from '@/shared/ai/gateway/model-types'
+import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
 import { convex } from '@/server/database/convex'
 import {
@@ -34,10 +34,18 @@ type ConversationDoc = {
 function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
   const requested =
     modelIds
-      ?.filter(isFreeTierChatModelId)
-      .map((id) => (isLegacyFreeTierDefaultModelId(id) ? FREE_TIER_DEFAULT_MODEL_ID : id)) ?? []
+      ?.map(resolveFreeTierChatModelId)
+      .filter((id): id is string => Boolean(id)) ?? []
   const deduped = [...new Set(requested)].slice(0, 4)
   return deduped.length > 0 ? deduped : [FREE_TIER_DEFAULT_MODEL_ID]
+}
+
+function normalizePaidChatModels(modelIds: string[] | undefined, actModelId: string | undefined) {
+  return normalizeChatModelSelection({
+    askModelIds: modelIds,
+    actModelId,
+    fallbackModelId: DEFAULT_MODEL_ID,
+  })
 }
 
 function readBooleanParam(value: string | null): boolean | undefined {
@@ -305,19 +313,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     )
     const isFreeTier = !entitlements || !canUsePaidBudgetFeatures(entitlements)
     const freeAskModelIds = clampFreeTierAskModels(body.askModelIds)
-    const freeActModelId = isLegacyFreeTierDefaultModelId(body.actModelId)
-      ? FREE_TIER_DEFAULT_MODEL_ID
-      : isFreeTierChatModelId(body.actModelId)
-      ? body.actModelId
-      : freeAskModelIds[0] ?? FREE_TIER_DEFAULT_MODEL_ID
+    const freeActModelId =
+      resolveFreeTierChatModelId(body.actModelId) ??
+      freeAskModelIds[0] ??
+      FREE_TIER_DEFAULT_MODEL_ID
+    const paidModels = normalizePaidChatModels(body.askModelIds, body.actModelId)
     const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
       userId: auth.userId,
       serverSecret,
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
-      askModelIds: isFreeTier ? freeAskModelIds : body.askModelIds,
-      actModelId: isFreeTier ? freeActModelId : (body.actModelId ?? body.askModelIds?.[0] ?? DEFAULT_MODEL_ID),
+      askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
+      actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
       lastMode: body.lastMode,
     })
     const conversation = await convex.query<ConversationDoc | null>('chat/conversations:get', {
@@ -349,14 +357,46 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
     }
 
+    let askModelIds = body.askModelIds
+    let actModelId = body.actModelId
+    if (body.askModelIds !== undefined || body.actModelId !== undefined) {
+      const entitlements = await convex.query<{
+        tier: 'free' | 'pro' | 'max'
+        planKind?: 'free' | 'paid'
+        creditsUsed: number
+        creditsTotal: number
+        budgetUsedCents?: number
+        budgetTotalCents?: number
+        budgetRemainingCents?: number
+      } | null>(
+        'platform/usage:getEntitlementsByServer',
+        { userId: auth.userId, serverSecret },
+        { throwOnError: true },
+      )
+      const isFreeTier = !entitlements || !canUsePaidBudgetFeatures(entitlements)
+      if (isFreeTier) {
+        const freeAskModelIds = body.askModelIds !== undefined
+          ? clampFreeTierAskModels(body.askModelIds)
+          : undefined
+        askModelIds = freeAskModelIds
+        actModelId = body.actModelId !== undefined
+          ? resolveFreeTierChatModelId(body.actModelId) ?? freeAskModelIds?.[0] ?? FREE_TIER_DEFAULT_MODEL_ID
+          : undefined
+      } else {
+        const normalized = normalizePaidChatModels(body.askModelIds, body.actModelId)
+        askModelIds = body.askModelIds !== undefined ? normalized.askModelIds : undefined
+        actModelId = body.actModelId !== undefined ? normalized.actModelId : undefined
+      }
+    }
+
     await convex.mutation('chat/conversations:update', {
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,
       serverSecret,
       title: body.title,
       projectId: body.projectId,
-      askModelIds: body.askModelIds,
-      actModelId: body.actModelId,
+      askModelIds,
+      actModelId,
       lastMode: body.lastMode,
     })
     const conversation = await convex.query<ConversationDoc | null>('chat/conversations:get', {

@@ -48,6 +48,7 @@ import {
 import {
   ACT_MODEL_KEY,
   CHAT_MODEL_KEY,
+  normalizeChatModelSelection,
   readStoredActModelId,
   readStoredAskModelIds,
 } from '@/shared/chat/chat-model-prefs'
@@ -229,6 +230,7 @@ export default function ChatExperience({
       ? rawEmbedProjectId
       : null
   const { settings } = useAppSettings()
+  const useSharedModelPreference = settings.modelPreference === 'same-for-each-chat'
   const { capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
   const { user: authUser } = useAuth()
@@ -527,9 +529,13 @@ export default function ChatExperience({
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
   const applyUiStateToView = useCallback((ui: ConversationUiState) => {
-    setSelectedActModel(ui.selectedActModel)
-    setSelectedModels([...ui.selectedModels])
-    setAskModelSelectionMode(ui.askModelSelectionMode)
+    const normalizedTextModels = normalizeChatModelSelection({
+      askModelIds: ui.selectedModels,
+      actModelId: ui.selectedActModel,
+    })
+    setSelectedActModel(normalizedTextModels.actModelId)
+    setSelectedModels([...normalizedTextModels.askModelIds])
+    setAskModelSelectionMode(normalizedTextModels.askModelIds.length > 1 ? 'multiple' : 'single')
     setExchangeModes([...ui.exchangeModes])
     setExchangeModels(ui.exchangeModels.map((models) => [...models]))
     setSelectedTabPerExchange([...ui.selectedTabPerExchange])
@@ -547,10 +553,14 @@ export default function ChatExperience({
 
   const buildActiveUiStateSnapshot = useCallback((): ConversationUiState => {
     const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : null
+    const normalizedTextModels = normalizeChatModelSelection({
+      askModelIds: selectedModels,
+      actModelId: selectedActModel,
+    })
     return createConversationUiState({
-      selectedActModel,
-      selectedModels,
-      askModelSelectionMode,
+      selectedActModel: normalizedTextModels.actModelId,
+      selectedModels: normalizedTextModels.askModelIds,
+      askModelSelectionMode: normalizedTextModels.askModelIds.length > 1 ? 'multiple' : 'single',
       exchangeModes,
       exchangeModels,
       selectedTabPerExchange,
@@ -570,7 +580,6 @@ export default function ChatExperience({
     exchangeModes,
     generationResults,
     isFirstMessage,
-    askModelSelectionMode,
     lastGeneratedImageUrlRef,
     selectedActModel,
     selectedModels,
@@ -1258,11 +1267,15 @@ export default function ChatExperience({
   useEffect(() => {
     if (!activeChatId) return
     const t = window.setTimeout(() => {
+      const normalized = normalizeChatModelSelection({
+        askModelIds: selectedModels,
+        actModelId: selectedActModel,
+      })
       void overlayAppClient.conversations.updateResponse({
         conversationId: activeChatId,
         lastMode: 'act',
-        askModelIds: selectedModels,
-        actModelId: selectedActModel,
+        askModelIds: normalized.askModelIds,
+        actModelId: normalized.actModelId,
       })
     }, 600)
     return () => clearTimeout(t)
@@ -1351,11 +1364,12 @@ export default function ChatExperience({
   // Skip reloading the same chat we just created/switched to locally; otherwise the
   // route update can race the optimistic first-turn state and snap the UI back to empty.
   useEffect(() => {
+    if (!chatPrefsHydrated) return
     if (!idParam || activeChatIdRef.current === idParam) return
     void loadChat(idParam)
     // `loadChat` is intentionally excluded so this only reacts to route changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idParam])
+  }, [chatPrefsHydrated, idParam])
 
   useEffect(() => {
     function handleChatRouteSelected(event: Event) {
@@ -1868,21 +1882,51 @@ export default function ChatExperience({
   }
 
   /**
-   * `localStorage` CHAT_MODEL_KEY / ACT_MODEL_KEY represent the user's **default for new chats**,
-   * not the last-viewed chat's models. Per-chat selections are held in `runtime.ui` and restored
-   * on chat switch. We only write to localStorage when the user is composing on the empty
-   * surface (no active chat), so switching between existing chats never mutates the new-chat
-   * default and a page reload restores the user's actual preference.
+   * In "same for each chat" mode, text model changes become the global model preference.
+   * In "different for each chat" mode, localStorage is only the new-chat default and
+   * existing chat selections stay in conversation metadata/runtime state.
    */
   const isOnNewChatSurface = !activeChatId && !isTemporaryChat
   const persistNewChatAskModels = useCallback((ids: string[]) => {
-    if (!isOnNewChatSurface) return
-    safeSetLocalStorage(CHAT_MODEL_KEY, JSON.stringify(ids))
-  }, [isOnNewChatSurface])
+    if (!useSharedModelPreference && !isOnNewChatSurface) return
+    const normalized = normalizeChatModelSelection({ askModelIds: ids })
+    safeSetLocalStorage(CHAT_MODEL_KEY, JSON.stringify(normalized.askModelIds))
+  }, [isOnNewChatSurface, useSharedModelPreference])
   const persistNewChatActModel = useCallback((id: string) => {
-    if (!isOnNewChatSurface) return
-    safeSetLocalStorage(ACT_MODEL_KEY, id)
-  }, [isOnNewChatSurface])
+    if (!useSharedModelPreference && !isOnNewChatSurface) return
+    const normalized = normalizeChatModelSelection({ askModelIds: selectedModels, actModelId: id })
+    safeSetLocalStorage(ACT_MODEL_KEY, normalized.actModelId)
+  }, [isOnNewChatSurface, selectedModels, useSharedModelPreference])
+
+  useEffect(() => {
+    if (!chatPrefsHydrated) return
+    const normalized = normalizeChatModelSelection({
+      askModelIds: selectedModels,
+      actModelId: selectedActModel,
+    })
+    const selectionChanged =
+      normalized.actModelId !== selectedActModel ||
+      !sameModelOrder(normalized.askModelIds, selectedModels)
+
+    if (selectionChanged) {
+      setSelectedModels(normalized.askModelIds)
+      setSelectedActModel(normalized.actModelId)
+      setAskModelSelectionMode(normalized.askModelIds.length > 1 ? 'multiple' : 'single')
+    }
+
+    if (useSharedModelPreference) {
+      safeSetLocalStorage(CHAT_MODEL_KEY, JSON.stringify(normalized.askModelIds))
+      safeSetLocalStorage(ACT_MODEL_KEY, normalized.actModelId)
+    }
+  }, [
+    chatPrefsHydrated,
+    selectedActModel,
+    selectedModels,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
+    useSharedModelPreference,
+  ])
 
   const snapshotCurrentAskThreadsForModelPicker = useCallback(() => {
     if (!activeChatIdRef.current && !isTemporaryChat) return
@@ -2093,13 +2137,17 @@ export default function ChatExperience({
     setIsTemporaryChat(false)
     resetComposerToolIds(false)
     const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
-    const initialSelectedModels = askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4)
+    const normalizedInitialSelection = normalizeChatModelSelection({
+      askModelIds: askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4),
+      actModelId: selectedActModel,
+    })
+    const initialSelectedModels = normalizedInitialSelection.askModelIds
     const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
     const res = await overlayAppClient.conversations.createResponse(
       {
         title: initialTitle,
         askModelIds: initialSelectedModels,
-        actModelId: selectedActModel,
+        actModelId: normalizedInitialSelection.actModelId,
         lastMode: 'act',
         ...(embedProjectId ? { projectId: embedProjectId } : {}),
       },
@@ -2114,21 +2162,21 @@ export default function ChatExperience({
         lastModified: Date.now(),
         lastMode: 'act',
         askModelIds: initialSelectedModels,
-        actModelId: selectedActModel,
+        actModelId: normalizedInitialSelection.actModelId,
       }
       upsertCachedChat(newChat)
       setChats((prev) => [newChat, ...prev])
       dispatchChatCreated({ chat: newChat })
       posthog.capture('chat_new_chat_created', { mode: 'act' })
       const runtime = ensureConversationRuntime(data.id, {
-        selectedActModel,
+        selectedActModel: normalizedInitialSelection.actModelId,
         selectedModels: initialSelectedModels,
         askModelSelectionMode: initialAskModelSelectionMode,
         activeChatTitle: initialTitle,
         isFirstMessage: true,
       })
       resetRuntimeState(runtime, {
-        selectedActModel,
+        selectedActModel: normalizedInitialSelection.actModelId,
         selectedModels: initialSelectedModels,
         askModelSelectionMode: initialAskModelSelectionMode,
         activeChatTitle: initialTitle,
@@ -2138,7 +2186,7 @@ export default function ChatExperience({
         chatId: data.id,
         runtime,
         selectedModels: initialSelectedModels,
-        selectedActModel,
+        selectedActModel: normalizedInitialSelection.actModelId,
         askModelSelectionMode: initialAskModelSelectionMode,
       })
       runtime.hydrated = true
@@ -2306,19 +2354,31 @@ export default function ChatExperience({
 
       const hasUserMessages = rawMessages.some((msg) => msg.role === 'user')
       let resolvedTitle = existingChat?.title ?? null
-      let resolvedSelectedModels = existingChat?.askModelIds?.slice(0, 4) ?? selectedModels
-      let resolvedActModel = existingChat?.actModelId ?? selectedActModel
+      const sharedTextSelection = normalizeChatModelSelection({
+        askModelIds: selectedModels,
+        actModelId: selectedActModel,
+      })
+      let restoredTextSelection = normalizeChatModelSelection({
+        askModelIds: existingChat?.askModelIds?.slice(0, 4) ?? selectedModels,
+        actModelId: existingChat?.actModelId ?? selectedActModel,
+      })
       if (snapshot.meta) {
         const meta = snapshot.meta
         if (requestId !== loadChatRequestRef.current) return
         if (meta.title) resolvedTitle = meta.title
-        if (meta.askModelIds?.length) {
-          resolvedSelectedModels = meta.askModelIds.slice(0, 4)
-        }
-        if (meta.actModelId) {
-          resolvedActModel = meta.actModelId
+        if (meta.askModelIds?.length || meta.actModelId) {
+          restoredTextSelection = normalizeChatModelSelection({
+            askModelIds: meta.askModelIds?.length ? meta.askModelIds.slice(0, 4) : restoredTextSelection.askModelIds,
+            actModelId: meta.actModelId ?? restoredTextSelection.actModelId,
+          })
         }
       }
+      let resolvedSelectedModels = useSharedModelPreference
+        ? sharedTextSelection.askModelIds
+        : restoredTextSelection.askModelIds
+      let resolvedActModel = useSharedModelPreference
+        ? sharedTextSelection.actModelId
+        : restoredTextSelection.actModelId
 
       if (requestId !== loadChatRequestRef.current) return
 
@@ -2350,7 +2410,14 @@ export default function ChatExperience({
         runtime.askChats[0].messages = linear as any
       } else {
         const slotModels = uniqueModels.slice(0, 4)
-        resolvedSelectedModels = slotModels
+        if (!useSharedModelPreference) {
+          const normalizedSlotSelection = normalizeChatModelSelection({
+            askModelIds: slotModels,
+            actModelId: resolvedActModel,
+          })
+          resolvedSelectedModels = normalizedSlotSelection.askModelIds
+          resolvedActModel = normalizedSlotSelection.actModelId
+        }
 
         uniqueModels.forEach((modelId) => {
           const msgs: RawMsg[] = []
@@ -2477,8 +2544,13 @@ export default function ChatExperience({
           ? String(meta.replySnippet).slice(0, 16000)
           : undefined
 
-      const multiRetry = exchModelList.length > 1
-      const retrySlots = Math.min(4, exchModelList.length)
+      const normalizedRetrySelection = normalizeChatModelSelection({
+        askModelIds: exchModelList.length > 0 ? exchModelList : [selectedActModel],
+        actModelId: exchModelList[0] ?? selectedActModel,
+      })
+      const retryModelIds = normalizedRetrySelection.askModelIds
+      const multiRetry = retryModelIds.length > 1
+      const retrySlots = Math.min(4, retryModelIds.length)
       if (multiRetry) {
         for (let s = 0; s < retrySlots; s++) {
           runtime.askChats[s].messages = stripAssistantAfterUserTurn(
@@ -2491,7 +2563,7 @@ export default function ChatExperience({
         runtime.actChat.messages = stripAssistantAfterUserTurn(runtime.actChat.messages, turnId)
         runtime.askChats[0].messages = stripAssistantAfterUserTurn(runtime.askChats[0].messages, turnId)
       }
-      const modelId = exchModelList[0] ?? selectedActModel
+      const modelId = normalizedRetrySelection.actModelId
       const msgCountBeforeSend = runtime.askChats[0].messages.length
       startSession(chatId, 'act', activeChatTitle ?? '', msgCountBeforeSend)
 
@@ -2507,7 +2579,7 @@ export default function ChatExperience({
       startActRetryStream({
         chatId,
         targetRuntime: runtime,
-        textModelsForTurn: multiRetry ? exchModelList.slice(0, retrySlots) : [modelId],
+        textModelsForTurn: multiRetry ? retryModelIds.slice(0, retrySlots) : [modelId],
         textSlotCount: retrySlots,
         selectedActModel: modelId,
         turnId,
@@ -2548,9 +2620,12 @@ export default function ChatExperience({
     }
     const replyCtxSnapshot = replyContext
     const text = inputRef.current.trim()
-    const selectedActModelSnapshot = selectedActModel
-    const textModelsForTurn =
-      askModelSelectionMode === 'multiple' ? selectedModels.slice(0, 4) : [selectedActModel]
+    const normalizedTextSelection = normalizeChatModelSelection({
+      askModelIds: askModelSelectionMode === 'multiple' ? selectedModels.slice(0, 4) : [selectedActModel],
+      actModelId: selectedActModel,
+    })
+    const selectedActModelSnapshot = normalizedTextSelection.actModelId
+    const textModelsForTurn = normalizedTextSelection.askModelIds
     const activeChatTitleSnapshot = activeChatTitle
     const selectedImageModelsSnapshot = [...selectedImageModels]
     const selectedVideoModelsSnapshot = [...selectedVideoModels]

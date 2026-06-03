@@ -3,7 +3,7 @@
 import { Suspense, type ReactNode } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { PageNavbar } from '@/components/layout/PageNavbar'
+import { MarketingNavbar } from '@/features/marketing/components/MarketingNavbar'
 import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 
 type AuthPageChromeProps = {
@@ -58,9 +58,8 @@ export function LandingAuthPageChrome({
   mainClassName = 'relative z-10 flex-1 flex items-center justify-center px-6 py-12',
 }: LandingAuthPageChromeProps) {
   return (
-    <div className="flex min-h-screen w-full flex-col gradient-bg">
-      <div className="liquid-glass" />
-      <PageNavbar />
+    <div className="flex min-h-screen w-full flex-col bg-[var(--background)] text-[var(--foreground)]">
+      <MarketingNavbar />
 
       <main className={mainClassName}>{children}</main>
 
@@ -81,12 +80,11 @@ export function AuthLoadingScreen({
   const spinnerClass =
     tone === 'simple'
       ? 'w-8 h-8 border-2 border-[var(--foreground)] border-t-transparent rounded-full animate-spin mx-auto'
-      : 'mx-auto h-8 w-8 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent'
-  const textClass = tone === 'simple' ? 'mt-4 text-[var(--muted)]' : 'mt-4 text-zinc-500'
+      : 'mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--muted)] border-t-transparent'
+  const textClass = 'mt-4 text-[var(--muted)]'
 
   return (
-    <div className="flex min-h-screen items-center justify-center gradient-bg">
-      <div className="liquid-glass" />
+    <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
       <div className="relative z-10 text-center">
         <div className={spinnerClass} />
         <p className={textClass}>Loading...</p>

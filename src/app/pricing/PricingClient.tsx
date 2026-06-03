@@ -7,7 +7,7 @@ import { ArrowRight, Check, GaugeCircle, MessageSquare, PlusCircle, SlidersHoriz
 import { MarketingFooter } from '@/features/marketing/components/MarketingFooter'
 import { StaticMarketingShell, useStaticMarketingTheme } from '@/features/marketing/components/StaticMarketingShell'
 import { useAuth } from '@/contexts/AuthContext'
-import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
+import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 import {
   PAID_PLAN_MAX_AMOUNT_CENTS,
   PAID_PLAN_MIN_AMOUNT_CENTS,
@@ -71,7 +71,6 @@ function UserIdExtractor() {
 
 function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   const router = useRouter()
-  const { isLandingDark } = useLandingTheme()
   const staticTheme = useStaticMarketingTheme()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [selectedTier, setSelectedTier] = useState<TierId>('starter')
@@ -135,41 +134,32 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   )
 
   const theme = {
-    title: marketingPageTitle(isLandingDark),
-    heading: marketingHeading(isLandingDark),
-    body: marketingBody(isLandingDark),
-    muted: marketingMuted(isLandingDark),
-    panel: marketingPanel(isLandingDark),
-    heroGlow: isLandingDark
-      ? 'bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_45%)]'
-      : 'bg-[radial-gradient(circle_at_top_left,rgba(10,10,10,0.06),transparent_45%)]',
-    primaryButton: isLandingDark
-      ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-      : 'bg-zinc-900 text-white hover:bg-zinc-800',
-    secondaryButton: isLandingDark
-      ? 'border border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
-      : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50',
-    badge: isLandingDark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white',
-    iconChip: isLandingDark
-      ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 text-zinc-100'
-      : 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-900',
-    tierCard: isLandingDark
-      ? 'flex h-full flex-col rounded-2xl border border-zinc-800 bg-zinc-950/75 p-6 shadow-[0_18px_50px_rgba(0,0,0,0.22)]'
-      : 'flex h-full flex-col rounded-2xl border border-zinc-200/90 bg-white p-6 shadow-[0_16px_40px_rgba(10,10,10,0.07)]',
-    subtleCard: isLandingDark
-      ? 'rounded-2xl border border-zinc-800/90 bg-zinc-950/55 p-4'
-      : 'rounded-2xl border border-zinc-200 bg-zinc-50/90 p-4',
-    sliderTrack: isLandingDark
-      ? 'mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-zinc-100'
-      : 'mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-200 accent-zinc-900',
-    currentPlanPill: isLandingDark
-      ? 'inline-flex w-full items-center justify-center rounded-xl border border-emerald-700/60 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-200'
-      : 'inline-flex w-full items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800',
+    title: marketingPageTitle(),
+    heading: marketingHeading(),
+    body: marketingBody(),
+    muted: marketingMuted(),
+    panel: marketingPanel(),
+    heroGlow:
+      'bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--foreground)_6%,transparent),transparent_45%)]',
+    primaryButton:
+      'bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] hover:opacity-90',
+    secondaryButton:
+      'border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:bg-[var(--surface-muted)]',
+    badge: 'bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]',
+    iconChip:
+      'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)]',
+    tierCard:
+      'flex h-full flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-sm',
+    subtleCard: 'rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4',
+    sliderTrack:
+      'mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-[var(--surface-subtle)] accent-[var(--accent)]',
+    currentPlanPill:
+      'inline-flex w-full items-center justify-center rounded-xl border border-[color:color-mix(in_srgb,var(--success)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--success)_14%,transparent)] px-4 py-3 text-sm text-[var(--success)]',
   }
 
   function tierCardClass(tier: TierId) {
     const selected = selectedTier === tier
-    return `${theme.tierCard} transition-all duration-200 ${selected ? 'ring-2 ring-zinc-900/15 dark:ring-white/15' : ''}`
+    return `${theme.tierCard} transition-all duration-200 ${selected ? 'ring-2 ring-[color:color-mix(in_srgb,var(--foreground)_15%,transparent)]' : ''}`
   }
 
   function selectTier(tier: TierId, amountCents?: number) {
@@ -189,7 +179,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
 
   function renderPaidTierToggle() {
     return (
-      <div className={`grid grid-cols-3 gap-1 rounded-full border p-1 ${isLandingDark ? 'border-white/10 bg-white/[0.03]' : 'border-black/10 bg-black/[0.02]'}`}>
+      <div className="grid grid-cols-3 gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-muted)] p-1">
       {PAID_OPTIONS.map((option) => {
         const active = selectedTier === option.tier
         return (
@@ -199,9 +189,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
             onClick={() => selectTier(option.tier)}
             className={`rounded-full px-2 py-2 text-xs transition-colors ${
               active
-                ? isLandingDark
-                  ? 'bg-zinc-100 text-zinc-950'
-                  : 'bg-zinc-950 text-white'
+                ? 'bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]'
                 : theme.muted
             }`}
           >
@@ -451,8 +439,8 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
                   '10 MB file storage',
                 ].map((feature) => (
                   <li key={feature} className="flex items-start gap-2">
-                    <Check className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                    <span className={`text-sm leading-snug ${marketingFeatureText(isLandingDark, true)}`}>{feature}</span>
+                    <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
+                    <span className={`text-sm leading-snug ${marketingFeatureText(true)}`}>{feature}</span>
                   </li>
                 ))}
               </ul>
@@ -494,8 +482,8 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
                 <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
                 {PAID_FEATURE_BULLETS_COMPACT.map((feature) => (
                   <li key={feature} className="flex items-start gap-2">
-                    <Check className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                    <span className={`text-sm leading-snug ${marketingFeatureText(isLandingDark, true)}`}>{feature}</span>
+                    <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
+                    <span className={`text-sm leading-snug ${marketingFeatureText(true)}`}>{feature}</span>
                   </li>
                 ))}
               </ul>
@@ -528,8 +516,8 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
                 <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
                 {PAID_FEATURE_BULLETS.map((feature) => (
                   <li key={feature} className="flex items-start gap-2">
-                    <Check className={`mt-0.5 h-4 w-4 shrink-0 ${isLandingDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                    <span className={`text-sm leading-snug ${marketingFeatureText(isLandingDark, true)}`}>{feature}</span>
+                    <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
+                    <span className={`text-sm leading-snug ${marketingFeatureText(true)}`}>{feature}</span>
                   </li>
                 ))}
               </ul>
@@ -576,13 +564,13 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
               . Automatic top-ups are off until you opt in—they never apply unless you enable them below (paid accounts only).
             </p>
             <label
-              className={`mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border p-4 ${isLandingDark ? 'border-zinc-800 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50/90'}`}
+              className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border p-4 border-[var(--border)] bg-[var(--surface-muted)]"
             >
               <input
                 type="checkbox"
                 checked={autoTopUpEnabled}
                 onChange={(event) => setAutoTopUpEnabled(event.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--input-border)] text-[var(--accent)] focus:ring-[var(--accent)]"
               />
               <div>
                 <p className={`text-sm font-medium ${theme.heading}`}>Enable automatic top-ups</p>

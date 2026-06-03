@@ -145,12 +145,12 @@ function SignInContent() {
     window.location.href = ssoUrl;
   };
 
-  const card = marketingAuthCard(isLandingDark);
-  const muted = marketingAuthMuted(isLandingDark);
-  const sso = marketingSsoButton(isLandingDark);
-  const field = marketingPrimaryField(isLandingDark);
-  const submit = marketingSubmitButton(isLandingDark);
-  const divLabel = marketingDividerLabel(isLandingDark);
+  const card = marketingAuthCard();
+  const muted = marketingAuthMuted();
+  const sso = marketingSsoButton();
+  const field = marketingPrimaryField();
+  const submit = marketingSubmitButton();
+  const divLabel = marketingDividerLabel();
   const labelText = isLandingDark ? "text-zinc-300" : "text-zinc-900";
   const linkMuted = isLandingDark ? "text-zinc-400 hover:text-zinc-200" : "text-zinc-500 hover:text-zinc-900";
   const createLink = isLandingDark ? "text-zinc-100 hover:underline font-medium" : "text-zinc-900 hover:underline font-medium";

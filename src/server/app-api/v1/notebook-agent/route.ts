@@ -23,6 +23,7 @@ import { createNotebookTextEmitter } from '@/server/agent/notebook-agent-stream'
 import {
   DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
+  resolveFreeTierChatModelId,
 } from '@/shared/ai/gateway/model-types'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { executeSearchKnowledge } from '@/server/tools/tools/overlay-executes'
@@ -208,7 +209,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     )
   }
 
-  const effectiveModelId = (modelId?.trim() && modelId.trim()) || DEFAULT_MODEL_ID
+  const requestedModelId = (modelId?.trim() && modelId.trim()) || DEFAULT_MODEL_ID
+  const effectiveModelId = resolveFreeTierChatModelId(requestedModelId) ?? requestedModelId
 
   if (!isPaidPlan(entitlements)) {
     if (!isFreeTierChatModelId(effectiveModelId)) {

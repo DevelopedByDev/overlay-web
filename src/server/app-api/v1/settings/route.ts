@@ -66,6 +66,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       darkThemePreset?: ThemePresetId
       autoContinue?: boolean
       defaultChatMode?: ChatModePreference
+      modelPreference?: AppSettings['modelPreference']
       defaultAskModelIds?: string[]
       defaultActModelId?: string
       defaultImageModelId?: string
@@ -101,6 +102,13 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       body.defaultChatMode !== 'act'
     ) {
       return NextResponse.json({ error: 'Invalid defaultChatMode' }, { status: 400 })
+    }
+    if (
+      body.modelPreference !== undefined &&
+      body.modelPreference !== 'same-for-each-chat' &&
+      body.modelPreference !== 'different-for-each-chat'
+    ) {
+      return NextResponse.json({ error: 'Invalid modelPreference' }, { status: 400 })
     }
     if (
       body.defaultAskModelIds !== undefined &&
@@ -168,6 +176,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       darkThemePreset?: string
       autoContinue?: boolean
       defaultChatMode?: ChatModePreference
+      modelPreference?: AppSettings['modelPreference']
       defaultAskModelIds?: string[]
       defaultActModelId?: string
       defaultImageModelId?: string
@@ -198,6 +207,9 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
     if (body.defaultChatMode !== undefined) {
       mutationArgs.defaultChatMode = body.defaultChatMode
+    }
+    if (body.modelPreference !== undefined) {
+      mutationArgs.modelPreference = body.modelPreference
     }
     if (body.defaultAskModelIds !== undefined) {
       mutationArgs.defaultAskModelIds = body.defaultAskModelIds.map((id) => id.trim())

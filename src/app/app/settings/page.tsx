@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
+import { Mail, Moon, Sun, Play, Palette, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -295,18 +295,42 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'models' && (
-            <SettingsCard title="Models">
-              <p>
-                Default chat models are chosen from the composer on each conversation. Use the model menu in chat to
-                switch models or compare answers in Ask mode.
-              </p>
-              <Link
-                href="/app/chat"
-                className="mt-4 inline-flex text-sm font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
-              >
-                Go to chat →
-              </Link>
-            </SettingsCard>
+            <>
+              <SettingsGroup>
+                <SettingsActionRow
+                  icon={<SlidersHorizontal size={18} strokeWidth={1.8} />}
+                  title="Model preference"
+                  description="Choose whether model changes apply everywhere or stay attached to each conversation."
+                  action={
+                    <select
+                      disabled={busy}
+                      value={settings.modelPreference}
+                      onChange={(event) => {
+                        void updateSettings({
+                          modelPreference: event.target.value as typeof settings.modelPreference,
+                        })
+                      }}
+                      className="min-w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] disabled:opacity-60"
+                    >
+                      <option value="same-for-each-chat">Same for each chat</option>
+                      <option value="different-for-each-chat">Different for each chat</option>
+                    </select>
+                  }
+                />
+              </SettingsGroup>
+              <SettingsCard title="Models">
+                <p>
+                  Default chat models are chosen from the composer. Use the model menu in chat to switch models or
+                  compare answers in Ask mode.
+                </p>
+                <Link
+                  href="/app/chat"
+                  className="mt-4 inline-flex text-sm font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
+                >
+                  Go to chat →
+                </Link>
+              </SettingsCard>
+            </>
           )}
 
           {!isLoading && section === 'contact' && (

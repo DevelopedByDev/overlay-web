@@ -2,6 +2,7 @@ export type ThemePreference = 'light' | 'dark'
 /** Token streaming is the only supported mode; the field remains for API/storage compatibility. */
 export type ChatStreamingMode = 'token'
 export type ChatModePreference = 'ask' | 'act'
+export type ModelPreference = 'same-for-each-chat' | 'different-for-each-chat'
 
 export type ThemePresetId =
   | 'default-light'
@@ -51,6 +52,7 @@ export interface AppSettings {
   chatStreamingMode: ChatStreamingMode
   autoContinue: boolean
   defaultChatMode: ChatModePreference
+  modelPreference: ModelPreference
   defaultAskModelIds: string[]
   defaultActModelId?: string
   defaultImageModelId?: string
@@ -71,6 +73,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   chatStreamingMode: 'token',
   autoContinue: false,
   defaultChatMode: 'act',
+  modelPreference: 'same-for-each-chat',
   defaultAskModelIds: [],
   defaultActModelId: undefined,
   defaultImageModelId: undefined,

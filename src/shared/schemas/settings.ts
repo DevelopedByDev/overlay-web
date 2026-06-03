@@ -12,6 +12,7 @@ export const UpdateSettingsRequest = z.object({
   darkThemePreset: z.string().optional(),
   autoContinue: z.boolean().optional(),
   defaultChatMode: z.enum(['ask', 'act']).optional(),
+  modelPreference: z.enum(['same-for-each-chat', 'different-for-each-chat']).optional(),
   defaultAskModelIds: z.array(z.string()).optional(),
   defaultActModelId: z.string().optional(),
   defaultImageModelId: z.string().optional(),

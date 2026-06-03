@@ -71,6 +71,13 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     return false
   }
   if (
+    candidate.modelPreference !== undefined &&
+    candidate.modelPreference !== 'same-for-each-chat' &&
+    candidate.modelPreference !== 'different-for-each-chat'
+  ) {
+    return false
+  }
+  if (
     candidate.defaultAskModelIds !== undefined &&
     (!Array.isArray(candidate.defaultAskModelIds) ||
       candidate.defaultAskModelIds.length > MAX_ASK_MODEL_IDS ||
@@ -117,6 +124,7 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     typeof candidate.chatStreamingMode === 'string' ||
     typeof candidate.autoContinue === 'boolean' ||
     typeof candidate.defaultChatMode === 'string' ||
+    typeof candidate.modelPreference === 'string' ||
     Array.isArray(candidate.defaultAskModelIds) ||
     typeof candidate.defaultActModelId === 'string' ||
     typeof candidate.defaultImageModelId === 'string' ||

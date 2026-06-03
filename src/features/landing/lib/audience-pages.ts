@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import type { AudiencePageKey } from "@/features/landing/lib/marketing";
-import { MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/features/landing/lib/marketing";
+import type { AudiencePageKey } from "@/shared/marketing/marketing";
+import { MARKETING_GITHUB_URL, MARKETING_SALES_URL } from "@/shared/marketing/marketing";
 
 type AudiencePageContent = {
   metadata: Metadata;

@@ -4,6 +4,7 @@ import { requireServerSecret } from '../lib/auth'
 
 const themeValidator = v.union(v.literal('light'), v.literal('dark'))
 const chatModeValidator = v.union(v.literal('ask'), v.literal('act'))
+const modelPreferenceValidator = v.union(v.literal('same-for-each-chat'), v.literal('different-for-each-chat'))
 const chatStreamingModeValidator = v.literal('token')
 const themePresetValidator = v.optional(v.string())
 const MAX_MODEL_ID_LENGTH = 160
@@ -18,6 +19,7 @@ const uiSettingsValidator = v.object({
   chatStreamingMode: chatStreamingModeValidator,
   autoContinue: v.boolean(),
   defaultChatMode: chatModeValidator,
+  modelPreference: modelPreferenceValidator,
   defaultAskModelIds: v.array(v.string()),
   defaultActModelId: v.optional(v.string()),
   defaultImageModelId: v.optional(v.string()),
@@ -40,6 +42,7 @@ function defaultUiSettings() {
     chatStreamingMode: 'token' as const,
     autoContinue: false,
     defaultChatMode: 'act' as const,
+    modelPreference: 'same-for-each-chat' as const,
     defaultAskModelIds: [] as string[],
     sendWithEnter: true,
     attachFilesToKnowledgeByDefault: false,
@@ -103,6 +106,7 @@ export const getByServer = query({
         existing.chatStreamingMode === 'chunk' ? 'token' : (existing.chatStreamingMode ?? 'token'),
       autoContinue: existing.autoContinue ?? false,
       defaultChatMode: existing.defaultChatMode ?? 'act',
+      modelPreference: existing.modelPreference ?? 'same-for-each-chat',
       defaultAskModelIds: safeModelIds(existing.defaultAskModelIds) ?? [],
       sendWithEnter: existing.sendWithEnter ?? true,
       attachFilesToKnowledgeByDefault: existing.attachFilesToKnowledgeByDefault ?? false,
@@ -133,6 +137,7 @@ export const upsertByServer = mutation({
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     autoContinue: v.optional(v.boolean()),
     defaultChatMode: v.optional(chatModeValidator),
+    modelPreference: v.optional(modelPreferenceValidator),
     defaultAskModelIds: v.optional(v.array(v.string())),
     defaultActModelId: v.optional(v.string()),
     defaultImageModelId: v.optional(v.string()),
@@ -158,6 +163,7 @@ export const upsertByServer = mutation({
       chatStreamingMode: 'token' as const,
       autoContinue: args.autoContinue ?? existing?.autoContinue ?? false,
       defaultChatMode: args.defaultChatMode ?? existing?.defaultChatMode ?? 'act' as const,
+      modelPreference: args.modelPreference ?? existing?.modelPreference ?? 'same-for-each-chat' as const,
       defaultAskModelIds:
         safeModelIds(args.defaultAskModelIds) ?? safeModelIds(existing?.defaultAskModelIds) ?? [],
       sendWithEnter: args.sendWithEnter ?? existing?.sendWithEnter ?? true,

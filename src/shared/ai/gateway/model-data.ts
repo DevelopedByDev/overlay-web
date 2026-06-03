@@ -1,6 +1,7 @@
 import type { ChatModel, ImageModel, VideoModel, VideoSubMode } from '@/shared/ai/gateway/model-types'
 import {
   FREE_TIER_AUTO_MODEL_ID,
+  FREE_TIER_DEFAULT_MODEL_ID,
   DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
 } from '@/shared/ai/gateway/model-types'
@@ -104,6 +105,11 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'gemini-2.5-flash-lite': 'google/gemma-4-26b-a4b-it',
   'zai/glm-5.1': 'z-ai/glm-5.1',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
+  'openrouter/inclusionai/ring-2.6-1t:free': FREE_TIER_DEFAULT_MODEL_ID,
+  'openrouter/deepseek/deepseek-v4-flash:free': FREE_TIER_DEFAULT_MODEL_ID,
+  'openrouter/minimax/minimax-m2.5:free': FREE_TIER_DEFAULT_MODEL_ID,
+  'openrouter/arcee-ai/trinity-large-thinking:free': FREE_TIER_DEFAULT_MODEL_ID,
+  'openrouter/openai/gpt-oss-120b:free': FREE_TIER_DEFAULT_MODEL_ID,
   'deepseek-ai/deepseek-v3.2': 'stepfun-ai/step-3.5-flash',
   'moonshotai/kimi-k2-thinking': 'stepfun-ai/step-3.5-flash',
   'minimaxai/minimax-m2.7': 'stepfun-ai/step-3.5-flash',

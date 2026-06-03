@@ -80,14 +80,18 @@ export function LandingThemeProvider({ children }: { children: React.ReactNode }
 
   return (
     <LandingThemeContext.Provider value={value}>
+      {/*
+        The marketing/account/legal surfaces reuse the app's CSS-variable design
+        tokens (see globals.css). Setting `data-theme` here scopes those tokens to
+        this subtree, so the standalone landing toggle drives the exact same palette
+        as the app while staying independent of the app's persisted theme.
+      */}
       <div
         suppressHydrationWarning
+        data-theme={landingTheme}
         data-landing-theme={landingTheme}
-        className={
-          landingTheme === "dark"
-            ? "flex min-h-screen flex-col bg-[#0a0a0a] text-zinc-100"
-            : "flex min-h-screen flex-col bg-[#fafafa] text-zinc-950"
-        }
+        style={{ colorScheme: landingTheme }}
+        className="flex min-h-screen flex-col bg-[var(--background)] text-[var(--foreground)]"
       >
         {children}
       </div>

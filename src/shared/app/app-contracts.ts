@@ -19,6 +19,7 @@ export type {
   KnowledgeFile,
   KnowledgeSubview,
   MemoryRow,
+  ModelPreference,
   NoteDoc,
   OverlayAppConfig,
   OverlayAppShellRegistry,

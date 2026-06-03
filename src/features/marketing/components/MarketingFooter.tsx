@@ -4,27 +4,20 @@ import { MoonStar, SunMedium } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
-import { MARKETING_GITHUB_URL } from "@/features/landing/lib/marketing";
+import { MARKETING_GITHUB_URL } from "@/shared/marketing/marketing";
 
 export function MarketingFooter() {
   const landing = useLandingThemeOptional();
-  const isDark = landing?.isLandingDark ?? false;
-  const linkClass = isDark ? "text-zinc-400 hover:text-zinc-100" : "text-zinc-500 hover:text-zinc-950";
+  const linkClass = "text-[var(--muted)] hover:text-[var(--foreground)]";
 
   return (
-    <footer
-      className={`relative z-10 border-t px-6 py-8 md:px-8 ${
-        isDark ? "border-white/10" : "border-black/8"
-      }`}
-    >
+    <footer className="relative z-10 border-t border-[var(--border)] px-6 py-8 md:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <Image src="/assets/overlay-logo.png" alt="Overlay" width={22} height={22} />
           <div>
-            <p className={`text-sm ${isDark ? "text-zinc-100" : "text-zinc-950"}`}>overlay</p>
-            <p className={`text-xs ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>
-              the AI workspace that does the work.
-            </p>
+            <p className="text-sm text-[var(--foreground)]">overlay</p>
+            <p className="text-xs text-[var(--muted-light)]">the AI workspace that does the work.</p>
           </div>
         </div>
 

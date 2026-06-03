@@ -95,10 +95,15 @@ export function isFreeTierChatModelId(modelId: string | undefined): modelId is s
   return Boolean(
     modelId &&
       (modelId === FREE_TIER_AUTO_MODEL_ID ||
-        isLegacyFreeTierDefaultModelId(modelId) ||
         isNvidiaNimChatModelId(modelId) ||
         isFreeTierOpenRouterChatModelId(modelId)),
   )
+}
+
+export function resolveFreeTierChatModelId(modelId: string | undefined): string | undefined {
+  if (!modelId) return undefined
+  if (isLegacyFreeTierDefaultModelId(modelId)) return FREE_TIER_DEFAULT_MODEL_ID
+  return isFreeTierChatModelId(modelId) ? modelId : undefined
 }
 
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
