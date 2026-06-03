@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { useLandingTheme } from '@/contexts/LandingThemeContext'
 import { LandingAuthBoundary, LandingAuthPageChrome } from '../_components/AuthPageChrome'
 import { sanitizeClientAuthRedirect } from '@/shared/auth/auth-redirect'
 import {
@@ -21,15 +20,14 @@ import {
 import { DEFAULT_OVERLAY_CAPABILITIES, type CapabilityCheck } from '@overlay/app-core'
 
 function SignUpContent() {
-  const { isLandingDark } = useLandingTheme()
   const card = marketingAuthCard()
   const muted = marketingAuthMuted()
   const sso = marketingSsoButton()
   const field = marketingPrimaryField()
   const submit = marketingSubmitButton()
   const divLabel = marketingDividerLabel()
-  const labelText = isLandingDark ? 'text-zinc-300' : 'text-zinc-900'
-  const createLink = isLandingDark ? 'text-zinc-100 hover:underline font-medium' : 'text-zinc-900 hover:underline font-medium'
+  const labelText = 'text-[var(--foreground)]'
+  const createLink = 'text-[var(--foreground)] hover:underline font-medium'
   const searchParams = useSearchParams()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -220,11 +218,7 @@ function SignUpContent() {
                 </p>
                 <Link
                   href={`/auth/sign-in${redirectUrl !== '/account' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`}
-                  className={
-                    isLandingDark
-                      ? 'inline-block rounded-xl bg-zinc-100 px-8 py-3 text-sm font-medium text-zinc-900 transition-opacity hover:opacity-90'
-                      : 'inline-block rounded-xl bg-zinc-900 px-8 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90'
-                  }
+                  className="inline-block rounded-xl bg-[var(--foreground)] px-8 py-3 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90"
                 >
                   Sign in
                 </Link>
@@ -313,9 +307,7 @@ function SignUpContent() {
 
   return (
     <LandingAuthPageChrome
-      footerClassName={`relative z-10 mt-auto flex justify-center border-t px-8 py-6 text-sm sm:justify-start ${
-        isLandingDark ? 'border-zinc-800 text-zinc-500' : 'border-zinc-200 text-zinc-500'
-      }`}
+      footerClassName="relative z-10 mt-auto flex justify-center border-t border-[var(--border)] px-8 py-6 text-sm text-[var(--muted)] sm:justify-start"
     >
       <div className="w-full max-w-md">
         <div className={card}>
@@ -394,9 +386,7 @@ function SignUpContent() {
             {ssoEnabled ? (
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
-                <div
-                  className={`w-full border-t ${isLandingDark ? 'border-zinc-700' : 'border-zinc-200'}`}
-                />
+                <div className="w-full border-t border-[var(--border)]" />
               </div>
               <div className="relative flex justify-center text-xs">
                 <span className={divLabel}>or create with email</span>
@@ -492,11 +482,11 @@ function SignUpContent() {
             {/* Terms */}
             <p className={`mt-4 text-center text-xs ${muted}`}>
               By creating an account, you agree to our{' '}
-              <Link href="/terms" className={`underline ${isLandingDark ? 'hover:text-zinc-100' : 'hover:text-zinc-900'}`}>
+              <Link href="/terms" className="underline hover:text-[var(--foreground)]">
                 Terms of Service
               </Link>{' '}
               and{' '}
-              <Link href="/privacy" className={`underline ${isLandingDark ? 'hover:text-zinc-100' : 'hover:text-zinc-900'}`}>
+              <Link href="/privacy" className="underline hover:text-[var(--foreground)]">
                 Privacy Policy
               </Link>
             </p>

@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useLandingTheme } from "@/contexts/LandingThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { LandingAuthBoundary, LandingAuthPageChrome } from "../_components/AuthPageChrome";
 import { sanitizeClientAuthRedirect } from "@/shared/auth/auth-redirect";
@@ -22,7 +21,6 @@ import {
 import { DEFAULT_OVERLAY_CAPABILITIES, type CapabilityCheck } from "@overlay/app-core";
 
 function SignInContent() {
-  const { isLandingDark } = useLandingTheme();
   const { refreshSession } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -35,6 +33,10 @@ function SignInContent() {
   const [sessionCleared, setSessionCleared] = useState(false);
   const [clearingSession, setClearingSession] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState<boolean | null>(null);
+
+  const labelText = "text-[var(--foreground)]";
+  const linkMuted = "text-[var(--muted)] hover:text-[var(--foreground)]";
+  const createLink = "text-[var(--foreground)] hover:underline font-medium";
 
   const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get("redirect"));
   const forceLogin = searchParams?.get("force") === "true";
@@ -151,16 +153,11 @@ function SignInContent() {
   const field = marketingPrimaryField();
   const submit = marketingSubmitButton();
   const divLabel = marketingDividerLabel();
-  const labelText = isLandingDark ? "text-zinc-300" : "text-zinc-900";
-  const linkMuted = isLandingDark ? "text-zinc-400 hover:text-zinc-200" : "text-zinc-500 hover:text-zinc-900";
-  const createLink = isLandingDark ? "text-zinc-100 hover:underline font-medium" : "text-zinc-900 hover:underline font-medium";
 
   return (
     <LandingAuthPageChrome
       mainClassName="relative z-10 flex flex-1 items-center justify-center px-4 pb-10 pt-28 md:px-6 md:pb-14 md:pt-32"
-      footerClassName={`relative z-10 mt-auto flex justify-center px-8 py-6 text-sm sm:justify-start ${
-        isLandingDark ? "border-t border-zinc-800 text-zinc-500" : "border-t border-zinc-200/80 text-zinc-500"
-      }`}
+      footerClassName="relative z-10 mt-auto flex justify-center border-t border-[var(--border)] px-8 py-6 text-sm text-[var(--muted)] sm:justify-start"
     >
       <div className="w-full max-w-md">
         <div className={card}>
@@ -168,22 +165,12 @@ function SignInContent() {
             <p className={`text-sm text-center mb-8 ${muted}`}>Sign in to your overlay account</p>
 
             {error && (
-              <div
-                className={
-                  isLandingDark
-                    ? "mb-6 p-4 rounded-xl bg-red-950/50 border border-red-800/80 text-red-200 text-sm"
-                    : "mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm"
-                }
-              >
+              <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
                 {error}
                 {pendingVerification && (
                   <Link
                     href={`/auth/verify-email?email=${encodeURIComponent(email)}`}
-                    className={
-                      isLandingDark
-                        ? "block mt-2 text-red-300 hover:text-red-100 underline"
-                        : "block mt-2 text-red-600 hover:text-red-700 underline"
-                    }
+                    className="mt-2 block text-red-600 underline hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                   >
                     Resend verification email
                   </Link>
@@ -252,9 +239,7 @@ function SignInContent() {
             {ssoEnabled ? (
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
-                <div
-                  className={`w-full border-t ${isLandingDark ? "border-zinc-700" : "border-zinc-200"}`}
-                />
+                <div className="w-full border-t border-[var(--border)]" />
               </div>
               <div className="relative flex justify-center text-xs">
                 <span className={divLabel}>or continue with email</span>

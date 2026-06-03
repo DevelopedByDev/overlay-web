@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { LANDING_THEME_STORAGE_KEY } from "@/features/landing/lib/landingThemeConstants";
 
 export type LandingTheme = "light" | "dark";
@@ -78,14 +78,49 @@ export function LandingThemeProvider({ children }: { children: React.ReactNode }
     [landingTheme, setLandingTheme, toggleLandingTheme],
   );
 
+  // Override the app's html-level theme while this provider is mounted.
+  // The root layout.tsx inline script + AppSettingsProvider both set
+  // document.documentElement.dataset.theme from the app's settings. Since
+  // globals.css only defines [data-theme='dark'] (no light override),
+  // a div-level attribute cannot win back light mode. We must override
+  // the <html> element itself and restore the app's theme on unmount.
+  const originalRef = useRef<{ theme: string | undefined; colorScheme: string }>({
+    theme: undefined,
+    colorScheme: "",
+  });
+  useEffect(() => {
+    const root = document.documentElement;
+    originalRef.current = {
+      theme: root.dataset.theme,
+      colorScheme: root.style.colorScheme,
+    };
+    root.dataset.theme = landingTheme;
+    root.style.colorScheme = landingTheme;
+
+    return () => {
+      const { theme, colorScheme } = originalRef.current;
+      if (theme !== undefined) {
+        root.dataset.theme = theme;
+      } else {
+        delete root.dataset.theme;
+      }
+      if (colorScheme) {
+        root.style.colorScheme = colorScheme;
+      } else {
+        root.style.removeProperty("colorScheme");
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = landingTheme;
+    root.style.colorScheme = landingTheme;
+  }, [landingTheme]);
+
   return (
     <LandingThemeContext.Provider value={value}>
-      {/*
-        The marketing/account/legal surfaces reuse the app's CSS-variable design
-        tokens (see globals.css). Setting `data-theme` here scopes those tokens to
-        this subtree, so the standalone landing toggle drives the exact same palette
-        as the app while staying independent of the app's persisted theme.
-      */}
       <div
         suppressHydrationWarning
         data-theme={landingTheme}
