@@ -7,6 +7,7 @@ import type { LanguageModelV3 } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   getLanguageModel,
+  getGatewayModelId,
   getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/model-runtime'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
@@ -56,6 +57,7 @@ import {
   resolveEffectiveActModelId,
   runActModelAttempts,
   summarizeToolOutputForLog,
+  type ActModelAttemptFailureReason,
 } from './route-helpers'
 import { buildActAgentInstructions } from './instructions'
 import {
@@ -443,6 +445,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         })
         budgetReservationId = usageResult.reservationId
         budgetReservationFinalized = usageResult.finalized
+        logger.info('[conversations/act] stream finish', {
+          modelId: attemptModelId,
+          finishReason: event.finishReason,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          reservationFinalized: budgetReservationFinalized,
+          routedModelId: streamedRoutedModelId ?? null,
+        })
 
         await actMessagePersistenceService.persistAssistantFinish({
           accessToken,
@@ -475,7 +485,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const _uiResp = result.toUIMessageStreamResponse({
       originalMessages: uiMessages,
-      onError: (error: unknown) => userFacingOpenRouterError(error),
+      onError: (error: unknown) => {
+        logger.error('[conversations/act] stream error', {
+          modelId: attemptModelId,
+          error: summarizeErrorForLog(error),
+        })
+        return userFacingOpenRouterError(error)
+      },
       messageMetadata: ({ part }) => {
         const metadata: Record<string, unknown> = {}
         if (hasCitations && (part.type === 'start' || part.type === 'finish')) {
@@ -589,7 +605,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const estimatedInputTokens = Math.ceil(JSON.stringify(modelMessages).length / 4) + 2_000
     const maxOutputTokens = 8_192
-    const reserveBudgetForAttempt = async (attemptModelId: string): Promise<NextResponse | null> => {
+    const reserveBudgetForAttempt = async (attemptModelId: string) => {
       streamedRoutedModelId = undefined
       const reservation = await actUsageBudgetService.reserveForAttempt({
         userId,
@@ -600,11 +616,23 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         maxOutputTokens,
       })
       if (!reservation.ok) {
-        return NextResponse.json(reservation.failure.payload, { status: reservation.failure.statusCode })
+        const errorCode = typeof reservation.failure.payload.error === 'string'
+          ? reservation.failure.payload.error
+          : undefined
+        logger.warn('[conversations/act] model attempt skipped before provider call', {
+          modelId: attemptModelId,
+          reason: errorCode ?? 'budget_reservation_failed',
+          statusCode: reservation.failure.statusCode,
+        })
+        return {
+          ok: false as const,
+          reason: modelAttemptFailureReasonFromReservation(errorCode),
+          response: NextResponse.json(reservation.failure.payload, { status: reservation.failure.statusCode }),
+        }
       }
       budgetReservationId = reservation.reservationId
       budgetReservationFinalized = false
-      return null
+      return { ok: true as const }
     }
 
     const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModelV3> => {
@@ -636,11 +664,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       maxCandidates: MAX_ACT_MODEL_ATTEMPTS - 1,
     })
     const attemptModelIds = [...new Set([effectiveModelId, ...fallbackModelIds])].slice(0, MAX_ACT_MODEL_ATTEMPTS)
-    return await runActModelAttempts({
+    logger.info('[conversations/act] model attempts planned', {
+      requestedModelId: modelId ?? null,
+      effectiveModelId,
+      attemptModelIds,
+      paid,
+      onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
+    })
+    return await runActModelAttempts<Response>({
       attemptModelIds,
       reserveBudgetForAttempt,
-      onFallback: (from, to) => {
-        logger.warn('[conversations/act] model fallback', { from, to })
+      onFallback: (from, to, failedAttempts) => {
+        logger.warn('[conversations/act] model fallback', { from, to, failedAttempts })
       },
       onAttemptFailure: async (error, attemptModelId, hasFallback) => {
         logger.warn('[conversations/act] model attempt failed', {
@@ -659,6 +694,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       },
       runAttempt: async ({ attemptModelId, fallbackNotice }) => {
         streamedRoutedModelId = undefined
+        logger.info('[conversations/act] model attempt starting', {
+          effectiveModelId,
+          attemptModelId,
+          gatewayModelId: safeGatewayModelId(attemptModelId),
+          fallbackNotice: fallbackNotice ?? null,
+        })
         const languageModel = await languageModelForAttempt(attemptModelId)
         return await runActStream({
           languageModel,
@@ -691,5 +732,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       { error: userFacingOpenRouterError(error) },
       { status: 500 },
     )
+  }
+}
+
+function modelAttemptFailureReasonFromReservation(errorCode?: string): ActModelAttemptFailureReason {
+  if (errorCode === 'insufficient_budget') return 'budget'
+  if (errorCode === 'pricing_missing') return 'pricing'
+  return 'reservation'
+}
+
+function safeGatewayModelId(modelId: string): string | null {
+  try {
+    return getGatewayModelId(modelId)
+  } catch (_error) {
+    return null
   }
 }

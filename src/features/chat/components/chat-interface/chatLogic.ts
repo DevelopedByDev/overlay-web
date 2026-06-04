@@ -903,9 +903,20 @@ export async function generateTitle(text: string): Promise<string | null> {
 export function errorLabel(err: Error | null | undefined): string | null {
   if (!err) return null
   const m = err.message || ''
-  if (m.includes('OpenRouter') || m.includes('rate-limited') || m.includes('rate limit')) {
+  if (
+    m.includes('OpenRouter') ||
+    m.includes('AI Gateway') ||
+    m.includes('model provider') ||
+    m.includes('rate-limited') ||
+    m.includes('rate limit') ||
+    m.includes('spend limit') ||
+    m.includes('Payment Required') ||
+    m.includes('payment required') ||
+    m.includes('insufficient credits')
+  ) {
     return m
   }
+  if (/gateway.*(auth|key|billing|quota|limit)|provider.*(blocked|billing|quota|limit)/i.test(m)) return m
   if (err.message?.includes('weekly_limit')) return 'Weekly limit reached — upgrade to a paid plan for unlimited messages.'
   if (err.message?.includes('premium_model')) return 'This model requires a paid plan.'
   if (err.message?.includes('generation_not_allowed')) return 'This action requires a paid plan.'

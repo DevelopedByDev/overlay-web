@@ -366,9 +366,20 @@ export function applyLiveMessageDeltaParts(
 export function errorLabel(err: Error | null | undefined): string | null {
   if (!err) return null
   const message = err.message || ''
-  if (message.includes('OpenRouter') || message.includes('rate-limited') || message.includes('rate limit')) {
+  if (
+    message.includes('OpenRouter') ||
+    message.includes('AI Gateway') ||
+    message.includes('model provider') ||
+    message.includes('rate-limited') ||
+    message.includes('rate limit') ||
+    message.includes('spend limit') ||
+    message.includes('Payment Required') ||
+    message.includes('payment required') ||
+    message.includes('insufficient credits')
+  ) {
     return message
   }
+  if (/gateway.*(auth|key|billing|quota|limit)|provider.*(blocked|billing|quota|limit)/i.test(message)) return message
   if (message.includes('weekly_limit')) return 'Weekly limit reached - upgrade to a paid plan for unlimited messages.'
   if (message.includes('premium_model')) return 'This model requires a paid plan.'
   if (message.includes('generation_not_allowed')) return 'This action requires a paid plan.'

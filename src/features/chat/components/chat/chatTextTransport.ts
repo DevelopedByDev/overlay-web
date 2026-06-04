@@ -1,7 +1,7 @@
 import type { ChatMessageMetadata, ConversationRuntime } from '../chat-interface/types'
 
 type CompleteSession = (chatId: string, active: boolean) => void
-type RefreshAfterTurn = () => void | Promise<void>
+type RefreshAfterTurn = () => unknown | Promise<unknown>
 
 export interface StartActTextStreamParams {
   chatId: string

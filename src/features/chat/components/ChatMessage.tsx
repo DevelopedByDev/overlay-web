@@ -119,9 +119,12 @@ function TextChatMessage(props: TextChatMessageProps) {
     isOptimisticLoading
   )
   const instLoading = activeHttpLoading || persistedStatus === 'generating'
+  const persistedErrorText = persistedStatus === 'error' && responseText.trim()
+    ? responseText.trim()
+    : 'Generation failed'
   const instError = isLatest
     ? persistedStatus === 'error'
-      ? new Error('Generation failed')
+      ? new Error(persistedErrorText)
       : isActExchange
         ? isMultiAct && streamSlotIndex >= 0
           ? chatInstances[streamSlotIndex]?.error ?? null

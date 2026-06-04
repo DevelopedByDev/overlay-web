@@ -6,7 +6,7 @@ import type { ConversationRuntime, ConversationUiState, GenerationResult } from 
 
 type MediaKind = 'image' | 'video'
 type CompleteSession = (chatId: string, active: boolean) => void
-type RefreshAfterTurn = () => void | Promise<void>
+type RefreshAfterTurn = () => unknown | Promise<unknown>
 type UpdateRuntimeUiState = (
   chatId: string,
   updater: (prev: ConversationUiState) => ConversationUiState,

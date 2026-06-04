@@ -128,6 +128,7 @@ export function ChatComposer(props: ChatComposerProps) {
           ) : null}
           <AttachmentPreviewTray {...viewProps} />
           <ComposerAlerts attachmentError={viewProps.attachmentError} composerNotice={viewProps.composerNotice} />
+          {viewProps.billingPromptContent}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading ? (
             viewProps.blockedComposerContent
           ) : (

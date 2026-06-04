@@ -13,6 +13,16 @@ export const MAX_ACT_ABORT_TIMEOUT_MS = 780_000
 export const MAX_ACT_MODEL_ATTEMPTS = 5
 
 export type ActStreamPersistenceMode = 'convex-deltas' | 'cloudflare-relay' | 'direct'
+export type ActModelAttemptFailureReason = 'budget' | 'pricing' | 'provider' | 'reservation'
+
+export type ActModelAttemptFailure = {
+  modelId: string
+  reason: ActModelAttemptFailureReason
+}
+
+export type ActAttemptReservationResult<TResponse> =
+  | { ok: true }
+  | { ok: false; reason: ActModelAttemptFailureReason; response: TResponse }
 
 export interface ActMultiModelState {
   isMultiModelFollowUpSlot: boolean
@@ -65,8 +75,22 @@ export async function drainReadableStream(stream: ReadableStream<Uint8Array<Arra
   }
 }
 
-export function fallbackNoticeText(fromModelId: string, toModelId: string): string {
-  return `${getChatModelDisplayName(fromModelId)} unavailable, switching to ${getChatModelDisplayName(toModelId)}.`
+export function fallbackNoticeText(
+  fromAttempts: string | ActModelAttemptFailure[],
+  toModelId: string,
+): string {
+  const attempts = typeof fromAttempts === 'string'
+    ? [{ modelId: fromAttempts, reason: 'provider' as const }]
+    : fromAttempts
+  const names = formatModelNameList(attempts.map((attempt) => attempt.modelId))
+  const target = getChatModelDisplayName(toModelId)
+  if (attempts.length > 0 && attempts.every((attempt) => attempt.reason === 'budget')) {
+    return `${names} exceeded remaining budget, switching to ${target}.`
+  }
+  if (attempts.length > 0 && attempts.every((attempt) => attempt.reason === 'provider')) {
+    return `${names} unavailable, switching to ${target}.`
+  }
+  return `${names} could not be used, switching to ${target}.`
 }
 
 export function prefixFallbackNoticeAfterStart(
@@ -164,27 +188,32 @@ export function resolveActTurnId(turnId: string | undefined, now = Date.now()): 
 export async function runActModelAttempts<TResponse = NextResponse>(params: {
   attemptModelIds: string[]
   onAttemptFailure(error: unknown, modelId: string, hasFallback: boolean): Promise<void> | void
-  onFallback(previousModelId: string, attemptModelId: string): void
-  reserveBudgetForAttempt(attemptModelId: string): Promise<TResponse | null>
+  onFallback(previousModelId: string, attemptModelId: string, failedAttempts: ActModelAttemptFailure[]): void
+  reserveBudgetForAttempt(attemptModelId: string): Promise<ActAttemptReservationResult<TResponse>>
   runAttempt(args: { attemptModelId: string; fallbackNotice?: string }): Promise<TResponse>
 }): Promise<TResponse> {
   let lastAttemptError: unknown
   let lastAttemptResponse: TResponse | null = null
+  const failedAttempts: ActModelAttemptFailure[] = []
 
   for (let attemptIndex = 0; attemptIndex < params.attemptModelIds.length; attemptIndex++) {
     const attemptModelId = params.attemptModelIds[attemptIndex]!
-    const previousModelId = attemptIndex > 0 ? params.attemptModelIds[attemptIndex - 1] : undefined
-    const fallbackNotice = previousModelId ? fallbackNoticeText(previousModelId, attemptModelId) : undefined
+    const fallbackNotice = failedAttempts.length > 0
+      ? fallbackNoticeText(failedAttempts, attemptModelId)
+      : undefined
     try {
       const reservationResponse = await params.reserveBudgetForAttempt(attemptModelId)
-      if (reservationResponse) {
-        lastAttemptResponse = reservationResponse
+      if (!reservationResponse.ok) {
+        failedAttempts.push({ modelId: attemptModelId, reason: reservationResponse.reason })
+        lastAttemptResponse = reservationResponse.response
         continue
       }
-      if (previousModelId) params.onFallback(previousModelId, attemptModelId)
+      const previousModelId = failedAttempts.at(-1)?.modelId
+      if (previousModelId) params.onFallback(previousModelId, attemptModelId, [...failedAttempts])
       return await params.runAttempt({ attemptModelId, fallbackNotice })
     } catch (error) {
       lastAttemptError = error
+      failedAttempts.push({ modelId: attemptModelId, reason: 'provider' })
       await params.onAttemptFailure(
         error,
         attemptModelId,
@@ -199,6 +228,13 @@ export async function runActModelAttempts<TResponse = NextResponse>(params: {
 
 function uiStreamEvent(data: Record<string, unknown>): string {
   return `data: ${JSON.stringify(data)}\n\n`
+}
+
+function formatModelNameList(modelIds: string[]): string {
+  const names = modelIds.map(getChatModelDisplayName)
+  if (names.length <= 1) return names[0] ?? 'Selected model'
+  if (names.length === 2) return `${names[0]} and ${names[1]}`
+  return `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`
 }
 
 function fallbackNoticeFrames(notice: string): string {

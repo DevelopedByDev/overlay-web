@@ -437,6 +437,7 @@ export default function ChatExperience({
   const {
     autoTopUpEnabledDraft,
     billingActionLoading,
+    budgetRemainingCents,
     entitlements,
     handleSaveTopUpPreference,
     handleStartTopUp,
@@ -2657,6 +2658,19 @@ export default function ChatExperience({
       setAttachmentError('Remove failed documents before sending.')
       return
     }
+    if (effectiveGenType === 'image' || effectiveGenType === 'video') {
+      if (!text && attachedImagesSnapshot.length === 0) return
+    } else if (attachedImagesSnapshot.length === 0 && !text && !hasReadyDocs) {
+      return
+    }
+    if (isSendBlocked) {
+      setComposerNotice(
+        isBudgetExhaustedPaid
+          ? 'Budget exhausted. Add a top-up to continue with paid models, or switch to Auto for free chat.'
+          : 'This model requires a paid plan. Switch to Auto or upgrade.',
+      )
+      return
+    }
 
     posthog.capture('chat_message_sent', {
       mode: 'act',
@@ -2673,9 +2687,6 @@ export default function ChatExperience({
 
     // ── Image / Video generation path ──────────────────────────────────────
     if (effectiveGenType === 'image' || effectiveGenType === 'video') {
-      if (!text && attachedImagesSnapshot.length === 0) return
-      if (isSendBlocked) return
-
       const wasFirst = isFirstMessage
       const promptForModel =
         replyCtxSnapshot?.bodyForModel && text
@@ -2885,9 +2896,6 @@ export default function ChatExperience({
     }
 
     // ── Normal text chat path ─────────────────────────────────────────────
-    if (attachedImagesSnapshot.length === 0 && !text && !hasReadyDocs) return
-    if (isSendBlocked) return
-
     const readyDocs = pendingChatDocumentsSnapshot.filter((d) => d.status === 'ready')
     const indexedAttachments = readyDocs.map((d) => ({ name: d.name, fileIds: d.fileIds }))
     const indexedFileNames = readyDocs.map((d) => d.name)
@@ -3355,6 +3363,14 @@ export default function ChatExperience({
   }, [activeChatId])
 
   const greetingLine = composerMode === 'automate' ? 'What are we automating today?' : chatGreetingLine(firstName)
+  const budgetTopUpPrompt = isBudgetExhaustedPaid && !isSendBlocked && !isActiveLoading ? (
+    <BudgetTopUpComposerPrompt
+      amountCents={topUpAmountDraftCents}
+      remainingCents={budgetRemainingCents}
+      checkoutLoading={billingActionLoading === 'checkout'}
+      onStartTopUp={() => void handleStartTopUp()}
+    />
+  ) : null
 
   const selectAutomationDetailTab = useCallback((tab: AutomationDetailTab) => {
     const params = new URLSearchParams(searchParams?.toString() ?? '')
@@ -4062,6 +4078,7 @@ export default function ChatExperience({
             }}
             runtime={{
               composerNotice,
+              billingPromptContent: budgetTopUpPrompt,
               isSendBlocked,
               isActiveLoading,
               isTemporaryChat,
@@ -4193,6 +4210,50 @@ export default function ChatExperience({
       )}
 
     </>
+  )
+}
+
+function BudgetTopUpComposerPrompt({
+  amountCents,
+  remainingCents,
+  checkoutLoading,
+  onStartTopUp,
+}: {
+  amountCents: number
+  remainingCents: number
+  checkoutLoading: boolean
+  onStartTopUp: () => void
+}) {
+  return (
+    <div className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-[var(--foreground)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <ArrowUp size={14} className="shrink-0 text-amber-500" strokeWidth={1.9} />
+            <p className="font-medium">Paid budget is empty</p>
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+            ${Math.max(0, remainingCents / 100).toFixed(2)} remaining. Free models still work; top up to use paid models and paid tools.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onStartTopUp}
+            disabled={checkoutLoading}
+            className="inline-flex h-8 items-center justify-center rounded-lg bg-[var(--foreground)] px-3 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            {checkoutLoading ? 'Opening...' : `Add $${(amountCents / 100).toFixed(0)}`}
+          </button>
+          <Link
+            href="/account"
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+          >
+            Account
+          </Link>
+        </div>
+      </div>
+    </div>
   )
 }
 

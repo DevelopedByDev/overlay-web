@@ -17,6 +17,7 @@ export type ChatComposerAttachmentState = {
 }
 export type ChatComposerRuntime = {
   composerNotice: string | null
+  billingPromptContent?: ReactNode
   isSendBlocked: boolean
   isActiveLoading: boolean
   isTemporaryChat: boolean

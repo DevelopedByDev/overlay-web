@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ACT_MODEL_KEY,
   CHAT_MODEL_KEY,
@@ -26,6 +26,21 @@ type ChatSearchParams = {
   get: (name: string) => string | null
   toString: () => string
 } | null
+
+const BUDGET_EXHAUSTED_NOTICE =
+  'Budget exhausted. Add a top-up to continue with paid models, or switch to Auto for free chat.'
+
+function budgetTotalCentsFor(entitlements: Entitlements): number {
+  return entitlements.budgetTotalCents ?? Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100))
+}
+
+function budgetUsedCentsFor(entitlements: Entitlements): number {
+  return entitlements.budgetUsedCents ?? Math.max(0, Math.round(entitlements.creditsUsed ?? 0))
+}
+
+function budgetRemainingCentsFor(entitlements: Entitlements): number {
+  return entitlements.budgetRemainingCents ?? Math.max(0, budgetTotalCentsFor(entitlements) - budgetUsedCentsFor(entitlements))
+}
 
 export function useChatBillingControls({
   activeChatId,
@@ -60,21 +75,17 @@ export function useChatBillingControls({
   const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
   const [billingActionLoading, setBillingActionLoading] = useState<'checkout' | 'save' | null>(null)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  const announcedBudgetExhaustedRef = useRef(false)
 
-  const isPaidSubscription =
-    !billingEnabled ||
-    (entitlements?.planKind ?? (entitlements?.tier === 'free' ? 'free' : 'paid')) === 'paid'
-  const budgetTotalCents = entitlements
-    ? (entitlements.budgetTotalCents ?? Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100)))
-    : 0
-  const budgetUsedCents = entitlements
-    ? (entitlements.budgetUsedCents ?? Math.max(0, Math.round(entitlements.creditsUsed ?? 0)))
-    : 0
-  const budgetRemainingCents = entitlements
-    ? (entitlements.budgetRemainingCents ?? Math.max(0, budgetTotalCents - budgetUsedCents))
-    : 0
-  const isBudgetExhaustedPaid = billingEnabled && isPaidSubscription && budgetRemainingCents <= 0
-  const isFreeTier = billingEnabled && (!isPaidSubscription || isBudgetExhaustedPaid)
+  const resolvedPlanKind = entitlements
+    ? (entitlements.planKind ?? (entitlements.tier === 'free' ? 'free' : 'paid'))
+    : null
+  const isPaidSubscription = !billingEnabled || resolvedPlanKind === 'paid'
+  const budgetTotalCents = entitlements ? budgetTotalCentsFor(entitlements) : 0
+  const budgetUsedCents = entitlements ? budgetUsedCentsFor(entitlements) : 0
+  const budgetRemainingCents = entitlements ? budgetRemainingCentsFor(entitlements) : 0
+  const isBudgetExhaustedPaid = billingEnabled && Boolean(entitlements) && isPaidSubscription && budgetRemainingCents <= 0
+  const isFreeTier = billingEnabled && Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
   const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
   const selectableTextModels = useMemo(() => {
     const models = getModelsByIntelligence(isFreeTier)
@@ -139,18 +150,33 @@ export function useChatBillingControls({
   const loadSubscription = useCallback(async () => {
     if (!billingEnabled) {
       setEntitlements(null)
-      return
+      return null
     }
     try {
       const res = await overlayAppClient.subscription.getResponse()
       if (res.ok) {
-        const data = await res.json()
+        const data = await res.json() as Entitlements
         setEntitlements(data)
         setTopUpAmountDraftCents(data.topUpAmountCents ?? data.autoTopUpAmountCents ?? 800)
         setAutoTopUpEnabledDraft(Boolean(data.autoTopUpEnabled))
+        const planKind = data.planKind ?? (data.tier === 'free' ? 'free' : 'paid')
+        const exhausted = planKind === 'paid' && budgetRemainingCentsFor(data) <= 0
+        if (exhausted && !announcedBudgetExhaustedRef.current) {
+          announcedBudgetExhaustedRef.current = true
+          setComposerNotice(BUDGET_EXHAUSTED_NOTICE)
+        } else if (!exhausted) {
+          announcedBudgetExhaustedRef.current = false
+          setComposerNotice((current) =>
+            current === BUDGET_EXHAUSTED_NOTICE
+              ? null
+              : current,
+          )
+        }
+        return data
       }
     } catch { /* ignore */ }
-  }, [billingEnabled])
+    return null
+  }, [billingEnabled, setComposerNotice])
 
   const buildTopUpReturnPath = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams?.toString() ?? '')

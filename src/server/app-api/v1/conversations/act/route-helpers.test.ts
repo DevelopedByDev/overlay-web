@@ -80,7 +80,7 @@ test('runActModelAttempts preserves fallback and reservation response behavior',
   const events: string[] = []
   const result = await runActModelAttempts<string>({
     attemptModelIds: ['model_a', 'model_b'],
-    reserveBudgetForAttempt: async () => null,
+    reserveBudgetForAttempt: async () => ({ ok: true }),
     onFallback: (from, to) => events.push(`fallback:${from}->${to}`),
     onAttemptFailure: async (error, modelId, hasFallback) => {
       events.push(`failed:${modelId}:${hasFallback}:${error instanceof Error ? error.message : String(error)}`)
@@ -102,7 +102,11 @@ test('runActModelAttempts preserves fallback and reservation response behavior',
 
   const reservation = await runActModelAttempts<string>({
     attemptModelIds: ['model_a'],
-    reserveBudgetForAttempt: async () => 'budget-response',
+    reserveBudgetForAttempt: async () => ({
+      ok: false,
+      reason: 'budget',
+      response: 'budget-response',
+    }),
     onFallback: () => {},
     onAttemptFailure: () => {},
     runAttempt: async () => {
@@ -110,6 +114,39 @@ test('runActModelAttempts preserves fallback and reservation response behavior',
     },
   })
   assert.equal(reservation, 'budget-response')
+})
+
+test('runActModelAttempts describes the full budget fallback chain', async () => {
+  const events: string[] = []
+  const result = await runActModelAttempts<string>({
+    attemptModelIds: [
+      'moonshotai/kimi-k2.6',
+      'gemini-3-flash-preview',
+      'google/gemma-4-26b-a4b-it',
+    ],
+    reserveBudgetForAttempt: async (attemptModelId) => {
+      if (attemptModelId === 'google/gemma-4-26b-a4b-it') return { ok: true }
+      return {
+        ok: false,
+        reason: 'budget',
+        response: `budget:${attemptModelId}`,
+      }
+    },
+    onFallback: (from, to, failedAttempts) => {
+      events.push(`fallback:${from}->${to}:${failedAttempts.map((attempt) => attempt.modelId).join(',')}`)
+    },
+    onAttemptFailure: () => {},
+    runAttempt: async ({ attemptModelId, fallbackNotice }) => {
+      events.push(`run:${attemptModelId}:${fallbackNotice ?? 'none'}`)
+      return 'ok'
+    },
+  })
+
+  assert.equal(result, 'ok')
+  assert.deepEqual(events, [
+    'fallback:gemini-3-flash-preview->google/gemma-4-26b-a4b-it:moonshotai/kimi-k2.6,gemini-3-flash-preview',
+    'run:google/gemma-4-26b-a4b-it:Kimi K2.6 and Gemini 3 Flash exceeded remaining budget, switching to Gemma 4 26B A4B.',
+  ])
 })
 
 test('prefixFallbackNoticeAfterStart inserts fallback frames after the first stream frame', async () => {
