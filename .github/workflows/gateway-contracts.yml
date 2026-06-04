@@ -62,7 +62,8 @@ jobs:
     if: >-
       (github.event_name == 'deployment_status' &&
         github.event.deployment_status.state == 'success' &&
-        (github.event.deployment.environment == 'Production' || github.event.deployment.environment == 'production')) ||
+        contains(github.event.deployment.environment, 'Production') &&
+        contains(github.event.deployment.environment, 'overlay-landing')) ||
       (github.event_name == 'workflow_dispatch' && inputs.run_paid_gateway_canary)
     runs-on: ubuntu-latest
     steps:
