@@ -187,7 +187,12 @@ function databaseConfigFromEnv(
   env: EnvSource,
   deploymentEnvironment?: OverlayDeploymentEnvironment,
 ): OverlayRuntimeConfigLayer | null {
-  const convexUrl = deploymentEnvironment === 'development'
+  const preferDevConvex =
+    deploymentEnvironment === 'development' ||
+    deploymentEnvironment === 'test' ||
+    deploymentEnvironment === 'preview' ||
+    deploymentEnvironment === 'staging'
+  const convexUrl = preferDevConvex
     ? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
     : readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
 

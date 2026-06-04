@@ -336,4 +336,15 @@ test('configOverridesFromEnv preserves deployment-specific billing and database 
     provider: 'convex',
     convexUrl: 'https://dev.convex.cloud',
   })
+
+  const stagingConfig = configOverridesFromEnv({
+    OVERLAY_DEPLOYMENT_ENV: 'staging',
+    NEXT_PUBLIC_CONVEX_URL: 'https://prod.convex.cloud',
+    DEV_NEXT_PUBLIC_CONVEX_URL: 'https://staging.convex.cloud',
+  })
+
+  assert.deepEqual(stagingConfig.database, {
+    provider: 'convex',
+    convexUrl: 'https://staging.convex.cloud',
+  })
 })
