@@ -17,16 +17,17 @@ import {
   defineOverlayExtensions,
   extendOverlayAppConfig,
 } from '@overlay/extension-sdk'
+import { studentSuccessExtension } from './extensions/student-success/extension'
 
-const customerExtensions = defineOverlayExtensions([])
+const customerExtensions = defineOverlayExtensions([studentSuccessExtension])
 
 const baseConfig = defineOverlayAppConfig({
   brand: {
     ...DEFAULT_OVERLAY_BRAND_CONFIG,
-    name: 'Enterprise AI Workspace',
-    shortName: 'Overlay',
-    organizationName: 'Example Enterprise',
-    supportEmail: 'it@example.com',
+    name: 'School AI Workspace',
+    shortName: 'School AI',
+    organizationName: 'Example School Group',
+    supportEmail: 'it@example-school.edu',
   },
   navigation: [...DEFAULT_OVERLAY_NAVIGATION],
   settingsSections: [...DEFAULT_OVERLAY_SETTINGS_SECTIONS],

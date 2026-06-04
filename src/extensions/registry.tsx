@@ -3,6 +3,8 @@ import type {
   OverlayFeatureModule,
   OverlaySettingsPanel,
 } from '@overlay/app-core'
+import { StudentRevisionDashboard } from './student-revision/StudentRevisionDashboard'
+import { StudentRevisionPolicySettings } from './student-revision/StudentRevisionPolicySettings'
 export { overlayExtensions } from './app-registry'
 
 export interface OverlayExtensionComponentProps {
@@ -15,7 +17,10 @@ export interface OverlayExtensionComponentProps {
 const componentRegistry: Record<
   string,
   ComponentType<OverlayExtensionComponentProps>
-> = {}
+> = {
+  'student.modules.revisionDashboard': StudentRevisionDashboard,
+  'student.settings.revisionPolicy': StudentRevisionPolicySettings,
+}
 
 export const extensionComponents = componentRegistry
 

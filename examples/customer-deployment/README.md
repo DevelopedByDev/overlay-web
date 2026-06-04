@@ -1,6 +1,6 @@
 # Customer Deployment Template
 
-This example shows the recommended on-prem customization shape for enterprise customers:
+This example shows the recommended on-prem customization shape for schools and universities:
 
 - Keep Overlay core pinned to an upstream version.
 - Keep customer extensions in local source.
@@ -12,12 +12,12 @@ This example shows the recommended on-prem customization shape for enterprise cu
 ```txt
 examples/customer-deployment/
   overlay.config.ts
-  extensions/
+  extensions/student-success/
   docker-compose.yml
   helm/values.yaml
 ```
 
-Add customer-owned extension packages under `extensions/`, then register them in `overlay.config.ts` through `extendOverlayAppConfig`.
+The sample extension adds a Student Success page at `/app/x/student-success`, plus authenticated extension API handlers under `/api/v1/extensions/student-success/*`.
 
 ## Update Model
 
