@@ -4,6 +4,10 @@ import {
   getGatewayParallelSearchTool,
   getGatewayPerplexitySearchTool,
 } from '@/server/ai/model-runtime'
+import {
+  filterGatewayCompatibleToolSet,
+  summarizeGatewayToolSchemaViolations,
+} from '@/server/ai/gateway/tool-schema-compat'
 import { createBrowserUnifiedTools } from '@/server/tools/composio-tools'
 import { createMcpToolSet } from '@/server/tools/mcp-tools'
 import {
@@ -17,6 +21,7 @@ import { createFreeTierGatedStubTools } from '@/server/tools/tools/free-tier-gat
 import { createWebTools } from '@/server/web/web-tools'
 import {
   summarizeErrorForLog,
+  summarizeToolIndexMapForLog,
   summarizeToolSetForLog,
 } from '@/shared/security/safe-log'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
@@ -123,7 +128,7 @@ export async function prepareActTooling(params: {
       : Promise.resolve(null),
   ])
 
-  return buildActTooling({
+  const tooling = buildActTooling({
     allowedOverlayToolIds,
     composioRaw,
     isMultiModelFollowUpSlot: params.isMultiModelFollowUpSlot,
@@ -133,6 +138,24 @@ export async function prepareActTooling(params: {
     perplexityTool,
     webToolSet,
   })
+
+  if (!params.paid) {
+    return tooling
+  }
+
+  const compatible = await filterGatewayCompatibleToolSet(tooling.tools)
+  if (compatible.dropped.length === 0) {
+    return tooling
+  }
+
+  logger.warn(
+    '[conversations/act] dropped Gateway-incompatible tools:',
+    summarizeGatewayToolSchemaViolations(compatible.dropped),
+  )
+  return {
+    ...tooling,
+    tools: compatible.tools,
+  }
 }
 
 export function buildActTooling(params: {
@@ -185,6 +208,8 @@ export function logActTooling(tooling: Pick<ActTooling,
   logger.info(
     '[conversations/act] tools:',
     summarizeToolSetForLog(tooling.tools),
+    '| tool_index_map:',
+    summarizeToolIndexMapForLog(tooling.tools),
     tooling.composioStrippedForCompareSlot ? '| composio:stripped_for_compare_slot' : '',
     '| allowed_overlay_tools:',
     tooling.allowedOverlayToolIds.join(', ') || '(none)',

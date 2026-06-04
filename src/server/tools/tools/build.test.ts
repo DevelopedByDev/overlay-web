@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { asSchema } from 'ai'
+import { asSchema, type ToolSet } from 'ai'
 import { buildOverlayToolSet } from './build'
+import { createFreeTierGatedStubTools } from './free-tier-gated-stub-tools'
 
 function buildTestTools() {
   return buildOverlayToolSet({
@@ -12,6 +13,21 @@ function buildTestTools() {
     includePaidOnlyOverlayTools: true,
     memoryEnabled: true,
   })
+}
+
+async function assertGatewayCompatibleToolSet(toolSet: ToolSet) {
+  const violations: string[] = []
+  for (const [toolName, toolDef] of Object.entries(toolSet)) {
+    const schema = await asSchema(toolDef.inputSchema).jsonSchema as {
+      anyOf?: unknown
+      oneOf?: unknown
+      type?: unknown
+    }
+    if (schema.type !== 'object') violations.push(`${toolName}:root_type_${String(schema.type)}`)
+    if (schema.anyOf) violations.push(`${toolName}:root_anyOf`)
+    if (schema.oneOf) violations.push(`${toolName}:root_oneOf`)
+  }
+  assert.deepEqual(violations, [])
 }
 
 test('present_generated_ui exposes a Gateway-compatible object schema', async () => {
@@ -35,4 +51,18 @@ test('present_generated_ui still validates variant-specific required fields', as
 
   assert.equal(inputSchema.safeParse({ kind: 'draft.email', body: 'Missing subject' }).success, false)
   assert.equal(inputSchema.safeParse({ kind: 'draft.text', body: 'Draft body' }).success, true)
+})
+
+test('Overlay tools expose Gateway-compatible input schemas', async () => {
+  await assertGatewayCompatibleToolSet(buildOverlayToolSet({
+    userId: 'user-test',
+    serverSecret: 'secret-test',
+    baseUrl: 'http://localhost:3000',
+    includePaidOnlyOverlayTools: true,
+    memoryEnabled: true,
+  }))
+})
+
+test('free-tier stub tools expose Gateway-compatible input schemas', async () => {
+  await assertGatewayCompatibleToolSet(createFreeTierGatedStubTools(true))
 })

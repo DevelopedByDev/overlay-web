@@ -104,6 +104,16 @@ export function userFacingOpenRouterError(error: unknown): string {
       'or add your own OpenRouter key for higher limits.'
     )
   }
+  if (
+    /tools\.\d+\.custom\.input_schema/i.test(raw) ||
+    lower.includes('input_schema.type') ||
+    lower.includes('field required') && lower.includes('input_schema')
+  ) {
+    return (
+      'AI Gateway rejected one of the configured tool schemas. This is a provider configuration issue, ' +
+      'not your prompt or budget. Try again after the latest deploy, or switch to a free model temporarily.'
+    )
+  }
   if (!raw.trim()) return 'Something went wrong. Please try again.'
   return raw.length > 600 ? `${raw.slice(0, 600)}…` : raw
 }

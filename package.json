@@ -58,6 +58,8 @@
     "test:billing": "node --test --experimental-strip-types src/shared/billing/billing-pricing.test.ts",
     "pricing:sync": "node --experimental-strip-types scripts/sync-vercel-ai-gateway-pricing.ts",
     "test:pricing": "tsx --test src/server/ai/gateway/model-pricing.test.ts",
+    "test:gateway-contracts": "NODE_OPTIONS=--conditions=react-server tsx --test src/server/ai/gateway/gateway-runtime.test.ts src/server/ai/gateway/gateway-search-tools.test.ts src/server/ai/gateway/openrouter-service.test.ts src/server/ai/gateway/tool-schema-compat.test.ts src/server/tools/tools/build.test.ts src/server/app-api/v1/conversations/act/tooling.test.ts",
+    "test:gateway-canary": "NODE_OPTIONS=--conditions=react-server tsx scripts/vercel-ai-gateway-canary.ts",
     "test:chat-history": "node --test --experimental-strip-types src/server/chat/chat-history-persistence.test.ts",
     "test:file-text-search": "tsx --test src/shared/storage/file-text-search.test.ts",
     "test:daytona:smoke": "node --env-file=.env.local --experimental-strip-types scripts/daytona-tool-smoke.ts",
