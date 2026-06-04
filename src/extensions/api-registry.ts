@@ -1,6 +1,6 @@
 import { defineOverlayExtensions } from '@overlay/extension-sdk'
-import { studentRevisionApiExtension } from './student-revision/api'
+import { jpisSchoolApiExtension } from './jpis-school/api'
 
 export const overlayExtensionApiExtensions = defineOverlayExtensions([
-  studentRevisionApiExtension,
+  jpisSchoolApiExtension,
 ])

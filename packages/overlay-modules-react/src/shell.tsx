@@ -141,7 +141,7 @@ export function AppScreenHeader({
   return (
     <header
       className={cn(
-        'flex min-h-16 shrink-0 flex-col justify-center gap-3 px-4 py-3 sm:px-6',
+        'flex h-16 min-h-16 max-h-16 shrink-0 flex-col justify-center overflow-hidden px-4 sm:px-6',
         border ? 'border-b border-[var(--border)]' : null,
         className,
       )}
@@ -151,7 +151,7 @@ export function AppScreenHeader({
         children
       ) : (
         <div className="flex min-w-0 items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center">
+          <div className="flex min-w-0 items-center overflow-hidden">
             {leading ? <div className="mr-2 shrink-0">{leading}</div> : null}
             <div className="min-w-0">
               <div className="flex min-w-0 items-center">
@@ -165,7 +165,7 @@ export function AppScreenHeader({
                 {metadata ? <span className="ml-2 shrink-0">{metadata}</span> : null}
               </div>
               {description ? (
-                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">{description}</p>
+                <p className="mt-0.5 truncate text-xs leading-tight text-[var(--muted)]">{description}</p>
               ) : null}
             </div>
           </div>
