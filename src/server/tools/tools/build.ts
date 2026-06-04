@@ -54,7 +54,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     subject: z.string().min(1).optional(),
     body: z.string().min(1),
   }).strict()
-  const presentGeneratedUiSchema = z.discriminatedUnion('kind', [
+  const presentGeneratedUiVariantSchema = z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('draft.text'),
       id: z.string().min(1).optional(),
@@ -83,6 +83,30 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       connected: z.boolean().optional(),
     }).strict(),
   ])
+  const presentGeneratedUiSchema = z.object({
+    kind: z.enum(['draft.text', 'draft.email', 'connector.connect']),
+    id: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
+    body: z.string().min(1).optional(),
+    format: z.enum(['plain', 'markdown']).optional(),
+    subject: z.string().min(1).optional(),
+    to: z.array(z.string().min(1)).max(20).optional(),
+    cc: z.array(z.string().min(1)).max(20).optional(),
+    bcc: z.array(z.string().min(1)).max(20).optional(),
+    provider: z.literal('gmail').optional(),
+    variants: z.array(generatedUiVariantSchema).max(6).optional(),
+    serviceName: z.string().min(1).optional(),
+    slug: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+    connectUrl: z.string().url().optional(),
+    connected: z.boolean().optional(),
+  }).strict().superRefine((input, ctx) => {
+    const parsed = presentGeneratedUiVariantSchema.safeParse(input)
+    if (parsed.success) return
+    for (const issue of parsed.error.issues) {
+      ctx.addIssue(issue)
+    }
+  })
   const automationScheduleSchema = z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('interval'),
@@ -114,7 +138,13 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       'After calling this tool, do not duplicate the full draft in normal prose; write only a short lead-in if useful. ' +
       'Never use emojis, pointing-hand callouts, raw JSON, or markdown tables to imitate these cards.',
     inputSchema: presentGeneratedUiSchema,
-    execute: async (input) => executePresentGeneratedUi(options, input as Record<string, unknown>),
+    execute: async (input) => {
+      const parsed = presentGeneratedUiVariantSchema.safeParse(input)
+      if (!parsed.success) {
+        return { success: false, error: 'Invalid generated UI payload.' }
+      }
+      return executePresentGeneratedUi(options, parsed.data as Record<string, unknown>)
+    },
   })
 
   if (shouldExposeTool('list_skills')) {
