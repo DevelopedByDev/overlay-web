@@ -3,6 +3,9 @@ import type {
   OverlayFeatureModule,
   OverlaySettingsPanel,
 } from '@overlay/app-core'
+import { JpgsAdminDashboard } from './jpgs-school/JpgsAdminDashboard'
+import { JpgsParentDashboard } from './jpgs-school/JpgsParentDashboard'
+import { JpgsTeacherDashboard } from './jpgs-school/JpgsTeacherDashboard'
 import { StudentRevisionDashboard } from './student-revision/StudentRevisionDashboard'
 import { StudentRevisionPolicySettings } from './student-revision/StudentRevisionPolicySettings'
 export { overlayExtensions } from './app-registry'
@@ -18,6 +21,9 @@ const componentRegistry: Record<
   string,
   ComponentType<OverlayExtensionComponentProps>
 > = {
+  'jpgs.modules.adminDashboard': JpgsAdminDashboard,
+  'jpgs.modules.parentDashboard': JpgsParentDashboard,
+  'jpgs.modules.teacherDashboard': JpgsTeacherDashboard,
   'student.modules.revisionDashboard': StudentRevisionDashboard,
   'student.settings.revisionPolicy': StudentRevisionPolicySettings,
 }
