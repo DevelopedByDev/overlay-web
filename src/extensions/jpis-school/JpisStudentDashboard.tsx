@@ -3,14 +3,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  Bell,
+  BookOpenCheck,
   CalendarDays,
   ClipboardCheck,
+  GraduationCap,
   LineChart,
-  Mail,
-  MessageSquare,
+  Sparkles,
   Target,
-  UserRound,
 } from 'lucide-react'
 import {
   AppScreenBody,
@@ -25,16 +24,16 @@ import {
   ProgressBar,
   Row,
   StatusPill,
-} from './JpgsDashboardPrimitives'
+} from './JpisDashboardPrimitives'
 import {
-  JPGS_PARENT_OVERVIEW,
-  type ParentOverview,
+  JPIS_STUDENT_OVERVIEW,
+  type StudentOverview,
 } from './data'
 
 const metricIcons: Record<string, LucideIcon> = {
-  attendance: ClipboardCheck,
-  tasks: Bell,
-  checkpoints: CalendarDays,
+  tasks: ClipboardCheck,
+  practice: BookOpenCheck,
+  readiness: LineChart,
 }
 
 function readinessTone(value: number) {
@@ -43,16 +42,16 @@ function readinessTone(value: number) {
   return 'danger'
 }
 
-export function JpgsParentDashboard({
+export function JpisStudentDashboard({
   featureModule,
 }: OverlayExtensionComponentProps) {
-  const [overview, setOverview] = useState<ParentOverview>(JPGS_PARENT_OVERVIEW)
+  const [overview, setOverview] = useState<StudentOverview>(JPIS_STUDENT_OVERVIEW)
 
   useEffect(() => {
     let active = true
-    void fetch('/api/v1/extensions/jpgs-school/parent/overview', { cache: 'no-store' })
+    void fetch('/api/v1/extensions/jpis-school/student/overview', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
-      .then((data: ParentOverview | null) => {
+      .then((data: StudentOverview | null) => {
         if (active && data) setOverview(data)
       })
       .catch(() => {})
@@ -67,10 +66,10 @@ export function JpgsParentDashboard({
     <AppScreenShell
       header={
         <AppScreenHeader
-          title={featureModule?.label ?? 'JPGS Parent'}
-          subtitle="JPGS extension"
-          description="Family-facing progress, upcoming checkpoints, and approved school-home communication across IB, IGCSE, and CBSE pathways."
-          leading={<UserRound size={18} strokeWidth={1.8} className="text-[var(--muted)]" />}
+          title={featureModule?.label ?? 'Student'}
+          subtitle="JPIS"
+          description="Student workspace for IB and Cambridge IGCSE study planning, feedback follow-up, and approved AI support."
+          leading={<GraduationCap size={18} strokeWidth={1.8} className="text-[var(--muted)]" />}
           metadata={<StatusPill tone="neutral">{overview.gradeLabel}</StatusPill>}
         />
       }
@@ -92,12 +91,12 @@ export function JpgsParentDashboard({
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.9fr)]">
             <div className="space-y-4">
               <Panel
-                title={`${overview.studentName} progress`}
-                description="Curriculum-specific view of readiness, feedback, and next steps."
+                title={`${overview.studentName} learning tracks`}
+                description="IB and Cambridge IGCSE readiness with teacher-approved next steps."
                 icon={LineChart}
               >
                 <div className="divide-y divide-[var(--border)]">
-                  {overview.progress.map((item) => (
+                  {overview.learningTracks.map((item) => (
                     <div key={item.id} className="px-4 py-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
@@ -118,18 +117,17 @@ export function JpgsParentDashboard({
               </Panel>
 
               <Panel
-                title="What needs attention"
-                description="A short parent-safe queue with clear ownership."
+                title="Focus queue"
+                description="Student-owned tasks that can be completed before the next check-in."
                 icon={Target}
               >
                 <div className="divide-y divide-[var(--border)]">
-                  {overview.attention.map((item) => (
+                  {overview.focusQueue.map((item) => (
                     <Row
                       key={item.id}
                       title={item.title}
                       detail={item.detail}
-                      meta={<StatusPill tone={item.owner === 'Parent' ? 'warning' : 'neutral'}>{item.owner}</StatusPill>}
-                      action={<ActionButton>Review</ActionButton>}
+                      action={<ActionButton>{item.action}</ActionButton>}
                     />
                   ))}
                 </div>
@@ -139,7 +137,7 @@ export function JpgsParentDashboard({
             <aside className="space-y-4">
               <Panel
                 title="Upcoming"
-                description="School calendar moments that affect the next two weeks."
+                description="Near-term academic checkpoints."
                 icon={CalendarDays}
               >
                 <div className="divide-y divide-[var(--border)]">
@@ -155,38 +153,22 @@ export function JpgsParentDashboard({
               </Panel>
 
               <Panel
-                title="School-home updates"
-                description="Approved summaries and operational messages."
-                icon={MessageSquare}
+                title="Approved AI support"
+                description="Student workflows constrained to JPIS-approved materials."
+                icon={Sparkles}
               >
                 <div className="divide-y divide-[var(--border)]">
-                  {overview.messages.map((message) => (
+                  {overview.aiWorkflows.map((workflow) => (
                     <Row
-                      key={message.id}
-                      title={message.title}
-                      detail={message.detail}
-                      meta={<StatusPill tone="neutral">{message.from}</StatusPill>}
+                      key={workflow.id}
+                      title={workflow.label}
+                      detail={workflow.detail}
                       action={<ActionButton>Open</ActionButton>}
                     />
                   ))}
                 </div>
               </Panel>
             </aside>
-          </div>
-
-          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-[var(--foreground)]">Parent portal boundary</p>
-                <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
-                  This view is deliberately parent-safe: it can show approved summaries and next steps without exposing internal faculty notes or raw student records.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Mail size={16} strokeWidth={1.8} className="text-[var(--muted-light)]" />
-                <span className="text-xs text-[var(--muted)]">{overview.campus}</span>
-              </div>
-            </div>
           </div>
         </div>
       </AppScreenBody>

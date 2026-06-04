@@ -13,9 +13,41 @@ export type CurriculumReadiness = {
   owner: string
 }
 
+export type StudentOverview = {
+  studentName: string
+  gradeLabel: string
+  school: string
+  metrics: DashboardMetric[]
+  learningTracks: Array<{
+    id: string
+    curriculum: string
+    subject: string
+    status: string
+    detail: string
+    readiness: number
+  }>
+  focusQueue: Array<{
+    id: string
+    title: string
+    detail: string
+    action: string
+  }>
+  upcoming: Array<{
+    id: string
+    dateLabel: string
+    title: string
+    detail: string
+  }>
+  aiWorkflows: Array<{
+    id: string
+    label: string
+    detail: string
+  }>
+}
+
 export type TeacherOverview = {
   teacherName: string
-  campus: string
+  school: string
   metrics: DashboardMetric[]
   curriculumReadiness: CurriculumReadiness[]
   today: Array<{
@@ -40,7 +72,7 @@ export type TeacherOverview = {
 export type ParentOverview = {
   studentName: string
   gradeLabel: string
-  campus: string
+  school: string
   metrics: DashboardMetric[]
   progress: Array<{
     id: string
@@ -71,7 +103,7 @@ export type ParentOverview = {
 }
 
 export type AdminOverview = {
-  schoolGroup: string
+  school: string
   metrics: DashboardMetric[]
   curriculumOps: CurriculumReadiness[]
   compliance: Array<{
@@ -95,26 +127,121 @@ export type AdminOverview = {
   }>
 }
 
-export const JPGS_TEACHER_OVERVIEW: TeacherOverview = {
-  teacherName: 'JPGS Faculty',
-  campus: 'Jayshree Periwal Group of Schools',
+export const JPIS_STUDENT_OVERVIEW: StudentOverview = {
+  studentName: 'Ananya P.',
+  gradeLabel: 'IB / IGCSE pathway',
+  school: 'Jayshree Periwal International School',
+  metrics: [
+    {
+      id: 'tasks',
+      label: 'Open tasks',
+      value: '6',
+      detail: 'IA evidence, mock corrections, and advisor reflections',
+    },
+    {
+      id: 'practice',
+      label: 'Practice sets',
+      value: '18',
+      detail: 'Teacher-approved revision generated this month',
+    },
+    {
+      id: 'readiness',
+      label: 'Readiness',
+      value: '74%',
+      detail: 'Average across IB and IGCSE focus areas',
+    },
+  ],
+  learningTracks: [
+    {
+      id: 'student-ib',
+      curriculum: 'IB',
+      subject: 'Economics HL and TOK',
+      status: 'On track',
+      detail: 'Essay outlines are improving; TOK reflection evidence needs one more advisor review.',
+      readiness: 78,
+    },
+    {
+      id: 'student-igcse',
+      curriculum: 'IGCSE',
+      subject: 'Physics and Mathematics',
+      status: 'Needs practice',
+      detail: 'Mock analysis shows repeated errors in electricity diagrams and algebraic manipulation.',
+      readiness: 69,
+    },
+  ],
+  focusQueue: [
+    {
+      id: 'focus-ia',
+      title: 'IB internal assessment evidence',
+      detail: 'Add two source annotations before the next supervisor check-in.',
+      action: 'Open checklist',
+    },
+    {
+      id: 'focus-physics',
+      title: 'IGCSE Physics correction set',
+      detail: 'Redo circuit diagram questions from the mock review packet.',
+      action: 'Start practice',
+    },
+    {
+      id: 'focus-reflection',
+      title: 'Advisor reflection',
+      detail: 'Draft a short learner profile reflection from the last service activity.',
+      action: 'Draft reflection',
+    },
+  ],
+  upcoming: [
+    {
+      id: 'student-upcoming-mock',
+      dateLabel: 'Monday',
+      title: 'IGCSE Physics mock review',
+      detail: 'Bring corrected paper and teacher feedback notes.',
+    },
+    {
+      id: 'student-upcoming-ia',
+      dateLabel: 'Friday',
+      title: 'IB IA supervisor check-in',
+      detail: 'Submit source annotations and research question update.',
+    },
+  ],
+  aiWorkflows: [
+    {
+      id: 'workflow-plan',
+      label: 'Study plan',
+      detail: 'Turn teacher-approved tasks into a focused seven-day plan.',
+    },
+    {
+      id: 'workflow-practice',
+      label: 'Weak-topic practice',
+      detail: 'Generate practice only from approved JPIS materials.',
+    },
+    {
+      id: 'workflow-reflection',
+      label: 'Reflection draft',
+      detail: 'Prepare an advisor-safe reflection for review.',
+    },
+  ],
+}
+
+export const JPIS_TEACHER_OVERVIEW: TeacherOverview = {
+  teacherName: 'JPIS Faculty',
+  school: 'Jayshree Periwal International School',
   metrics: [
     {
       id: 'classes',
       label: 'Active classes',
-      value: '9',
-      detail: 'IB DP, IGCSE, and CBSE cohorts',
+      value: '7',
+      detail: 'IB and Cambridge IGCSE cohorts',
     },
     {
       id: 'review',
       label: 'Work to review',
-      value: '46',
-      detail: 'IA drafts, mocks, notebooks, and rubrics',
+      value: '38',
+      detail: 'IA drafts, mock corrections, rubrics, and reflections',
     },
     {
       id: 'interventions',
       label: 'Interventions due',
-      value: '12',
+      value: '9',
       detail: 'Students flagged by mastery and attendance signals',
     },
   ],
@@ -133,13 +260,6 @@ export const JPGS_TEACHER_OVERVIEW: TeacherOverview = {
       focus: 'Physics mock analysis and coursework evidence need final review.',
       owner: 'Cambridge lead',
     },
-    {
-      id: 'cbse',
-      name: 'CBSE',
-      readiness: 84,
-      focus: 'Grade 10 Mathematics pre-board remediation is ahead of plan.',
-      owner: 'CBSE academic lead',
-    },
   ],
   today: [
     {
@@ -154,23 +274,17 @@ export const JPGS_TEACHER_OVERVIEW: TeacherOverview = {
       title: 'IGCSE Coordinated Sciences',
       detail: 'Run a 12-minute misconceptions check on electricity and circuits.',
     },
-    {
-      id: 'lesson-cbse-math',
-      time: '12:00',
-      title: 'CBSE Grade 10 Mathematics',
-      detail: 'Create differentiated practice for quadratic equations and AP.',
-    },
   ],
   aiWorkflows: [
     {
       id: 'worksheet',
       label: 'Differentiated worksheet',
-      detail: 'Generate three levels from the current unit plan and JPGS question bank.',
+      detail: 'Generate three levels from the current unit plan and JPIS question bank.',
     },
     {
       id: 'formative',
       label: 'Formative check',
-      detail: 'Create exit tickets mapped to IB criteria, Cambridge objectives, or CBSE outcomes.',
+      detail: 'Create exit tickets mapped to IB criteria or Cambridge objectives.',
     },
     {
       id: 'parent-note',
@@ -196,19 +310,13 @@ export const JPGS_TEACHER_OVERVIEW: TeacherOverview = {
       signal: 'Coursework evidence is missing for 6 science submissions.',
       action: 'Open evidence queue',
     },
-    {
-      id: 'risk-cbse-preboard',
-      cohort: 'CBSE Grade 10',
-      signal: 'Algebra mastery is below target for Section B.',
-      action: 'Generate practice set',
-    },
   ],
 }
 
-export const JPGS_PARENT_OVERVIEW: ParentOverview = {
+export const JPIS_PARENT_OVERVIEW: ParentOverview = {
   studentName: 'Ananya P.',
-  gradeLabel: 'Grade 10 transition track',
-  campus: 'Jayshree Periwal Group of Schools',
+  gradeLabel: 'IB / IGCSE pathway',
+  school: 'Jayshree Periwal International School',
   metrics: [
     {
       id: 'attendance',
@@ -219,14 +327,14 @@ export const JPGS_PARENT_OVERVIEW: ParentOverview = {
     {
       id: 'tasks',
       label: 'Open tasks',
-      value: '5',
-      detail: 'Two need parent acknowledgement',
+      value: '4',
+      detail: 'One needs parent acknowledgement',
     },
     {
       id: 'checkpoints',
       label: 'Upcoming checkpoints',
-      value: '4',
-      detail: 'Mock, PTM, submission, and planner review',
+      value: '3',
+      detail: 'Mock review, PTM, and IA supervisor check-in',
     },
   ],
   progress: [
@@ -246,14 +354,6 @@ export const JPGS_PARENT_OVERVIEW: ParentOverview = {
       detail: 'Mock analysis shows errors in electricity diagrams and algebraic manipulation.',
       readiness: 63,
     },
-    {
-      id: 'progress-cbse',
-      curriculum: 'CBSE',
-      subject: 'Board-style problem solving',
-      status: 'On track',
-      detail: 'Pre-board revision is on pace after two targeted practice sets.',
-      readiness: 81,
-    },
   ],
   attention: [
     {
@@ -268,12 +368,6 @@ export const JPGS_PARENT_OVERVIEW: ParentOverview = {
       detail: 'Physics corrections need a parent acknowledgement after review.',
       owner: 'Parent',
     },
-    {
-      id: 'attention-cbse',
-      title: 'CBSE pre-board planner',
-      detail: 'Mathematics revision plan has three pending practice sessions.',
-      owner: 'Student',
-    },
   ],
   upcoming: [
     {
@@ -287,12 +381,6 @@ export const JPGS_PARENT_OVERVIEW: ParentOverview = {
       dateLabel: 'Monday',
       title: 'IGCSE Physics mock review',
       detail: 'Review marked paper and remediation plan.',
-    },
-    {
-      id: 'upcoming-cbse-preboard',
-      dateLabel: 'Next week',
-      title: 'CBSE Mathematics pre-board',
-      detail: 'Chapter-level readiness summary will refresh after practice set 3.',
     },
   ],
   messages: [
@@ -311,14 +399,14 @@ export const JPGS_PARENT_OVERVIEW: ParentOverview = {
   ],
 }
 
-export const JPGS_ADMIN_OVERVIEW: AdminOverview = {
-  schoolGroup: 'Jayshree Periwal Group of Schools',
+export const JPIS_ADMIN_OVERVIEW: AdminOverview = {
+  school: 'Jayshree Periwal International School',
   metrics: [
     {
       id: 'learners',
       label: 'Active learners',
-      value: '5.4k',
-      detail: 'Across IB, IGCSE, and CBSE programs',
+      value: '2.8k',
+      detail: 'Across IB and Cambridge IGCSE programs',
     },
     {
       id: 'adoption',
@@ -329,14 +417,14 @@ export const JPGS_ADMIN_OVERVIEW: AdminOverview = {
     {
       id: 'risks',
       label: 'Open risk flags',
-      value: '14',
+      value: '11',
       detail: 'Academic, compliance, and pastoral queues',
     },
     {
-      id: 'campuses',
-      label: 'Campuses tracked',
-      value: '7',
-      detail: 'Group-level view with campus rollups',
+      id: 'programs',
+      label: 'Programs tracked',
+      value: '2',
+      detail: 'IB and Cambridge IGCSE operating views',
     },
   ],
   curriculumOps: [
@@ -345,21 +433,14 @@ export const JPGS_ADMIN_OVERVIEW: AdminOverview = {
       name: 'IB authorization and evidence',
       readiness: 76,
       focus: 'Unit planners, learner profile evidence, and CAS documentation are being normalized.',
-      owner: 'Director, International Curriculum',
+      owner: 'IB coordinator',
     },
     {
       id: 'admin-igcse',
       name: 'Cambridge IGCSE exam operations',
       readiness: 68,
-      focus: 'Exam entries, coursework moderation, and mock analytics need cross-campus review.',
+      focus: 'Exam entries, coursework moderation, and mock analytics need review.',
       owner: 'Cambridge exams officer',
-    },
-    {
-      id: 'admin-cbse',
-      name: 'CBSE audit and board readiness',
-      readiness: 83,
-      focus: 'Pre-board analytics and remediation reporting are above the current benchmark.',
-      owner: 'CBSE principal office',
     },
   ],
   compliance: [
@@ -373,15 +454,8 @@ export const JPGS_ADMIN_OVERVIEW: AdminOverview = {
     {
       id: 'compliance-cambridge',
       label: 'Cambridge exam entries',
-      detail: 'Final subject entries require campus confirmation before submission.',
+      detail: 'Final subject entries require confirmation before submission.',
       due: 'Monday',
-      status: 'On track',
-    },
-    {
-      id: 'compliance-cbse',
-      label: 'CBSE inspection evidence',
-      detail: 'Staff, infrastructure, and academic documents are staged for review.',
-      due: 'Next week',
       status: 'On track',
     },
   ],
@@ -396,20 +470,20 @@ export const JPGS_ADMIN_OVERVIEW: AdminOverview = {
       id: 'adoption-students',
       role: 'Students',
       adoption: 52,
-      detail: 'Revision plans, weak-topic practice, and approved research support.',
+      detail: 'Study plans, weak-topic practice, and approved research support.',
     },
     {
       id: 'adoption-admin',
       role: 'Administrators',
       adoption: 74,
-      detail: 'Compliance trackers, meeting briefs, and campus reporting.',
+      detail: 'Compliance trackers, meeting briefs, and program reporting.',
     },
   ],
   executiveActions: [
     {
       id: 'action-data',
       title: 'Connect SIS attendance and assessment exports',
-      detail: 'Replace static demo values with nightly JPGS data syncs.',
+      detail: 'Replace static demo values with nightly JPIS data syncs.',
       owner: 'IT team',
     },
     {
@@ -420,8 +494,8 @@ export const JPGS_ADMIN_OVERVIEW: AdminOverview = {
     },
     {
       id: 'action-pilot',
-      title: 'Run three-campus pilot',
-      detail: 'Pilot IB, Cambridge IGCSE, and CBSE dashboards with live faculty feedback.',
+      title: 'Run IB and IGCSE pilot',
+      detail: 'Pilot dashboards with live faculty, parent, and student feedback.',
       owner: 'Academic operations',
     },
   ],

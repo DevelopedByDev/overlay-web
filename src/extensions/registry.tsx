@@ -3,11 +3,10 @@ import type {
   OverlayFeatureModule,
   OverlaySettingsPanel,
 } from '@overlay/app-core'
-import { JpgsAdminDashboard } from './jpgs-school/JpgsAdminDashboard'
-import { JpgsParentDashboard } from './jpgs-school/JpgsParentDashboard'
-import { JpgsTeacherDashboard } from './jpgs-school/JpgsTeacherDashboard'
-import { StudentRevisionDashboard } from './student-revision/StudentRevisionDashboard'
-import { StudentRevisionPolicySettings } from './student-revision/StudentRevisionPolicySettings'
+import { JpisAdminDashboard } from './jpis-school/JpisAdminDashboard'
+import { JpisParentDashboard } from './jpis-school/JpisParentDashboard'
+import { JpisStudentDashboard } from './jpis-school/JpisStudentDashboard'
+import { JpisTeacherDashboard } from './jpis-school/JpisTeacherDashboard'
 export { overlayExtensions } from './app-registry'
 
 export interface OverlayExtensionComponentProps {
@@ -21,11 +20,10 @@ const componentRegistry: Record<
   string,
   ComponentType<OverlayExtensionComponentProps>
 > = {
-  'jpgs.modules.adminDashboard': JpgsAdminDashboard,
-  'jpgs.modules.parentDashboard': JpgsParentDashboard,
-  'jpgs.modules.teacherDashboard': JpgsTeacherDashboard,
-  'student.modules.revisionDashboard': StudentRevisionDashboard,
-  'student.settings.revisionPolicy': StudentRevisionPolicySettings,
+  'school.modules.adminDashboard': JpisAdminDashboard,
+  'school.modules.parentDashboard': JpisParentDashboard,
+  'school.modules.studentDashboard': JpisStudentDashboard,
+  'school.modules.teacherDashboard': JpisTeacherDashboard,
 }
 
 export const extensionComponents = componentRegistry

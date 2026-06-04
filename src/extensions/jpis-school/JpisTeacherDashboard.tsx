@@ -27,9 +27,9 @@ import {
   ProgressBar,
   Row,
   StatusPill,
-} from './JpgsDashboardPrimitives'
+} from './JpisDashboardPrimitives'
 import {
-  JPGS_TEACHER_OVERVIEW,
+  JPIS_TEACHER_OVERVIEW,
   type TeacherOverview,
 } from './data'
 
@@ -45,14 +45,14 @@ function readinessTone(value: number) {
   return 'danger'
 }
 
-export function JpgsTeacherDashboard({
+export function JpisTeacherDashboard({
   featureModule,
 }: OverlayExtensionComponentProps) {
-  const [overview, setOverview] = useState<TeacherOverview>(JPGS_TEACHER_OVERVIEW)
+  const [overview, setOverview] = useState<TeacherOverview>(JPIS_TEACHER_OVERVIEW)
 
   useEffect(() => {
     let active = true
-    void fetch('/api/v1/extensions/jpgs-school/teacher/overview', { cache: 'no-store' })
+    void fetch('/api/v1/extensions/jpis-school/teacher/overview', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
       .then((data: TeacherOverview | null) => {
         if (active && data) setOverview(data)
@@ -69,11 +69,11 @@ export function JpgsTeacherDashboard({
     <AppScreenShell
       header={
         <AppScreenHeader
-          title={featureModule?.label ?? 'JPGS Teacher'}
-          subtitle="JPGS extension"
-          description="Faculty workspace for IB, Cambridge IGCSE, and CBSE lesson operations, assessment follow-up, and approved AI workflows."
+          title={featureModule?.label ?? 'Teacher'}
+          subtitle="JPIS"
+          description="Faculty workspace for IB and Cambridge IGCSE lesson operations, assessment follow-up, and approved AI workflows."
           leading={<School size={18} strokeWidth={1.8} className="text-[var(--muted)]" />}
-          metadata={<StatusPill tone="neutral">IB / IGCSE / CBSE</StatusPill>}
+          metadata={<StatusPill tone="neutral">IB / IGCSE</StatusPill>}
         />
       }
     >
@@ -95,7 +95,7 @@ export function JpgsTeacherDashboard({
             <div className="space-y-4">
               <Panel
                 title="Curriculum readiness"
-                description="Live teaching priorities across the three JPGS academic tracks."
+                description="Live teaching priorities across the JPIS academic tracks."
                 icon={BookOpenCheck}
               >
                 <div className="divide-y divide-[var(--border)]">
@@ -140,7 +140,7 @@ export function JpgsTeacherDashboard({
 
             <aside className="space-y-4">
               <Panel
-                title="Today at JPGS"
+                title="Today at JPIS"
                 description="Teaching blocks and prep actions for the next school day."
                 icon={CalendarDays}
               >
@@ -180,12 +180,12 @@ export function JpgsTeacherDashboard({
               <div className="min-w-0">
                 <p className="text-sm font-medium text-[var(--foreground)]">Faculty pilot note</p>
                 <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
-                  This dashboard is wired as a JPGS extension page. It can be backed by ManageBac, Google Classroom, exam exports, or school SIS data without adding custom Next.js routes.
+                  This dashboard is wired as a JPIS extension page. It can be backed by ManageBac, Google Classroom, exam exports, or school SIS data without adding custom Next.js routes.
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <GraduationCap size={16} strokeWidth={1.8} className="text-[var(--muted-light)]" />
-                <span className="text-xs text-[var(--muted)]">{overview.campus}</span>
+                <span className="text-xs text-[var(--muted)]">{overview.school}</span>
               </div>
             </div>
           </div>

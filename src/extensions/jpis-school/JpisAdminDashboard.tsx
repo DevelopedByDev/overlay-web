@@ -5,7 +5,6 @@ import type { LucideIcon } from 'lucide-react'
 import {
   AlertTriangle,
   BarChart3,
-  Building2,
   ClipboardList,
   LineChart,
   School,
@@ -27,9 +26,9 @@ import {
   ProgressBar,
   Row,
   StatusPill,
-} from './JpgsDashboardPrimitives'
+} from './JpisDashboardPrimitives'
 import {
-  JPGS_ADMIN_OVERVIEW,
+  JPIS_ADMIN_OVERVIEW,
   type AdminOverview,
 } from './data'
 
@@ -37,7 +36,7 @@ const metricIcons: Record<string, LucideIcon> = {
   learners: Users,
   adoption: Workflow,
   risks: AlertTriangle,
-  campuses: Building2,
+  programs: School,
 }
 
 function readinessTone(value: number) {
@@ -52,14 +51,14 @@ function complianceTone(status: 'On track' | 'Needs review' | 'Blocked') {
   return 'danger'
 }
 
-export function JpgsAdminDashboard({
+export function JpisAdminDashboard({
   featureModule,
 }: OverlayExtensionComponentProps) {
-  const [overview, setOverview] = useState<AdminOverview>(JPGS_ADMIN_OVERVIEW)
+  const [overview, setOverview] = useState<AdminOverview>(JPIS_ADMIN_OVERVIEW)
 
   useEffect(() => {
     let active = true
-    void fetch('/api/v1/extensions/jpgs-school/admin/overview', { cache: 'no-store' })
+    void fetch('/api/v1/extensions/jpis-school/admin/overview', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
       .then((data: AdminOverview | null) => {
         if (active && data) setOverview(data)
@@ -76,11 +75,11 @@ export function JpgsAdminDashboard({
     <AppScreenShell
       header={
         <AppScreenHeader
-          title={featureModule?.label ?? 'JPGS Admin'}
-          subtitle="JPGS extension"
-          description="Leadership workspace for cross-campus curriculum operations, compliance evidence, and Overlay rollout governance."
+          title={featureModule?.label ?? 'Admin'}
+          subtitle="JPIS"
+          description="Leadership workspace for curriculum operations, compliance evidence, and Overlay rollout governance."
           leading={<ShieldCheck size={18} strokeWidth={1.8} className="text-[var(--muted)]" />}
-          metadata={<StatusPill tone="neutral">Group dashboard</StatusPill>}
+          metadata={<StatusPill tone="neutral">Admin dashboard</StatusPill>}
         />
       }
     >
@@ -102,7 +101,7 @@ export function JpgsAdminDashboard({
             <div className="space-y-4">
               <Panel
                 title="Curriculum operations"
-                description="Group-level readiness across IB, Cambridge IGCSE, and CBSE workstreams."
+                description="Readiness across JPIS IB and Cambridge IGCSE workstreams."
                 icon={School}
               >
                 <div className="divide-y divide-[var(--border)]">
@@ -193,12 +192,12 @@ export function JpgsAdminDashboard({
               <div className="min-w-0">
                 <p className="text-sm font-medium text-[var(--foreground)]">On-prem enterprise rollout</p>
                 <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
-                  JPGS can keep these dashboards in its own extension branch while still receiving Overlay product updates from main.
+                  JPIS can keep these dashboards in its own extension branch while still receiving Overlay product updates from main.
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <ShieldCheck size={16} strokeWidth={1.8} className="text-[var(--muted-light)]" />
-                <span className="text-xs text-[var(--muted)]">{overview.schoolGroup}</span>
+                <span className="text-xs text-[var(--muted)]">{overview.school}</span>
               </div>
             </div>
           </div>
