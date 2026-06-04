@@ -7,6 +7,13 @@ import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 let cachedGateway: ReturnType<typeof createGateway> | null = null
 let cachedApiKey: string | null = null
 
+const GATEWAY_MODEL_ID_ALIASES: Record<string, string> = {
+  'claude-sonnet-4-6': 'anthropic/claude-sonnet-4.6',
+  'claude-haiku-4-5': 'anthropic/claude-haiku-4.5',
+  'gemini-3-flash-preview': 'google/gemini-3-flash',
+  'gpt-4.1-2025-04-14': 'openai/gpt-4.1',
+}
+
 export async function resolveGatewayApiKey(accessToken?: string): Promise<string | null> {
   if (accessToken) {
     const serverKey = await getServerProviderKey('ai_gateway')
@@ -25,10 +32,16 @@ export async function resolveOpenRouterApiKey(accessToken?: string): Promise<str
 }
 
 export function getGatewayModelId(modelId: string): string {
+  const alias = GATEWAY_MODEL_ID_ALIASES[modelId]
+  if (alias) return alias
+
   const model = getModel(modelId)
   if (!model) {
     throw new Error(`Unknown model: ${modelId}`)
   }
+
+  const modelAlias = GATEWAY_MODEL_ID_ALIASES[model.id]
+  if (modelAlias) return modelAlias
 
   if (model.id.includes('/')) {
     return model.id
