@@ -6,21 +6,27 @@ import {
   DEFAULT_OVERLAY_MODEL_PROVIDER_REGISTRY,
   DEFAULT_OVERLAY_NAVIGATION,
   DEFAULT_OVERLAY_POLICY_GATES,
-  DEFAULT_OVERLAY_SETTINGS_SECTIONS,
   DEFAULT_OVERLAY_SETTINGS_PANELS,
+  DEFAULT_OVERLAY_SETTINGS_SECTIONS,
   DEFAULT_OVERLAY_SIDEBAR_ACTIONS,
   DEFAULT_OVERLAY_THEME_METADATA,
   DEFAULT_OVERLAY_TOOL_REGISTRY,
   defineOverlayAppConfig,
-  resolveOverlayAppShellConfig,
 } from '@overlay/app-core'
-import { extendOverlayAppConfig } from '@overlay/extension-sdk'
-import { DEFAULT_OVERLAY_RUNTIME_CONFIG } from './shared/config/defaultOverlayRuntimeConfig'
-import { overlayExtensions } from './extensions/app-registry'
+import {
+  defineOverlayExtensions,
+  extendOverlayAppConfig,
+} from '@overlay/extension-sdk'
 
-const baseOverlayAppConfig = defineOverlayAppConfig({
+const customerExtensions = defineOverlayExtensions([])
+
+const baseConfig = defineOverlayAppConfig({
   brand: {
     ...DEFAULT_OVERLAY_BRAND_CONFIG,
+    name: 'Enterprise AI Workspace',
+    shortName: 'Overlay',
+    organizationName: 'Example Enterprise',
+    supportEmail: 'it@example.com',
   },
   navigation: [...DEFAULT_OVERLAY_NAVIGATION],
   settingsSections: [...DEFAULT_OVERLAY_SETTINGS_SECTIONS],
@@ -32,20 +38,9 @@ const baseOverlayAppConfig = defineOverlayAppConfig({
   integrations: [...DEFAULT_OVERLAY_INTEGRATION_REGISTRY],
   modelProviders: [...DEFAULT_OVERLAY_MODEL_PROVIDER_REGISTRY],
   policyGates: [...DEFAULT_OVERLAY_POLICY_GATES],
-  theme: {
-    ...DEFAULT_OVERLAY_THEME_METADATA,
-  },
-  modelPolicy: {
-    filterChatModels: (models) => models,
-    filterImageModels: (models) => models,
-    filterVideoModels: (models) => models,
-  },
+  theme: { ...DEFAULT_OVERLAY_THEME_METADATA },
 })
 
-export const overlayAppConfig = extendOverlayAppConfig(baseOverlayAppConfig, overlayExtensions)
-
-export const overlayAppShell = resolveOverlayAppShellConfig(overlayAppConfig)
-
-export const overlayRuntimeConfigDefaults = DEFAULT_OVERLAY_RUNTIME_CONFIG
+export const overlayAppConfig = extendOverlayAppConfig(baseConfig, customerExtensions)
 
 export default overlayAppConfig

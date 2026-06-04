@@ -1,0 +1,33 @@
+services:
+  overlay-web:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      OVERLAY_CONFIG_FILE: /app/overlay.config.json
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_CONVEX_URL: https://replace-with-convex.example
+      INTERNAL_API_SECRET: replace_with_internal_api_secret
+      INTERNAL_SERVICE_AUTH_SECRET: replace_with_internal_service_auth_secret
+      SESSION_SECRET: replace_with_session_secret
+      SESSION_TRANSFER_KEY: replace_with_session_transfer_key
+      SESSION_COOKIE_ENCRYPTION_KEY: replace_with_cookie_encryption_key
+    depends_on:
+      - minio
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: overlay
+      MINIO_ROOT_PASSWORD: replace_with_minio_password
+    volumes:
+      - minio-data:/data
+
+volumes:
+  minio-data:

@@ -80,6 +80,12 @@
       "@overlay/chat-react/*": [
         "./packages/overlay-chat-react/src/*"
       ],
+      "@overlay/extension-sdk": [
+        "./packages/overlay-extension-sdk/src/index.ts"
+      ],
+      "@overlay/extension-sdk/*": [
+        "./packages/overlay-extension-sdk/src/*"
+      ],
       "@overlay/llm-gateway": [
         "./packages/overlay-llm-gateway/src/index.ts"
       ],

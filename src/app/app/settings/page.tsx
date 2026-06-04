@@ -26,6 +26,7 @@ import {
   SettingsTopUpCard,
   ThemePresetRow,
 } from '@overlay/modules-react/settings'
+import { getExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 
 const MemoriesView = dynamic(() => import('@/features/knowledge/components/MemoriesView'))
@@ -85,6 +86,10 @@ export default function SettingsPage() {
   const registeredPanel = useMemo(
     () => resolveSettingsPanel(settingsPanels, section),
     [section, settingsPanels],
+  )
+  const ExtensionSettingsPanel = useMemo(
+    () => getExtensionComponent(registeredPanel?.componentKey),
+    [registeredPanel?.componentKey],
   )
 
   useEffect(() => {
@@ -351,7 +356,11 @@ export default function SettingsPage() {
             </SettingsCard>
           )}
 
-          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && (
+          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && ExtensionSettingsPanel ? (
+            <ExtensionSettingsPanel settingsPanel={registeredPanel ?? undefined} />
+          ) : null}
+
+          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && !ExtensionSettingsPanel && (
             <SettingsCard title={registeredPanel?.label ?? sectionLabel}>
               <p>
                 {registeredPanel

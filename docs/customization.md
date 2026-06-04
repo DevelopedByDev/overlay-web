@@ -1,6 +1,6 @@
 # Customizing Overlay
 
-The web app is the canonical surface for enterprise customization. Self-hosters should start in `src/overlay.config.ts`, then use the shared package APIs from `@overlay/app-core`, `@overlay/api-client`, `@overlay/ui`, `@overlay/chat-core`, `@overlay/chat-react`, and `@overlay/modules-react`.
+The web app is the canonical surface for enterprise customization. Self-hosters should start in `src/overlay.config.ts`, then use the shared package APIs from `@overlay/app-core`, `@overlay/extension-sdk`, `@overlay/api-client`, `@overlay/ui`, `@overlay/chat-core`, `@overlay/chat-react`, and `@overlay/modules-react`.
 
 ## Brand, Theme, And Navigation
 
@@ -42,6 +42,33 @@ Registries merge with defaults by `id`. If you provide an item with the same `id
 ## Component Keys
 
 Bootstrap returns serializable metadata only. React renderers are local to each surface and are referenced by stable `componentKey` strings. For example, a settings panel can declare `componentKey: 'acme.settings.security'`; the web app maps that key to a local React component, while mobile can map the same key to a React Native renderer or ignore it.
+
+## Build-Time Extensions
+
+Use `@overlay/extension-sdk` for trusted extensions that are bundled at build time:
+
+```ts
+import { defineOverlayExtension } from '@overlay/extension-sdk'
+
+export const studentRevisionExtension = defineOverlayExtension({
+  id: 'student-revision',
+  version: '1.0.0',
+  navigation: [{ id: 'student-revision', label: 'Student Revision', href: '/app/x/student-revision', icon: 'sparkles' }],
+  featureModules: [{
+    id: 'student-revision',
+    label: 'Student Revision',
+    routePatterns: ['/app/x/student-revision'],
+    componentKey: 'student.modules.revisionDashboard',
+  }],
+  apiHandlers: [{
+    method: 'GET',
+    path: '/overview',
+    handler: async () => Response.json({ ok: true }),
+  }],
+})
+```
+
+Register app metadata through `extendOverlayAppConfig`, map React renderers in `src/extensions/registry.tsx`, and keep authenticated API handlers under `/api/v1/extensions/:extensionId/:path`.
 
 ## Feature Visibility
 

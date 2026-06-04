@@ -8,6 +8,7 @@ Overlay uses a split license model:
 | First-party desktop, mobile, and Chrome apps | `AGPL-3.0-or-later` | These are part of the cloneable product surface. |
 | API client packages | `Apache-2.0` | Customers and integrators should be able to call Overlay without pulling AGPL obligations into their own apps. |
 | Contracts, protocol/types packages, and tool SDKs | `Apache-2.0` | These are ecosystem glue and extension surfaces. |
+| Extension SDK | `Apache-2.0` | Enterprise and community extensions should be able to register against Overlay without pulling AGPL obligations into separate extension code. |
 | Shared UI and React package surfaces | `Apache-2.0` | These should be easy to consume in integrations and extension work. |
 | Overlay name, logo, domains, and brand assets | Trademark policy | Licenses cover copyright permissions; brand use is separate. |
 

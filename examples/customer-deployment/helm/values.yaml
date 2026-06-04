@@ -1,0 +1,23 @@
+image:
+  repository: ghcr.io/layernorm/overlay
+  tag: "replace-with-pinned-version"
+
+app:
+  baseUrl: "https://overlay.example-school.edu"
+  configFile: "/app/overlay.config.json"
+
+env:
+  NEXT_PUBLIC_CONVEX_URL: "https://replace-with-convex.example"
+  NEXT_PUBLIC_APP_URL: "https://overlay.example-school.edu"
+
+secrets:
+  INTERNAL_API_SECRET: "replace-with-secret-manager-ref"
+  INTERNAL_SERVICE_AUTH_SECRET: "replace-with-secret-manager-ref"
+  SESSION_SECRET: "replace-with-secret-manager-ref"
+  SESSION_TRANSFER_KEY: "replace-with-secret-manager-ref"
+  SESSION_COOKIE_ENCRYPTION_KEY: "replace-with-secret-manager-ref"
+
+storage:
+  provider: "s3"
+  bucketName: "overlay-school-files"
+  endpointUrl: "https://s3.example-school.edu"

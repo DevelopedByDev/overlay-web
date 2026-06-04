@@ -33,6 +33,7 @@ This currently includes:
 - `packages/overlay-billing`
 - `packages/overlay-chat-core`
 - `packages/overlay-chat-react`
+- `packages/overlay-extension-sdk`
 - `packages/overlay-llm-gateway`
 - `packages/overlay-modules-react`
 - `packages/overlay-ui`
