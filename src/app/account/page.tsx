@@ -26,7 +26,6 @@ import {
 } from '@/features/landing/lib/landingPageStyles'
 import { PricingControlPreview } from '@/features/marketing/components/MarketingShowcase'
 import {
-  AccountContinueCard,
   AccountLoadingState,
   AccountMessageBanner,
   AccountProfileCard,
@@ -326,7 +325,7 @@ function AccountPageContent() {
         />
       ) : (
         <div className="space-y-5">
-          <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="grid gap-5">
             <AccountProfileCard
               panelClass={panel}
               headingClass={t.h}
@@ -335,50 +334,44 @@ function AccountPageContent() {
               name={user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
               email={user?.email}
               actions={
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <button
-                    onClick={handleSignOut}
-                    disabled={signingOut}
-                    className="w-full rounded-lg px-4 py-2 text-sm font-medium text-[var(--danger)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50 sm:w-auto"
-                  >
-                    {signingOut ? 'Signing out...' : 'Sign out'}
-                  </button>
-                  <DeleteAccountSection isLandingDark={isLandingDark} />
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <button
+                      onClick={handleSignOut}
+                      disabled={signingOut}
+                      className="w-full rounded-lg px-4 py-2 text-sm font-medium text-[var(--danger)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50 sm:w-auto"
+                    >
+                      {signingOut ? 'Signing out...' : 'Sign out'}
+                    </button>
+                    <DeleteAccountSection isLandingDark={isLandingDark} />
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <button
+                      onClick={handleOpenInApp}
+                      disabled={actionLoading === 'openApp'}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50"
+                    >
+                      {actionLoading === 'openApp' ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Opening...
+                        </>
+                      ) : (
+                        <>
+                          Open in desktop app
+                          <ArrowRight className="h-4 w-4" />
+                        </>
+                      )}
+                    </button>
+                    <Link
+                      href="/app/chat"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--button-primary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-primary-text)] transition-opacity hover:opacity-90"
+                    >
+                      Open web app
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </div>
                 </div>
-              }
-            />
-
-            <AccountContinueCard
-              panelClass={panel}
-              mutedClass={t.muted}
-              bodyClass={t.body}
-              actions={
-                <>
-                  <button
-                    onClick={handleOpenInApp}
-                    disabled={actionLoading === 'openApp'}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50"
-                  >
-                    {actionLoading === 'openApp' ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        Opening...
-                      </>
-                    ) : (
-                      <>
-                        Open in desktop app
-                        <ArrowRight className="h-4 w-4" />
-                      </>
-                    )}
-                  </button>
-                  <Link
-                    href="/app/chat"
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--button-primary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-primary-text)] transition-opacity hover:opacity-90"
-                  >
-                    Open web app
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </>
               }
             />
           </div>

@@ -148,12 +148,12 @@ function HomeLandingContent() {
         <MarketingBand>
           <div className="grid gap-5 lg:grid-cols-2">
             <ScreenshotFrame
-              src="/assets/images/Screenshot 2026-04-24 at 4.39.17\u202fPM.png"
+              src="/assets/images/overlay-model-routing.png"
               alt="Overlay model picker with selected models"
               label="Model routing"
             />
             <ScreenshotFrame
-              src="/assets/images/Screenshot 2026-04-28 at 5.35.01\u202fPM.png"
+              src="/assets/images/overlay-connectors.png"
               alt="Overlay connect your tools modal"
               label="Connectors"
             />
