@@ -46,6 +46,9 @@ import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
 import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
 import { SidebarResourceSection } from './sidebar/SidebarResourceSection'
 
+const JPIS_BRAND_LOGO_SRC = '/assets/jpis-logo.png'
+const JPIS_BRAND_LOGO_ALT = 'Jayshree Periwal International School'
+
 export default function AppSidebar({
   user: serverUser,
   initialProjects,
@@ -279,15 +282,24 @@ export default function AppSidebar({
   const brandLink = (
     <Link
       href={brandConfig.homeHref}
-      className="flex min-w-0 items-center gap-2"
+      className="flex min-w-0 items-center gap-3"
       onClick={() => setMobileMenuOpen(false)}
+      aria-label="JPIS home"
     >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
-      <span
-        className="truncate text-xl font-medium tracking-tight"
-        style={{ fontFamily: 'var(--font-serif)' }}
-      >
-        {brandConfig.shortName ?? brandConfig.name}
+      <Image
+        src={JPIS_BRAND_LOGO_SRC}
+        alt={JPIS_BRAND_LOGO_ALT}
+        width={36}
+        height={34}
+        className="h-9 w-9 shrink-0 object-contain"
+      />
+      <span className="min-w-0">
+        <span className="block truncate text-base font-semibold leading-none tracking-normal text-[var(--foreground)]">
+          JPIS
+        </span>
+        <span className="mt-1 block truncate text-[11px] leading-none tracking-normal text-[var(--muted)]">
+          International School
+        </span>
       </span>
     </Link>
   )
@@ -300,7 +312,13 @@ export default function AppSidebar({
       aria-label="Expand sidebar"
       title="Expand sidebar"
     >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0 group-hover:hidden" />
+      <Image
+        src={JPIS_BRAND_LOGO_SRC}
+        alt={JPIS_BRAND_LOGO_ALT}
+        width={34}
+        height={32}
+        className="h-8 w-8 shrink-0 object-contain group-hover:hidden"
+      />
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
   ) : (
@@ -311,15 +329,24 @@ export default function AppSidebar({
   const mobileBrandLink = (
     <Link
       href={brandConfig.homeHref}
-      className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
+      className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-3"
       onClick={() => setMobileMenuOpen(false)}
+      aria-label="JPIS home"
     >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
-      <span
-        className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
-        style={{ fontFamily: 'var(--font-serif)' }}
-      >
-        {brandConfig.shortName ?? brandConfig.name}
+      <Image
+        src={JPIS_BRAND_LOGO_SRC}
+        alt={JPIS_BRAND_LOGO_ALT}
+        width={32}
+        height={30}
+        className="h-8 w-8 shrink-0 object-contain"
+      />
+      <span className="min-w-0">
+        <span className="block truncate text-base font-semibold leading-none tracking-normal text-[var(--foreground)]">
+          JPIS
+        </span>
+        <span className="mt-1 block truncate text-[11px] leading-none tracking-normal text-[var(--muted)]">
+          International School
+        </span>
       </span>
     </Link>
   )
