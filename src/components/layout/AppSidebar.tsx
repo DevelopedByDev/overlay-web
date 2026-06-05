@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
@@ -48,12 +49,19 @@ import { SidebarResourceSection } from './sidebar/SidebarResourceSection'
 function JohnsHopkinsBrandMark({ size = 'md' }: { size?: 'sm' | 'md' }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] font-semibold tracking-normal text-[var(--foreground)] ${
-        size === 'sm' ? 'h-8 w-8 text-[11px]' : 'h-9 w-9 text-xs'
+      className={`inline-flex shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-white shadow-sm ${
+        size === 'sm' ? 'h-8 w-8 p-1' : 'h-9 w-9 p-1.5'
       }`}
       aria-hidden
     >
-      JH
+      <Image
+        src="/assets/jhu-png.webp"
+        alt=""
+        width={32}
+        height={32}
+        className="h-full w-full object-contain"
+        priority
+      />
     </span>
   )
 }
@@ -293,16 +301,14 @@ export default function AppSidebar({
       href={brandConfig.homeHref}
       className="flex min-w-0 items-center gap-3"
       onClick={() => setMobileMenuOpen(false)}
-      aria-label="Johns Hopkins home"
+      aria-label={`${brandConfig.shortName ?? brandConfig.name} home`}
     >
       <JohnsHopkinsBrandMark />
-      <span className="min-w-0">
-        <span className="block truncate text-base font-semibold leading-none tracking-normal text-[var(--foreground)]">
-          Johns Hopkins
-        </span>
-        <span className="mt-1 block truncate text-[11px] leading-none tracking-normal text-[var(--muted)]">
-          University Pilot
-        </span>
+      <span
+        className="min-w-0 truncate text-lg font-medium tracking-normal text-[var(--foreground)]"
+        style={{ fontFamily: 'var(--font-serif)' }}
+      >
+        {brandConfig.shortName ?? brandConfig.name}
       </span>
     </Link>
   )
@@ -328,16 +334,14 @@ export default function AppSidebar({
       href={brandConfig.homeHref}
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-3"
       onClick={() => setMobileMenuOpen(false)}
-      aria-label="Johns Hopkins home"
+      aria-label={`${brandConfig.shortName ?? brandConfig.name} home`}
     >
       <JohnsHopkinsBrandMark size="sm" />
-      <span className="min-w-0">
-        <span className="block truncate text-base font-semibold leading-none tracking-normal text-[var(--foreground)]">
-          Johns Hopkins
-        </span>
-        <span className="mt-1 block truncate text-[11px] leading-none tracking-normal text-[var(--muted)]">
-          University Pilot
-        </span>
+      <span
+        className="min-w-0 truncate text-lg font-medium tracking-normal text-[var(--foreground)]"
+        style={{ fontFamily: 'var(--font-serif)' }}
+      >
+        {brandConfig.shortName ?? brandConfig.name}
       </span>
     </Link>
   )
