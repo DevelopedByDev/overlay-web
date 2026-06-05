@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 
 type Tone = 'neutral' | 'success' | 'warning' | 'danger'
@@ -112,15 +112,26 @@ export function Row({
 
 export function ActionButton({
   children,
+  className,
+  ...props
 }: {
   children: ReactNode
-}) {
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
-      className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+      className={`inline-flex h-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50 ${className ?? ''}`}
+      {...props}
     >
       {children}
     </button>
+  )
+}
+
+export function HeaderIdentity({ name }: { name: string }) {
+  return (
+    <span className="max-w-[12rem] truncate text-sm text-[var(--muted)]">
+      {name}
+    </span>
   )
 }

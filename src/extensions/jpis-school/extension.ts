@@ -37,7 +37,7 @@ export const jpisSchoolExtension = defineOverlayExtension({
     {
       id: 'student-dashboard',
       label: 'Student',
-      description: 'Student dashboard for JPIS IB and Cambridge IGCSE learning workflows.',
+      description: 'Student dashboard for JPIS IB learning workflows.',
       navigationItemId: 'student-dashboard',
       routePatterns: ['/app/x/student'],
       componentKey: 'school.modules.studentDashboard',
@@ -47,7 +47,7 @@ export const jpisSchoolExtension = defineOverlayExtension({
     {
       id: 'teacher-dashboard',
       label: 'Teacher',
-      description: 'Teacher dashboard for JPIS IB and Cambridge IGCSE classroom operations.',
+      description: 'Teacher dashboard for JPIS IB classroom operations.',
       navigationItemId: 'teacher-dashboard',
       routePatterns: ['/app/x/teacher'],
       componentKey: 'school.modules.teacherDashboard',
@@ -57,7 +57,7 @@ export const jpisSchoolExtension = defineOverlayExtension({
     {
       id: 'parent-dashboard',
       label: 'Parent',
-      description: 'Parent-safe JPIS progress dashboard across IB and Cambridge IGCSE pathways.',
+      description: 'Parent-safe JPIS progress dashboard for the IB pathway.',
       navigationItemId: 'parent-dashboard',
       routePatterns: ['/app/x/parent'],
       componentKey: 'school.modules.parentDashboard',

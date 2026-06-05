@@ -20,7 +20,7 @@ import {
 } from '@overlay/modules-react/shell'
 import type { OverlayExtensionComponentProps } from '../registry'
 import {
-  ActionButton,
+  HeaderIdentity,
   MetricCard,
   Panel,
   ProgressBar,
@@ -48,6 +48,14 @@ export function JpisTeacherDashboard({
   featureModule,
 }: OverlayExtensionComponentProps) {
   const [overview, setOverview] = useState<TeacherOverview>(JPIS_TEACHER_OVERVIEW)
+  const [selectedFeedbackId, setSelectedFeedbackId] = useState(JPIS_TEACHER_OVERVIEW.feedbackQueue[0]?.id ?? '')
+  const [rubricScores, setRubricScores] = useState<Record<string, number>>({
+    personal: 1,
+    exploration: 4,
+    analysis: 3,
+    evaluation: 3,
+    communication: 3,
+  })
 
   useEffect(() => {
     let active = true
@@ -63,16 +71,29 @@ export function JpisTeacherDashboard({
   }, [])
 
   const metrics = useMemo(() => overview.metrics, [overview])
+  const selectedFeedback = useMemo(
+    () => overview.feedbackQueue.find((item) => item.id === selectedFeedbackId) ?? overview.feedbackQueue[0],
+    [overview.feedbackQueue, selectedFeedbackId],
+  )
+  const rubricTotal = useMemo(
+    () => overview.rubricCriteria.reduce((total, item) => total + (rubricScores[item.id] ?? 0), 0),
+    [overview.rubricCriteria, rubricScores],
+  )
+  const rubricMax = useMemo(
+    () => overview.rubricCriteria.reduce((total, item) => total + item.max, 0),
+    [overview.rubricCriteria],
+  )
 
   return (
     <AppScreenShell
       header={
         <AppScreenHeader
           title={featureModule?.label ?? 'Teacher'}
+          actions={<HeaderIdentity name={overview.teacherName} />}
         />
       }
     >
-      <AppScreenBody padding="md" maxWidth="xl" className="bg-[var(--surface-muted)]">
+      <AppScreenBody padding="md" maxWidth="xl">
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
             {metrics.map((metric) => (
@@ -90,7 +111,7 @@ export function JpisTeacherDashboard({
             <div className="space-y-4">
               <Panel
                 title="Curriculum readiness"
-                description="Live teaching priorities across the JPIS academic tracks."
+                description="Live teaching priorities across the IB Physics program."
                 icon={BookOpenCheck}
               >
                 <div className="divide-y divide-[var(--border)]">
@@ -115,20 +136,81 @@ export function JpisTeacherDashboard({
               </Panel>
 
               <Panel
-                title="Students needing follow-up"
-                description="Signals that can be acted on before the next class or advisor check-in."
+                title="IA feedback builder"
+                description="Select a Physics IA draft, score the IB criteria, and produce a focused next step."
                 icon={Target}
               >
-                <div className="divide-y divide-[var(--border)]">
-                  {overview.atRisk.map((item) => (
-                    <Row
-                      key={item.id}
-                      title={item.cohort}
-                      detail={item.signal}
-                      meta={<StatusPill tone="warning">Action</StatusPill>}
-                      action={<ActionButton>{item.action}</ActionButton>}
-                    />
-                  ))}
+                <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                  <div className="space-y-2">
+                    {overview.feedbackQueue.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedFeedbackId(item.id)}
+                        className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                          selectedFeedback?.id === item.id
+                            ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]'
+                            : 'border-[var(--border)] bg-[var(--background)] hover:bg-[var(--surface-subtle)]'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="truncate text-sm font-medium text-[var(--foreground)]">{item.student}</p>
+                          <StatusPill tone="neutral">{item.criterion}</StatusPill>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-[var(--muted)]">{item.investigation}</p>
+                        <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">{item.signal}</p>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[var(--foreground)]">{selectedFeedback?.investigation}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{selectedFeedback?.student}</p>
+                      </div>
+                      <StatusPill tone={rubricTotal >= 17 ? 'success' : rubricTotal >= 12 ? 'warning' : 'danger'}>
+                        {rubricTotal}/{rubricMax}
+                      </StatusPill>
+                    </div>
+
+                    <div className="space-y-3">
+                      {overview.rubricCriteria.map((criterion) => (
+                        <div key={criterion.id}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-medium text-[var(--foreground)]">{criterion.label}</p>
+                              <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--muted)]">{criterion.descriptor}</p>
+                            </div>
+                            <span className="shrink-0 text-xs text-[var(--muted)]">{rubricScores[criterion.id] ?? 0}/{criterion.max}</span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {Array.from({ length: criterion.max + 1 }, (_, score) => (
+                              <button
+                                key={score}
+                                type="button"
+                                onClick={() => setRubricScores((current) => ({ ...current, [criterion.id]: score }))}
+                                className={`h-7 w-7 rounded-md border text-xs transition-colors ${
+                                  (rubricScores[criterion.id] ?? 0) === score
+                                    ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]'
+                                    : 'border-[var(--border)] bg-[var(--background)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
+                                }`}
+                              >
+                                {score}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
+                      <p className="text-xs font-medium text-[var(--foreground)]">Next-step feedback</p>
+                      <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+                        {selectedFeedback?.student} should revise {selectedFeedback?.criterion.toLowerCase()} first: {selectedFeedback?.signal}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </Panel>
             </div>
@@ -152,17 +234,17 @@ export function JpisTeacherDashboard({
               </Panel>
 
               <Panel
-                title="Approved AI workflows"
-                description="Role-safe workflows for faculty use inside Overlay."
+                title="IB assessment criteria"
+                description="Reference criteria for the selected IA feedback draft."
                 icon={Sparkles}
               >
                 <div className="divide-y divide-[var(--border)]">
-                  {overview.aiWorkflows.map((workflow) => (
+                  {overview.rubricCriteria.map((criterion) => (
                     <Row
-                      key={workflow.id}
-                      title={workflow.label}
-                      detail={workflow.detail}
-                      action={<ActionButton>Open</ActionButton>}
+                      key={criterion.id}
+                      title={criterion.label}
+                      detail={criterion.descriptor}
+                      meta={<StatusPill tone="neutral">/{criterion.max}</StatusPill>}
                     />
                   ))}
                 </div>

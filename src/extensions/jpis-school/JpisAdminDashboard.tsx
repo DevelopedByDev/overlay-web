@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   AlertTriangle,
   BarChart3,
+  Check,
   ClipboardList,
   LineChart,
   School,
@@ -20,7 +21,7 @@ import {
 } from '@overlay/modules-react/shell'
 import type { OverlayExtensionComponentProps } from '../registry'
 import {
-  ActionButton,
+  HeaderIdentity,
   MetricCard,
   Panel,
   ProgressBar,
@@ -45,8 +46,8 @@ function readinessTone(value: number) {
   return 'danger'
 }
 
-function complianceTone(status: 'On track' | 'Needs review' | 'Blocked') {
-  if (status === 'On track') return 'success'
+function policyTone(status: 'Ready' | 'Needs review' | 'Blocked') {
+  if (status === 'Ready') return 'success'
   if (status === 'Needs review') return 'warning'
   return 'danger'
 }
@@ -55,6 +56,9 @@ export function JpisAdminDashboard({
   featureModule,
 }: OverlayExtensionComponentProps) {
   const [overview, setOverview] = useState<AdminOverview>(JPIS_ADMIN_OVERVIEW)
+  const [evidenceComplete, setEvidenceComplete] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(JPIS_ADMIN_OVERVIEW.authorizationEvidence.map((item) => [item.id, item.complete])),
+  )
 
   useEffect(() => {
     let active = true
@@ -70,16 +74,24 @@ export function JpisAdminDashboard({
   }, [])
 
   const metrics = useMemo(() => overview.metrics, [overview])
+  const evidenceDone = useMemo(
+    () => overview.authorizationEvidence.filter((item) => evidenceComplete[item.id]).length,
+    [evidenceComplete, overview.authorizationEvidence],
+  )
+  const authorizationReadiness = overview.authorizationEvidence.length > 0
+    ? Math.round((evidenceDone / overview.authorizationEvidence.length) * 100)
+    : 0
 
   return (
     <AppScreenShell
       header={
         <AppScreenHeader
           title={featureModule?.label ?? 'Admin'}
+          actions={<HeaderIdentity name={overview.adminName} />}
         />
       }
     >
-      <AppScreenBody padding="md" maxWidth="xl" className="bg-[var(--surface-muted)]">
+      <AppScreenBody padding="md" maxWidth="xl">
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {metrics.map((metric) => (
@@ -97,7 +109,7 @@ export function JpisAdminDashboard({
             <div className="space-y-4">
               <Panel
                 title="Curriculum operations"
-                description="Readiness across JPIS IB and Cambridge IGCSE workstreams."
+                description="Readiness across JPIS IB PYP, MYP, and DP workstreams."
                 icon={School}
               >
                 <div className="divide-y divide-[var(--border)]">
@@ -122,62 +134,89 @@ export function JpisAdminDashboard({
               </Panel>
 
               <Panel
-                title="Compliance and accreditation queue"
-                description="Evidence packs and time-sensitive administrative work."
+                title="IB authorization evidence tracker"
+                description="Toggle evidence readiness for the next IB review cycle."
                 icon={ClipboardList}
               >
-                <div className="divide-y divide-[var(--border)]">
-                  {overview.compliance.map((item) => (
-                    <Row
-                      key={item.id}
-                      title={item.label}
-                      detail={item.detail}
-                      meta={<StatusPill tone={complianceTone(item.status)}>{item.status}</StatusPill>}
-                      action={<ActionButton>{item.due}</ActionButton>}
-                    />
-                  ))}
+                <div className="space-y-4 p-4">
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-[var(--foreground)]">Authorization readiness</p>
+                      <StatusPill tone={authorizationReadiness >= 80 ? 'success' : authorizationReadiness >= 50 ? 'warning' : 'danger'}>
+                        {authorizationReadiness}%
+                      </StatusPill>
+                    </div>
+                    <div className="mt-3">
+                      <ProgressBar value={authorizationReadiness} />
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+                    {overview.authorizationEvidence.map((item) => {
+                      const complete = Boolean(evidenceComplete[item.id])
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setEvidenceComplete((current) => ({ ...current, [item.id]: !complete }))}
+                          className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-[var(--surface-subtle)]"
+                        >
+                          <span className="min-w-0">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span className="truncate text-sm font-medium text-[var(--foreground)]">{item.label}</span>
+                              <StatusPill tone="neutral">{item.owner}</StatusPill>
+                            </span>
+                            <span className="mt-1 block text-xs leading-relaxed text-[var(--muted)]">{item.detail}</span>
+                          </span>
+                          <span className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] ${
+                            complete
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                              : 'border-[var(--border)] text-transparent'
+                          }`}>
+                            {complete ? <Check size={12} strokeWidth={2} /> : null}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               </Panel>
             </div>
 
             <aside className="space-y-4">
               <Panel
-                title="AI adoption"
-                description="Weekly active usage across approved role groups."
+                title="IB AI policy checks"
+                description="Governance controls for student, teacher, and parent-facing workflows."
                 icon={Sparkles}
               >
                 <div className="divide-y divide-[var(--border)]">
-                  {overview.aiAdoption.map((item) => (
-                    <div key={item.id} className="px-4 py-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-[var(--foreground)]">{item.role}</p>
-                          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">{item.detail}</p>
-                        </div>
-                        <StatusPill tone={readinessTone(item.adoption)}>{item.adoption}%</StatusPill>
-                      </div>
-                      <div className="mt-3">
-                        <ProgressBar value={item.adoption} />
-                      </div>
-                    </div>
+                  {overview.policyChecks.map((item) => (
+                    <Row
+                      key={item.id}
+                      title={item.label}
+                      detail={item.detail}
+                      meta={<StatusPill tone={policyTone(item.status)}>{item.status}</StatusPill>}
+                    />
                   ))}
                 </div>
               </Panel>
 
               <Panel
-                title="Executive actions"
-                description="Next decisions that turn the demo into an operational pilot."
+                title="Next governance action"
+                description="Generated from current authorization evidence state."
                 icon={LineChart}
               >
-                <div className="divide-y divide-[var(--border)]">
-                  {overview.executiveActions.map((item) => (
-                    <Row
-                      key={item.id}
-                      title={item.title}
-                      detail={item.detail}
-                      meta={<StatusPill tone="neutral">{item.owner}</StatusPill>}
-                    />
-                  ))}
+                <div className="p-4">
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                    <p className="text-sm font-medium text-[var(--foreground)]">
+                      {authorizationReadiness >= 80 ? 'Ready for leadership review' : 'Close evidence gaps'}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+                      {authorizationReadiness >= 80
+                        ? 'Schedule the IB leadership review and export the evidence packet for coordinator sign-off.'
+                        : 'Prioritize incomplete Physics IA samples and CAS learner profile evidence before the next review meeting.'}
+                    </p>
+                  </div>
                 </div>
               </Panel>
             </aside>

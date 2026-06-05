@@ -13,6 +13,24 @@ export type CurriculumReadiness = {
   owner: string
 }
 
+export type StudentQuizQuestion = {
+  id: string
+  prompt: string
+  options: string[]
+  answerIndex: number
+  explanation: string
+  strand: string
+}
+
+export type StudentQuiz = {
+  id: string
+  title: string
+  paper: string
+  timeLimit: string
+  objective: string
+  questions: StudentQuizQuestion[]
+}
+
 export type StudentOverview = {
   studentName: string
   gradeLabel: string
@@ -38,11 +56,7 @@ export type StudentOverview = {
     title: string
     detail: string
   }>
-  aiWorkflows: Array<{
-    id: string
-    label: string
-    detail: string
-  }>
+  quizzes: StudentQuiz[]
 }
 
 export type TeacherOverview = {
@@ -56,20 +70,23 @@ export type TeacherOverview = {
     title: string
     detail: string
   }>
-  aiWorkflows: Array<{
+  feedbackQueue: Array<{
+    id: string
+    student: string
+    investigation: string
+    criterion: string
+    signal: string
+  }>
+  rubricCriteria: Array<{
     id: string
     label: string
-    detail: string
-  }>
-  atRisk: Array<{
-    id: string
-    cohort: string
-    signal: string
-    action: string
+    max: number
+    descriptor: string
   }>
 }
 
 export type ParentOverview = {
+  parentName: string
   studentName: string
   gradeLabel: string
   school: string
@@ -82,11 +99,10 @@ export type ParentOverview = {
     detail: string
     readiness: number
   }>
-  attention: Array<{
+  supportChecklist: Array<{
     id: string
     title: string
     detail: string
-    owner: string
   }>
   upcoming: Array<{
     id: string
@@ -103,219 +119,285 @@ export type ParentOverview = {
 }
 
 export type AdminOverview = {
+  adminName: string
   school: string
   metrics: DashboardMetric[]
   curriculumOps: CurriculumReadiness[]
-  compliance: Array<{
+  authorizationEvidence: Array<{
     id: string
     label: string
     detail: string
-    due: string
-    status: 'On track' | 'Needs review' | 'Blocked'
-  }>
-  aiAdoption: Array<{
-    id: string
-    role: string
-    adoption: number
-    detail: string
-  }>
-  executiveActions: Array<{
-    id: string
-    title: string
-    detail: string
     owner: string
+    complete: boolean
+  }>
+  policyChecks: Array<{
+    id: string
+    label: string
+    detail: string
+    status: 'Ready' | 'Needs review' | 'Blocked'
   }>
 }
 
 export const JPIS_STUDENT_OVERVIEW: StudentOverview = {
-  studentName: 'Ananya P.',
-  gradeLabel: 'IB / IGCSE pathway',
+  studentName: 'Ananya Sharma',
+  gradeLabel: 'IB DP Year 1',
   school: 'Jayshree Periwal International School',
   metrics: [
     {
       id: 'tasks',
       label: 'Open tasks',
-      value: '6',
-      detail: 'IA evidence, mock corrections, and advisor reflections',
+      value: '5',
+      detail: 'IA evidence, quiz corrections, and advisor reflections',
     },
     {
       id: 'practice',
-      label: 'Practice sets',
-      value: '18',
-      detail: 'Teacher-approved revision generated this month',
+      label: 'Physics quizzes',
+      value: '2',
+      detail: 'Paper 1 style checks available now',
     },
     {
       id: 'readiness',
       label: 'Readiness',
-      value: '74%',
-      detail: 'Average across IB and IGCSE focus areas',
+      value: '76%',
+      detail: 'Based on DP Physics mechanics and electricity strands',
     },
   ],
   learningTracks: [
     {
-      id: 'student-ib',
-      curriculum: 'IB',
-      subject: 'Economics HL and TOK',
-      status: 'On track',
-      detail: 'Essay outlines are improving; TOK reflection evidence needs one more advisor review.',
-      readiness: 78,
+      id: 'student-physics',
+      curriculum: 'IB DP',
+      subject: 'Physics HL',
+      status: 'Needs practice',
+      detail: 'Mechanics confidence is improving; electric circuits need targeted Paper 1 practice.',
+      readiness: 72,
     },
     {
-      id: 'student-igcse',
-      curriculum: 'IGCSE',
-      subject: 'Physics and Mathematics',
-      status: 'Needs practice',
-      detail: 'Mock analysis shows repeated errors in electricity diagrams and algebraic manipulation.',
-      readiness: 69,
+      id: 'student-core',
+      curriculum: 'IB Core',
+      subject: 'TOK, CAS, and learner profile reflection',
+      status: 'On track',
+      detail: 'Reflection evidence is current; the next CAS entry needs a clearer outcome connection.',
+      readiness: 82,
     },
   ],
   focusQueue: [
     {
       id: 'focus-ia',
-      title: 'IB internal assessment evidence',
-      detail: 'Add two source annotations before the next supervisor check-in.',
-      action: 'Open checklist',
+      title: 'Physics IA research question',
+      detail: 'Narrow the independent variable and add one uncertainty note before supervisor review.',
+      action: 'Open IA checklist',
     },
     {
-      id: 'focus-physics',
-      title: 'IGCSE Physics correction set',
-      detail: 'Redo circuit diagram questions from the mock review packet.',
-      action: 'Start practice',
+      id: 'focus-circuits',
+      title: 'Electric circuits practice',
+      detail: 'Complete the internal resistance quiz and review both explanations.',
+      action: 'Start quiz',
     },
     {
-      id: 'focus-reflection',
-      title: 'Advisor reflection',
-      detail: 'Draft a short learner profile reflection from the last service activity.',
+      id: 'focus-cas',
+      title: 'CAS reflection link',
+      detail: 'Connect the service activity to one learner profile attribute.',
       action: 'Draft reflection',
     },
   ],
   upcoming: [
     {
-      id: 'student-upcoming-mock',
-      dateLabel: 'Monday',
-      title: 'IGCSE Physics mock review',
-      detail: 'Bring corrected paper and teacher feedback notes.',
+      id: 'student-upcoming-quiz',
+      dateLabel: 'Today',
+      title: 'IB Physics Paper 1 practice',
+      detail: 'Mechanics and electricity quiz set is ready.',
     },
     {
       id: 'student-upcoming-ia',
       dateLabel: 'Friday',
-      title: 'IB IA supervisor check-in',
-      detail: 'Submit source annotations and research question update.',
+      title: 'Physics IA supervisor check-in',
+      detail: 'Submit research question, variable table, and uncertainty notes.',
     },
   ],
-  aiWorkflows: [
+  quizzes: [
     {
-      id: 'workflow-plan',
-      label: 'Study plan',
-      detail: 'Turn teacher-approved tasks into a focused seven-day plan.',
+      id: 'mechanics',
+      title: 'Mechanics: forces and momentum',
+      paper: 'IB Physics Paper 1',
+      timeLimit: '6 minutes',
+      objective: 'Check Newton laws, impulse, and momentum conservation.',
+      questions: [
+        {
+          id: 'mechanics-q1',
+          prompt: 'A 0.20 kg trolley accelerates at 1.5 m s^-2. What is the resultant force?',
+          options: ['0.13 N', '0.30 N', '1.7 N', '7.5 N'],
+          answerIndex: 1,
+          explanation: 'Use F = ma. The force is 0.20 x 1.5 = 0.30 N.',
+          strand: 'Forces',
+        },
+        {
+          id: 'mechanics-q2',
+          prompt: 'A ball rebounds from a wall with the same speed. Which quantity changes?',
+          options: ['Mass only', 'Speed only', 'Velocity and momentum', 'Kinetic energy only'],
+          answerIndex: 2,
+          explanation: 'Direction reverses, so velocity and momentum change even when speed is unchanged.',
+          strand: 'Momentum',
+        },
+        {
+          id: 'mechanics-q3',
+          prompt: 'The area under a force-time graph gives which quantity?',
+          options: ['Power', 'Impulse', 'Displacement', 'Kinetic energy'],
+          answerIndex: 1,
+          explanation: 'Impulse equals force multiplied by time, so it is the graph area.',
+          strand: 'Impulse',
+        },
+      ],
     },
     {
-      id: 'workflow-practice',
-      label: 'Weak-topic practice',
-      detail: 'Generate practice only from approved JPIS materials.',
-    },
-    {
-      id: 'workflow-reflection',
-      label: 'Reflection draft',
-      detail: 'Prepare an advisor-safe reflection for review.',
+      id: 'electricity',
+      title: 'Electricity: circuits and internal resistance',
+      paper: 'IB Physics Paper 1',
+      timeLimit: '7 minutes',
+      objective: 'Check current, terminal potential difference, and internal resistance.',
+      questions: [
+        {
+          id: 'electricity-q1',
+          prompt: 'A 6.0 V cell with internal resistance 1.0 ohm supplies 2.0 A. What is the terminal p.d.?',
+          options: ['2.0 V', '4.0 V', '6.0 V', '8.0 V'],
+          answerIndex: 1,
+          explanation: 'Terminal p.d. = emf - Ir = 6.0 - (2.0 x 1.0) = 4.0 V.',
+          strand: 'Internal resistance',
+        },
+        {
+          id: 'electricity-q2',
+          prompt: 'Two identical resistors are connected in parallel. What happens to total resistance?',
+          options: ['It doubles', 'It halves', 'It is unchanged', 'It becomes zero'],
+          answerIndex: 1,
+          explanation: 'For two equal resistors in parallel, total resistance is half of one resistor.',
+          strand: 'Parallel circuits',
+        },
+        {
+          id: 'electricity-q3',
+          prompt: 'Conventional current is defined as the flow of which charge?',
+          options: ['Negative charge only', 'Positive charge', 'Neutrons', 'Photons'],
+          answerIndex: 1,
+          explanation: 'Conventional current is defined as the direction of positive charge flow.',
+          strand: 'Current',
+        },
+      ],
     },
   ],
 }
 
 export const JPIS_TEACHER_OVERVIEW: TeacherOverview = {
-  teacherName: 'JPIS Faculty',
+  teacherName: 'Dr. Meera Kapoor',
   school: 'Jayshree Periwal International School',
   metrics: [
     {
       id: 'classes',
       label: 'Active classes',
-      value: '7',
-      detail: 'IB and Cambridge IGCSE cohorts',
+      value: '4',
+      detail: 'IB DP Physics HL and SL sections',
     },
     {
       id: 'review',
-      label: 'Work to review',
-      value: '38',
-      detail: 'IA drafts, mock corrections, rubrics, and reflections',
+      label: 'IA drafts',
+      value: '18',
+      detail: 'Exploration and analysis feedback pending',
     },
     {
       id: 'interventions',
       label: 'Interventions due',
-      value: '9',
-      detail: 'Students flagged by mastery and attendance signals',
+      value: '7',
+      detail: 'Students below target in mechanics or circuits',
     },
   ],
   curriculumReadiness: [
     {
-      id: 'ib',
-      name: 'IB PYP/MYP/DP',
-      readiness: 78,
-      focus: 'TOK reflections, IA feedback, and CAS evidence are due this cycle.',
-      owner: 'IB coordinator',
+      id: 'physics-hl',
+      name: 'IB DP Physics HL',
+      readiness: 76,
+      focus: 'Mechanics, fields, and IA exploration evidence need the next feedback cycle.',
+      owner: 'Physics faculty',
     },
     {
-      id: 'igcse',
-      name: 'Cambridge IGCSE',
-      readiness: 71,
-      focus: 'Physics mock analysis and coursework evidence need final review.',
-      owner: 'Cambridge lead',
+      id: 'ib-core',
+      name: 'IB Core alignment',
+      readiness: 84,
+      focus: 'Learner profile and ATL reflection prompts are ready for this unit.',
+      owner: 'IB coordinator',
     },
   ],
   today: [
     {
-      id: 'lesson-ib-econ',
+      id: 'lesson-mechanics',
       time: '08:20',
-      title: 'IB DP Economics HL',
-      detail: 'Use uploaded exemplar essays to generate Paper 1 feedback groups.',
+      title: 'DP Physics HL: circular motion',
+      detail: 'Use quiz misses to group students for centripetal force practice.',
     },
     {
-      id: 'lesson-igcse-science',
+      id: 'lesson-electricity',
       time: '10:10',
-      title: 'IGCSE Coordinated Sciences',
-      detail: 'Run a 12-minute misconceptions check on electricity and circuits.',
+      title: 'DP Physics SL: internal resistance',
+      detail: 'Run a diagnostic on terminal p.d. and energy transfer in circuits.',
     },
   ],
-  aiWorkflows: [
+  feedbackQueue: [
     {
-      id: 'worksheet',
-      label: 'Differentiated worksheet',
-      detail: 'Generate three levels from the current unit plan and JPIS question bank.',
+      id: 'feedback-ananya',
+      student: 'Ananya Sharma',
+      investigation: 'How wire length affects resistance',
+      criterion: 'Exploration',
+      signal: 'Variables are identified, but uncertainty treatment is thin.',
     },
     {
-      id: 'formative',
-      label: 'Formative check',
-      detail: 'Create exit tickets mapped to IB criteria or Cambridge objectives.',
+      id: 'feedback-maanav',
+      student: 'Maanav S.',
+      investigation: 'Magnetic damping in a copper pipe',
+      criterion: 'Analysis',
+      signal: 'Graph selection is good; gradient interpretation needs correction.',
     },
     {
-      id: 'parent-note',
-      label: 'Parent-safe note',
-      detail: 'Summarize progress without exposing private teacher notes.',
-    },
-    {
-      id: 'reflection',
-      label: 'ATL reflection prompt',
-      detail: 'Draft IB learner profile and ATL prompts from classroom evidence.',
+      id: 'feedback-isha',
+      student: 'Isha R.',
+      investigation: 'Pendulum damping and amplitude decay',
+      criterion: 'Evaluation',
+      signal: 'Limitations are listed but not linked to specific improvements.',
     },
   ],
-  atRisk: [
+  rubricCriteria: [
     {
-      id: 'risk-ib-cas',
-      cohort: 'IB DP Year 1',
-      signal: 'CAS reflections have not been updated for 11 students.',
-      action: 'Send advisor checklist',
+      id: 'personal',
+      label: 'Personal engagement',
+      max: 2,
+      descriptor: 'Student ownership, curiosity, and purposeful design choices.',
     },
     {
-      id: 'risk-igcse-coursework',
-      cohort: 'IGCSE Grade 10',
-      signal: 'Coursework evidence is missing for 6 science submissions.',
-      action: 'Open evidence queue',
+      id: 'exploration',
+      label: 'Exploration',
+      max: 6,
+      descriptor: 'Research question, variables, method, and safety/ethics.',
+    },
+    {
+      id: 'analysis',
+      label: 'Analysis',
+      max: 6,
+      descriptor: 'Data processing, uncertainty, graphs, and scientific reasoning.',
+    },
+    {
+      id: 'evaluation',
+      label: 'Evaluation',
+      max: 6,
+      descriptor: 'Conclusion, limitations, and realistic improvements.',
+    },
+    {
+      id: 'communication',
+      label: 'Communication',
+      max: 4,
+      descriptor: 'Structure, terminology, units, citations, and clarity.',
     },
   ],
 }
 
 export const JPIS_PARENT_OVERVIEW: ParentOverview = {
-  studentName: 'Ananya P.',
-  gradeLabel: 'IB / IGCSE pathway',
+  parentName: 'Rohan Sharma',
+  studentName: 'Ananya Sharma',
+  gradeLabel: 'IB DP Year 1',
   school: 'Jayshree Periwal International School',
   metrics: [
     {
@@ -326,47 +408,50 @@ export const JPIS_PARENT_OVERVIEW: ParentOverview = {
     },
     {
       id: 'tasks',
-      label: 'Open tasks',
-      value: '4',
-      detail: 'One needs parent acknowledgement',
+      label: 'Family actions',
+      value: '3',
+      detail: 'IA, quiz review, and CAS conversation',
     },
     {
       id: 'checkpoints',
-      label: 'Upcoming checkpoints',
-      value: '3',
-      detail: 'Mock review, PTM, and IA supervisor check-in',
+      label: 'IB checkpoints',
+      value: '2',
+      detail: 'Physics IA review and advisor meeting',
     },
   ],
   progress: [
     {
-      id: 'progress-ib',
-      curriculum: 'IB',
-      subject: 'ATL and reflection habits',
-      status: 'Building consistency',
-      detail: 'Weekly reflection quality is improving; evidence upload cadence is uneven.',
-      readiness: 69,
+      id: 'progress-physics',
+      curriculum: 'IB DP',
+      subject: 'Physics HL readiness',
+      status: 'Needs practice',
+      detail: 'Mechanics is improving; electricity quiz explanations need parent-supported review time.',
+      readiness: 68,
     },
     {
-      id: 'progress-igcse',
-      curriculum: 'IGCSE',
-      subject: 'Physics and Mathematics readiness',
-      status: 'Needs practice',
-      detail: 'Mock analysis shows errors in electricity diagrams and algebraic manipulation.',
-      readiness: 63,
+      id: 'progress-core',
+      curriculum: 'IB Core',
+      subject: 'CAS and learner profile reflection',
+      status: 'On track',
+      detail: 'Reflection quality is good; the next conversation should connect action to outcome.',
+      readiness: 82,
     },
   ],
-  attention: [
+  supportChecklist: [
     {
-      id: 'attention-cas',
-      title: 'Reflection journal update',
-      detail: 'Advisor asked for one service-learning reflection before Friday.',
-      owner: 'Student',
+      id: 'support-quiz',
+      title: 'Review Physics quiz explanations',
+      detail: 'Ask Ananya to explain internal resistance and terminal potential difference aloud.',
     },
     {
-      id: 'attention-igcse',
-      title: 'IGCSE mock corrections',
-      detail: 'Physics corrections need a parent acknowledgement after review.',
-      owner: 'Parent',
+      id: 'support-ia',
+      title: 'Confirm IA planning block',
+      detail: 'Set aside 45 minutes for variables, uncertainty, and safety notes.',
+    },
+    {
+      id: 'support-cas',
+      title: 'Discuss CAS outcome',
+      detail: 'Prompt one example of how the service activity showed an IB learner profile attribute.',
     },
   ],
   upcoming: [
@@ -374,129 +459,117 @@ export const JPIS_PARENT_OVERVIEW: ParentOverview = {
       id: 'upcoming-ptm',
       dateLabel: 'Tomorrow',
       title: 'Parent teacher meeting',
-      detail: 'Academic advisor, Mathematics, and Science faculty.',
+      detail: 'Academic advisor and Physics faculty.',
     },
     {
-      id: 'upcoming-igcse-mock',
-      dateLabel: 'Monday',
-      title: 'IGCSE Physics mock review',
-      detail: 'Review marked paper and remediation plan.',
+      id: 'upcoming-ia',
+      dateLabel: 'Friday',
+      title: 'Physics IA supervisor check-in',
+      detail: 'Review research question, variable table, and uncertainty notes.',
     },
   ],
   messages: [
     {
       id: 'message-advisor',
       from: 'Academic advisor',
-      title: 'Weekly progress summary ready',
+      title: 'Weekly IB progress summary ready',
       detail: 'Approved family-facing summary across attendance, effort, and next steps.',
     },
     {
-      id: 'message-transport',
-      from: 'Operations desk',
-      title: 'Exam week transport confirmation',
-      detail: 'Route timing confirmation requested for the mock exam week.',
+      id: 'message-physics',
+      from: 'Physics faculty',
+      title: 'Quiz explanations need review',
+      detail: 'Two Paper 1 explanations are marked for discussion at home.',
     },
   ],
 }
 
 export const JPIS_ADMIN_OVERVIEW: AdminOverview = {
+  adminName: 'Priya Menon',
   school: 'Jayshree Periwal International School',
   metrics: [
     {
       id: 'learners',
-      label: 'Active learners',
-      value: '2.8k',
-      detail: 'Across IB and Cambridge IGCSE programs',
+      label: 'IB learners',
+      value: '820',
+      detail: 'PYP, MYP, and DP students in active tracking',
     },
     {
       id: 'adoption',
-      label: 'Teacher adoption',
-      value: '68%',
-      detail: 'Weekly active faculty using approved AI workflows',
+      label: 'Faculty adoption',
+      value: '72%',
+      detail: 'Weekly active use of approved IB workflows',
     },
     {
       id: 'risks',
       label: 'Open risk flags',
-      value: '11',
-      detail: 'Academic, compliance, and pastoral queues',
+      value: '9',
+      detail: 'Academic, authorization, and pastoral queues',
     },
     {
       id: 'programs',
-      label: 'Programs tracked',
-      value: '2',
-      detail: 'IB and Cambridge IGCSE operating views',
+      label: 'IB programs',
+      value: '3',
+      detail: 'PYP, MYP, and DP operating views',
     },
   ],
   curriculumOps: [
     {
-      id: 'admin-ib',
-      name: 'IB authorization and evidence',
-      readiness: 76,
-      focus: 'Unit planners, learner profile evidence, and CAS documentation are being normalized.',
-      owner: 'IB coordinator',
+      id: 'admin-dp',
+      name: 'IB DP Physics and core evidence',
+      readiness: 78,
+      focus: 'IA moderation, predicted grade evidence, TOK/CAS alignment, and assessment calendars.',
+      owner: 'DP coordinator',
     },
     {
-      id: 'admin-igcse',
-      name: 'Cambridge IGCSE exam operations',
-      readiness: 68,
-      focus: 'Exam entries, coursework moderation, and mock analytics need review.',
-      owner: 'Cambridge exams officer',
+      id: 'admin-myp',
+      name: 'MYP unit planning evidence',
+      readiness: 84,
+      focus: 'ATL skills, inquiry questions, and reflection artifacts are current for the review cycle.',
+      owner: 'MYP coordinator',
     },
   ],
-  compliance: [
+  authorizationEvidence: [
     {
-      id: 'compliance-ib',
-      label: 'IB documentation packet',
-      detail: 'Evidence map for unit planners, reflection artifacts, and coordinator approvals.',
-      due: 'Friday',
+      id: 'evidence-unit-planners',
+      label: 'Unit planners',
+      detail: 'PYP/MYP/DP planners mapped to inquiry, ATL, and assessment criteria.',
+      owner: 'IB coordinators',
+      complete: true,
+    },
+    {
+      id: 'evidence-assessment',
+      label: 'Assessment samples',
+      detail: 'Physics IA samples and moderation notes need final coordinator review.',
+      owner: 'DP coordinator',
+      complete: false,
+    },
+    {
+      id: 'evidence-cas',
+      label: 'CAS and learner profile evidence',
+      detail: 'CAS reflections are collected; learner profile tagging is in progress.',
+      owner: 'CAS advisor',
+      complete: false,
+    },
+  ],
+  policyChecks: [
+    {
+      id: 'policy-student-ai',
+      label: 'Student AI use policy',
+      detail: 'Approved for quiz explanations and reflection drafting with teacher review.',
+      status: 'Ready',
+    },
+    {
+      id: 'policy-parent-view',
+      label: 'Parent-safe summaries',
+      detail: 'Raw teacher notes are hidden; only approved family-facing summaries are visible.',
+      status: 'Ready',
+    },
+    {
+      id: 'policy-data-sync',
+      label: 'SIS and LMS sync',
+      detail: 'Needs final mapping for attendance and assessment imports.',
       status: 'Needs review',
-    },
-    {
-      id: 'compliance-cambridge',
-      label: 'Cambridge exam entries',
-      detail: 'Final subject entries require confirmation before submission.',
-      due: 'Monday',
-      status: 'On track',
-    },
-  ],
-  aiAdoption: [
-    {
-      id: 'adoption-teachers',
-      role: 'Teachers',
-      adoption: 68,
-      detail: 'Lesson prep, feedback drafting, worksheets, and parent-safe summaries.',
-    },
-    {
-      id: 'adoption-students',
-      role: 'Students',
-      adoption: 52,
-      detail: 'Study plans, weak-topic practice, and approved research support.',
-    },
-    {
-      id: 'adoption-admin',
-      role: 'Administrators',
-      adoption: 74,
-      detail: 'Compliance trackers, meeting briefs, and program reporting.',
-    },
-  ],
-  executiveActions: [
-    {
-      id: 'action-data',
-      title: 'Connect SIS attendance and assessment exports',
-      detail: 'Replace static demo values with nightly JPIS data syncs.',
-      owner: 'IT team',
-    },
-    {
-      id: 'action-policy',
-      title: 'Approve role-based AI policy gates',
-      detail: 'Separate student, parent, teacher, and admin workflows before rollout.',
-      owner: 'Leadership',
-    },
-    {
-      id: 'action-pilot',
-      title: 'Run IB and IGCSE pilot',
-      detail: 'Pilot dashboards with live faculty, parent, and student feedback.',
-      owner: 'Academic operations',
     },
   ],
 }
