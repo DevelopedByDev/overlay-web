@@ -76,10 +76,6 @@ export function JpisAdminDashboard({
       header={
         <AppScreenHeader
           title={featureModule?.label ?? 'Admin'}
-          subtitle="JPIS"
-          description="Leadership workspace for curriculum operations, compliance evidence, and Overlay rollout governance."
-          leading={<ShieldCheck size={18} strokeWidth={1.8} className="text-[var(--muted)]" />}
-          metadata={<StatusPill tone="neutral">Admin dashboard</StatusPill>}
         />
       }
     >

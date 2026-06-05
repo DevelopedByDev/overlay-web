@@ -10,7 +10,6 @@ import {
   Mail,
   MessageSquare,
   Target,
-  UserRound,
 } from 'lucide-react'
 import {
   AppScreenBody,
@@ -68,10 +67,6 @@ export function JpisParentDashboard({
       header={
         <AppScreenHeader
           title={featureModule?.label ?? 'Parent'}
-          subtitle="JPIS"
-          description="Family-facing progress, upcoming checkpoints, and approved school-home communication across IB and Cambridge IGCSE pathways."
-          leading={<UserRound size={18} strokeWidth={1.8} className="text-[var(--muted)]" />}
-          metadata={<StatusPill tone="neutral">{overview.gradeLabel}</StatusPill>}
         />
       }
     >

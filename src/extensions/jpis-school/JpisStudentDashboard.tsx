@@ -6,7 +6,6 @@ import {
   BookOpenCheck,
   CalendarDays,
   ClipboardCheck,
-  GraduationCap,
   LineChart,
   Sparkles,
   Target,
@@ -67,10 +66,6 @@ export function JpisStudentDashboard({
       header={
         <AppScreenHeader
           title={featureModule?.label ?? 'Student'}
-          subtitle="JPIS"
-          description="Student workspace for IB and Cambridge IGCSE study planning, feedback follow-up, and approved AI support."
-          leading={<GraduationCap size={18} strokeWidth={1.8} className="text-[var(--muted)]" />}
-          metadata={<StatusPill tone="neutral">{overview.gradeLabel}</StatusPill>}
         />
       }
     >

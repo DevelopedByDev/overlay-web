@@ -9,7 +9,6 @@ import {
   ClipboardCheck,
   GraduationCap,
   LineChart,
-  School,
   Sparkles,
   Target,
   Users,
@@ -70,10 +69,6 @@ export function JpisTeacherDashboard({
       header={
         <AppScreenHeader
           title={featureModule?.label ?? 'Teacher'}
-          subtitle="JPIS"
-          description="Faculty workspace for IB and Cambridge IGCSE lesson operations, assessment follow-up, and approved AI workflows."
-          leading={<School size={18} strokeWidth={1.8} className="text-[var(--muted)]" />}
-          metadata={<StatusPill tone="neutral">IB / IGCSE</StatusPill>}
         />
       }
     >
