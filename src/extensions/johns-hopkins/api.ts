@@ -1,13 +1,12 @@
 import { defineOverlayExtension } from '@overlay/extension-sdk'
 import {
-  JPIS_ADMIN_OVERVIEW,
-  JPIS_PARENT_OVERVIEW,
-  JPIS_STUDENT_OVERVIEW,
-  JPIS_TEACHER_OVERVIEW,
+  JOHNS_HOPKINS_ADMIN_OVERVIEW,
+  JOHNS_HOPKINS_PROFESSOR_OVERVIEW,
+  JOHNS_HOPKINS_STUDENT_OVERVIEW,
 } from './data'
 
-export const jpisSchoolApiExtension = defineOverlayExtension({
-  id: 'jpis-school',
+export const johnsHopkinsApiExtension = defineOverlayExtension({
+  id: 'johns-hopkins',
   version: '1.0.0',
   apiHandlers: [
     {
@@ -16,29 +15,18 @@ export const jpisSchoolApiExtension = defineOverlayExtension({
       handler: async (_request, context) => {
         return Response.json({
           userId: context.userId,
-          ...JPIS_STUDENT_OVERVIEW,
+          ...JOHNS_HOPKINS_STUDENT_OVERVIEW,
           updatedAt: Date.now(),
         })
       },
     },
     {
       method: 'GET',
-      path: '/teacher/overview',
+      path: '/professor/overview',
       handler: async (_request, context) => {
         return Response.json({
           userId: context.userId,
-          ...JPIS_TEACHER_OVERVIEW,
-          updatedAt: Date.now(),
-        })
-      },
-    },
-    {
-      method: 'GET',
-      path: '/parent/overview',
-      handler: async (_request, context) => {
-        return Response.json({
-          userId: context.userId,
-          ...JPIS_PARENT_OVERVIEW,
+          ...JOHNS_HOPKINS_PROFESSOR_OVERVIEW,
           updatedAt: Date.now(),
         })
       },
@@ -49,7 +37,7 @@ export const jpisSchoolApiExtension = defineOverlayExtension({
       handler: async (_request, context) => {
         return Response.json({
           userId: context.userId,
-          ...JPIS_ADMIN_OVERVIEW,
+          ...JOHNS_HOPKINS_ADMIN_OVERVIEW,
           updatedAt: Date.now(),
         })
       },

@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
@@ -46,8 +45,18 @@ import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
 import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
 import { SidebarResourceSection } from './sidebar/SidebarResourceSection'
 
-const JPIS_BRAND_LOGO_SRC = '/assets/jpis-logo.png'
-const JPIS_BRAND_LOGO_ALT = 'Jayshree Periwal International School'
+function JohnsHopkinsBrandMark({ size = 'md' }: { size?: 'sm' | 'md' }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] font-semibold tracking-normal text-[var(--foreground)] ${
+        size === 'sm' ? 'h-8 w-8 text-[11px]' : 'h-9 w-9 text-xs'
+      }`}
+      aria-hidden
+    >
+      JH
+    </span>
+  )
+}
 
 export default function AppSidebar({
   user: serverUser,
@@ -284,21 +293,15 @@ export default function AppSidebar({
       href={brandConfig.homeHref}
       className="flex min-w-0 items-center gap-3"
       onClick={() => setMobileMenuOpen(false)}
-      aria-label="JPIS home"
+      aria-label="Johns Hopkins home"
     >
-      <Image
-        src={JPIS_BRAND_LOGO_SRC}
-        alt={JPIS_BRAND_LOGO_ALT}
-        width={36}
-        height={34}
-        className="h-9 w-9 shrink-0 object-contain"
-      />
+      <JohnsHopkinsBrandMark />
       <span className="min-w-0">
         <span className="block truncate text-base font-semibold leading-none tracking-normal text-[var(--foreground)]">
-          JPIS
+          Johns Hopkins
         </span>
         <span className="mt-1 block truncate text-[11px] leading-none tracking-normal text-[var(--muted)]">
-          International School
+          University Pilot
         </span>
       </span>
     </Link>
@@ -312,13 +315,7 @@ export default function AppSidebar({
       aria-label="Expand sidebar"
       title="Expand sidebar"
     >
-      <Image
-        src={JPIS_BRAND_LOGO_SRC}
-        alt={JPIS_BRAND_LOGO_ALT}
-        width={34}
-        height={32}
-        className="h-8 w-8 shrink-0 object-contain group-hover:hidden"
-      />
+      <span className="group-hover:hidden"><JohnsHopkinsBrandMark size="sm" /></span>
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
   ) : (
@@ -331,21 +328,15 @@ export default function AppSidebar({
       href={brandConfig.homeHref}
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-3"
       onClick={() => setMobileMenuOpen(false)}
-      aria-label="JPIS home"
+      aria-label="Johns Hopkins home"
     >
-      <Image
-        src={JPIS_BRAND_LOGO_SRC}
-        alt={JPIS_BRAND_LOGO_ALT}
-        width={32}
-        height={30}
-        className="h-8 w-8 shrink-0 object-contain"
-      />
+      <JohnsHopkinsBrandMark size="sm" />
       <span className="min-w-0">
         <span className="block truncate text-base font-semibold leading-none tracking-normal text-[var(--foreground)]">
-          JPIS
+          Johns Hopkins
         </span>
         <span className="mt-1 block truncate text-[11px] leading-none tracking-normal text-[var(--muted)]">
-          International School
+          University Pilot
         </span>
       </span>
     </Link>
