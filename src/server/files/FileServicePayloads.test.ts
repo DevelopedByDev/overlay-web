@@ -74,6 +74,7 @@ test('file list and update DTO builders preserve route-facing mapping', () => {
     conversationId: 'conversation_1',
     outputType: 'image',
     kind: 'output',
+    summary: true,
   }), {
     userId: 'user_1',
     parentId: null,
@@ -81,6 +82,7 @@ test('file list and update DTO builders preserve route-facing mapping', () => {
     conversationId: 'conversation_1',
     outputType: 'image',
     kind: 'output',
+    summary: true,
   })
 
   const update = buildUpdateFileArgs({

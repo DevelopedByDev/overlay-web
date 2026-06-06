@@ -35,6 +35,7 @@ test('file methods preserve route paths, methods, queries, and JSON bodies', asy
   await client.files.presignResponse({ name: 'plan.pdf', mimeType: 'application/pdf', sizeBytes: 42 })
   await client.files.shareResponse({ fileId: 'file_1', visibility: 'public' })
   await client.files.searchTextResponse({ fileIds: ['file_1'], query: 'alpha' })
+  await client.files.getResponse({ limit: 100, summary: true })
 
   assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/files/upload-url')
   assert.equal(calls[0]!.init?.method, 'POST')
@@ -57,6 +58,9 @@ test('file methods preserve route paths, methods, queries, and JSON bodies', asy
   assert.equal(String(calls[3]!.input), 'https://example.test/api/v1/files/search-text')
   assert.equal(calls[3]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[3]!), { fileIds: ['file_1'], query: 'alpha' })
+
+  assert.equal(String(calls[4]!.input), 'https://example.test/api/v1/files?limit=100&summary=true')
+  assert.equal(calls[4]!.init?.method, undefined)
 })
 
 test('file mutations accept null parent and project IDs', async () => {

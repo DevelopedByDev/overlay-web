@@ -52,7 +52,7 @@ export async function loadConversationSnapshot({
       conversationId: chatId,
       messages: true,
     }),
-    overlayAppClient.files.getResponse({ kind: 'output', conversationId: chatId, limit: 100 }),
+    overlayAppClient.files.getResponse({ kind: 'output', conversationId: chatId, limit: 100, summary: true }),
     shouldLoadMeta
       ? overlayAppClient.conversations.getResponse({ conversationId: chatId })
       : Promise.resolve(null),

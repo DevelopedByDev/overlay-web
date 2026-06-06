@@ -8,4 +8,5 @@ export interface FileQuery extends PaginationQuery {
   conversationId?: string
   outputType?: string
   type?: string
+  summary?: boolean
 }

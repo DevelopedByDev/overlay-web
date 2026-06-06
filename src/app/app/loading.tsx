@@ -1,5 +1,5 @@
-import { ChatRouteSkeleton } from './_components/AppRouteSkeletons'
+import { InitialAppLoading } from './_components/AppRouteSkeletons'
 
 export default function Loading() {
-  return <ChatRouteSkeleton />
+  return <InitialAppLoading />
 }

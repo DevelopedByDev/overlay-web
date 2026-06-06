@@ -13,11 +13,12 @@ test('ProjectsRouteSkeleton renders only page content, not a nested sidebar', ()
   assert.equal(markup.match(/bg-\[var\(--surface-elevated\)\]/g)?.length, 6)
 })
 
-test('AppShellLoadingFallback renders app chrome with sidebar loading state', () => {
+test('AppShellLoadingFallback renders only the animated app brand', () => {
   ;(globalThis as typeof globalThis & { React: typeof React }).React = React
   const markup = renderToStaticMarkup(<AppShellLoadingFallback />)
 
-  assert.equal(markup.includes('border-r'), true)
-  assert.equal(markup.includes('w-56'), true)
-  assert.equal(markup.includes('pt-14'), true)
+  assert.equal(markup.includes('Loading overlay'), true)
+  assert.equal(markup.includes('app-brand-loader-logo'), true)
+  assert.equal(markup.includes('app-brand-loader-word'), true)
+  assert.equal(markup.includes('border-r'), false)
 })

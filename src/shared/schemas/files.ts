@@ -9,6 +9,7 @@ export const FileListQuery = PaginationQuery.extend({
   conversationId: IdQuery,
   outputType: z.string().optional(),
   type: z.string().optional(),
+  summary: BooleanQueryValue,
 })
 
 export const FileContentQuery = z.object({})

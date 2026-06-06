@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { getOverlaySession } from '@/server/auth/session'
-import { getInitialKnowledgeFiles, getInitialKnowledgeMemories } from '@/server/app/route-data'
+import { getInitialKnowledgeFiles } from '@/server/app/route-data'
 import { redirect } from 'next/navigation'
 import { resolveKnowledgeLayout } from '@overlay/app-core'
 import { FilesRouteSkeleton, type FilesRouteSkeletonLayout } from '../_components/AppRouteSkeletons'
@@ -27,17 +27,13 @@ function resolveFilesLayout(params?: FilesSearchParams): FilesRouteSkeletonLayou
 }
 
 async function FilesRouteContent({ userId }: { userId: string }) {
-  const [initialFiles, initialMemories] = await Promise.all([
-    getInitialKnowledgeFiles(),
-    getInitialKnowledgeMemories(),
-  ])
+  const initialFiles = await getInitialKnowledgeFiles()
 
   return (
     <KnowledgeView
       userId={userId}
       mode="files"
       initialFiles={initialFiles}
-      initialMemories={initialMemories}
     />
   )
 }

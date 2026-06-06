@@ -213,6 +213,10 @@ export function FileCard({
   selectMode: boolean
   onOpen: () => void
 }) {
+  const notePreview = file.kind === 'note'
+    ? (file.previewText ?? file.textContent ?? file.content ?? '').trim()
+    : ''
+
   return (
     <button
       type="button"
@@ -228,9 +232,21 @@ export function FileCard({
       style={{ breakInside: 'avoid' }}
     >
       {selectMode ? <BulkSelectMarker selected={bulkSel} className="absolute left-3 top-3 z-10" /> : null}
-      <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
-        <FileTypeIcon file={file} size={36} framed />
-      </div>
+      {file.kind === 'note' ? (
+        <div className="h-36 overflow-hidden bg-[var(--surface-muted)] p-3">
+          <div className="h-full overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 shadow-sm">
+            <p className={`whitespace-pre-wrap text-[10px] leading-[1.45] ${
+              notePreview ? 'text-[var(--muted)]' : 'italic text-[var(--muted-light)]'
+            }`}>
+              {notePreview || 'Empty note'}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
+          <FileTypeIcon file={file} size={36} framed />
+        </div>
+      )}
       <div className="px-3 py-2">
         <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{file.name}</p>
         <p className="mt-1 line-clamp-2 text-[10px] text-[var(--muted)]">{filePathLabel(allFiles, file)}</p>

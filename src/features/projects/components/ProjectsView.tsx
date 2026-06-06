@@ -194,7 +194,7 @@ function ProjectHubBody({
     try {
       const [chatsJson, filesJson] = await Promise.all([
         overlayAppClient.conversations.get<ProjectChatSummary[]>({ projectId, limit: 100 }),
-        overlayAppClient.files.get<ProjectFileRecord[]>({ projectId, limit: 100 }),
+        overlayAppClient.files.get<ProjectFileRecord[]>({ projectId, limit: 100, summary: true }),
       ])
       setChats(Array.isArray(chatsJson) ? chatsJson : [])
       setFiles(Array.isArray(filesJson) ? filesJson : [])

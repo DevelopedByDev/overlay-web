@@ -38,7 +38,7 @@ async function fetchAll(): Promise<CachedData> {
   inFlight = (async () => {
     const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
       await Promise.allSettled([
-        overlayAppClient.files.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
+        overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => (r.ok ? r.json() : [])),
         overlayAppClient.integrations.getResponse().then((r) => (r.ok ? r.json() : { items: [] })),
         overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
         overlayAppClient.skills.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),

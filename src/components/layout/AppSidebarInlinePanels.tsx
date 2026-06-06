@@ -49,7 +49,7 @@ export function FilesInlinePanel({
 
   const loadItems = useCallback(async () => {
     try {
-      setFiles(await overlayAppClient.files.get<ProjectFile[]>({ limit: 100 }))
+      setFiles(await overlayAppClient.files.get<ProjectFile[]>({ limit: 100, summary: true }))
     } catch {
       // ignore
     } finally {

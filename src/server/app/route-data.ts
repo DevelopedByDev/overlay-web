@@ -60,7 +60,7 @@ export function getInitialProjectList(): Promise<ProjectSummary[]> {
 }
 
 export function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
-  return fetchAppJson<KnowledgeFileNode[]>('/api/v1/files?limit=100', [])
+  return fetchAppJson<KnowledgeFileNode[]>('/api/v1/files?limit=100&summary=true', [])
 }
 
 export function getInitialKnowledgeMemories(): Promise<MemoryRow[]> {

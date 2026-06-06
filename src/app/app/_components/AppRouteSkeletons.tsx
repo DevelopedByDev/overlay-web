@@ -1,3 +1,5 @@
+import Image from 'next/image'
+
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return <div className={`ui-skeleton-line rounded-md ${className}`} aria-hidden />
 }
@@ -12,38 +14,6 @@ function SidebarRows({ rows = 7 }: { rows?: number }) {
         </div>
       ))}
     </div>
-  )
-}
-
-function AppSidebarLoadingSkeleton() {
-  return (
-    <>
-      <div className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--sidebar-surface)_95%,transparent)] backdrop-blur md:hidden">
-        <div className="flex h-14 items-center justify-between gap-2 px-3">
-          <SkeletonBlock className="h-9 w-9 rounded-full" />
-          <div className="flex min-w-0 flex-1 justify-center px-1">
-            <SkeletonBlock className="h-5 w-28" />
-          </div>
-          <SkeletonBlock className="h-9 w-9 rounded-full" />
-        </div>
-      </div>
-
-      <aside className="hidden h-full w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)] md:flex">
-        <div className="flex h-16 min-h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-5">
-          <SkeletonBlock className="h-5 w-28" />
-          <SkeletonBlock className="h-9 w-9 rounded-md" />
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col">
-          <SidebarRows rows={7} />
-          <div className="border-t border-[var(--border)] px-2 py-3">
-            <SidebarRows rows={5} />
-          </div>
-        </div>
-        <div className="space-y-3 border-t border-[var(--border)] px-3 py-3">
-          <SkeletonBlock className="h-8 w-full rounded-md" />
-        </div>
-      </aside>
-    </>
   )
 }
 
@@ -64,12 +34,29 @@ function PageHeaderSkeleton({ actions = 2 }: { actions?: number }) {
 }
 
 export function AppShellLoadingFallback() {
+  return <InitialAppLoading />
+}
+
+export function InitialAppLoading() {
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      <AppSidebarLoadingSkeleton />
-      <main className="flex-1 overflow-auto pt-14 md:pt-0">
-        <ChatRouteSkeleton />
-      </main>
+    <div className="flex h-screen items-center justify-center overflow-hidden bg-background text-foreground">
+      <div
+        className="app-brand-loader flex items-center"
+        role="status"
+        aria-label="Loading overlay"
+      >
+        <span className="app-brand-loader-logo relative z-10 flex items-center bg-background">
+          <Image src="/assets/overlay-logo.png" alt="" width={18} height={18} priority />
+        </span>
+        <span className="ml-2 overflow-hidden py-1">
+          <span
+            className="app-brand-loader-word block text-2xl font-medium tracking-tight"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
+            overlay
+          </span>
+        </span>
+      </div>
     </div>
   )
 }

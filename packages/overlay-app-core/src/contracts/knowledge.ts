@@ -8,6 +8,7 @@ export interface KnowledgeFile {
   parentId: string | null
   content?: string
   textContent?: string
+  previewText?: string
   mimeType?: string
   extension?: string
   sizeBytes?: number
@@ -35,6 +36,7 @@ export interface FileQueryContract extends PaginationQueryContract {
   conversationId?: string
   outputType?: string
   type?: string
+  summary?: boolean
 }
 
 export interface CreateFileRequest {

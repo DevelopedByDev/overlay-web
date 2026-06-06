@@ -147,6 +147,7 @@ export class FileService {
     outputType?: string | null
     parentId?: string | null
     projectId?: string | null
+    summary?: boolean
     userId: string
   }): Promise<unknown> {
     if (args.fileId) {

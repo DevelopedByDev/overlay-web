@@ -116,7 +116,12 @@ export default function KnowledgeView({
     }
     const query = p.toString()
     startQueryTransition(() => {
-      router.push(query ? `${pathname}?${query}` : pathname)
+      const nextUrl = query ? `${pathname}?${query}` : pathname
+      if (mode === 'files') {
+        window.history.pushState(null, '', nextUrl)
+        return
+      }
+      router.push(nextUrl)
     })
   }
 
@@ -335,16 +340,24 @@ export default function KnowledgeView({
     } catch { /* ignore */ } finally { setFilesLoading(false) }
   }, [])
 
-  useEffect(() => { loadMemories() }, [loadMemories])
-  useEffect(() => { loadFiles() }, [loadFiles])
+  useEffect(() => {
+    if (initialMemories !== undefined || activeTab !== 'memories') return
+    void loadMemories()
+  }, [activeTab, initialMemories, loadMemories])
 
   useEffect(() => {
+    if (initialFiles !== undefined || (activeTab !== 'files' && activeTab !== 'outputs')) return
+    void loadFiles()
+  }, [activeTab, initialFiles, loadFiles])
+
+  useEffect(() => {
+    if (activeTab !== 'memories') return
     const onVis = () => {
       if (document.visibilityState === 'visible') void loadMemories()
     }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
-  }, [loadMemories])
+  }, [activeTab, loadMemories])
 
   useEffect(() => {
     if (!fileOpenParam || filesLoading || files.length === 0) return

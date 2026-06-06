@@ -17,6 +17,7 @@ const utf8Encoder = new TextEncoder()
 type FileKind = 'folder' | 'note' | 'upload' | 'output'
 type MutationDb = MutationCtx['db']
 const UPLOAD_INTENT_FINALIZE_GRACE_MS = 15 * 60_000
+const FILE_PREVIEW_CHARS = 1200
 
 function utf8ByteLength(value: string): number {
   return utf8Encoder.encode(value).length
@@ -99,6 +100,40 @@ function normalizeFile(file: Doc<'files'>) {
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
     deletedAt: file.deletedAt,
+  }
+}
+
+function previewTextOf(value: string): string {
+  return value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|li|h[1-6]|blockquote|pre|tr)>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '- ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, FILE_PREVIEW_CHARS)
+}
+
+function normalizeFileSummary(file: Doc<'files'>) {
+  const {
+    content: _content,
+    textContent: _textContent,
+    ...normalized
+  } = normalizeFile(file)
+  void _content
+  void _textContent
+  return {
+    ...normalized,
+    previewText: inferKind(file) === 'note' ? previewTextOf(textOf(file)) : undefined,
   }
 }
 
@@ -364,6 +399,7 @@ export const list = query({
       v.literal('upload'),
       v.literal('output'),
     )),
+    summary: v.optional(v.boolean()),
     includeDeleted: v.optional(v.boolean()),
   },
   handler: async (ctx, {
@@ -375,6 +411,7 @@ export const list = query({
     conversationId,
     outputType,
     kind,
+    summary,
     includeDeleted,
   }) => {
     try {
@@ -388,14 +425,17 @@ export const list = query({
       .order('desc')
       .collect()
 
-    return allFiles
+    const filteredFiles = allFiles
       .filter((file) => (includeDeleted ? true : !file.deletedAt))
       .filter((file) => (projectId !== undefined ? file.projectId === projectId : true))
       .filter((file) => (parentId !== undefined ? (file.parentId ?? null) === parentId : true))
       .filter((file) => (conversationId !== undefined ? file.conversationId === conversationId : true))
       .filter((file) => (outputType !== undefined ? file.outputType === outputType : true))
       .filter((file) => (kind !== undefined ? inferKind(file) === kind : true))
-      .map(normalizeFile)
+
+    return summary
+      ? filteredFiles.map(normalizeFileSummary)
+      : filteredFiles.map(normalizeFile)
   },
 })
 

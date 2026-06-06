@@ -15,6 +15,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       parentId: searchParams.get('parentId'),
       conversationId: searchParams.get('conversationId'),
       outputType: searchParams.get('outputType') ?? searchParams.get('type'),
+      summary: ['true', '1'].includes(searchParams.get('summary') ?? ''),
     })
     return NextResponse.json(result)
   } catch (error) {

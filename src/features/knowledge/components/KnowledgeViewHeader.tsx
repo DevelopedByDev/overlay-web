@@ -1,7 +1,6 @@
 'use client'
 
 import type React from 'react'
-import Link from 'next/link'
 import {
   ArrowLeft,
   BookOpen,
@@ -277,24 +276,30 @@ function LayoutControls({
 
 const FILES_CATEGORY_ITEMS: Array<{
   id: FilesCategory
-  href: string
   label: string
   Icon: typeof BookOpen
 }> = [
-  { id: 'notes', href: '/app/files?view=notes', label: 'Notes', Icon: BookOpen },
-  { id: 'files', href: '/app/files', label: 'Files', Icon: FileText },
-  { id: 'outputs', href: '/app/files?view=outputs', label: 'Outputs', Icon: Images },
+  { id: 'notes', label: 'Notes', Icon: BookOpen },
+  { id: 'files', label: 'Files', Icon: FileText },
+  { id: 'outputs', label: 'Outputs', Icon: Images },
 ]
 
-function FilesCategoryControls({ category }: { category: FilesCategory }) {
+function FilesCategoryControls({
+  category,
+  onChange,
+}: {
+  category: FilesCategory
+  onChange: (category: FilesCategory) => void
+}) {
   return (
     <div className="flex h-8 min-h-8 items-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5">
-      {FILES_CATEGORY_ITEMS.map(({ id, href, label, Icon }) => {
+      {FILES_CATEGORY_ITEMS.map(({ id, label, Icon }) => {
         const active = category === id
         return (
-          <Link
+          <button
+            type="button"
             key={id}
-            href={href}
+            onClick={() => onChange(id)}
             aria-current={active ? 'page' : undefined}
             className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-[11px] font-medium transition-colors ${
               active
@@ -304,7 +309,7 @@ function FilesCategoryControls({ category }: { category: FilesCategory }) {
           >
             <Icon size={12} strokeWidth={1.75} />
             <span className="hidden sm:inline">{label}</span>
-          </Link>
+          </button>
         )
       })}
     </div>
@@ -531,7 +536,14 @@ export function KnowledgeViewHeader({
               />
             ) : null}
             {mode === 'files' && activeTab === 'files' ? (
-              <FilesCategoryControls category={filesCategory} />
+              <FilesCategoryControls
+                category={filesCategory}
+                onChange={(category) => onUpdateQuery({
+                  view: category === 'files' ? null : category,
+                  file: null,
+                  folder: null,
+                })}
+              />
             ) : null}
           </div>
         </>

@@ -141,6 +141,44 @@ body {
   overflow-x: hidden;
 }
 
+@keyframes appBrandLogoFade {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes appBrandWordReveal {
+  from {
+    opacity: 0;
+    transform: translateX(-110%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.app-brand-loader-logo {
+  animation: appBrandLogoFade 360ms ease-out both;
+}
+
+.app-brand-loader-word {
+  animation: appBrandWordReveal 620ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-brand-loader-logo,
+  .app-brand-loader-word {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+}
+
 .temporary-chat-inverse-surface {
   --temporary-chat-bg: #111111;
   --temporary-chat-fg: #ffffff;
