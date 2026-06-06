@@ -59,6 +59,37 @@ test('file methods preserve route paths, methods, queries, and JSON bodies', asy
   assert.deepEqual(await jsonBody(calls[3]!), { fileIds: ['file_1'], query: 'alpha' })
 })
 
+test('file mutations accept null parent and project IDs', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.files.createResponse({
+    name: 'Root folder',
+    type: 'folder',
+    kind: 'folder',
+    parentId: null,
+    projectId: null,
+  })
+  await client.files.updateResponse({
+    fileId: 'folder_1',
+    parentId: null,
+    projectId: null,
+  })
+
+  assert.equal(calls.length, 2)
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    name: 'Root folder',
+    type: 'folder',
+    kind: 'folder',
+    parentId: null,
+    projectId: null,
+  })
+  assert.deepEqual(await jsonBody(calls[1]!), {
+    fileId: 'folder_1',
+    parentId: null,
+    projectId: null,
+  })
+})
+
 test('module feature methods use canonical app endpoints', async () => {
   const { calls, client } = createRecordedClient()
 

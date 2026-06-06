@@ -18,8 +18,8 @@ export const CreateFileRequest = z.object({
   name: z.string().min(1).optional(),
   mimeType: z.string().optional(),
   sizeBytes: z.number().nonnegative().optional(),
-  projectId: z.string().optional(),
-  parentId: z.string().optional(),
+  projectId: z.string().nullable().optional(),
+  parentId: z.string().nullable().optional(),
   conversationId: z.string().optional(),
   kind: z.string().optional(),
 }).passthrough()
