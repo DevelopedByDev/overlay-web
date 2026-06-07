@@ -12,7 +12,7 @@ import {
   Sparkles,
   Workflow,
 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { AuthBoundary, useAuth } from "@/contexts/AuthContext";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
 import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
 import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
@@ -194,8 +194,10 @@ function HomeLandingContent() {
 
 export default function HomeLandingPage() {
   return (
-    <LandingThemeProvider>
-      <HomeLandingContent />
-    </LandingThemeProvider>
+    <AuthBoundary>
+      <LandingThemeProvider>
+        <HomeLandingContent />
+      </LandingThemeProvider>
+    </AuthBoundary>
   );
 }

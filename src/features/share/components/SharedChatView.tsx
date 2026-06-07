@@ -2,12 +2,16 @@
 
 /* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
-import { GeneratedUiCard } from '@overlay/chat-react'
+import dynamic from 'next/dynamic'
 import { isGeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import { MarkdownMessage } from '@/features/chat/components/MarkdownMessage'
 import type { SharedConversation } from '@/app/share/c/[token]/page'
 
 type Message = SharedConversation['messages'][number]
+
+const GeneratedUiCard = dynamic(
+  () => import('@overlay/chat-react/generated-ui-card').then((mod) => ({ default: mod.GeneratedUiCard })),
+)
 
 type AnyPart = {
   type: string

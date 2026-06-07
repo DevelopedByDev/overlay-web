@@ -10,8 +10,3 @@ export {
   startActRetryStream,
   startActTextStream,
 } from './chat/chatTextTransport'
-export {
-  runImageGenerationBatch,
-  runVideoGenerationBatch,
-  scheduleMediaGenerationUpgradeFailure,
-} from './chat/chatMediaGeneration'

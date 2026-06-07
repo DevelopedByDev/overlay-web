@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import type {
   ActiveRunState,
   ConversationMessage,
@@ -20,7 +20,10 @@ import {
 } from './tools'
 import { MarkdownMessage } from './MarkdownMessage'
 import { UserMessageBubble } from './UserMessageBubble'
-import { GeneratedUiCard } from './GeneratedUiCard'
+
+const GeneratedUiCard = lazy(() =>
+  import('./GeneratedUiCard').then((mod) => ({ default: mod.GeneratedUiCard })),
+)
 
 interface MessageListProps {
   messages: ConversationMessage[]
@@ -224,7 +227,14 @@ function AssistantMessageBody({
         }
 
         if (segment.kind === 'generated-ui') {
-          return <GeneratedUiCard key={segment.key} part={segment.part} readOnly />
+          return (
+            <Suspense
+              key={segment.key}
+              fallback={<div className="ui-skeleton-line min-h-24 w-full rounded-lg" aria-busy="true" />}
+            >
+              <GeneratedUiCard part={segment.part} readOnly />
+            </Suspense>
+          )
         }
 
         return null

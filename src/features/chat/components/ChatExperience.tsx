@@ -1,13 +1,16 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import posthog from 'posthog-js'
 import {
   ChevronDown,
   FileText,
   ImageIcon,
+  MessageSquare,
   Maximize2,
   PanelRightOpen,
+  SlidersHorizontal,
   X,
   Check,
   FolderOpen,
@@ -27,11 +30,12 @@ import {
   sameModelSet,
   selectedModelForExchange,
 } from '@overlay/chat-core'
-import { ModelBadges, ModelQualitiesPanel } from '@overlay/chat-react'
+import { ModelBadges } from '@overlay/chat-react/model-indicators'
+import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
+import { normalizeAutomationDetailTab } from '@overlay/app-core/automations'
 import { useQuery } from '@/components/providers/convex-hooks'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
 import {
   DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
@@ -65,9 +69,6 @@ import {
   loadConversationSnapshot,
   normalizeReplyMetadata,
   reportTextStreamError,
-  runImageGenerationBatch,
-  runVideoGenerationBatch,
-  scheduleMediaGenerationUpgradeFailure,
   startActRetryStream,
   startActTextStream,
   type RawConversationMessage,
@@ -98,11 +99,9 @@ import {
 } from '@/shared/chat/chat-list-cache'
 import { TEMPORARY_CHAT_UI_EVENT } from '@/shared/chat/temporary-chat-ui'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
-import { FileViewerPanel } from '@/features/files/components/FileViewer'
 import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -123,8 +122,6 @@ import {
   VIDEO_SUB_MODE_LABELS,
   VIDEO_SUB_MODES,
 } from './chat-interface/constants'
-import { DraftReviewModal } from './chat-interface/Modals'
-import { AutomationEditorPanel, type AutomationDetail, type AutomationDetailTab, normalizeAutomationDetailTab, AUTOMATION_DETAIL_TABS } from './chat-interface/AutomationEditor'
 import {
   applyLiveMessageDeltaParts,
   assistantBlocksToPlainText,
@@ -152,6 +149,37 @@ import type {
 } from './chat-interface/types'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
+
+// Heavy, conditionally-rendered surfaces are code-split out of the initial chat
+// bundle. They only mount on specific interactions (billing top-up, export,
+// file/attachment preview, draft review, automation editing).
+const TopUpPreferenceControl = dynamic(
+  () => import('@/features/billing/components/TopUpPreferenceControl').then((mod) => ({ default: mod.TopUpPreferenceControl })),
+)
+const FileViewerPanel = dynamic(
+  () => import('@/features/files/components/FileViewer').then((mod) => ({ default: mod.FileViewerPanel })),
+)
+const ExportMenu = dynamic(
+  () => import('@/features/files/components/ExportMenu').then((mod) => ({ default: mod.ExportMenu })),
+)
+const DraftReviewModal = dynamic(
+  () => import('./chat-interface/Modals').then((mod) => ({ default: mod.DraftReviewModal })),
+)
+const AutomationEditorPanel = dynamic(
+  () => import('./chat-interface/AutomationEditor').then((mod) => ({ default: mod.AutomationEditorPanel })),
+)
+const ModelQualitiesPanel = dynamic(
+  () => import('@overlay/chat-react/model-qualities-panel').then((mod) => ({ default: mod.ModelQualitiesPanel })),
+)
+
+const AUTOMATION_DETAIL_TABS = [
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'edit', label: 'Edit', icon: SlidersHorizontal },
+] satisfies Array<{
+  id: AutomationDetailTab
+  label: string
+  icon: typeof MessageSquare
+}>
 
 const EMPTY_UI_MESSAGES: UIMessage[] = []
 const TEMPORARY_CHAT_ID = '__overlay_temporary_chat__'
@@ -2687,6 +2715,7 @@ export default function ChatExperience({
 
     // ── Image / Video generation path ──────────────────────────────────────
     if (effectiveGenType === 'image' || effectiveGenType === 'video') {
+      const mediaGenerationModule = import('./chat/chatMediaGeneration')
       const wasFirst = isFirstMessage
       const promptForModel =
         replyCtxSnapshot?.bodyForModel && text
@@ -2840,6 +2869,7 @@ export default function ChatExperience({
 
       // ── Block generation for free-tier users ───────────────────────────────
       if (isFreeTier) {
+        const { scheduleMediaGenerationUpgradeFailure } = await mediaGenerationModule
         scheduleMediaGenerationUpgradeFailure({
           chatId,
           exchIdx,
@@ -2853,6 +2883,7 @@ export default function ChatExperience({
       }
 
       if (effectiveGenType === 'image') {
+        const { runImageGenerationBatch } = await mediaGenerationModule
         // Prefer an explicitly attached reference image; fall back to the last generated image
         const imageUrl = attachedImagesSnapshot[0]?.dataUrl ?? targetRuntime.ui.lastGeneratedImageUrl
         runImageGenerationBatch({
@@ -2873,6 +2904,7 @@ export default function ChatExperience({
           loadSubscription,
         })
       } else {
+        const { runVideoGenerationBatch } = await mediaGenerationModule
         runVideoGenerationBatch({
           chatId,
           temporaryChat: temporaryChatSnapshot,

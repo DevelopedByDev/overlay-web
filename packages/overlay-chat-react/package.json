@@ -12,9 +12,11 @@
     ".": "./src/index.ts",
     "./draft-review-modal": "./src/components/DraftReviewModal.tsx",
     "./exchange-block": "./src/components/ExchangeBlock.tsx",
+    "./generated-ui-card": "./src/components/GeneratedUiCard.tsx",
     "./lazy-syntax-highlighter": "./src/components/LazySyntaxHighlighter.tsx",
     "./media-slot-output": "./src/components/MediaSlotOutput.tsx",
     "./model-indicators": "./src/components/ModelIndicators.tsx",
+    "./model-qualities-panel": "./src/components/ModelQualitiesPanel.tsx",
     "./sources-panel": "./src/components/SourcesPanel.tsx",
     "./styles.css": "./src/styles/overlay-theme.css"
   },

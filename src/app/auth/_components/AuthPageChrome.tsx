@@ -4,6 +4,7 @@ import { Suspense, type ReactNode } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { MarketingNavbar } from '@/features/marketing/components/MarketingNavbar'
+import { AuthBoundary } from '@/contexts/AuthContext'
 import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 
 type AuthPageChromeProps = {
@@ -95,10 +96,12 @@ export function AuthLoadingScreen({
 
 export function LandingAuthBoundary({ children }: { children: ReactNode }) {
   return (
-    <LandingThemeProvider>
-      <Suspense fallback={<AuthLoadingScreen tone="landing" />}>
-        {children}
-      </Suspense>
-    </LandingThemeProvider>
+    <AuthBoundary>
+      <LandingThemeProvider>
+        <Suspense fallback={<AuthLoadingScreen tone="landing" />}>
+          {children}
+        </Suspense>
+      </LandingThemeProvider>
+    </AuthBoundary>
   )
 }

@@ -9,7 +9,7 @@ import { RefreshCw, ArrowRight } from 'lucide-react'
 import { AccountBillingPanel } from '@/features/billing/components/AccountBillingPanel'
 import { DeleteAccountSection } from '@/features/account/components/DeleteAccountSection'
 import { useAccountBillingState } from '@/features/account/hooks/useAccountBillingState'
-import { useAuth } from '@/contexts/AuthContext'
+import { AuthBoundary, useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider, useLandingTheme } from '@/contexts/LandingThemeContext'
 import { StaticMarketingShell } from '@/features/marketing/components/StaticMarketingShell'
 import { MarketingFooter } from '@/features/marketing/components/MarketingFooter'
@@ -407,19 +407,21 @@ function AccountPageContent() {
 
 export default function AccountPage() {
   return (
-    <LandingThemeProvider>
-      <Suspense
-        fallback={
-          <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
-            <div className="relative z-10 text-center">
-              <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[var(--muted)]" />
-              <p className="mt-4 text-[var(--muted)]">Loading...</p>
+    <AuthBoundary>
+      <LandingThemeProvider>
+        <Suspense
+          fallback={
+            <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
+              <div className="relative z-10 text-center">
+                <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[var(--muted)]" />
+                <p className="mt-4 text-[var(--muted)]">Loading...</p>
+              </div>
             </div>
-          </div>
-        }
-      >
-        <AccountPageContent />
-      </Suspense>
-    </LandingThemeProvider>
+          }
+        >
+          <AccountPageContent />
+        </Suspense>
+      </LandingThemeProvider>
+    </AuthBoundary>
   )
 }

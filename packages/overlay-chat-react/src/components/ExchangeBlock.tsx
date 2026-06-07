@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { AlertCircle, BookOpen, FileText, GitBranch, Play, Reply, RotateCw, Trash2 } from 'lucide-react'
 import type { AssistantVisualBlock, DraftModalState, ToolVisualBlock } from '@overlay/chat-core'
 import {
@@ -13,7 +13,7 @@ import type { SourceCitationMap } from '../lib/source-citations'
 import type { WebSourceItem } from '../lib/web-sources'
 import { MarkdownMessage } from './MarkdownMessage'
 import { FlashCopyIconButton } from './DraftReviewModal'
-import { GeneratedUiCard, type GeneratedUiConnectorActions } from './GeneratedUiCard'
+import type { GeneratedUiConnectorActions } from './GeneratedUiCard'
 import { UserMessageBubble } from './UserMessageBubble'
 import {
   BrowserToolBlock,
@@ -27,6 +27,10 @@ import {
   renderInlineMentions,
 } from './exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
+
+const GeneratedUiCard = lazy(() =>
+  import('./GeneratedUiCard').then((mod) => ({ default: mod.GeneratedUiCard })),
+)
 
 export type UserImageAttachment = {
   url: string
@@ -357,12 +361,16 @@ export function ExchangeBlock({
           }
           if (seg.kind === 'generated-ui') {
             return (
-              <GeneratedUiCard
+              <Suspense
                 key={`${exchIdx}-seq-${seg.originIndex}-${seg.block.part.id}`}
-                part={seg.block.part}
-                connectorActions={generatedUiConnectorActions}
-                onDataChange={onGeneratedUiChange}
-              />
+                fallback={<div className="ui-skeleton-line min-h-24 w-full rounded-lg" aria-busy="true" />}
+              >
+                <GeneratedUiCard
+                  part={seg.block.part}
+                  connectorActions={generatedUiConnectorActions}
+                  onDataChange={onGeneratedUiChange}
+                />
+              </Suspense>
             )
           }
           const block = seg.block

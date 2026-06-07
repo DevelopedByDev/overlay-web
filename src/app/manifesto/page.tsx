@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@/contexts/AuthContext";
+import { AuthBoundary, useAuth } from "@/contexts/AuthContext";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
 import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
 import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
@@ -78,8 +78,10 @@ function ManifestoContent() {
 
 export default function ManifestoPage() {
   return (
-    <LandingThemeProvider>
-      <ManifestoContent />
-    </LandingThemeProvider>
+    <AuthBoundary>
+      <LandingThemeProvider>
+        <ManifestoContent />
+      </LandingThemeProvider>
+    </AuthBoundary>
   );
 }

@@ -1,11 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-import { AuthProvider } from "@/contexts/AuthContext";
-import ObservabilityClient from "@/components/providers/ObservabilityClient";
-import { AppSettingsProvider } from "@/components/providers/AppSettingsProvider";
-import { ConvexProviderWithWorkOS } from "@/components/providers/ConvexProviderWithWorkOS";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -81,18 +74,7 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased bg-background text-foreground">
-        <AppSettingsProvider>
-          <AuthProvider>
-            <ConvexProviderWithWorkOS>
-              <Suspense fallback={null}>
-                <ObservabilityClient />
-              </Suspense>
-              {children}
-            </ConvexProviderWithWorkOS>
-          </AuthProvider>
-        </AppSettingsProvider>
-        <Analytics />
-        <SpeedInsights />
+        {children}
       </body>
     </html>
   );

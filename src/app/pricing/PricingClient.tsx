@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, GaugeCircle, MessageSquare, PlusCircle, SlidersHorizontal, Wallet } from 'lucide-react'
 import { MarketingFooter } from '@/features/marketing/components/MarketingFooter'
 import { StaticMarketingShell, useStaticMarketingTheme } from '@/features/marketing/components/StaticMarketingShell'
-import { useAuth } from '@/contexts/AuthContext'
+import { AuthBoundary, useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 import {
   PAID_PLAN_MAX_AMOUNT_CENTS,
@@ -645,8 +645,10 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
 
 export default function PricingClient({ billingEnabled }: { billingEnabled: boolean }) {
   return (
-    <LandingThemeProvider>
-      <PricingContent billingEnabled={billingEnabled} />
-    </LandingThemeProvider>
+    <AuthBoundary>
+      <LandingThemeProvider>
+        <PricingContent billingEnabled={billingEnabled} />
+      </LandingThemeProvider>
+    </AuthBoundary>
   )
 }

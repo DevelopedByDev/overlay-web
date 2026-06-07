@@ -1,7 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
-import posthog from 'posthog-js'
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 
 export interface AuthUser {
   id: string
@@ -22,9 +21,19 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+type AuthProviderProps = {
+  children: ReactNode
+  initialUser?: AuthUser | null
+  initialSessionResolved?: boolean
+}
+
+export function AuthProvider({
+  children,
+  initialUser = null,
+  initialSessionResolved = false,
+}: AuthProviderProps) {
+  const [user, setUser] = useState<AuthUser | null>(initialUser)
+  const [isLoading, setIsLoading] = useState(!initialSessionResolved)
 
   const checkSession = useCallback(async () => {
     try {
@@ -55,12 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     try {
       try {
+        const { default: posthog } = await import('posthog-js')
         posthog.capture('user_signed_out')
       } catch {
         // ignore
       }
       await fetch('/api/auth/sign-out', { method: 'POST' })
       try {
+        const { default: posthog } = await import('posthog-js')
         posthog.reset()
       } catch {
         // ignore
@@ -77,8 +88,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [checkSession])
 
   useEffect(() => {
-    checkSession()
-  }, [checkSession])
+    if (!initialSessionResolved) {
+      void checkSession()
+    }
+  }, [checkSession, initialSessionResolved])
 
   return (
     <AuthContext.Provider
@@ -93,6 +106,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   )
+}
+
+export function AuthBoundary(props: AuthProviderProps) {
+  const context = useContext(AuthContext)
+  if (context !== undefined) return props.children
+  return <AuthProvider {...props} />
 }
 
 export function useAuth() {

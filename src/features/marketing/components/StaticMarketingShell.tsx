@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useLandingTheme } from "@/contexts/LandingThemeContext";
+import { AuthBoundary } from "@/contexts/AuthContext";
 import { MarketingNavbar } from "@/features/marketing/components/MarketingNavbar";
 
 /**
@@ -43,9 +44,11 @@ export function StaticMarketingShell({ children }: { children: ReactNode }) {
   const theme = useStaticMarketingTheme();
 
   return (
-    <div className={`flex min-h-screen flex-col ${theme.shellClass}`}>
-      <MarketingNavbar />
-      <div className="flex-1">{children}</div>
-    </div>
+    <AuthBoundary>
+      <div className={`flex min-h-screen flex-col ${theme.shellClass}`}>
+        <MarketingNavbar />
+        <div className="flex-1">{children}</div>
+      </div>
+    </AuthBoundary>
   );
 }
