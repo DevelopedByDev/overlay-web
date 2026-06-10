@@ -154,28 +154,42 @@ import type { MentionItem } from '@/shared/knowledge/mention-types'
 // Heavy, conditionally-rendered surfaces are code-split out of the initial chat
 // bundle. They only mount on specific interactions (billing top-up, export,
 // file/attachment preview, draft review, automation editing).
+//
+// Each MUST pass a `loading` option: next/dynamic only wraps the lazy component
+// in its own <Suspense> boundary when `ssr: false` or `loading` is set
+// (otherwise it uses a Fragment). Without a local boundary, the chunk's
+// first-load suspension bubbles up to ChatSuspenseBoundary and replaces the
+// entire chat with its (headerless) fallback — i.e. the chat appears to reload
+// when you open an image or send the first message.
+// NB: the options must be an inline object literal — next/dynamic's SWC
+// transform rejects a shared/referenced options variable.
 const TopUpPreferenceControl = dynamic(
   () => import('@/features/billing/components/TopUpPreferenceControl').then((mod) => ({ default: mod.TopUpPreferenceControl })),
+  { loading: () => null },
 )
 const FileViewerPanel = dynamic(
   () => import('@/features/files/components/FileViewer').then((mod) => ({ default: mod.FileViewerPanel })),
+  { loading: () => null },
 )
 const ExportMenu = dynamic(
   () => import('@/features/files/components/ExportMenu').then((mod) => ({ default: mod.ExportMenu })),
+  { loading: () => null },
 )
 const DraftReviewModal = dynamic(
   () => import('./chat-interface/Modals').then((mod) => ({ default: mod.DraftReviewModal })),
+  { loading: () => null },
 )
 const AutomationEditorPanel = dynamic(
   () => import('./chat-interface/AutomationEditor').then((mod) => ({ default: mod.AutomationEditorPanel })),
+  { loading: () => null },
 )
-// Loaded lazily, but every render site MUST wrap it in a local <Suspense> with
-// a `null` fallback. Without that, the chunk's first-load suspension bubbles up
-// to the page-level <Suspense fallback={<ChatRouteSkeleton/>}> and flashes the
-// whole page when the model dropdown is opened for the first time.
+// Loaded lazily with its own Suspense boundary (via `loading`) so a first-load
+// suspension never bubbles up to an ancestor boundary and flashes the whole
+// page/chat when the model dropdown is opened for the first time.
 const loadModelQualitiesPanel = () => import('@overlay/chat-react/model-qualities-panel')
 const ModelQualitiesPanel = dynamic(
   () => loadModelQualitiesPanel().then((mod) => ({ default: mod.ModelQualitiesPanel })),
+  { loading: () => null },
 )
 
 const AUTOMATION_DETAIL_TABS = [
