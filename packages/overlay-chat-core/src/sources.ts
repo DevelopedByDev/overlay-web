@@ -96,6 +96,10 @@ function pushSource(
   })
 }
 
+function extractHttpUrlsFromText(value: string): string[] {
+  return value.match(/https?:\/\/[^\s"'<>\\)\]}]+/gi) ?? []
+}
+
 function collectSourceCandidatesFromUnknown(
   value: unknown,
   origin: WebSourceItem['origin'],
@@ -106,8 +110,9 @@ function collectSourceCandidatesFromUnknown(
   if (depth > 6 || value == null) return
 
   if (typeof value === 'string') {
-    const url = safeHttpUrl(value)
-    if (url && !seen.has(url)) {
+    for (const rawUrl of extractHttpUrlsFromText(value)) {
+      const url = safeHttpUrl(rawUrl.replace(/[.,;]+$/, ''))
+      if (!url || seen.has(url)) continue
       seen.add(url)
       acc.push({ url, title: webSourceDisplayKey(url), origin })
     }
@@ -123,7 +128,7 @@ function collectSourceCandidatesFromUnknown(
   const rec = value as Record<string, unknown>
   pushSource(rec, origin, acc, seen)
 
-  for (const key of ['sources', 'results', 'citations', 'references', 'pages', 'links', 'items']) {
+  for (const key of ['sources', 'results', 'citations', 'references', 'pages', 'links', 'items', 'summary']) {
     const child = rec[key]
     if (child) collectSourceCandidatesFromUnknown(child, origin, acc, seen, depth + 1)
   }

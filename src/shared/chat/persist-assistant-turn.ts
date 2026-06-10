@@ -7,6 +7,8 @@ import {
   generatedUiDataToPlainText,
   normalizeGeneratedUiData,
 } from '@overlay/chat-core/generated-ui'
+import { collectWebSourcesFromSingleBlock } from '@overlay/chat-core/sources'
+import type { WebSourceItem } from '@overlay/chat-core/types'
 
 /** Persisted when the model produced no text/tool transcript so reload never drops the assistant row. */
 export const ASSISTANT_EMPTY_CONTENT_PLACEHOLDER = '[Empty response]'
@@ -21,6 +23,13 @@ const MAX_PERSISTED_REASONING_PART_CHARS = 24_000
 const MAX_PERSISTED_TOOL_VALUE_CHARS = 4_000
 const MAX_PERSISTED_PART_TEXT_TOTAL_CHARS = 180_000
 const MAX_PERSISTED_ASSISTANT_PARTS = 80
+const MAX_PERSISTED_WEB_SOURCES = 24
+const WEB_SOURCE_TOOL_NAMES = new Set([
+  'perplexity_search',
+  'parallel_search',
+  'browser_run_task',
+  'interactive_browser_session',
+])
 
 function truncateForPersistence(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text
@@ -48,6 +57,69 @@ function compactToolValueForPersistence(value: unknown): unknown {
   return {
     truncated: true,
     summary: truncateForPersistence(serialized, MAX_PERSISTED_TOOL_VALUE_CHARS),
+  }
+}
+
+function compactWebSourcesForPersistence(
+  toolName: string,
+  toolOutput: unknown,
+): WebSourceItem[] {
+  if (!WEB_SOURCE_TOOL_NAMES.has(toolName)) return []
+  return collectWebSourcesFromSingleBlock({
+    kind: 'tool',
+    key: 'persisted-web-sources',
+    name: toolName,
+    state: 'output-available',
+    toolOutput,
+  })
+    .slice(0, MAX_PERSISTED_WEB_SOURCES)
+    .map((source) => ({
+      url: source.url,
+      title: truncateForPersistence(source.title, 180),
+      origin: source.origin,
+      ...(source.snippet
+        ? { snippet: truncateForPersistence(source.snippet, 240) }
+        : {}),
+    }))
+}
+
+function attachWebSourcesToToolOutput(
+  compactedOutput: unknown,
+  sources: WebSourceItem[],
+): unknown {
+  if (sources.length === 0) return compactedOutput
+  if (
+    compactedOutput !== null &&
+    typeof compactedOutput === 'object' &&
+    !Array.isArray(compactedOutput)
+  ) {
+    return {
+      ...(compactedOutput as Record<string, unknown>),
+      sources,
+    }
+  }
+  return {
+    result: compactedOutput,
+    sources,
+  }
+}
+
+export function replaceAssistantTextForPersistence(
+  persistence: { content: string; parts: Array<Record<string, unknown>> },
+  text: string,
+): { content: string; parts: Array<Record<string, unknown>> } {
+  const cleaned = ensureAssistantPersistContent(normalizeAgentAssistantText(text))
+  let replacedText = false
+  const parts = persistence.parts.flatMap((part) => {
+    if (part.type !== 'text') return [part]
+    if (replacedText) return []
+    replacedText = true
+    return [{ type: 'text', text: cleaned }]
+  })
+  if (!replacedText) parts.push({ type: 'text', text: cleaned })
+  return {
+    content: cleaned,
+    parts,
   }
 }
 
@@ -111,12 +183,15 @@ export function compactAssistantPersistenceForConvex(input: {
       const invocation = part.toolInvocation && typeof part.toolInvocation === 'object'
         ? (part.toolInvocation as Record<string, unknown>)
         : {}
+      const toolName = typeof invocation.toolName === 'string' ? invocation.toolName : ''
+      const webSources = compactWebSourcesForPersistence(toolName, invocation.toolOutput)
+      const compactedToolOutput = compactToolValueForPersistence(invocation.toolOutput)
       parts.push({
         ...part,
         toolInvocation: {
           ...invocation,
           toolInput: compactToolValueForPersistence(invocation.toolInput),
-          toolOutput: compactToolValueForPersistence(invocation.toolOutput),
+          toolOutput: attachWebSourcesToToolOutput(compactedToolOutput, webSources),
         },
       })
       continue

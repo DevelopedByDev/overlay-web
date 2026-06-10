@@ -77,36 +77,36 @@ export function AppScreenShell({
           {sidebar}
         </aside>
       ) : null}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {header}
-        <div className="relative flex min-h-0 flex-1">
-          <div className={cn('min-w-0 flex-1', contentClassName)}>{children}</div>
-          {showRightPanel ? (
-            onRightPanelClose ? (
-              <button
-                type="button"
-                aria-label="Close side panel"
-                className="absolute inset-0 z-20 bg-[var(--background)]/80 backdrop-blur-sm lg:hidden"
-                onClick={onRightPanelClose}
-              />
-            ) : (
-              <div className="absolute inset-0 z-20 bg-[var(--background)]/80 backdrop-blur-sm lg:hidden" />
-            )
-          ) : null}
-          {showRightPanel ? (
-            <aside
-              className={cn(
-                'absolute inset-y-0 right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
-                rightPanelClassName,
-              )}
-              style={rightPanelStyle}
-              role="complementary"
-              aria-label={rightPanelOverlayLabel}
-            >
-              {rightPanel}
-            </aside>
-          ) : null}
+      <div className="relative flex min-h-0 min-w-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {header}
+          <div className={cn('min-h-0 min-w-0 flex-1', contentClassName)}>{children}</div>
         </div>
+        {showRightPanel ? (
+          onRightPanelClose ? (
+            <button
+              type="button"
+              aria-label="Close side panel"
+              className="absolute inset-0 z-20 bg-[var(--background)]/80 backdrop-blur-sm lg:hidden"
+              onClick={onRightPanelClose}
+            />
+          ) : (
+            <div className="absolute inset-0 z-20 bg-[var(--background)]/80 backdrop-blur-sm lg:hidden" />
+          )
+        ) : null}
+        {showRightPanel ? (
+          <aside
+            className={cn(
+              'absolute inset-y-0 right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
+              rightPanelClassName,
+            )}
+            style={rightPanelStyle}
+            role="complementary"
+            aria-label={rightPanelOverlayLabel}
+          >
+            {rightPanel}
+          </aside>
+        ) : null}
       </div>
     </div>
   )
@@ -261,7 +261,7 @@ export function AppScreenSidePanel({
       {...props}
     >
       {(title || description || actions || onClose) ? (
-        <div className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
+        <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
           <div className="min-w-0">
             {title ? <h2 className="truncate text-sm font-medium text-[var(--foreground)]">{title}</h2> : null}
             {description ? <p className="truncate text-xs text-[var(--muted)]">{description}</p> : null}

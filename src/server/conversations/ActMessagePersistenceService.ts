@@ -6,8 +6,8 @@ import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
+  replaceAssistantTextForPersistence,
 } from '@/shared/chat/persist-assistant-turn'
-import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import { maybeRepairFreeTierLeakedPerplexityText } from '@/shared/chat/leaked-perplexity-tool-repair'
 import {
   buildPersistedMessageContent,
@@ -159,9 +159,10 @@ export class ActMessagePersistenceService {
     const totalOutputTokens = totalUsage?.outputTokens ?? 0
 
     try {
-      let persistOverride:
-        | { content: string; parts: Array<Record<string, unknown>> }
-        | undefined
+      let assistantPersistence = buildAssistantPersistenceFromSteps(
+        args.event.steps,
+        args.event.text,
+      )
       if (args.attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
         const repaired = await maybeRepairFreeTierLeakedPerplexityText({
           modelId: args.attemptModelId,
@@ -170,16 +171,13 @@ export class ActMessagePersistenceService {
           accessToken: args.accessToken,
         })
         if (repaired) {
-          const cleaned = normalizeAgentAssistantText(repaired)
-          persistOverride = {
-            content: cleaned,
-            parts: [{ type: 'text', text: cleaned }],
-          }
+          assistantPersistence = replaceAssistantTextForPersistence(
+            assistantPersistence,
+            repaired,
+          )
         }
       }
-      const { content: rawPersistContent, parts: persistParts } = persistOverride
-        ? persistOverride
-        : buildAssistantPersistenceFromSteps(args.event.steps, args.event.text)
+      const { content: rawPersistContent, parts: persistParts } = assistantPersistence
       let persistContent = args.fallbackNotice
         ? `${args.fallbackNotice}\n\n${rawPersistContent}`
         : rawPersistContent

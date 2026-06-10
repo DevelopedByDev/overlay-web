@@ -6,9 +6,11 @@ import {
   generatedUiDataToPlainText,
   normalizeGeneratedUiData,
 } from '@overlay/chat-core/generated-ui'
+import { collectWebSourcesFromBlocks } from '@overlay/chat-core/sources'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
+  replaceAssistantTextForPersistence,
 } from './persist-assistant-turn'
 
 test('normalizeGeneratedUiData validates and trims text draft payloads', () => {
@@ -121,4 +123,101 @@ test('compactAssistantPersistenceForConvex preserves only valid generated UI par
     type: 'text',
     text: '[1 additional assistant parts omitted for storage]',
   })
+})
+
+test('compactAssistantPersistenceForConvex preserves normalized web sources', () => {
+  const compacted = compactAssistantPersistenceForConvex({
+    content: 'Answer with sources.',
+    parts: [
+      {
+        type: 'tool-invocation',
+        toolInvocation: {
+          toolCallId: 'search-1',
+          toolName: 'parallel_search',
+          state: 'output-available',
+          toolInput: { objective: 'Find reviews' },
+          toolOutput: {
+            results: [
+              {
+                url: 'https://example.com/review',
+                title: 'Example review',
+                snippet: 'A useful review.',
+                rawContent: 'x'.repeat(10_000),
+              },
+              {
+                url: 'https://second.example/article',
+                title: 'Second article',
+              },
+            ],
+          },
+        },
+      },
+      { type: 'text', text: 'Answer with sources.' },
+    ],
+  })
+
+  const invocation = compacted.parts[0]?.toolInvocation as
+    | { toolOutput?: { sources?: unknown[]; summary?: string; truncated?: boolean } }
+    | undefined
+  assert.equal(invocation?.toolOutput?.truncated, true)
+  assert.match(invocation?.toolOutput?.summary ?? '', /rawContent/)
+  assert.deepEqual(invocation?.toolOutput?.sources, [
+    {
+      url: 'https://example.com/review',
+      title: 'Example review',
+      snippet: 'A useful review.',
+      origin: 'web-search',
+    },
+    {
+      url: 'https://second.example/article',
+      title: 'Second article',
+      origin: 'web-search',
+    },
+  ])
+})
+
+test('replaceAssistantTextForPersistence retains source-bearing tool parts', () => {
+  const toolPart = {
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId: 'search-1',
+      toolName: 'perplexity_search',
+      state: 'output-available',
+      toolOutput: { sources: [{ url: 'https://example.com', title: 'Example' }] },
+    },
+  }
+  const replaced = replaceAssistantTextForPersistence({
+    content: 'Leaked tool syntax',
+    parts: [
+      toolPart,
+      { type: 'text', text: 'Leaked tool syntax' },
+    ],
+  }, 'Clean answer')
+
+  assert.equal(replaced.content, 'Clean answer')
+  assert.deepEqual(replaced.parts, [
+    toolPart,
+    { type: 'text', text: 'Clean answer' },
+  ])
+})
+
+test('legacy compacted tool summaries still recover source URLs', () => {
+  const sources = collectWebSourcesFromBlocks([
+    {
+      kind: 'tool',
+      key: 'legacy-search',
+      name: 'parallel_search',
+      state: 'output-available',
+      toolOutput: {
+        truncated: true,
+        summary: '{"url":"https://example.com/review","title":"Example review"}',
+      },
+    },
+  ])
+
+  assert.deepEqual(sources, [{
+    url: 'https://example.com/review',
+    title: 'example.com',
+    origin: 'web-search',
+  }])
 })
