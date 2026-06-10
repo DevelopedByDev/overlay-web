@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import posthog from 'posthog-js'
 import {
@@ -169,8 +169,13 @@ const DraftReviewModal = dynamic(
 const AutomationEditorPanel = dynamic(
   () => import('./chat-interface/AutomationEditor').then((mod) => ({ default: mod.AutomationEditorPanel })),
 )
+// Loaded lazily, but every render site MUST wrap it in a local <Suspense> with
+// a `null` fallback. Without that, the chunk's first-load suspension bubbles up
+// to the page-level <Suspense fallback={<ChatRouteSkeleton/>}> and flashes the
+// whole page when the model dropdown is opened for the first time.
+const loadModelQualitiesPanel = () => import('@overlay/chat-react/model-qualities-panel')
 const ModelQualitiesPanel = dynamic(
-  () => import('@overlay/chat-react/model-qualities-panel').then((mod) => ({ default: mod.ModelQualitiesPanel })),
+  () => loadModelQualitiesPanel().then((mod) => ({ default: mod.ModelQualitiesPanel })),
 )
 
 const AUTOMATION_DETAIL_TABS = [
@@ -380,6 +385,12 @@ export default function ChatExperience({
 
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showVideoSubModePicker, setShowVideoSubModePicker] = useState(false)
+
+  // Warm the lazy ModelQualitiesPanel chunk as soon as the picker opens so the
+  // first row hover renders instantly (and never triggers a visible suspense).
+  useEffect(() => {
+    if (showModelPicker) void loadModelQualitiesPanel()
+  }, [showModelPicker])
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
   /** Viewport position for the fixed model-qualities flyout (tracks hovered row). */
   const [modelQualitiesPos, setModelQualitiesPos] = useState<{ x: number; y: number } | null>(null)
@@ -3607,7 +3618,9 @@ export default function ChatExperience({
                             transform: 'translate(calc(-100% - 8px), -50%)',
                           }}
                         >
-                          <ModelQualitiesPanel model={getModel(hoveredModelId)} />
+                          <Suspense fallback={null}>
+                            <ModelQualitiesPanel model={getModel(hoveredModelId)} />
+                          </Suspense>
                         </div>
                       ) : null}
                       <div
@@ -3750,7 +3763,9 @@ export default function ChatExperience({
                         transform: 'translate(calc(-100% - 8px), -50%)',
                       }}
                     >
-                      <ModelQualitiesPanel model={getModel(hoveredModelId)} />
+                      <Suspense fallback={null}>
+                        <ModelQualitiesPanel model={getModel(hoveredModelId)} />
+                      </Suspense>
                     </div>
                   ) : null}
                   <div

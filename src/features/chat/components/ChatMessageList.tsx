@@ -1,13 +1,14 @@
 'use client'
 
-import type { ReactNode, RefObject, UIEvent } from 'react'
+import type { ReactNode, RefObject } from 'react'
+import { useEffect, useState } from 'react'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { GeneratedUiConnectorActions } from '@overlay/chat-react'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
-import { constrainStreamingScrollTop } from '../lib/constrain-streaming-scroll'
+import { streamingReservedSpacerHeight } from '../lib/constrain-streaming-scroll'
 import { ChatMessage } from './ChatMessage'
 
 type ChatInstance = UseChatHelpers<UIMessage>
@@ -72,28 +73,29 @@ export function ChatMessageList({
   runtime,
   actions,
 }: ChatMessageListProps) {
-  const keepLatestExchangeVisible = (event: UIEvent<HTMLDivElement>) => {
+  // Size the reserved tail spacer to the viewport so the scroll limit is a
+  // natural boundary. This keeps the streaming exchange's tail visible without
+  // correcting scrollTop on every scroll event (which fights inertial scrolling
+  // and makes the stream flicker, especially near the header).
+  const [reservedSpacerHeight, setReservedSpacerHeight] = useState<number | null>(null)
+  useEffect(() => {
     if (!reserveLatestExchangeStartSpace) return
-    const container = event.currentTarget
-    const endMarker = messagesEndRef.current
-    if (!endMarker) return
-
-    const containerRect = container.getBoundingClientRect()
-    const markerRect = endMarker.getBoundingClientRect()
-    const nextScrollTop = constrainStreamingScrollTop({
-      clientHeight: container.clientHeight,
-      containerTop: containerRect.top,
-      markerTop: markerRect.top,
-      scrollTop: container.scrollTop,
+    const container = messagesScrollRef.current
+    if (!container) return
+    // ResizeObserver fires once immediately on observe() with the current size,
+    // then on every resize. Setting state only from this callback keeps the
+    // measurement in sync without a synchronous setState in the effect body.
+    const observer = new ResizeObserver(() => {
+      setReservedSpacerHeight(streamingReservedSpacerHeight(container.clientHeight))
     })
-    if (nextScrollTop !== container.scrollTop) container.scrollTop = nextScrollTop
-  }
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [reserveLatestExchangeStartSpace, messagesScrollRef])
 
   return (
     <div
       ref={messagesScrollRef}
       className="min-h-0 flex-1 overscroll-contain overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
-      onScroll={keepLatestExchangeVisible}
     >
       <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
         {showLoadingState ? (
@@ -109,7 +111,8 @@ export function ChatMessageList({
         {reserveLatestExchangeStartSpace ? (
           <div
             aria-hidden
-            className="h-[calc(100dvh-16rem)] min-h-[24rem] max-h-[44rem] shrink-0"
+            className="shrink-0"
+            style={{ height: reservedSpacerHeight ?? undefined }}
           />
         ) : null}
       </div>
