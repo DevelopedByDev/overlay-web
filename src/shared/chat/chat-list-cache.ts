@@ -1,5 +1,5 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { unwrapPaginatedData } from '@/shared/api/pagination'
+import { isPaginatedEnvelope, type PaginatedEnvelope } from '@/shared/api/pagination'
 
 export type CachedConversation = {
   _id: string
@@ -14,10 +14,18 @@ export type CachedConversation = {
 }
 
 const CACHE_TTL_MS = 15_000
+export const INITIAL_CHAT_LIST_LIMIT = 24
+
+export type ChatListPageInfo = {
+  nextCursor?: string
+  hasMore: boolean
+}
 
 let cachedChats: CachedConversation[] | null = null
 let cachedAt = 0
 let inFlight: Promise<CachedConversation[]> | null = null
+let nextPageInFlight: Promise<CachedConversation[]> | null = null
+let cachedPageInfo: ChatListPageInfo = { hasMore: false }
 
 function sortByLastModified(chats: CachedConversation[]): CachedConversation[] {
   return [...chats].sort((a, b) => {
@@ -31,8 +39,16 @@ export function getCachedChatList(): CachedConversation[] | null {
   return cachedChats
 }
 
-export function primeChatList(chats: CachedConversation[]) {
+export function getCachedChatListPageInfo(): ChatListPageInfo {
+  return cachedPageInfo
+}
+
+export function primeChatList(
+  chats: CachedConversation[],
+  pageInfo: ChatListPageInfo = { hasMore: false },
+) {
   cachedChats = sortByLastModified(chats)
+  cachedPageInfo = pageInfo
   cachedAt = Date.now()
 }
 
@@ -57,16 +73,51 @@ export async function fetchChatList(options: { force?: boolean } = {}): Promise<
   }
   if (!options.force && inFlight) return inFlight
 
-  inFlight = overlayAppClient.conversations.getResponse({ limit: 100 })
+  inFlight = overlayAppClient.conversations.getResponse({ limit: INITIAL_CHAT_LIST_LIMIT })
     .then(async (res) => {
       if (!res.ok) return cachedChats ?? []
-      const chats = unwrapPaginatedData<CachedConversation>(await res.json())
-      primeChatList(chats)
-      return chats
+      const payload = await res.json()
+      if (!isPaginatedEnvelope<CachedConversation>(payload)) return cachedChats ?? []
+      primeChatList(payload.data, {
+        nextCursor: payload.nextCursor,
+        hasMore: payload.hasMore,
+      })
+      return payload.data
     })
     .finally(() => {
       inFlight = null
     })
 
   return inFlight
+}
+
+export async function fetchNextChatListPage(): Promise<CachedConversation[]> {
+  if (!cachedPageInfo.hasMore || !cachedPageInfo.nextCursor) return cachedChats ?? []
+  if (nextPageInFlight) return nextPageInFlight
+
+  nextPageInFlight = overlayAppClient.conversations.getResponse({
+    cursor: cachedPageInfo.nextCursor,
+    limit: INITIAL_CHAT_LIST_LIMIT,
+  })
+    .then(async (res) => {
+      if (!res.ok) return cachedChats ?? []
+      const payload = await res.json() as PaginatedEnvelope<CachedConversation>
+      if (!isPaginatedEnvelope<CachedConversation>(payload)) return cachedChats ?? []
+      const current = cachedChats ?? []
+      const byId = new Map(current.map((chat) => [chat._id, chat]))
+      for (const chat of payload.data) {
+        byId.set(chat._id, { ...byId.get(chat._id), ...chat })
+      }
+      const merged = [...byId.values()]
+      primeChatList(merged, {
+        nextCursor: payload.nextCursor,
+        hasMore: payload.hasMore,
+      })
+      return getCachedChatList() ?? merged
+    })
+    .finally(() => {
+      nextPageInFlight = null
+    })
+
+  return nextPageInFlight
 }

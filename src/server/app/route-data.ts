@@ -5,7 +5,6 @@ import { headers } from 'next/headers'
 import { NextRequest } from 'next/server'
 import type {
   AppBootstrapResponse,
-  AutomationSummary,
   ConnectedIntegrationsResponse,
   IntegrationSearchResponse,
   KnowledgeFileNode,
@@ -13,6 +12,7 @@ import type {
   ProjectSummary,
 } from '@overlay/app-core'
 import type { CachedConversation } from '@/shared/chat/chat-list-cache'
+import type { PaginatedEnvelope } from '@/shared/api/pagination'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { getBaseUrl } from '@/server/web/app-url'
 import { handleBffRoute, type BffDomainService } from '@/app/api/v1/_utils/bff'
@@ -20,22 +20,15 @@ import * as conversationsService from '@/server/app-api/v1/conversations/route'
 import * as projectsService from '@/server/app-api/v1/projects/route'
 import * as filesService from '@/server/app-api/v1/files/route'
 import * as memoryService from '@/server/app-api/v1/memory/route'
-import * as automationsService from '@/server/app-api/v1/automations/route'
 import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { automationService } from '@/server/automations/http'
+
+const INITIAL_CHAT_LIST_LIMIT = 24
 
 export type InitialIntegrationsRouteData = {
   bootstrap: AppBootstrapResponse | null
   connected: ConnectedIntegrationsResponse | null
   catalog: IntegrationSearchResponse | null
-}
-
-export type InitialAppShellData = {
-  initialProjects: ProjectSummary[]
-  initialAutomations?: AutomationSummary[]
 }
 
 function originFromHeaders(headerList: Headers): string {
@@ -76,11 +69,11 @@ async function callAppApi<T>(path: string, service: BffDomainService, fallback: 
   return value as T
 }
 
-export function getInitialChatHistory(): Promise<CachedConversation[]> {
-  return callAppApi<CachedConversation[]>(
-    '/api/v1/conversations?limit=100',
+export function getInitialChatHistory(): Promise<PaginatedEnvelope<CachedConversation> | null> {
+  return callAppApi<PaginatedEnvelope<CachedConversation> | null>(
+    `/api/v1/conversations?limit=${INITIAL_CHAT_LIST_LIMIT}`,
     conversationsService.GET as BffDomainService,
-    [],
+    null,
   )
 }
 
@@ -106,38 +99,6 @@ export function getInitialKnowledgeMemories(): Promise<MemoryRow[]> {
     memoryService.GET as BffDomainService,
     [],
   )
-}
-
-export function getInitialAutomationsList(): Promise<AutomationSummary[]> {
-  return callAppApi<AutomationSummary[]>(
-    '/api/v1/automations?limit=100',
-    automationsService.GET as BffDomainService,
-    [],
-  )
-}
-
-export async function getInitialAppShellData({
-  userId,
-  includeAutomations,
-}: {
-  userId: string
-  includeAutomations: boolean
-}): Promise<InitialAppShellData> {
-  noStore()
-  const serverSecret = getInternalApiSecret()
-  const [projectsResult, initialAutomations] = await Promise.all([
-    convex.query<ProjectSummary[]>('projects/projects:list', {
-      userId,
-      serverSecret,
-    }).catch((_error) => []),
-    includeAutomations
-      ? automationService.getAutomations({ userId }).then((result) => (
-          Array.isArray(result) ? result as AutomationSummary[] : []
-        )).catch((_error) => [])
-      : Promise.resolve(undefined),
-  ])
-
-  return { initialProjects: projectsResult ?? [], initialAutomations }
 }
 
 export async function getInitialIntegrationsData(): Promise<InitialIntegrationsRouteData> {

@@ -1,0 +1,8 @@
+{
+  "/app/chat": {
+    "routeGzipBytes": 12288,
+    "firstLoadGzipBytes": 696320,
+    "routeRawBytes": 32768,
+    "firstLoadRawBytes": 2355200
+  }
+}

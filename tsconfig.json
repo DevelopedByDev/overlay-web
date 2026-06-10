@@ -124,6 +124,7 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
+    ".next-analyze/types/**/*.ts",
     "**/*.mts"
   ],
   "exclude": [

@@ -1,7 +1,9 @@
 export async function generatePdfFromHtml(title: string, html: string): Promise<Blob> {
-  const { jsPDF } = await import('jspdf')
-  const html2canvas = (await import('html2canvas')).default
-  const DOMPurify = (await import('dompurify')).default
+  const [{ jsPDF }, { default: html2canvas }, { default: DOMPurify }] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas'),
+    import('dompurify'),
+  ])
   const safeHtml = DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],

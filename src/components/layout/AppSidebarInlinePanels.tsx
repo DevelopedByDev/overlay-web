@@ -15,7 +15,7 @@ import {
   projectNotesFromFiles,
   projectRouteViewForFile,
   renameProjectInList,
-  rootProjects as getRootProjects,
+  sortProjectsByName,
   type ProjectChatSummary,
   type ProjectFileSummary,
   type ProjectResourceItems,
@@ -30,6 +30,7 @@ type ProjectChat = ProjectChatSummary
 type ProjectFile = ProjectFileSummary
 
 const arrayOrEmpty = <T,>(value: unknown): T[] => Array.isArray(value) ? value : []
+const INITIAL_SIDEBAR_LIST_LIMIT = 24
 
 export function FilesInlinePanel({
   searchQuery = '',
@@ -127,18 +128,19 @@ export function FilesInlinePanel({
 }
 
 export function ProjectsInlinePanel({
-  initialProjects,
   refreshKey,
   onNavigate,
 }: {
-  initialProjects?: Project[]
   refreshKey: number
   onNavigate?: () => void
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [projects, setProjects] = useState<Project[]>(() => initialProjects ?? [])
-  const [loading, setLoading] = useState(initialProjects === undefined)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | undefined>()
+  const [hasMore, setHasMore] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [itemsByProject, setItemsByProject] = useState<Record<string, ProjectResourceItems>>({})
   const [itemsLoading, setItemsLoading] = useState<Set<string>>(new Set())
@@ -146,14 +148,39 @@ export function ProjectsInlinePanel({
 
   const loadProjects = useCallback(async () => {
     try {
-      setProjects(arrayOrEmpty<Project>(await overlayAppClient.projects.get<Project[]>({ limit: 100 })))
+      const page = await overlayAppClient.projects.getPage<Project>({
+        limit: INITIAL_SIDEBAR_LIST_LIMIT,
+      })
+      setProjects(arrayOrEmpty<Project>(page.data))
+      setNextCursor(page.nextCursor)
+      setHasMore(page.hasMore)
     } catch { setProjects([]) } finally { setLoading(false) }
   }, [])
 
   useEffect(() => {
-    if (initialProjects === undefined) setLoading(true)
+    setLoading(true)
     void loadProjects()
-  }, [initialProjects, loadProjects, refreshKey])
+  }, [loadProjects, refreshKey])
+
+  async function loadMoreProjects() {
+    if (!nextCursor) return
+    setLoadingMore(true)
+    try {
+      const page = await overlayAppClient.projects.getPage<Project>({
+        cursor: nextCursor,
+        limit: INITIAL_SIDEBAR_LIST_LIMIT,
+      })
+      setProjects((current) => {
+        const byId = new Map(current.map((project) => [project._id, project]))
+        for (const project of arrayOrEmpty<Project>(page.data)) byId.set(project._id, project)
+        return [...byId.values()]
+      })
+      setNextCursor(page.nextCursor)
+      setHasMore(page.hasMore)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const loadProjectItems = useCallback(async (projectId: string) => {
     setItemsLoading((prev) => new Set(prev).add(projectId))
@@ -249,7 +276,12 @@ export function ProjectsInlinePanel({
     })
   }
 
-  const rootProjects = useMemo(() => getRootProjects(projects), [projects])
+  const rootProjects = useMemo(() => {
+    const loadedIds = new Set(projects.map((project) => project._id))
+    return sortProjectsByName(
+      projects.filter((project) => !project.parentId || !loadedIds.has(project.parentId)),
+    )
+  }, [projects])
 
   return (
     <SidebarResourceList>
@@ -269,6 +301,16 @@ export function ProjectsInlinePanel({
         onDeleteItem={deleteItem}
         onRenameProject={renameProject}
       />
+      {hasMore ? (
+        <button
+          type="button"
+          disabled={loadingMore}
+          onClick={() => void loadMoreProjects()}
+          className="h-7 w-full rounded-md px-2.5 text-left text-xs text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-wait disabled:opacity-60"
+        >
+          {loadingMore ? 'Loading...' : 'Load more'}
+        </button>
+      ) : null}
     </SidebarResourceList>
   )
 }

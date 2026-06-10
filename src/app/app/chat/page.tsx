@@ -11,12 +11,18 @@ async function ChatRouteContent({
   userId: string | null
   firstName?: string
 }) {
-  const initialChats = userId ? await getInitialChatHistory() : []
+  const initialChatPage = userId
+    ? await getInitialChatHistory()
+    : { data: [], hasMore: false }
   return (
     <ChatSuspenseBoundary
       userId={userId}
       firstName={firstName}
-      initialChats={initialChats}
+      initialChats={initialChatPage?.data}
+      initialChatPageInfo={initialChatPage ? {
+        nextCursor: initialChatPage.nextCursor,
+        hasMore: initialChatPage.hasMore,
+      } : undefined}
     />
   )
 }

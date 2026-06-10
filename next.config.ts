@@ -40,6 +40,7 @@ const staticSecurityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   transpilePackages: ["@overlay/app-core"],
   async headers() {
     return [

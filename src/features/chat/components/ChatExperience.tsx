@@ -95,6 +95,7 @@ import {
   getCachedChatList,
   primeChatList,
   removeCachedChat,
+  type ChatListPageInfo,
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
 import { TEMPORARY_CHAT_UI_EVENT } from '@/shared/chat/temporary-chat-ui'
@@ -235,6 +236,7 @@ export default function ChatExperience({
   hideHeader = false,
   belowEmptyComposer,
   initialChats,
+  initialChatPageInfo,
 }: {
   userId: string | null
   firstName?: string
@@ -244,6 +246,7 @@ export default function ChatExperience({
   hideHeader?: boolean
   belowEmptyComposer?: React.ReactNode
   initialChats?: Conversation[]
+  initialChatPageInfo?: ChatListPageInfo
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -333,8 +336,8 @@ export default function ChatExperience({
   } = useChatPanels()
 
   useEffect(() => {
-    if (initialChats) primeChatList(initialChats)
-  }, [initialChats])
+    if (initialChats) primeChatList(initialChats, initialChatPageInfo)
+  }, [initialChatPageInfo, initialChats])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   const {
@@ -1291,7 +1294,10 @@ export default function ChatExperience({
     })
   }, [applyChatTitleUpdate, loadChats])
 
-  useEffect(() => { loadChats(); loadSubscription() }, [loadChats, loadSubscription])
+  useEffect(() => {
+    if (initialChats === undefined) void loadChats()
+    void loadSubscription()
+  }, [initialChats, loadChats, loadSubscription])
 
   useEffect(() => {
     if (!activeChatId) return

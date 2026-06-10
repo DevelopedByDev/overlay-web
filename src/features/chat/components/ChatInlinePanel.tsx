@@ -17,7 +17,14 @@ import {
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
-import { fetchChatList, getCachedChatList, removeCachedChat, upsertCachedChat } from '@/shared/chat/chat-list-cache'
+import {
+  fetchChatList,
+  fetchNextChatListPage,
+  getCachedChatList,
+  getCachedChatListPageInfo,
+  removeCachedChat,
+  upsertCachedChat,
+} from '@/shared/chat/chat-list-cache'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SidebarResourceList } from '@/components/layout/sidebar/SidebarResourceSection'
 
@@ -43,6 +50,8 @@ export function ChatInlinePanel({
   const { sessions, getUnread } = useAsyncSessions()
   const [chats, setChats] = useState<Conversation[]>(() => getCachedChatList() ?? [])
   const [loading, setLoading] = useState(() => !getCachedChatList())
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(() => getCachedChatListPageInfo().hasMore)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
@@ -52,6 +61,7 @@ export function ChatInlinePanel({
   const loadChats = useCallback(async (options: { force?: boolean } = {}) => {
     try {
       setChats(await fetchChatList(options))
+      setHasMore(getCachedChatListPageInfo().hasMore)
     } catch {
       // ignore
     } finally {
@@ -59,9 +69,22 @@ export function ChatInlinePanel({
     }
   }, [])
 
+  async function loadMoreChats() {
+    setLoadingMore(true)
+    try {
+      setChats(await fetchNextChatListPage())
+      setHasMore(getCachedChatListPageInfo().hasMore)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   useEffect(() => {
-    if (!getCachedChatList()) setLoading(true)
-    void loadChats()
+    const timeoutId = window.setTimeout(() => {
+      if (!getCachedChatList()) setLoading(true)
+      void loadChats()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [loadChats, refreshKey])
 
   useEffect(() => {
@@ -186,116 +209,130 @@ export function ChatInlinePanel({
         <SidebarListSkeleton rows={6} />
       ) : filteredChats.length === 0 ? (
         <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{chats.length === 0 ? 'No chats yet' : 'No results'}</p>
-      ) : filteredChats.map((chat) => {
-        const isStreaming = sessions[chat._id]?.status === 'streaming'
-        const unread = getUnread(chat._id)
-        const active = activeId === chat._id
-        const isEditing = editingChatId === chat._id
-        const isDeleting = deletingChatIds.includes(chat._id)
-        const isConfirmingDelete = pendingDeleteChatId === chat._id
-        return (
-          <div
-            key={chat._id}
-            onMouseLeave={() => {
-              if (isConfirmingDelete) setPendingDeleteChatId(null)
-            }}
-            onClick={() => {
-              if (isDeleting) return
-              if (isEditing) return
-              const href = `/app/chat?id=${encodeURIComponent(chat._id)}`
-              if (pathname === '/app/chat') {
-                window.history.pushState(null, '', href)
-                window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
-                  detail: { chatId: chat._id },
-                }))
-              } else {
-                router.push(href)
-              }
-              onNavigate?.()
-            }}
-            className={`${panelItemClass} cursor-pointer overflow-hidden transition-all duration-200 ${
-              isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100'
-            } ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-          >
-            <MessageSquare size={12} className="shrink-0" />
-            {isEditing ? (
-              <input
-                autoFocus
-                value={editingTitle}
-                onChange={(event) => setEditingTitle(event.target.value)}
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    void saveRename(chat._id)
-                  } else if (event.key === 'Escape') {
-                    event.preventDefault()
-                    cancelRename()
+      ) : (
+        <>
+          {filteredChats.map((chat) => {
+            const isStreaming = sessions[chat._id]?.status === 'streaming'
+            const unread = getUnread(chat._id)
+            const active = activeId === chat._id
+            const isEditing = editingChatId === chat._id
+            const isDeleting = deletingChatIds.includes(chat._id)
+            const isConfirmingDelete = pendingDeleteChatId === chat._id
+            return (
+              <div
+                key={chat._id}
+                onMouseLeave={() => {
+                  if (isConfirmingDelete) setPendingDeleteChatId(null)
+                }}
+                onClick={() => {
+                  if (isDeleting) return
+                  if (isEditing) return
+                  const href = `/app/chat?id=${encodeURIComponent(chat._id)}`
+                  if (pathname === '/app/chat') {
+                    window.history.pushState(null, '', href)
+                    window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
+                      detail: { chatId: chat._id },
+                    }))
+                  } else {
+                    router.push(href)
                   }
+                  onNavigate?.()
                 }}
-                onBlur={() => void saveRename(chat._id)}
-                className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
-              />
-            ) : (
-              <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-            )}
-            {isStreaming && !unread ? (
-              <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
-            ) : null}
-            {unread > 0 ? (
-              <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[9px] font-medium text-[var(--background)]">
-                {unread > 9 ? '9+' : unread}
-              </span>
-            ) : null}
-            {isEditing ? (
-              <button
-                type="button"
-                onMouseDown={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  void saveRename(chat._id)
-                }}
-                className="ml-1 shrink-0 rounded p-0.5 text-[var(--foreground)] hover:bg-[var(--border)]"
-                aria-label="Save chat name"
+                className={`${panelItemClass} cursor-pointer overflow-hidden transition-all duration-200 ${
+                  isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100'
+                } ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
               >
-                <Check size={11} />
-              </button>
-            ) : (
-              <>
-                {isConfirmingDelete ? (
+                <MessageSquare size={12} className="shrink-0" />
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    value={editingTitle}
+                    onChange={(event) => setEditingTitle(event.target.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        void saveRename(chat._id)
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        cancelRename()
+                      }
+                    }}
+                    onBlur={() => void saveRename(chat._id)}
+                    className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
+                  />
+                ) : (
+                  <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+                )}
+                {isStreaming && !unread ? (
+                  <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
+                ) : null}
+                {unread > 0 ? (
+                  <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[9px] font-medium text-[var(--background)]">
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                ) : null}
+                {isEditing ? (
                   <button
                     type="button"
-                    onClick={(event) => void confirmDeleteChatAction(chat._id, event)}
-                    className={inlineConfirmDeleteButtonClass}
-                    aria-label="Confirm delete chat"
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      void saveRename(chat._id)
+                    }}
+                    className="ml-1 shrink-0 rounded p-0.5 text-[var(--foreground)] hover:bg-[var(--border)]"
+                    aria-label="Save chat name"
                   >
-                    Confirm
+                    <Check size={11} />
                   </button>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      onClick={(event) => beginRename(chat, event)}
-                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                      aria-label="Rename chat"
-                    >
-                      <Pencil size={11} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => requestDeleteChat(chat, event)}
-                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                      aria-label="Delete chat"
-                    >
-                      <Trash2 size={11} />
-                    </button>
+                    {isConfirmingDelete ? (
+                      <button
+                        type="button"
+                        onClick={(event) => void confirmDeleteChatAction(chat._id, event)}
+                        className={inlineConfirmDeleteButtonClass}
+                        aria-label="Confirm delete chat"
+                      >
+                        Confirm
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(event) => beginRename(chat, event)}
+                          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                          aria-label="Rename chat"
+                        >
+                          <Pencil size={11} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => requestDeleteChat(chat, event)}
+                          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                          aria-label="Delete chat"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
-              </>
-            )}
-          </div>
-        )
-      })}
+              </div>
+            )
+          })}
+          {hasMore ? (
+            <button
+              type="button"
+              disabled={loadingMore}
+              onClick={() => void loadMoreChats()}
+              className="h-7 w-full rounded-md px-2.5 text-left text-xs text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-wait disabled:opacity-60"
+            >
+              {loadingMore ? 'Loading...' : 'Load more'}
+            </button>
+          ) : null}
+        </>
+      )}
     </SidebarResourceList>
   )
 }

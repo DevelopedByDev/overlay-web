@@ -12,8 +12,6 @@ import {
 import {
   resolveOverlayAppShellConfig,
   resolveSidebarActionForPath,
-  type AutomationSummary,
-  type ProjectSummary,
 } from '@overlay/app-core'
 import type { AuthUser } from '@/shared/auth/session-types'
 import { useAuth } from '@/contexts/AuthContext'
@@ -48,12 +46,8 @@ import { SidebarResourceSection } from './sidebar/SidebarResourceSection'
 
 export default function AppSidebar({
   user: serverUser,
-  initialProjects,
-  initialAutomations,
 }: {
   user: AuthUser | null
-  initialProjects?: ProjectSummary[]
-  initialAutomations?: AutomationSummary[]
 }) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
@@ -608,14 +602,12 @@ export default function AppSidebar({
               ) : null}
               {projectsOpen ? (
                 <ProjectsInlinePanel
-                  initialProjects={initialProjects}
                   refreshKey={projectsPanelRefreshKey}
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
               {automationsSectionOpen ? (
                 <AutomationsInlinePanel
-                  initialAutomations={initialAutomations}
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}

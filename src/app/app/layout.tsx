@@ -8,7 +8,6 @@ import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
 import { OnboardingProvider } from '@/components/providers/OnboardingProvider'
 import { CapabilitiesProvider } from '@/components/providers/CapabilitiesProvider'
 import { AppClientProviders } from '@/components/providers/AppClientProviders'
-import { getInitialAppShellData } from '@/server/app/route-data'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { AppConfigurationErrorState } from './_components/AppConfigurationErrorState'
 import { AppShellLoadingFallback, ChatRouteSkeleton } from './_components/AppRouteSkeletons'
@@ -28,12 +27,6 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
   }
 
   const user = session?.user ?? null
-  const { initialProjects, initialAutomations } = user
-    ? await getInitialAppShellData({
-        userId: user.id,
-        includeAutomations: capabilities.automations,
-      })
-    : { initialProjects: undefined, initialAutomations: undefined }
 
   return (
     <AppClientProviders initialUser={user}>
@@ -45,11 +38,7 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
             <CapabilitiesProvider initialCapabilities={capabilities}>
               <GuestGateProvider>
                 <OnboardingProvider>
-                  <AppSidebar
-                    user={user}
-                    initialProjects={initialProjects}
-                    initialAutomations={initialAutomations}
-                  />
+                  <AppSidebar user={user} />
                   <main className="app-main flex-1 overflow-auto pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
                     <Suspense fallback={<AppMainFallback />}>{children}</Suspense>
                   </main>

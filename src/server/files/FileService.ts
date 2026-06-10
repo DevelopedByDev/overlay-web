@@ -2,7 +2,6 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import { randomBytes, randomUUID } from 'node:crypto'
-import mammoth from 'mammoth'
 import { splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
 import { findSubstringMatchesInText } from '@/shared/storage/file-text-search'
 import { formatBytes } from '@/shared/storage/storage-limits'
@@ -125,6 +124,7 @@ async function extractTextFromBuffer(buf: Buffer, file: File, ext: string): Prom
     return parsePdfBuffer(buf)
   }
   if (isDocx(file, ext)) {
+    const mammoth = (await import('mammoth')).default
     const { value } = await mammoth.extractRawText({ buffer: buf })
     return (value ?? '').trim()
   }
