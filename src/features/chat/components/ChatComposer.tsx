@@ -152,11 +152,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
 
   return (
-    <div className={`overflow-visible rounded-2xl border shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300 ${
-      props.isTemporaryChat
-        ? 'temporary-chat-inverse-surface border-dashed border-[var(--temporary-chat-border)] shadow-[0_10px_30px_rgba(10,10,10,0.08)]'
-        : 'border-[var(--border)] bg-[var(--surface-elevated)]'
-    }`}>
+    <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300">
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
       <div className="p-2.5 sm:p-3">
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
@@ -195,7 +191,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           onPaste={props.onPaste}
           onUploadFile={() => props.docInputRef.current?.click()}
           placeholder={props.mode === 'automate' ? 'Describe an automation, use @ to reference files, skills, automations...' : 'Ask anything, use @ to reference files, skills, automations...'}
-          className={props.isTemporaryChat ? 'text-[var(--foreground)] empty:before:text-[var(--muted)]' : undefined}
+          className={undefined}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
@@ -275,11 +271,7 @@ function ComposerControls(props: ComposerControlsProps) {
           <button
             type="button"
             onClick={() => void props.onStop()}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:opacity-80 ${
-              props.isTemporaryChat
-                ? 'bg-[var(--temporary-chat-fg)] text-[var(--temporary-chat-bg)]'
-                : 'bg-[var(--foreground)] text-[var(--background)]'
-            }`}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80"
           >
             <div className="h-3.5 w-3.5 rounded-sm bg-current" />
           </button>
@@ -290,11 +282,7 @@ function ComposerControls(props: ComposerControlsProps) {
             type="button"
             onClick={() => void props.onSend()}
             disabled={props.disabledSend}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:opacity-80 disabled:opacity-40 ${
-              props.isTemporaryChat
-                ? 'bg-[var(--temporary-chat-fg)] text-[var(--temporary-chat-bg)]'
-                : 'bg-[var(--foreground)] text-[var(--background)]'
-            }`}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"
           >
             <Send size={17} strokeWidth={1.75} />
           </button>
