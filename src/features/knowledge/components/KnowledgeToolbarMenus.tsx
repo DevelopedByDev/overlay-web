@@ -48,7 +48,7 @@ export function OutputFilterMenu({
       </button>
       {open && (
         <div
-          className="absolute left-0 top-full z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+          className="overlay-pop-in absolute left-0 top-full z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
           role="listbox"
         >
           {(['all', 'image', 'video', 'files'] as const).map((id) => (
@@ -118,7 +118,7 @@ export function FilesCreateUploadControls({
             <Plus size={15} />
           </button>
           {createMenuOpen ? (
-            <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+            <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
               <button
                 type="button"
                 onClick={() => {
@@ -161,7 +161,7 @@ export function FilesCreateUploadControls({
           <Upload size={15} />
         </button>
         {uploadMenuOpen ? (
-          <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+          <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
             <button
               type="button"
               onClick={() => {

@@ -14,6 +14,7 @@
     "./styles.css": "./src/styles.css",
     "./tokens": "./src/tokens.ts",
     "./primitives": "./src/primitives.ts",
+    "./hooks": "./src/hooks.ts",
     "./feedback": "./src/feedback.ts",
     "./overlays": "./src/overlays.ts",
     "./chat": "./src/chat.ts"

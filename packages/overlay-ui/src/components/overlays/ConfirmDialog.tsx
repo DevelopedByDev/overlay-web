@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect } from 'react'
+import { cn } from '../../utils/cn'
+import { usePresence } from '../../hooks/usePresence'
 
 export function ConfirmDialog({
   isOpen,
@@ -33,7 +35,8 @@ export function ConfirmDialog({
     return () => window.removeEventListener('keydown', onKey)
   }, [isOpen, onCancel, onConfirm])
 
-  if (!isOpen) return null
+  const { mounted, visible } = usePresence(isOpen)
+  if (!mounted) return null
 
   const confirmClass = destructive
     ? 'rounded-lg bg-red-500 px-4 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40'
@@ -41,7 +44,10 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[10070] flex items-center justify-center bg-black/60 p-4"
+      className={cn(
+        'fixed inset-0 z-[10070] flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-[var(--overlay-ease)]',
+        visible ? 'opacity-100' : 'opacity-0',
+      )}
       onClick={(e) => {
         if (e.target === e.currentTarget && !busy) onCancel()
       }}
@@ -50,7 +56,10 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="w-[min(420px,92vw)] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl"
+        className={cn(
+          'w-[min(420px,92vw)] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)]',
+          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1',
+        )}
       >
         <h2 id="confirm-dialog-title" className="text-sm font-semibold text-[var(--foreground)]">
           {title}

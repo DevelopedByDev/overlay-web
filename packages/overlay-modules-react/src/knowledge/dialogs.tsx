@@ -76,12 +76,12 @@ export function AddMemoryDialog({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
+      className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div className="w-[480px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
+      <div className="overlay-dialog-in w-[480px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
           <button
@@ -140,12 +140,12 @@ export function ImportMemoryDialog({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
+      className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div className="w-[540px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
+      <div className="overlay-dialog-in w-[540px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
         <div className="mb-6 flex items-center justify-between">
           <h3 className="text-sm font-medium text-[var(--foreground)]">Import memory</h3>
           <button
@@ -218,10 +218,10 @@ export function CreateKnowledgeItemDialog({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
+      className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
       onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
     >
-      <div className="w-[400px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
+      <div className="overlay-dialog-in w-[400px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-medium text-[var(--foreground)]">
             New {type === 'folder' ? 'folder' : 'file'}
@@ -264,11 +264,11 @@ export function MemoryDetailDialog({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
+      className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
       onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
     >
       <div
-        className="flex max-h-[min(90vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
+        className="overlay-dialog-in flex max-h-[min(90vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">

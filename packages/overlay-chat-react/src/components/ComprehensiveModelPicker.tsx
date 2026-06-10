@@ -125,7 +125,7 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
       </button>
       {open ? (
         <div
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64"
+          className="overlay-pop-in absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64"
           onMouseLeave={() => setHoveredId(null)}
         >
           <div className="max-h-72 overflow-y-auto">

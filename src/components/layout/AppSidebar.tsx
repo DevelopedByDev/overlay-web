@@ -620,7 +620,7 @@ export default function AppSidebar({
         <div ref={menuRef} className="relative">
           {accountMenuOpen && (
             <div
-              className={`absolute bottom-full z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg ${
+              className={`overlay-fade-in absolute bottom-full z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg ${
                 sidebarCollapsed ? 'left-0 w-64' : 'left-0 right-0'
               }`}
               onMouseDown={(event) => event.stopPropagation()}
@@ -698,7 +698,7 @@ export default function AppSidebar({
             </button>
             {mobileAccountOpen && (
               <div
-                className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+                className="overlay-pop-in absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
                 onMouseDown={(event) => event.stopPropagation()}
               >
                 <SidebarAccountMenu

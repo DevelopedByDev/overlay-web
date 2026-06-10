@@ -936,7 +936,7 @@ export default function NotebookEditor({
         <ChevronDown size={11} className="shrink-0" />
       </button>
       {showModelPicker && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+        <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
           <div className="max-h-72 overflow-y-auto">
             {getModelsByIntelligence(false).map((m) => {
               const isSel = m.id === selectedModelId

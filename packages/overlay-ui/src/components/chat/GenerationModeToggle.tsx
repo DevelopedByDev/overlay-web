@@ -117,7 +117,7 @@ export function GenerationModeSelect({
       {open && (
         <ul
           role="listbox"
-          className="absolute right-0 top-full z-30 mt-1 min-w-[7.5rem] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+          className="overlay-pop-in absolute right-0 top-full z-30 mt-1 min-w-[7.5rem] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
         >
           {MODES.map(({ value, label, Icon }) => {
             const active = mode === value

@@ -186,7 +186,7 @@ export function MentionPopup({
   return (
     <div
       ref={popupRef}
-      className="fixed z-50 w-72 max-h-80 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl flex flex-col"
+      className="overlay-pop-in fixed z-50 w-72 max-h-80 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl flex flex-col"
       style={{
         left: `${left}px`,
         ...(shouldOpenUp

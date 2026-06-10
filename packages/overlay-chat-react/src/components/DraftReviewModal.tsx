@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, X } from 'lucide-react'
+import { usePresence } from '@overlay/ui'
 import type { AutomationDraftSummary, DraftModalState, SkillDraftSummary } from '@overlay/chat-core'
 
 export function FlashCopyIconButton({
@@ -51,7 +52,7 @@ export function FlashCopyIconButton({
 }
 
 export function DraftReviewModal({
-  state,
+  state: stateProp,
   saving,
   onClose,
   onSaveSkill,
@@ -63,17 +64,31 @@ export function DraftReviewModal({
   onSaveSkill: (draft: SkillDraftSummary) => Promise<void>
   onSaveAutomation: (draft: AutomationDraftSummary) => Promise<void>
 }) {
-  if (!state) return null
+  const { mounted, visible } = usePresence(Boolean(stateProp), 300)
+  // Retain the last non-null state so the modal keeps its content while sliding
+  // out. The state object is reference-stable while open, so this converges.
+  const [cachedState, setCachedState] = useState(stateProp)
+  if (stateProp && stateProp !== cachedState) setCachedState(stateProp)
+  const state = stateProp ?? cachedState
+  if (!mounted || !state) return null
   const isAutomation = state.kind === 'automation'
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 sm:items-center sm:p-4"
+      className={`fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 transition-opacity duration-300 ease-[var(--overlay-ease)] sm:items-center sm:p-4 ${
+        visible ? 'opacity-100' : 'opacity-0'
+      }`}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div className="w-full max-w-2xl rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl sm:rounded-2xl">
+      <div
+        className={`w-full max-w-2xl rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl transition-[opacity,transform] duration-300 ease-[var(--overlay-ease)] sm:rounded-2xl ${
+          visible
+            ? 'translate-y-0 opacity-100 sm:scale-100'
+            : 'translate-y-full opacity-100 sm:translate-y-2 sm:scale-95 sm:opacity-0'
+        }`}
+      >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <div>
             <h3 className="text-sm font-medium text-[var(--foreground)]">

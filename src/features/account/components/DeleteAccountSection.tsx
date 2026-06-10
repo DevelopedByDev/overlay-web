@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, X } from 'lucide-react'
+import { usePresence } from '@overlay/ui'
 
 /**
  * Account-deletion UI required by Apple App Store guideline 5.1.1(v).
@@ -22,6 +23,7 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
   const autoOpenedRef = useRef(false)
 
   const [open, setOpen] = useState(false)
+  const { mounted: dialogMounted, visible: dialogVisible } = usePresence(open)
   const [confirmInput, setConfirmInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -83,17 +85,21 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
         Delete account
       </button>
 
-      {open ? (
+      {dialogMounted ? (
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-account-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
+            dialogVisible ? 'opacity-100' : 'opacity-0'
+          }`}
           onClick={close}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl ${
+            className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
+              dialogVisible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
+            } ${
               isLandingDark ? 'border-zinc-800 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'
             }`}
           >

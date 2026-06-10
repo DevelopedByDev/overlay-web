@@ -141,7 +141,7 @@ export function ProjectsSidebarFrame({
                 <Plus size={13} />
               </button>
               {addMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#e5e5e5] rounded-lg shadow-lg py-1 z-50">
+                <div className="overlay-pop-in absolute right-0 top-full mt-1 w-44 bg-white border border-[#e5e5e5] rounded-lg shadow-lg py-1 z-50">
                   <button onClick={onCreateChat} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#525252] hover:bg-[#f5f5f5] transition-colors">
                     <MessageSquare size={12} />New Chat
                   </button>

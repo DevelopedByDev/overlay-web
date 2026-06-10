@@ -110,8 +110,8 @@ export function SourcesPanel({
     <aside
       aria-label="Sources"
       aria-hidden={!open}
-      className={`hidden h-full shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--background)] transition-[width] duration-200 md:flex ${
-        open ? 'w-[min(40vw,380px)]' : 'w-0 border-l-0'
+      className={`hidden h-full shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--background)] transition-[width,opacity,border-color] duration-300 ease-[var(--overlay-ease)] md:flex ${
+        open ? 'w-[min(40vw,380px)] opacity-100' : 'w-0 border-l-0 opacity-0'
       }`}
     >
       <div className="flex h-full w-[min(40vw,380px)] flex-col">

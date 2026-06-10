@@ -81,7 +81,7 @@ export function FileShareMenu({
       </button>
 
       {showMenu && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+        <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
           <button
             type="button"
             onClick={() => setShowShareSubmenu((v) => !v)}

@@ -124,7 +124,7 @@ export function ProjectHubActions({
           <ChevronDown size={11} className="opacity-60" />
         </button>
         {creatingOpen && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] shadow-lg">
+          <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] shadow-lg">
             <button
               type="button"
               onClick={onCreateChat}
@@ -154,7 +154,7 @@ export function ProjectHubActions({
           <ChevronDown size={11} className="opacity-60" />
         </button>
         {uploadOpen && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] shadow-lg">
+          <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] shadow-lg">
             <button
               type="button"
               onClick={() => {

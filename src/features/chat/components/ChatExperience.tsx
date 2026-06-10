@@ -3612,7 +3612,7 @@ export default function ChatExperience({
                       ) : null}
                       <div
                         data-tour="model-picker"
-                        className="absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+                        className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
                         onMouseLeave={() => {
                           setHoveredModelId(null)
                           setModelQualitiesPos(null)
@@ -3710,7 +3710,7 @@ export default function ChatExperience({
                     <ChevronDown size={11} className="shrink-0" />
                   </button>
                   {showVideoSubModePicker && (
-                    <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
+                    <div className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
                       {VIDEO_SUB_MODES.map(({ value, label }) => (
                         <button
                           key={value}
@@ -3755,7 +3755,7 @@ export default function ChatExperience({
                   ) : null}
                   <div
                     data-tour="model-picker"
-                    className="absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+                    className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
                     onMouseLeave={() => {
                       setHoveredModelId(null)
                       setModelQualitiesPos(null)
@@ -4368,13 +4368,13 @@ function AttachmentPreviewDialog({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
+      className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
       onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
     >
       <div
         role="dialog"
         aria-label="Attachment preview"
-        className="flex max-h-[min(92vh,900px)] min-h-[min(70vh,720px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
+        className="overlay-dialog-in flex max-h-[min(92vh,900px)] min-h-[min(70vh,720px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <FileViewerPanel

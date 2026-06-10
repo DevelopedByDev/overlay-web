@@ -1,8 +1,9 @@
 'use client'
 
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
+import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
-import { cn } from '@overlay/ui'
+import { cn, usePresence } from '@overlay/ui'
 
 export type AppScreenBodyPadding = 'none' | 'sm' | 'md' | 'lg'
 export type AppScreenBodyMaxWidth = 'none' | 'sm' | 'md' | 'lg' | 'xl'
@@ -54,7 +55,23 @@ export function AppScreenShell({
   ...props
 }: AppScreenShellProps) {
   const resolvedRightPanelOpen = rightPanelOpen ?? Boolean(rightPanel)
-  const showRightPanel = Boolean(rightPanel && resolvedRightPanelOpen)
+  // Keep the panel mounted through its slide-out so the exit animation can play.
+  const { mounted: rightPanelMounted, visible: rightPanelVisible } = usePresence(
+    resolvedRightPanelOpen,
+    300,
+  )
+  // Callers often pass `rightPanel={open ? <Panel/> : null}`, which would unmount
+  // the content before the close animation finishes. Cache the last rendered
+  // panel so it stays visible while sliding out. The write happens in an effect
+  // (refs must not be mutated during render); the render only reads the cached
+  // value as a fallback when the live panel is null (i.e. while closing).
+  const lastRightPanelRef = useRef<ReactNode>(rightPanel)
+  useEffect(() => {
+    if (rightPanel) lastRightPanelRef.current = rightPanel
+  }, [rightPanel])
+  // eslint-disable-next-line react-hooks/refs -- read previous content only as a close-animation fallback
+  const rightPanelContent = rightPanel ?? lastRightPanelRef.current
+  const showRightPanel = rightPanelMounted && Boolean(rightPanelContent)
   const rightPanelClassName = panelWidthClass(rightPanelWidth)
   const rightPanelStyle = panelWidthStyle(rightPanelWidth)
 
@@ -87,24 +104,45 @@ export function AppScreenShell({
             <button
               type="button"
               aria-label="Close side panel"
-              className="absolute inset-0 z-20 bg-[var(--background)]/80 backdrop-blur-sm lg:hidden"
+              className={cn(
+                'absolute inset-0 z-20 bg-[var(--background)]/80 backdrop-blur-sm transition-opacity duration-300 ease-[var(--overlay-ease)] lg:hidden',
+                rightPanelVisible ? 'opacity-100' : 'pointer-events-none opacity-0',
+              )}
               onClick={onRightPanelClose}
             />
           ) : (
-            <div className="absolute inset-0 z-20 bg-[var(--background)]/80 backdrop-blur-sm lg:hidden" />
+            <div
+              className={cn(
+                'absolute inset-0 z-20 bg-[var(--background)]/80 backdrop-blur-sm transition-opacity duration-300 ease-[var(--overlay-ease)] lg:hidden',
+                rightPanelVisible ? 'opacity-100' : 'pointer-events-none opacity-0',
+              )}
+            />
           )
         ) : null}
         {showRightPanel ? (
           <aside
             className={cn(
-              'absolute inset-y-0 right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
-              rightPanelClassName,
+              // Mobile: overlay that slides in from the right edge.
+              // Desktop: static column that reveals via width — matching the
+              // AppSidebar's collapse/expand motion.
+              'absolute inset-y-0 right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[transform,width] duration-300 ease-[var(--overlay-ease)] lg:static lg:z-auto lg:max-w-none lg:shadow-none',
+              rightPanelVisible
+                ? cn('translate-x-0', rightPanelClassName)
+                : 'translate-x-full lg:w-0 lg:translate-x-0 lg:border-l-0',
             )}
             style={rightPanelStyle}
             role="complementary"
             aria-label={rightPanelOverlayLabel}
+            aria-hidden={!rightPanelVisible}
           >
-            {rightPanel}
+            {/* Fixed-width inner wrapper so content slides cleanly instead of
+                reflowing while the column animates its width. */}
+            <div
+              className={cn('flex h-full min-h-0 w-full flex-col', rightPanelClassName)}
+              style={rightPanelStyle}
+            >
+              {rightPanelContent}
+            </div>
           </aside>
         ) : null}
       </div>

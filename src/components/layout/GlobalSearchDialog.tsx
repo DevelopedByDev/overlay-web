@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { usePresence } from '@overlay/ui'
 import {
   ChevronRight,
   FileText,
@@ -220,7 +221,8 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
     return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [open, rows, activeIndex, performAction, selectedCategory, onClose])
 
-  if (!open) return null
+  const { mounted, visible } = usePresence(open)
+  if (!mounted) return null
 
   const selectedCategoryMeta = selectedCategory
     ? CATEGORY_ORDER.find((c) => c.type === selectedCategory)
@@ -234,7 +236,9 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm pt-[12vh] px-4"
+      className={`fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm pt-[12vh] px-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
+        visible ? 'opacity-100' : 'opacity-0'
+      }`}
       onMouseDown={(e) => {
         // Close on backdrop click only (not on dialog itself).
         if (e.target === e.currentTarget) onClose()
@@ -244,7 +248,9 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        className="flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl"
+        className={`flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
+          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 -translate-y-1'
+        }`}
       >
         {selectedCategoryMeta && (
           <div className="flex items-center gap-1.5 border-b border-[var(--border)] bg-[var(--surface-muted)] px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-[var(--muted-light)]">

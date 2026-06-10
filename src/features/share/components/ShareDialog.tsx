@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Linkedin, Link2, X } from 'lucide-react'
+import { usePresence } from '@overlay/ui'
 
 type Resource = {
   type: 'chat' | 'file'
@@ -81,7 +82,8 @@ export function ShareDialog({
     [resource],
   )
 
-  if (!isOpen || !resource || !socials) return null
+  const { mounted, visible } = usePresence(isOpen)
+  if (!mounted || !resource || !socials) return null
 
   const handleCopy = async () => {
     try {
@@ -99,7 +101,9 @@ export function ShareDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[10080] flex items-center justify-center bg-black/60 p-4"
+      className={`fixed inset-0 z-[10080] flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
+        visible ? 'opacity-100' : 'opacity-0'
+      }`}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
@@ -108,7 +112,9 @@ export function ShareDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="share-dialog-title"
-        className="w-[min(560px,94vw)] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl"
+        className={`w-[min(560px,94vw)] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
+          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
+        }`}
       >
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
           <div className="min-w-0">

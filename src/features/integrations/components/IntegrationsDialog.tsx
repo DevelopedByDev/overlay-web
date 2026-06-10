@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, type UIEvent } from 'react'
 import Image from 'next/image'
 import { Loader2, X, Search } from 'lucide-react'
 import { resolveIntegrationName, truncateIntegrationDescription } from '@overlay/app-core'
+import { usePresence } from '@overlay/ui'
 import { IntegrationDialogRowSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -161,17 +162,24 @@ export function IntegrationsDialog({
     }
   }, [actingSlug, onDisconnect])
 
-  if (!isOpen) return null
+  const { mounted, visible } = usePresence(isOpen)
+  if (!mounted) return null
 
   const isSearching = queryInput.trim() !== query || loadingInitial
   const visibleItems = isSearching ? [] : items
 
   return (
     <div
-      className={overlayClassName}
+      className={`${overlayClassName} transition-opacity duration-200 ease-[var(--overlay-ease)] ${
+        visible ? 'opacity-100' : 'opacity-0'
+      }`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl">
+      <div
+        className={`flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
+          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
+        }`}
+      >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-[var(--foreground)]">Add Integration</p>

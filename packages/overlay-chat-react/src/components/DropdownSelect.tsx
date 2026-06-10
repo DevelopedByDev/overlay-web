@@ -66,7 +66,7 @@ export function DropdownSelect<T extends string>({
       </button>
       {open ? (
         <div
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+          className="overlay-pop-in absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
           role="listbox"
         >
           {options.map((opt) => {

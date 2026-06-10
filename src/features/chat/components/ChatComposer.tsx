@@ -470,7 +470,7 @@ function ModeMenu(props: ComposerViewProps) {
         <ChevronDown size={10} className="opacity-60" />
       </button>
       {props.showModeMenu && (
-        <div className="absolute bottom-full right-0 z-20 mb-2 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+        <div className="overlay-fade-in absolute bottom-full right-0 z-20 mb-2 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
           {(['chat', 'automate'] as const).map((item) => (
             <button key={item} type="button" onClick={() => props.onNavigateMode(item)} className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${props.mode === item ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'}`}>
               {item === 'chat' ? <MessageSquare size={13} /> : <Zap size={13} strokeWidth={1.75} />}
