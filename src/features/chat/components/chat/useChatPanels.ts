@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react'
 import type { AttachmentPreview, AttachmentPreviewMode } from '@overlay/chat-react'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { shouldFetchTextContent } from '@/shared/files/file-viewer-types'
 
 export type { AttachmentPreview, AttachmentPreviewMode }
 
@@ -47,12 +48,16 @@ export function useChatPanels() {
     const fileId = fileIds[0]
     if (!fileId) return
     setSourcesPanel(null)
+    const url = `/api/v1/files/${fileId}/content`
     setAttachmentPreview({
       name,
       fileId,
       content: '',
-      url: `/api/v1/files/${fileId}/content`,
+      url,
     })
+    if (!shouldFetchTextContent(name)) {
+      return
+    }
     try {
       const res = await overlayAppClient.files.contentResponse(fileId)
       if (res.ok) {
@@ -60,15 +65,9 @@ export function useChatPanels() {
         setAttachmentPreview((prev) => (
           prev?.fileId === fileId ? { ...prev, content } : prev
         ))
-      } else {
-        setAttachmentPreview((prev) => (
-          prev?.fileId === fileId ? { ...prev, content: '' } : prev
-        ))
       }
     } catch {
-      setAttachmentPreview((prev) => (
-        prev?.fileId === fileId ? { ...prev, content: '' } : prev
-      ))
+      // URL-only preview remains for binary assets stored in R2.
     }
   }, [])
 

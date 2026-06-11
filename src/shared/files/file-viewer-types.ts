@@ -57,3 +57,15 @@ export function isPreviewableType(filename: string): boolean {
   const type = getFileType(filename)
   return type !== 'binary'
 }
+
+/** Preview via authenticated content URL (R2 redirect/proxy), not inlined text/base64. */
+export function prefersUrlPreview(filename: string): boolean {
+  const type = getFileType(filename)
+  return type === 'pdf' || type === 'image' || type === 'audio' || type === 'video' || type === 'document'
+}
+
+/** Only these types should be loaded with `response.text()` for inline preview. */
+export function shouldFetchTextContent(filename: string): boolean {
+  const type = getFileType(filename)
+  return type === 'text' || type === 'markdown' || type === 'csv'
+}

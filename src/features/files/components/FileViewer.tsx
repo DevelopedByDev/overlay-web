@@ -12,8 +12,17 @@ import {
   getFileType,
   isEditableType,
   isPreviewableType,
+  prefersUrlPreview,
   type FileViewerType,
 } from '@/shared/files/file-viewer-types'
+
+function previewSource(name: string, content: string, url?: string): string {
+  const trimmedUrl = url?.trim() ?? ''
+  if (prefersUrlPreview(name) && trimmedUrl) {
+    return trimmedUrl
+  }
+  return content.trim() || trimmedUrl
+}
 
 export type { FileViewerType }
 export { getFileType, isEditableType, isPreviewableType }
@@ -153,7 +162,7 @@ function DocumentViewer({ url }: { url: string }) {
 
 export function FileViewer({ name, content, url }: { name: string; content: string; url?: string }) {
   const type = getFileType(name)
-  const source = content.trim() || url || ''
+  const source = previewSource(name, content, url)
 
   if (type === 'markdown') {
     return (
@@ -243,28 +252,36 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
   }
 
   if (type === 'pdf') {
-    const c = source.trim()
-    const isIframeSrc =
-      c.startsWith('http://') ||
-      c.startsWith('https://') ||
-      c.startsWith('data:') ||
-      c.startsWith('blob:') ||
-      c.startsWith('/api/')
-    if (isIframeSrc) {
+    const iframeSrc = source.trim()
+    const canEmbed =
+      iframeSrc.startsWith('http://') ||
+      iframeSrc.startsWith('https://') ||
+      iframeSrc.startsWith('data:') ||
+      iframeSrc.startsWith('blob:') ||
+      iframeSrc.startsWith('/api/')
+    if (canEmbed) {
       return (
         <div className="flex-1 overflow-hidden">
-          <iframe src={c} className="h-full w-full border-none" title={name} />
+          <iframe src={iframeSrc} className="h-full w-full border-none" title={name} />
+        </div>
+      )
+    }
+    if (content.trim()) {
+      return (
+        <div className="flex-1 overflow-y-auto px-8 py-6">
+          <p className="mb-4 max-w-2xl text-xs text-[var(--muted)]">
+            This PDF is stored as extracted text for search and the notebook (not the original layout).
+          </p>
+          <pre className="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
+            {content}
+          </pre>
         </div>
       )
     }
     return (
-      <div className="flex-1 overflow-y-auto px-8 py-6">
-        <p className="mb-4 max-w-2xl text-xs text-[var(--muted)]">
-          This PDF is stored as extracted text for search and the notebook (not the original layout).
-        </p>
-        <pre className="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
-          {content}
-        </pre>
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
+        <FileType size={28} />
+        <p className="text-sm font-medium text-[var(--foreground)]">Could not load PDF preview</p>
       </div>
     )
   }
