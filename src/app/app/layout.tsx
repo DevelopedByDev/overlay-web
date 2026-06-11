@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { getOverlaySession } from '@/server/auth/session'
-import AppSidebar from '@/components/layout/AppSidebar'
+import { AppShellSidebar } from './_components/AppShellSidebar'
 import { AsyncSessionsProvider } from '@/components/providers/async-sessions-store'
 import BackgroundPollManager from '@/components/providers/BackgroundPollManager'
 import { NavigationProgressProvider, NavigationProgressBar } from '@/components/providers/navigation-progress'
@@ -38,7 +38,7 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
             <CapabilitiesProvider initialCapabilities={capabilities}>
               <GuestGateProvider>
                 <OnboardingProvider>
-                  <AppSidebar user={user} />
+                  <AppShellSidebar user={user} />
                   <main className="app-main flex-1 overflow-auto pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
                     <Suspense fallback={<AppMainFallback />}>{children}</Suspense>
                   </main>

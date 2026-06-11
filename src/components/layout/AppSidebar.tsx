@@ -13,7 +13,6 @@ import {
   resolveOverlayAppShellConfig,
   resolveSidebarActionForPath,
 } from '@overlay/app-core'
-import type { AuthUser } from '@/shared/auth/session-types'
 import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
@@ -30,8 +29,6 @@ import {
   ProjectsInlinePanel,
   toolsInlineItems,
 } from '@/components/layout/AppSidebarInlinePanels'
-import { ChatInlinePanel } from '@/features/chat/components/ChatInlinePanel'
-import { AutomationsInlinePanel } from '@/features/automations/components/AutomationsInlinePanel'
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
 import overlayAppConfig from '@/overlay.config'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -48,12 +45,19 @@ import {
 import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
 import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
 import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
+import type { AppSidebarProps } from './appSidebarTypes'
+
+export type {
+  AppSidebarChatPanelContext,
+  AppSidebarNavigateContext,
+  AppSidebarProps,
+} from './appSidebarTypes'
 
 export default function AppSidebar({
   user: serverUser,
-}: {
-  user: AuthUser | null
-}) {
+  renderChatPanel,
+  renderAutomationsPanel,
+}: AppSidebarProps) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
   const routeSearchParams = useSearchParams()
@@ -607,13 +611,12 @@ export default function AppSidebar({
             } : null}
           >
             <Suspense fallback={<SidebarListSkeleton />}>
-              {chatOpen ? (
-                <ChatInlinePanel
-                  refreshKey={chatPanelRefreshKey}
-                  searchQuery=""
-                  onNavigate={() => setMobileMenuOpen(false)}
-                />
-              ) : null}
+              {chatOpen && renderChatPanel
+                ? renderChatPanel({
+                    refreshKey: chatPanelRefreshKey,
+                    onNavigate: () => setMobileMenuOpen(false),
+                  })
+                : null}
               {notesOpen || filesOpen ? (
                 <FilesInlinePanel
                   searchQuery=""
@@ -626,11 +629,11 @@ export default function AppSidebar({
                   onNavigate={() => setMobileMenuOpen(false)}
                 />
               ) : null}
-              {automationsSectionOpen ? (
-                <AutomationsInlinePanel
-                  onNavigate={() => setMobileMenuOpen(false)}
-                />
-              ) : null}
+              {automationsSectionOpen && renderAutomationsPanel
+                ? renderAutomationsPanel({
+                    onNavigate: () => setMobileMenuOpen(false),
+                  })
+                : null}
             </Suspense>
           </SidebarResourceSection>
         ) : null}
