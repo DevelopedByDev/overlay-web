@@ -1,21 +1,13 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, Suspense } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import posthog from 'posthog-js'
 import {
-  ChevronDown,
   FileText,
   ImageIcon,
-  MessageSquare,
-  Maximize2,
-  PanelRightOpen,
-  SlidersHorizontal,
-  X,
-  Check,
-  FolderOpen,
-  Pencil,
   ArrowUp,
+  ChevronDown,
 } from 'lucide-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
@@ -30,7 +22,12 @@ import {
   sameModelSet,
   selectedModelForExchange,
 } from '@overlay/chat-core'
-import { ModelBadges } from '@overlay/chat-react/model-indicators'
+import {
+  AttachmentPreviewDialog,
+  AttachmentPreviewPanel,
+  BudgetTopUpComposerPrompt,
+  ChatExperienceHeader,
+} from '@overlay/chat-react'
 import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
 import { normalizeAutomationDetailTab } from '@overlay/app-core/automations'
 import { useQuery } from '@/components/providers/convex-hooks'
@@ -56,7 +53,6 @@ import {
   defaultMemoryEnabled,
   type ChatToolRequestId,
 } from '@/shared/chat/tool-requests'
-import { GenerationModeSelect, GenerationModeToggle } from '@overlay/ui/chat'
 import { ChatComposer } from './ChatComposer'
 import { ChatMessageList } from './ChatMessageList'
 import { ChatSourcesPanel } from './ChatSourcesPanel'
@@ -75,10 +71,10 @@ import { useDraftReviewActions } from './chat/useDraftReviewActions'
 import { useEmptyChatStarters } from './chat/useEmptyChatStarters'
 import { useChatPreferences } from './chat/useChatPreferences'
 import { safeSetLocalStorage, toggleModelSelection } from './chat/model-selection-utils'
-import { useChatPanels, type AttachmentPreview, type AttachmentPreviewMode } from './chat/useChatPanels'
+import { useChatPanels, type AttachmentPreview } from './chat/useChatPanels'
 import { useChatRuntimes } from './chat/useChatRuntimes'
 import { useComposerTextState } from './chat/useComposerTextState'
-import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 import {
   dispatchChatCreated,
   dispatchChatModified,
@@ -115,8 +111,6 @@ import {
   SELECTED_VIDEO_MODELS_KEY,
   VIDEO_MODEL_SELECTION_MODE_KEY,
   VIDEO_SUB_MODE_KEY,
-  VIDEO_SUB_MODE_LABELS,
-  VIDEO_SUB_MODES,
 } from './chat-interface/constants'
 import {
   applyLiveMessageDeltaParts,
@@ -182,62 +176,9 @@ const AutomationEditorPanel = dynamic(
 // suspension never bubbles up to an ancestor boundary and flashes the whole
 // page/chat when the model dropdown is opened for the first time.
 const loadModelQualitiesPanel = () => import('@overlay/chat-react/model-qualities-panel')
-const ModelQualitiesPanel = dynamic(
-  () => loadModelQualitiesPanel().then((mod) => ({ default: mod.ModelQualitiesPanel })),
-  { loading: () => null },
-)
-
-const AUTOMATION_DETAIL_TABS = [
-  { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'edit', label: 'Edit', icon: SlidersHorizontal },
-] satisfies Array<{
-  id: AutomationDetailTab
-  label: string
-  icon: typeof MessageSquare
-}>
 
 const EMPTY_UI_MESSAGES: UIMessage[] = []
 const TEMPORARY_CHAT_ID = '__overlay_temporary_chat__'
-const TEMPORARY_CHAT_ICON_SRC = '/assets/icons/dashed-chat.png'
-
-function TemporaryChatButton({
-  active,
-  disabled,
-  onClick,
-}: {
-  active: boolean
-  disabled: boolean
-  onClick: () => void
-}) {
-  return (
-    <DelayedTooltip
-      label={active ? 'Temporary chat is on. Messages are erased when you leave this page.' : 'Start a temporary chat'}
-      side="bottom"
-    >
-      <button
-        type="button"
-        aria-pressed={active}
-        aria-label={active ? 'Disable temporary chat' : 'Enable temporary chat'}
-        disabled={disabled}
-        onClick={onClick}
-        className={`flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-[background-color,border-color,box-shadow,color] duration-300 ${
-          active
-            ? 'temporary-chat-inverse-surface border-dashed border-[var(--temporary-chat-border)] shadow-sm'
-            : 'border-transparent bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
-        } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-      >
-        <span
-          aria-hidden
-          className="size-4 bg-current"
-          style={{
-            WebkitMask: `url(${TEMPORARY_CHAT_ICON_SRC}) center / contain no-repeat`,
-            mask: `url(${TEMPORARY_CHAT_ICON_SRC}) center / contain no-repeat`,
-          }}
-        />
-      </button>
-    </DelayedTooltip>
-  )
-}
 
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -3476,12 +3417,77 @@ export default function ChatExperience({
     }
   }, [selectedAutomation])
 
+  const headerTitleLabel =
+    selectedAutomation?.name ||
+    (isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation'))
+
+  const onHoveredModelChange = useCallback((modelId: string | null, position: { x: number; y: number } | null) => {
+    setHoveredModelId(modelId)
+    setModelQualitiesPos(position)
+  }, [])
+
+  const renderExportMenu = useCallback(() => {
+    if (selectedAutomation || primaryMessages.length === 0 || (!activeChatId && !isTemporaryChat)) {
+      return null
+    }
+    return (
+      <ExportMenu
+        className="shrink-0"
+        type="chat"
+        title={isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || 'New conversation'}
+        content={primaryMessages.map((m) => ({
+          role: m.role,
+          content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
+          parts: m.parts as Array<{ type: string; text?: string }>,
+        }))}
+        metadata={{
+          createdAt: activeChat?.createdAt,
+          updatedAt: activeChat?.updatedAt,
+          modelIds: activeChat?.modelIds,
+        }}
+        resourceId={isTemporaryChat ? undefined : activeChatId ?? undefined}
+        initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
+        initialShareUrl={
+          !isTemporaryChat && activeChat?.shareVisibility === 'public' && activeChat?.shareToken
+            ? buildSharePageUrl('chat', activeChat.shareToken)
+            : null
+        }
+      />
+    )
+  }, [
+    activeChat,
+    activeChatId,
+    activeChatTitle,
+    isTemporaryChat,
+    primaryMessages,
+    selectedAutomation,
+  ])
+
+  const renderAttachmentViewer = useCallback(
+    ({
+      preview,
+      headerRight,
+    }: {
+      preview: AttachmentPreview
+      headerRight: React.ReactNode
+    }) => (
+      <FileViewerPanel
+        name={preview.name}
+        content={preview.content}
+        url={preview.url}
+        headerRight={headerRight}
+      />
+    ),
+    [],
+  )
+
   const shellRightPanel = attachmentPreview && attachmentPreviewMode === 'panel' ? (
     <AttachmentPreviewPanel
       preview={attachmentPreview}
       mode="panel"
       onClose={closeAttachmentPreview}
       onModeChange={setAttachmentPreviewMode}
+      renderViewer={renderAttachmentViewer}
     />
   ) : sourcesPanel ? (
     <ChatSourcesPanel
@@ -3561,501 +3567,72 @@ export default function ChatExperience({
             </div>
           </div>
         )}
-        {/* Sticky header — md: h-16 aligns with AppSidebar brand row border; mobile: no title; model left + mode menu right */}
-        <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
-            <div
-              className={`group/header-title min-w-0 items-center gap-2 ${
-                activeChatId && editingChatId === activeChatId
-                  ? 'flex w-full'
-                  : showAutomationHeaderControls
-                    ? 'flex w-full flex-wrap md:w-auto md:flex-nowrap'
-                  : 'hidden min-[768px]:flex'
-              }`}
-            >
-              {activeChatId && editingChatId === activeChatId ? (
-                <input
-                  ref={headerTitleInputRef}
-                  className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
-                  value={editingChatTitle}
-                  onChange={(e) => setEditingChatTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      void commitChatRename(activeChatId)
-                    }
-                    if (e.key === 'Escape') {
-                      e.preventDefault()
-                      cancelChatRename()
-                    }
-                  }}
-                  onBlur={() => void commitChatRename(activeChatId)}
-                />
-              ) : (
-                <div className="flex min-w-0 items-center gap-1">
-                  <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] md:truncate lg:max-w-[24rem]">
-                    <span className="line-clamp-2 md:line-clamp-1 md:truncate">
-                      {selectedAutomation?.name || (isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation'))}
-                    </span>
-                  </h2>
-                  {activeChatId && !selectedAutomation ? (
-                    <button
-                      type="button"
-                      onClick={beginHeaderChatRename}
-                      className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-[var(--foreground)] group-hover/header-title:opacity-100 focus-visible:opacity-100"
-                      aria-label="Rename chat"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                  ) : null}
-                </div>
-              )}
-              {projectName && (
-                <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
-                  <FolderOpen size={9} />
-                  <span className="max-w-[6rem] truncate sm:max-w-none">{projectName}</span>
-                </span>
-              )}
-            </div>
+        <ChatExperienceHeader
+          hideHeader={hideHeader}
+          activeChatId={activeChatId}
+          editingChatId={editingChatId}
+          editingChatTitle={editingChatTitle}
+          onEditingChatTitleChange={setEditingChatTitle}
+          onCommitChatRename={commitChatRename}
+          onCancelChatRename={cancelChatRename}
+          headerTitleInputRef={headerTitleInputRef}
+          showAutomationHeaderControls={showAutomationHeaderControls}
+          titleLabel={headerTitleLabel}
+          onBeginHeaderChatRename={beginHeaderChatRename}
+          showRenameButton={Boolean(activeChatId && !selectedAutomation)}
+          projectName={projectName}
+          selectedAutomation={selectedAutomation}
+          showAutomationChatTab={showAutomationChatTab}
+          appMode={mode}
+          isTemporaryChat={isTemporaryChat}
+          isActiveLoading={isActiveLoading}
+          onTemporaryChatToggle={handleTemporaryChatToggle}
+          onGenerationModeChange={handleModeChange}
+          generationMode={generationMode}
+          renderExportMenu={renderExportMenu}
+          modelPickerRef={modelPickerRef}
+          videoSubModePickerRef={videoSubModePickerRef}
+          modelPickerListScrollRef={modelPickerListScrollRef}
+          showModelPicker={showModelPicker}
+          onToggleModelPicker={() => setShowModelPicker((value) => !value)}
+          onSetShowModelPicker={setShowModelPicker}
+          modelPickerLabel={modelPickerLabel}
+          hoveredModelId={hoveredModelId}
+          modelQualitiesPos={modelQualitiesPos}
+          onHoveredModelChange={onHoveredModelChange}
+          resolveModel={getModel}
+          isFreeTier={isFreeTier}
+          isFreeTierChatModelId={isFreeTierChatModelId}
+          automationHeaderModelId={automationHeaderModelId}
+          automationHeaderModels={automationHeaderModels}
+          onSaveAutomationHeaderModel={saveAutomationHeaderModel}
+          getChatModelDisplayName={getChatModelDisplayName}
+          automationDetailTab={automationDetailTab}
+          onSelectAutomationDetailTab={selectAutomationDetailTab}
+          videoSubMode={videoSubMode}
+          showVideoSubModePicker={showVideoSubModePicker}
+          onToggleVideoSubModePicker={() => setShowVideoSubModePicker((value) => !value)}
+          onSetShowVideoSubModePicker={setShowVideoSubModePicker}
+          onVideoSubModeChange={handleVideoSubModeChange}
+          imageModels={IMAGE_MODELS}
+          selectedImageModels={selectedImageModels}
+          imageModelSelectionMode={imageModelSelectionMode}
+          onToggleImageModel={toggleImageModelInPicker}
+          onImageModelSelectionModeChange={handleImageModelSelectionModeChange}
+          videoModels={getVideoModelsBySubMode(videoSubMode)}
+          selectedVideoModels={selectedVideoModels}
+          videoModelSelectionMode={videoModelSelectionMode}
+          onToggleVideoModel={toggleVideoModelInPicker}
+          onVideoModelSelectionModeChange={handleVideoModelSelectionModeChange}
+          selectableTextModels={selectableTextModels}
+          askModelSelectionMode={askModelSelectionMode}
+          selectedActModel={selectedActModel}
+          selectedModels={selectedModels}
+          onToggleTextModel={toggleTextModelInPicker}
+          onTextModelSelectionModeChange={handleTextModelSelectionModeChange}
+          hasAutomationContext={hasAutomationContext}
+        />
 
-            {showAutomationHeaderControls && (
-              <div className="flex w-full shrink-0 items-center justify-end gap-2 md:w-auto">
-                <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-                  <DelayedTooltip label="Choose automation model" side="bottom">
-                    <button
-                      type="button"
-                      onClick={() => setShowModelPicker((value) => !value)}
-                      disabled={!selectedAutomation}
-                      className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-[13rem]"
-                      aria-label="Automation model"
-                    >
-                      <span className="min-w-0 truncate">{getChatModelDisplayName(automationHeaderModelId) || 'Select model'}</span>
-                      <ChevronDown size={11} className="shrink-0" />
-                    </button>
-                  </DelayedTooltip>
-                  {showModelPicker && selectedAutomation && (
-                    <>
-                      {hoveredModelId && modelQualitiesPos ? (
-                        <div
-                          aria-hidden
-                          className="pointer-events-none fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
-                          style={{
-                            left: modelQualitiesPos.x,
-                            top: modelQualitiesPos.y,
-                            transform: 'translate(calc(-100% - 8px), -50%)',
-                          }}
-                        >
-                          <Suspense fallback={null}>
-                            <ModelQualitiesPanel model={getModel(hoveredModelId)} />
-                          </Suspense>
-                        </div>
-                      ) : null}
-                      <div
-                        data-tour="model-picker"
-                        className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-                        onMouseLeave={() => {
-                          setHoveredModelId(null)
-                          setModelQualitiesPos(null)
-                        }}
-                      >
-                        <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
-                          {automationHeaderModels
-                            .map((m, index, models) => {
-                              const isSel = m.id === automationHeaderModelId
-                              const isFreeModelRow = isFreeTierChatModelId(m.id)
-                              const previous = models[index - 1]
-                              const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
-                              const showFreeTierGroupDivider =
-                                isFreeTier && !isFreeModelRow && previousIsFreeModelRow
-                              const showFreeGroupDivider =
-                                !isFreeTier && isFreeModelRow && !previousIsFreeModelRow
-                              const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
-                              const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
-                              return (
-                                <div key={m.id}>
-                                  {showDivider && (
-                                    <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
-                                      {dividerLabel}
-                                    </div>
-                                  )}
-                                  <button
-                                    type="button"
-                                    data-model-row={m.id}
-                                    onClick={() => {
-                                      void saveAutomationHeaderModel(m.id)
-                                      setShowModelPicker(false)
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      setHoveredModelId(m.id)
-                                      const r = e.currentTarget.getBoundingClientRect()
-                                      setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
-                                    }}
-                                    className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${
-                                      isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
-                                    }`}
-                                  >
-                                    <span className="flex items-center gap-2">
-                                      {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                                      {m.name}
-                                    </span>
-                                    <ModelBadges model={m} />
-                                  </button>
-                                </div>
-                              )
-                            })}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="flex h-8 shrink-0 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                  {AUTOMATION_DETAIL_TABS.map((tab) => {
-                    const active = automationDetailTab === tab.id
-                    const TabIcon = tab.icon
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => selectAutomationDetailTab(tab.id)}
-                        className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-colors ${
-                          active
-                            ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-                            : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        <TabIcon size={12} strokeWidth={1.75} />
-                        {tab.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Model picker + Generation mode (mobile: one row, model left / mode select right) */}
-            <div className={`flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2 ${
-              mode === 'automate' || !showAutomationChatTab ? 'hidden' : ''
-            }`}>
-              {generationMode === 'video' && (
-                <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => !isActiveLoading && setShowVideoSubModePicker((v) => !v)}
-                    disabled={isActiveLoading}
-                    className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-[13rem] ${
-                      isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
-                    }`}
-                  >
-                    <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
-                    <ChevronDown size={11} className="shrink-0" />
-                  </button>
-                  {showVideoSubModePicker && (
-                    <div className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
-                      {VIDEO_SUB_MODES.map(({ value, label }) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => { handleVideoSubModeChange(value); setShowVideoSubModePicker(false) }}
-                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${videoSubMode === value ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
-                        >
-                          {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
-                <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-                <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
-                  <button
-                    type="button"
-                    onClick={() => setShowModelPicker((v) => !v)}
-                    className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:w-auto md:max-w-[13rem]"
-                  >
-                    <span className="min-w-0 truncate">{modelPickerLabel}</span>
-                    <ChevronDown size={11} className="shrink-0" />
-                  </button>
-                </DelayedTooltip>
-                {showModelPicker && (
-                  <>
-                  {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
-                      style={{
-                        left: modelQualitiesPos.x,
-                        top: modelQualitiesPos.y,
-                        transform: 'translate(calc(-100% - 8px), -50%)',
-                      }}
-                    >
-                      <Suspense fallback={null}>
-                        <ModelQualitiesPanel model={getModel(hoveredModelId)} />
-                      </Suspense>
-                    </div>
-                  ) : null}
-                  <div
-                    data-tour="model-picker"
-                    className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-                    onMouseLeave={() => {
-                      setHoveredModelId(null)
-                      setModelQualitiesPos(null)
-                    }}
-                  >
-                  <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
-                  {generationMode === 'image' ? (
-                    IMAGE_MODELS.map((m) => {
-                        const isSel = selectedImageModels.includes(m.id)
-                        const isDisabled =
-                          imageModelSelectionMode === 'multiple' && !isSel && selectedImageModels.length >= 4
-                        return (
-                          <button key={m.id}
-                            disabled={isDisabled}
-                            onClick={() => toggleImageModelInPicker(m.id)}
-                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                              isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
-                            } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}>
-                            <span className="flex items-center gap-2">
-                              {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                              {m.name}
-                            </span>
-                          </button>
-                        )
-                      })
-                  ) : generationMode === 'video' ? (
-                    getVideoModelsBySubMode(videoSubMode).map((m) => {
-                        const isSel = selectedVideoModels.includes(m.id)
-                        const isDisabled =
-                          videoModelSelectionMode === 'multiple' && !isSel && selectedVideoModels.length >= 4
-                        return (
-                          <button key={m.id}
-                            disabled={isDisabled}
-                            onClick={() => toggleVideoModelInPicker(m.id)}
-                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                              isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--surface-muted)]'
-                            } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}>
-                            <span className="flex items-center gap-2">
-                              {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                              {m.name}
-                            </span>
-                          </button>
-                        )
-                      })
-                  ) : (
-                    selectableTextModels
-                      .map((m, index, models) => {
-                        const isSel =
-                        askModelSelectionMode === 'single'
-                          ? m.id === selectedActModel
-                          : selectedModels.includes(m.id)
-                      const isDisabled =
-                        askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
-                      const isFreeModelRow = isFreeTierChatModelId(m.id)
-                      const previous = models[index - 1]
-                      const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
-                      // Free-tier users see free models first; the divider then
-                      // marks the start of the (locked) premium section. Otherwise
-                      // it marks the start of the free section appended at the end.
-                      const showFreeTierGroupDivider =
-                        isFreeTier && !isFreeModelRow && previousIsFreeModelRow
-                      const showFreeGroupDivider =
-                        !isFreeTier && isFreeModelRow && !previousIsFreeModelRow
-                      const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
-                      const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
-                      return (
-                        <div key={m.id}>
-                          {showDivider && (
-                            <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
-                              {dividerLabel}
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            data-model-row={m.id}
-                            disabled={isDisabled}
-                            onClick={() => toggleTextModelInPicker(m.id)}
-                            onMouseEnter={(e) => {
-                              setHoveredModelId(m.id)
-                              const r = e.currentTarget.getBoundingClientRect()
-                              setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
-                            }}
-                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between ${
-                              isDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
-                            } ${isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}
-                          >
-                            <span className="flex items-center gap-2">
-                              {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
-                              {m.name}
-                            </span>
-                            <ModelBadges model={m} />
-                          </button>
-                        </div>
-                      )
-                    })
-                  )}
-                  </div>
-                  {generationMode === 'image' && (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((mode) => {
-                          const isActive = imageModelSelectionMode === mode
-                          return (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => handleImageModelSelectionModeChange(mode)}
-                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${
-                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
-                              }`}
-                            >
-                              {mode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {generationMode === 'video' && (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((mode) => {
-                          const isActive = videoModelSelectionMode === mode
-                          return (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => handleVideoModelSelectionModeChange(mode)}
-                              disabled={isActiveLoading || (isFreeTier && mode === 'multiple')}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${
-                                isActiveLoading || (isFreeTier && mode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
-                              }`}
-                            >
-                              {mode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {generationMode === 'text' && !hasAutomationContext && (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((selMode) => {
-                          const isActive = askModelSelectionMode === selMode
-                          const multipleDisabled = isFreeTier && selMode === 'multiple'
-                          return (
-                            <button
-                              key={selMode}
-                              type="button"
-                              onClick={() => handleTextModelSelectionModeChange(selMode)}
-                              disabled={multipleDisabled}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${
-                                multipleDisabled ? 'cursor-not-allowed opacity-40' : ''
-                              }`}
-                            >
-                              {selMode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  </div>
-                  </>
-              )}
-            </div>
-                <div className="flex shrink-0 items-center gap-1.5 md:hidden">
-                  <GenerationModeSelect
-                    mode={generationMode}
-                    onChange={handleModeChange}
-                    disabled={isActiveLoading}
-                  />
-                  {mode === 'chat' && (
-                    <TemporaryChatButton
-                      active={isTemporaryChat}
-                      disabled={isActiveLoading}
-                      onClick={handleTemporaryChatToggle}
-                    />
-                  )}
-                  {!selectedAutomation && primaryMessages.length > 0 && (activeChatId || isTemporaryChat) && (
-                    <ExportMenu
-                      className="shrink-0"
-                      type="chat"
-                      title={isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || 'New conversation'}
-                      content={primaryMessages.map((m) => ({
-                        role: m.role,
-                        content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
-                        parts: m.parts as Array<{ type: string; text?: string }>,
-                      }))}
-                      metadata={{
-                        createdAt: activeChat?.createdAt,
-                        updatedAt: activeChat?.updatedAt,
-                        modelIds: activeChat?.modelIds,
-                      }}
-                      resourceId={isTemporaryChat ? undefined : activeChatId ?? undefined}
-                      initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
-                      initialShareUrl={
-                        !isTemporaryChat && activeChat?.shareVisibility === 'public' && activeChat?.shareToken
-                          ? buildSharePageUrl('chat', activeChat.shareToken)
-                          : null
-                      }
-                    />
-                  )}
-                </div>
-              </div>
-            <div className="hidden shrink-0 items-center gap-1.5 md:flex">
-              <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
-                <span data-tour="generation-mode-toggle" className="inline-flex">
-                  <GenerationModeToggle mode={generationMode} onChange={handleModeChange} disabled={isActiveLoading} />
-                </span>
-              </DelayedTooltip>
-              {mode === 'chat' && (
-                <TemporaryChatButton
-                  active={isTemporaryChat}
-                  disabled={isActiveLoading}
-                  onClick={handleTemporaryChatToggle}
-                />
-              )}
-              {!selectedAutomation && primaryMessages.length > 0 && (activeChatId || isTemporaryChat) && (
-                <ExportMenu
-                  className="shrink-0"
-                  type="chat"
-                  title={isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || 'New conversation'}
-                  content={primaryMessages.map((m) => ({
-                    role: m.role,
-                    content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
-                    parts: m.parts as Array<{ type: string; text?: string }>,
-                  }))}
-                  metadata={{
-                    createdAt: activeChat?.createdAt,
-                    updatedAt: activeChat?.updatedAt,
-                    modelIds: activeChat?.modelIds,
-                  }}
-                  resourceId={isTemporaryChat ? undefined : activeChatId ?? undefined}
-                  initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
-                  initialShareUrl={
-                    !isTemporaryChat && activeChat?.shareVisibility === 'public' && activeChat?.shareToken
-                      ? buildSharePageUrl('chat', activeChat.shareToken)
-                      : null
-                  }
-                />
-              )}
-            </div>
-          </div>
-        </AppScreenHeader>
 
         <AppScreenBody
           padding="none"
@@ -4285,152 +3862,10 @@ export default function ChatExperience({
           preview={attachmentPreview}
           onClose={closeAttachmentPreview}
           onModeChange={setAttachmentPreviewMode}
+          renderViewer={renderAttachmentViewer}
         />
       )}
 
     </>
-  )
-}
-
-function BudgetTopUpComposerPrompt({
-  amountCents,
-  remainingCents,
-  checkoutLoading,
-  onStartTopUp,
-}: {
-  amountCents: number
-  remainingCents: number
-  checkoutLoading: boolean
-  onStartTopUp: () => void
-}) {
-  return (
-    <div className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-[var(--foreground)]">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <ArrowUp size={14} className="shrink-0 text-amber-500" strokeWidth={1.9} />
-            <p className="font-medium">Paid budget is empty</p>
-          </div>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
-            ${Math.max(0, remainingCents / 100).toFixed(2)} remaining. Free models still work; top up to use paid models and paid tools.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onStartTopUp}
-            disabled={checkoutLoading}
-            className="inline-flex h-8 items-center justify-center rounded-lg bg-[var(--foreground)] px-3 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-60"
-          >
-            {checkoutLoading ? 'Opening...' : `Add $${(amountCents / 100).toFixed(0)}`}
-          </button>
-          <Link
-            href="/account"
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
-          >
-            Account
-          </Link>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function AttachmentPreviewHeaderActions({
-  mode,
-  onClose,
-  onModeChange,
-}: {
-  mode: AttachmentPreviewMode
-  onClose: () => void
-  onModeChange: (mode: AttachmentPreviewMode) => void
-}) {
-  const nextMode = mode === 'panel' ? 'dialog' : 'panel'
-  const label = mode === 'panel' ? 'Open as floating dialog' : 'Open in side panel'
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => onModeChange(nextMode)}
-        className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-        aria-label={label}
-        title={label}
-      >
-        {mode === 'panel' ? <Maximize2 size={15} strokeWidth={1.75} /> : <PanelRightOpen size={15} strokeWidth={1.75} />}
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
-        className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-        aria-label="Close attachment preview"
-        title="Close"
-      >
-        <X size={16} strokeWidth={1.75} />
-      </button>
-    </>
-  )
-}
-
-function AttachmentPreviewPanel({
-  preview,
-  mode,
-  onClose,
-  onModeChange,
-}: {
-  preview: AttachmentPreview
-  mode: AttachmentPreviewMode
-  onClose: () => void
-  onModeChange: (mode: AttachmentPreviewMode) => void
-}) {
-  return (
-    <FileViewerPanel
-      name={preview.name}
-      content={preview.content}
-      url={preview.url}
-      headerRight={
-        <AttachmentPreviewHeaderActions
-          mode={mode}
-          onClose={onClose}
-          onModeChange={onModeChange}
-        />
-      }
-    />
-  )
-}
-
-function AttachmentPreviewDialog({
-  preview,
-  onClose,
-  onModeChange,
-}: {
-  preview: AttachmentPreview
-  onClose: () => void
-  onModeChange: (mode: AttachmentPreviewMode) => void
-}) {
-  return (
-    <div
-      className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
-      onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
-    >
-      <div
-        role="dialog"
-        aria-label="Attachment preview"
-        className="overlay-dialog-in flex max-h-[min(92vh,900px)] min-h-[min(70vh,720px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <FileViewerPanel
-          name={preview.name}
-          content={preview.content}
-          url={preview.url}
-          headerRight={
-            <AttachmentPreviewHeaderActions
-              mode="dialog"
-              onClose={onClose}
-              onModeChange={onModeChange}
-            />
-          }
-        />
-      </div>
-    </div>
   )
 }

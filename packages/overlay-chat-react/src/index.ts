@@ -1,5 +1,8 @@
 export * from './components/BrandMark'
+export * from './components/AttachmentPreviewShell'
 export * from './components/AttachmentTray'
+export * from './components/BudgetTopUpComposerPrompt'
+export * from './components/ChatExperienceHeader'
 export * from './components/ChatComposer'
 export * from './components/ComprehensiveModelPicker'
 export { ComprehensiveModelPicker as ModelPicker } from './components/ComprehensiveModelPicker'

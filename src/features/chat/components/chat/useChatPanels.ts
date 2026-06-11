@@ -1,17 +1,11 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import type { AttachmentPreview, AttachmentPreviewMode } from '@overlay/chat-react'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
-export type AttachmentPreviewMode = 'panel' | 'dialog'
-
-export type AttachmentPreview = {
-  name: string
-  content: string
-  url?: string
-  fileId?: string
-}
+export type { AttachmentPreview, AttachmentPreviewMode }
 
 const ATTACHMENT_PREVIEW_MODE_KEY = 'overlay_attachment_preview_mode'
 

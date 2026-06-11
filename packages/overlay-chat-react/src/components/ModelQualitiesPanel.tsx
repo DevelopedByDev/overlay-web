@@ -40,7 +40,7 @@ export function ModelQualitiesPanel({
       <MetricRow
         icon={DollarSign}
         label="Cost"
-        value={model.cost === 0 ? 'Free' : `$${(model.pricePer1mTokens ?? model.cost).toFixed(2)}/M`}
+        value={model.cost === 0 ? 'Free' : `$${(model.pricePer1mTokens ?? model.cost ?? 0).toFixed(2)}/M`}
       />
       <MetricRow
         icon={Zap}
