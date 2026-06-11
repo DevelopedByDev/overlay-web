@@ -19,6 +19,12 @@ import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
+  SidebarShell,
+  SidebarNav,
+  SidebarSection,
+  SidebarResourceSection,
+} from '@overlay/ui/primitives'
+import {
   FilesInlinePanel,
   InlineNavChildren,
   ProjectsInlinePanel,
@@ -42,7 +48,6 @@ import {
 import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
 import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
 import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
-import { SidebarResourceSection } from './sidebar/SidebarResourceSection'
 
 export default function AppSidebar({
   user: serverUser,
@@ -385,7 +390,7 @@ export default function AppSidebar({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <nav className="shrink-0 space-y-0.5 px-2 py-3">
+        <SidebarNav className="shrink-0">
           {navItems.map((item, navIdx) => {
             const { href, label, icon: Icon, disabled } = item
             const active =
@@ -588,7 +593,7 @@ export default function AppSidebar({
               </div>
             ) : null}
           </div>
-        </nav>
+        </SidebarNav>
 
         {!sidebarCollapsed && (chatOpen || filesSectionOpen || projectsOpen || automationsSectionOpen) ? (
           <SidebarResourceSection
@@ -631,7 +636,7 @@ export default function AppSidebar({
         ) : null}
       </div>
 
-      <div className={`space-y-3 border-t border-[var(--border)] py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
+      <SidebarSection className={`space-y-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
         <div ref={menuRef} className="relative">
           {accountMenuOpen && (
             <div
@@ -682,7 +687,7 @@ export default function AppSidebar({
             </button>
           )}
         </div>
-      </div>
+      </SidebarSection>
     </>
   )
 
@@ -732,15 +737,15 @@ export default function AppSidebar({
         </div>
       </div>
 
-      <aside
-        className={`hidden h-full shrink-0 flex-col overflow-hidden border-r bg-[var(--sidebar-surface)] transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
+      <SidebarShell
+        className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
           hideTemporaryChatChrome
             ? 'w-0 border-transparent opacity-0 pointer-events-none'
-            : `${sidebarCollapsed ? 'w-[72px]' : 'w-56'} border-[var(--border)] opacity-100`
+            : `${sidebarCollapsed ? 'w-[72px]' : 'w-56'} opacity-100`
         }`}
       >
         {sidebarContent}
-      </aside>
+      </SidebarShell>
 
       <div className={`fixed inset-0 z-50 md:hidden ${mobileMenuOpen && !hideTemporaryChatChrome ? '' : 'pointer-events-none'}`}>
         <button
@@ -749,8 +754,8 @@ export default function AppSidebar({
           onClick={() => setMobileMenuOpen(false)}
           className={`absolute inset-0 bg-black/30 transition-opacity ${mobileMenuOpen && !hideTemporaryChatChrome ? 'opacity-100' : 'opacity-0'}`}
         />
-        <aside
-          className={`absolute inset-y-0 left-0 flex w-[82vw] max-w-[320px] flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)] shadow-[0_20px_80px_rgba(10,10,10,0.18)] transition-transform ${
+        <SidebarShell
+          className={`absolute inset-y-0 left-0 w-[82vw] max-w-[320px] border-r border-[var(--border)] bg-[var(--sidebar-surface)] shadow-[0_20px_80px_rgba(10,10,10,0.18)] transition-transform ${
             mobileMenuOpen && !hideTemporaryChatChrome ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -766,7 +771,7 @@ export default function AppSidebar({
             </button>
           </div>
           {sidebarContent}
-        </aside>
+        </SidebarShell>
       </div>
 
       <GlobalSearchDialog

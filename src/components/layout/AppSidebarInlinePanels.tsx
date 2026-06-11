@@ -23,7 +23,7 @@ import {
 } from '@overlay/app-core'
 import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/projects'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { SidebarResourceList } from './sidebar/SidebarResourceSection'
+import { SidebarResourceList } from '@overlay/ui/primitives'
 
 type Project = ProjectSummary
 type ProjectChat = ProjectChatSummary

@@ -26,7 +26,7 @@ import {
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { SidebarResourceList } from '@/components/layout/sidebar/SidebarResourceSection'
+import { SidebarResourceList } from '@overlay/ui/primitives'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'

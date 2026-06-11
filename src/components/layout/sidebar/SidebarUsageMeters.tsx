@@ -1,6 +1,7 @@
 'use client'
 
 import { AlertCircle } from 'lucide-react'
+import { UsageMeterBar } from '@overlay/ui/primitives'
 import { formatBytes } from '@/shared/storage/storage-limits'
 
 export interface SidebarEntitlements {
@@ -37,25 +38,22 @@ export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements |
   const remainingPctRaw = Math.max(0, 100 - usedPctRaw)
   const exhausted = remainingPctRaw <= 0
   const warning = usedPctRaw >= 80
+  const tone = exhausted ? 'exhausted' : warning ? 'warning' : 'default'
 
   return (
-    <div className={`flex flex-col gap-1 text-xs ${exhausted ? 'text-red-500' : warning ? 'text-amber-500' : 'text-[var(--muted-light)]'}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="tabular-nums">
+    <UsageMeterBar
+      percent={remainingPctRaw}
+      tone={tone}
+      primaryLabel={
+        <>
           {remainingPctRaw.toFixed(1)}% remaining
           <span className="text-[10px] opacity-70">
             {' '}· ${(budgetUsedCents / 100).toFixed(2)} / ${(budgetTotalCents / 100).toFixed(2)}
           </span>
-        </span>
-        {exhausted && <AlertCircle size={11} />}
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
-        <div
-          className={`h-full rounded-full transition-all ${exhausted ? 'bg-red-400' : warning ? 'bg-amber-400' : 'bg-[var(--foreground)]'}`}
-          style={{ width: `${remainingPctRaw}%` }}
-        />
-      </div>
-    </div>
+        </>
+      }
+      trailingIcon={exhausted ? <AlertCircle size={11} /> : undefined}
+    />
   )
 }
 
@@ -70,21 +68,14 @@ export function StorageBar({ entitlements }: { entitlements: SidebarEntitlements
   const usedPct = limitBytes > 0 ? Math.min(100, (usedBytes / limitBytes) * 100) : 0
   const warning = usedPct >= 80
   const exhausted = limitBytes > 0 && remainingBytes <= 0
+  const tone = exhausted ? 'exhausted' : warning ? 'warning' : 'default'
 
   return (
-    <div className={`flex flex-col gap-1 text-xs ${exhausted ? 'text-red-500' : warning ? 'text-amber-500' : 'text-[var(--muted-light)]'}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="tabular-nums">{formatBytes(remainingBytes)} available</span>
-        <span className="shrink-0 text-[10px] opacity-70 tabular-nums">
-          {formatBytes(usedBytes)} / {formatBytes(limitBytes)}
-        </span>
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
-        <div
-          className={`h-full rounded-full transition-all ${exhausted ? 'bg-red-400' : warning ? 'bg-amber-400' : 'bg-[var(--foreground)]'}`}
-          style={{ width: `${usedPct}%` }}
-        />
-      </div>
-    </div>
+    <UsageMeterBar
+      percent={usedPct}
+      tone={tone}
+      primaryLabel={`${formatBytes(remainingBytes)} available`}
+      secondaryLabel={`${formatBytes(usedBytes)} / ${formatBytes(limitBytes)}`}
+    />
   )
 }

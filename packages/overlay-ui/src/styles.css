@@ -47,6 +47,10 @@
   --overlay-leading-tight: 1.25;
   --overlay-leading-normal: 1.5;
   --overlay-leading-relaxed: 1.625;
+  --overlay-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --overlay-duration-fast: 150ms;
+  --overlay-duration: 220ms;
+  --overlay-duration-panel: 300ms;
 }
 
 [data-theme='dark'] {
@@ -179,4 +183,62 @@
     rgba(255, 255, 255, 0.03) 65%,
     transparent 100%
   );
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlayPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes overlayDialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.overlay-fade-in {
+  animation: overlayFadeIn var(--overlay-duration-fast) var(--overlay-ease) both;
+}
+
+.overlay-pop-in {
+  animation: overlayPopIn var(--overlay-duration-fast) var(--overlay-ease) both;
+  transform-origin: top;
+}
+
+.overlay-dialog-in {
+  animation: overlayDialogIn var(--overlay-duration) var(--overlay-ease) both;
+}
+
+.overlay-backdrop-in {
+  animation: overlayFadeIn var(--overlay-duration) var(--overlay-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-fade-in,
+  .overlay-pop-in,
+  .overlay-dialog-in,
+  .overlay-backdrop-in {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
 }
