@@ -3713,14 +3713,13 @@ export default function ChatExperience({
       </div>
     </AppScreenShell>
 
-      {attachmentPreview && attachmentPreviewMode === 'dialog' && (
-        <AttachmentPreviewDialog
-          preview={attachmentPreview}
-          onClose={closeAttachmentPreview}
-          onModeChange={setAttachmentPreviewMode}
-          renderViewer={renderAttachmentViewer}
-        />
-      )}
+      <AttachmentPreviewDialog
+        open={Boolean(attachmentPreview && attachmentPreviewMode === 'dialog')}
+        preview={attachmentPreview}
+        onClose={closeAttachmentPreview}
+        onModeChange={setAttachmentPreviewMode}
+        renderViewer={renderAttachmentViewer}
+      />
 
     </>
   )

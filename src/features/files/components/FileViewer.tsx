@@ -261,8 +261,8 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
       iframeSrc.startsWith('/api/')
     if (canEmbed) {
       return (
-        <div className="flex-1 overflow-hidden">
-          <iframe src={iframeSrc} className="h-full w-full border-none" title={name} />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <iframe src={iframeSrc} className="min-h-0 flex-1 w-full border-none" title={name} />
         </div>
       )
     }
@@ -352,6 +352,7 @@ export function FileViewerPanel({
 
   return (
     <AppScreenShell
+      className="flex min-h-0 flex-1 flex-col"
       header={
         <AppScreenHeader className="px-6">
           <div className="flex min-w-0 items-center justify-between gap-3">

@@ -1,7 +1,8 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Maximize2, PanelRightOpen, X } from 'lucide-react'
+import { cn, usePresence } from '@overlay/ui'
 
 export type AttachmentPreviewMode = 'panel' | 'dialog'
 
@@ -76,37 +77,54 @@ export function AttachmentPreviewPanel({
 }
 
 export function AttachmentPreviewDialog({
+  open,
   preview,
   onClose,
   onModeChange,
   renderViewer,
 }: {
-  preview: AttachmentPreview
+  open: boolean
+  preview: AttachmentPreview | null
   onClose: () => void
   onModeChange: (mode: AttachmentPreviewMode) => void
   renderViewer: (props: AttachmentViewerRenderProps) => ReactNode
 }) {
+  const { mounted, visible } = usePresence(open, 300)
+  const [cachedPreview, setCachedPreview] = useState(preview)
+  if (preview && preview !== cachedPreview) setCachedPreview(preview)
+  const activePreview = preview ?? cachedPreview
+  if (!mounted || !activePreview) return null
+
   return (
     <div
-      className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4"
+      className={cn(
+        'fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4 transition-opacity duration-300 ease-[var(--overlay-ease)]',
+        visible ? 'opacity-100' : 'opacity-0',
+      )}
       onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
     >
       <div
         role="dialog"
         aria-label="Attachment preview"
-        className="overlay-dialog-in flex max-h-[min(92vh,900px)] min-h-[min(70vh,720px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl"
+        aria-modal="true"
+        className={cn(
+          'flex h-[min(92vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl transition-[opacity,transform] duration-300 ease-[var(--overlay-ease)]',
+          visible ? 'scale-100 translate-y-0 opacity-100' : 'scale-95 translate-y-1 opacity-0',
+        )}
         onClick={(event) => event.stopPropagation()}
       >
-        {renderViewer({
-          preview,
-          headerRight: (
-            <AttachmentPreviewHeaderActions
-              mode="dialog"
-              onClose={onClose}
-              onModeChange={onModeChange}
-            />
-          ),
-        })}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {renderViewer({
+            preview: activePreview,
+            headerRight: (
+              <AttachmentPreviewHeaderActions
+                mode="dialog"
+                onClose={onClose}
+                onModeChange={onModeChange}
+              />
+            ),
+          })}
+        </div>
       </div>
     </div>
   )
