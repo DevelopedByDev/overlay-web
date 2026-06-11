@@ -6,6 +6,7 @@ import type {
   ChatOutput,
   GenerationResult,
   LiveMessageDelta,
+  MessageImageAttachment,
   RestoredOutputGroup,
   ServerConversationMessage,
   SkillDraftSummary,
@@ -144,11 +145,64 @@ export function computeToolChainFlags(segments: AssistantVisualSegment[]): Array
   }))
 }
 
-export function getMessageImages(msg: { parts?: Array<{ type: string; url?: string; mediaType?: string }> }): string[] {
+function extensionFromMediaType(mediaType?: string): string {
+  if (!mediaType?.startsWith('image/')) return 'png'
+  const subtype = mediaType.split('/')[1]?.split(';')[0]?.trim().toLowerCase()
+  if (!subtype) return 'png'
+  if (subtype === 'jpeg') return 'jpg'
+  if (subtype === 'svg+xml') return 'svg'
+  return subtype
+}
+
+export function getMessageImageAttachments(msg: {
+  parts?: Array<{ type: string; url?: string; mediaType?: string; fileName?: string; filename?: string }>
+}): MessageImageAttachment[] {
   if (!msg.parts) return []
   return msg.parts
     .filter((part) => part.type === 'file' && part.url && (part.mediaType?.startsWith('image/') ?? true))
-    .map((part) => part.url!)
+    .map((part, index) => ({
+      url: part.url!,
+      name: part.fileName?.trim() || part.filename?.trim() || `image-${index + 1}.${extensionFromMediaType(part.mediaType)}`,
+      ...(part.mediaType ? { mediaType: part.mediaType } : {}),
+    }))
+}
+
+export function getMessageImages(msg: {
+  parts?: Array<{ type: string; url?: string; mediaType?: string; fileName?: string; filename?: string }>
+}): string[] {
+  return getMessageImageAttachments(msg).map((attachment) => attachment.url)
+}
+
+/** Act assistant for a user turn: mirrors chat0 until streaming appends the assistant only to actChat. */
+export function resolveActAssistant<
+  T extends { id?: string; role: string; parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }> },
+>(
+  chat0Linear: Array<{ id?: string; role: string }>,
+  actMsgs: T[],
+  userMsgId: string,
+): T | null {
+  const i = chat0Linear.findIndex((m) => m.role === 'user' && m.id === userMsgId)
+  if (i >= 0) {
+    const candidates: T[] = []
+    for (let j = i + 1; j < actMsgs.length; j++) {
+      const m = actMsgs[j]!
+      if (m.role === 'user') break
+      if (m.role === 'assistant') candidates.push(m)
+    }
+    const selected = chooseAssistantCandidate(candidates)
+    if (selected) return selected
+  }
+  const ui = actMsgs.findIndex((m) => m.id === userMsgId && m.role === 'user')
+  if (ui >= 0) {
+    const candidates: T[] = []
+    for (let j = ui + 1; j < actMsgs.length; j++) {
+      const m = actMsgs[j]!
+      if (m.role === 'user') break
+      if (m.role === 'assistant') candidates.push(m)
+    }
+    return chooseAssistantCandidate(candidates)
+  }
+  return null
 }
 
 export function generatedUiPartFromToolBlock(block: ToolVisualBlock) {

@@ -23,7 +23,7 @@ import {
   getUserTurnId,
   resolveActAssistant,
   splitUserDisplayText,
-} from './chat-interface/chatLogic'
+} from '@overlay/chat-core'
 import type { DraftModalState } from './chat-interface/types'
 import { ChatToolSurface } from './ChatToolSurface'
 import { ChatMediaMessage } from './ChatMediaMessage'

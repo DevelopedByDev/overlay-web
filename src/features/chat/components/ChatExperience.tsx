@@ -121,18 +121,18 @@ import {
 import {
   applyLiveMessageDeltaParts,
   assistantBlocksToPlainText,
+  buildAssistantVisualSequence,
+  buildRestoredMessageExchanges,
   chatGreetingLine,
   chooseAssistantCandidate,
   getUserTurnId,
-  buildRestoredMessageExchanges,
   groupOutputsIntoExchanges,
   restoreGenerationStateForExchanges,
-  scrollToExchangeTurn,
   stripAssistantAfterUserTurn,
-  buildAssistantVisualSequence,
-  generateTitle,
   syntheticMessagesForOutputGroups,
-} from './chat-interface/chatLogic'
+} from '@overlay/chat-core'
+import { generateTitle } from '@/features/chat/lib/generate-title'
+import { scrollToExchangeTurn } from '@/features/chat/lib/scroll-to-exchange-turn'
 import type {
   AskModelSelectionMode,
   ChatMessageMetadata,

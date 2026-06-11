@@ -1,7 +1,7 @@
 import { cloneGenerationResultsMap } from '@overlay/chat-core'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
-import { buildMediaSummary } from '../chat-interface/chatLogic'
+import { buildMediaSummary } from '@overlay/chat-core'
 import type { ConversationRuntime, ConversationUiState, GenerationResult } from '../chat-interface/types'
 
 type MediaKind = 'image' | 'video'

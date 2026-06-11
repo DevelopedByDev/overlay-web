@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { sanitizeEmptyChatStarters } from '../chat-interface/chatLogic'
+import { sanitizeEmptyChatStarters } from '@overlay/chat-core'
 
 const DEFAULT_AUTOMATE_SUGGESTIONS = [
   'Email me a daily digest of my top priorities',

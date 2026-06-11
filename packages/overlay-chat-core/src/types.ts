@@ -30,6 +30,12 @@ export interface AttachedImage {
   name: string
 }
 
+export type MessageImageAttachment = {
+  url: string
+  name: string
+  mediaType?: string
+}
+
 export interface PendingChatDocument {
   clientId: string
   name: string

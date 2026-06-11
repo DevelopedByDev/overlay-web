@@ -6,7 +6,7 @@ import { MediaSlotOutput, UserMessageBubble } from '@overlay/chat-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
-import { getMessageImageAttachments, getMessageText, getUserReplyThreadMeta, getUserTurnId } from './chat-interface/chatLogic'
+import { getMessageImageAttachments, getMessageText, getUserReplyThreadMeta, getUserTurnId } from '@overlay/chat-core'
 import type { GenerationResult } from './chat-interface/types'
 import { FlashCopyIconButton } from './chat-interface/Modals'
 

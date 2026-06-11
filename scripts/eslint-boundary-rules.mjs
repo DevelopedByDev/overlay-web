@@ -47,7 +47,6 @@ const LEGACY_FEATURE_BOUNDARY_DEBT_FILES_BY_DOMAIN = {
   chat: [
     'src/features/chat/components/ChatExperience.tsx',
     'src/features/chat/components/MarkdownMessage.tsx',
-    'src/features/chat/components/chat-interface/chatLogic.ts',
     'src/features/chat/components/chat-interface/types.ts',
   ],
   files: [
