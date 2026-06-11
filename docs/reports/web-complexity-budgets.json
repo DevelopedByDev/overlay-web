@@ -2,6 +2,10 @@
   "maxProductionFileLoc": 500,
   "maxFunctionComplexity": 25,
   "maxRouteHandlerLoc": 250,
+  "monolithFileLocBudgets": {
+    "src/features/chat/components/ChatExperience.tsx": 3700,
+    "src/features/knowledge/components/KnowledgeView.tsx": 900
+  },
   "allowedExactDuplicateGroups": [
     [
       "src/sentry.edge.config.ts",

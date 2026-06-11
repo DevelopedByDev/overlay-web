@@ -31,6 +31,8 @@ import {
   SettingsPageShell,
   SettingsSectionRenderer,
 } from '..'
+import { KnowledgeFileDetailPanel, KnowledgeViewHeader } from '../knowledge'
+import { useRef } from 'react'
 
 const now = Date.now()
 
@@ -366,5 +368,100 @@ export function BillingControlsPanelStory() {
         <p className="text-sm text-[var(--muted)]">Top-up preference controls render here from the app shell.</p>
       </BillingControlsPanel>
     </div>
+  )
+}
+
+export function KnowledgeFileDetailPanelEditableStory() {
+  return (
+    <div className="max-w-3xl border border-[var(--border)] bg-[var(--background)] p-4">
+      <KnowledgeFileDetailPanel
+        fileName="runbook.md"
+        isEditable
+        fileContent={'# Incident runbook\n\n1. Triage\n2. Escalate'}
+        onContentChange={() => undefined}
+        renderViewer={() => null}
+      />
+    </div>
+  )
+}
+
+export function KnowledgeFileDetailPanelPreviewStory() {
+  return (
+    <div className="max-w-3xl border border-[var(--border)] bg-[var(--background)] p-4">
+      <KnowledgeFileDetailPanel
+        fileName="Security FAQ.pdf"
+        isEditable={false}
+        fileContent=""
+        onContentChange={() => undefined}
+        renderViewer={() => (
+          <div className="flex flex-1 items-center justify-center text-sm text-[var(--muted)]">
+            PDF preview slot
+          </div>
+        )}
+      />
+    </div>
+  )
+}
+
+export function KnowledgeViewHeaderBrowseStory() {
+  const createMenuRef = useRef<HTMLDivElement>(null)
+  const fileUploadRef = useRef<HTMLInputElement>(null)
+  const folderUploadRef = useRef<HTMLInputElement>(null)
+  const uploadMenuRef = useRef<HTMLDivElement>(null)
+  const outputFilterRef = useRef<HTMLDivElement>(null)
+
+  return (
+    <KnowledgeViewHeader
+      activeFolder={null}
+      activeTab="files"
+      bulkDeleting={false}
+      createMenuOpen={false}
+      createMenuRef={createMenuRef}
+      fileCount={files.length}
+      filesCategory="files"
+      fileTitle=""
+      fileUploadRef={fileUploadRef}
+      folderBreadcrumb={[]}
+      folderUploadRef={folderUploadRef}
+      isSavingFile={false}
+      layout="list"
+      memoryCount={memories.length}
+      memorySearchOpen={false}
+      memorySearchQuery=""
+      mode="files"
+      moveFileToParent={() => undefined}
+      navigateToFolder={() => undefined}
+      onBulkDeleteFiles={() => undefined}
+      onBulkDeleteMemories={() => undefined}
+      onBulkDeleteOutputs={() => undefined}
+      onCloseFile={() => undefined}
+      onCreateNoteFile={() => undefined}
+      onExitSelectMode={() => undefined}
+      onFileTitleChange={() => undefined}
+      onImportMemory={() => undefined}
+      onNewMemory={() => undefined}
+      onRefreshOutputs={() => undefined}
+      onSetMemorySearchOpen={() => undefined}
+      onSetMemorySearchQuery={() => undefined}
+      onSetSelectMode={() => undefined}
+      onUpdateQuery={() => undefined}
+      outputFilter="all"
+      outputFilterOpen={false}
+      outputFilterRef={outputFilterRef}
+      rootItemCount={files.length}
+      selectedFile={null}
+      selectedFileCount={0}
+      selectedMemoryCount={0}
+      selectedOutputCount={0}
+      selectMode={false}
+      setCreateMenuOpen={() => undefined}
+      setDialog={() => undefined}
+      setDialogName={() => undefined}
+      setOutputFilterOpen={() => undefined}
+      setUploadMenuOpen={() => undefined}
+      uploadMenuOpen={false}
+      uploadMenuRef={uploadMenuRef}
+      onCommitOutputFilter={() => undefined}
+    />
   )
 }

@@ -62,6 +62,7 @@ import {
 import { common, createLowlight } from 'lowlight'
 import SlashMenu, { type SlashMenuItem } from './SlashMenu'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
+import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import {
@@ -1032,6 +1033,7 @@ export default function NotebookEditor({
                 createdAt: activeNote.createdAt,
                 updatedAt: activeNote.updatedAt,
               }}
+              renderShareDialog={(props) => <ShareDialog {...props} />}
             />
           ) : null}
           onBackToFiles={() => void handleBackToFiles()}

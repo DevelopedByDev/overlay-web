@@ -7,7 +7,7 @@ import { resolveKnowledgeLayout } from '@overlay/app-core'
 import { FilesRouteSkeleton, type FilesRouteSkeletonLayout } from '../_components/AppRouteSkeletons'
 import { FilesRouteLoadingSkeleton } from './FilesRouteLoadingSkeleton'
 
-const KnowledgeView = dynamic(() => import('@/features/knowledge/components/KnowledgeView'), {
+const KnowledgeView = dynamic(() => import('@/features/knowledge/components/KnowledgeViewHost'), {
   loading: () => <FilesRouteLoadingSkeleton />,
 })
 

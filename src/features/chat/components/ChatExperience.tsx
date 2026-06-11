@@ -92,6 +92,7 @@ import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
+import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
@@ -3274,6 +3275,7 @@ export default function ChatExperience({
             ? buildSharePageUrl('chat', activeChat.shareToken)
             : null
         }
+        renderShareDialog={(props) => <ShareDialog {...props} />}
       />
     )
   }, [

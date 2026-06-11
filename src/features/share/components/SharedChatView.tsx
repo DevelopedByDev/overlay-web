@@ -4,7 +4,7 @@
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { isGeneratedUiPart } from '@overlay/chat-core/generated-ui'
-import { MarkdownMessage } from '@/features/chat/components/MarkdownMessage'
+import { MarkdownMessage } from '@overlay/chat-react'
 import type { SharedConversation } from '@/app/share/c/[token]/page'
 
 type Message = SharedConversation['messages'][number]

@@ -1,9 +1,10 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Globe, Loader2, Lock, MoreVertical, Share2 } from 'lucide-react'
-import { ShareDialog } from '@/features/share/components/ShareDialog'
-import { buildSharePageUrl } from '@/features/share/lib/share-url'
+import { buildSharePageUrl } from '@/shared/share/share-page-url'
+import type { ShareDialogRenderProps } from '@/shared/share/share-dialog-resource'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 interface FileShareMenuProps {
@@ -12,6 +13,7 @@ interface FileShareMenuProps {
   initialShareVisibility?: 'private' | 'public'
   initialShareUrl?: string | null
   className?: string
+  renderShareDialog: (props: ShareDialogRenderProps) => ReactNode
 }
 
 /** Minimal 3-dot menu surfaced on file viewers. Currently only exposes Share. */
@@ -21,6 +23,7 @@ export function FileShareMenu({
   initialShareVisibility,
   initialShareUrl,
   className = '',
+  renderShareDialog,
 }: FileShareMenuProps) {
   const [showMenu, setShowMenu] = useState(false)
   const [showShareSubmenu, setShowShareSubmenu] = useState(false)
@@ -132,15 +135,14 @@ export function FileShareMenu({
         </div>
       )}
 
-      <ShareDialog
-        isOpen={shareDialogOpen}
-        onClose={() => setShareDialogOpen(false)}
-        resource={
+      {renderShareDialog({
+        isOpen: shareDialogOpen,
+        onClose: () => setShareDialogOpen(false),
+        resource:
           shareUrl
             ? { type: 'file', title: title || 'Shared file', url: shareUrl }
-            : null
-        }
-      />
+            : null,
+      })}
     </div>
   )
 }

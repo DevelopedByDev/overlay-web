@@ -2,11 +2,11 @@
 
 // Compatibility wrapper: canonical knowledge contracts/controllers live in @overlay/app-core,
 // typed transport lives in @overlay/api-client, and reusable presentation lives in @overlay/modules-react.
+import type { ReactNode } from 'react'
 import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import posthog from 'posthog-js'
-import { FileViewer, getFileType, isEditableType } from '@/features/files/components/FileViewer'
-import { KnowledgeViewHeader } from '@/features/knowledge/components/KnowledgeViewHeader'
+import { getFileType, isEditableType } from '@/shared/files/file-viewer-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   FILES_CHANGED_EVENT,
@@ -37,9 +37,11 @@ import {
   CreateKnowledgeItemDialog,
   HiddenKnowledgeFileInputs,
   ImportMemoryDialog,
+  KnowledgeFileDetailPanel,
   KnowledgeFilesPanel,
   KnowledgeMemoriesPanel,
   KnowledgePendingNotice,
+  KnowledgeViewHeader,
   MemoryDetailDialog,
 } from '@overlay/modules-react/knowledge'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
@@ -82,11 +84,17 @@ export default function KnowledgeView({
   mode = 'knowledge',
   initialFiles,
   initialMemories,
+  renderFileViewer,
 }: {
   userId: string
   mode?: 'knowledge' | 'files'
   initialFiles?: FileNode[]
   initialMemories?: MemoryListItem[]
+  renderFileViewer: (props: {
+    name: string
+    content: string
+    url?: string
+  }) => ReactNode
 }) {
   void _userId
   const router = useRouter()
@@ -801,32 +809,22 @@ export default function KnowledgeView({
           className={`px-6 py-4 ${activeTab === 'outputs' ? 'flex flex-col' : ''}`}
         >
         {activeTab === 'files' && selectedFile && (
-          <div className={`mx-auto flex min-h-full w-full flex-col ${isEditableType(selectedFile.name) ? 'max-w-5xl' : ''}`}>
-            {isEditableType(selectedFile.name) ? (
-              <>
-                <textarea
-                  value={fileContent}
-                  onChange={(e) => handleFileContentChange(e.target.value)}
-                  placeholder="Start typing..."
-                  className="min-h-[calc(100vh-11rem)] w-full flex-1 resize-none bg-transparent px-2 py-4 font-mono text-sm leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
-                />
-                <div className="shrink-0 border-t border-[var(--border)] px-2 py-2 text-[11px] text-[var(--muted-light)]">
-                  Reference in chat with{' '}
-                  <code className="rounded bg-[var(--surface-subtle)] px-1 py-0.5 font-mono text-[var(--foreground)]">
-                    @{selectedFile.name}
-                  </code>
-                </div>
-              </>
-            ) : (
-  <div className="flex h-[calc(100vh-9rem)] flex-col overflow-hidden">
-                <FileViewer
-                  name={selectedFile.name}
-                  content={fileContent}
-                  url={selectedFile.downloadUrl || selectedFile.isStorageBacked ? `/api/v1/files/${selectedFile._id}/content` : undefined}
-                />
-              </div>
-            )}
-          </div>
+          <KnowledgeFileDetailPanel
+            fileName={selectedFile.name}
+            isEditable={isEditableType(selectedFile.name)}
+            fileContent={fileContent}
+            onContentChange={handleFileContentChange}
+            renderViewer={() =>
+              renderFileViewer({
+                name: selectedFile.name,
+                content: fileContent,
+                url:
+                  selectedFile.downloadUrl || selectedFile.isStorageBacked
+                    ? `/api/v1/files/${selectedFile._id}/content`
+                    : undefined,
+              })
+            }
+          />
         )}
 
         {activeTab === 'memories' && (memorySavePendingPreview || importPendingPreview) && (

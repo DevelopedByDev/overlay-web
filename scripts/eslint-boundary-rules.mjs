@@ -49,18 +49,12 @@ const LEGACY_FEATURE_BOUNDARY_DEBT_FILES_BY_DOMAIN = {
     'src/features/chat/components/MarkdownMessage.tsx',
     'src/features/chat/components/chat-interface/types.ts',
   ],
-  files: [
-    'src/features/files/components/ExportMenu.tsx',
-    'src/features/files/components/FileShareMenu.tsx',
-  ],
-  knowledge: ['src/features/knowledge/components/KnowledgeView.tsx'],
   marketing: [
     'src/features/marketing/components/MarketingFooter.tsx',
     'src/features/marketing/components/StaticMarketingShell.tsx',
   ],
   notebook: ['src/features/notebook/components/NotebookEditor.tsx'],
   projects: ['src/features/projects/components/ProjectsView.tsx'],
-  share: ['src/features/share/components/SharedChatView.tsx'],
 }
 
 function otherFeatureImportPatterns(selfDomain) {

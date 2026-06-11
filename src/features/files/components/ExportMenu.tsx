@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { useState, useRef, useEffect } from 'react'
 import {
   MoreVertical,
@@ -15,7 +16,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { useExport, type ExportFormat } from '@/features/files/hooks/useExport'
-import { ShareDialog } from '@/features/share/components/ShareDialog'
+import type { ShareDialogRenderProps } from '@/shared/share/share-dialog-resource'
 
 interface ExportMenuProps {
   type: 'chat' | 'note'
@@ -31,6 +32,7 @@ interface ExportMenuProps {
   resourceId?: string
   initialShareVisibility?: 'private' | 'public'
   initialShareUrl?: string | null
+  renderShareDialog: (props: ShareDialogRenderProps) => ReactNode
 }
 
 export function ExportMenu({
@@ -42,6 +44,7 @@ export function ExportMenu({
   resourceId,
   initialShareVisibility,
   initialShareUrl,
+  renderShareDialog,
 }: ExportMenuProps) {
   const [showMenu, setShowMenu] = useState(false)
   const [showExportSubmenu, setShowExportSubmenu] = useState(false)
@@ -257,10 +260,10 @@ export function ExportMenu({
           )}
         </div>
       )}
-      <ShareDialog
-        isOpen={shareDialogOpen}
-        onClose={() => setShareDialogOpen(false)}
-        resource={
+      {renderShareDialog({
+        isOpen: shareDialogOpen,
+        onClose: () => setShareDialogOpen(false),
+        resource:
           shareUrl
             ? {
                 type: type === 'chat' ? 'chat' : 'file',
@@ -268,9 +271,8 @@ export function ExportMenu({
                 url: shareUrl,
                 thumbnailUrl: shareThumbnailUrl,
               }
-            : null
-        }
-      />
+            : null,
+      })}
     </div>
   )
 }

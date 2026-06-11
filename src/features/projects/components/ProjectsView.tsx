@@ -41,7 +41,8 @@ import { FileViewerSkeleton } from '@overlay/ui/feedback'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@/features/files/components/FileViewer'
 import { FileShareMenu } from '@/features/files/components/FileShareMenu'
-import { buildSharePageUrl } from '@/features/share/lib/share-url'
+import { ShareDialog } from '@/features/share/components/ShareDialog'
+import { buildSharePageUrl } from '@/shared/share/share-page-url'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 type HubChat = ProjectChatSummary
@@ -132,6 +133,7 @@ function ProjectFileView({ fileId }: { fileId: string }) {
                 ? buildSharePageUrl('file', file.shareToken)
                 : null
             }
+            renderShareDialog={(props) => <ShareDialog {...props} />}
           />
         }
       />

@@ -5,7 +5,7 @@ import { getInitialKnowledgeFiles, getInitialKnowledgeMemories } from '@/server/
 import { redirect } from 'next/navigation'
 import { KnowledgeRouteSkeleton } from '../_components/AppRouteSkeletons'
 
-const KnowledgeView = dynamic(() => import('@/features/knowledge/components/KnowledgeView'), {
+const KnowledgeView = dynamic(() => import('@/features/knowledge/components/KnowledgeViewHost'), {
   loading: () => <KnowledgeRouteSkeleton />,
 })
 

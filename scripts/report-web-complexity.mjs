@@ -35,6 +35,7 @@ const DEFAULT_BUDGETS = {
   maxProductionFileLoc: 500,
   maxFunctionComplexity: 25,
   maxRouteHandlerLoc: 250,
+  monolithFileLocBudgets: {},
   allowedExactDuplicateGroups: [
     [
       'src/sentry.edge.config.ts',
@@ -52,6 +53,8 @@ function loadBudgetConfig() {
   return {
     ...DEFAULT_BUDGETS,
     ...parsed,
+    monolithFileLocBudgets:
+      parsed.monolithFileLocBudgets || DEFAULT_BUDGETS.monolithFileLocBudgets,
     allowedExactDuplicateGroups:
       parsed.allowedExactDuplicateGroups || DEFAULT_BUDGETS.allowedExactDuplicateGroups,
     zeroFanInOverrides:
@@ -555,6 +558,14 @@ function compareAgainstBaseline(metrics, baseline) {
     }
   }
 
+  const fileLocByPath = new Map(metrics.files.map((file) => [file.file, file.loc.code]))
+  for (const [file, maxLoc] of Object.entries(BUDGETS.monolithFileLocBudgets || {})) {
+    const loc = fileLocByPath.get(file)
+    if (typeof loc === 'number' && loc > maxLoc) {
+      errors.push(`Monolith file over ${maxLoc} LOC: ${file} (${loc})`)
+    }
+  }
+
   return errors
 }
 
@@ -629,6 +640,11 @@ ${table(['Budget', 'Threshold', 'Enforcement'], [
   ['Production file LOC', `No new file over ${BUDGETS.maxProductionFileLoc}`, 'Existing files are baseline debt; new files fail check.'],
   ['Function/component complexity', `No new item over ${BUDGETS.maxFunctionComplexity}`, 'Existing functions are baseline debt; new over-budget items fail check.'],
   ['Route handler LOC', `No new route over ${BUDGETS.maxRouteHandlerLoc}`, 'Existing protocol-heavy routes are baseline debt; new routes fail check.'],
+  ...Object.entries(BUDGETS.monolithFileLocBudgets || {}).map(([file, maxLoc]) => [
+    `Monolith LOC (${path.basename(file)})`,
+    `Must stay at or below ${maxLoc}`,
+    file,
+  ]),
 ], (row) => `<tr><td>${htmlEscape(row[0])}</td><td>${htmlEscape(row[1])}</td><td>${htmlEscape(row[2])}</td></tr>`)}
 </div>
 </section>
