@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Archive, Bell, Folder, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react'
+import { Archive, Bell, FileText, Folder, MessageSquare, MoreHorizontal, Plus, Search, Trash2, Zap } from 'lucide-react'
 import {
   AutomationListSkeleton,
   Badge,
   Button,
+  CommandPalette,
   ConfirmDialog,
   DelayedTooltip,
   DialogFrame,
@@ -13,6 +14,7 @@ import {
   IconButton,
   Input,
   IntegrationListSkeleton,
+  ListboxSelect,
   MenuItem,
   MenuSurface,
   OutputCardSkeleton,
@@ -20,6 +22,8 @@ import {
   Select,
   SettingsSectionSkeleton,
   SidebarNav,
+  SidebarResourceList,
+  SidebarResourceSection,
   SidebarSection,
   SidebarShell,
   TabButton,
@@ -27,9 +31,10 @@ import {
   Textarea,
   Toggle,
   Toolbar,
+  UsageMeterBar,
   overlayDesignTokens,
 } from '../index'
-import type { GenerationMode } from '../index'
+import type { CommandPaletteRow, GenerationMode } from '../index'
 
 const meta = {
   title: 'Overlay UI/Primitives',
@@ -251,6 +256,104 @@ export function Tokens() {
           <code className="font-mono text-xs text-[var(--muted)]">font-mono token</code>
         </section>
       </div>
+    </div>
+  )
+}
+
+export function PromotedPrimitives() {
+  const [listboxValue, setListboxValue] = useState<'a' | 'b' | 'c'>('a')
+
+  return (
+    <div className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">
+      <div className="mx-auto grid max-w-lg gap-6">
+        <section className="grid gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+          <h2 className="text-sm font-semibold">ListboxSelect</h2>
+          <ListboxSelect
+            value={listboxValue}
+            onChange={setListboxValue}
+            aria-label="Example listbox"
+            options={[
+              { value: 'a', label: 'Option A' },
+              { value: 'b', label: 'Option B' },
+              { value: 'c', label: 'Option C' },
+            ]}
+          />
+        </section>
+
+        <section className="grid gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+          <h2 className="text-sm font-semibold">UsageMeterBar</h2>
+          <UsageMeterBar primaryLabel="42 / 100 messages" secondaryLabel="42%" percent={42} />
+          <UsageMeterBar primaryLabel="85 / 100 messages" secondaryLabel="85%" percent={85} tone="warning" />
+          <UsageMeterBar primaryLabel="100 / 100 messages" secondaryLabel="100%" percent={100} tone="exhausted" />
+        </section>
+
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+          <SidebarResourceSection
+            action={{ label: 'New chat', onClick: () => undefined }}
+            search={{ title: 'Search chats', onClick: () => undefined }}
+          >
+            <SidebarResourceList>
+              <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--surface-muted)]">
+                Weekly planning
+              </button>
+              <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--surface-muted)]">
+                API design notes
+              </button>
+            </SidebarResourceList>
+          </SidebarResourceSection>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+export function CommandPaletteStory() {
+  const [open, setOpen] = useState(true)
+  const [query, setQuery] = useState('')
+  const [drilledIn, setDrilledIn] = useState(false)
+
+  const rows: CommandPaletteRow[] = drilledIn
+    ? [
+        {
+          kind: 'item',
+          id: 'chat-1',
+          label: 'Weekly planning',
+          description: 'Yesterday',
+          icon: <MessageSquare size={16} strokeWidth={1.75} />,
+        },
+        {
+          kind: 'item',
+          id: 'chat-2',
+          label: 'API design notes',
+          icon: <MessageSquare size={16} strokeWidth={1.75} />,
+        },
+      ]
+    : [
+        { kind: 'category', id: 'cat-chat', label: 'Chats', icon: <MessageSquare size={16} strokeWidth={1.75} /> },
+        { kind: 'category', id: 'cat-file', label: 'Files', icon: <FileText size={16} strokeWidth={1.75} /> },
+        { kind: 'category', id: 'cat-auto', label: 'Automations', icon: <Zap size={16} strokeWidth={1.75} /> },
+      ]
+
+  return (
+    <div className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">
+      <Button variant="primary" onClick={() => setOpen(true)}>
+        Open command palette
+      </Button>
+      <CommandPalette
+        open={open}
+        onClose={() => setOpen(false)}
+        query={query}
+        onQueryChange={setQuery}
+        breadcrumb={drilledIn ? { label: 'Chats', icon: <MessageSquare size={11} strokeWidth={1.75} /> } : null}
+        onBreadcrumbBack={() => {
+          setDrilledIn(false)
+          setQuery('')
+        }}
+        rows={rows}
+        onActivateRow={(row) => {
+          if (row.kind === 'category') setDrilledIn(true)
+        }}
+      />
     </div>
   )
 }

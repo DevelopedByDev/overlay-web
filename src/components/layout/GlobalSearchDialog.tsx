@@ -1,22 +1,17 @@
 'use client'
 
 /**
- * Global search dialog (Cmd+K). Reuses the @-mention search backend (mention-search.ts)
- * and the same two-level navigation (top-level category buttons → drill into a category
- * → fuzzy search within that category). Selecting an entity navigates to the appropriate
- * page. ESC pops back up the breadcrumb (or closes); click outside also closes.
+ * Global search (Cmd+K) container. Search + navigation wiring stays here;
+ * presentation lives in @overlay/ui CommandPalette.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { usePresence } from '@overlay/ui'
+import { CommandPalette, type CommandPaletteRow } from '@overlay/ui/overlays'
 import {
-  ChevronRight,
   FileText,
   MessageSquare,
   Plug,
-  Plus,
-  Search,
   Server,
   Sparkles,
   Zap,
@@ -53,7 +48,6 @@ function hrefForItem(item: MentionItem): string {
     case 'chat':
       return `/app/chat?id=${encodeURIComponent(item.id)}`
     case 'file':
-      // The mention-search file fetcher stores `kind` in `description` (e.g. "note").
       if (item.description === 'note') return `/app/notes?id=${encodeURIComponent(item.id)}`
       return `/app/files?file=${encodeURIComponent(item.id)}`
     case 'automation':
@@ -72,14 +66,11 @@ function hrefForItem(item: MentionItem): string {
 interface GlobalSearchDialogProps {
   open: boolean
   onClose: () => void
-  /** When set, dialog opens with this category drilled-in (used by sidebar section search). */
   initialCategory?: MentionType | null
-  /** Click handler for the “New Chat” top action. Provided by the host. */
   onNewChat: () => void
 }
 
-type Row =
-  | { kind: 'new-chat' }
+type RowSource =
   | { kind: 'category'; type: MentionType; label: string; icon: string }
   | { kind: 'item'; item: MentionItem; categoryType: MentionType }
 
@@ -89,24 +80,15 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
   const [selectedCategory, setSelectedCategory] = useState<MentionType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
   const [loading, setLoading] = useState(false)
-  const [activeIndex, setActiveIndex] = useState(0)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const dialogRef = useRef<HTMLDivElement>(null)
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
 
-  // Reset internal state when the dialog opens. Wrapped in queueMicrotask to avoid
-  // synchronous setState inside the effect body (react-hooks/set-state-in-effect).
   useEffect(() => {
     if (!open) return
     queueMicrotask(() => {
       setQuery('')
       setSelectedCategory(initialCategory)
-      setActiveIndex(0)
-      inputRef.current?.focus()
     })
   }, [open, initialCategory])
 
-  // Fetch results whenever query or category changes.
   useEffect(() => {
     if (!open) return
     let cancelled = false
@@ -132,8 +114,8 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
     }
   }, [open, query])
 
-  const rows: Row[] = useMemo(() => {
-    const list: Row[] = []
+  const rowSources: RowSource[] = useMemo(() => {
+    const list: RowSource[] = []
     const trimmed = query.trim()
 
     if (selectedCategory === null) {
@@ -143,7 +125,6 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
         }
         return list
       }
-      // Top-level with query: flatten matching items across all categories.
       for (const cat of categories) {
         for (const item of cat.items) {
           list.push({ kind: 'item', item, categoryType: cat.type })
@@ -152,7 +133,6 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
       return list
     }
 
-    // Drilled into a specific category: only items of that type, filtered by query.
     const cat = categories.find((c) => c.type === selectedCategory)
     if (cat) {
       for (const item of cat.items) {
@@ -162,67 +142,29 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
     return list
   }, [categories, query, selectedCategory])
 
-  // Reset row highlight when the row set changes. Wrapped in queueMicrotask to
-  // sidestep the react-hooks/set-state-in-effect lint and match MentionPopup.
-  useEffect(() => {
-    queueMicrotask(() => setActiveIndex(0))
-  }, [rows.length, selectedCategory])
-
-  useEffect(() => {
-    const el = itemRefs.current[activeIndex]
-    if (el) el.scrollIntoView({ block: 'nearest' })
-  }, [activeIndex])
-
-  const performAction = useCallback(
-    (row: Row) => {
-      if (row.kind === 'new-chat') {
-        onNewChat()
-        onClose()
-        return
-      }
+  const rows: CommandPaletteRow[] = useMemo(() => {
+    return rowSources.map((row) => {
       if (row.kind === 'category') {
-        setSelectedCategory(row.type)
-        setActiveIndex(0)
-        return
-      }
-      router.push(hrefForItem(row.item))
-      onClose()
-    },
-    [onClose, onNewChat, router],
-  )
-
-  // Keyboard handling.
-  useEffect(() => {
-    if (!open) return
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setActiveIndex((prev) => Math.min(prev + 1, rows.length - 1))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setActiveIndex((prev) => Math.max(prev - 1, 0))
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        const current = rows[activeIndex]
-        if (current) performAction(current)
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        if (selectedCategory !== null) {
-          setSelectedCategory(null)
-          setQuery('')
-          setActiveIndex(0)
-          queueMicrotask(() => inputRef.current?.focus())
-        } else {
-          onClose()
+        return {
+          kind: 'category' as const,
+          id: `cat-${row.type}`,
+          label: row.label,
+          icon: <CategoryIcon icon={row.icon} className="shrink-0 opacity-70" />,
         }
       }
-    }
-    document.addEventListener('keydown', handleKeyDown, true)
-    return () => document.removeEventListener('keydown', handleKeyDown, true)
-  }, [open, rows, activeIndex, performAction, selectedCategory, onClose])
-
-  const { mounted, visible } = usePresence(open)
-  if (!mounted) return null
+      const fallbackIcon = CATEGORY_ORDER.find((c) => c.type === row.categoryType)?.icon || 'FileText'
+      return {
+        kind: 'item' as const,
+        id: `${row.categoryType}-${row.item.id}`,
+        label: row.item.name,
+        description: row.item.description,
+        logoUrl: row.item.logoUrl,
+        icon: row.item.logoUrl ? undefined : (
+          <CategoryIcon icon={row.item.icon || fallbackIcon} className="shrink-0 opacity-70" />
+        ),
+      }
+    })
+  }, [rowSources])
 
   const selectedCategoryMeta = selectedCategory
     ? CATEGORY_ORDER.find((c) => c.type === selectedCategory)
@@ -232,147 +174,63 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
     ? `Search ${selectedCategoryMeta.label.toLowerCase()}...`
     : 'Type a command or search...'
 
-  const showEmpty = rows.length === 0 || (rows.length === 1 && rows[0]!.kind === 'new-chat' && query.trim() !== '' && selectedCategory === null)
+  const emptyState: ReactNode | undefined =
+    !loading && rows.length === 0
+      ? query.trim() !== ''
+        ? <>No results for &ldquo;{query}&rdquo;</>
+        : <>Nothing here yet</>
+      : undefined
+
+  const handleActivateRow = useCallback(
+    (row: CommandPaletteRow) => {
+      if (row.kind === 'action') {
+        if (row.id === 'new-chat') {
+          onNewChat()
+          onClose()
+        }
+        return
+      }
+      if (row.kind === 'category') {
+        const type = row.id.replace(/^cat-/, '') as MentionType
+        setSelectedCategory(type)
+        return
+      }
+      const source = rowSources.find(
+        (candidate) => candidate.kind === 'item' && `${candidate.categoryType}-${candidate.item.id}` === row.id,
+      )
+      if (source?.kind === 'item') {
+        router.push(hrefForItem(source.item))
+        onClose()
+      }
+    },
+    [onClose, onNewChat, router, rowSources],
+  )
+
+  const handleBreadcrumbBack = useCallback(() => {
+    setSelectedCategory(null)
+    setQuery('')
+  }, [])
 
   return (
-    <div
-      className={`fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm pt-[12vh] px-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
-        visible ? 'opacity-100' : 'opacity-0'
-      }`}
-      onMouseDown={(e) => {
-        // Close on backdrop click only (not on dialog itself).
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        className={`flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
-          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 -translate-y-1'
-        }`}
-      >
-        {selectedCategoryMeta && (
-          <div className="flex items-center gap-1.5 border-b border-[var(--border)] bg-[var(--surface-muted)] px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-[var(--muted-light)]">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCategory(null)
-                setQuery('')
-                inputRef.current?.focus()
-              }}
-              className="hover:text-[var(--foreground)] transition-colors"
-            >
-              All
-            </button>
-            <ChevronRight size={10} className="opacity-60" />
-            <CategoryIcon icon={selectedCategoryMeta.icon} className="opacity-60" size={11} />
-            <span>{selectedCategoryMeta.label}</span>
-            <span className="ml-auto text-[9px] opacity-60">esc to go back</span>
-          </div>
-        )}
-
-        <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
-          <Search size={16} strokeWidth={1.75} className="shrink-0 text-[var(--muted-light)]" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={placeholder}
-            className="min-w-0 flex-1 border-0 bg-transparent text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
-          />
-        </div>
-
-        <div className="overflow-y-auto py-1">
-          {loading && rows.length <= 1 ? (
-            <div className="flex items-center justify-center py-10">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--muted)] border-t-transparent" />
-            </div>
-          ) : showEmpty ? (
-            <div className="px-4 py-8 text-center text-xs text-[var(--muted-light)]">
-              {query.trim() !== '' ? <>No results for &ldquo;{query}&rdquo;</> : <>Nothing here yet</>}
-            </div>
-          ) : (
-            rows.map((row, idx) => {
-              const isActive = idx === activeIndex
-              if (row.kind === 'new-chat') {
-                return (
-                  <button
-                    key="new-chat"
-                    ref={(el) => {
-                      itemRefs.current[idx] = el
-                    }}
-                    type="button"
-                    onClick={() => performAction(row)}
-                    onMouseEnter={() => setActiveIndex(idx)}
-                    className={`mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                      isActive
-                        ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-                        : 'text-[var(--foreground)] hover:bg-[var(--surface-muted)]'
-                    }`}
-                  >
-                    <Plus size={16} strokeWidth={1.75} className="shrink-0" />
-                    <span className="font-medium">New Chat</span>
-                  </button>
-                )
-              }
-              if (row.kind === 'category') {
-                return (
-                  <button
-                    key={`cat-${row.type}`}
-                    ref={(el) => {
-                      itemRefs.current[idx] = el
-                    }}
-                    type="button"
-                    onClick={() => performAction(row)}
-                    onMouseEnter={() => setActiveIndex(idx)}
-                    className={`flex w-full items-center gap-3 px-5 py-2 text-left text-sm transition-colors ${
-                      isActive
-                        ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-                        : 'text-[var(--muted)] hover:bg-[var(--surface-muted)]'
-                    }`}
-                  >
-                    <CategoryIcon icon={row.icon} className="shrink-0 opacity-70" />
-                    <span className="flex-1 font-medium">{row.label}</span>
-                    <ChevronRight size={14} strokeWidth={1.75} className="shrink-0 opacity-50" />
-                  </button>
-                )
-              }
-              const { item, categoryType } = row
-              const fallbackIcon = CATEGORY_ORDER.find((c) => c.type === categoryType)?.icon || 'FileText'
-              return (
-                <button
-                  key={`${categoryType}-${item.id}`}
-                  ref={(el) => {
-                    itemRefs.current[idx] = el
-                  }}
-                  type="button"
-                  onClick={() => performAction(row)}
-                  onMouseEnter={() => setActiveIndex(idx)}
-                  className={`flex w-full items-center gap-3 px-5 py-2 text-left text-sm transition-colors ${
-                    isActive
-                      ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-                      : 'text-[var(--muted)] hover:bg-[var(--surface-muted)]'
-                  }`}
-                >
-                  {item.logoUrl ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={item.logoUrl} alt="" className="h-4 w-4 shrink-0 rounded object-contain" />
-                  ) : (
-                    <CategoryIcon icon={item.icon || fallbackIcon} className="shrink-0 opacity-70" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate font-medium">{item.name}</span>
-                  {item.description && (
-                    <span className="ml-2 shrink-0 truncate text-[11px] text-[var(--muted-light)]">
-                      {item.description}
-                    </span>
-                  )}
-                </button>
-              )
-            })
-          )}
-        </div>
-      </div>
-    </div>
+    <CommandPalette
+      open={open}
+      onClose={onClose}
+      query={query}
+      onQueryChange={setQuery}
+      placeholder={placeholder}
+      breadcrumb={
+        selectedCategoryMeta
+          ? {
+              label: selectedCategoryMeta.label,
+              icon: <CategoryIcon icon={selectedCategoryMeta.icon} size={11} />,
+            }
+          : null
+      }
+      onBreadcrumbBack={handleBreadcrumbBack}
+      rows={rows}
+      loading={loading}
+      emptyState={emptyState}
+      onActivateRow={handleActivateRow}
+    />
   )
 }

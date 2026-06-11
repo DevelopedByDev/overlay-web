@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import '@overlay/ui/styles.css';
+
 @font-face {
   font-family: 'Libre Baskerville';
   src: url('/assets/fonts/Libre_Baskerville/static/LibreBaskerville-Regular.ttf') format('truetype');
@@ -139,83 +141,6 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   overflow-x: hidden;
-}
-
-/* ===== Overlay motion system =====
-   Consistent web-native motion language across the app:
-   - Panels (right-side sources/assistant/file panels, drawers) SLIDE in/out.
-   - Dialogs, popovers, menus, and everything else FADE in/out (with a subtle
-     scale for dialogs).
-   Easing matches the AppSidebar reveal: cubic-bezier(0.16, 1, 0.3, 1). */
-:root {
-  --overlay-ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --overlay-duration-fast: 150ms;
-  --overlay-duration: 220ms;
-  --overlay-duration-panel: 300ms;
-}
-
-/* Enter-only animations for fire-and-forget surfaces (popovers, menus,
-   dropdowns) where mounting the element and playing an exit transition isn't
-   worth the extra state. Pair `visible`-driven transitions (via usePresence)
-   for surfaces that need a proper exit animation. */
-@keyframes overlayFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes overlayPopIn {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-@keyframes overlayDialogIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.overlay-fade-in {
-  animation: overlayFadeIn var(--overlay-duration-fast) var(--overlay-ease) both;
-}
-
-.overlay-pop-in {
-  animation: overlayPopIn var(--overlay-duration-fast) var(--overlay-ease) both;
-  transform-origin: top;
-}
-
-/* Entrance for centered dialogs whose open/close is driven by the parent
-   mounting/unmounting them (no controlled `open` prop to drive an exit). */
-.overlay-dialog-in {
-  animation: overlayDialogIn var(--overlay-duration) var(--overlay-ease) both;
-}
-
-.overlay-backdrop-in {
-  animation: overlayFadeIn var(--overlay-duration) var(--overlay-ease) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .overlay-fade-in,
-  .overlay-pop-in,
-  .overlay-dialog-in,
-  .overlay-backdrop-in {
-    animation-duration: 1ms;
-    animation-delay: 0ms;
-  }
 }
 
 @keyframes appBrandLogoFade {
