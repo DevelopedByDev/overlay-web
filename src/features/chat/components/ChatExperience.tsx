@@ -24,7 +24,6 @@ import {
 } from '@overlay/chat-core'
 import {
   AttachmentPreviewDialog,
-  AttachmentPreviewPanel,
   BudgetTopUpComposerPrompt,
   ChatExperienceHeader,
 } from '@overlay/chat-react'
@@ -55,14 +54,10 @@ import {
 } from '@/shared/chat/tool-requests'
 import { ChatComposer } from './ChatComposer'
 import { ChatMessageList } from './ChatMessageList'
-import { ChatSourcesPanel } from './ChatSourcesPanel'
 import {
-  loadConversationSnapshot,
-  normalizeReplyMetadata,
   reportTextStreamError,
   startActRetryStream,
   startActTextStream,
-  type RawConversationMessage,
 } from './useChatTransport'
 import { useChatListEventSync } from './chat/useChatListEventSync'
 import { useChatAttachments } from './useChatAttachments'
@@ -72,6 +67,9 @@ import { useEmptyChatStarters } from './chat/useEmptyChatStarters'
 import { useChatPreferences } from './chat/useChatPreferences'
 import { safeSetLocalStorage, toggleModelSelection } from './chat/model-selection-utils'
 import { useChatPanels, type AttachmentPreview } from './chat/useChatPanels'
+import { useChatShellPanels } from './chat/useChatShellPanels'
+import { useChatConversationLoader } from './chat/useChatConversationLoader'
+import { resetRuntimeState } from './chat/conversation-runtime-utils'
 import { useChatRuntimes } from './chat/useChatRuntimes'
 import { useComposerTextState } from './chat/useComposerTextState'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
@@ -85,7 +83,6 @@ import {
   fetchChatList,
   getCachedChatList,
   primeChatList,
-  removeCachedChat,
   type ChatListPageInfo,
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
@@ -116,14 +113,10 @@ import {
   applyLiveMessageDeltaParts,
   assistantBlocksToPlainText,
   buildAssistantVisualSequence,
-  buildRestoredMessageExchanges,
   chatGreetingLine,
   chooseAssistantCandidate,
   getUserTurnId,
-  groupOutputsIntoExchanges,
-  restoreGenerationStateForExchanges,
   stripAssistantAfterUserTurn,
-  syntheticMessagesForOutputGroups,
 } from '@overlay/chat-core'
 import { generateTitle } from '@/features/chat/lib/generate-title'
 import { scrollToExchangeTurn } from '@/features/chat/lib/scroll-to-exchange-turn'
@@ -240,7 +233,6 @@ export default function ChatExperience({
       }))
     }
   }, [])
-  const loadChatRequestRef = useRef(0)
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const appliedLiveDeltaIdsRef = useRef(new Set<string>())
   const resumedCloudflareStreamsRef = useRef(new Set<string>())
@@ -1347,6 +1339,58 @@ export default function ChatExperience({
     setSelectedActModel,
     setSelectedModels,
   ])
+
+  const syncStandaloneChatUrl = useCallback((chatId: string | null, options: { replaceUrl?: boolean } = {}) => {
+    if (hideSidebar || options.replaceUrl === false) return
+    const replaceUrl = (href: string) => {
+      window.history.replaceState(null, '', href)
+    }
+    if (mode === 'automate') {
+      const params = new URLSearchParams()
+      if (chatId) params.set('id', chatId)
+      const automationId = searchParams?.get('automationId')
+      if (automationId) params.set('automationId', automationId)
+      const tab = normalizeAutomationDetailTab(searchParams?.get('tab'))
+      if (tab !== 'chat') params.set('tab', tab)
+      const query = params.toString()
+      replaceUrl(`/app/automations${query ? `?${query}` : ''}`)
+      return
+    }
+    const basePath = '/app/chat'
+    replaceUrl(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
+  }, [hideSidebar, mode, searchParams])
+
+  const { invalidateLoadChatRequest, loadChat } = useChatConversationLoader({
+    activeChatIdRef,
+    applyUiStateToView,
+    chats,
+    clearTransientComposerState,
+    ensureConversationRuntime,
+    emptyRuntimeRef,
+    hasAutomationContext,
+    isTemporaryChatRef,
+    markRead,
+    pendingTitleRef,
+    persistActiveRuntimeUiState,
+    resetComposerToolIds,
+    runtimesRef,
+    selectedActModel,
+    selectedModels,
+    setActiveChatId,
+    setActiveChatTitle,
+    setActiveViewer,
+    setChats,
+    setComposerNotice,
+    setInterruptedExchangeIdx,
+    setIsSwitchingChat,
+    setIsTemporaryChat,
+    setRuntimeHydrationVersion,
+    setSourcesPanel,
+    shouldScrollRef,
+    startSession,
+    syncStandaloneChatUrl,
+  })
+
   useEffect(() => {
     if (hideSidebar) return
     const browserIdParam =
@@ -2038,18 +2082,6 @@ export default function ChatExperience({
 
   // ── chat management ────────────────────────────────────────────────────────
 
-  function clearRuntimeMessages(runtime: ConversationRuntime) {
-    runtime.askChats.forEach((chat) => {
-      chat.messages = []
-    })
-    runtime.actChat.messages = []
-  }
-
-  function resetRuntimeState(runtime: ConversationRuntime, uiOverrides: Partial<ConversationUiState> = {}) {
-    clearRuntimeMessages(runtime)
-    runtime.ui = createConversationUiState(uiOverrides)
-  }
-
   function removeTurnFromRuntime(chatId: string, turnId: string) {
     const runtime = ensureConversationRuntime(chatId)
     const removeTurn = (messages: UIMessage[]) => messages.filter((message) => (
@@ -2091,28 +2123,8 @@ export default function ChatExperience({
     setRuntimeHydrationVersion((value) => value + 1)
   }
 
-  function syncStandaloneChatUrl(chatId: string | null, options: { replaceUrl?: boolean } = {}) {
-    if (hideSidebar || options.replaceUrl === false) return
-    const replaceUrl = (href: string) => {
-      window.history.replaceState(null, '', href)
-    }
-    if (mode === 'automate') {
-      const params = new URLSearchParams()
-      if (chatId) params.set('id', chatId)
-      const automationId = searchParams?.get('automationId')
-      if (automationId) params.set('automationId', automationId)
-      const tab = normalizeAutomationDetailTab(searchParams?.get('tab'))
-      if (tab !== 'chat') params.set('tab', tab)
-      const query = params.toString()
-      replaceUrl(`/app/automations${query ? `?${query}` : ''}`)
-      return
-    }
-    const basePath = '/app/chat'
-    replaceUrl(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
-  }
-
   function resetToBlankChatSurface(options: { temporary: boolean }) {
-    ++loadChatRequestRef.current
+    invalidateLoadChatRequest()
     persistActiveRuntimeUiState()
     activeChatIdRef.current = null
     pendingTitleRef.current = null
@@ -2155,7 +2167,7 @@ export default function ChatExperience({
   } = {}): Promise<string | null> {
     // Invalidate any in-flight loadChat request before this newly-created runtime
     // becomes active; otherwise an older load can repaint the view after send.
-    ++loadChatRequestRef.current
+    invalidateLoadChatRequest()
     persistActiveRuntimeUiState()
     setIsTemporaryChat(false)
     resetComposerToolIds(false)
@@ -2303,196 +2315,6 @@ export default function ChatExperience({
       setComposerNotice(error instanceof Error ? error.message : 'Could not create branch')
       window.setTimeout(() => setComposerNotice(null), 5000)
       setIsSwitchingChat(false)
-    }
-  }
-
-  async function loadChat(chatId: string, options: { replaceUrl?: boolean } = {}) {
-    const requestId = ++loadChatRequestRef.current
-    persistActiveRuntimeUiState()
-    if (isTemporaryChatRef.current) resetRuntimeState(emptyRuntimeRef.current)
-    setIsTemporaryChat(false)
-    resetComposerToolIds(false)
-    clearTransientComposerState()
-    setInterruptedExchangeIdx(null)
-    setSourcesPanel(null)
-    markRead(chatId)
-    activeChatIdRef.current = chatId
-    setActiveViewer(chatId)
-    setActiveChatId(chatId)
-    syncStandaloneChatUrl(chatId, options)
-    const runtime = ensureConversationRuntime(chatId)
-    const existingChat = chats.find((chat) => chat._id === chatId)
-    setActiveChatTitle(existingChat?.title ?? runtime.ui.activeChatTitle ?? null)
-    pendingTitleRef.current = null
-
-    // Fast path: runtime already loaded — switch instantly with no spinner or API calls.
-    const runtimeHasLoadedHistory =
-      runtime.actChat.messages.some((message) => message.role === 'user') ||
-      runtime.askChats.some((chat) => chat.messages.some((message) => message.role === 'user')) ||
-      runtime.ui.generationResults.size > 0
-    if (runtime.hydrated && runtimeHasLoadedHistory) {
-      shouldScrollRef.current = true
-      applyUiStateToView(runtime.ui)
-      setRuntimeHydrationVersion((value) => value + 1)
-      return
-    }
-
-    setIsSwitchingChat(true)
-    runtime.hydrated = false
-    try {
-      const shouldLoadMeta = !existingChat?.title || !existingChat?.askModelIds?.length || !existingChat?.actModelId
-      const snapshot = await loadConversationSnapshot({ chatId, shouldLoadMeta })
-      if (requestId !== loadChatRequestRef.current) return
-      if (snapshot.status === 'missing') {
-        removeCachedChat(chatId)
-        setChats((prev) => prev.filter((chat) => chat._id !== chatId))
-        runtimesRef.current.delete(chatId)
-        if (activeChatIdRef.current === chatId) {
-          activeChatIdRef.current = null
-          setActiveChatId(null)
-          setActiveChatTitle(null)
-          setActiveViewer(null)
-          syncStandaloneChatUrl(null, options)
-        }
-        setComposerNotice('That chat no longer exists.')
-        window.setTimeout(() => setComposerNotice(null), 4000)
-        return
-      }
-      if (snapshot.status === 'error') {
-        clearRuntimeMessages(runtime)
-        runtime.hydrated = false
-        setComposerNotice('Could not load chat messages. Try again.')
-        window.setTimeout(() => setComposerNotice(null), 5000)
-        return
-      }
-      type RawMsg = RawConversationMessage
-      let rawMessages: RawMsg[] = normalizeReplyMetadata(snapshot.messages)
-      const outputs = snapshot.outputs
-      if (requestId !== loadChatRequestRef.current) return
-      const outputGroups = groupOutputsIntoExchanges(outputs)
-
-      if (rawMessages.length === 0 && outputGroups.length > 0) {
-        rawMessages = syntheticMessagesForOutputGroups<RawMsg>(outputGroups)
-      }
-
-      const hasUserMessages = rawMessages.some((msg) => msg.role === 'user')
-      let resolvedTitle = existingChat?.title ?? null
-      let restoredTextSelection = normalizeChatModelSelection({
-        askModelIds: existingChat?.askModelIds?.slice(0, 4) ?? selectedModels,
-        actModelId: existingChat?.actModelId ?? selectedActModel,
-      })
-      if (snapshot.meta) {
-        const meta = snapshot.meta
-        if (requestId !== loadChatRequestRef.current) return
-        if (meta.title) resolvedTitle = meta.title
-        if (meta.askModelIds?.length || meta.actModelId) {
-          restoredTextSelection = normalizeChatModelSelection({
-            askModelIds: meta.askModelIds?.length ? meta.askModelIds.slice(0, 4) : restoredTextSelection.askModelIds,
-            actModelId: meta.actModelId ?? restoredTextSelection.actModelId,
-          })
-        }
-      }
-      let resolvedSelectedModels = restoredTextSelection.askModelIds
-      let resolvedActModel = restoredTextSelection.actModelId
-
-      if (requestId !== loadChatRequestRef.current) return
-
-      const exchanges = buildRestoredMessageExchanges(rawMessages, {
-        defaultModelId: DEFAULT_MODEL_ID,
-        hasAutomationContext,
-      })
-
-      const exchangeModesFromServer = exchanges.map((e) => e.mode)
-      const uniqueModels: string[] = []
-      for (const ex of exchanges) {
-        for (const { model } of ex.responses) {
-          if (!uniqueModels.includes(model)) uniqueModels.push(model)
-        }
-      }
-
-      if (requestId !== loadChatRequestRef.current) return
-
-      clearRuntimeMessages(runtime)
-      const restoredModelThreads = new Map<string, UIMessage[]>()
-
-      if (uniqueModels.length === 0) {
-        const linear: RawMsg[] = []
-        for (const ex of exchanges) {
-          linear.push(ex.userMsg)
-          for (const r of ex.responses) linear.push(r.msg)
-        }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        runtime.askChats[0].messages = linear as any
-      } else {
-        const slotModels = uniqueModels.slice(0, 4)
-        const normalizedSlotSelection = normalizeChatModelSelection({
-          askModelIds: slotModels,
-          actModelId: resolvedActModel,
-        })
-        resolvedSelectedModels = normalizedSlotSelection.askModelIds
-        resolvedActModel = normalizedSlotSelection.actModelId
-
-        uniqueModels.forEach((modelId) => {
-          const msgs: RawMsg[] = []
-          for (const ex of exchanges) {
-            msgs.push(ex.userMsg)
-            const r = ex.responses.find((x) => x.model === modelId)
-            if (r) msgs.push(r.msg)
-          }
-          restoredModelThreads.set(modelId, cloneUiMessageThread(msgs as unknown as UIMessage[]))
-        })
-
-        slotModels.forEach((modelId, slotIdx) => {
-          const msgs = restoredModelThreads.get(modelId) ?? []
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          runtime.askChats[slotIdx].messages = msgs as any
-        })
-      }
-
-      const actLinear: RawMsg[] = []
-      for (const ex of exchanges) {
-        if (ex.mode !== 'act') continue
-        actLinear.push(ex.userMsg)
-        if (ex.responses[0]) actLinear.push(ex.responses[0].msg)
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      runtime.actChat.messages = actLinear as any
-
-      const {
-        exchangeGenTypes: restoredGenTypes,
-        generationResults: restoredResults,
-        exchangeModels: restoredExchangeModels,
-      } = restoreGenerationStateForExchanges(exchanges, outputGroups)
-
-      runtime.ui = createConversationUiState({
-        selectedActModel: resolvedActModel,
-        selectedModels: resolvedSelectedModels,
-        askModelSelectionMode: resolvedSelectedModels.length > 1 ? 'multiple' : 'single',
-        exchangeModes: exchangeModesFromServer,
-        exchangeModels: restoredExchangeModels,
-        selectedTabPerExchange: exchanges.map(() => 0),
-        activeChatTitle: resolvedTitle,
-        generationResults: restoredResults,
-        exchangeGenTypes: restoredGenTypes,
-        isFirstMessage: !hasUserMessages,
-        orphanModelThreads: restoredModelThreads,
-      })
-      if (requestId !== loadChatRequestRef.current) return
-      runtime.hydrated = true
-      if (rawMessages.some((msg) => msg.role === 'assistant' && msg.status === 'generating')) {
-        startSession(chatId, 'act', resolvedTitle ?? DEFAULT_CHAT_TITLE, Math.max(0, rawMessages.length - 1))
-      }
-      shouldScrollRef.current = true
-      applyUiStateToView(runtime.ui)
-      setRuntimeHydrationVersion((value) => value + 1)
-    } catch {
-      clearRuntimeMessages(runtime)
-      runtime.hydrated = false
-      setComposerNotice('Could not load this chat. Try again.')
-      window.setTimeout(() => setComposerNotice(null), 5000)
-    }
-    finally {
-      if (requestId === loadChatRequestRef.current) setIsSwitchingChat(false)
     }
   }
 
@@ -3481,28 +3303,19 @@ export default function ChatExperience({
     [],
   )
 
-  const shellRightPanel = attachmentPreview && attachmentPreviewMode === 'panel' ? (
-    <AttachmentPreviewPanel
-      preview={attachmentPreview}
-      mode="panel"
-      onClose={closeAttachmentPreview}
-      onModeChange={setAttachmentPreviewMode}
-      renderViewer={renderAttachmentViewer}
-    />
-  ) : sourcesPanel ? (
-    <ChatSourcesPanel
-      variant="shell"
-      open
-      onClose={closeSourcesPanel}
-      sources={sourcesPanel.sources}
-    />
-  ) : null
-  const shellRightPanelClose = attachmentPreview && attachmentPreviewMode === 'panel'
-    ? closeAttachmentPreview
-    : sourcesPanel
-      ? closeSourcesPanel
-      : undefined
-  const shellRightPanelWidth = attachmentPreview && attachmentPreviewMode === 'panel' ? 440 : 380
+  const {
+    shellRightPanel,
+    shellRightPanelClose,
+    shellRightPanelWidth,
+  } = useChatShellPanels({
+    attachmentPreview,
+    attachmentPreviewMode,
+    closeAttachmentPreview,
+    closeSourcesPanel,
+    setAttachmentPreviewMode,
+    sourcesPanel,
+    renderAttachmentViewer,
+  })
 
   // ── render ────────────────────────────────────────────────────────────────
   return (

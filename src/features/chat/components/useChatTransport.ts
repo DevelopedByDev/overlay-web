@@ -3,10 +3,11 @@
 export {
   loadConversationSnapshot,
   normalizeReplyMetadata,
-  type RawConversationMessage,
-} from './chat/chatConversationTransport'
-export {
   reportTextStreamError,
   startActRetryStream,
   startActTextStream,
-} from './chat/chatTextTransport'
+  type ConversationLoadSnapshot,
+  type ConversationMetaSnapshot,
+  type RawConversationMessage,
+  type StartActTextStreamParams,
+} from './chat/chatTransport'
