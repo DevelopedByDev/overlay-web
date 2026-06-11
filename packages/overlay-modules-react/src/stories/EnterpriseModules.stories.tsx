@@ -1,5 +1,7 @@
 import { buildTree } from '@overlay/app-core/modules'
 import type {
+  AccountEntitlements,
+  AutomationSummary,
   IntegrationSummary,
   KnowledgeFile,
   McpServerSummary,
@@ -12,6 +14,11 @@ import type {
   SkillSummary,
 } from '@overlay/app-core'
 import {
+  AccountSubscriptionCard,
+  AutomationEditorForm,
+  AutomationGraphCanvas,
+  AutomationsInlineList,
+  BillingControlsPanel,
   ExtensionCatalog,
   KnowledgeFileTree,
   McpServerForm,
@@ -26,6 +33,80 @@ import {
 } from '..'
 
 const now = Date.now()
+
+const panelClass = 'rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6'
+const headingClass = 'text-[var(--foreground)]'
+const mutedClass = 'text-[var(--muted)]'
+
+const paidEntitlements: AccountEntitlements = {
+  tier: 'pro',
+  planKind: 'paid',
+  planAmountCents: 2000,
+  status: 'active',
+  autoTopUpEnabled: true,
+  topUpAmountCents: 1000,
+  autoTopUpAmountCents: 1000,
+  autoTopUpConsentGranted: true,
+  budgetUsedCents: 4200,
+  budgetTotalCents: 10000,
+  budgetRemainingCents: 5800,
+  creditsUsed: 12,
+  creditsTotal: 100,
+  overlayStorageBytesUsed: 1_000_000,
+  overlayStorageBytesLimit: 10_000_000,
+  limits: {
+    askPerDay: 100,
+    agentPerDay: 50,
+    writePerDay: 50,
+    tokenBudget: 100000,
+    transcriptionSecondsPerWeek: 3600,
+    overlayStorageBytes: 10_000_000,
+  },
+  usage: {
+    ask: 4,
+    agent: 2,
+    write: 1,
+    tokenCostAccrued: 42,
+    transcriptionSeconds: 120,
+    overlayStorageBytes: 1_000_000,
+  },
+  remaining: {
+    ask: 96,
+    agent: 48,
+    write: 49,
+    tokenCostAccrued: 58,
+    transcriptionSeconds: 3480,
+    overlayStorageBytes: 9_000_000,
+  },
+  billingPeriodEnd: now + 14 * 24 * 60 * 60 * 1000,
+}
+
+const automations: AutomationSummary[] = [
+  {
+    _id: 'auto-1',
+    name: 'Weekly digest',
+    enabled: true,
+    schedule: { kind: 'weekly', dayOfWeekUTC: 1, hourUTC: 9, minuteUTC: 0 },
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    _id: 'auto-2',
+    name: 'Incident triage',
+    enabled: false,
+    lastError: 'Last run failed: timeout',
+    schedule: { kind: 'interval', intervalMinutes: 30 },
+    createdAt: now,
+    updatedAt: now,
+  },
+]
+
+const sampleFlowSource = `flowchart TD
+start["Collect metrics"]
+analyze["Analyze anomalies"]
+notify["Notify on-call"]
+start --> analyze
+analyze --> notify`
 
 const files: KnowledgeFile[] = [
   { _id: 'folder-1', name: 'Policies', type: 'folder', kind: 'folder', parentId: null, createdAt: now, updatedAt: now },
@@ -179,6 +260,111 @@ export function SettingsPageShellStory() {
           Settings subpages keep their current panel contents while sharing the shell frame.
         </SettingsCard>
       </SettingsPageShell>
+    </div>
+  )
+}
+
+export function AutomationsInlineListStory() {
+  return (
+    <div className="w-72 p-2">
+      <AutomationsInlineList
+        automations={automations}
+        activeAutomationId="auto-1"
+        editingAutomationName=""
+        onNavigateAutomation={() => undefined}
+        onBeginRename={() => undefined}
+        onEditingNameChange={() => undefined}
+        onCommitRename={() => undefined}
+        onCancelRename={() => undefined}
+        onRequestDelete={() => undefined}
+        onConfirmDelete={() => undefined}
+        onClearPendingDelete={() => undefined}
+      />
+    </div>
+  )
+}
+
+export function AutomationGraphCanvasStory() {
+  return (
+    <div className="h-[420px] p-4">
+      <AutomationGraphCanvas source={sampleFlowSource} onSourceChange={() => undefined} />
+    </div>
+  )
+}
+
+export function AutomationEditorFormStory() {
+  return (
+    <div className="h-[720px]">
+      <AutomationEditorForm
+        name="Weekly digest"
+        description="Summarize product metrics"
+        instructions="Review the last week and draft a concise update."
+        enabled
+        scheduleKind="weekly"
+        intervalMinutes={60}
+        timezone="America/Los_Angeles"
+        time="09:00"
+        dayOfWeek={1}
+        dayOfMonth={1}
+        graphSource={sampleFlowSource}
+        modelId="gpt-4.1"
+        timeZoneOptions={[{ value: 'America/Los_Angeles', label: 'Pacific Time', offsetMinutes: -480 }]}
+        modelOptions={[{ id: 'gpt-4.1', name: 'GPT-4.1' }]}
+        saveState="idle"
+        testState="idle"
+        onNameChange={() => undefined}
+        onDescriptionChange={() => undefined}
+        onInstructionsChange={() => undefined}
+        onEnabledChange={() => undefined}
+        onScheduleKindChange={() => undefined}
+        onIntervalMinutesChange={() => undefined}
+        onTimezoneChange={() => undefined}
+        onTimeChange={() => undefined}
+        onDayOfWeekChange={() => undefined}
+        onDayOfMonthChange={() => undefined}
+        onGraphSourceChange={() => undefined}
+        onModelIdChange={() => undefined}
+        onSave={() => undefined}
+        onTest={() => undefined}
+        renderInstructionsEditor={({ value, onChange }) => (
+          <textarea
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            className="mt-1 min-h-32 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+          />
+        )}
+      />
+    </div>
+  )
+}
+
+export function AccountSubscriptionCardStory() {
+  return (
+    <div className="max-w-2xl p-4">
+      <AccountSubscriptionCard
+        panelClass={panelClass}
+        headingClass={headingClass}
+        mutedClass={mutedClass}
+        entitlements={paidEntitlements}
+        actions={
+          <button
+            type="button"
+            className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)]"
+          >
+            Manage billing
+          </button>
+        }
+      />
+    </div>
+  )
+}
+
+export function BillingControlsPanelStory() {
+  return (
+    <div className="max-w-2xl p-4">
+      <BillingControlsPanel panelClass={panelClass} headingClass={headingClass} mutedClass={mutedClass}>
+        <p className="text-sm text-[var(--muted)]">Top-up preference controls render here from the app shell.</p>
+      </BillingControlsPanel>
     </div>
   )
 }
