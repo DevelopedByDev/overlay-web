@@ -126,7 +126,6 @@ export function ChatComposer(props: ChatComposerProps) {
               {viewProps.scrollToBottomControl}
             </div>
           ) : null}
-          <AttachmentPreviewTray {...viewProps} />
           <ComposerAlerts attachmentError={viewProps.attachmentError} composerNotice={viewProps.composerNotice} />
           {viewProps.billingPromptContent}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading ? (
@@ -137,10 +136,10 @@ export function ChatComposer(props: ChatComposerProps) {
         </div>
         <ChatEmptyState
           visible={viewProps.showCenteredEmptyChat}
-          greetingLine={viewProps.greetingLine}
-          starters={viewProps.emptyChatStarters}
+          mode={viewProps.mode}
           belowComposer={viewProps.belowEmptyComposer}
-          onStarterSelect={viewProps.onStarterSelect}
+          onEmptySuggestion={viewProps.onEmptySuggestion}
+          onAutomateSuggestion={viewProps.onAutomateSuggestion}
         />
       </div>
     </>
@@ -155,6 +154,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
     <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300">
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
       <div className="p-2.5 sm:p-3">
+        <AttachmentPreviewTray {...props} />
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
         <input
           ref={mixedFileInputRef}

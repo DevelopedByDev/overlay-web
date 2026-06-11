@@ -1,15 +1,31 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
+import { Globe2, Image as ImageIcon, PenLine, Zap, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+
+export type EmptyChatSuggestionId = 'image' | 'write' | 'lookup'
+export type EmptyAutomateSuggestionId = 'workflow' | 'monitor' | 'schedule'
 
 type ChatEmptyStateProps = {
   visible: boolean
-  greetingLine: string
-  starters: string[]
+  mode: 'chat' | 'automate'
   belowComposer?: ReactNode
-  onStarterSelect: (prompt: string) => void
+  onEmptySuggestion?: (id: EmptyChatSuggestionId) => void
+  onAutomateSuggestion?: (id: EmptyAutomateSuggestionId) => void
 }
+
+const CHAT_SUGGESTIONS: Array<{ id: EmptyChatSuggestionId; label: string; Icon: LucideIcon }> = [
+  { id: 'image', label: 'Create an image', Icon: ImageIcon },
+  { id: 'write', label: 'Write or edit', Icon: PenLine },
+  { id: 'lookup', label: 'Look something up', Icon: Globe2 },
+]
+
+const AUTOMATE_SUGGESTIONS: Array<{ id: EmptyAutomateSuggestionId; label: string; Icon: LucideIcon }> = [
+  { id: 'workflow', label: 'Build a workflow', Icon: Zap },
+  { id: 'monitor', label: 'Monitor a site', Icon: Globe2 },
+  { id: 'schedule', label: 'Schedule a report', Icon: PenLine },
+]
 
 export function ChatEmptyHero({
   visible,
@@ -39,10 +55,13 @@ export function ChatEmptyHero({
 
 export function ChatEmptyState({
   visible,
-  starters,
+  mode,
   belowComposer,
-  onStarterSelect,
+  onEmptySuggestion,
+  onAutomateSuggestion,
 }: ChatEmptyStateProps) {
+  const suggestions = mode === 'automate' ? AUTOMATE_SUGGESTIONS : CHAT_SUGGESTIONS
+
   return (
     <>
       <AnimatePresence initial={false}>
@@ -52,17 +71,24 @@ export function ChatEmptyState({
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.12 }}
-            className="mx-auto mt-6 hidden w-full max-w-[36rem] min-w-0 px-0 md:mt-6 md:block"
+            className="mx-auto mt-4 w-full max-w-[36rem] min-w-0 px-0 md:mt-5"
           >
-            <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
-              {starters.map((prompt, idx) => (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {suggestions.map(({ id, label, Icon }) => (
                 <button
-                  key={`empty-starter-${idx}`}
+                  key={id}
                   type="button"
-                  className="rounded-lg border border-[var(--border)] p-2.5 text-left leading-snug transition-colors hover:bg-[var(--surface-muted)]"
-                  onClick={() => onStarterSelect(prompt)}
+                  className="inline-flex h-9 items-center gap-2 rounded-full border border-[var(--border)] bg-transparent px-3.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+                  onClick={() => {
+                    if (mode === 'automate') {
+                      onAutomateSuggestion?.(id as EmptyAutomateSuggestionId)
+                    } else {
+                      onEmptySuggestion?.(id as EmptyChatSuggestionId)
+                    }
+                  }}
                 >
-                  {prompt}
+                  <Icon size={15} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
+                  <span>{label}</span>
                 </button>
               ))}
             </div>

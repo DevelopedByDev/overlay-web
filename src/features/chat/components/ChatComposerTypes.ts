@@ -4,9 +4,10 @@ import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
+import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
 
 export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
-export type ChatComposerEmptyState = { showCenteredEmptyChat: boolean; greetingLine: string; emptyChatStarters: string[]; belowEmptyComposer?: ReactNode }
+export type ChatComposerEmptyState = { showCenteredEmptyChat: boolean; greetingLine: string; belowEmptyComposer?: ReactNode }
 export type ChatComposerAttachmentState = {
   attachedImages: AttachedImage[]; setAttachedImages: Dispatch<SetStateAction<AttachedImage[]>>
   pendingChatDocuments: PendingChatDocument[]; removePendingDocument: (clientId: string) => void
@@ -38,7 +39,12 @@ export type ChatComposerModeState = {
   onModeChange: (mode: GenerationMode) => void; generationChip: 'image' | 'video' | null; setGenerationChip: (chip: 'image' | 'video' | null) => void
   showModeMenu: boolean; setShowModeMenu: Dispatch<SetStateAction<boolean>>; modeMenuRef: RefObject<HTMLDivElement | null>; onNavigateMode: (mode: 'chat' | 'automate') => void
 }
-export type ChatComposerActions = { onStop: () => void | Promise<void>; onSend: () => void | Promise<void>; onStarterSelect: (prompt: string) => void }
+export type ChatComposerActions = {
+  onStop: () => void | Promise<void>
+  onSend: () => void | Promise<void>
+  onEmptySuggestion?: (id: EmptyChatSuggestionId) => void
+  onAutomateSuggestion?: (id: EmptyAutomateSuggestionId) => void
+}
 export type ChatComposerProps = {
   mode: 'chat' | 'automate'; emptyState: ChatComposerEmptyState; attachments: ChatComposerAttachmentState
   runtime: ChatComposerRuntime; inputState: ChatComposerInputState; toolState: ChatComposerToolState

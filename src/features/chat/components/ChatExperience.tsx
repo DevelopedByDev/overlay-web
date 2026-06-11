@@ -63,7 +63,7 @@ import { useChatListEventSync } from './chat/useChatListEventSync'
 import { useChatAttachments } from './useChatAttachments'
 import { useChatBillingControls } from './chat/useChatBillingControls'
 import { useDraftReviewActions } from './chat/useDraftReviewActions'
-import { useEmptyChatStarters } from './chat/useEmptyChatStarters'
+import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
 import { useChatPreferences } from './chat/useChatPreferences'
 import { safeSetLocalStorage, toggleModelSelection } from './chat/model-selection-utils'
 import { useChatPanels, type AttachmentPreview } from './chat/useChatPanels'
@@ -387,7 +387,6 @@ export default function ChatExperience({
     addImages,
     handlePaste,
   } = useChatAttachments({ embedProjectId, setComposerNotice })
-  const emptyChatStarters = useEmptyChatStarters({ firstName, mode: composerMode, userId })
 
   const [replyContext, setReplyContext] = useState<{
     snippet: string
@@ -2930,6 +2929,48 @@ export default function ChatExperience({
     safeSetLocalStorage(CHAT_GEN_MODE_KEY, mode)
   }, [setGenerationChip, setGenerationMode])
 
+  const focusComposer = useCallback(() => {
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }, [])
+
+  const handleEmptySuggestion = useCallback(
+    (id: EmptyChatSuggestionId) => {
+      if (id === 'image') {
+        handleModeChange('image')
+        setGenerationChip('image')
+        setInput('')
+        focusComposer()
+        return
+      }
+      if (id === 'write') {
+        handleModeChange('text')
+        setInput('Help me write or edit ')
+        focusComposer()
+        return
+      }
+      handleModeChange('text')
+      setSelectedToolIds((current) =>
+        current.includes('web_search') ? current : [...current, 'web_search'],
+      )
+      setInput('Look up ')
+      focusComposer()
+    },
+    [focusComposer, handleModeChange, setGenerationChip, setInput],
+  )
+
+  const handleAutomateSuggestion = useCallback(
+    (id: EmptyAutomateSuggestionId) => {
+      const prompts: Record<EmptyAutomateSuggestionId, string> = {
+        workflow: 'Build a workflow that ',
+        monitor: 'Monitor a website and alert me when it changes',
+        schedule: 'Schedule a weekly report and send it to my team',
+      }
+      setInput(prompts[id])
+      focusComposer()
+    },
+    [focusComposer, setInput],
+  )
+
   const isActiveLoadingRef = useRef(isActiveLoading)
   isActiveLoadingRef.current = isActiveLoading
 
@@ -3531,7 +3572,6 @@ export default function ChatExperience({
             emptyState={{
               showCenteredEmptyChat,
               greetingLine,
-              emptyChatStarters,
               belowEmptyComposer,
             }}
             attachments={{
@@ -3653,7 +3693,8 @@ export default function ChatExperience({
             actions={{
               onStop: stopActiveChat,
               onSend: handleSend,
-              onStarterSelect: setInput,
+              onEmptySuggestion: handleEmptySuggestion,
+              onAutomateSuggestion: handleAutomateSuggestion,
             }}
           />
         )}
