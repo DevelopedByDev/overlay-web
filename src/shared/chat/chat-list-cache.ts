@@ -66,6 +66,12 @@ export function removeCachedChat(chatId: string) {
   cachedAt = Date.now()
 }
 
+export function clearChatListCache() {
+  cachedChats = null
+  cachedAt = 0
+  cachedPageInfo = { hasMore: false }
+}
+
 export async function fetchChatList(options: { force?: boolean } = {}): Promise<CachedConversation[]> {
   const now = Date.now()
   if (!options.force && cachedChats && now - cachedAt < CACHE_TTL_MS) {
@@ -75,7 +81,15 @@ export async function fetchChatList(options: { force?: boolean } = {}): Promise<
 
   inFlight = overlayAppClient.conversations.getResponse({ limit: INITIAL_CHAT_LIST_LIMIT })
     .then(async (res) => {
-      if (!res.ok) return cachedChats ?? []
+      if (!res.ok) {
+        // A guest (or expired session) must not keep seeing previously cached
+        // conversations from an authenticated session.
+        if (res.status === 401 || res.status === 403) {
+          clearChatListCache()
+          return []
+        }
+        return cachedChats ?? []
+      }
       const payload = await res.json()
       if (!isPaginatedEnvelope<CachedConversation>(payload)) return cachedChats ?? []
       primeChatList(payload.data, {

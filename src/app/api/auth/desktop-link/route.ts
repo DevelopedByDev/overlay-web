@@ -42,6 +42,15 @@ export async function POST(request: Request) {
       )
     }
 
+    // The desktop/mobile apps need a usable refresh token + expiry to keep the
+    // transferred session alive. A web session without them cannot be handed off.
+    if (!session.refreshToken || typeof session.expiresAt !== 'number') {
+      return NextResponse.json(
+        { error: 'Session cannot be transferred' },
+        { status: 409, headers: NO_STORE_HEADERS }
+      )
+    }
+
     const requestBody = await request.json().catch((_error) => ({})) as {
       codeChallenge?: unknown
       chromeExtensionId?: unknown

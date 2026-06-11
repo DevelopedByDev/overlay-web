@@ -8,14 +8,23 @@ import type { AuthSession } from '@/shared/auth/session-types'
 const FALLBACK_SESSION_REQUEST = new Request('http://overlay.local/session')
 
 function toAuthSession(session: Session): AuthSession | null {
-  if (!session.refreshToken || typeof session.expiresAt !== 'number') {
+  // A session is authenticated when it resolves to a real user with an access
+  // token. This must match what the BFF (`resolveAuthenticatedAppUser`) treats
+  // as authenticated, otherwise the UI can render the "sign in" nudge/gate while
+  // API calls (e.g. the conversation list) succeed — making it look like you're
+  // both signed in and signed out at the same time.
+  //
+  // `refreshToken`/`expiresAt` are carried through when present (needed for
+  // session transfer to the desktop/mobile apps), but their absence no longer
+  // downgrades the session to "guest".
+  if (!session.user?.id || !session.accessToken) {
     return null
   }
 
   return {
     accessToken: session.accessToken,
-    refreshToken: session.refreshToken,
-    expiresAt: session.expiresAt,
+    refreshToken: session.refreshToken ?? '',
+    expiresAt: typeof session.expiresAt === 'number' ? session.expiresAt : 0,
     user: {
       id: session.user.id,
       email: session.user.email,
