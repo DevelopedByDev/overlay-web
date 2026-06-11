@@ -105,6 +105,7 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'gemini-2.5-flash-lite': 'google/gemma-4-26b-a4b-it',
   'zai/glm-5.1': 'z-ai/glm-5.1',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
+  'openrouter/z-ai/glm-4.5-air:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/inclusionai/ring-2.6-1t:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/deepseek/deepseek-v4-flash:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/minimax/minimax-m2.5:free': FREE_TIER_DEFAULT_MODEL_ID,

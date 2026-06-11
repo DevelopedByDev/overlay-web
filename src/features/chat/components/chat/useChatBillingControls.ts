@@ -2,12 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ACT_MODEL_KEY,
-  CHAT_MODEL_KEY,
-} from '@/shared/chat/chat-model-prefs'
-import {
   DEFAULT_MODEL_ID,
-  FREE_TIER_DEFAULT_MODEL_ID,
+  FREE_TIER_AUTO_MODEL_ID,
   isFreeTierChatModelId,
   isLegacyFreeTierDefaultModelId,
 } from '@/shared/ai/gateway/model-types'
@@ -102,11 +98,9 @@ export function useChatBillingControls({
     if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
     if (isFreeTierChatModelId(selectedActModel) && !isLegacyFreeTierDefaultModelId(selectedActModel)) return
 
-    setSelectedModels([FREE_TIER_DEFAULT_MODEL_ID])
+    setSelectedModels([FREE_TIER_AUTO_MODEL_ID])
     setAskModelSelectionMode('single')
-    setSelectedActModel(FREE_TIER_DEFAULT_MODEL_ID)
-    localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify([FREE_TIER_DEFAULT_MODEL_ID]))
-    localStorage.setItem(ACT_MODEL_KEY, FREE_TIER_DEFAULT_MODEL_ID)
+    setSelectedActModel(FREE_TIER_AUTO_MODEL_ID)
   }, [
     activeChatId,
     chatPrefsHydrated,
@@ -131,10 +125,6 @@ export function useChatBillingControls({
     setSelectedModels(resolvedSelected)
     setSelectedActModel(nextActModel)
     if (resolvedSelected.length === 1) setAskModelSelectionMode('single')
-    if (!activeChatId) {
-      try { localStorage.setItem(CHAT_MODEL_KEY, JSON.stringify(resolvedSelected)) } catch { /* ignore */ }
-      try { localStorage.setItem(ACT_MODEL_KEY, nextActModel) } catch { /* ignore */ }
-    }
   }, [
     activeChatId,
     chatPrefsHydrated,

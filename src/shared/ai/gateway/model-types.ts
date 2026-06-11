@@ -59,9 +59,12 @@ export interface VideoModel {
 }
 
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
-export const FREE_TIER_DEFAULT_MODEL_ID = 'openrouter/z-ai/glm-4.5-air:free'
+/** @deprecated Alias for {@link FREE_TIER_AUTO_MODEL_ID}. */
+export const FREE_TIER_DEFAULT_MODEL_ID = FREE_TIER_AUTO_MODEL_ID
+export const PAID_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2.6' as const
 // Retired free IDs stay here only so saved user preferences migrate to the current default.
 export const FREE_TIER_LEGACY_DEFAULT_MODEL_IDS = [
+  'openrouter/z-ai/glm-4.5-air:free',
   'openrouter/inclusionai/ring-2.6-1t:free',
   'openrouter/deepseek/deepseek-v4-flash:free',
   'openrouter/minimax/minimax-m2.5:free',
@@ -102,10 +105,10 @@ export function isFreeTierChatModelId(modelId: string | undefined): modelId is s
 
 export function resolveFreeTierChatModelId(modelId: string | undefined): string | undefined {
   if (!modelId) return undefined
-  if (isLegacyFreeTierDefaultModelId(modelId)) return FREE_TIER_DEFAULT_MODEL_ID
+  if (isLegacyFreeTierDefaultModelId(modelId)) return FREE_TIER_AUTO_MODEL_ID
   return isFreeTierChatModelId(modelId) ? modelId : undefined
 }
 
-export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
+export const DEFAULT_MODEL_ID = PAID_TIER_DEFAULT_MODEL_ID
 export const DEFAULT_IMAGE_MODEL_ID = 'openai/gpt-image-1.5'
 export const DEFAULT_VIDEO_MODEL_ID = 'google/veo-3.1-generate-001'

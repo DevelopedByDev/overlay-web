@@ -49,13 +49,8 @@ import {
   getModel,
   getVideoModelsBySubMode,
 } from '@/shared/ai/gateway/model-data'
-import {
-  ACT_MODEL_KEY,
-  CHAT_MODEL_KEY,
-  normalizeChatModelSelection,
-  readStoredActModelId,
-  readStoredAskModelIds,
-} from '@/shared/chat/chat-model-prefs'
+import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
 import {
   defaultChatToolRequestIds,
   defaultMemoryEnabled,
@@ -279,8 +274,7 @@ export default function ChatExperience({
     rawEmbedProjectId.length <= 64
       ? rawEmbedProjectId
       : null
-  const { settings } = useAppSettings()
-  const useSharedModelPreference = settings.modelPreference === 'same-for-each-chat'
+  const { settings, updateSettings } = useAppSettings()
   const { capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
   const { user: authUser } = useAuth()
@@ -520,6 +514,50 @@ export default function ChatExperience({
     setSelectedActModel,
     setSelectedModels,
   })
+  const resolveAppDefaultChatModels = useCallback(() => {
+    return resolveDefaultChatModelSelection({
+      defaultActModelId: settings.defaultActModelId,
+      defaultAskModelIds: settings.defaultAskModelIds,
+      isFreeTier: billingEnabled ? isFreeTier : false,
+      onlyAllowZdrModels: settings.onlyAllowZdrModels,
+    })
+  }, [
+    billingEnabled,
+    isFreeTier,
+    settings.defaultActModelId,
+    settings.defaultAskModelIds,
+    settings.onlyAllowZdrModels,
+  ])
+  const applyDefaultChatModelsToView = useCallback(
+    (ui: Parameters<typeof createConversationUiState>[0]) => {
+      const { askModelIds, actModelId } = resolveAppDefaultChatModels()
+      return createConversationUiState({
+        ...ui,
+        selectedActModel: actModelId,
+        selectedModels: askModelIds,
+        askModelSelectionMode: askModelIds.length > 1 ? 'multiple' : 'single',
+      })
+    },
+    [resolveAppDefaultChatModels],
+  )
+  useEffect(() => {
+    if (!chatPrefsHydrated || activeChatId || isTemporaryChat) return
+    const { askModelIds, actModelId } = resolveAppDefaultChatModels()
+    if (sameModelOrder(askModelIds, selectedModels) && actModelId === selectedActModel) return
+    setSelectedModels(askModelIds)
+    setSelectedActModel(actModelId)
+    setAskModelSelectionMode(askModelIds.length > 1 ? 'multiple' : 'single')
+  }, [
+    activeChatId,
+    chatPrefsHydrated,
+    isTemporaryChat,
+    resolveAppDefaultChatModels,
+    selectedActModel,
+    selectedModels,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
+  ])
   /** User turn ids currently playing the delete (fade-out) animation */
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
   const [, setDeletingChatIds] = useState<string[]>([])
@@ -673,12 +711,7 @@ export default function ChatExperience({
     setActiveChatTitle(null)
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
-    const storedAsk = readStoredAskModelIds()
-    const storedAct = readStoredActModelId()
-    applyUiStateToView(createConversationUiState({
-      selectedActModel: storedAct,
-      selectedModels: storedAsk,
-      askModelSelectionMode: storedAsk.length > 1 ? 'multiple' : 'single',
+    applyUiStateToView(applyDefaultChatModelsToView({
       activeChatTitle: null,
       isFirstMessage: true,
     }))
@@ -686,6 +719,7 @@ export default function ChatExperience({
     setActiveViewer(null)
     if (!hideSidebar) router.replace('/app/chat')
   }, [
+    applyDefaultChatModelsToView,
     applyUiStateToView,
     clearTransientComposerState,
     hideSidebar,
@@ -1395,20 +1429,14 @@ export default function ChatExperience({
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
     setActiveViewer(null)
-    // Restore the user's saved new-chat defaults from localStorage rather than the last
-    // viewed chat's models (which live in the view state after a chat switch).
-    const storedAsk = readStoredAskModelIds()
-    const storedAct = readStoredActModelId()
-    applyUiStateToView(createConversationUiState({
-      selectedActModel: storedAct,
-      selectedModels: storedAsk,
-      askModelSelectionMode: storedAsk.length > 1 ? 'multiple' : 'single',
+    applyUiStateToView(applyDefaultChatModelsToView({
       activeChatTitle: null,
       isFirstMessage: true,
     }))
     clearTransientComposerState()
   }, [
     activeChatId,
+    applyDefaultChatModelsToView,
     applyUiStateToView,
     automationIdParam,
     hideSidebar,
@@ -1941,22 +1969,23 @@ export default function ChatExperience({
     if (videoModelSelectionMode === 'single') setShowModelPicker(false)
   }
 
-  /**
-   * In "same for each chat" mode, text model changes become the global model preference.
-   * In "different for each chat" mode, localStorage is only the new-chat default and
-   * existing chat selections stay in conversation metadata/runtime state.
-   */
   const isOnNewChatSurface = !activeChatId && !isTemporaryChat
   const persistNewChatAskModels = useCallback((ids: string[]) => {
-    if (!useSharedModelPreference && !isOnNewChatSurface) return
+    if (!isOnNewChatSurface) return
     const normalized = normalizeChatModelSelection({ askModelIds: ids })
-    safeSetLocalStorage(CHAT_MODEL_KEY, JSON.stringify(normalized.askModelIds))
-  }, [isOnNewChatSurface, useSharedModelPreference])
+    void updateSettings({
+      defaultAskModelIds: normalized.askModelIds,
+      defaultActModelId: normalized.actModelId,
+    })
+  }, [isOnNewChatSurface, updateSettings])
   const persistNewChatActModel = useCallback((id: string) => {
-    if (!useSharedModelPreference && !isOnNewChatSurface) return
+    if (!isOnNewChatSurface) return
     const normalized = normalizeChatModelSelection({ askModelIds: selectedModels, actModelId: id })
-    safeSetLocalStorage(ACT_MODEL_KEY, normalized.actModelId)
-  }, [isOnNewChatSurface, selectedModels, useSharedModelPreference])
+    void updateSettings({
+      defaultAskModelIds: normalized.askModelIds,
+      defaultActModelId: normalized.actModelId,
+    })
+  }, [isOnNewChatSurface, selectedModels, updateSettings])
 
   useEffect(() => {
     if (!chatPrefsHydrated) return
@@ -1973,11 +2002,6 @@ export default function ChatExperience({
       setSelectedActModel(normalized.actModelId)
       setAskModelSelectionMode(normalized.askModelIds.length > 1 ? 'multiple' : 'single')
     }
-
-    if (useSharedModelPreference) {
-      safeSetLocalStorage(CHAT_MODEL_KEY, JSON.stringify(normalized.askModelIds))
-      safeSetLocalStorage(ACT_MODEL_KEY, normalized.actModelId)
-    }
   }, [
     chatPrefsHydrated,
     selectedActModel,
@@ -1985,7 +2009,6 @@ export default function ChatExperience({
     setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
-    useSharedModelPreference,
   ])
 
   const snapshotCurrentAskThreadsForModelPicker = useCallback(() => {
@@ -2159,12 +2182,11 @@ export default function ChatExperience({
     setIsTemporaryChat(options.temporary)
     resetComposerToolIds(options.temporary)
     setActiveChatTitle(options.temporary ? 'Temporary chat' : null)
-    const storedAsk = readStoredAskModelIds()
-    const storedAct = readStoredActModelId()
+    const { askModelIds, actModelId } = resolveAppDefaultChatModels()
     resetRuntimeState(emptyRuntimeRef.current, {
-      selectedActModel: storedAct,
-      selectedModels: storedAsk,
-      askModelSelectionMode: storedAsk.length > 1 ? 'multiple' : 'single',
+      selectedActModel: actModelId,
+      selectedModels: askModelIds,
+      askModelSelectionMode: askModelIds.length > 1 ? 'multiple' : 'single',
       activeChatTitle: options.temporary ? 'Temporary chat' : null,
       isFirstMessage: true,
     })
@@ -2414,10 +2436,6 @@ export default function ChatExperience({
 
       const hasUserMessages = rawMessages.some((msg) => msg.role === 'user')
       let resolvedTitle = existingChat?.title ?? null
-      const sharedTextSelection = normalizeChatModelSelection({
-        askModelIds: selectedModels,
-        actModelId: selectedActModel,
-      })
       let restoredTextSelection = normalizeChatModelSelection({
         askModelIds: existingChat?.askModelIds?.slice(0, 4) ?? selectedModels,
         actModelId: existingChat?.actModelId ?? selectedActModel,
@@ -2433,12 +2451,8 @@ export default function ChatExperience({
           })
         }
       }
-      let resolvedSelectedModels = useSharedModelPreference
-        ? sharedTextSelection.askModelIds
-        : restoredTextSelection.askModelIds
-      let resolvedActModel = useSharedModelPreference
-        ? sharedTextSelection.actModelId
-        : restoredTextSelection.actModelId
+      let resolvedSelectedModels = restoredTextSelection.askModelIds
+      let resolvedActModel = restoredTextSelection.actModelId
 
       if (requestId !== loadChatRequestRef.current) return
 
@@ -2470,14 +2484,12 @@ export default function ChatExperience({
         runtime.askChats[0].messages = linear as any
       } else {
         const slotModels = uniqueModels.slice(0, 4)
-        if (!useSharedModelPreference) {
-          const normalizedSlotSelection = normalizeChatModelSelection({
-            askModelIds: slotModels,
-            actModelId: resolvedActModel,
-          })
-          resolvedSelectedModels = normalizedSlotSelection.askModelIds
-          resolvedActModel = normalizedSlotSelection.actModelId
-        }
+        const normalizedSlotSelection = normalizeChatModelSelection({
+          askModelIds: slotModels,
+          actModelId: resolvedActModel,
+        })
+        resolvedSelectedModels = normalizedSlotSelection.askModelIds
+        resolvedActModel = normalizedSlotSelection.actModelId
 
         uniqueModels.forEach((modelId) => {
           const msgs: RawMsg[] = []

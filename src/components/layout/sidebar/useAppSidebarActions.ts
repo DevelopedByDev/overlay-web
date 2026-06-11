@@ -3,7 +3,8 @@
 import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { OverlaySidebarAction, OverlaySidebarActionKey } from '@overlay/app-core'
-import { readNewChatModelFieldsFromStorage } from '@/shared/chat/chat-model-prefs'
+import { resolveNewChatModelFields } from '@/shared/chat/chat-model-prefs'
+import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import { createIdempotencyKey } from '@overlay/api-client'
@@ -14,6 +15,7 @@ export interface UseAppSidebarActionsOptions {
   user: object | null
   pathname: string
   searchParams: URLSearchParams
+  isFreeTier?: boolean
   requireAuth: (reason: GateReason) => void
   onCloseMobileMenu: () => void
   onChatCreated: () => void
@@ -37,19 +39,26 @@ export function useAppSidebarActions({
   user,
   pathname,
   searchParams,
+  isFreeTier = false,
   requireAuth,
   onCloseMobileMenu,
   onChatCreated,
   onProjectCreated,
 }: UseAppSidebarActionsOptions) {
   const router = useRouter()
+  const { settings } = useAppSettings()
 
   const createChat = useCallback(async () => {
     if (!user) {
       requireAuth('send')
       return false
     }
-    const models = readNewChatModelFieldsFromStorage()
+    const models = resolveNewChatModelFields({
+      defaultActModelId: settings.defaultActModelId,
+      defaultAskModelIds: settings.defaultAskModelIds,
+      isFreeTier,
+      onlyAllowZdrModels: settings.onlyAllowZdrModels,
+    })
     const res = await overlayAppClient.conversations.createResponse(
       {
         title: 'New Chat',
@@ -72,7 +81,17 @@ export function useAppSidebarActions({
     onCloseMobileMenu()
     router.push(`/app/chat?id=${encodeURIComponent(data.id)}`)
     return true
-  }, [onChatCreated, onCloseMobileMenu, requireAuth, router, user])
+  }, [
+    onChatCreated,
+    onCloseMobileMenu,
+    requireAuth,
+    router,
+    isFreeTier,
+    settings.defaultActModelId,
+    settings.defaultAskModelIds,
+    settings.onlyAllowZdrModels,
+    user,
+  ])
 
   const startAutomationDraft = useCallback(() => {
     if (!user) {

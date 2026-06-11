@@ -101,6 +101,20 @@ export default function AppSidebar({
       .map((action) => [action.navigationItemId!, action] as const)
     return new Map(entries)
   }, [sidebarActions])
+  const sidebarIsFreeTier = useMemo(() => {
+    if (!billingEnabled || !entitlements) return false
+    const planKind = entitlements.planKind ?? (entitlements.tier === 'free' ? 'free' : 'paid')
+    const isPaidSubscription = planKind === 'paid'
+    const budgetRemainingCents =
+      entitlements.budgetRemainingCents ??
+      Math.max(
+        0,
+        (entitlements.budgetTotalCents ?? Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100))) -
+          (entitlements.budgetUsedCents ?? Math.max(0, Math.round((entitlements.creditsUsed ?? 0) * 100))),
+      )
+    const isBudgetExhaustedPaid = isPaidSubscription && budgetRemainingCents <= 0
+    return !isPaidSubscription || isBudgetExhaustedPaid
+  }, [billingEnabled, entitlements])
   const {
     createChat,
     runSidebarAction,
@@ -108,6 +122,7 @@ export default function AppSidebar({
     user,
     pathname,
     searchParams: currentSearchParams,
+    isFreeTier: sidebarIsFreeTier,
     requireAuth,
     onCloseMobileMenu: () => setMobileMenuOpen(false),
     onChatCreated: () => setChatPanelRefreshKey((value) => value + 1),

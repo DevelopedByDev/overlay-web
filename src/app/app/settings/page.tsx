@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Mail, Moon, Sun, Play, Palette, ShieldCheck, SlidersHorizontal } from 'lucide-react'
+import { Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
+import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
 import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -157,7 +158,7 @@ export default function SettingsPage() {
       fullBleed={section === 'memories'}
     >
           {isLoading ? (
-            <SettingsSectionSkeleton rows={section === 'general' ? 2 : 1} />
+            <SettingsSectionSkeleton rows={section === 'general' ? 3 : 1} />
           ) : null}
           {!isLoading && section === 'general' && (
             <SettingsGroup>
@@ -168,6 +169,19 @@ export default function SettingsPage() {
                 checked={settings.autoContinue}
                 disabled={busy}
                 onChange={() => void updateSettings({ autoContinue: !settings.autoContinue })}
+              />
+              <DefaultChatModelSetting
+                defaultActModelId={settings.defaultActModelId}
+                defaultAskModelIds={settings.defaultAskModelIds}
+                isFreeTier={billingSettings?.planKind === 'free'}
+                onlyAllowZdrModels={settings.onlyAllowZdrModels}
+                disabled={busy || (capabilities.billing && !billingSettings)}
+                onSelect={(actModelId, askModelIds) => {
+                  void updateSettings({
+                    defaultActModelId: actModelId,
+                    defaultAskModelIds: askModelIds,
+                  })
+                }}
               />
               {capabilities.billing ? (
                 <SettingRow
@@ -301,32 +315,10 @@ export default function SettingsPage() {
 
           {!isLoading && section === 'models' && (
             <>
-              <SettingsGroup>
-                <SettingsActionRow
-                  icon={<SlidersHorizontal size={18} strokeWidth={1.8} />}
-                  title="Model preference"
-                  description="Choose whether model changes apply everywhere or stay attached to each conversation."
-                  action={
-                    <select
-                      disabled={busy}
-                      value={settings.modelPreference}
-                      onChange={(event) => {
-                        void updateSettings({
-                          modelPreference: event.target.value as typeof settings.modelPreference,
-                        })
-                      }}
-                      className="min-w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] disabled:opacity-60"
-                    >
-                      <option value="same-for-each-chat">Same for each chat</option>
-                      <option value="different-for-each-chat">Different for each chat</option>
-                    </select>
-                  }
-                />
-              </SettingsGroup>
               <SettingsCard title="Models">
                 <p>
-                  Default chat models are chosen from the composer. Use the model menu in chat to switch models or
-                  compare answers in Ask mode.
+                  Set your default model in General settings. Each existing chat keeps the model it last used; new chats
+                  start with your default. Use the model menu in chat to switch models or compare answers in Ask mode.
                 </p>
                 <Link
                   href="/app/chat"

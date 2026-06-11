@@ -10,10 +10,6 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
 import {
-  readStoredActModelId,
-  readStoredAskModelIds,
-} from '@/shared/chat/chat-model-prefs'
-import {
   CHAT_GEN_MODE_KEY,
   IMAGE_MODEL_SELECTION_MODE_KEY,
   SELECTED_IMAGE_MODELS_KEY,
@@ -45,12 +41,6 @@ export function useChatPreferences() {
 
   useEffect(() => {
     try {
-      const restoredSelectedModels = readStoredAskModelIds()
-      setSelectedModels(restoredSelectedModels)
-      if ((restoredSelectedModels?.length ?? 1) > 1) {
-        setAskModelSelectionMode('multiple')
-      }
-      setSelectedActModel(readStoredActModelId())
       const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
       if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
 
