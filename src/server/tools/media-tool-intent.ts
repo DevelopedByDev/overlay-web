@@ -28,6 +28,21 @@ export function normalizeStructuredMediaToolIntent(value: unknown): MediaToolInt
   return value === 'image' || value === 'video' ? value : null
 }
 
+const MEDIA_ACTION_PATTERN =
+  /\b(generate|create|make|draw|render|design|produce|animate|edit|turn|convert)\b/i
+const MEDIA_NOUN_PATTERN =
+  /\b(image|picture|photo|logo|icon|illustration|artwork|portrait|poster|thumbnail|video|animation|gif|reel|clip|motion|meme|avatar|wallpaper)\b/i
+
+/** Cheap pre-filter: skip the LLM media-intent classifier when the user message is clearly not a media request. */
+export function mayNeedMediaGenerationTools(userText: string | null | undefined): boolean {
+  const text = userText?.trim()
+  if (!text) return false
+  if (MEDIA_ACTION_PATTERN.test(text) && MEDIA_NOUN_PATTERN.test(text)) return true
+  if (/\b(image|video)\s+(of|for|showing)\b/i.test(text)) return true
+  if (/\b(logo|thumbnail|meme|avatar|wallpaper)\b/i.test(text)) return true
+  return false
+}
+
 export async function classifyMediaToolIntentForTurn(params: {
   userText: string | null | undefined
   userId: string

@@ -42,8 +42,11 @@ import {
 } from '@/server/conversations/http'
 import {
   classifyMediaToolIntentForTurn,
+  mayNeedMediaGenerationTools,
   normalizeStructuredMediaToolIntent,
+  type MediaToolIntent,
 } from '@/server/tools/media-tool-intent'
+import { ensureActConversationId } from '@/server/conversations/ensure-act-conversation'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import {
   MAX_ACT_MODEL_ATTEMPTS,
@@ -98,6 +101,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       messages,
       systemPrompt,
       conversationId,
+      conversationClientId,
+      projectId,
+      askModelIds,
       turnId,
       modelId,
       indexedFileNames,
@@ -173,7 +179,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       attachmentNames,
     })
 
-    const cid = conversationId as Id<'conversations'> | undefined
+    let cid = conversationId as Id<'conversations'> | undefined
+    const trimmedClientId = conversationClientId?.trim()
+    if (!cid && trimmedClientId) {
+      cid = await ensureActConversationId({
+        userId,
+        serverSecret,
+        conversationClientId: trimmedClientId,
+        entitlements: runtimeEntitlements,
+        projectId,
+        askModelIds,
+        actModelId: effectiveModelId,
+      })
+    }
     const tid = resolveActTurnId(turnId)
     actWebhookConversationId = cid
     actWebhookTurnId = tid
@@ -220,7 +238,25 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       serverSecret,
       userId,
     })
-    const [, turnContext] = await Promise.all([saveUserMessageTask, turnContextTask])
+
+    const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
+    const mediaIntentTask: Promise<MediaToolIntent> = (() => {
+      if (isMultiModelFollowUpSlot || !paid) return Promise.resolve(null)
+      if (structuredMediaToolIntent != null) return Promise.resolve(structuredMediaToolIntent)
+      if (!mayNeedMediaGenerationTools(latestUserText)) return Promise.resolve(null)
+      return classifyMediaToolIntentForTurn({
+        userText: latestUserText,
+        userId,
+        accessToken,
+        entitlements: runtimeEntitlements,
+      })
+    })()
+
+    const [, turnContext, resolvedMediaToolIntent] = await Promise.all([
+      saveUserMessageTask,
+      turnContextTask,
+      mediaIntentTask,
+    ])
     const {
       autoRetrieval,
       conversationProjectId,
@@ -233,21 +269,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       skillsContext,
       sourceCitationMap,
     } = turnContext
-
-    const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
-    const resolvedMediaToolIntent = isMultiModelFollowUpSlot
-      ? null
-      : paid
-      ? (
-          structuredMediaToolIntent ??
-          await classifyMediaToolIntentForTurn({
-            userText: latestUserText,
-            userId,
-            accessToken,
-            entitlements: runtimeEntitlements,
-          })
-        )
-      : null
 
     const indexedNote = hasPreloadedDocContext
       ? indexedFilesSystemNotePreloaded(indexedAttachmentList)
@@ -276,37 +297,39 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	    const modelMessages = await convertToModelMessages(messagesForModel)
 	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
 	    let streamedRoutedModelId: string | undefined
-	    const generatingMessageId = await actGeneratingMessageService.start({
-      conversationId: cid,
-      userId,
-      turnId: tid,
-      modelId: effectiveModelId,
-      multiModelTotal,
-      multiModelSlotIndex,
-    })
+	    const [generatingMessageId, actTooling] = await Promise.all([
+	      actGeneratingMessageService.start({
+	        conversationId: cid,
+	        userId,
+	        turnId: tid,
+	        modelId: effectiveModelId,
+	        multiModelTotal,
+	        multiModelSlotIndex,
+	      }),
+	      prepareActTooling({
+	        accessToken,
+	        automationExecution: automationExecution === true,
+	        automationMode: automationMode === true,
+	        baseUrl: getInternalApiBaseUrl(request),
+	        conversationId: cid,
+	        conversationProjectId,
+	        effectiveModelId,
+	        forwardCookie: request.headers.get('cookie'),
+	        isMultiModelFollowUpSlot,
+	        latestUserText,
+	        memoryEnabled,
+	        mediaToolIntent: resolvedMediaToolIntent,
+	        mode,
+	        paid,
+	        preloadTasks: toolPreloadTasks,
+	        requestedToolIds,
+	        serverSecret,
+	        turnId: tid,
+	        userId,
+	      }),
+	    ])
     pendingGeneratingMessageId = generatingMessageId
 	    if (_ttftDebug) _tPrep = performance.now()
-    const actTooling = await prepareActTooling({
-      accessToken,
-      automationExecution: automationExecution === true,
-      automationMode: automationMode === true,
-      baseUrl: getInternalApiBaseUrl(request),
-      conversationId,
-      conversationProjectId,
-      effectiveModelId,
-      forwardCookie: request.headers.get('cookie'),
-      isMultiModelFollowUpSlot,
-      latestUserText,
-      memoryEnabled,
-      mediaToolIntent: resolvedMediaToolIntent,
-      mode,
-      paid,
-      preloadTasks: toolPreloadTasks,
-      requestedToolIds,
-      serverSecret,
-      turnId: tid,
-      userId,
-    })
     if (_ttftDebug) _tTools = performance.now()
     logActTooling(actTooling)
     const tools = actTooling.tools

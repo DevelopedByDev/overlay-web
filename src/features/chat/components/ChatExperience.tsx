@@ -173,6 +173,17 @@ const loadModelQualitiesPanel = () => import('@overlay/chat-react/model-qualitie
 
 const EMPTY_UI_MESSAGES: UIMessage[] = []
 const TEMPORARY_CHAT_ID = '__overlay_temporary_chat__'
+const PENDING_FIRST_CHAT_ID = '__overlay_pending_first_chat__'
+
+type PendingFirstSendState = {
+  conversationClientId: string
+  previewRuntime: ConversationRuntime
+  streamDone: boolean
+  realChatId: string | null
+  wasFirst: boolean
+  renameSeed: string
+  activeChatTitleSnapshot: string | null
+}
 
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -235,6 +246,7 @@ export default function ChatExperience({
     }
   }, [])
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
+  const pendingFirstSendRef = useRef<PendingFirstSendState | null>(null)
   const appliedLiveDeltaIdsRef = useRef(new Set<string>())
   const resumedCloudflareStreamsRef = useRef(new Set<string>())
 
@@ -1286,6 +1298,19 @@ export default function ChatExperience({
     })
   }, [applyChatTitleUpdate, loadChats])
 
+  const isStreamChatActive = useCallback((
+    chatId: string,
+    temporaryChatSnapshot: boolean,
+  ) => {
+    if (temporaryChatSnapshot) {
+      return chatId === TEMPORARY_CHAT_ID && isTemporaryChatRef.current
+    }
+    if (chatId === PENDING_FIRST_CHAT_ID) {
+      return pendingFirstSendRef.current != null
+    }
+    return activeChatIdRef.current === chatId
+  }, [])
+
   useEffect(() => {
     if (initialChats === undefined) void loadChats()
     void loadSubscription()
@@ -1359,6 +1384,40 @@ export default function ChatExperience({
     const basePath = '/app/chat'
     replaceUrl(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
   }, [hideSidebar, mode, searchParams])
+
+  const tryActivatePendingFirstSend = useCallback(() => {
+    const pending = pendingFirstSendRef.current
+    if (!pending?.realChatId || !pending.streamDone) return
+
+    const realId = pending.realChatId
+    const preview = pending.previewRuntime
+    replaceConversationRuntime(
+      realId,
+      cloneConversationUiState(preview.ui),
+      preview.askChats.map((chat) => [...chat.messages]),
+      [...preview.actChat.messages],
+    )
+    markChatModified(realId, pending.activeChatTitleSnapshot)
+    if (pending.wasFirst) {
+      startFirstMessageRename(realId, pending.renameSeed)
+    }
+    activeChatIdRef.current = realId
+    setActiveViewer(realId)
+    setActiveChatId(realId)
+    syncStandaloneChatUrl(realId)
+    applyUiStateToView(preview.ui)
+    resetRuntimeState(emptyRuntimeRef.current)
+    pendingFirstSendRef.current = null
+    setRuntimeHydrationVersion((value) => value + 1)
+  }, [
+    applyUiStateToView,
+    emptyRuntimeRef,
+    markChatModified,
+    replaceConversationRuntime,
+    setActiveViewer,
+    startFirstMessageRename,
+    syncStandaloneChatUrl,
+  ])
 
   const { invalidateLoadChatRequest, loadChat } = useChatConversationLoader({
     activeChatIdRef,
@@ -2157,6 +2216,8 @@ export default function ChatExperience({
 
   async function createNewChat(options: {
     title?: string
+    clientId?: string
+    deferActivation?: boolean
     prepareRuntime?: (args: {
       chatId: string
       runtime: ConversationRuntime
@@ -2178,6 +2239,7 @@ export default function ChatExperience({
     })
     const initialSelectedModels = normalizedInitialSelection.askModelIds
     const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
+    const trimmedClientId = options.clientId?.trim()
     const res = await overlayAppClient.conversations.createResponse(
       {
         title: initialTitle,
@@ -2185,8 +2247,9 @@ export default function ChatExperience({
         actModelId: normalizedInitialSelection.actModelId,
         lastMode: 'act',
         ...(embedProjectId ? { projectId: embedProjectId } : {}),
+        ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
       },
-      { idempotencyKey: createIdempotencyKey() },
+      { idempotencyKey: trimmedClientId ?? createIdempotencyKey() },
     )
     if (res.ok) {
       const data = await res.json()
@@ -2203,6 +2266,19 @@ export default function ChatExperience({
       setChats((prev) => [newChat, ...prev])
       dispatchChatCreated({ chat: newChat })
       posthog.capture('chat_new_chat_created', { mode: 'act' })
+
+      if (options.deferActivation) {
+        const pending = pendingFirstSendRef.current
+        if (pending && trimmedClientId && pending.conversationClientId === trimmedClientId) {
+          pending.realChatId = data.id
+          if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {
+            pendingScrollChatIdRef.current = data.id
+          }
+          tryActivatePendingFirstSend()
+        }
+        return data.id
+      }
+
       const runtime = ensureConversationRuntime(data.id, {
         selectedActModel: normalizedInitialSelection.actModelId,
         selectedModels: initialSelectedModels,
@@ -2240,6 +2316,28 @@ export default function ChatExperience({
     }
     return null
   }
+
+  const completeSessionForStream = useCallback((chatId: string, active: boolean) => {
+    if (chatId === PENDING_FIRST_CHAT_ID) {
+      const pending = pendingFirstSendRef.current
+      if (pending) {
+        pending.streamDone = true
+        if (!pending.realChatId) {
+          void createNewChat({
+            clientId: pending.conversationClientId,
+            deferActivation: true,
+          }).catch(() => {
+            setComposerNotice('Could not save chat. Your reply may still have streamed.')
+            window.setTimeout(() => setComposerNotice(null), 4000)
+          })
+        }
+      }
+      completeSession(chatId, true)
+      tryActivatePendingFirstSend()
+      return
+    }
+    completeSession(chatId, active)
+  }, [completeSession, tryActivatePendingFirstSend, setComposerNotice])
 
   async function handleBranchConversationAtTurn(turnId: string | null) {
     const sourceChatId = activeChatIdRef.current ?? activeChatId
@@ -2841,23 +2939,48 @@ export default function ChatExperience({
       applyUiStateToView(previewRuntime.ui)
       setIsFirstMessage(false)
       setRuntimeHydrationVersion((value) => value + 1)
-      chatId = await createNewChat({
-        prepareRuntime: ({ runtime }) => {
-          prepareTextRuntime(runtime)
-          preparedFirstSendRuntime = true
-        },
+
+      const conversationClientId = crypto.randomUUID()
+      pendingFirstSendRef.current = {
+        conversationClientId,
+        previewRuntime,
+        streamDone: false,
+        realChatId: null,
+        wasFirst,
+        renameSeed: text || indexedFileNames[0] || 'Documents',
+        activeChatTitleSnapshot,
+      }
+      chatId = PENDING_FIRST_CHAT_ID
+      targetRuntime = previewRuntime
+      preparedFirstSendRuntime = true
+
+      void createNewChat({
+        clientId: conversationClientId,
+        deferActivation: true,
+      }).catch(() => {
+        setComposerNotice('Could not create chat. Your reply may still stream.')
+        window.setTimeout(() => setComposerNotice(null), 4000)
       })
+    } else {
+      targetRuntime = ensureConversationRuntime(existingChatId)
     }
     if (!chatId) return
-    if (!temporaryChatSnapshot) markChatModified(chatId, activeChatTitleSnapshot)
-    if (!temporaryChatSnapshot) targetRuntime = ensureConversationRuntime(chatId)
-    else targetRuntime = emptyRuntimeRef.current
+    if (!temporaryChatSnapshot && chatId !== PENDING_FIRST_CHAT_ID) {
+      markChatModified(chatId, activeChatTitleSnapshot)
+    }
 
-    if (!temporaryChatSnapshot && wasFirst && (text || indexedFileNames.length > 0)) {
+    if (
+      !temporaryChatSnapshot &&
+      chatId !== PENDING_FIRST_CHAT_ID &&
+      wasFirst &&
+      (text || indexedFileNames.length > 0)
+    ) {
       startFirstMessageRename(chatId, text || indexedFileNames[0] || 'Documents')
     }
 
-    if (!temporaryChatSnapshot) activeChatIdRef.current = chatId
+    if (!temporaryChatSnapshot && chatId !== PENDING_FIRST_CHAT_ID) {
+      activeChatIdRef.current = chatId
+    }
 
     if (!temporaryChatSnapshot && !preparedFirstSendRuntime) {
       textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(targetRuntime, textModelsForTurn).historyBaseModelId
@@ -2890,7 +3013,15 @@ export default function ChatExperience({
     setIsFirstMessage(false)
 
     const commonActBody = {
-      ...(temporaryChatSnapshot ? { temporaryChat: true } : { conversationId: chatId }),
+      ...(temporaryChatSnapshot
+        ? { temporaryChat: true }
+        : chatId === PENDING_FIRST_CHAT_ID
+          ? {
+              conversationClientId: pendingFirstSendRef.current!.conversationClientId,
+              ...(embedProjectId ? { projectId: embedProjectId } : {}),
+              askModelIds: textModelsForTurn,
+            }
+          : { conversationId: chatId }),
       turnId: textTurnId,
       mode: requestMode,
       automationMode: requestMode === 'automate',
@@ -2914,8 +3045,8 @@ export default function ChatExperience({
       partsForModel,
       userMetadata,
       commonBody: commonActBody,
-      isChatActive: (id) => temporaryChatSnapshot ? (id === TEMPORARY_CHAT_ID && isTemporaryChatRef.current) : activeChatIdRef.current === id,
-      completeSession,
+      isChatActive: (id) => isStreamChatActive(id, temporaryChatSnapshot),
+      completeSession: completeSessionForStream,
       loadChats: temporaryChatSnapshot ? (() => {}) : loadChats,
       loadSubscription,
       onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),

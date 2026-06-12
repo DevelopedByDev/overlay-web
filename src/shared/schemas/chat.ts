@@ -65,6 +65,9 @@ export const ShareConversationRequest = z.object({
 export const ActConversationRequest = z.object({
   ...AuthFields,
   conversationId: z.string().optional(),
+  conversationClientId: z.string().min(1).optional(),
+  projectId: z.string().optional(),
+  askModelIds: z.array(z.string()).optional(),
   messages: z.array(z.unknown()).optional(),
   prompt: z.string().optional(),
   systemPrompt: z.string().optional(),
