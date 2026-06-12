@@ -94,6 +94,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { TABLE_FORMAT_INSTRUCTION } = await import('@/shared/markdown/markdown-table-instructions')
     const _ttftDebug = process.env.TTFT_DEBUG === 'true'
     let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
+    let _tEnsureConversationMs = 0
+    let _tFirstToolCall = 0
+    let _firstToolCallLogged = false
     if (_ttftDebug) _t0 = performance.now()
     const bodyResult = await readValidatedJson(request, context, ActConversationRequest)
     if (!bodyResult.ok) return bodyResult.response
@@ -181,7 +184,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     let cid = conversationId as Id<'conversations'> | undefined
     const trimmedClientId = conversationClientId?.trim()
+    const parallelCreate = !conversationId && Boolean(trimmedClientId)
     if (!cid && trimmedClientId) {
+      const ensureStartedAt = _ttftDebug ? performance.now() : 0
       cid = await ensureActConversationId({
         userId,
         serverSecret,
@@ -191,6 +196,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         askModelIds,
         actModelId: effectiveModelId,
       })
+      if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
     }
     const tid = resolveActTurnId(turnId)
     actWebhookConversationId = cid
@@ -294,7 +300,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
 
+    const mediaHeuristicSkipped =
+      paid &&
+      !isMultiModelFollowUpSlot &&
+      structuredMediaToolIntent == null &&
+      !mayNeedMediaGenerationTools(latestUserText) &&
+      resolvedMediaToolIntent == null
+
 	    const modelMessages = await convertToModelMessages(messagesForModel)
+	    if (_ttftDebug) _tPrep = performance.now()
 	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
 	    let streamedRoutedModelId: string | undefined
 	    const [generatingMessageId, actTooling] = await Promise.all([
@@ -329,7 +343,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	      }),
 	    ])
     pendingGeneratingMessageId = generatingMessageId
-	    if (_ttftDebug) _tPrep = performance.now()
     if (_ttftDebug) _tTools = performance.now()
     logActTooling(actTooling)
     const tools = actTooling.tools
@@ -396,6 +409,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }, actAbortTimeoutMsResolved)
 
     if (_ttftDebug) _tStreamCall = performance.now()
+    let _tModelStreamReady = 0
     let result: Awaited<ReturnType<typeof agent.stream>>
     try {
       result = await agent.stream({
@@ -403,6 +417,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       abortSignal: abortController.signal,
       experimental_onToolCallStart: ({ toolCall }) => {
         if (!toolCall) return
+        if (_ttftDebug && !_firstToolCallLogged) {
+          _firstToolCallLogged = true
+          _tFirstToolCall = performance.now()
+        }
         const n = toolCall.toolName
         if (n !== 'perplexity_search' && n !== 'parallel_search') return
         const input = toolCall.input as Record<string, unknown> | undefined
@@ -503,6 +521,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     clearTimeout(hardTimeout)
+    if (_ttftDebug) _tModelStreamReady = performance.now()
 
     const hasCitations = Object.keys(sourceCitationMap).length > 0
 
@@ -596,11 +615,25 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
               const _tDelta = performance.now()
               logger.info('[TTFT][act]', {
                 model: attemptModelId,
+                conversationClientId: trimmedClientId ?? null,
+                parallelCreate,
+                mediaHeuristicSkipped,
+                mcpCatalog_ms: actTooling.ttft?.mcpCatalogMs ?? null,
                 total_ms: +(_tDelta - _t0).toFixed(1),
                 auth_ms: +(_tAuth - _t0).toFixed(1),
+                ensureConversation_ms: _tEnsureConversationMs
+                  ? +_tEnsureConversationMs.toFixed(1)
+                  : null,
                 prep_ms: +(_tPrep - _tAuth).toFixed(1),
                 tools_ms: +(_tTools - _tPrep).toFixed(1),
                 streamCall_ms: +(_tStreamCall - _tTools).toFixed(1),
+                modelStreamReady_ms: _tModelStreamReady
+                  ? +(_tModelStreamReady - _tStreamCall).toFixed(1)
+                  : null,
+                firstToolCall_ms:
+                  _tFirstToolCall > 0
+                    ? +(_tFirstToolCall - _tStreamCall).toFixed(1)
+                    : null,
                 firstByte_ms: +(_firstByteAt - _tStreamCall).toFixed(1),
                 firstEvent_ms: _firstEventAt
                   ? +(_firstEventAt - _tStreamCall).toFixed(1)

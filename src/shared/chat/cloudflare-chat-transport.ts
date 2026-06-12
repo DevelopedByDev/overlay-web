@@ -6,6 +6,11 @@ import {
   type UIMessage,
   type UIMessageChunk,
 } from 'ai'
+import {
+  isTtftClientDebugEnabled,
+  markTtftClientMilestone,
+  wrapUiMessageStreamForTtft,
+} from '@/shared/chat/ttft-client-debug'
 
 type ChatBody = object | undefined
 
@@ -66,7 +71,10 @@ function logStreamCompletion(
   path: 'cloudflare' | 'convex-fallback' | 'direct',
   body: ChatBody,
 ): ReadableStream<UIMessageChunk> {
-  return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
+  const withTtft = isTtftClientDebugEnabled()
+    ? wrapUiMessageStreamForTtft(stream)
+    : stream
+  return withTtft.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
     transform(chunk, controller) {
       controller.enqueue(chunk)
     },
@@ -76,12 +84,33 @@ function logStreamCompletion(
   }))
 }
 
+function wrapTransportForTtftDebug<UI_MESSAGE extends UIMessage>(
+  transport: ChatTransport<UI_MESSAGE>,
+): ChatTransport<UI_MESSAGE> {
+  return {
+    ...transport,
+    sendMessages: async (options) => {
+      markTtftClientMilestone('act_fetch_start', streamLogFields(options.body))
+      const stream = await transport.sendMessages(options)
+      return wrapUiMessageStreamForTtft(stream)
+    },
+    reconnectToStream: transport.reconnectToStream
+      ? async (options) => {
+          const stream = await transport.reconnectToStream!(options)
+          return stream ? wrapUiMessageStreamForTtft(stream) : null
+        }
+      : undefined,
+  }
+}
+
 export function createPersistentChatTransport<UI_MESSAGE extends UIMessage>(
   options: HttpChatTransportInitOptions<UI_MESSAGE>,
 ): ChatTransport<UI_MESSAGE> {
   const relayApi = getCloudflareChatStreamRelayApi()
-  if (!relayApi) return new DefaultChatTransport(options)
-  return new CloudflareChatTransport({ ...options, relayApi })
+  const base = relayApi
+    ? new CloudflareChatTransport({ ...options, relayApi })
+    : new DefaultChatTransport(options)
+  return isTtftClientDebugEnabled() ? wrapTransportForTtftDebug(base) : base
 }
 
 class CloudflareChatTransport<UI_MESSAGE extends UIMessage>

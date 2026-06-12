@@ -41,6 +41,10 @@ export interface ActTooling {
   gatewaySearchLog: string
   missingGatewaySearchTools: boolean
   tools: ToolSet
+  /** Populated when TTFT_DEBUG timing is collected during prepareActTooling. */
+  ttft?: {
+    mcpCatalogMs: number
+  }
 }
 
 export function preloadActExternalToolTasks(params: {
@@ -92,18 +96,20 @@ export async function prepareActTooling(params: {
     memoryEnabled,
   )
 
+  const mcpCatalogStartedAt = performance.now()
+  const mcpToolsTask = params.isMultiModelFollowUpSlot
+    ? Promise.resolve({} as ToolSet)
+    : createMcpLazyMetaTools({
+        userId: params.userId,
+        accessToken: params.accessToken,
+        serverSecret: params.serverSecret,
+        conversationId: params.conversationId,
+        turnId: params.turnId,
+        modelId: params.effectiveModelId,
+      })
   const [composioRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
     params.preloadTasks.composioToolsTask,
-    params.isMultiModelFollowUpSlot
-      ? Promise.resolve({} as ToolSet)
-      : createMcpLazyMetaTools({
-          userId: params.userId,
-          accessToken: params.accessToken,
-          serverSecret: params.serverSecret,
-          conversationId: params.conversationId,
-          turnId: params.turnId,
-          modelId: params.effectiveModelId,
-        }),
+    mcpToolsTask,
     Promise.resolve(
       createWebTools({
         userId: params.userId,
@@ -127,6 +133,10 @@ export async function prepareActTooling(params: {
       : Promise.resolve(null),
   ])
 
+  const mcpCatalogMs = params.isMultiModelFollowUpSlot
+    ? 0
+    : performance.now() - mcpCatalogStartedAt
+
   const tooling = buildActTooling({
     allowedOverlayToolIds,
     composioRaw,
@@ -137,6 +147,8 @@ export async function prepareActTooling(params: {
     perplexityTool,
     webToolSet,
   })
+
+  tooling.ttft = { mcpCatalogMs: +mcpCatalogMs.toFixed(1) }
 
   if (!params.paid) {
     return tooling

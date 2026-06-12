@@ -87,6 +87,12 @@ import {
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
 import { TEMPORARY_CHAT_UI_EVENT } from '@/shared/chat/temporary-chat-ui'
+import {
+  beginTtftClientTurn,
+  markTtftClientMilestone,
+  setTtftClientTurnId,
+  tryLogTtftClientFirstText,
+} from '@/shared/chat/ttft-client-debug'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
@@ -563,8 +569,6 @@ export default function ChatExperience({
     setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
   }, [])
   const wasStreamingRef = useRef(false)
-  const ttftSendTimeRef = useRef<number | null>(null)
-  const ttftLoggedRef = useRef(false)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
@@ -1566,18 +1570,14 @@ export default function ChatExperience({
   }, [isActiveLoading, chat0.messages.length])
 
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_TTFT_DEBUG !== 'true') return
-    if (ttftLoggedRef.current) return
     if (!isActiveLoading) return
-    if (ttftSendTimeRef.current === null) return
-    const _msgs = actChat.messages
-    const _lastMsg = [..._msgs].reverse().find((m) => m.role === 'assistant')
-    if (!_lastMsg) return
+    const lastAssistant = [...actChat.messages].reverse().find((m) => m.role === 'assistant')
+    if (!lastAssistant) return
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const _parts = (_lastMsg as any).parts as Array<{ type: string; text?: string }> | undefined
-    const _hasText = _parts?.some((p) => p.type === 'text' && (p.text?.trim().length ?? 0) > 0)
-    if (!_hasText) return
-    ttftLoggedRef.current = true
+    const parts = (lastAssistant as any).parts as Array<{ type: string; text?: string }> | undefined
+    const hasText = parts?.some((p) => p.type === 'text' && (p.text?.trim().length ?? 0) > 0)
+    if (!hasText) return
+    tryLogTtftClientFirstText()
   }, [isActiveLoading, actChat.messages, selectedActModel])
 
   useLayoutEffect(() => {
@@ -2611,10 +2611,10 @@ export default function ChatExperience({
       is_first_message: isFirstMessage,
     })
 
-    if (process.env.NEXT_PUBLIC_TTFT_DEBUG === 'true') {
-      ttftSendTimeRef.current = performance.now()
-      ttftLoggedRef.current = false
-    }
+    beginTtftClientTurn({
+      model: selectedActModelSnapshot,
+      isFirstMessage,
+    })
     setIsOptimisticLoading(true)
 
     // ── Image / Video generation path ──────────────────────────────────────
@@ -2839,6 +2839,7 @@ export default function ChatExperience({
     // Capture before any await — isFirstMessage is true for the first message of a new/fresh chat
     const wasFirst = isFirstMessage
     const textTurnId = crypto.randomUUID()
+    setTtftClientTurnId(textTurnId)
 
     type UiPart = { type: string; text?: string; url?: string; mediaType?: string; fileName?: string }
     const partsForModel: UiPart[] = []
@@ -2961,6 +2962,7 @@ export default function ChatExperience({
         setComposerNotice('Could not create chat. Your reply may still stream.')
         window.setTimeout(() => setComposerNotice(null), 4000)
       })
+      markTtftClientMilestone('create_started', { conversationClientId })
     } else {
       targetRuntime = ensureConversationRuntime(existingChatId)
     }
