@@ -87,20 +87,21 @@ function logStreamCompletion(
 function wrapTransportForTtftDebug<UI_MESSAGE extends UIMessage>(
   transport: ChatTransport<UI_MESSAGE>,
 ): ChatTransport<UI_MESSAGE> {
-  return {
+  const wrapped: ChatTransport<UI_MESSAGE> = {
     ...transport,
     sendMessages: async (options) => {
       markTtftClientMilestone('act_fetch_start', streamLogFields(options.body))
       const stream = await transport.sendMessages(options)
       return wrapUiMessageStreamForTtft(stream)
     },
-    reconnectToStream: transport.reconnectToStream
-      ? async (options) => {
-          const stream = await transport.reconnectToStream!(options)
-          return stream ? wrapUiMessageStreamForTtft(stream) : null
-        }
-      : undefined,
   }
+  if (transport.reconnectToStream) {
+    wrapped.reconnectToStream = async (options) => {
+      const stream = await transport.reconnectToStream!(options)
+      return stream ? wrapUiMessageStreamForTtft(stream) : null
+    }
+  }
+  return wrapped
 }
 
 export function createPersistentChatTransport<UI_MESSAGE extends UIMessage>(

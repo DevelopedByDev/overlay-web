@@ -51,7 +51,7 @@ export interface UseChatConversationLoaderParams {
   shouldScrollRef: MutableRefObject<boolean>
   startSession: (
     chatId: string,
-    mode: 'ask' | 'act',
+    mode: 'act',
     title: string,
     exchangeIndex: number,
   ) => void

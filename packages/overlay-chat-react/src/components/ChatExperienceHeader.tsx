@@ -93,7 +93,7 @@ export interface ChatExperienceHeaderProps {
   onBeginHeaderChatRename?: () => void
   showRenameButton: boolean
   projectName?: string | null
-  selectedAutomation: { name: string } | null
+  selectedAutomation: { name?: string } | null
   showAutomationChatTab: boolean
   appMode: 'chat' | 'automate'
   isTemporaryChat: boolean

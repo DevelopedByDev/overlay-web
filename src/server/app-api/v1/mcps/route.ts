@@ -65,12 +65,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       authConfig: authConfig || undefined,
       timeoutMs: typeof timeoutMs === 'number' ? timeoutMs : undefined,
     })
+    if (!mcpServerId) {
+      return NextResponse.json({ error: 'Failed to create MCP server' }, { status: 500 })
+    }
     if (enabled !== false) {
       void refreshMcpServerToolCatalog({
         mcpServerId,
         userId: auth.userId,
         serverSecret,
-      }).catch(() => undefined)
+      }).catch((_error) => undefined)
     }
     return NextResponse.json({ id: mcpServerId })
   } catch (_error) {
@@ -124,7 +127,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
         mcpServerId: String(mcpServerId),
         userId: auth.userId,
         serverSecret,
-      }).catch(() => undefined)
+      }).catch((_error) => undefined)
     }
     return NextResponse.json({ success: true })
   } catch (_error) {

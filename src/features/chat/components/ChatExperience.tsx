@@ -484,7 +484,7 @@ export default function ChatExperience({
     settings.onlyAllowZdrModels,
   ])
   const applyDefaultChatModelsToView = useCallback(
-    (ui: Parameters<typeof createConversationUiState>[0]) => {
+    (ui: Partial<ConversationUiState>): ConversationUiState => {
       const { askModelIds, actModelId } = resolveAppDefaultChatModels()
       return createConversationUiState({
         ...ui,
