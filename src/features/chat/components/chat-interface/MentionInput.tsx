@@ -94,6 +94,15 @@ function extractMentionsFromElement(el: HTMLDivElement): MentionItem[] {
   return mentions
 }
 
+/** True when the editor has no user-visible text (ignores lone newlines from empty `<br>`). */
+function isComposerTextEmpty(text: string): boolean {
+  return text.replace(/\u00A0/g, ' ').trim().length === 0
+}
+
+function isEditorDomEmpty(el: HTMLDivElement): boolean {
+  return isComposerTextEmpty(extractPlainTextFromElement(el))
+}
+
 function extractPlainTextFromElement(el: HTMLDivElement): string {
   let text = ''
   const walk = (node: Node) => {
@@ -130,10 +139,6 @@ function moveCaretToEnd(el: HTMLDivElement) {
 
 function markEditorEmpty(el: HTMLDivElement) {
   el.innerHTML = ''
-}
-
-function markEditorNonEmpty(_el: HTMLDivElement) {
-  // No-op: empty state is tracked in React for the placeholder overlay.
 }
 
 function getCaretCoords(): { x: number; y: number } | null {
@@ -227,7 +232,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     /** True when the @ that opened the current popup was inserted by the @ button rather
      * than typed by the user; on close-without-select we strip that orphan @. */
     const buttonInsertedAtRef = useRef(false)
-    const [isEditorEmpty, setIsEditorEmpty] = useState(() => value.length === 0)
+    const [isEditorEmpty, setIsEditorEmpty] = useState(() => isComposerTextEmpty(value))
 
     const { search, loading } = useMentionData()
 
@@ -237,17 +242,21 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     useEffect(() => {
       const el = editorRef.current
       if (!el) return
+      let emptyFrame = 0
       if (value === '') {
         markEditorEmpty(el)
-        setIsEditorEmpty(true)
         onMentionsChange([])
+        emptyFrame = requestAnimationFrame(() => setIsEditorEmpty(true))
       } else if (value !== lastValueRef.current || el.innerHTML === '') {
         el.textContent = value
-        setIsEditorEmpty(false)
+        emptyFrame = requestAnimationFrame(() => setIsEditorEmpty(false))
         moveCaretToEnd(el)
       }
       lastValueRef.current = value
       resizeEditorElement(el)
+      return () => {
+        if (emptyFrame) cancelAnimationFrame(emptyFrame)
+      }
     }, [value, valueRevision, onMentionsChange])
 
     useImperativeHandle(ref, () => ({
@@ -262,6 +271,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
           markEditorEmpty(editorRef.current)
           resizeEditorElement(editorRef.current)
           lastValueRef.current = ''
+          setIsEditorEmpty(true)
           onChange('')
           onMentionsChange([])
         }
@@ -278,9 +288,10 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
         if (editorRef.current) {
           if (text.length === 0) {
             markEditorEmpty(editorRef.current)
+            setIsEditorEmpty(true)
           } else {
             editorRef.current.textContent = text
-            markEditorNonEmpty(editorRef.current)
+            setIsEditorEmpty(false)
             moveCaretToEnd(editorRef.current)
           }
           lastValueRef.current = text
@@ -329,18 +340,20 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       if (!el) return
 
       const text = extractPlainTextFromElement(el)
-      lastValueRef.current = text
+      const empty = isComposerTextEmpty(text)
+      lastValueRef.current = empty ? '' : text
       if (!isComposingRef.current) {
-        if (text.length === 0) {
-          if (el.innerHTML !== '' || el.dataset.empty !== 'true') {
+        if (empty) {
+          if (el.innerHTML !== '') {
             markEditorEmpty(el)
           }
+          setIsEditorEmpty(true)
         } else {
-          markEditorNonEmpty(el)
+          setIsEditorEmpty(false)
         }
       }
       resizeEditorElement(el)
-      onChange(text)
+      onChange(empty ? '' : text)
       onMentionsChange(extractMentionsFromElement(el))
 
       // Check for @ trigger
@@ -360,6 +373,16 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
         }
       }
     }, [onChange, onMentionsChange, search])
+
+    const syncEditorEmptyState = useCallback(() => {
+      const el = editorRef.current
+      if (!el) return
+      const empty = isEditorDomEmpty(el)
+      setIsEditorEmpty(empty)
+      if (empty && el.innerHTML !== '') {
+        markEditorEmpty(el)
+      }
+    }, [])
 
     // Search when mentionQuery changes
     useEffect(() => {
@@ -404,9 +427,14 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
 
         // Update state
         const text = extractPlainTextFromElement(el)
-        lastValueRef.current = text
+        const empty = isComposerTextEmpty(text)
+        lastValueRef.current = empty ? '' : text
+        setIsEditorEmpty(empty)
+        if (empty && el.innerHTML !== '') {
+          markEditorEmpty(el)
+        }
         resizeEditorElement(el)
-        onChange(text)
+        onChange(empty ? '' : text)
         onMentionsChange(extractMentionsFromElement(el))
       },
       [onChange, onMentionsChange]
@@ -483,8 +511,14 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
             removeMentionQueryText(el, triggerOffsetRef.current)
             const text = extractPlainTextFromElement(el)
             lastValueRef.current = text
+            const empty = isComposerTextEmpty(text)
+            lastValueRef.current = empty ? '' : text
+            setIsEditorEmpty(empty)
+            if (empty && el.innerHTML !== '') {
+              markEditorEmpty(el)
+            }
             resizeEditorElement(el)
-            onChange(text)
+            onChange(empty ? '' : text)
             onMentionsChange(extractMentionsFromElement(el))
           } catch {
             // Best-effort cleanup; ignore failures.
@@ -495,11 +529,20 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
 
     return (
       <div className="relative w-full">
+        {isEditorEmpty && placeholder ? (
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 px-0.5 py-1 text-sm leading-6 text-[var(--muted-light)] select-none whitespace-pre-wrap break-words"
+            aria-hidden
+          >
+            {placeholder}
+          </div>
+        ) : null}
         <div
           ref={editorRef}
           contentEditable={!disabled}
           suppressContentEditableWarning
           onInput={handleInput}
+          onFocus={syncEditorEmptyState}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onCompositionStart={() => { isComposingRef.current = true }}
@@ -508,8 +551,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
             handleInput()
           }}
           data-placeholder={placeholder}
-          data-empty="true"
-          className={`w-full min-h-11 max-h-40 resize-none overflow-hidden overscroll-contain whitespace-pre-wrap break-words border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--muted-light)] focus:ring-0 [data-empty="true"]:before:content-[attr(data-placeholder)] [data-empty="true"]:before:text-[var(--muted-light)] [data-empty="true"]:before:pointer-events-none ${className || ''}`}
+          className={`relative w-full min-h-11 max-h-40 resize-none overflow-hidden overscroll-contain whitespace-pre-wrap break-words border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 focus:ring-0 ${className || ''}`}
           role="textbox"
           aria-multiline="true"
           aria-placeholder={placeholder}

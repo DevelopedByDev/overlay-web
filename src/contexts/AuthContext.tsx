@@ -37,9 +37,11 @@ export function AuthProvider({
   const trustedServerUserRef = useRef(initialUser)
 
   useEffect(() => {
-    trustedServerUserRef.current = initialUser
-    if (initialSessionResolved) {
+    if (initialUser) {
+      trustedServerUserRef.current = initialUser
       setUser(initialUser)
+    }
+    if (initialSessionResolved) {
       setIsLoading(false)
     }
   }, [initialUser, initialSessionResolved])
@@ -52,23 +54,22 @@ export function AuthProvider({
       })
       const contentType = response.headers.get('content-type') || ''
       if (!response.ok || !contentType.includes('application/json')) {
-        if (!trustedServerUserRef.current) {
-          setUser(null)
-        }
+        // Preserve a known server-authenticated user through transient route/HMR
+        // responses. A valid JSON unauthenticated response below is authoritative.
         return
       }
       const data = await response.json()
       
       if (data.authenticated && data.user) {
+        trustedServerUserRef.current = data.user
         setUser(data.user)
-      } else if (!trustedServerUserRef.current) {
+      } else {
+        trustedServerUserRef.current = null
         setUser(null)
       }
     } catch (error) {
       console.error('[Auth] Session check failed:', error)
-      if (!trustedServerUserRef.current) {
-        setUser(null)
-      }
+      // Network/runtime failures are not sign-out events.
     } finally {
       setIsLoading(false)
     }

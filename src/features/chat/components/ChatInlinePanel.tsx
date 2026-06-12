@@ -20,6 +20,7 @@ import {
 import {
   fetchChatList,
   fetchNextChatListPage,
+  clearChatListCache,
   getCachedChatList,
   getCachedChatListPageInfo,
   removeCachedChat,
@@ -27,6 +28,7 @@ import {
 } from '@/shared/chat/chat-list-cache'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SidebarResourceList } from '@overlay/ui/primitives'
+import { useAuth } from '@/contexts/AuthContext'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -48,8 +50,9 @@ export function ChatInlinePanel({
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const { sessions, getUnread } = useAsyncSessions()
-  const [chats, setChats] = useState<Conversation[]>(() => getCachedChatList() ?? [])
-  const [loading, setLoading] = useState(() => !getCachedChatList())
+  const { user, isLoading: authLoading } = useAuth()
+  const [chats, setChats] = useState<Conversation[]>([])
+  const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(() => getCachedChatListPageInfo().hasMore)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
@@ -59,6 +62,14 @@ export function ChatInlinePanel({
   const activeId = searchParams?.get('id') ?? null
 
   const loadChats = useCallback(async (options: { force?: boolean } = {}) => {
+    if (authLoading) return
+    if (!user) {
+      clearChatListCache()
+      setChats([])
+      setHasMore(false)
+      setLoading(false)
+      return
+    }
     try {
       setChats(await fetchChatList(options))
       setHasMore(getCachedChatListPageInfo().hasMore)
@@ -67,9 +78,10 @@ export function ChatInlinePanel({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [authLoading, user])
 
   async function loadMoreChats() {
+    if (!user) return
     setLoadingMore(true)
     try {
       setChats(await fetchNextChatListPage())
@@ -80,14 +92,35 @@ export function ChatInlinePanel({
   }
 
   useEffect(() => {
+    if (authLoading) {
+      setLoading(true)
+      return
+    }
+    if (!user) {
+      clearChatListCache()
+      setChats([])
+      setHasMore(false)
+      setLoading(false)
+      return
+    }
+    const cached = getCachedChatList()
+    if (cached) {
+      setChats(cached)
+      setHasMore(getCachedChatListPageInfo().hasMore)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     const timeoutId = window.setTimeout(() => {
       if (!getCachedChatList()) setLoading(true)
       void loadChats()
     }, 0)
     return () => window.clearTimeout(timeoutId)
-  }, [loadChats, refreshKey])
+  }, [authLoading, loadChats, refreshKey, user])
 
   useEffect(() => {
+    if (!user) return
+
     function handleChatUpserted(event: Event) {
       const { detail } = event as CustomEvent<ChatCreatedDetail>
       const nextChat = detail?.chat
@@ -147,7 +180,7 @@ export function ChatInlinePanel({
       window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
       window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     }
-  }, [])
+  }, [user])
 
   function beginRename(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()

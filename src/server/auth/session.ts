@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { unstable_noStore as noStore } from 'next/cache'
 import { clearSession } from '@/server/auth/workos-auth'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { Session } from '@overlay/app-core'
@@ -39,6 +40,7 @@ function toAuthSession(session: Session): AuthSession | null {
 export async function getOverlaySession(
   request: Request = FALLBACK_SESSION_REQUEST,
 ): Promise<AuthSession | null> {
+  noStore()
   const session = await getOverlayServerContext().auth.getSession(request)
   return session ? toAuthSession(session) : null
 }

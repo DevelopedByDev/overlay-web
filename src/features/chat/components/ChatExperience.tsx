@@ -305,6 +305,8 @@ export default function ChatExperience({
   }, [initialChatPageInfo, initialChats])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
+  /** When true, account default-model sync must not overwrite single/multi picker mode. */
+  const userAskModelOverrideRef = useRef(false)
   const {
     selectedActModel,
     setSelectedActModel,
@@ -329,6 +331,8 @@ export default function ChatExperience({
     setVideoSubMode,
     lastGeneratedImageUrlRef,
   } = useChatPreferences()
+  const askModelSelectionModeRef = useRef(askModelSelectionMode)
+  askModelSelectionModeRef.current = askModelSelectionMode
   const [, setIsSwitchingChat] = useState(false)
   const [exchangeModes, setExchangeModes] = useState<('ask' | 'act')[]>([])
   const generatedUiConnectorActions = useGeneratedUiConnectorActions()
@@ -491,13 +495,28 @@ export default function ChatExperience({
     },
     [resolveAppDefaultChatModels],
   )
+  // Apply account default models on new-chat surfaces when settings load or change.
   useEffect(() => {
     if (!chatPrefsHydrated || activeChatId || isTemporaryChat) return
+    if (userAskModelOverrideRef.current) return
+
     const { askModelIds, actModelId } = resolveAppDefaultChatModels()
-    if (sameModelOrder(askModelIds, selectedModels) && actModelId === selectedActModel) return
+    const modeFromSettings: AskModelSelectionMode =
+      askModelIds.length > 1 ? 'multiple' : 'single'
+    const currentMode = askModelSelectionModeRef.current
+
+    const modelsMatch =
+      sameModelOrder(askModelIds, selectedModels) && actModelId === selectedActModel
+    if (modelsMatch) {
+      if (currentMode !== modeFromSettings) {
+        setAskModelSelectionMode(modeFromSettings)
+      }
+      return
+    }
+
     setSelectedModels(askModelIds)
     setSelectedActModel(actModelId)
-    setAskModelSelectionMode(askModelIds.length > 1 ? 'multiple' : 'single')
+    setAskModelSelectionMode(modeFromSettings)
   }, [
     activeChatId,
     chatPrefsHydrated,
@@ -509,6 +528,12 @@ export default function ChatExperience({
     setSelectedActModel,
     setSelectedModels,
   ])
+
+  useEffect(() => {
+    if (activeChatId || isTemporaryChat) {
+      userAskModelOverrideRef.current = false
+    }
+  }, [activeChatId, isTemporaryChat])
   /** User turn ids currently playing the delete (fade-out) animation */
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
   const [, setDeletingChatIds] = useState<string[]>([])
@@ -2033,20 +2058,38 @@ export default function ChatExperience({
 
   useEffect(() => {
     if (!chatPrefsHydrated) return
+    if (
+      userAskModelOverrideRef.current &&
+      askModelSelectionMode === 'single' &&
+      selectedModels.length === 1 &&
+      selectedModels[0] === selectedActModel
+    ) {
+      return
+    }
     const normalized = normalizeChatModelSelection({
-      askModelIds: selectedModels,
+      askModelIds:
+        askModelSelectionMode === 'single'
+          ? [selectedActModel]
+          : selectedModels,
       actModelId: selectedActModel,
     })
+    const resolvedAskIds =
+      askModelSelectionMode === 'single'
+        ? [normalized.actModelId]
+        : normalized.askModelIds
     const selectionChanged =
       normalized.actModelId !== selectedActModel ||
-      !sameModelOrder(normalized.askModelIds, selectedModels)
+      !sameModelOrder(resolvedAskIds, selectedModels)
 
     if (selectionChanged) {
-      setSelectedModels(normalized.askModelIds)
+      setSelectedModels(resolvedAskIds)
       setSelectedActModel(normalized.actModelId)
-      setAskModelSelectionMode(normalized.askModelIds.length > 1 ? 'multiple' : 'single')
+      if (askModelSelectionMode === 'multiple') {
+        setAskModelSelectionMode(resolvedAskIds.length > 1 ? 'multiple' : 'single')
+      }
     }
   }, [
+    askModelSelectionMode,
     chatPrefsHydrated,
     selectedActModel,
     selectedModels,
@@ -2086,6 +2129,7 @@ export default function ChatExperience({
       if (next === askModelSelectionMode) return
       if (isFreeTier && next === 'multiple') return
       if (hasAutomationContext && next === 'multiple') return
+      userAskModelOverrideRef.current = true
       snapshotCurrentAskThreadsForModelPicker()
       setAskModelSelectionMode(next)
       if (next === 'single' && selectedModels.length > 1) {
@@ -2115,6 +2159,9 @@ export default function ChatExperience({
   )
 
   function toggleTextModelInPicker(modelId: string) {
+    if (isOnNewChatSurface) {
+      userAskModelOverrideRef.current = true
+    }
     snapshotCurrentAskThreadsForModelPicker()
     if (askModelSelectionMode === 'single') {
       const next = toggleModelSelection(selectedModels, modelId, askModelSelectionMode)

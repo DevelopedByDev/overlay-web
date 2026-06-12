@@ -90,6 +90,7 @@ export function AttachmentPreviewDialog({
   renderViewer: (props: AttachmentViewerRenderProps) => ReactNode
 }) {
   const { mounted, visible } = usePresence(open, 300)
+  // Keep the last preview while the exit animation plays (same pattern as DraftReviewModal).
   const [cachedPreview, setCachedPreview] = useState(preview)
   if (preview && preview !== cachedPreview) setCachedPreview(preview)
   const activePreview = preview ?? cachedPreview
