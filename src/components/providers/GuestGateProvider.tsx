@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { usePathname } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth, type AuthUser } from '@/contexts/AuthContext'
 import { SignInFullScreenModal } from '@/features/auth/components/SignInFullScreenModal'
 import { SignInCornerPopover } from '@/features/auth/components/SignInCornerPopover'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -36,8 +36,17 @@ function readCornerDismissed(): boolean {
 
 const FADE_MS = 200
 
-export function GuestGateProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth()
+export function GuestGateProvider({
+  children,
+  sessionUser = null,
+}: {
+  children: ReactNode
+  sessionUser?: AuthUser | null
+}) {
+  const { user: authUser, isLoading } = useAuth()
+  const user = sessionUser ?? authUser
+  const isAuthenticated = Boolean(user)
+  const authSettled = !isLoading || sessionUser !== null
   const { capabilities } = useOverlayCapabilities()
   const pathname = usePathname()
   const [modalReason, setModalReason] = useState<GateReason | null>(null)
@@ -47,17 +56,17 @@ export function GuestGateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (!isLoading && !isAuthenticated && params.get('signin') === 'nav') {
+    if (authSettled && !isAuthenticated && params.get('signin') === 'nav') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setModalReason('nav')
     }
-  }, [isLoading, isAuthenticated, pathname])
+  }, [authSettled, isAuthenticated, pathname])
 
   const requireAuth = useCallback(
     (reason: GateReason) => {
-      if (!isLoading && !isAuthenticated) setModalReason(reason)
+      if (authSettled && !isAuthenticated) setModalReason(reason)
     },
-    [isLoading, isAuthenticated],
+    [authSettled, isAuthenticated],
   )
 
   const closeModal = useCallback(() => {
@@ -78,12 +87,12 @@ export function GuestGateProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const showCorner =
-    !isLoading && !isAuthenticated && !cornerDismissed && !modalReason
+    authSettled && !isAuthenticated && !cornerDismissed && !modalReason
 
   return (
     <GuestGateContext.Provider value={{ requireAuth, isModalOpen: !!modalReason }}>
       {children}
-      {!isAuthenticated && (((!isLoading && !!modalReason) || modalClosing)) ? (
+      {!isAuthenticated && (((authSettled && !!modalReason) || modalClosing)) ? (
         <SignInFullScreenModal
           reason={modalReason ?? 'nav'}
           onClose={closeModal}

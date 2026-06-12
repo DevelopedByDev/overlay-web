@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 
 export interface AuthUser {
   id: string
@@ -34,6 +34,15 @@ export function AuthProvider({
 }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(initialUser)
   const [isLoading, setIsLoading] = useState(!initialSessionResolved)
+  const trustedServerUserRef = useRef(initialUser)
+
+  useEffect(() => {
+    trustedServerUserRef.current = initialUser
+    if (initialSessionResolved) {
+      setUser(initialUser)
+      setIsLoading(false)
+    }
+  }, [initialUser, initialSessionResolved])
 
   const checkSession = useCallback(async () => {
     try {
@@ -43,19 +52,23 @@ export function AuthProvider({
       })
       const contentType = response.headers.get('content-type') || ''
       if (!response.ok || !contentType.includes('application/json')) {
-        setUser(null)
+        if (!trustedServerUserRef.current) {
+          setUser(null)
+        }
         return
       }
       const data = await response.json()
       
       if (data.authenticated && data.user) {
         setUser(data.user)
-      } else {
+      } else if (!trustedServerUserRef.current) {
         setUser(null)
       }
     } catch (error) {
       console.error('[Auth] Session check failed:', error)
-      setUser(null)
+      if (!trustedServerUserRef.current) {
+        setUser(null)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -88,10 +101,8 @@ export function AuthProvider({
   }, [checkSession])
 
   useEffect(() => {
-    if (!initialSessionResolved) {
-      void checkSession()
-    }
-  }, [checkSession, initialSessionResolved])
+    void checkSession()
+  }, [checkSession])
 
   return (
     <AuthContext.Provider

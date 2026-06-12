@@ -119,6 +119,23 @@ function extractPlainTextFromElement(el: HTMLDivElement): string {
   return text
 }
 
+function moveCaretToEnd(el: HTMLDivElement) {
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  range.collapse(false)
+  const sel = window.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+}
+
+function markEditorEmpty(el: HTMLDivElement) {
+  el.innerHTML = ''
+}
+
+function markEditorNonEmpty(_el: HTMLDivElement) {
+  // No-op: empty state is tracked in React for the placeholder overlay.
+}
+
 function getCaretCoords(): { x: number; y: number } | null {
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0) return null
@@ -210,6 +227,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     /** True when the @ that opened the current popup was inserted by the @ button rather
      * than typed by the user; on close-without-select we strip that orphan @. */
     const buttonInsertedAtRef = useRef(false)
+    const [isEditorEmpty, setIsEditorEmpty] = useState(() => value.length === 0)
 
     const { search, loading } = useMentionData()
 
@@ -220,21 +238,30 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       const el = editorRef.current
       if (!el) return
       if (value === '') {
-        el.innerHTML = ''
+        markEditorEmpty(el)
+        setIsEditorEmpty(true)
         onMentionsChange([])
       } else if (value !== lastValueRef.current || el.innerHTML === '') {
         el.textContent = value
+        setIsEditorEmpty(false)
+        moveCaretToEnd(el)
       }
       lastValueRef.current = value
       resizeEditorElement(el)
     }, [value, valueRevision, onMentionsChange])
 
     useImperativeHandle(ref, () => ({
-      focus: () => editorRef.current?.focus(),
+      focus: () => {
+        const el = editorRef.current
+        if (!el) return
+        el.focus()
+        moveCaretToEnd(el)
+      },
       clear: () => {
         if (editorRef.current) {
-          editorRef.current.innerHTML = ''
+          markEditorEmpty(editorRef.current)
           resizeEditorElement(editorRef.current)
+          lastValueRef.current = ''
           onChange('')
           onMentionsChange([])
         }
@@ -249,7 +276,14 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       },
       setPlainText: (text: string) => {
         if (editorRef.current) {
-          editorRef.current.textContent = text
+          if (text.length === 0) {
+            markEditorEmpty(editorRef.current)
+          } else {
+            editorRef.current.textContent = text
+            markEditorNonEmpty(editorRef.current)
+            moveCaretToEnd(editorRef.current)
+          }
+          lastValueRef.current = text
           resizeEditorElement(editorRef.current)
           onChange(text)
         }
@@ -296,6 +330,15 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
 
       const text = extractPlainTextFromElement(el)
       lastValueRef.current = text
+      if (!isComposingRef.current) {
+        if (text.length === 0) {
+          if (el.innerHTML !== '' || el.dataset.empty !== 'true') {
+            markEditorEmpty(el)
+          }
+        } else {
+          markEditorNonEmpty(el)
+        }
+      }
       resizeEditorElement(el)
       onChange(text)
       onMentionsChange(extractMentionsFromElement(el))
@@ -465,7 +508,8 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
             handleInput()
           }}
           data-placeholder={placeholder}
-          className={`w-full min-h-11 max-h-40 resize-none overflow-hidden overscroll-contain whitespace-pre-wrap break-words border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--muted-light)] focus:ring-0 empty:before:content-[attr(data-placeholder)] empty:before:text-[var(--muted-light)] empty:before:pointer-events-none ${className || ''}`}
+          data-empty="true"
+          className={`w-full min-h-11 max-h-40 resize-none overflow-hidden overscroll-contain whitespace-pre-wrap break-words border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--muted-light)] focus:ring-0 [data-empty="true"]:before:content-[attr(data-placeholder)] [data-empty="true"]:before:text-[var(--muted-light)] [data-empty="true"]:before:pointer-events-none ${className || ''}`}
           role="textbox"
           aria-multiline="true"
           aria-placeholder={placeholder}

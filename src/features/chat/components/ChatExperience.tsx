@@ -3063,7 +3063,9 @@ export default function ChatExperience({
   }, [setGenerationChip, setGenerationMode])
 
   const focusComposer = useCallback(() => {
-    requestAnimationFrame(() => textareaRef.current?.focus())
+    window.setTimeout(() => {
+      textareaRef.current?.focus()
+    }, 0)
   }, [])
 
   const handleEmptySuggestion = useCallback(

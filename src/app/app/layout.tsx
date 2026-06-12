@@ -36,7 +36,7 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
             <NavigationProgressBar />
             {user && <BackgroundPollManager />}
             <CapabilitiesProvider initialCapabilities={capabilities}>
-              <GuestGateProvider>
+              <GuestGateProvider sessionUser={user}>
                 <OnboardingProvider>
                   <AppShellSidebar user={user} />
                   <main className="app-main flex-1 overflow-auto pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
