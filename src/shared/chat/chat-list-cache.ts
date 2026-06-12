@@ -21,9 +21,21 @@ export type ChatListPageInfo = {
   hasMore: boolean
 }
 
+/**
+ * Distinguishes a successful fetch (even one that returns zero chats) from a
+ * transient failure. This matters on first paint: an authenticated session can
+ * briefly receive a 401 from the BFF while the Convex token is still being
+ * minted. In that window we must NOT treat the response as "no chats" — the
+ * caller should keep its loading state and retry.
+ */
+export type ChatListFetchOutcome =
+  | { status: 'success'; chats: CachedConversation[] }
+  | { status: 'unauthenticated' }
+  | { status: 'error' }
+
 let cachedChats: CachedConversation[] | null = null
 let cachedAt = 0
-let inFlight: Promise<CachedConversation[]> | null = null
+let inFlight: Promise<ChatListFetchOutcome> | null = null
 let nextPageInFlight: Promise<CachedConversation[]> | null = null
 let cachedPageInfo: ChatListPageInfo = { hasMore: false }
 
@@ -72,37 +84,45 @@ export function clearChatListCache() {
   cachedPageInfo = { hasMore: false }
 }
 
-export async function fetchChatList(options: { force?: boolean } = {}): Promise<CachedConversation[]> {
+export async function fetchChatListResult(options: { force?: boolean } = {}): Promise<ChatListFetchOutcome> {
   const now = Date.now()
   if (!options.force && cachedChats && now - cachedAt < CACHE_TTL_MS) {
-    return cachedChats
+    return { status: 'success', chats: cachedChats }
   }
   if (!options.force && inFlight) return inFlight
 
   inFlight = overlayAppClient.conversations.getResponse({ limit: INITIAL_CHAT_LIST_LIMIT })
-    .then(async (res) => {
+    .then(async (res): Promise<ChatListFetchOutcome> => {
       if (!res.ok) {
-        // A guest (or expired session) must not keep seeing previously cached
-        // conversations from an authenticated session.
-        if (res.status === 401 || res.status === 403) {
-          clearChatListCache()
-          return []
-        }
-        return cachedChats ?? []
+        if (res.status === 401 || res.status === 403) return { status: 'unauthenticated' }
+        return { status: 'error' }
       }
       const payload = await res.json()
-      if (!isPaginatedEnvelope<CachedConversation>(payload)) return cachedChats ?? []
+      if (!isPaginatedEnvelope<CachedConversation>(payload)) return { status: 'error' }
       primeChatList(payload.data, {
         nextCursor: payload.nextCursor,
         hasMore: payload.hasMore,
       })
-      return payload.data
+      return { status: 'success', chats: payload.data }
     })
+    .catch((): ChatListFetchOutcome => ({ status: 'error' }))
     .finally(() => {
       inFlight = null
     })
 
   return inFlight
+}
+
+export async function fetchChatList(options: { force?: boolean } = {}): Promise<CachedConversation[]> {
+  const outcome = await fetchChatListResult(options)
+  if (outcome.status === 'success') return outcome.chats
+  // A guest (or expired session) must not keep seeing previously cached
+  // conversations from an authenticated session.
+  if (outcome.status === 'unauthenticated') {
+    clearChatListCache()
+    return []
+  }
+  return cachedChats ?? []
 }
 
 export async function fetchNextChatListPage(): Promise<CachedConversation[]> {

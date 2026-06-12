@@ -18,7 +18,7 @@ import {
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
 import {
-  fetchChatList,
+  fetchChatListResult,
   fetchNextChatListPage,
   clearChatListCache,
   getCachedChatList,
@@ -61,7 +61,7 @@ export function ChatInlinePanel({
   const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
 
-  const loadChats = useCallback(async (options: { force?: boolean } = {}) => {
+  const loadChats = useCallback(async (signal?: { cancelled: boolean }) => {
     if (authLoading) return
     if (!user) {
       clearChatListCache()
@@ -70,14 +70,26 @@ export function ChatInlinePanel({
       setLoading(false)
       return
     }
-    try {
-      setChats(await fetchChatList(options))
-      setHasMore(getCachedChatListPageInfo().hasMore)
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
+    // While the user is authenticated, an empty/failed response is almost always
+    // transient on first paint (the Convex token may not be minted yet, so the
+    // BFF briefly returns 401). Keep the loading skeleton and retry with backoff
+    // instead of flashing "No chats yet". We only ever commit to the empty state
+    // on a genuinely successful response with zero chats.
+    const MAX_ATTEMPTS = 8
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      if (signal?.cancelled) return
+      const outcome = await fetchChatListResult({ force: attempt > 0 })
+      if (signal?.cancelled) return
+      if (outcome.status === 'success') {
+        setChats(outcome.chats)
+        setHasMore(getCachedChatListPageInfo().hasMore)
+        setLoading(false)
+        return
+      }
+      await new Promise((resolve) => setTimeout(resolve, Math.min(300 * 2 ** attempt, 3000)))
     }
+    // Exhausted retries; stop the skeleton so the UI doesn't hang indefinitely.
+    if (!signal?.cancelled) setLoading(false)
   }, [authLoading, user])
 
   async function loadMoreChats() {
@@ -111,11 +123,15 @@ export function ChatInlinePanel({
     } else {
       setLoading(true)
     }
+    const signal = { cancelled: false }
     const timeoutId = window.setTimeout(() => {
       if (!getCachedChatList()) setLoading(true)
-      void loadChats()
+      void loadChats(signal)
     }, 0)
-    return () => window.clearTimeout(timeoutId)
+    return () => {
+      signal.cancelled = true
+      window.clearTimeout(timeoutId)
+    }
   }, [authLoading, loadChats, refreshKey, user])
 
   useEffect(() => {
