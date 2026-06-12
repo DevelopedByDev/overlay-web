@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { usePathname } from 'next/navigation'
-import { useAuth, type AuthUser } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { SignInFullScreenModal } from '@/features/auth/components/SignInFullScreenModal'
 import { SignInCornerPopover } from '@/features/auth/components/SignInCornerPopover'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -38,15 +38,12 @@ const FADE_MS = 200
 
 export function GuestGateProvider({
   children,
-  sessionUser = null,
 }: {
   children: ReactNode
-  sessionUser?: AuthUser | null
 }) {
-  const { user: authUser, isLoading } = useAuth()
-  const user = sessionUser ?? authUser
+  const { user, isLoading } = useAuth()
   const isAuthenticated = Boolean(user)
-  const authSettled = !isLoading || sessionUser !== null
+  const authSettled = !isLoading
   const { capabilities } = useOverlayCapabilities()
   const pathname = usePathname()
   const [modalReason, setModalReason] = useState<GateReason | null>(null)

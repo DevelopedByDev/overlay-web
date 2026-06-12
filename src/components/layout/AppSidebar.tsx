@@ -54,7 +54,6 @@ export type {
 } from './appSidebarTypes'
 
 export default function AppSidebar({
-  user: serverUser,
   renderChatPanel,
   renderAutomationsPanel,
 }: AppSidebarProps) {
@@ -67,7 +66,7 @@ export default function AppSidebar({
   )
   const { capabilities } = useOverlayCapabilities()
   const { requireAuth } = useGuestGate()
-  const { user: authUser, isLoading: authLoading } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const appShell = useMemo(
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],
@@ -82,8 +81,7 @@ export default function AppSidebar({
   const settingsSections = appShell.settingsSections
   const brandConfig = appShell.brand
   const billingEnabled = capabilities.billing
-  // Prefer server-resolved user; fall back to client auth. Never gate while loading.
-  const user = serverUser ?? authUser
+  const authUserId = user?.id ?? null
   const isGuestConfirmed = !authLoading && !user
   const displayName = user ? (user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email) : 'Guest'
   const { totalUnread } = useAsyncSessions()
@@ -182,7 +180,7 @@ export default function AppSidebar({
     return 'connectors'
   })()
   const loadEntitlements = useCallback(async () => {
-    if (!billingEnabled) {
+    if (!billingEnabled || authLoading || !authUserId) {
       setEntitlements(null)
       return
     }
@@ -192,7 +190,7 @@ export default function AppSidebar({
     } catch {
       // ignore
     }
-  }, [billingEnabled, setEntitlements])
+  }, [authLoading, authUserId, billingEnabled, setEntitlements])
 
   useEffect(() => {
     document.documentElement.toggleAttribute('data-temporary-chat-ui', hideTemporaryChatChrome)

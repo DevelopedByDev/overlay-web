@@ -38,6 +38,7 @@ export interface UserProfile {
 
 export interface AuthProvider {
   getSession(req: Request): Promise<Session | null>
+  refreshSession?(req: Request): Promise<Session | null>
   verifyAccessToken(token: string): Promise<TokenClaims | null>
   getUserProfile(token: string): Promise<UserProfile | null>
   deleteUser?(userId: string): Promise<void>

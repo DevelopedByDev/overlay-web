@@ -14,6 +14,7 @@ import {
 } from 'react'
 import { getPresetCssVars, isThemePresetId } from '@/shared/app/themes'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useAuth } from '@/contexts/AuthContext'
 
 export type { AppSettings, ChatStreamingMode, ThemePreference, ThemePresetId } from '@overlay/app-core'
 
@@ -177,6 +178,8 @@ function persistSettings(settings: AppSettings) {
 }
 
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
+  const { user, isLoading: authLoading } = useAuth()
+  const authUserId = user?.id ?? null
   const [settings, setSettings] = useState<AppSettings>(() => readStoredSettings() ?? DEFAULT_APP_SETTINGS)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -185,6 +188,12 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     const stored = readStoredSettings()
     if (stored) {
       setSettings(stored)
+    }
+    if (authLoading) return
+    if (!authUserId) {
+      setSettings(stored ?? DEFAULT_APP_SETTINGS)
+      setIsLoading(false)
+      return
     }
 
     try {
@@ -203,7 +212,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [authLoading, authUserId])
 
   useEffect(() => {
     void refresh()
@@ -242,6 +251,8 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     const optimistic = normalizeSettingsPayload({ ...settings, ...patch })
     setSettings(optimistic)
     persistSettings(optimistic)
+    if (!authUserId) return optimistic
+
     setIsSaving(true)
     try {
       const res = await overlayAppClient.settings.updateResponse(patch)
@@ -259,7 +270,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     } finally {
       setIsSaving(false)
     }
-  }, [settings])
+  }, [authUserId, settings])
 
   const value = useMemo<AppSettingsContextValue>(() => ({
     settings,

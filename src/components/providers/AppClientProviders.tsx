@@ -16,8 +16,8 @@ export function AppClientProviders({
   initialUser: AuthUser | null
 }) {
   return (
-    <AppSettingsProvider>
-      <AuthProvider initialUser={initialUser} initialSessionResolved>
+    <AuthProvider initialUser={initialUser}>
+      <AppSettingsProvider>
         <ConvexProviderWithWorkOS>
           <Suspense fallback={null}>
             <ObservabilityClient />
@@ -26,7 +26,7 @@ export function AppClientProviders({
           <Analytics />
           <SpeedInsights />
         </ConvexProviderWithWorkOS>
-      </AuthProvider>
-    </AppSettingsProvider>
+      </AppSettingsProvider>
+    </AuthProvider>
   )
 }

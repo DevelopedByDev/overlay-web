@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 
 export interface AuthUser {
   id: string
@@ -20,6 +20,62 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const SESSION_CHECK_INTERVAL_MS = 4 * 60 * 1000
+const SESSION_REFRESH_LOCK_NAME = 'overlay:auth-session-refresh'
+
+type SessionCheckResult =
+  | { status: 'authenticated'; user: AuthUser }
+  | { status: 'unauthenticated' }
+  | { status: 'transient-error' }
+
+let sessionCheckInFlight: Promise<SessionCheckResult> | null = null
+
+async function fetchSessionState(): Promise<SessionCheckResult> {
+  const response = await fetch('/api/auth/session', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  })
+  const contentType = response.headers.get('content-type') || ''
+  if (!response.ok || !contentType.includes('application/json')) {
+    return { status: 'transient-error' }
+  }
+
+  const data = await response.json() as {
+    authenticated?: boolean
+    user?: AuthUser
+  }
+  return data.authenticated && data.user
+    ? { status: 'authenticated', user: data.user }
+    : { status: 'unauthenticated' }
+}
+
+async function runWithSessionRefreshLock(
+  run: () => Promise<SessionCheckResult>,
+): Promise<SessionCheckResult> {
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    return await navigator.locks.request(
+      SESSION_REFRESH_LOCK_NAME,
+      async () => await run(),
+    )
+  }
+  return await run()
+}
+
+function requestSessionState(): Promise<SessionCheckResult> {
+  if (sessionCheckInFlight) return sessionCheckInFlight
+
+  const run = () => fetchSessionState().catch((error) => {
+    console.error('[Auth] Session check failed:', error)
+    return { status: 'transient-error' } as const
+  })
+  const request = runWithSessionRefreshLock(run)
+
+  sessionCheckInFlight = request
+  void request.finally(() => {
+    if (sessionCheckInFlight === request) sessionCheckInFlight = null
+  })
+  return request
+}
 
 type AuthProviderProps = {
   children: ReactNode
@@ -34,11 +90,9 @@ export function AuthProvider({
 }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(initialUser)
   const [isLoading, setIsLoading] = useState(!initialSessionResolved)
-  const trustedServerUserRef = useRef(initialUser)
 
   useEffect(() => {
     if (initialUser) {
-      trustedServerUserRef.current = initialUser
       setUser(initialUser)
     }
     if (initialSessionResolved) {
@@ -48,28 +102,12 @@ export function AuthProvider({
 
   const checkSession = useCallback(async () => {
     try {
-      const response = await fetch('/api/auth/session', {
-        credentials: 'same-origin',
-        cache: 'no-store',
-      })
-      const contentType = response.headers.get('content-type') || ''
-      if (!response.ok || !contentType.includes('application/json')) {
-        // Preserve a known server-authenticated user through transient route/HMR
-        // responses. A valid JSON unauthenticated response below is authoritative.
-        return
-      }
-      const data = await response.json()
-      
-      if (data.authenticated && data.user) {
-        trustedServerUserRef.current = data.user
-        setUser(data.user)
-      } else {
-        trustedServerUserRef.current = null
+      const result = await requestSessionState()
+      if (result.status === 'authenticated') {
+        setUser(result.user)
+      } else if (result.status === 'unauthenticated') {
         setUser(null)
       }
-    } catch (error) {
-      console.error('[Auth] Session check failed:', error)
-      // Network/runtime failures are not sign-out events.
     } finally {
       setIsLoading(false)
     }
@@ -103,6 +141,22 @@ export function AuthProvider({
 
   useEffect(() => {
     void checkSession()
+    const intervalId = window.setInterval(() => {
+      void checkSession()
+    }, SESSION_CHECK_INTERVAL_MS)
+    const handleFocus = () => {
+      void checkSession()
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void checkSession()
+    }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [checkSession])
 
   return (

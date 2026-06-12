@@ -39,9 +39,13 @@ function toAuthSession(session: Session): AuthSession | null {
 
 export async function getOverlaySession(
   request: Request = FALLBACK_SESSION_REQUEST,
+  options: { refresh?: boolean } = {},
 ): Promise<AuthSession | null> {
   noStore()
-  const session = await getOverlayServerContext().auth.getSession(request)
+  const auth = getOverlayServerContext().auth
+  const session = options.refresh && auth.refreshSession
+    ? await auth.refreshSession(request)
+    : await auth.getSession(request)
   return session ? toAuthSession(session) : null
 }
 

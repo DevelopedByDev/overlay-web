@@ -2,8 +2,11 @@
 
 import { useEffect, useRef } from 'react'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function BackgroundPollManager() {
+  const { user, isLoading: authLoading } = useAuth()
+  const authUserId = user?.id ?? null
   const { sessions, completeSession, activeViewerIds } = useAsyncSessions()
   const sessionsRef = useRef(sessions)
   const completeSessionRef = useRef(completeSession)
@@ -15,6 +18,7 @@ export default function BackgroundPollManager() {
 
   /** Warm personalized chat starters cache early so empty-chat chips rarely wait on the network. */
   useEffect(() => {
+    if (authLoading || !authUserId) return
     const run = () => {
       void fetch('/api/v1/chat-suggestions', { credentials: 'same-origin' }).catch(() => {})
     }
@@ -24,9 +28,10 @@ export default function BackgroundPollManager() {
     }
     const t = window.setTimeout(run, 2000)
     return () => window.clearTimeout(t)
-  }, [])
+  }, [authLoading, authUserId])
 
   useEffect(() => {
+    if (authLoading || !authUserId) return
     const interval = setInterval(async () => {
       const pending = Object.values(sessionsRef.current).filter((s) => s.status === 'streaming')
       if (pending.length === 0) return
@@ -51,7 +56,7 @@ export default function BackgroundPollManager() {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [authLoading, authUserId])
 
   return null
 }

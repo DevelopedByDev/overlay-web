@@ -22,13 +22,13 @@ async function fetchConvexToken(): Promise<string | null> {
 }
 
 export function ConvexProviderWithWorkOS({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   const userId = user?.id ?? null
   const [accessToken, setAccessToken] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
-    if (!userId) {
+    if (isLoading || !userId) {
       void Promise.resolve().then(() => {
         if (alive) setAccessToken(null)
       })
@@ -47,14 +47,14 @@ export function ConvexProviderWithWorkOS({ children }: { children: React.ReactNo
       alive = false
       window.clearInterval(interval)
     }
-  }, [userId])
+  }, [isLoading, userId])
 
   useEffect(() => {
     convexReactClient.setAuth(async () => {
-      if (!userId) return null
+      if (isLoading || !userId) return null
       return await fetchConvexToken()
     })
-  }, [userId])
+  }, [isLoading, userId])
 
   const value = useMemo(() => ({ accessToken }), [accessToken])
 

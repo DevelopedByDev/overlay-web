@@ -229,7 +229,8 @@ export default function ChatExperience({
   const { settings, updateSettings } = useAppSettings()
   const { capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
-  const { user: authUser } = useAuth()
+  const { user: authUser, isLoading: authLoading } = useAuth()
+  const authUserId = authUser?.id ?? null
   const convexAccessToken = useConvexWorkOSToken()
   const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
@@ -1341,9 +1342,10 @@ export default function ChatExperience({
   }, [])
 
   useEffect(() => {
-    if (initialChats === undefined) void loadChats()
+    if (authLoading) return
+    if (initialChats === undefined || (!userId && authUserId)) void loadChats()
     void loadSubscription()
-  }, [initialChats, loadChats, loadSubscription])
+  }, [authLoading, authUserId, initialChats, loadChats, loadSubscription, userId])
 
   useEffect(() => {
     if (!activeChatId) return

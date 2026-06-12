@@ -3,6 +3,23 @@ import type { Session, TokenClaims, UserProfile } from '@overlay/app-core'
 export const ACCESS_TOKEN_REFRESH_LEEWAY_MS = 120_000
 export const COOKIE_REFRESH_WITHIN_MS = 24 * 60 * 60 * 1000
 
+export type SessionRefreshAction = 'use-existing' | 'extend-cookie' | 'refresh-token' | 'reject'
+
+export function resolveSessionRefreshAction(args: {
+  accessTokenMatchesSessionUser: boolean
+  allowRefresh: boolean
+  cookieExpiringSoon: boolean
+  needsJwtRefresh: boolean
+}): SessionRefreshAction {
+  if (!args.accessTokenMatchesSessionUser) {
+    return args.allowRefresh ? 'refresh-token' : 'reject'
+  }
+  if (!args.allowRefresh) return 'use-existing'
+  if (args.needsJwtRefresh) return 'refresh-token'
+  if (args.cookieExpiringSoon) return 'extend-cookie'
+  return 'use-existing'
+}
+
 export function decodeJwtExpMs(accessToken: string): number | null {
   try {
     const parts = accessToken.trim().split('.')

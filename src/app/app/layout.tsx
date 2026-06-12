@@ -34,11 +34,11 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
         <AsyncSessionsProvider>
           <NavigationProgressProvider>
             <NavigationProgressBar />
-            {user && <BackgroundPollManager />}
+            <BackgroundPollManager />
             <CapabilitiesProvider initialCapabilities={capabilities}>
-              <GuestGateProvider sessionUser={user}>
+              <GuestGateProvider>
                 <OnboardingProvider>
-                  <AppShellSidebar user={user} />
+                  <AppShellSidebar />
                   <main className="app-main flex-1 overflow-auto pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
                     <Suspense fallback={<AppMainFallback />}>{children}</Suspense>
                   </main>

@@ -35,7 +35,14 @@ export class WorkOSAuthProvider implements AuthProvider {
   async getSession(req: Request): Promise<Session | null> {
     void req
     const { getSession } = await import('@/server/auth/workos-auth')
-    const session = await getSession()
+    const session = await getSession({ allowRefresh: false })
+    return session ? toProviderSession(session) : null
+  }
+
+  async refreshSession(req: Request): Promise<Session | null> {
+    void req
+    const { getSession } = await import('@/server/auth/workos-auth')
+    const session = await getSession({ allowRefresh: true })
     return session ? toProviderSession(session) : null
   }
 

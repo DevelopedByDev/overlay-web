@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   ACCESS_TOKEN_REFRESH_LEEWAY_MS,
   decodeJwtExpMs,
+  resolveSessionRefreshAction,
   shouldRefreshAccessToken,
   toTokenClaims,
   toUserProfile,
@@ -25,6 +26,38 @@ test('decodeJwtExpMs and shouldRefreshAccessToken preserve refresh policy', () =
   assert.equal(shouldRefreshAccessToken(fresh, now), false)
   assert.equal(shouldRefreshAccessToken(stale, now), true)
   assert.equal(shouldRefreshAccessToken('opaque-token', now), true)
+})
+
+test('server reads never rotate or extend the cookie-backed session', () => {
+  assert.equal(resolveSessionRefreshAction({
+    accessTokenMatchesSessionUser: true,
+    allowRefresh: false,
+    cookieExpiringSoon: true,
+    needsJwtRefresh: true,
+  }), 'use-existing')
+
+  assert.equal(resolveSessionRefreshAction({
+    accessTokenMatchesSessionUser: false,
+    allowRefresh: false,
+    cookieExpiringSoon: false,
+    needsJwtRefresh: true,
+  }), 'reject')
+})
+
+test('the explicit refresh path rotates or extends sessions when needed', () => {
+  assert.equal(resolveSessionRefreshAction({
+    accessTokenMatchesSessionUser: false,
+    allowRefresh: true,
+    cookieExpiringSoon: false,
+    needsJwtRefresh: true,
+  }), 'refresh-token')
+
+  assert.equal(resolveSessionRefreshAction({
+    accessTokenMatchesSessionUser: true,
+    allowRefresh: true,
+    cookieExpiringSoon: true,
+    needsJwtRefresh: false,
+  }), 'extend-cookie')
 })
 
 test('token claim and profile mapping preserve required claim handling', () => {
