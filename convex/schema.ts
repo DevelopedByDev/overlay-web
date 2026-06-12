@@ -486,6 +486,17 @@ export default defineSchema({
       })
     ),
     timeoutMs: v.optional(v.number()),
+    toolCatalog: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          description: v.optional(v.string()),
+          inputSchema: v.optional(v.any()),
+        }),
+      ),
+    ),
+    toolCatalogUpdatedAt: v.optional(v.number()),
+    toolCatalogError: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

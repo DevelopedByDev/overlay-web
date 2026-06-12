@@ -9,7 +9,7 @@ import {
   summarizeGatewayToolSchemaViolations,
 } from '@/server/ai/gateway/tool-schema-compat'
 import { createBrowserUnifiedTools } from '@/server/tools/composio-tools'
-import { createMcpToolSet } from '@/server/tools/mcp-tools'
+import { createMcpLazyMetaTools } from '@/server/tools/mcp-tools'
 import {
   allowedOverlayToolIdsForTurn,
 } from '@/server/tools/tools/exposure-policy'
@@ -32,7 +32,6 @@ type ToolDefinition = ToolSet[string]
 
 export interface ActToolPreloadTasks {
   composioToolsTask: Promise<ToolSet>
-  mcpToolsTask: Promise<ToolSet>
 }
 
 export interface ActTooling {
@@ -57,16 +56,7 @@ export function preloadActExternalToolTasks(params: {
     logger.warn('[conversations/act] Composio tool preload failed:', summarizeErrorForLog(error))
   })
 
-  const mcpToolsTask = createMcpToolSet({
-    userId: params.userId,
-    accessToken: params.accessToken,
-    serverSecret: params.serverSecret,
-  })
-  void mcpToolsTask.catch((error) => {
-    logger.warn('[conversations/act] MCP tool preload failed:', summarizeErrorForLog(error))
-  })
-
-  return { composioToolsTask, mcpToolsTask }
+  return { composioToolsTask }
 }
 
 export async function prepareActTooling(params: {
@@ -104,7 +94,16 @@ export async function prepareActTooling(params: {
 
   const [composioRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
     params.preloadTasks.composioToolsTask,
-    params.preloadTasks.mcpToolsTask,
+    params.isMultiModelFollowUpSlot
+      ? Promise.resolve({} as ToolSet)
+      : createMcpLazyMetaTools({
+          userId: params.userId,
+          accessToken: params.accessToken,
+          serverSecret: params.serverSecret,
+          conversationId: params.conversationId,
+          turnId: params.turnId,
+          modelId: params.effectiveModelId,
+        }),
     Promise.resolve(
       createWebTools({
         userId: params.userId,

@@ -48,7 +48,7 @@ async function loadMcpModules() {
   return mcpModules
 }
 
-interface McpServerConfig {
+export interface McpServerConfig {
   _id: string
   userId: string
   name: string
@@ -138,6 +138,270 @@ async function createMcpTransportAndClient(config: McpServerConfig) {
 }
 
 const MAX_MCP_TOOL_RESULT_CHARS = 50_000 // Truncate to prevent AI Gateway token limit errors
+
+export interface McpToolCatalogEntry {
+  name: string
+  description?: string
+  inputSchema?: unknown
+}
+
+function flattenMcpToolResult(result: { isError?: boolean; content: unknown }): string {
+  const content = result.content
+  let resultText: string
+  if (Array.isArray(content) && content.length > 0) {
+    const textParts = content
+      .filter((c): c is { type: string; text?: string } =>
+        typeof c === 'object' && c !== null
+      )
+      .map((c) => c.text)
+      .filter((t): t is string => typeof t === 'string')
+    if (textParts.length > 0) {
+      resultText = textParts.join('\n')
+    } else {
+      resultText = JSON.stringify(content)
+    }
+  } else {
+    resultText = JSON.stringify(result)
+  }
+  if (resultText.length > MAX_MCP_TOOL_RESULT_CHARS) {
+    logger.warn(`[MCP] Truncating tool result from ${resultText.length} to ${MAX_MCP_TOOL_RESULT_CHARS} chars`)
+    resultText = resultText.slice(0, MAX_MCP_TOOL_RESULT_CHARS) + '\n\n[Result truncated due to length]'
+  }
+  return resultText
+}
+
+export async function discoverToolsCatalogForServer(
+  config: McpServerConfig,
+): Promise<McpToolCatalogEntry[]> {
+  const { client, timeoutMs } = await createMcpTransportAndClient(config)
+  try {
+    const toolsResult = await client.listTools({}, { signal: AbortSignal.timeout(timeoutMs) })
+    return (toolsResult.tools ?? [])
+      .filter((t) => typeof t.name === 'string' && t.name.length > 0)
+      .map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      }))
+  } finally {
+    try {
+      await client.close()
+    } catch (_error) {
+      // ignore close errors
+    }
+  }
+}
+
+export async function persistMcpServerToolCatalog(args: {
+  mcpServerId: string
+  userId: string
+  accessToken?: string
+  serverSecret?: string
+  tools: McpToolCatalogEntry[]
+  catalogError?: string
+}): Promise<void> {
+  const serverSecret = args.serverSecret ?? getInternalApiSecret()
+  await convex.mutation('integrations/mcpServers:updateToolCatalog', {
+    mcpServerId: args.mcpServerId,
+    userId: args.userId,
+    accessToken: args.accessToken,
+    serverSecret,
+    tools: args.tools,
+    catalogError: args.catalogError,
+  })
+}
+
+export async function refreshMcpServerToolCatalog(args: {
+  mcpServerId: string
+  userId: string
+  accessToken?: string
+  serverSecret?: string
+}): Promise<{ toolCount: number; error?: string }> {
+  const serverSecret = args.serverSecret ?? getInternalApiSecret()
+  const config = (await convex.query('integrations/mcpServers:get', {
+    mcpServerId: args.mcpServerId,
+    userId: args.userId,
+    accessToken: args.accessToken,
+    serverSecret,
+  })) as McpServerConfig | null
+  if (!config) {
+    return { toolCount: 0, error: 'MCP server not found' }
+  }
+  try {
+    const tools = await discoverToolsCatalogForServer(config)
+    await persistMcpServerToolCatalog({
+      ...args,
+      serverSecret,
+      tools,
+      catalogError: undefined,
+    })
+    return { toolCount: tools.length }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    await persistMcpServerToolCatalog({
+      ...args,
+      serverSecret,
+      tools: [],
+      catalogError: message,
+    }).catch((_error) => undefined)
+    return { toolCount: 0, error: message }
+  }
+}
+
+export function rankMcpCatalogEntries(
+  entries: Array<McpToolCatalogEntry & { serverId: string; serverName: string }>,
+  query: string,
+  limit: number,
+): Array<McpToolCatalogEntry & { serverId: string; serverName: string; score: number }> {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) {
+    return entries.slice(0, limit).map((entry) => ({ ...entry, score: 0 }))
+  }
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean)
+  const scored = entries.map((entry) => {
+    const haystack = `${entry.name} ${entry.description ?? ''} ${entry.serverName}`.toLowerCase()
+    let score = 0
+    if (entry.name.toLowerCase() === normalizedQuery) score += 100
+    if (entry.name.toLowerCase().includes(normalizedQuery)) score += 40
+    for (const token of tokens) {
+      if (entry.name.toLowerCase().includes(token)) score += 20
+      if (haystack.includes(token)) score += 5
+    }
+    return { ...entry, score }
+  })
+  return scored
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.serverName.localeCompare(b.serverName) || a.name.localeCompare(b.name))
+    .slice(0, limit)
+}
+
+export async function createMcpLazyMetaTools(args: {
+  userId: string
+  accessToken?: string
+  serverSecret?: string
+  conversationId?: string
+  turnId?: string
+  modelId?: string
+}): Promise<ToolSet> {
+  const serverSecret = args.serverSecret ?? getInternalApiSecret()
+  const configs = (await convex.query('integrations/mcpServers:listEnabled', {
+    userId: args.userId,
+    accessToken: args.accessToken,
+    serverSecret,
+  })) as Array<McpServerConfig & {
+    toolCatalog?: McpToolCatalogEntry[]
+    toolCatalogUpdatedAt?: number
+    toolCatalogError?: string
+  }>
+
+  if (!configs || configs.length === 0) {
+    return {}
+  }
+
+  const configById = new Map(configs.map((config) => [config._id, config]))
+
+  const searchMcpTools = tool({
+    description:
+      'Search the user\'s enabled MCP integrations for tools by capability. Returns server id, tool name, and description. Call call_mcp_tool with exact names from results.',
+    inputSchema: z.object({
+      query: z.string().describe('What capability or task you need, e.g. "create issue" or "fetch weather"'),
+      serverId: z.string().optional().describe('Optional MCP server id to restrict search'),
+      limit: z.number().int().min(1).max(25).optional().describe('Max results (default 10)'),
+    }),
+    execute: async ({ query, serverId, limit }) => {
+      const scoped = serverId
+        ? configs.filter((config) => config._id === serverId)
+        : configs
+      if (scoped.length === 0) {
+        return JSON.stringify({ results: [], message: 'No matching enabled MCP servers.' })
+      }
+
+      const catalogEntries = scoped.flatMap((config) =>
+        (config.toolCatalog ?? []).map((entry) => ({
+          ...entry,
+          serverId: config._id,
+          serverName: config.name,
+        })),
+      )
+
+      if (catalogEntries.length === 0) {
+        return JSON.stringify({
+          results: [],
+          message:
+            'No cached MCP tool catalog for the selected server(s). Ask the user to test the connection in MCP settings to refresh the catalog.',
+        })
+      }
+
+      const ranked = rankMcpCatalogEntries(catalogEntries, query, limit ?? 10)
+      return JSON.stringify({
+        results: ranked.map(({ serverId: sid, serverName, name, description, score }) => ({
+          serverId: sid,
+          serverName,
+          toolName: name,
+          description,
+          score,
+        })),
+      })
+    },
+  })
+
+  const callMcpToolMeta = tool({
+    description:
+      'Invoke an MCP tool on a connected server. Use search_mcp_tools first to get serverId and toolName.',
+    inputSchema: z.object({
+      serverId: z.string().describe('MCP server id from search_mcp_tools'),
+      toolName: z.string().describe('Exact MCP tool name from search_mcp_tools'),
+      arguments: z.record(z.string(), z.unknown()).optional().describe('Tool arguments object'),
+    }),
+    execute: async ({ serverId, toolName, arguments: toolArgs }) => {
+      const config = configById.get(serverId)
+      if (!config) {
+        throw new Error('MCP server not found or not enabled')
+      }
+      const catalog = config.toolCatalog ?? []
+      const catalogHit = catalog.some((entry) => entry.name === toolName)
+      if (catalog.length > 0 && !catalogHit) {
+        throw new Error(`Tool "${toolName}" is not in the cached catalog for server "${config.name}". Run search_mcp_tools again.`)
+      }
+
+      const toolId = safeToolId(config.name, toolName)
+      const start = Date.now()
+      try {
+        const result = await callMcpTool(config, toolName, toolArgs ?? {})
+        void fireAndForgetRecordToolInvocation({
+          userId: args.userId,
+          toolName: toolId,
+          mode: 'act',
+          modelId: args.modelId,
+          conversationId: args.conversationId,
+          turnId: args.turnId,
+          success: !result.isError,
+          durationMs: Date.now() - start,
+          error: result.isError ? 'Tool returned error flag' : undefined,
+        })
+        return flattenMcpToolResult(result)
+      } catch (err) {
+        void fireAndForgetRecordToolInvocation({
+          userId: args.userId,
+          toolName: toolId,
+          mode: 'act',
+          modelId: args.modelId,
+          conversationId: args.conversationId,
+          turnId: args.turnId,
+          success: false,
+          durationMs: Date.now() - start,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        throw err
+      }
+    },
+  })
+
+  return {
+    search_mcp_tools: searchMcpTools,
+    call_mcp_tool: callMcpToolMeta,
+  }
+}
 
 async function callMcpTool(
   config: McpServerConfig,

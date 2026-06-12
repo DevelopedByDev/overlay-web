@@ -134,6 +134,8 @@ export function getDescriptiveToolLabel(toolName: string, toolInput?: Record<str
     generate_image: 'Generating an image',
     generate_video: 'Generating a video',
     run_daytona_sandbox: 'Running your workspace',
+    search_mcp_tools: 'Searching MCP integrations',
+    call_mcp_tool: 'Calling MCP tool',
   }
   if (map[toolName]) return map[toolName]!
 
@@ -158,6 +160,22 @@ export function getDescriptiveToolLabel(toolName: string, toolInput?: Record<str
     if (o) {
       const clipped = o.length > 72 ? `${o.slice(0, 72)}…` : o
       return `Researching: “${clipped}”`
+    }
+  }
+
+  if (toolName === 'call_mcp_tool' && toolInput) {
+    const toolNameArg = pickFirstStringFromInput(toolInput, ['toolName'])
+    if (toolNameArg) {
+      const clipped = toolNameArg.length > 48 ? `${toolNameArg.slice(0, 48)}…` : toolNameArg
+      return `MCP: ${clipped}`
+    }
+  }
+
+  if (toolName === 'search_mcp_tools' && toolInput) {
+    const q = pickFirstStringFromInput(toolInput, ['query'])
+    if (q) {
+      const clipped = q.length > 56 ? `${q.slice(0, 56)}…` : q
+      return `Searching MCP for “${clipped}”`
     }
   }
 

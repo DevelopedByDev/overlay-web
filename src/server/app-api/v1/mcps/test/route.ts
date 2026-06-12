@@ -1,49 +1,72 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validatePublicNetworkUrl } from '@/server/security/ssrf'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import {
+  discoverToolsCatalogForServer,
+  persistMcpServerToolCatalog,
+  type McpServerConfig,
+} from '@/server/tools/mcp-tools'
 
-export async function POST(request: NextRequest) {
+function parseAuthType(value: unknown): McpServerConfig['authType'] {
+  if (value === 'bearer' || value === 'header') return value
+  return 'none'
+}
+
+function parseTransport(value: unknown): McpServerConfig['transport'] {
+  return value === 'sse' ? 'sse' : 'streamable-http'
+}
+
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
+  let mcpServerId: string | undefined
   try {
     const body = await request.json()
+    const record = body as Record<string, unknown>
 
-    const { url, transport, authType, authConfig } = body as Record<string, unknown>
+    const url = record.url
     if (!url || typeof url !== 'string') {
       return NextResponse.json({ error: 'url is required' }, { status: 400 })
     }
 
-    const validation = await validatePublicNetworkUrl(url, { allowLocalDev: true, requireHttps: true })
-    if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
-    const parsed = validation.url
+    mcpServerId = typeof record.mcpServerId === 'string' && record.mcpServerId.length > 0
+      ? record.mcpServerId
+      : undefined
 
-    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
-    let transportInstance
-    const headers: Record<string, string> = {}
-    if (authType === 'bearer' && (authConfig as { bearerToken?: string })?.bearerToken) {
-      headers['Authorization'] = `Bearer ${(authConfig as { bearerToken: string }).bearerToken}`
-    }
-    if (authType === 'header' && (authConfig as { headerName?: string; headerValue?: string })?.headerName && (authConfig as { headerName: string; headerValue: string }).headerValue) {
-      headers[(authConfig as { headerName: string }).headerName] = (authConfig as { headerValue: string }).headerValue
+    const authConfig = record.authConfig as McpServerConfig['authConfig'] | undefined
+    const config: McpServerConfig = {
+      _id: mcpServerId ?? 'test',
+      userId: context.auth.userId,
+      name: 'test',
+      transport: parseTransport(record.transport),
+      url,
+      enabled: true,
+      authType: parseAuthType(record.authType),
+      authConfig,
+      timeoutMs: typeof record.timeoutMs === 'number' ? record.timeoutMs : undefined,
     }
 
-    if (transport === 'sse') {
-      const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js')
-      transportInstance = new SSEClientTransport(parsed, {
-        requestInit: { headers },
-        eventSourceInit: { headers } as EventSourceInit,
+    const tools = await discoverToolsCatalogForServer(config)
+
+    if (mcpServerId) {
+      await persistMcpServerToolCatalog({
+        mcpServerId,
+        userId: context.auth.userId,
+        serverSecret: getInternalApiSecret(),
+        tools,
       })
-    } else {
-      const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-      transportInstance = new StreamableHTTPClientTransport(parsed, {
-        requestInit: { headers },
-      })
     }
 
-    const client = new Client({ name: 'overlay-web-test', version: '0.1.0' }, { capabilities: {} })
-    await client.connect(transportInstance)
-    const toolsResult = await client.listTools()
-    await client.close()
-    return NextResponse.json({ ok: true, toolCount: toolsResult.tools?.length ?? 0 })
+    return NextResponse.json({ ok: true, toolCount: tools.length })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    if (mcpServerId) {
+      await persistMcpServerToolCatalog({
+        mcpServerId,
+        userId: context.auth.userId,
+        serverSecret: getInternalApiSecret(),
+        tools: [],
+        catalogError: message,
+      }).catch((_error) => undefined)
+    }
     return NextResponse.json({ ok: false, error: message }, { status: 502 })
   }
 }

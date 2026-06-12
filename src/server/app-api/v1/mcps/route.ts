@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
+import { refreshMcpServerToolCatalog } from '@/server/tools/mcp-tools'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 
 async function validateMcpUrl(url: unknown): Promise<string | null> {
@@ -64,6 +65,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       authConfig: authConfig || undefined,
       timeoutMs: typeof timeoutMs === 'number' ? timeoutMs : undefined,
     })
+    if (enabled !== false) {
+      void refreshMcpServerToolCatalog({
+        mcpServerId,
+        userId: auth.userId,
+        serverSecret,
+      }).catch(() => undefined)
+    }
     return NextResponse.json({ id: mcpServerId })
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to create MCP server' }, { status: 500 })
@@ -111,6 +119,13 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       authConfig,
       timeoutMs,
     })
+    if (enabled !== false) {
+      void refreshMcpServerToolCatalog({
+        mcpServerId: String(mcpServerId),
+        userId: auth.userId,
+        serverSecret,
+      }).catch(() => undefined)
+    }
     return NextResponse.json({ success: true })
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to update MCP server' }, { status: 500 })

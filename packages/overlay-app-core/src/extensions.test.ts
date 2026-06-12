@@ -120,6 +120,15 @@ test('mcp helpers preserve request bodies, filtering, test messages, and local s
     transport: 'streamable-http',
     authType: 'bearer',
     authConfig: { bearerToken: 'token' },
+    timeoutMs: 12_000,
+  })
+  assert.deepEqual(createMcpTestRequest(values, { mcpServerId: 'mcp_1' }), {
+    url: 'https://mcp.example.test',
+    transport: 'streamable-http',
+    authType: 'bearer',
+    authConfig: { bearerToken: 'token' },
+    timeoutMs: 12_000,
+    mcpServerId: 'mcp_1',
   })
   const server = createMcpSummaryFromForm('mcp_1', values, 10)
   assert.equal(server.hasAuth, true)

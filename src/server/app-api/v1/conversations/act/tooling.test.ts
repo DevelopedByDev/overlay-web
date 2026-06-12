@@ -10,7 +10,7 @@ test('buildActTooling preserves paid primary tool composition', () => {
     allowedOverlayToolIds: ['generate_image'],
     composioRaw: toolSet({ GMAIL_SEND_EMAIL: {}, BROWSER_NAVIGATE: {} }),
     isMultiModelFollowUpSlot: false,
-    mcpToolsRaw: toolSet({ mcp_search: {} }),
+    mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
     paid: true,
     parallelTool: {} as ToolSet[string],
     perplexityTool: {} as ToolSet[string],
@@ -24,11 +24,12 @@ test('buildActTooling preserves paid primary tool composition', () => {
   assert.deepEqual(Object.keys(tooling.tools).sort(), [
     'BROWSER_NAVIGATE',
     'GMAIL_SEND_EMAIL',
+    'call_mcp_tool',
     'generate_image',
-    'mcp_search',
     'parallel_search',
     'perplexity_search',
     'save_memory',
+    'search_mcp_tools',
   ])
 })
 
@@ -37,7 +38,7 @@ test('buildActTooling preserves free-tier and compare-slot stripping behavior', 
     allowedOverlayToolIds: [],
     composioRaw: toolSet({ GMAIL_SEND_EMAIL: {}, BROWSER_NAVIGATE: {} }),
     isMultiModelFollowUpSlot: false,
-    mcpToolsRaw: toolSet({ mcp_search: {} }),
+    mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
     paid: false,
     parallelTool: null,
     perplexityTool: null,
@@ -45,7 +46,8 @@ test('buildActTooling preserves free-tier and compare-slot stripping behavior', 
   })
   assert.equal('GMAIL_SEND_EMAIL' in freePrimary.tools, true)
   assert.equal('BROWSER_NAVIGATE' in freePrimary.tools, false)
-  assert.equal('mcp_search' in freePrimary.tools, true)
+  assert.equal('search_mcp_tools' in freePrimary.tools, true)
+  assert.equal('call_mcp_tool' in freePrimary.tools, true)
   assert.equal('perplexity_search' in freePrimary.tools, true)
   assert.equal('parallel_search' in freePrimary.tools, true)
   assert.equal('run_daytona_sandbox' in freePrimary.tools, true)
@@ -54,14 +56,15 @@ test('buildActTooling preserves free-tier and compare-slot stripping behavior', 
     allowedOverlayToolIds: [],
     composioRaw: toolSet({ GMAIL_SEND_EMAIL: {} }),
     isMultiModelFollowUpSlot: true,
-    mcpToolsRaw: toolSet({ mcp_search: {} }),
+    mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
     paid: true,
     parallelTool: {} as ToolSet[string],
     perplexityTool: {} as ToolSet[string],
     webToolSet: toolSet({ save_memory: {} }),
   })
   assert.equal('GMAIL_SEND_EMAIL' in compareSlot.tools, false)
-  assert.equal('mcp_search' in compareSlot.tools, false)
+  assert.equal('search_mcp_tools' in compareSlot.tools, false)
+  assert.equal('call_mcp_tool' in compareSlot.tools, false)
   assert.equal('save_memory' in compareSlot.tools, true)
   assert.equal('perplexity_search' in compareSlot.tools, true)
 })

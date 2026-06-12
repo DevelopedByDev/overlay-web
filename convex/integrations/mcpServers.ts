@@ -42,6 +42,9 @@ export const list = query({
       authType: s.authType,
       hasAuth: !!s.authConfig,
       timeoutMs: s.timeoutMs,
+      toolCatalogCount: s.toolCatalog?.length ?? 0,
+      toolCatalogUpdatedAt: s.toolCatalogUpdatedAt,
+      toolCatalogError: s.toolCatalogError,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
     }))
@@ -174,6 +177,7 @@ export const remove = mutation({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, { mcpServerId, userId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const server = await ctx.db.get(mcpServerId)
@@ -181,5 +185,38 @@ export const remove = mutation({
       throw new Error('Unauthorized')
     }
     await ctx.db.delete(mcpServerId)
+    return null
+  },
+})
+
+const mcpToolCatalogEntry = v.object({
+  name: v.string(),
+  description: v.optional(v.string()),
+  inputSchema: v.optional(v.any()),
+})
+
+export const updateToolCatalog = mutation({
+  args: {
+    mcpServerId: v.id('mcpServers'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    tools: v.array(mcpToolCatalogEntry),
+    catalogError: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const server = await ctx.db.get(args.mcpServerId)
+    if (!server || server.userId !== args.userId) {
+      throw new Error('Unauthorized')
+    }
+    await ctx.db.patch(args.mcpServerId, {
+      toolCatalog: args.tools,
+      toolCatalogUpdatedAt: Date.now(),
+      toolCatalogError: args.catalogError,
+      updatedAt: Date.now(),
+    })
+    return null
   },
 })

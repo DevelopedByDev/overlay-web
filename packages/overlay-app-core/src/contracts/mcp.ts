@@ -42,6 +42,8 @@ export interface TestMcpServerRequest {
   transport?: McpTransport
   authType?: McpAuthType
   authConfig?: McpAuthConfig
+  mcpServerId?: string
+  timeoutMs?: number
   accessToken?: string
   userId?: string
 }

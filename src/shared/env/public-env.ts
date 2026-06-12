@@ -15,6 +15,8 @@ export const publicEnv = {
     read(process.env.NEXT_PUBLIC_DEV_CONVEX_URL) ||
     read(process.env.DEV_NEXT_PUBLIC_CONVEX_URL),
   chatStreamRelayUrl: read(process.env.NEXT_PUBLIC_CHAT_STREAM_RELAY_URL),
+  /** When true in development, use Cloudflare chat-stream relay even if NEXT_PUBLIC_CHAT_STREAM_RELAY_URL is set. */
+  chatStreamRelayLocal: read(process.env.NEXT_PUBLIC_CHAT_STREAM_RELAY_LOCAL) === 'true',
   sentryDsn: read(process.env.NEXT_PUBLIC_SENTRY_DSN),
 } as const
 

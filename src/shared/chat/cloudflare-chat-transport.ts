@@ -1,4 +1,4 @@
-import { publicEnv } from '@/shared/env/public-env'
+import { isDevelopmentBuild, publicEnv } from '@/shared/env/public-env'
 import {
   DefaultChatTransport,
   type ChatTransport,
@@ -18,9 +18,27 @@ function normalizeRelayApi(value: string): string {
   return value.replace(/\/+$/, '')
 }
 
+const RELAY_START_TIMEOUT_MS = 5_000
+
 export function getCloudflareChatStreamRelayApi(): string | null {
   const configured = publicEnv.chatStreamRelayUrl
-  return configured ? normalizeRelayApi(configured) : null
+  if (!configured) return null
+  if (isDevelopmentBuild() && !publicEnv.chatStreamRelayLocal) {
+    return null
+  }
+  return normalizeRelayApi(configured)
+}
+
+function relayStartTimeout<T>(promise: Promise<T>): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`Relay start timed out after ${RELAY_START_TIMEOUT_MS}ms`)),
+        RELAY_START_TIMEOUT_MS,
+      )
+    }),
+  ])
 }
 
 function streamLogFields(body: ChatBody): Record<string, unknown> {
@@ -126,7 +144,7 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
 
     console.info('[chat-stream] path=cloudflare start', streamLogFields(options.body))
     try {
-      const stream = await this.relayTransport.sendMessages(options)
+      const stream = await relayStartTimeout(this.relayTransport.sendMessages(options))
       console.info('[chat-stream] path=cloudflare connected', streamLogFields(options.body))
       return logStreamCompletion(stream, 'cloudflare', options.body)
     } catch (error) {

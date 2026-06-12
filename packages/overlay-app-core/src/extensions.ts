@@ -385,12 +385,17 @@ export function createMcpUpdateRequest(mcpServerId: string, values: McpServerFor
   }
 }
 
-export function createMcpTestRequest(values: McpServerFormValues): TestMcpServerRequest {
+export function createMcpTestRequest(
+  values: McpServerFormValues,
+  options?: { mcpServerId?: string },
+): TestMcpServerRequest {
   return {
     url: values.url.trim(),
     transport: values.transport,
     authType: values.authType,
     authConfig: createMcpAuthConfig(values),
+    ...(options?.mcpServerId ? { mcpServerId: options.mcpServerId } : {}),
+    ...(values.timeoutMs !== '' ? { timeoutMs: Number(values.timeoutMs) } : {}),
   }
 }
 

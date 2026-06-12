@@ -90,7 +90,10 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
 
   async function handleTestServer(values: McpServerFormValues): Promise<McpTestResultState> {
     try {
-      const res = await overlayAppClient.mcpServers.testResponse(createMcpTestRequest(values))
+      const mcpServerId = dialog?.mode === 'edit' ? dialog.server?._id : undefined
+      const res = await overlayAppClient.mcpServers.testResponse(
+        createMcpTestRequest(values, mcpServerId ? { mcpServerId } : undefined),
+      )
       const data = await res.json().catch(() => ({ error: 'Invalid response' })) as TestMcpServerResponse
       return formatMcpTestResult(data, res.ok)
     } catch {
