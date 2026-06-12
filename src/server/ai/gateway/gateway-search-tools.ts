@@ -13,7 +13,6 @@ const PERPLEXITY_DEFAULTS = {
   maxResults: 10,
   maxTokens: 50_000,
   maxTokensPerPage: 2048,
-  searchRecencyFilter: 'year' as const,
 }
 
 const PARALLEL_DEFAULTS = {
@@ -31,6 +30,144 @@ function isGatewayErrorOutput(out: unknown): out is { error: string; message?: s
     'error' in out &&
     typeof (out as { error: unknown }).error === 'string'
   )
+}
+
+type SearchResultRecord = Record<string, unknown>
+
+export type ExactEntityFallbackPlan = {
+  label: string
+  identityTerms: string[]
+  objective: string
+  searchQueries: string[]
+}
+
+const ENTITY_HONORIFICS = new Set([
+  'dr',
+  'doctor',
+  'prof',
+  'professor',
+  'mr',
+  'mrs',
+  'ms',
+  'sir',
+])
+
+const ENTITY_QUERY_STOP_WORDS = new Set([
+  ...ENTITY_HONORIFICS,
+  'about',
+  'find',
+  'information',
+  'is',
+  'look',
+  'on',
+  'search',
+  'tell',
+  'the',
+  'up',
+  'who',
+])
+
+export function buildExactEntityFallbackPlan(
+  query: string | string[],
+  country?: string,
+): ExactEntityFallbackPlan | null {
+  const candidates = Array.isArray(query) ? query : [query]
+  for (const candidate of candidates) {
+    const trimmed = candidate.trim()
+    if (!trimmed) continue
+    const hasEntityPrefix = /^(?:who\s+is|who's|tell\s+me\s+about|look\s+up|find\s+(?:information\s+)?(?:about|on)|search\s+for)\b/i.test(trimmed)
+    const hasHonorific = /^(?:dr|doctor|prof|professor|mr|mrs|ms|sir)\.?\s+/i.test(trimmed)
+    const isQuoted = /^["“][^"”]+["”]$/.test(trimmed)
+    if (!hasEntityPrefix && !hasHonorific && !isQuoted) continue
+
+    const label = trimmed
+      .replace(/^(?:who\s+is|who's|tell\s+me\s+about|look\s+up|find\s+(?:information\s+)?(?:about|on)|search\s+for)\s+/i, '')
+      .replace(/^["“]|["”]$/g, '')
+      .replace(/[?.!,;:]+$/g, '')
+      .trim()
+    const identityTerms = normalizedSearchTerms(label)
+      .filter((term) => !ENTITY_QUERY_STOP_WORDS.has(term))
+    if (identityTerms.length < 2 || identityTerms.length > 6) continue
+
+    const countryHint = country ? ` Prefer sources relevant to country code ${country}.` : ''
+    return {
+      label,
+      identityTerms,
+      objective:
+        `Identify the exact person or entity named "${label}" and return authoritative profile details. ` +
+        `Exclude results that only share part of the name.${countryHint}`,
+      searchQueries: [`"${label}"`, label],
+    }
+  }
+  return null
+}
+
+export function hasExactEntityMatch(
+  output: unknown,
+  identityTerms: string[],
+): boolean {
+  return searchResults(output).some((result) =>
+    resultMatchesIdentity(result, identityTerms),
+  )
+}
+
+export function filterExactEntityResults(
+  output: unknown,
+  plan: ExactEntityFallbackPlan,
+): unknown {
+  if (!isRecord(output)) return output
+  const seenUrls = new Set<string>()
+  const results = searchResults(output)
+    .filter((result) => resultMatchesIdentity(result, plan.identityTerms))
+    .filter((result) => {
+      const url = typeof result.url === 'string' ? result.url : ''
+      if (!url || seenUrls.has(url)) return false
+      seenUrls.add(url)
+      return true
+    })
+  if (results.length === 0) return output
+
+  return {
+    ...output,
+    results,
+    search_strategy: 'exact_entity_filter',
+    search_note:
+      `Results were limited to exact title or URL matches for "${plan.label}". ` +
+      'Treat the first detailed profile as the primary identity. Do not infer separate people solely from conflicting specialties in sparse directories unless distinct identifiers support that conclusion.',
+  }
+}
+
+export function mergeExactEntityFallbackResults(
+  primaryOutput: unknown,
+  fallbackOutput: unknown,
+  plan: ExactEntityFallbackPlan,
+): unknown {
+  if (!isRecord(primaryOutput) || !isRecord(fallbackOutput)) return primaryOutput
+  const exactResults = [
+    ...searchResults(fallbackOutput)
+      .filter((result) => resultMatchesIdentity(result, plan.identityTerms))
+      .map(normalizeFallbackResult),
+    ...searchResults(primaryOutput)
+      .filter((result) => resultMatchesIdentity(result, plan.identityTerms)),
+  ]
+  if (exactResults.length === 0) return primaryOutput
+
+  const seenUrls = new Set<string>()
+  const results = exactResults.filter((result) => {
+    const url = typeof result.url === 'string' ? result.url : ''
+    if (!url || seenUrls.has(url)) return false
+    seenUrls.add(url)
+    return true
+  })
+
+  return {
+    ...primaryOutput,
+    results,
+    search_strategy: 'exact_entity_deep_augmentation',
+    search_note:
+      `Exact matches for "${plan.label}" were enriched with deeper exact-entity search results. ` +
+      'Treat the first detailed profile as the primary identity. Do not infer separate people solely from conflicting specialties in sparse directories unless distinct identifiers support that conclusion.',
+  }
 }
 
 export type GatewayPerplexitySearchParams = {
@@ -51,7 +188,6 @@ export type GatewayPerplexitySearchParams = {
 export function buildPerplexityProviderPayload(
   p: GatewayPerplexitySearchParams,
 ): Record<string, unknown> {
-  const recency = p.searchRecencyFilter ?? PERPLEXITY_DEFAULTS.searchRecencyFilter
   const hasDateRange = Boolean(
     p.searchAfterDate ||
       p.searchBeforeDate ||
@@ -71,7 +207,9 @@ export function buildPerplexityProviderPayload(
   assignOptional(out, 'search_before_date', p.searchBeforeDate)
   assignOptional(out, 'last_updated_after_filter', p.lastUpdatedAfterFilter)
   assignOptional(out, 'last_updated_before_filter', p.lastUpdatedBeforeFilter)
-  if (!hasDateRange) out.search_recency_filter = recency
+  if (!hasDateRange && p.searchRecencyFilter) {
+    out.search_recency_filter = p.searchRecencyFilter
+  }
   return out
 }
 
@@ -180,6 +318,36 @@ export async function executeGatewayPerplexitySearch(
   const extracted = extractProviderToolOutput(result, 'perplexity_search', 'Perplexity search')
   if (extracted !== undefined) {
     logger.info('[AI Gateway] perplexity_search inner generateText OK')
+    const fallbackPlan = buildExactEntityFallbackPlan(params.query, params.country)
+    if (fallbackPlan) {
+      const filtered = filterExactEntityResults(extracted, fallbackPlan)
+      logger.info('[AI Gateway] perplexity_search augmenting exact entity with parallel_search', {
+        entity: fallbackPlan.label,
+      })
+      try {
+        const fallbackOutput = await executeGatewayParallelSearch(accessToken, {
+          objective: fallbackPlan.objective,
+          searchQueries: fallbackPlan.searchQueries,
+          mode: 'one-shot',
+          maxResults: params.maxResults ?? PARALLEL_DEFAULTS.maxResults,
+          maxCharsPerResult: PARALLEL_DEFAULTS.excerpts.maxCharsPerResult,
+          maxCharsTotal: PARALLEL_DEFAULTS.excerpts.maxCharsTotal,
+        }, innerProxyModelId)
+        const repaired = mergeExactEntityFallbackResults(extracted, fallbackOutput, fallbackPlan)
+        if (repaired !== extracted) {
+          logger.info('[AI Gateway] perplexity_search exact entity enriched with parallel_search', {
+            entity: fallbackPlan.label,
+          })
+          return repaired
+        }
+      } catch (error) {
+        logger.warn('[AI Gateway] perplexity_search exact entity fallback failed', {
+          entity: fallbackPlan.label,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+      if (filtered !== extracted) return filtered
+    }
     return extracted
   }
 
@@ -255,6 +423,10 @@ export async function executeGatewayParallelSearch(
   const extracted = extractProviderToolOutput(result, 'parallel_search', 'Parallel search')
   if (extracted !== undefined) {
     logger.info('[AI Gateway] parallel_search inner generateText OK')
+    const exactEntityPlan = buildExactEntityFallbackPlan(params.searchQueries ?? [])
+    if (exactEntityPlan) {
+      return filterExactEntityResults(extracted, exactEntityPlan)
+    }
     return extracted
   }
 
@@ -356,6 +528,7 @@ function createPerplexitySearchFunctionTool(accessToken: string | undefined, inn
     description:
       'Search the public web (Perplexity via Vercel AI Gateway). Use for quick lookups, news, and general web search. ' +
       'Supports up to 5 batched queries, domain allow/deny (e.g. arxiv.org, pubmed), language and recency filters. ' +
+      'For a named person or entity, use the exact name without recency unless the user asks for current news; exact-name results are filtered automatically. ' +
       'For heavy academic / multi-source research with long excerpts, prefer parallel_search.',
     inputSchema: perplexitySearchInputSchema,
     execute: async (input) => executeGatewayPerplexitySearch(accessToken, {
@@ -380,7 +553,8 @@ function createParallelSearchFunctionTool(accessToken: string | undefined, inner
     description:
       'Deep web research (Parallel AI via Vercel AI Gateway): LLM-optimized excerpts, strong for synthesis, ' +
       'citations, and domain-scoped research (e.g. include arxiv.org, nature.com). Use when the user needs ' +
-      'high-quality sources, long snippets, or academic-style review — after quick perplexity_search if needed.',
+      'high-quality sources, long snippets, or academic-style review. Do not call this alongside perplexity_search ' +
+      'for a simple named-person or named-entity lookup; perplexity_search already performs an exact-entity deep fallback.',
     inputSchema: parallelSearchInputSchema,
     execute: async (input) => executeGatewayParallelSearch(accessToken, {
       objective: input.objective,
@@ -438,4 +612,57 @@ function compactObject(input: Record<string, unknown>): Record<string, unknown> 
       Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null
     )),
   )
+}
+
+function normalizedSearchTerms(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function searchResults(output: unknown): SearchResultRecord[] {
+  if (!isRecord(output) || !Array.isArray(output.results)) return []
+  return output.results.filter(isRecord)
+}
+
+function resultMatchesIdentity(
+  result: SearchResultRecord,
+  identityTerms: string[],
+): boolean {
+  const identitySurface = normalizedSearchTerms([
+    result.title,
+    result.url,
+  ].filter((value): value is string => typeof value === 'string').join(' '))
+  const identitySurfaceTerms = new Set(identitySurface)
+  return identityTerms.every((term) => identitySurfaceTerms.has(term))
+}
+
+function normalizeFallbackResult(result: SearchResultRecord): SearchResultRecord {
+  const excerpts = Array.isArray(result.excerpts)
+    ? result.excerpts.filter((value): value is string => typeof value === 'string')
+    : []
+  const excerpt = typeof result.excerpt === 'string' ? result.excerpt : ''
+  const snippet = typeof result.snippet === 'string' && result.snippet.trim()
+    ? result.snippet
+    : excerpts.join('\n\n') || excerpt
+  const date = typeof result.date === 'string'
+    ? result.date
+    : typeof result.publish_date === 'string'
+      ? result.publish_date
+      : typeof result.publishDate === 'string'
+        ? result.publishDate
+        : undefined
+
+  return {
+    ...result,
+    snippet,
+    ...(date ? { date } : {}),
+  }
 }
