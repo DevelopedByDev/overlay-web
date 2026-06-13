@@ -4,6 +4,22 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-05-13",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [
+    {
+      "pattern": "www.getoverlay.io/api/chat-stream/*",
+      "zone_name": "getoverlay.io"
+    },
+    {
+      "pattern": "getoverlay.io/api/chat-stream/*",
+      "zone_name": "getoverlay.io"
+    }
+  ],
+  "vars": {
+    "OVERLAY_APP_ORIGIN": "https://www.getoverlay.io",
+    "OVERLAY_NEXT_ORIGIN": "https://www.getoverlay.io"
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

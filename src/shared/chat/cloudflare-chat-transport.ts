@@ -13,6 +13,41 @@ import {
 } from '@/shared/chat/ttft-client-debug'
 
 type ChatBody = object | undefined
+type ChatFetch = NonNullable<HttpChatTransportInitOptions<UIMessage>['fetch']>
+
+type ChatErrorPayload = {
+  code?: unknown
+  error?: unknown
+  fallbackSafe?: unknown
+  message?: unknown
+  phase?: unknown
+  requestId?: unknown
+}
+
+export class ChatTransportHttpError extends Error {
+  readonly endpoint: string
+  readonly fallbackSafe: boolean | null
+  readonly phase: string | null
+  readonly requestId: string | null
+  readonly status: number
+
+  constructor(params: {
+    endpoint: string
+    fallbackSafe: boolean | null
+    message: string
+    phase: string | null
+    requestId: string | null
+    status: number
+  }) {
+    super(params.message)
+    this.name = 'ChatTransportHttpError'
+    this.endpoint = params.endpoint
+    this.fallbackSafe = params.fallbackSafe
+    this.phase = params.phase
+    this.requestId = params.requestId
+    this.status = params.status
+  }
+}
 
 type CloudflareChatTransportOptions<UI_MESSAGE extends UIMessage> =
   HttpChatTransportInitOptions<UI_MESSAGE> & {
@@ -23,7 +58,100 @@ function normalizeRelayApi(value: string): string {
   return value.replace(/\/+$/, '')
 }
 
-const RELAY_START_TIMEOUT_MS = 5_000
+function requestEndpoint(input: Parameters<ChatFetch>[0]): string {
+  const raw = typeof input === 'string'
+    ? input
+    : input instanceof URL
+      ? input.toString()
+      : input.url
+  try {
+    return new URL(raw, 'https://overlay.invalid').pathname
+  } catch {
+    return raw.split('?')[0] ?? raw
+  }
+}
+
+function requestHeader(init: Parameters<ChatFetch>[1], name: string): string | null {
+  return new Headers(init?.headers).get(name)
+}
+
+function parseErrorPayload(text: string): ChatErrorPayload {
+  if (!text) return {}
+  try {
+    const parsed = JSON.parse(text)
+    return typeof parsed === 'object' && parsed !== null ? parsed as ChatErrorPayload : {}
+  } catch {
+    return {}
+  }
+}
+
+function errorMessage(payload: ChatErrorPayload, response: Response): string {
+  const value = typeof payload.error === 'string'
+    ? payload.error
+    : typeof payload.message === 'string'
+      ? payload.message
+      : ''
+  return value.trim().slice(0, 500)
+    || `Chat request failed with HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}.`
+}
+
+export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
+  return async (input, init) => {
+    const startedAt = performance.now()
+    const endpoint = requestEndpoint(input)
+    const requestId = requestHeader(init, 'x-request-id')
+    try {
+      const response = await (fetchImpl ?? globalThis.fetch)(input, init)
+      if (response.ok) return response
+
+      const text = await response.clone().text().catch(() => '')
+      const payload = parseErrorPayload(text)
+      const responseRequestId = response.headers.get('x-request-id')
+      const resolvedRequestId =
+        (typeof payload.requestId === 'string' ? payload.requestId : null)
+        ?? responseRequestId
+        ?? requestId
+      const fallbackSafe = typeof payload.fallbackSafe === 'boolean' ? payload.fallbackSafe : null
+      const phase = typeof payload.phase === 'string' ? payload.phase : null
+      const message = errorMessage(payload, response)
+
+      console.error('[chat-stream] http error', {
+        endpoint,
+        status: response.status,
+        statusText: response.statusText || undefined,
+        phase,
+        fallbackSafe,
+        requestId: resolvedRequestId,
+        errorCode: typeof payload.code === 'string' ? payload.code : undefined,
+        message,
+        cfRay: response.headers.get('cf-ray') ?? undefined,
+        vercelId: response.headers.get('x-vercel-id') ?? undefined,
+        elapsedMs: Math.round(performance.now() - startedAt),
+      })
+      throw new ChatTransportHttpError({
+        endpoint,
+        fallbackSafe,
+        message,
+        phase,
+        requestId: resolvedRequestId,
+        status: response.status,
+      })
+    } catch (error) {
+      if (error instanceof ChatTransportHttpError) throw error
+      console.error('[chat-stream] network error', {
+        endpoint,
+        requestId,
+        message: error instanceof Error ? error.message : String(error),
+        elapsedMs: Math.round(performance.now() - startedAt),
+      })
+      throw error
+    }
+  }
+}
+
+export function shouldFallbackAfterRelayError(error: unknown): boolean {
+  return error instanceof ChatTransportHttpError && error.fallbackSafe === true
+}
 
 export function getCloudflareChatStreamRelayApi(): string | null {
   const configured = publicEnv.chatStreamRelayUrl
@@ -32,18 +160,6 @@ export function getCloudflareChatStreamRelayApi(): string | null {
     return null
   }
   return normalizeRelayApi(configured)
-}
-
-function relayStartTimeout<T>(promise: Promise<T>): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      setTimeout(
-        () => reject(new Error(`Relay start timed out after ${RELAY_START_TIMEOUT_MS}ms`)),
-        RELAY_START_TIMEOUT_MS,
-      )
-    }),
-  ])
 }
 
 function streamLogFields(body: ChatBody): Record<string, unknown> {
@@ -64,6 +180,15 @@ function streamLogFields(body: ChatBody): Record<string, unknown> {
 function shouldUseDirectStream(body: ChatBody): boolean {
   const record = body as Record<string, unknown> | undefined
   return record?.temporaryChat === true || record?.streamPersistenceMode === 'direct'
+}
+
+export function shouldBypassChatStreamRelay(body: ChatBody): boolean {
+  const record = body as Record<string, unknown> | undefined
+  const conversationId =
+    typeof record?.conversationId === 'string' ? record.conversationId.trim() : ''
+  const conversationClientId =
+    typeof record?.conversationClientId === 'string' ? record.conversationClientId.trim() : ''
+  return !conversationId && Boolean(conversationClientId)
 }
 
 function logStreamCompletion(
@@ -110,7 +235,10 @@ export function createPersistentChatTransport<UI_MESSAGE extends UIMessage>(
   const relayApi = getCloudflareChatStreamRelayApi()
   const base = relayApi
     ? new CloudflareChatTransport({ ...options, relayApi })
-    : new DefaultChatTransport(options)
+    : new DefaultChatTransport({
+        ...options,
+        fetch: createChatDiagnosticFetch(options.fetch as ChatFetch | undefined),
+      })
   return isTtftClientDebugEnabled() ? wrapTransportForTtftDebug(base) : base
 }
 
@@ -121,15 +249,19 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
   private readonly fallbackTransport: DefaultChatTransport<UI_MESSAGE>
   private readonly relayTransport: DefaultChatTransport<UI_MESSAGE>
   private readonly relayApi: string
+  private readonly diagnosticFetch: ChatFetch
 
   constructor(options: CloudflareChatTransportOptions<UI_MESSAGE>) {
     const { relayApi, prepareSendMessagesRequest, api = '/api/v1/conversations/act', ...rest } = options
-    super({ api, ...rest })
+    const diagnosticFetch = createChatDiagnosticFetch(rest.fetch as ChatFetch | undefined)
+    super({ api, ...rest, fetch: diagnosticFetch })
     this.relayApi = normalizeRelayApi(relayApi)
+    this.diagnosticFetch = diagnosticFetch
     this.fallbackTransport = new DefaultChatTransport({
       api,
       prepareSendMessagesRequest,
       ...rest,
+      fetch: diagnosticFetch,
     })
     this.relayTransport = new DefaultChatTransport({
       api: `${this.relayApi}/start`,
@@ -156,6 +288,7 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
         }
       },
       ...rest,
+      fetch: diagnosticFetch,
     })
   }
 
@@ -172,16 +305,40 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
       return logStreamCompletion(stream, 'direct', body)
     }
 
+    // The relay authorizes streams against a persisted conversation ID. A new
+    // chat only has a client ID until /act creates it, so send that first turn
+    // through the Convex-persisted route instead of intentionally triggering a
+    // relay 400 and treating it as an exceptional fallback.
+    if (shouldBypassChatStreamRelay(options.body)) {
+      console.info('[chat-stream] path=convex-fallback start', {
+        ...streamLogFields(options.body),
+        reason: 'pending-conversation',
+      })
+      const stream = await this.fallbackTransport.sendMessages(options)
+      return logStreamCompletion(stream, 'convex-fallback', options.body)
+    }
+
     console.info('[chat-stream] path=cloudflare start', streamLogFields(options.body))
     try {
-      const stream = await relayStartTimeout(this.relayTransport.sendMessages(options))
+      // Do not race this request with an uncancelled fallback. A slow production
+      // cold start can exceed five seconds after /act has already reserved the
+      // idempotency key, causing the duplicate fallback to fail with 409.
+      const stream = await this.relayTransport.sendMessages(options)
       console.info('[chat-stream] path=cloudflare connected', streamLogFields(options.body))
       return logStreamCompletion(stream, 'cloudflare', options.body)
     } catch (error) {
+      const fallbackSafe = shouldFallbackAfterRelayError(error)
       console.warn('[chat-stream] path=convex-fallback fallback', {
         ...streamLogFields(options.body),
+        fallbackSafe,
+        phase: error instanceof ChatTransportHttpError ? error.phase : null,
+        requestId: error instanceof ChatTransportHttpError ? error.requestId : null,
+        status: error instanceof ChatTransportHttpError ? error.status : null,
         reason: error instanceof Error ? error.message : String(error),
       })
+      if (!fallbackSafe) {
+        throw error
+      }
       const fallbackStream = await this.fallbackTransport.sendMessages(options)
       return logStreamCompletion(fallbackStream, 'convex-fallback', options.body)
     }
@@ -190,10 +347,15 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
   async reconnectToStream(
     options: Parameters<ChatTransport<UI_MESSAGE>['reconnectToStream']>[0],
   ): Promise<ReadableStream<UIMessageChunk> | null> {
-    console.info('[chat-stream] path=cloudflare resume', streamLogFields(options.body))
-    const response = await fetch(`${this.relayApi}/resume`, {
+    const requestId = crypto.randomUUID()
+    const fields = streamLogFields(options.body)
+    console.info('[chat-stream] path=cloudflare resume', { ...fields, requestId })
+    const response = await this.diagnosticFetch(`${this.relayApi}/resume`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-request-id': requestId,
+      },
       credentials: 'same-origin',
       body: JSON.stringify({
         ...(options.body ?? {}),
@@ -202,7 +364,7 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
     })
 
     if (response.status === 204) {
-      console.info('[chat-stream] path=cloudflare resume-empty', streamLogFields(options.body))
+      console.info('[chat-stream] path=cloudflare resume-empty', { ...fields, requestId })
       return null
     }
 
@@ -214,6 +376,10 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
       throw new Error('The response body is empty.')
     }
 
+    console.info('[chat-stream] path=cloudflare resume-connected', {
+      ...fields,
+      requestId: response.headers.get('x-request-id') ?? requestId,
+    })
     return logStreamCompletion(this.processResponseStream(response.body), 'cloudflare', options.body)
   }
 }

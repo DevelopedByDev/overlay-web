@@ -72,6 +72,7 @@ import {
 export const maxDuration = 800
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
+  const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
   let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
   let budgetReservationId: string | null = null
   let budgetReservationFinalized = false
@@ -99,7 +100,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     let _firstToolCallLogged = false
     if (_ttftDebug) _t0 = performance.now()
     const bodyResult = await readValidatedJson(request, context, ActConversationRequest)
-    if (!bodyResult.ok) return bodyResult.response
+    if (!bodyResult.ok) {
+      bodyResult.response.headers.set('x-request-id', requestId)
+      logger.warn('[conversations/act] request validation failed', {
+        requestId,
+        statusCode: bodyResult.response.status,
+      })
+      return bodyResult.response
+    }
     const {
       messages,
       systemPrompt,
@@ -144,11 +152,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const resolvedStreamPersistenceMode = streamPersistence.mode
     if (streamPersistence.ignoredUnverifiedRelay) {
       logger.warn('[conversations/act] Ignoring unverified cloudflare-relay persistence request', {
+        requestId,
         conversationId,
         turnId,
       })
     }
     logger.info('[conversations/act] streamPersistence', {
+      requestId,
       mode: resolvedStreamPersistenceMode,
       conversationMode: mode,
       automationMode: automationMode === true,
@@ -487,6 +497,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         budgetReservationId = usageResult.reservationId
         budgetReservationFinalized = usageResult.finalized
         logger.info('[conversations/act] stream finish', {
+          requestId,
           modelId: attemptModelId,
           finishReason: event.finishReason,
           inputTokens: totalInputTokens,
@@ -529,6 +540,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       originalMessages: uiMessages,
       onError: (error: unknown) => {
         logger.error('[conversations/act] stream error', {
+          requestId,
           modelId: attemptModelId,
           error: summarizeErrorForLog(error),
         })
@@ -553,6 +565,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     let responseBody: ReadableStream<Uint8Array<ArrayBufferLike>> | null =
       prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)
     const responseHeaders = new Headers(_uiResp.headers)
+    responseHeaders.set('x-request-id', requestId)
     if (useCloudflareStreamRelay) {
       responseHeaders.set('x-overlay-generating-message-id', generatingMessageId ?? '')
       responseHeaders.set('x-overlay-auth-user-id', userId)
@@ -676,6 +689,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           ? reservation.failure.payload.error
           : undefined
         logger.warn('[conversations/act] model attempt skipped before provider call', {
+          requestId,
           modelId: attemptModelId,
           reason: errorCode ?? 'budget_reservation_failed',
           statusCode: reservation.failure.statusCode,
@@ -721,6 +735,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     const attemptModelIds = [...new Set([effectiveModelId, ...fallbackModelIds])].slice(0, MAX_ACT_MODEL_ATTEMPTS)
     logger.info('[conversations/act] model attempts planned', {
+      requestId,
       requestedModelId: modelId ?? null,
       effectiveModelId,
       attemptModelIds,
@@ -731,10 +746,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       attemptModelIds,
       reserveBudgetForAttempt,
       onFallback: (from, to, failedAttempts) => {
-        logger.warn('[conversations/act] model fallback', { from, to, failedAttempts })
+        logger.warn('[conversations/act] model fallback', {
+          requestId,
+          from,
+          to,
+          failedAttempts,
+        })
       },
       onAttemptFailure: async (error, attemptModelId, hasFallback) => {
         logger.warn('[conversations/act] model attempt failed', {
+          requestId,
           modelId: attemptModelId,
           hasFallback,
           error: summarizeErrorForLog(error),
@@ -751,6 +772,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       runAttempt: async ({ attemptModelId, fallbackNotice }) => {
         streamedRoutedModelId = undefined
         logger.info('[conversations/act] model attempt starting', {
+          requestId,
           effectiveModelId,
           attemptModelId,
           gatewayModelId: safeGatewayModelId(attemptModelId),
@@ -766,8 +788,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
 	  } catch (error) {
     const serviceResponse = actConversationErrorResponse(error)
-    if (serviceResponse) return serviceResponse
-	    logger.error('[conversations/act] Error:', summarizeErrorForLog(error))
+    if (serviceResponse) {
+      serviceResponse.headers.set('x-request-id', requestId)
+      logger.warn('[conversations/act] service error response', {
+        requestId,
+        statusCode: serviceResponse.status,
+        error: summarizeErrorForLog(error),
+      })
+      return serviceResponse
+    }
+	    logger.error('[conversations/act] Error:', {
+      requestId,
+      error: summarizeErrorForLog(error),
+    })
 	    if (budgetReservationId && !budgetReservationFinalized) {
 	      await actUsageBudgetService.releaseReservation({
 	        userId: currentUserId ?? 'unknown',
@@ -785,8 +818,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId: currentUserId,
     })
     return NextResponse.json(
-      { error: userFacingOpenRouterError(error) },
-      { status: 500 },
+      { error: userFacingOpenRouterError(error), requestId },
+      { status: 500, headers: { 'x-request-id': requestId } },
     )
   }
 }

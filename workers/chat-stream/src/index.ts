@@ -14,6 +14,11 @@ type StreamMetadata = {
   variantIndex: number
 }
 
+type StreamDiagnostics = {
+  modelId: string | null
+  mode: string | null
+}
+
 type AuthorizedStream = StreamMetadata & {
   ok: true
 }
@@ -28,6 +33,7 @@ type DurableObjectInput = {
   streamId: string
   userAgent: string
   metadata: StreamMetadata
+  diagnostics: StreamDiagnostics
 }
 
 function buildActStreamIdempotencyKey(turnId: string, slotIndex: number): string {
@@ -69,6 +75,38 @@ function json(data: unknown, init?: ResponseInit): Response {
   })
 }
 
+function relayError(params: {
+  code: string
+  error: string
+  fallbackSafe: boolean
+  phase: 'authorization' | 'configuration' | 'origin' | 'routing' | 'upstream' | 'validation'
+  requestId: string
+  status: number
+  upstreamStatus?: number
+}): Response {
+  return json({
+    code: params.code,
+    error: params.error.slice(0, 500),
+    fallbackSafe: params.fallbackSafe,
+    phase: params.phase,
+    requestId: params.requestId,
+    upstreamStatus: params.upstreamStatus,
+  }, {
+    status: params.status,
+    headers: { 'x-request-id': params.requestId },
+  })
+}
+
+function withRequestId(response: Response, requestId: string): Response {
+  const headers = new Headers(response.headers)
+  headers.set('x-request-id', requestId)
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
+}
+
 function requireEnv(env: Env): string | null {
   if (!env.OVERLAY_NEXT_ORIGIN?.trim()) return 'OVERLAY_NEXT_ORIGIN is not configured'
   if (!env.OVERLAY_APP_ORIGIN?.trim()) return 'OVERLAY_APP_ORIGIN is not configured'
@@ -94,6 +132,13 @@ function parseStreamMetadata(body: Record<string, unknown>): Omit<StreamMetadata
     conversationId,
     turnId,
     variantIndex: normalizeVariantIndex(body.variantIndex ?? body.multiModelSlotIndex),
+  }
+}
+
+function parseStreamDiagnostics(body: Record<string, unknown>): StreamDiagnostics {
+  return {
+    modelId: typeof body.modelId === 'string' ? body.modelId.slice(0, 160) : null,
+    mode: typeof body.mode === 'string' ? body.mode.slice(0, 64) : null,
   }
 }
 
@@ -124,6 +169,7 @@ async function authorizeStream(
   env: Env,
   cookie: string,
   metadata: Omit<StreamMetadata, 'userId'>,
+  requestId: string,
 ): Promise<AuthorizedStream | Response> {
   const response = await fetch(new URL('/api/v1/conversations/stream-auth', env.OVERLAY_NEXT_ORIGIN), {
     method: 'POST',
@@ -136,11 +182,32 @@ async function authorizeStream(
     body: JSON.stringify(metadata),
   })
   if (!response.ok) {
-    return json({ error: 'Unauthorized stream' }, { status: response.status })
+    console.warn('[chat-stream-worker] authorization rejected', {
+      requestId,
+      status: response.status,
+      conversationId: metadata.conversationId,
+      turnId: metadata.turnId,
+      variantIndex: metadata.variantIndex,
+    })
+    return relayError({
+      code: 'relay_authorization_failed',
+      error: 'Chat stream authorization failed',
+      fallbackSafe: true,
+      phase: 'authorization',
+      requestId,
+      status: response.status,
+    })
   }
   const data = await response.json() as Partial<AuthorizedStream>
   if (!data.ok || !data.userId) {
-    return json({ error: 'Unauthorized stream' }, { status: 401 })
+    return relayError({
+      code: 'relay_authorization_invalid',
+      error: 'Chat stream authorization returned an invalid response',
+      fallbackSafe: true,
+      phase: 'authorization',
+      requestId,
+      status: 401,
+    })
   }
   return {
     ok: true,
@@ -156,10 +223,32 @@ async function routeToStreamObject(
   env: Env,
   action: 'start' | 'resume' | 'stop',
 ): Promise<Response> {
+  const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
   const envError = requireEnv(env)
-  if (envError) return json({ error: envError }, { status: 503 })
+  if (envError) {
+    console.error('[chat-stream-worker] configuration error', { requestId, error: envError })
+    return relayError({
+      code: 'relay_configuration_error',
+      error: envError,
+      fallbackSafe: true,
+      phase: 'configuration',
+      requestId,
+      status: 503,
+    })
+  }
   if (!isAllowedOrigin(request, env)) {
-    return json({ error: 'Invalid origin' }, { status: 403 })
+    console.warn('[chat-stream-worker] origin rejected', {
+      requestId,
+      origin: request.headers.get('Origin'),
+    })
+    return relayError({
+      code: 'relay_invalid_origin',
+      error: 'Invalid chat stream origin',
+      fallbackSafe: true,
+      phase: 'origin',
+      requestId,
+      status: 403,
+    })
   }
 
   const bodyText = await request.text()
@@ -167,27 +256,63 @@ async function routeToStreamObject(
   try {
     body = JSON.parse(bodyText) as Record<string, unknown>
   } catch {
-    return json({ error: 'Invalid JSON body' }, { status: 400 })
+    console.warn('[chat-stream-worker] request validation failed', {
+      requestId,
+      reason: 'invalid_json',
+    })
+    return relayError({
+      code: 'relay_invalid_json',
+      error: 'Invalid JSON body',
+      fallbackSafe: true,
+      phase: 'validation',
+      requestId,
+      status: 400,
+    })
   }
 
   const metadata = parseStreamMetadata(body)
   if (!metadata) {
-    return json({ error: 'conversationId and turnId are required' }, { status: 400 })
+    console.warn('[chat-stream-worker] request validation failed', {
+      requestId,
+      reason: 'missing_persisted_conversation',
+      hasConversationId: typeof body.conversationId === 'string' && Boolean(body.conversationId.trim()),
+      hasConversationClientId:
+        typeof body.conversationClientId === 'string' && Boolean(body.conversationClientId.trim()),
+      hasTurnId: typeof body.turnId === 'string' && Boolean(body.turnId.trim()),
+    })
+    return relayError({
+      code: 'relay_persisted_conversation_required',
+      error: 'A persisted conversationId and turnId are required for resumable streaming',
+      fallbackSafe: true,
+      phase: 'validation',
+      requestId,
+      status: 400,
+    })
   }
+  const diagnostics = parseStreamDiagnostics(body)
 
   const cookie = request.headers.get('Cookie') ?? ''
-  const authorized = await authorizeStream(env, cookie, metadata)
+  const authorized = await authorizeStream(env, cookie, metadata, requestId)
   if (authorized instanceof Response) return authorized
 
   const streamName = await sha256Hex(
     `${authorized.userId}:${authorized.conversationId}:${authorized.turnId}:${authorized.variantIndex}`,
   )
   const stub = env.CHAT_STREAMS.getByName(streamName)
-  const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID()
   const userAgent = request.headers.get('user-agent') ?? ''
   const idempotencyKey = request.headers.get('Idempotency-Key')?.trim()
     || buildActStreamIdempotencyKey(authorized.turnId, authorized.variantIndex)
-  return stub.fetch(`https://chat-stream.internal/${action}`, {
+  console.info('[chat-stream-worker] routing request', {
+    action,
+    requestId,
+    stream: streamName.slice(0, 12),
+    conversationId: authorized.conversationId,
+    turnId: authorized.turnId,
+    variantIndex: authorized.variantIndex,
+    modelId: diagnostics.modelId,
+    mode: diagnostics.mode,
+  })
+  const response = await stub.fetch(`https://chat-stream.internal/${action}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -200,8 +325,10 @@ async function routeToStreamObject(
       streamId: streamName,
       userAgent,
       metadata: authorized,
+      diagnostics,
     } satisfies DurableObjectInput),
   })
+  return withRequestId(response, requestId)
 }
 
 const worker: ExportedHandler<Env> = {
@@ -353,27 +480,61 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
       session = this.createSession(input)
     }
     if (!this.verifyInputOwner(input, session)) {
-      return json({ error: 'Unauthorized stream' }, { status: 403 })
+      console.warn('[chat-stream-worker] stream owner mismatch', {
+        requestId: input.requestId,
+        stream: session.stream_id.slice(0, 12),
+      })
+      return relayError({
+        code: 'relay_stream_owner_mismatch',
+        error: 'Chat stream owner mismatch',
+        fallbackSafe: false,
+        phase: 'routing',
+        requestId: input.requestId,
+        status: 403,
+      })
     }
 
     if (created) {
+      console.info('[chat-stream-worker] upstream starting', {
+        requestId: input.requestId,
+        stream: session.stream_id.slice(0, 12),
+        conversationId: input.metadata.conversationId,
+        turnId: input.metadata.turnId,
+        variantIndex: input.metadata.variantIndex,
+        modelId: input.diagnostics.modelId,
+        mode: input.diagnostics.mode,
+      })
       try {
         await this.startUpstream(input)
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
         this.markError(reason)
         console.warn('[chat-stream-worker] start failed', {
+          requestId: input.requestId,
           stream: session.stream_id.slice(0, 12),
+          phase: 'upstream',
+          upstreamStatus: error instanceof RelayUpstreamError ? error.status : null,
+          modelId: input.diagnostics.modelId,
           reason,
         })
-        return json({ error: reason }, { status: 502 })
+        return relayError({
+          code: 'relay_upstream_failed',
+          error: reason,
+          fallbackSafe: false,
+          phase: 'upstream',
+          requestId: input.requestId,
+          status: 502,
+          upstreamStatus: error instanceof RelayUpstreamError ? error.status : undefined,
+        })
       }
     }
 
     console.info('[chat-stream-worker] start connected', {
+      requestId: input.requestId,
       stream: session.stream_id.slice(0, 12),
       frameCount: session.frame_count,
       status: session.status,
+      modelId: input.diagnostics.modelId,
     })
     return this.createReplayResponse()
   }
@@ -385,6 +546,7 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
       return json({ error: 'Unauthorized stream' }, { status: 403 })
     }
     console.info('[chat-stream-worker] resume', {
+      requestId: input.requestId,
       stream: session.stream_id.slice(0, 12),
       frameCount: session.frame_count,
       status: session.status,
@@ -420,6 +582,7 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     this.markCompleted()
     this.closeClients()
     console.info('[chat-stream-worker] stop', {
+      requestId: input.requestId,
       stream: session.stream_id.slice(0, 12),
       stopStatus: stopResponse.status,
       frameCount: session.frame_count,
@@ -460,7 +623,11 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     })
 
     if (!response.ok) {
-      throw new Error((await response.text()) || `Upstream returned ${response.status}`)
+      const responseText = (await response.text()).slice(0, 500)
+      throw new RelayUpstreamError(
+        responseText || `Upstream returned ${response.status}`,
+        response.status,
+      )
     }
     if (!response.body) {
       throw new Error('Upstream response body is empty')
@@ -475,10 +642,20 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     )
 
     this.upstreamRunning = true
-    this.ctx.waitUntil(this.drainUpstream(response.body))
+    console.info('[chat-stream-worker] upstream connected', {
+      requestId: input.requestId,
+      stream: input.streamId.slice(0, 12),
+      upstreamStatus: response.status,
+      messageIdPresent: Boolean(messageId),
+      modelId: input.diagnostics.modelId,
+    })
+    this.ctx.waitUntil(this.drainUpstream(response.body, input))
   }
 
-  private async drainUpstream(body: ReadableStream<Uint8Array>): Promise<void> {
+  private async drainUpstream(
+    body: ReadableStream<Uint8Array>,
+    input: DurableObjectInput,
+  ): Promise<void> {
     const reader = body.getReader()
     try {
       while (true) {
@@ -490,10 +667,24 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
       }
       if (!this.stopped) {
         this.markCompleted()
+        const session = this.getSession()
+        console.info('[chat-stream-worker] upstream completed', {
+          requestId: input.requestId,
+          stream: input.streamId.slice(0, 12),
+          frameCount: session?.frame_count ?? null,
+          modelId: input.diagnostics.modelId,
+        })
       }
     } catch (error) {
       if (!this.stopped) {
-        this.markError(error instanceof Error ? error.message : String(error))
+        const reason = error instanceof Error ? error.message : String(error)
+        this.markError(reason)
+        console.warn('[chat-stream-worker] upstream stream failed', {
+          requestId: input.requestId,
+          stream: input.streamId.slice(0, 12),
+          modelId: input.diagnostics.modelId,
+          reason,
+        })
       }
     } finally {
       this.upstreamRunning = false
@@ -583,6 +774,7 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
   private async attachClient(controller: ReadableStreamDefaultController<Uint8Array>): Promise<Client | null> {
     const client = new Client(controller)
     let replayedSeq = 0
+    let replayedFrames = 0
     while (true) {
       const rows = this.ctx.storage.sql.exec<FrameRow>(
         'SELECT seq, data FROM frames WHERE seq > ? ORDER BY seq ASC',
@@ -590,6 +782,7 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
       ).toArray()
       for (const row of rows) {
         replayedSeq = row.seq
+        replayedFrames += 1
         if (!client.enqueue(base64ToBytes(row.data))) {
           return null
         }
@@ -601,7 +794,16 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     }
 
     const session = this.getSession()
-    if (session?.status === 'active' && this.upstreamRunning) {
+    const attached = session?.status === 'active' && this.upstreamRunning
+    console.info('[chat-stream-worker] client replay', {
+      stream: session?.stream_id.slice(0, 12) ?? null,
+      status: session?.status ?? null,
+      frameCount: session?.frame_count ?? null,
+      replayedFrames,
+      upstreamRunning: this.upstreamRunning,
+      attached,
+    })
+    if (attached) {
       this.clients.add(client)
       return client
     } else {
@@ -652,5 +854,15 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     }
     this.ctx.storage.sql.exec('DELETE FROM frames')
     this.ctx.storage.sql.exec('DELETE FROM sessions')
+  }
+}
+
+class RelayUpstreamError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+    this.name = 'RelayUpstreamError'
   }
 }

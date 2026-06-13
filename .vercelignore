@@ -1,5 +1,7 @@
 .git
 .next
+.next-analyze
+.next.stale.*
 .turbo
 .vercel
 node_modules

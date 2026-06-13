@@ -69,6 +69,7 @@ import { safeSetLocalStorage, toggleModelSelection } from './chat/model-selectio
 import { useChatPanels, type AttachmentPreview } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { useChatConversationLoader } from './chat/useChatConversationLoader'
+import { shouldResumeChatStreamIntoAskSlot } from './chat/chatStreamResume'
 import { resetRuntimeState } from './chat/conversation-runtime-utils'
 import { useChatRuntimes } from './chat/useChatRuntimes'
 import { useComposerTextState } from './chat/useComposerTextState'
@@ -796,31 +797,63 @@ export default function ChatExperience({
     collect(activeRuntime.actChat.messages as UIMessage[])
     for (const chat of activeRuntime.askChats) collect(chat.messages as UIMessage[])
 
+    const activeVariantCountByTurn = new Map<string, number>()
+    for (const target of targets.values()) {
+      activeVariantCountByTurn.set(
+        target.turnId,
+        (activeVariantCountByTurn.get(target.turnId) ?? 0) + 1,
+      )
+    }
+
     for (const target of targets.values()) {
       const key = `${activeChatId}:${target.turnId}:${target.variantIndex}`
       if (resumedCloudflareStreamsRef.current.has(key)) continue
       const slotChat = chatInstances[target.variantIndex]
-      const slotHasGenerating = slotChat?.messages.some((message) => {
-        const m = message as unknown as { role?: string; status?: string; turnId?: string; variantIndex?: number }
-        return (
-          m.role === 'assistant' &&
-          m.status === 'generating' &&
-          m.turnId === target.turnId &&
-          (m.variantIndex ?? 0) === target.variantIndex
-        )
+      const resumeIntoAskSlot = shouldResumeChatStreamIntoAskSlot({
+        runtime: activeRuntime,
+        turnId: target.turnId,
+        variantIndex: target.variantIndex,
+        activeVariantCount: activeVariantCountByTurn.get(target.turnId) ?? 1,
       })
-      const targetChat = slotHasGenerating && slotChat ? slotChat : actChat
+      const targetChat = resumeIntoAskSlot && slotChat ? slotChat : actChat
+      console.info('[chat-stream] resume dispatch', {
+        conversationId: activeChatId,
+        turnId: target.turnId,
+        variantIndex: target.variantIndex,
+        targetRuntime: resumeIntoAskSlot && slotChat ? 'ask-slot' : 'act',
+      })
       resumedCloudflareStreamsRef.current.add(key)
-      void targetChat.resumeStream({
-        body: {
-          conversationId: activeChatId,
-          turnId: target.turnId,
-          variantIndex: target.variantIndex,
-          multiModelSlotIndex: target.variantIndex,
-        },
-      }).catch(() => {
-        resumedCloudflareStreamsRef.current.delete(key)
-      })
+      void (async () => {
+        try {
+          await targetChat.resumeStream({
+            body: {
+              conversationId: activeChatId,
+              turnId: target.turnId,
+              variantIndex: target.variantIndex,
+              multiModelSlotIndex: target.variantIndex,
+            },
+          })
+          if (targetChat.status === 'error') {
+            console.error('[chat-stream] resume failed', {
+              conversationId: activeChatId,
+              turnId: target.turnId,
+              variantIndex: target.variantIndex,
+              targetRuntime: resumeIntoAskSlot && slotChat ? 'ask-slot' : 'act',
+              reason: targetChat.error?.message ?? 'Chat runtime entered an error state',
+            })
+            resumedCloudflareStreamsRef.current.delete(key)
+          }
+        } catch (error) {
+          console.error('[chat-stream] resume failed', {
+            conversationId: activeChatId,
+            turnId: target.turnId,
+            variantIndex: target.variantIndex,
+            targetRuntime: resumeIntoAskSlot && slotChat ? 'ask-slot' : 'act',
+            reason: error instanceof Error ? error.message : String(error),
+          })
+          resumedCloudflareStreamsRef.current.delete(key)
+        }
+      })()
     }
   }, [activeChatId, activeRuntime, actChat, chatInstances, chatStreamRelayApi, liveMessages])
 

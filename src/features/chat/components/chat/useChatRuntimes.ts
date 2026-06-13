@@ -35,6 +35,9 @@ function createConversationRuntime(
       }
 
       const nextHeaders = new Headers(headers)
+      if (!nextHeaders.has('x-request-id')) {
+        nextHeaders.set('x-request-id', crypto.randomUUID())
+      }
       if (turnId) {
         nextHeaders.set('Idempotency-Key', buildActStreamIdempotencyKey(turnId, slotIndex))
       }

@@ -33,7 +33,9 @@ export default function BackgroundPollManager() {
   useEffect(() => {
     if (authLoading || !authUserId) return
     const interval = setInterval(async () => {
-      const pending = Object.values(sessionsRef.current).filter((s) => s.status === 'streaming')
+      const pending = Object.values(sessionsRef.current).filter(
+        (session) => session.status === 'streaming' && !session.id.startsWith('__overlay_'),
+      )
       if (pending.length === 0) return
 
       await Promise.all(
