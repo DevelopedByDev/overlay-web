@@ -13,7 +13,7 @@ async function ChatRouteContent({
 }) {
   const initialChatPage = userId
     ? await getInitialChatHistory()
-    : { data: [], hasMore: false }
+    : null
   return (
     <ChatSuspenseBoundary
       userId={userId}

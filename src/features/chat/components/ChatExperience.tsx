@@ -265,7 +265,9 @@ export default function ChatExperience({
     }
   }, [setActiveViewer])
 
-  const [chats, setChats] = useState<Conversation[]>(() => initialChats ?? getCachedChatList() ?? [])
+  const [chats, setChats] = useState<Conversation[]>(() =>
+    userId ? (initialChats ?? getCachedChatList() ?? []) : [],
+  )
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const {
     runtimesRef,
@@ -302,8 +304,8 @@ export default function ChatExperience({
   } = useChatPanels()
 
   useEffect(() => {
-    if (initialChats) primeChatList(initialChats, initialChatPageInfo)
-  }, [initialChatPageInfo, initialChats])
+    if (userId && initialChats) primeChatList(initialChats, initialChatPageInfo)
+  }, [initialChatPageInfo, initialChats, userId])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   /** When true, account default-model sync must not overwrite single/multi picker mode. */

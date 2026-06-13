@@ -78,7 +78,9 @@ export function ChatInlinePanel({
     const MAX_ATTEMPTS = 8
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       if (signal?.cancelled) return
-      const outcome = await fetchChatListResult({ force: attempt > 0 })
+      // The cache is display-only here. It may have been populated by a guest
+      // server render before the client recovered the authenticated session.
+      const outcome = await fetchChatListResult({ force: true })
       if (signal?.cancelled) return
       if (outcome.status === 'success') {
         setChats(outcome.chats)
@@ -116,16 +118,17 @@ export function ChatInlinePanel({
       return
     }
     const cached = getCachedChatList()
-    if (cached) {
+    if (cached?.length) {
       setChats(cached)
       setHasMore(getCachedChatListPageInfo().hasMore)
       setLoading(false)
     } else {
+      setChats([])
       setLoading(true)
     }
     const signal = { cancelled: false }
     const timeoutId = window.setTimeout(() => {
-      if (!getCachedChatList()) setLoading(true)
+      if (!getCachedChatList()?.length) setLoading(true)
       void loadChats(signal)
     }, 0)
     return () => {
